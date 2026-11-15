@@ -16,12 +16,22 @@ import java.util.function.Supplier;
  * clock, so a world with nothing mounted or queued can only move when the clock does; the fingerprint and the second sample
  * guard the instant a thread changes hands.
  *
+ * <p>A sample of {@link #ofJvm} counts as mounted the scheduler's mounted count, the carrier threads running now
+ * ({@link #runningCarriers()}) and the runner's busy threads (FIX-254, D-155). The scheduler's count alone is not enough: it is
+ * its pool's active count, and the pool leaves a carrier out of it while the carrier's virtual thread, mounted and running, is
+ * inside a blocking operation the pool compensates for — between {@code jdk.internal.misc.Blocker.begin()} and {@code end()},
+ * as a write of {@code System.out} or {@code System.err} that reaches the file descriptor and every read of a {@code Process}
+ * pipe is. The scheduler's counts stay in the sample: a virtual thread queued for a carrier that has not woken yet is seen only
+ * by them.
+ *
  * <p>One instant does not see every hand-over: a virtual thread blocked on a monitor leaves its carrier (JDK 24 on, JEP 491), and
  * from the monitor's release until the JDK's unblocker thread queues it again it is neither mounted nor queued. A quiescence
  * with a {@code steady} time therefore answers quiet only once its samples have stayed idle, with the same fingerprint, for at
  * least that long: the hand-over ends within it. Zero answers on the two samples alone. Not thread-safe: one thread samples.
  */
 final class Quiescence {
+
+    private static final String CARRIER = "jdk.internal.misc.CarrierThread";
 
     private final IntSupplier mounted;
     private final LongSupplier queued;
@@ -51,20 +61,46 @@ final class Quiescence {
         this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
     }
 
-    /** Over the JVM's virtual thread scheduler ({@code jdk.management}, JDK 24 on), on the two samples alone. */
+    /**
+     * Over the JVM's virtual thread scheduler ({@code jdk.management}, JDK 24 on) and its running carriers, on the two samples
+     * alone: a sample reads {@code VirtualThreadSchedulerMXBean}'s mounted and queued counts and {@link #runningCarriers()}.
+     */
     static Quiescence ofJvm(Supplier<?> fingerprint) {
         return ofJvm(() -> 0, Duration.ZERO, fingerprint);
     }
 
     /**
-     * Over the JVM's virtual thread scheduler, {@code busy} threads counted as mounted, quiet after {@code steady}.
+     * Over the JVM's virtual thread scheduler, quiet after {@code steady}: a sample's mounted reading is the scheduler's mounted
+     * count plus {@link #runningCarriers()} plus {@code busy}; its queued reading is the scheduler's queued count.
      *
      * @param busy the threads inside a call the runner watches: a thread blocked in one is busy, mounted or not
      */
     static Quiescence ofJvm(IntSupplier busy, Duration steady, Supplier<?> fingerprint) {
         VirtualThreadSchedulerMXBean scheduler = ManagementFactory.getPlatformMXBean(VirtualThreadSchedulerMXBean.class);
-        return new Quiescence(() -> scheduler.getMountedVirtualThreadCount() + busy.getAsInt(), scheduler::getQueuedVirtualThreadCount,
-                fingerprint, steady, System::nanoTime);
+        return new Quiescence(() -> scheduler.getMountedVirtualThreadCount() + runningCarriers() + busy.getAsInt(),
+                scheduler::getQueuedVirtualThreadCount, fingerprint, steady, System::nanoTime);
+    }
+
+    /**
+     * The carrier threads running now: the live platform threads of the root thread group and its subgroups whose class is
+     * {@code jdk.internal.misc.CarrierThread} (compared by name; the package is not exported) and whose
+     * {@link Thread#getState()} is {@code RUNNABLE}. A carrier is {@code RUNNABLE} while it runs a virtual thread, inside a
+     * compensated block too, and {@code WAITING} or {@code TIMED_WAITING} while it is parked for work. The threads are read anew
+     * on every call: the pool starts spare carriers for compensated blocks and retires idle ones. Called on a virtual thread, the
+     * count includes that thread's own carrier.
+     */
+    static int runningCarriers() {
+        ThreadGroup root = Thread.currentThread().getThreadGroup();
+        for (ThreadGroup parent; (parent = root.getParent()) != null; ) root = parent;
+        Thread[] threads = new Thread[root.activeCount() + 16];
+        int live;
+        while ((live = root.enumerate(threads, true)) == threads.length) threads = new Thread[threads.length * 2];   // full: may have missed one
+        int running = 0;
+        for (int i = 0; i < live; i++) {
+            Thread thread = threads[i];
+            if (thread.getClass().getName().equals(CARRIER) && thread.getState() == Thread.State.RUNNABLE) running++;
+        }
+        return running;
     }
 
     /**

@@ -93,3 +93,36 @@ Machine: this container, 4 CPUs, Temurin 25. Nothing under `src/` changed for an
    - The rate on a GitHub runner: one `ci` run (224) is known to have failed on it. This machine: 3 of 210 reports; of the
      architect's traced runs, between 1 in 13 and 1 in 30 had the quiet sample inside the call (three hunts, one per
      settings file; the recording changes the timing).
+
+5. After the change (stage 2; D-155: a quiet sample also counts the carrier threads in state RUNNABLE)
+
+   | check, on this machine                                      | before the change                  | after it                 |
+   | probe.sh, CPUs 0-3, no load: deviating reports              | 3 of 210 (`free.log`, `trace.log`) | 0 of 300 (`after.log`)   |
+   | hunt.sh, 100 traced runs: a quiet sample inside failed()    | 6 (`hunt-before.log`)              | 0 (`hunt-after.log`)     |
+   | hunt.sh, the same 100 runs: deviating reports               | 6                                  | 0                        |
+
+   The baseline of hunt.sh ran on the unchanged build (750ba7b9's jar): 4 wrong reports in the sftp flow, 2 in
+   invoice-async. Had the change done nothing, 0 of 300 would be expected in 1.3 % of such batches (207/210 per run) and
+   0 of 100 in 0.2 % (94/100 per run). Neither number can show that the fault is gone. The mechanism is pinned by
+   `QuiescenceTest.aVirtualThreadInsideACompensatedBlockIsNeverQuiet`: a virtual thread held in a `Process` pipe read -
+   the same `Blocker.begin()` / `end()` pair - was called quiet by the old code in 5 of 5 runs (first quiet call at index
+   14, 0, 1, 101, 62 of 20 000; `agent/work/FIX-254-red.log`) and is never quiet with the change.
+   The two cases of the carrier count did not compile before the change (`agent/work/FIX-254-red-compile.log`).
+
+   The whole reactor with the ITs on the changed tree (the verifier, 19:31Z-19:58Z): VERIFIED_PASS - BUILD SUCCESS, 17
+   modules, every count as expected, cli 208 unit tests (205 and the 3 new) and 7 ITs, 0 failures, 0 errors, 0 skipped;
+   `ci/coverage_check.py --baseline-ref HEAD`: no decrease. Logs `agent/work/FIX-254-reactor.log`, `FIX-254-coverage.log`
+   (not committed). Checks 2 and 3 of the table ran after it on the same tree (to 20:14Z).
+
+   After those runs two comment sentences changed, one in each file, for the review's wording remark ("every write to
+   System.err" said more than the JDK source shows: only a write that reaches the file descriptor runs in the block).
+   No code line changed. The cli module ran once more after them: VERIFIED_PASS, 208 unit tests and 7 ITs, 0 failures,
+   0 errors, 0 skipped (`agent/work/FIX-254-green2.log`, not committed). The whole reactor did not run on the committed tree.
+
+   Review (class B): PASS. Not blocking, and where each went: the wording (taken, as above; D-155 and the packet too);
+   the cost of the carrier reading was measured with three carriers in a standalone program and grows with the JVM's
+   platform threads (said in D-155; to be measured in the runner, row FIX-256); the retry of `runningCarriers()` for a
+   full thread array is reached by no test and stays - without it a carrier started between the two thread snapshots
+   could be dropped without notice, and only a race reaches it. Mutants the implementer ran by hand: the sample without
+   the carrier count, the state check dropped or inverted, the class name inverted or renamed - each killed; the retry
+   removed - survives, for the reason above.

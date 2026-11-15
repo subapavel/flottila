@@ -162,6 +162,8 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   on FIX-183 (fixed in 6cd8f2ed), FIX-234 (fixed in 92f4b212) and FIX-149 (fixed in the commit after a61b80cd).
 - `ci` run 226 (id 43747912076, 750ba7b9, FIX-149): `success`, read 19:07Z from the run's conclusion (18:38Z-19:05Z); its jobs
   were not read one by one. Count of green `ci` runs in a row: 2 (225, 226).
+- `ci` run 227 (id 43751547554, 8e13e176, FIX-254 stage 1, documents only): `success`, read 20:16Z from the run's conclusion
+  (19:17Z-19:42Z). Count of green `ci` runs in a row: 3 (225, 226, 227). 227 ran the runner as it was before FIX-254's change.
 
 ## Whole-reactor runs on this machine (MAIN-1's first condition)
 
@@ -172,4 +174,7 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
 - Run 1 (started about 18:05Z, 25:36 min, the verifier): a61b80cd plus FIX-149 as first reviewed. Green: 17 modules, every
   count as expected, coverage no decrease (`agent/work/FIX-149-evidence.txt`). The committed FIX-149 differs from that tree
   by one Javadoc line and one test method of the testkit module; the testkit module ran green after them.
-- Count: 1 of 3.
+- Run 2 (19:31Z-19:58Z, the verifier): 8e13e176 plus FIX-254's change as reviewed. Green: 17 modules, every count as
+  expected (cli 208 unit tests and 7 ITs), coverage no decrease (`agent/work/FIX-254-evidence.txt` section 5). The committed
+  change differs from that tree by two comment sentences; the cli module ran green after them.
+- Count: 2 of 3. Run 3 is owed on FIX-254's commit.

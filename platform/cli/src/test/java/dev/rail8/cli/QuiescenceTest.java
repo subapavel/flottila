@@ -33,9 +33,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       readings;</li>
  *   <li>{@code boolean quiet()} — takes samples now; whether the condition above holds. A probe may keep its last sample
  *       between calls; it never answers true on a single sample.</li>
+ *   <li>FIX-254 (D-155): {@code static int Quiescence.runningCarriers()} — the platform threads of class
+ *       {@code jdk.internal.misc.CarrierThread} whose {@code Thread.getState()} is {@code RUNNABLE}, read now: at least 1 while
+ *       a virtual thread spins, 0 once the only virtual thread is parked;</li>
+ *   <li>FIX-254: a sample of {@code ofJvm} counts those running carriers as mounted, so a virtual thread inside a blocking
+ *       operation the scheduler compensates for (a {@code Process} pipe read; a write to {@code System.err}), which the
+ *       scheduler's mounted count leaves out, is never quiet.</li>
  * </ul>
- * The JVM cases stage a real virtual thread (spinning: mounted; parked on a Vert.x future: unmounted); the scripted cases pin
- * each reading — a queued thread with nothing mounted cannot be staged on a real scheduler.
+ * The JVM cases stage a real virtual thread (spinning: mounted; parked on a Vert.x future: unmounted; reading the output of a
+ * child {@code cat}: inside a compensated block); the scripted cases pin each reading — a queued thread with nothing mounted
+ * cannot be staged on a real scheduler.
  */
 @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class QuiescenceTest {
@@ -93,6 +100,91 @@ class QuiescenceTest {
             until(quiescence::quiet, "quiet while the only virtual thread is parked");
 
             assertEquals(Thread.State.WAITING, parked.getState(), "still parked: quiet was seen with it alive, not after it ended");
+        } finally {
+            gate.complete();
+            parked.join();
+        }
+    }
+
+    /**
+     * FIX-254: a virtual thread inside a blocking operation the scheduler compensates for (a read of a {@code Process} pipe,
+     * between {@code Blocker.begin()} and {@code end()}, as a write of {@code System.err} that reaches the file descriptor is)
+     * is still on its carrier and running, though the scheduler's mounted count leaves it out: never quiet while it is in the
+     * block; the same probe is quiet once it has left the block and ended.
+     */
+    @Test
+    void aVirtualThreadInsideACompensatedBlockIsNeverQuiet() throws Exception {
+        Process child = new ProcessBuilder("cat").start();
+        try {
+            AtomicBoolean reading = new AtomicBoolean();
+            AtomicInteger read = new AtomicInteger(Integer.MIN_VALUE);
+            AtomicReference<Throwable> failed = new AtomicReference<>();
+            Thread reader = Thread.ofVirtual().name("reader").start(() -> {
+                reading.set(true);
+                try {
+                    read.set(child.getInputStream().read());
+                } catch (Throwable e) {
+                    failed.set(e);
+                }
+            });
+            Quiescence quiescence = Quiescence.ofJvm(() -> "unchanged");
+            until(reading::get, "the reader enters the read of the child's output");
+
+            List<Integer> quietAt = new ArrayList<>();
+            for (int i = 0; i < 20_000; i++) if (quiescence.quiet()) quietAt.add(i);
+
+            assertTrue(reader.isAlive(), "every sample was taken while the reader was in the read");
+            assertEquals(List.of(), quietAt.subList(0, Math.min(quietAt.size(), 10)),
+                    "never quiet while a virtual thread is inside a compensated block (first quiet indices; "
+                            + quietAt.size() + " of 20000 calls quiet)");
+
+            child.getOutputStream().close();
+            reader.join();
+            assertEquals(null, failed.get(), "the read ended without an exception");
+            assertEquals(-1, read.get(), "the read ended at the end of the child's output");
+            until(quiescence::quiet, "quiet once the reader has ended (the probe is not always false)");
+        } finally {
+            child.destroyForcibly();
+        }
+    }
+
+    /**
+     * FIX-254: a virtual thread that spins runs on a carrier thread whose state is {@code RUNNABLE}. The guard on the JDK's class
+     * name of a carrier: if a later JDK renames it, no carrier is found and the count is 0.
+     */
+    @Test
+    void aSpinningVirtualThreadIsARunningCarrier() throws InterruptedException {
+        AtomicBoolean spinning = new AtomicBoolean();
+        AtomicBoolean release = new AtomicBoolean();
+        Thread spinner = Thread.ofVirtual().name("spinner").start(() -> {
+            spinning.set(true);
+            while (!release.get()) Thread.onSpinWait();
+        });
+        try {
+            until(spinning::get, "the spinner spins");
+
+            List<Integer> noneRunningAt = new ArrayList<>();
+            for (int i = 0; i < 1_000; i++) if (Quiescence.runningCarriers() < 1) noneRunningAt.add(i);
+
+            assertTrue(spinner.isAlive() && !release.get(), "every reading was taken while the spinner spun");
+            assertEquals(List.of(), noneRunningAt, "at least one carrier runs while a virtual thread spins");
+        } finally {
+            release.set(true);
+            spinner.join();
+        }
+    }
+
+    /** FIX-254: a virtual thread parked on a Vert.x future has left its carrier: no carrier thread stays {@code RUNNABLE}. */
+    @Test
+    void parkedVirtualThreadsLeaveNoCarrierRunning() throws InterruptedException {
+        Promise<Void> gate = Promise.promise();
+        Thread parked = Thread.ofVirtual().name("parked").start(() -> gate.future().await());
+        try {
+            until(() -> parked.getState() == Thread.State.WAITING, "the virtual thread parks in await()");
+
+            until(() -> Quiescence.runningCarriers() == 0, "no carrier runs while the only virtual thread is parked");
+
+            assertEquals(Thread.State.WAITING, parked.getState(), "still parked: no carrier ran with it alive, not after it ended");
         } finally {
             gate.complete();
             parked.join();

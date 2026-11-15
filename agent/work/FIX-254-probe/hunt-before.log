@@ -1,0 +1,13 @@
+run 5 DEVIATES: PASS sftp-invoice: partner down (flow time 2700ms)
+run 5 HIT: failed() calls us: [11242, 1816, 2697, 131] quiet inside (call, +us): [(2, 2316)]
+run 9 DEVIATES: PASS invoice-async: partner down (flow time 2700ms)
+run 9 HIT: failed() calls us: [20303, 2913, 1025, 107] quiet inside (call, +us): [(0, 19946)]
+run 10 DEVIATES: PASS sftp-invoice: partner down (flow time 2700ms)
+run 10 HIT: failed() calls us: [20778, 1688, 2227, 143] quiet inside (call, +us): [(2, 1964)]
+run 64 DEVIATES: PASS sftp-invoice: partner down (flow time 3700ms)
+run 64 HIT: failed() calls us: [12573, 1765, 4919, 205] quiet inside (call, +us): [(2, 2348), (2, 4425)]
+run 84 DEVIATES: PASS sftp-invoice: partner down (flow time 2700ms)
+run 84 HIT: failed() calls us: [29683, 1972, 2451, 123] quiet inside (call, +us): [(2, 2071)]
+run 87 DEVIATES: PASS invoice-async: partner down (flow time 3700ms)
+run 87 HIT: failed() calls us: [26134, 2659, 990, 144] quiet inside (call, +us): [(0, 24508), (0, 25885)]
+hunt: runs=100 quiet-inside-failed=6 deviating-reports=6

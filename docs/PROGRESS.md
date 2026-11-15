@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-254 a flow time no longer depends on the machine — done, review PASS
+
+- The runner's quiet sample also counts the carrier threads in state RUNNABLE (`Quiescence.runningCarriers()`, D-155): the
+  JDK's mounted count leaves a carrier out while its virtual thread is in a compensated block, such as the worker's WARNING
+  reaching `System.err`. One file under `src/main`, `Quiescence.java`; `STEADY`, the node and every other module unchanged.
+- Red first: `aVirtualThreadInsideACompensatedBlockIsNeverQuiet` - a thread held in a `Process` pipe read - was called quiet
+  by the old code in 5 of 5 runs (`agent/work/FIX-254-red.log`); the two cases of the carrier count did not compile.
+- Evidence (`agent/work/FIX-254-evidence.txt` section 5): whole reactor VERIFIED_PASS, 17 modules, cli 208 + 7, coverage no
+  decrease; demo reports deviating 0 of 300 (before 3 of 210); traced runs with a quiet sample inside the worker's call 0 of
+  100 (before 6 of 100). The numbers cannot show the fault gone; the first case shows that its mechanism is.
+- After those runs two comment sentences changed for the review's wording remark; cli ran again, 208 + 7 green. The whole
+  reactor NOT_RUN on the committed tree - it is run 3 of MAIN-1's three.
+- Review [B]: PASS. Open from it, row FIX-256: the steady time still guards the monitor hand-over by wall time, and the new
+  reading's cost is unmeasured in the runner. The untested retry for a full thread array stays; the commit says why.
+- MAIN-1: whole-reactor runs 2 of 3 (this task's); `ci` 225, 226, 227 green. Owed: run 3 on this commit and its `ci` run.
+
 ## 2026-11-15 — FIX-254 stage 1: why a flow time differs between runs — cause measured, in progress
 
 - Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
