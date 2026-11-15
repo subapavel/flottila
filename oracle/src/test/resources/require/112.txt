@@ -1,0 +1,9 @@
+# The required cases of #112 "S2b.9 Cardinality, ending at its result" (ADR-0020, ADR-0007 and its #112 amendment,
+# F-56): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>.
+# One id per line; # and blank lines skipped.
+
+# differential: F-56's three jq-ref probes, every case of diff/cardinality.cases (recorded on jq-ref 1.8.2). They are
+# guards here: an over-claimed "one" or "at most one" that a later backend acts on would break them.
+cardinality/limit-stops-before-the-error
+cardinality/first-stops-before-the-endless-rest
+cardinality/recursion-after-a-comma-keeps-the-pending-errors
