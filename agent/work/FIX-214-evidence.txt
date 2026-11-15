@@ -1,0 +1,32 @@
+FIX-214 — evidence (2026-11-15)
+
+The fault: PeerProtocolTest.aLinkPausedByAnAbandonedConsumerIsClosedAfterATimeoutAndItsReadsFail:767,
+"expected: <DIALER> but was: <LISTENER>" — BASE-1 run 2 and ci run 193.
+
+Red, the new FrameRelayTest against the fixture as it was (runtime module, failures ignored):
+EXECUTED_FAIL  agent/work/FIX-214-red.log        FrameRelayTest: Tests run: 13, Failures: 3
+               aWriteToAClosedSocketNamesTheSideThatClosedNotTheSideItReadsFrom [1] expected: <DIALER> but was: <LISTENER>
+               the same case [2] expected: <LISTENER> but was: <DIALER>; bothPumpsNameTheSideThatClosed [2] the same
+               (also in this run, another JVM and no relay: PeerReadHeapTest:281, once — row FIX-224)
+
+After the fixture change:
+VERIFIED_PASS  agent/work/FIX-214-runtime-1.log  author, exit 0
+VERIFIED_PASS  agent/work/FIX-214-verify-1.log   verifier, exit 0: FrameRelayTest 13, PeerProtocolTest 37, PeerReadHeapTest 2,
+VERIFIED_PASS  agent/work/FIX-214-verify-2.log   runtime 1576 (default execution) and 3 (heap-bounded), 0 failures; the eight
+VERIFIED_PASS  agent/work/FIX-214-verify-3.log   upstream modules at their baseline counts (agent/work/BRAND-1-C-counts.txt)
+
+Review round 1: FAIL — aConnectionTheCaseCutNamesTheRelay read closedBy before either pump had woken; a last-wins mutant of
+the guard `if (closedBy == null)` (FrameRelay.java:184) survived.
+Round 2 (the cut case and the write case wait, bounded, until both pump threads have ended):
+EXECUTED_FAIL  agent/work/FIX-214-mutant.log     the guard dropped (temporary, restored): FrameRelayTest 13 run, 3 failed —
+               the cut case :218 expected: <RELAY> but was: <LISTENER>, the write case [1] and [2]; also PeerProtocolTest:606
+               and PeerLinkTest:240
+VERIFIED_PASS  agent/work/FIX-214-runtime-2.log  author, the final tree, exit 0: FrameRelayTest 13, PeerProtocolTest 37
+VERIFIED_PASS  agent/work/FIX-214-verify-4.log   verifier, the final tree, exit 0: FrameRelayTest 13, PeerProtocolTest 37,
+               runtime 1576 and 3, 0 failures
+
+review: PASS   class A, round 2. The inner catch is the smallest change: a failed forward names the other side, RELAY when the
+               pipe refused the frame; InterruptedException still takes the outer path. After `cut` or `close()` the relay's
+               answer is set before either socket closes, so RELAY stays. The 8 MB frame parked at 3 866 624 bytes here; on a
+               host with larger buffers the case fails at "fixture: … parked", it cannot pass wrongly.
+Not pinned: the outer catch's `refused()` arm (older than this change). Logs are not committed; the diff is agent/work/FIX-214.diff.

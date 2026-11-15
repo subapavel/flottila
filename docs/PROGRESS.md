@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-214 the frame relay names the side whose socket closed — done, review PASS
+
+- Fault: `PeerProtocolTest…:767`, "expected: <DIALER> but was: <LISTENER>" (BASE-1 run 2, `ci` run 193) — a test fixture's.
+  `FrameRelay`'s pump named the side it reads from for every IOException, also for a failed write to the other side; two pumps
+  see one close and the first answer stays, so the answer was a race.
+- Red first (test-author): new `FrameRelayTest`, 13 cases on plain sockets. An 8 MB frame parks the pump toward a peer that does
+  not read, the closer closes, only the failed write can report: EXECUTED_FAIL with the same message (FIX-214-red.log).
+- Change (the fixture, 13 lines): a failed write names the side written to, RELAY when the relay refused the frame; a failed read
+  names the side read from, as before. `PeerProtocolTest` is not edited; nothing under src/main.
+- Review round 1 FAIL: no case pinned "the first answer stays". Round 2: the cut and the write case wait for both pumps to end;
+  with the guard dropped they fail, and so do PeerProtocolTest:606 and PeerLinkTest:240 (FIX-214-mutant.log). PASS (class A).
+- Evidence: VERIFIED_PASS four runs of the module by the verifier (three before round 2, one after): FrameRelayTest 13,
+  PeerProtocolTest 37, runtime 1576 = the baseline's 1563 + 13.
+- Narrowed: an interrupt that lands in a pump's write now names the side written to; nothing interrupts a pump mid-write.
+- New row FIX-224: `PeerReadHeapTest:281` failed once in the red run — a fixed 1 MiB bound on buffered bytes, not this change.
+
 ## 2026-11-15 — FIX-216 the journal-rate check compares whole bytes — done, review PASS
 
 - Context compacted before this entry; state re-read from HANDOFF, `git status`, `git log -3` (HEAD 627afa86, clean but FIX-214's WIP).

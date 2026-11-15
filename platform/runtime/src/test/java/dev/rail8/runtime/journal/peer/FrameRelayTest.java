@@ -1,0 +1,220 @@
+package dev.rail8.runtime.journal.peer;
+
+import dev.rail8.runtime.journal.peer.FrameRelay.Side;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+/**
+ * FIX-214: the relay names the side whose socket closed, whichever of its two pumps sees it. A failure of the read of a
+ * socket names that socket's side; a failure of the write to a socket names the side written to (the pump that reads the
+ * other side saw nothing wrong); a frame the relay itself refused names the relay. The relay stands between two plain
+ * sockets here (the "dialer" a client socket, the "listener" a server socket), so what a case closes is exactly what it
+ * expects the relay to name.
+ *
+ * <p>The write cases are deterministic because the pump toward the closer is held away from the closer's socket: the
+ * closer's side sent one frame larger than the kernel buffers hold, the peer does not read it, so the pump toward the peer
+ * parks inside that write and never reads the closer's EOF. Only the other pump, writing to the closer's closed socket,
+ * can report.
+ */
+@Timeout(120)
+class FrameRelayTest {
+
+    /** Far above what the loopback socket buffers of the two relayed sockets hold: the write toward an unread peer parks. */
+    private static final int LARGE = 8 << 20;
+    private static final int SMALL = 25;   // a frame's smallest shape: type, seq, tag
+
+    private final List<AutoCloseable> toClose = new ArrayList<>();
+
+    @AfterEach
+    void closeAll() throws Exception {
+        for (int i = toClose.size() - 1; i >= 0; i--) toClose.get(i).close();
+    }
+
+    /** A relay, the server socket behind it, and one connection through it: the dialer's socket and the listener's. */
+    private final class Link {
+        final FrameRelay wire;
+        final Socket dialer;
+        final Socket listener;
+
+        Link() throws IOException {
+            ServerSocket server = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
+            server.setSoTimeout((int) (FrameRelay.BOUND_SECONDS * 1000));
+            toClose.add(server);
+            wire = new FrameRelay("127.0.0.1", server.getLocalPort());
+            toClose.add(wire);
+            dialer = new Socket("127.0.0.1", wire.port());
+            toClose.add(dialer);
+            listener = server.accept();
+            toClose.add(listener);
+        }
+
+        Socket of(Side side) { return side == Side.DIALER ? dialer : listener; }
+
+        Side other(Side side) { return side == Side.DIALER ? Side.LISTENER : Side.DIALER; }
+
+        /** The direction whose receiver is {@code receiver}. */
+        FrameRelay.Pipe toward(Side receiver) { return receiver == Side.LISTENER ? wire.toListener() : wire.toDialer(); }
+    }
+
+    private static byte[] frameOf(int len) {
+        byte[] f = new byte[4 + len];
+        f[0] = (byte) (len >>> 24);
+        f[1] = (byte) (len >>> 16);
+        f[2] = (byte) (len >>> 8);
+        f[3] = (byte) len;
+        return f;
+    }
+
+    /**
+     * {@code from} sends one frame of {@link #LARGE} bytes the other socket never reads, and the relay's pump toward it parks
+     * inside the write of it: from then on that pump reads nothing from {@code from}.
+     */
+    private static void sendLargeUnread(Link link, Side from) throws Exception {
+        OutputStream out = link.of(from).getOutputStream();
+        AtomicReference<Throwable> failed = new AtomicReference<>();
+        Thread writer = Thread.ofVirtual().name("frame-relay-test-large").start(() -> {
+            try {
+                byte[] head = frameOf(LARGE);
+                out.write(head, 0, 4);
+                byte[] chunk = new byte[64 * 1024];
+                for (int sent = 0; sent < LARGE; sent += chunk.length) out.write(chunk, 0, Math.min(chunk.length, LARGE - sent));
+                out.flush();
+            } catch (Throwable t) {
+                failed.set(t);
+            }
+        });
+        FrameRelay.Pipe pipe = link.toward(link.other(from));
+        FrameRelay.until(pipe::parkedWriting,
+                () -> "fixture: the relay's write of " + from + "'s large frame parked: " + link.wire.describe());
+        writer.join();   // the relay read the whole frame to write it: the sender is done
+        assertNull(failed.get(), "fixture: the large frame left the sender whole");
+    }
+
+    /** Waits (bounded) until both pumps of connection 0 ended: each has seen its closed socket and had its say. */
+    private static void awaitPumpsEnded(Link link) {
+        FrameRelay.until(() -> !link.wire.toListener().pumps.isEmpty() && !link.wire.toDialer().pumps.isEmpty()
+                        && !link.wire.toListener().pumps.get(0).isAlive() && !link.wire.toDialer().pumps.get(0).isAlive(),
+                () -> "fixture: both pumps ended: " + link.wire.describe());
+    }
+
+    /** {@code sender} writes small frames until the relay has closed connection 0 (or the bound passes). */
+    private static void sendUntilClosed(Link link, Side sender) throws IOException {
+        OutputStream out = link.of(sender).getOutputStream();
+        byte[] frame = frameOf(SMALL);
+        FrameRelay.until(() -> {
+            try {
+                out.write(frame);
+                out.flush();
+            } catch (IOException e) {
+                if (!link.wire.closed(0)) throw new UncheckedIOException("fixture: " + sender + " could not send before the relay closed", e);
+            }
+            return link.wire.closed(0);
+        }, () -> "fixture: " + sender + " sent until the relay closed: " + link.wire.describe());
+    }
+
+    /** A close whose only reporter is the write to the closed socket names the closed socket's side, not the side read from. */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void aWriteToAClosedSocketNamesTheSideThatClosedNotTheSideItReadsFrom(Side closer) throws Exception {
+        Link link = new Link();
+        sendLargeUnread(link, closer);               // the pump toward the closer's peer is parked in a write: it cannot read the close
+        link.of(closer).close();
+        sendUntilClosed(link, link.other(closer));   // the peer's frames are written to the closed socket until the write fails
+        awaitPumpsEnded(link);                       // the pump parked in its write has failed too: the first answer stood
+
+        assertEquals(closer, link.wire.awaitClosedBy(0, "the closer's socket is written to"), "closed by the closer: " + link.wire.describe());
+    }
+
+    /**
+     * Both pumps see one close, the one reading the closed socket and the one writing to it: the answer does not depend on
+     * which of the two comes first. The peer's frame parks the pump toward the closer inside its write (the closer reads
+     * nothing); the closer's close ends that write with an error and the other pump reads the close.
+     */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void bothPumpsNameTheSideThatClosed(Side closer) throws Exception {
+        Link link = new Link();
+        sendLargeUnread(link, link.other(closer));
+        link.of(closer).close();
+
+        assertEquals(closer, link.wire.awaitClosedBy(0, "both pumps see the close"), "closed by the closer: " + link.wire.describe());
+    }
+
+    /** The read of a socket that ended (FIN) names that socket's side. */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void anEndOfStreamOnTheReadNamesTheSideReadFrom(Side closer) throws Exception {
+        Link link = new Link();
+        link.of(closer).close();
+
+        assertEquals(closer, link.wire.awaitClosedBy(0, "the closer's EOF is read"), "closed by the closer: " + link.wire.describe());
+    }
+
+    /** The read of a socket that was reset (RST, not FIN) names that socket's side. */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void aResetOnTheReadNamesTheSideReadFrom(Side closer) throws Exception {
+        Link link = new Link();
+        link.of(closer).setSoLinger(true, 0);   // close() sends RST
+        link.of(closer).close();
+
+        assertEquals(closer, link.wire.awaitClosedBy(0, "the closer's reset is read"), "closed by the closer: " + link.wire.describe());
+    }
+
+    /** A frame the relay itself refused names the relay, whichever direction refused it. */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void aFrameTheRelayRefusedNamesTheRelay(Side sender) throws Exception {
+        Link link = new Link();
+        link.toward(link.other(sender)).refuseWhen(() -> "no frame passes");
+        link.of(sender).getOutputStream().write(frameOf(SMALL));
+        link.of(sender).getOutputStream().flush();
+
+        assertEquals(Side.RELAY, link.wire.awaitClosedBy(0, "the refused frame"), "closed by the relay: " + link.wire.describe());
+        assertEquals("no frame passes", link.toward(link.other(sender)).refused(), "fixture: the refusal is what closed it");
+    }
+
+    /** A pump interrupted while it reads (the one closing path that is neither EOF nor reset) names the side it reads from. */
+    @ParameterizedTest
+    @EnumSource(value = Side.class, names = {"DIALER", "LISTENER"})
+    void aPumpInterruptedWhileReadingNamesTheSideItReadsFrom(Side readFrom) throws Exception {
+        Link link = new Link();
+        FrameRelay.Pipe pipe = link.toward(link.other(readFrom));   // the direction that reads from `readFrom`
+        FrameRelay.until(() -> {
+            try {
+                return !pipe.pumps.isEmpty() && pipe.caughtUp();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }, () -> "fixture: the pump reading " + readFrom + " waits for a frame: " + link.wire.describe());
+        pipe.pumps.get(0).interrupt();
+
+        assertEquals(readFrom, link.wire.awaitClosedBy(0, "the interrupted pump"), "closed at " + readFrom + "'s read: " + link.wire.describe());
+    }
+
+    /** The first answer stays: a connection the case cut names the relay, though both pumps then fail on their closed sockets. */
+    @Test
+    void aConnectionTheCaseCutNamesTheRelay() throws Exception {
+        Link link = new Link();
+        link.wire.cut(0);
+        awaitPumpsEnded(link);   // both pumps have failed on the cut sockets: a last-wins close would have overwritten RELAY
+
+        assertEquals(Side.RELAY, link.wire.awaitClosedBy(0, "the cut connection"), "closed by the relay: " + link.wire.describe());
+    }
+}

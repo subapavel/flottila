@@ -26,7 +26,8 @@ import java.util.function.Supplier;
  * the frames, {@link Pipe#flipLastBitOfNext()} flips bit 0 of the next frame's last byte (its tag), {@link Pipe#inject} writes
  * raw bytes between two frames, {@link Pipe#holdAfter(int)} lets n more frames through and holds the rest. Each direction runs
  * on a virtual thread of its own that writes in slices of {@value #SLICE} bytes, so a write the receiver does not read parks
- * it ({@link Pipe#parkedWriting()}). Every connection's close is recorded with the side that closed first.
+ * it ({@link Pipe#parkedWriting()}). Every connection's close is recorded with the side whose socket closed first: a failed read
+ * names the side read from, a failed write the side written to (FIX-214).
  */
 public final class FrameRelay implements AutoCloseable {
 
@@ -164,12 +165,20 @@ public final class FrameRelay implements AutoCloseable {
                     System.arraycopy(head, 0, frame, 0, 4);
                     in.readFully(frame, 4, (int) len);
                     pipe.read.incrementAndGet();
-                    pipe.forward(out, frame);
+                    try {
+                        pipe.forward(out, frame);
+                    } catch (IOException writeFailed) {
+                        // FIX-214: a failed write is the closed socket of the side written to, not of the side read from
+                        close(pipe.refused() != null ? Side.RELAY : other(fromSide));
+                        return;
+                    }
                 }
             } catch (IOException | InterruptedException e) {
                 close(pipe.refused() != null ? Side.RELAY : fromSide);
             }
         }
+
+        private Side other(Side side) { return side == Side.DIALER ? Side.LISTENER : Side.DIALER; }
 
         synchronized void close(Side side) {
             if (closedBy == null) closedBy = side == null ? Side.RELAY : side;
