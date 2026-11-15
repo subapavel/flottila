@@ -133,11 +133,13 @@ grilling-adviser's rulings S1–S5, made for the owner under the delegation of 2
 - The cap is 16 384. If the census shows a refusal, the cap becomes the next power of two at or
   above the largest demand, up to `INLINE_CAP`. A refusal above that is a finding; its ruling changes
   the pass or names the filter here.
-- Refused by design (F-94): `over-cap/param-600`, `over-cap/param-unused-600`,
-  `over-cap/closure-doubling-20`. Their demand grows with the chain by construction, and #114
+- Refused by design (F-94, F-96): `over-cap/param-600`, `over-cap/param-unused-600`,
+  `over-cap/closure-doubling-20`, `specialise/order-param-chain-then-recurse`. Their demand grows with the chain by construction, and #114
   requires them with real closures. The census asserts that the filters refused under the cap are
   exactly these, that each is also refused under `INLINE_CAP`, and it computes S5's number over the
   other filters only. An entry needs a finding and a line here; a writer never edits the list.
+- A filter whose earlier keys exhaust the cap leaves each later key that does not fit refused, a
+  prelude loop's included. That key runs with real closures, which the depth budget counts (F-96).
 
 **What explain() shows**
 - The Executable carries a `Frozen` record: the specialised program, its Numbering, CallGraph and
