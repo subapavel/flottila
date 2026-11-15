@@ -1,0 +1,238 @@
+# F-30 — D-049 (d)'s "never an escaped exception" means every throwable, and one catch disagrees
+
+Date: 2026-11-14. Raised by: FIX-136 recon, written before the fix (the row requires it: this is
+practice contradicting a recorded decision, so it is not a silent fix).
+Status: open. Blocks: FIX-136.
+
+## The question the row asks
+
+D-049 (d) says, verbatim:
+
+> refused → retryable NACK; a save that throws synchronously is the same retryable NACK, **never an
+> escaped exception**; the permit covers the save for at-least-once and the whole run otherwise,
+> **released exactly once on every path**, before the at-most-once failure is logged.
+
+`Delivery.java:319-320` catches `RuntimeException` only:
+
+```java
+try {
+    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
+} catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
+    saved = Future.failedFuture(failure);
+}
+```
+
+So an `Error` — or any checked throwable thrown sneakily — leaves `intake.save` and escapes. Does
+D-049 (d) mean every throwable, or does "exception" mean `RuntimeException` and the decision promises
+more than it intended?
+
+## The answer: every throwable. The decision stands; the catch is an oversight.
+
+The evidence is inside the same method, and it is not an inference.
+
+Twenty-three lines above, `:296`:
+
+```java
+} catch (Throwable failure) {   // an Error too: whatever the key's expression throws is an answer, never an exception out of apply
+```
+
+and seven lines above, `:312`:
+
+```java
+} catch (Throwable failure) {   // a prop of the name but another type, an Error too: an answer, never an exception out of apply
+```
+
+Both are `Throwable`. Both carry comments that use D-049 (d)'s own phrase — "never an exception out of
+`apply`" — and both say "an Error too" explicitly. The same author, in the same method, applied the
+broad reading twice and wrote it into the comments, then wrote the save's catch narrower. A decision
+deliberately scoped to `RuntimeException` would not look like this; an oversight looks exactly like
+this.
+
+Two further corroborations:
+
+- D-049 **(c)** names `Error` in its own list of failures the worker must handle: "any other failure —
+  the DLQ refusing the park, a store read failing, **an `Error`** — leaves the item to its lease". So
+  D-049 does not treat `Error` as outside its scope anywhere else.
+- "released exactly once on **every path**" in (d) cannot be satisfied by a clause that lets a throwable
+  past the release. See the consequence below: the permit is the part that breaks worst.
+
+**Therefore D-049 needs no amendment.** The narrow reading loses, and the fix is to widen the catch,
+not to weaken the decision.
+
+## The consequence is worse than the FIX-136 row states
+
+The row says "the caller gets no reply and the message leaves no record". Both true. Two more follow,
+and they outweigh it.
+
+`Delivery.apply` (`:345-361`) ends:
+
+```java
+    flight = new Flight(permit.get(), e.flow());
+    flights.add(flight);
+    mode.board(e, flight);
+}
+return mode.deliver(e, flight);
+```
+
+`mode.deliver(e, flight)` is called with **no try, no finally and no catch**. But that alone does not decide
+what leaks: each mode protects itself, or fails to, inside its own `deliver`. **Corrected 2026-11-14,
+after the first draft of this finding implied the leak followed from `apply` for every mode — it does
+not.** Read per mode:
+
+- **sync** (`:174-181`) wraps the pipeline in `try { } catch (Exception thrown) { } finally { ... }`, and
+  the `finally` runs `flight.leave()` and `trail.close().onComplete(closed -> flight.land())`. An `Error`
+  is not caught, but the `finally` still runs, so **the permit returns**. The `Error` then propagates out
+  of `deliver` and out of `apply`, so the caller receives a thrown `Error` where it expected a
+  `Future<Ack>` — no reply, no 5xx, nothing the http component can map. One message lost; capacity intact.
+- **at-most-once** (`:215-222`) has the same shape in `run`, with `finally { flight.leave(); landAfter(...); }`.
+  **The permit returns.** The `Error` escapes `run` on the message's own virtual thread, where it becomes
+  an uncaught throwable handled by the thread's handler rather than the mode's "logged and dropped"
+  (D-049 b). The sender already holds its 202, so nothing is owed to it; what is lost is the log line that
+  says the run failed, which for a platform whose product is monitoring is the damage.
+- **at-least-once** (`:319-324`) has **no `finally` anywhere on that path**: the permit is released only
+  when the answer is decided — `Flight.land()` at `:109-111` calls `permit.close()`, and the class javadoc
+  at `:50` says "the permit is released when the answer is decided". An `Error` out of `intake.save`
+  means `answer` is never completed. So, **for this mode alone**:
+
+  1. **The permit is held for up to `saveTimeout`; it is not leaked for good.** *(Corrected 2026-11-14 —
+     third correction to this finding. What stood here claimed a permanent leak and a node that can never
+     stop. Both were wrong, and the severity argument was built on them.)* `:286` schedules the save
+     timeout **before** the save is asked, and `:281` lands the flight when the answer completes. An
+     `Error` out of `intake.save` leaves the answer undecided, but that timer is still pending: when it
+     fires it calls `answer.tryComplete(...)`, which lands the flight and so closes the permit. The cost
+     is one permit held for the remainder of `saveTimeout` (5 s by default) per `Error` — a bounded,
+     self-healing loss of tempo, not a flow that has silently stopped working.
+  2. **`stop(Duration)` completes at its deadline rather than at once.** The `Flight` leaves `flights`
+     when the save timeout decides the answer, so a `stop` whose deadline outlasts the remaining
+     `saveTimeout` completes normally; a shorter one reports work in flight that has in truth already
+     failed, and ends on its own deadline.
+  3. **The sharpest consequence is the lie, not the capacity.** The sender is told `"durable save timed
+     out after <d>"` when no save timed out: a step threw an `Error`. The record keeps a timeout that did
+     not happen and keeps nothing at all about the `Error`. On a platform whose product is monitoring,
+     that is the damage — and it is why the fix is still worth making now that the permit is known to
+     come back.
+
+A lost reply costs one message, which the sender retries. A permit held to a deadline costs tempo. A
+timeout recorded for an `Error` that never timed out costs the account of what happened, which is the one
+thing this platform exists to sell.
+
+## The same shape at three more sites, traced here
+
+The row asked for these to be checked in the same pass.
+
+- **`SequentialIntake.java:41` and `:47`** — `catch (RuntimeException failure)` around
+  `body().store().persist(...)` and around `store.record(ingress)`. They sit inside the `intake.save`
+  that `Delivery:319` calls, so under **today's** narrow catch a throwable escaping either one reaches
+  that catch and escapes with it.
+
+  *(Corrected 2026-11-14, fourth correction, by FIX-136's reviewer.)* What stood here next was that
+  widening `Delivery:319` alone "leaves the hole open one frame deeper". **That is wrong**, and it was
+  the premise the packet and the task were built on. Once `:319` is widened it catches a throwable out
+  of `SequentialIntake` whatever `SequentialIntake` itself did, so the hole is closed from above. The
+  reviewer demonstrated it: with only `:319` widened, every `Site`-parameterised `DeliveryTest` case goes
+  green, and only the two `SequentialIntakeTest` cases still fail.
+
+  `:41` and `:47` are still worth widening, but for a different and smaller reason: **`Intake.save`'s own
+  contract**, which its class javadoc states — a store that throws "is the same failed save". An
+  implementation that lets a throwable escape `save` breaks that contract whether or not a caller happens
+  to catch it, and a future `Intake` with no `Delivery` above it would have no net. Any comment on those
+  two catches must give that reason and not the one corrected here.
+- **`Producers.java:49`** — `catch (RuntimeException thrown)` around `p.close()` in the close loop. A
+  different path and a different consequence: an `Error` from one producer's `close()` abandons the
+  loop, so the remaining producers are never asked to close and their futures never join `settled`.
+  Not a delivery defect and not covered by D-049 (d). **Out of FIX-136's scope** — it needs its own
+  row, because the right behaviour there (log and carry on to the next producer, as the `recover` at
+  `:52-55` already does for a failed future) is a decision about shutdown, not about delivery.
+
+`Delivery.java:176` and `:218` are `catch (Exception)` **by decision, not by oversight**: D-056 widened
+them from `RuntimeException` precisely because "an `await` may throw `InterruptedException` sneakily".
+That decision considered checked exceptions and did not consider `Error`. Widening them to `Throwable`
+is within FIX-136's reading but is a change to what D-056 settled, so the fix task must say so in its
+commit rather than slipping it in — and D-056's row gains a note either way.
+
+## Relation to the family this belongs to
+
+This is the fourth instance of one defect shape: a catch narrower than the promise above it.
+
+- FIX-131 / **D-111** — `Recorder.wrap` caught `Exception`, so an `Error` left no FAILED row. Widened to
+  `Throwable` (FIX-133, commit 9a9c916).
+- **FIX-140** — the same method's recording could then replace the throwable it was about to rethrow.
+- **D-104** — `BatchingWriter` uses the `RuntimeException | Error` multicatch at every such site, which
+  is the in-repo precedent for the broad form.
+- **this** — the ingress save.
+
+The pattern worth recording: in this codebase a `catch (RuntimeException)` whose comment says "instead
+of failing its future" is a translation of a synchronous throw into a failed future, and such a
+translation has no reason to exclude `Error` — the caller is a future either way. Every one of those
+comments is a candidate site. The three in this finding were found by reading four of them.
+
+## What FIX-136 must do
+
+1. Widen `Delivery.java:319` and `SequentialIntake.java:41`, `:47` to the broad form. Prefer the
+   `RuntimeException | Error` multicatch of D-104 over bare `Throwable` where no sneaky checked
+   throwable is expected, and `Throwable` where one is — and say which was chosen and why. (`:296` and
+   `:312` use `Throwable`; consistency inside the method is worth more than the narrower type.)
+2. Assert the behaviour **per mode**, because it differs per mode — the row's "all three delivery
+   modes" is right but the ingress save itself exists only in at-least-once:
+   - **at-least-once**: an `Error` from the ingress save gives a retryable NACK, **the permit returns**,
+     and `stop()` completes. This is the acceptance that matters; a test checking only the NACK leaves
+     the two worse failures unpinned.
+   - **sync**: an `Error` from the pipeline comes back as a failed future, not thrown out of `apply`.
+     The permit already returns here, so assert it stays returning rather than treating it as the fix.
+   - **at-most-once**: an `Error` from the pipeline is logged and dropped as D-049 (b) says, not left as
+     an uncaught throwable on the message's thread. The permit already returns here too.
+3. The sync and at-most-once halves need `:176` and `:218` widened from `Exception`, and their `Exception
+   failure` / `Exception dropped` locals widened with them. That changes what **D-056** settled, which
+   widened those two catches to `Exception` deliberately for sneaky checked throwables and did not
+   consider `Error`. Say so in the commit and note it on D-056's row; do not slip it in.
+4. D-049 needs no amendment. D-056's row gains a note if `:176`/`:218` are touched.
+5. `Producers.java:49` gets its own row, not this one.
+
+## Addendum 2026-11-14 — the generalisation measured against the whole codebase
+
+The section above claims that "every one of those comments is a candidate site". That was written from
+four sites. A read-only sweep of **all 165 `catch (` clauses in `flottila-*/src/main/java`** (scout,
+2026-11-14; a hand tally, not re-counted by the architect, and no build was run) gives the bounded
+answer, which is worth more than the claim:
+
+- **2 new candidates of this shape**, not a long tail: `Parking.java:86` and `AdminServer.java:405`.
+  Rows **FIX-142** and, for the second, **FIX-143**.
+- **8 sites cannot be settled by reading** and are triaged in FIX-143, 6 of them in `Deployments.java`
+  and all 6 resolvable by one structural question: whether they run inside the `Throwable` catch at
+  `:826` that cleans up, or inside the rollback `RuntimeException | Error` catch at `:927`.
+- **about 102 are type-specific catches** — `IOException`, `NumberFormatException`,
+  `NoSuchAlgorithmException` and the like — which do not translate anything into a future and are not
+  this family at all. A further ~20 already catch `Throwable`.
+- **19 are deliberate**, five of them in the `RuntimeException | Error` form D-104 established
+  (`TargetLimit.java:98`, `SpoolCipher.java:79`, `Deployments.java:927`, `CpuSampler.java:177` and
+  `:259`), and one with the intent written down: `AdminServer.java:586` says "An Error is the caller's
+  (500)".
+
+**So FIX-136 is not the tip of an iceberg**, and that is the finding here. The pattern is real and worth
+knowing, but in this codebase it has four instances that matter (all in FIX-136), one clear straggler
+(FIX-142) and a triage list (FIX-143). Nobody needs to sweep the codebase again for it.
+
+The strongest of the new two is in `Parking.java`, and reading the file first-hand (architect, not
+relayed — the sweep gave the line, not the chain) makes it both worse and wider than one site.
+
+It is **two** sites, and the consequence is **FIX-140's defect one layer out: the recovery path replaces
+the failure it was recovering from.**
+
+- `:86` catches `RuntimeException` around `body.store().persist(body.key())`, while **two** javadocs
+  promise more — `persist`'s own at `:82` ("what the store throws becomes the failed future's cause") and
+  `park`'s at `:73` ("A persist that fails, **or throws**, fails the park with its cause and writes no
+  row").
+- `:59` catches `Exception` around `durable.await()`.
+
+The chain is what matters. `park(e, step, failure)` is called at `:55`, which is **already inside**
+`wrap`'s `catch (Exception failure)` at `:49`, and the inner catch at `:59` guards only the `await` — not
+the `park` call itself. So an `Error` out of `persist` propagates straight out of the stage:
+`failure.addSuppressed(parkFailure)` at `:61` never runs, **the step's own failure is lost and replaced
+by the `Error`**, and there is no park, no DLQ row and no `ParkedException`. The DLQ fails to record,
+fails to report that it failed, and destroys the reason it was called. Both sites are FIX-142, which is
+[B] and not [A] like its neighbour for exactly that reason.
+
+`Parking.java:49` stays in FIX-143's triage, because whether a step's own `Error` should be parked at all
+is a semantic decision rather than a translation. `:59` was moved out of that triage once reading
+settled it.
+

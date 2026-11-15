@@ -360,6 +360,13 @@ the path either way and `-I` is what keeps a planted module out:
     python3 -I ci/ledger_check.py
 
 `.github/workflows/ci.yml` uses the module form without `-I`, so CI was never affected.
+
+Reading a mutant's result (from the side branch's reviewer memory, commit 94fceab; lost at the 2026-11-14 merge, restored by
+the FIX-201 audit): `assertTrue` aborts its test at the first failure, so "Failures: N" under a mutant does not say which
+assertion fired - read the failure text; PIT does not mutate string literals, so a wording is pinned only by a hand mutant.
+Nothing in this build checks a Javadoc `{@link}` or `@see` (no maven-javadoc-plugin in any pom, checked 2026-11-15; the
+note is commit 7ccbaad's): a renamed symbol leaves stale Javadoc and no build step says so.
+
 ## Reference package, fixtures, tags
 
 examples/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +

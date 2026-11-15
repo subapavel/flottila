@@ -1,0 +1,16 @@
+## 2026-11-02 — WF-1 workflow skills adapted from mattpocock/skills (D-091) — done, review PASS r6
+## 2026-11-14 — FIX-54 TrailTest robustness — done, review PASS r1
+## 2026-11-14 — FIX-56 paused admin responses — done (already fixed), review PASS r2
+## 2026-11-14 — FIX-57 deploy-record error texts pinned — done, review PASS r1
+## 2026-11-14 — FIX-121 TrailTest warning counts stop reading the whole JVM — done, review PASS r1
+## 2026-11-14 — FIX-59 S3 prefix validated, FIX-60 archive fetch bounded — done, review PASS r2
+## 2026-11-14 — FIX-62 unstarted clears what it discarded out of `built` — done, review PASS r1
+## 2026-11-14 — FIX-123 the persist warning's sentence is pinned — done, review PASS r1
+## 2026-11-14 — FIX-131 a redelivered message's timeline is stitched from two runs — done, review PASS r2
+## 2026-11-14 — FIX-128 a warm-up with refusals reports its count — done, review PASS r2
+## 2026-11-14 — FIX-71 BatchingWriter widened to Error, a refused window committed (D-104) — done, review PASS r5
+## 2026-11-14 — FIX-132 the ledgers made well-formed, by cell shape not pipe count — done, review PASS r4
+## 2026-11-14 — FIX-134 `warmedUp` put in the bench record — done, review PASS r2
+## 2026-11-14 — FIX-133 Recorder catches Throwable, so a crashed step leaves a row — done, review PASS r1
+## 2026-11-14 — FIX-138 the orphaned batching window that fires early is now pinned by a test — done, review PASS r3
+## 2026-11-14 — FIX-147 three text defects left by FIX-142's review rounds — done, review PASS r1

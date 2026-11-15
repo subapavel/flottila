@@ -145,7 +145,16 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   before the node bound it. The same fault class as row FIX-149 (`NodeIT` :1425, pending since P2-15b); its first
   sighting on a runner and in the bench module.
 - `ci` run 221 (id 43735022796, 32ca85cd, FIX-224): `success`, read 17:14Z (run list only; 16:21Z-16:47Z).
-- `ci` runs 222 (id 43737776252, ca06cd73, FIX-195's late review) and 223 (id 43739440685, 6cd8f2ed, FIX-183): in
-  progress at 17:14Z; conclusions not read.
-- Count of green `ci` runs in a row: 1 (221; 218, 219 and 220 failed, each on a different fault: FIX-183 - fixed in
-  6cd8f2ed, FIX-234, FIX-149).
+- `ci` runs 222 (id 43737776252, ca06cd73, FIX-195's late review) and 223 (id 43739440685, 6cd8f2ed, FIX-183):
+  `success` both, read 17:54Z (run list only; 16:51Z-17:17Z and 17:08Z-17:35Z).
+- `ci` run 224 (id 43741079378, 92f4b212, FIX-234): `failure`, read 17:54Z. Postgres floor 17.11 (job 132894164419):
+  every module through the mock component green (runtime 13:31 min, units and ITs - NodePoolWaitIT with them); the cli
+  module's ITs `Tests run: 7, Failures: 1`: the list of results of the reference package's flow tests, expected
+  `PASS sftp-invoice: partner down (flow time 2400ms)` but was `(flow time 2700ms)` - the other five lines and the
+  totals line equal. Not FIX-234's change (a fixture of one runtime IT). A flow time that differs by one step of
+  300 ms between two runs of the same package: no earlier sighting; new row FIX-254. The failing case, read from the
+  code and not from the log: `LauncherIT.binRail8TestDemoExit0`, the only IT that asserts that list. The cause: not
+  shown (`agent/work/FIX-254-scout.md`). The other job's conclusion: not read.
+- Count of green `ci` runs in a row: 0 (224 failed; 221, 222 and 223 were green; 218, 219, 220 and 224 failed, each on
+  a different fault: FIX-183 - fixed in 6cd8f2ed, FIX-234 - fixed in 92f4b212, FIX-149 - in work, and the flow time
+  of 224).

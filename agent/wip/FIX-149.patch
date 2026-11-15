@@ -1,0 +1,919 @@
+diff --git a/.claude/agent-memory/test-author/MEMORY.md b/.claude/agent-memory/test-author/MEMORY.md
+index 03d16616..c98aa4d7 100644
+--- a/.claude/agent-memory/test-author/MEMORY.md
++++ b/.claude/agent-memory/test-author/MEMORY.md
+@@ -118,3 +118,4 @@
+ - FIX-47: runtime Deployments tests are wired with languages List.of(): a route/xpath step then fails at build (Kind.FAILED, 500), not validate; pass `Main.shipped().languages()` to deploy a route. A deploy check in `Deployments.validate` is also the CLI's (validate and test call it via `Validate.check`); CLI variants = `CliRuns.copy(DEMO,..)` + `CliRuns.rewrite(file, map)`. | P2-10a rail8-sim test tree: `SimRuns.run` (assertTimeoutPreemptively per seed, PER_PUSH 0x1..0x20), `Pins.pinned(v, what)` (null placeholder fails), `Worlds.named`, variants AckBeforeSave/ReorderingFastPath(NewestFirstQueue)/DoubleAdmission; World observers onUnit/onDraw; SimSchedulerTest Probe (every seam call of a run thread waits for the driver to park; onUnit spins until no seen run thread is RUNNABLE)/Claims/Units; more variants RenumberedIngress, OverClaim, KeyBlindClaim (`firstFailing(world, config)`); `Mix.splitMix64` package-private. P2-10b: per-push config `SimRuns.PER_PUSH_CONFIG` = V2 (V1 frozen); `Seen` world records units/calls/compared; World seams blobs/onCompared/onCall; SimFuzz (src/main) + SimFuzzProfileTest reads the module pom by XPath (namespace-unaware DOM). Never `rm -f $VAR/*`: the safety check refuses it. A sim test run: `-Dtest='dev.rail8.sim.**,dev.rail8.archtest.**' -Dmaven.test.failure.ignore=true` (archtest depends on sim). ArchUnit 1.5.1 fails an empty `that()` (failOnEmptyShould).
+ - FIX-168 journal: a first open forces segments/ TWICE on the opening thread (createDirectoriesDurably + segment 1), so "forcesOn(segments) >= 2 all returned" does not wait for the pre-open (journal-open-2, own force of segments/). Hold a persist's dir force by identity: start the Outcome gated on a latch, `holdForceOn(segments, now, call.thread())`, then open the latch (JournalDirForceOrderTest.Persisting); force the pre-open late with `holdForceOn(segments/2.seg, 0)` armed before open. Spills start no pre-open. | FIX-227: that fixture is now the shared `OwnDirForce` (`Preopen(settings, files, clock, timer, rows)` .journal/.letGo(); `Persisting(files, spill, segments)` .call/.force/.go()), used by JournalDirForceOrderTest and JournalCloseAndDirForceTest.
+ - FIX-224 PeerReadHeapTest: `notReading` can pass while node-b still takes ~2 MiB (Vert.x queue) into its paused socket; "bytes read by node-b" via `readByB` is double-counted in flight (noise to -1088 KiB). Never bound a later count relative to a sample taken at the first wait's end; use the absolute `PAUSED_TAKES_MAX`. A temporary trace in PeerReads/PeerLink (hold/unhold/bytes) showed whether the link resumed.
++- A /proc sysctl file must be read in one read: Files.readAllLines, not readString (readString returns a truncated '3' for ip_local_port_range).
+diff --git a/bench/src/main/java/dev/rail8/bench/NodeBenchMain.java b/bench/src/main/java/dev/rail8/bench/NodeBenchMain.java
+index a98b3ed0..8d4e1863 100644
+--- a/bench/src/main/java/dev/rail8/bench/NodeBenchMain.java
++++ b/bench/src/main/java/dev/rail8/bench/NodeBenchMain.java
+@@ -7,6 +7,7 @@ import dev.rail8.runtime.node.Node;
+ import dev.rail8.runtime.node.NodeConfig;
+ import dev.rail8.runtime.time.VertxTimer;
+ import dev.rail8.steps.xslt.SaxonXml;
++import dev.rail8.testkit.Ports;
+ import io.vertx.core.Future;
+ import io.vertx.core.Vertx;
+ import io.vertx.core.buffer.Buffer;
+@@ -28,7 +29,6 @@ import java.io.ByteArrayOutputStream;
+ import java.io.File;
+ import java.io.IOException;
+ import java.lang.management.ManagementFactory;
+-import java.net.ServerSocket;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+@@ -641,9 +641,7 @@ public final class NodeBenchMain {
+     }
+ 
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0)) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     static void delete(Path dir) throws IOException {
+diff --git a/bench/src/test/java/dev/rail8/bench/NodeBenchMainHarnessTest.java b/bench/src/test/java/dev/rail8/bench/NodeBenchMainHarnessTest.java
+index 1edb31ec..84fe0080 100644
+--- a/bench/src/test/java/dev/rail8/bench/NodeBenchMainHarnessTest.java
++++ b/bench/src/test/java/dev/rail8/bench/NodeBenchMainHarnessTest.java
+@@ -1,5 +1,6 @@
+ package dev.rail8.bench;
+ 
++import dev.rail8.testkit.Ports;
+ import io.vertx.core.Vertx;
+ import io.vertx.core.buffer.Buffer;
+ import io.vertx.core.http.HttpClientOptions;
+@@ -12,7 +13,6 @@ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.Timeout;
+ 
+ import java.io.IOException;
+-import java.net.ServerSocket;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.concurrent.atomic.AtomicLong;
+@@ -82,10 +82,7 @@ class NodeBenchMainHarnessTest {
+         assertEquals(3, status.latency().count(), "a failed request's latency is recorded too");
+         assertEquals(0, harness.load(server.actualPort(), "/fail", 3, 500).failed(), "the expected status is the load's to say");
+ 
+-        int closed;
+-        try (ServerSocket s = new ServerSocket(0)) {
+-            closed = s.getLocalPort();
+-        }
++        int closed = Ports.free();
+         NodeBenchMain.Window refused = harness.load(closed, "/ok", 2, 200);
+         assertEquals(2, refused.failed());
+         assertTrue(refused.firstFailure().toLowerCase().contains("refused"), "the request's failure: " + refused.firstFailure());
+diff --git a/bench/src/test/java/dev/rail8/bench/NodeBenchOpenEchoIT.java b/bench/src/test/java/dev/rail8/bench/NodeBenchOpenEchoIT.java
+index 18e6055e..5fa49a49 100644
+--- a/bench/src/test/java/dev/rail8/bench/NodeBenchOpenEchoIT.java
++++ b/bench/src/test/java/dev/rail8/bench/NodeBenchOpenEchoIT.java
+@@ -1,12 +1,12 @@
+ package dev.rail8.bench;
+ 
++import dev.rail8.testkit.Ports;
+ import io.vertx.core.json.JsonArray;
+ import io.vertx.core.json.JsonObject;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.Timeout;
+ import org.junit.jupiter.api.io.TempDir;
+ 
+-import java.net.ServerSocket;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.util.List;
+@@ -34,10 +34,7 @@ class NodeBenchOpenEchoIT {
+     @Test
+     void theEchoSelfTestAchievesTwoThousandPerSecondWithinOnePercentWithEveryFieldAndValid() throws Exception {
+         Path out = dir.resolve("echo.json");
+-        int nothingListens;
+-        try (ServerSocket s = new ServerSocket(0)) {
+-            nothingListens = s.getLocalPort();
+-        }
++        int nothingListens = Ports.free();
+         int code = NodeBenchMain.run(new String[] {"--host", "127.0.0.1", "--port", String.valueOf(nothingListens),
+                 "--scenario", "echo", "--rate", "2000", "--ramp", "PT1S", "--window", "PT5S", "--warmup", "0",
+                 "--name", "it-open-echo", "--out", out.toString(), "--commit", "test"});
+diff --git a/platform/cli/src/test/java/dev/rail8/cli/DeployCommandIT.java b/platform/cli/src/test/java/dev/rail8/cli/DeployCommandIT.java
+index 72720a17..b6dbb8cd 100644
+--- a/platform/cli/src/test/java/dev/rail8/cli/DeployCommandIT.java
++++ b/platform/cli/src/test/java/dev/rail8/cli/DeployCommandIT.java
+@@ -4,6 +4,7 @@ import dev.rail8.cli.CliRuns.Ran;
+ import dev.rail8.runtime.Main;
+ import dev.rail8.runtime.node.Node;
+ import dev.rail8.runtime.node.NodeConfig;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Vertx;
+ import io.vertx.core.json.JsonArray;
+@@ -17,8 +18,6 @@ import org.junit.jupiter.api.io.TempDir;
+ import org.testcontainers.postgresql.PostgreSQLContainer;
+ 
+ import java.io.IOException;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.net.URI;
+ import java.net.http.HttpClient;
+ import java.net.http.HttpRequest;
+@@ -141,9 +140,7 @@ class DeployCommandIT {
+     }
+ 
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /** A copy of {@code from} whose http-in listens on a free loopback port (the demo's 0.0.0.0:8080 may be taken). */
+diff --git a/platform/cli/src/test/java/dev/rail8/cli/DeployCommandTest.java b/platform/cli/src/test/java/dev/rail8/cli/DeployCommandTest.java
+index 70b15d80..d37dbc5c 100644
+--- a/platform/cli/src/test/java/dev/rail8/cli/DeployCommandTest.java
++++ b/platform/cli/src/test/java/dev/rail8/cli/DeployCommandTest.java
+@@ -1,6 +1,7 @@
+ package dev.rail8.cli;
+ 
+ import dev.rail8.cli.CliRuns.Ran;
++import dev.rail8.testkit.Ports;
+ import org.junit.jupiter.api.AfterEach;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.io.TempDir;
+@@ -10,8 +11,6 @@ import org.junit.jupiter.params.provider.ValueSource;
+ 
+ import java.io.ByteArrayInputStream;
+ import java.io.IOException;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.nio.file.Path;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -68,9 +67,7 @@ class DeployCommandTest {
+     }
+ 
+     static int closedPort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     // --- the request
+diff --git a/platform/components/http/src/test/java/dev/rail8/components/http/HttpComponentTest.java b/platform/components/http/src/test/java/dev/rail8/components/http/HttpComponentTest.java
+index a98b2bd0..fc6585cb 100644
+--- a/platform/components/http/src/test/java/dev/rail8/components/http/HttpComponentTest.java
++++ b/platform/components/http/src/test/java/dev/rail8/components/http/HttpComponentTest.java
+@@ -9,6 +9,7 @@ import dev.rail8.api.Health;
+ import dev.rail8.api.NackException;
+ import dev.rail8.api.Producer;
+ import dev.rail8.testkit.FakeRuntime;
++import dev.rail8.testkit.Ports;
+ import io.vertx.core.Future;
+ import io.vertx.core.Vertx;
+ import io.vertx.core.buffer.Buffer;
+@@ -205,9 +206,7 @@ class HttpComponentTest {
+ 
+     /** A loopback port free right now: bound once and released. */
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     static Optional<InetSocketAddress> where(String host, int port) {
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/MainIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/MainIT.java
+index 624a30ff..d7235a4b 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/MainIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/MainIT.java
+@@ -3,6 +3,7 @@ package dev.rail8.runtime;
+ import dev.rail8.runtime.node.Node;
+ import dev.rail8.runtime.node.OnVirtualThread;
+ import dev.rail8.runtime.node.TestJournalKey;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Future;
+ import io.vertx.core.Promise;
+@@ -26,8 +27,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+ import java.io.PrintStream;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Path;
+ import java.sql.Connection;
+@@ -269,9 +268,7 @@ class MainIT {
+     }
+ 
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /** Backends of the case database waiting on a lock. */
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/MainProcessIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/MainProcessIT.java
+index 8e209582..bfb309e9 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/MainProcessIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/MainProcessIT.java
+@@ -1,6 +1,7 @@
+ package dev.rail8.runtime;
+ 
+ import dev.rail8.runtime.node.TestJournalKey;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import org.junit.jupiter.api.AfterAll;
+ import org.junit.jupiter.api.AfterEach;
+@@ -16,7 +17,6 @@ import java.lang.management.ManagementFactory;
+ import java.net.ConnectException;
+ import java.net.InetAddress;
+ import java.net.InetSocketAddress;
+-import java.net.ServerSocket;
+ import java.net.Socket;
+ import java.net.SocketException;
+ import java.net.URI;
+@@ -364,9 +364,7 @@ class MainProcessIT {
+ 
+     /** A loopback port nothing listens on (bound once, released). */
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /** A loopback port nothing listens on, for a server the child must not reach. */
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/NodeIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/NodeIT.java
+index b3824637..5b34dac3 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/NodeIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/NodeIT.java
+@@ -26,6 +26,7 @@ import dev.rail8.runtime.node.PlainComponent;
+ import dev.rail8.runtime.node.TestJournalKey;
+ import dev.rail8.steps.validate.XsdValidate;
+ import dev.rail8.steps.xslt.SaxonXml;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import dev.rail8.testkit.RecordingComponent;
+ import io.vertx.core.Future;
+@@ -585,9 +586,7 @@ class NodeIT {
+ 
+     /** A free loopback port: bound once and released (the demo's consumer binds it right after). */
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /**
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/QuickstartIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/QuickstartIT.java
+index 33d1e4a8..a0d3a16c 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/QuickstartIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/QuickstartIT.java
+@@ -7,6 +7,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
+ import dev.rail8.runtime.node.TestJournalKey;
+ import dev.rail8.steps.validate.XsdValidate;
+ import dev.rail8.steps.xslt.SaxonXml;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Vertx;
+ import io.vertx.core.json.JsonArray;
+@@ -24,7 +25,6 @@ import java.io.UncheckedIOException;
+ import java.net.ConnectException;
+ import java.net.InetAddress;
+ import java.net.InetSocketAddress;
+-import java.net.ServerSocket;
+ import java.net.Socket;
+ import java.net.SocketException;
+ import java.net.URI;
+@@ -440,9 +440,7 @@ class QuickstartIT {
+     }
+ 
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     static boolean refuses(int port) {
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreIT.java
+index d862d5b3..5f478afb 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreIT.java
+@@ -1,5 +1,6 @@
+ package dev.rail8.runtime.deploy;
+ 
++import dev.rail8.testkit.Ports;
+ import org.junit.jupiter.api.AfterAll;
+ import org.junit.jupiter.api.BeforeAll;
+ import org.junit.jupiter.api.Test;
+@@ -15,8 +16,6 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+ import software.amazon.awssdk.services.s3.model.S3Object;
+ 
+ import java.io.IOException;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.net.URI;
+ import java.nio.file.NoSuchFileException;
+ import java.nio.file.Path;
+@@ -81,9 +80,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
+ 
+     /** A loopback port nothing listens on: bound by the kernel, then released. */
+     static int closedPort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     static boolean causedBySdk(Throwable t) {
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreTest.java
+index 437a2007..f58ac521 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/deploy/S3ArchiveStoreTest.java
+@@ -1,6 +1,7 @@
+ package dev.rail8.runtime.deploy;
+ 
+ import dev.rail8.runtime.node.OnVirtualThread;
++import dev.rail8.testkit.Ports;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.io.TempDir;
+ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+@@ -10,8 +11,6 @@ import software.amazon.awssdk.regions.Region;
+ import software.amazon.awssdk.services.s3.S3Client;
+ 
+ import java.io.IOException;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.net.URI;
+ import java.nio.file.NoSuchFileException;
+ import java.nio.file.Path;
+@@ -29,9 +28,7 @@ class S3ArchiveStoreTest {
+     @TempDir Path tmp;
+ 
+     static int closedPort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     @Test
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/flow/PartnerFailureParkIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/flow/PartnerFailureParkIT.java
+index 6b66c72a..ccc75584 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/flow/PartnerFailureParkIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/flow/PartnerFailureParkIT.java
+@@ -34,6 +34,7 @@ import dev.rail8.runtime.store.PgDlq;
+ import dev.rail8.runtime.store.PgMessageStore;
+ import dev.rail8.runtime.time.VertxTimer;
+ import dev.rail8.testkit.FakeRuntime;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Future;
+ import io.vertx.core.Vertx;
+@@ -56,8 +57,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
+ import java.io.IOException;
+ import java.io.PrintWriter;
+ import java.io.StringWriter;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.net.URI;
+ import java.nio.charset.StandardCharsets;
+ import java.io.UncheckedIOException;
+@@ -331,9 +330,7 @@ class PartnerFailureParkIT {
+ 
+     /** A loopback port that was bound and is closed again: a connection to it is refused. */
+     static int refusingPort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /** A partner that answers every request 503, recording each request's body. */
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/PeerProtocolTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/PeerProtocolTest.java
+index dd757642..a6a03aca 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/PeerProtocolTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/PeerProtocolTest.java
+@@ -14,6 +14,7 @@ import dev.rail8.runtime.journal.peer.RawPeer;
+ import dev.rail8.runtime.node.OnVirtualThread;
+ import dev.rail8.testkit.FakeClock;
+ import dev.rail8.testkit.FakeTimer;
++import dev.rail8.testkit.Ports;
+ import io.vertx.core.Promise;
+ import io.vertx.core.Vertx;
+ import org.junit.jupiter.api.AfterEach;
+@@ -572,10 +573,7 @@ class PeerProtocolTest {
+     /** An owner whose address listens nowhere fails at once, retryable, naming the dial; nothing waits for a timeout. */
+     @Test
+     void anOwnerListeningNowhereFailsTheReadRetryable() throws Exception {
+-        int closed;
+-        try (ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+-            closed = s.getLocalPort();
+-        }
++        int closed = Ports.free();
+         RemoteBodyException refused = failedRetryable(read(reader("127.0.0.1:" + closed), KEY, ref), "a refused dial");
+         assertTrue(refused.getMessage().contains("no peer link"), "names the dial: " + refused.getMessage());
+     }
+@@ -586,10 +584,7 @@ class PeerProtocolTest {
+      */
+     @Test
+     void aReadWhoseDialFailedGivesItsPlaceBack() throws Exception {
+-        int closed;
+-        try (ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+-            closed = s.getLocalPort();
+-        }
++        int closed = Ports.free();
+         Map<String, String> live = new ConcurrentHashMap<>(Map.of("node-a", "127.0.0.1:" + closed));
+         PeerReads r = new PeerReads(vertx, new PeerConfig(CONFIG.bind(), 0, CONFIG.host(), CONFIG.timeout(), 1), b(), this.b, timer,
+                 owner -> Optional.ofNullable(live.get(owner)));
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTakeoverLedgerIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTakeoverLedgerIT.java
+index 0c651981..9fafa17f 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTakeoverLedgerIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTakeoverLedgerIT.java
+@@ -1,5 +1,6 @@
+ package dev.rail8.runtime.node;
+ 
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Handler;
+ import io.vertx.core.Vertx;
+@@ -24,8 +25,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
+ import java.io.ByteArrayOutputStream;
+ import java.io.IOException;
+ import java.lang.management.ManagementFactory;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.net.URI;
+ import java.net.http.HttpClient;
+ import java.net.http.HttpRequest;
+@@ -479,9 +478,7 @@ class NodeTakeoverLedgerIT {
+     }
+ 
+     static int freePort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     /** Spins (yielding, never sleeping) until {@code condition} holds; fails after {@link #BOUND} naming what never happened. */
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTest.java
+index 3c49921b..9912b00c 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/node/NodeTest.java
+@@ -4,6 +4,7 @@ import dev.rail8.api.Component;
+ import dev.rail8.components.http.HttpComponent;
+ import dev.rail8.components.mock.DisguisedMock;
+ import dev.rail8.components.mock.nested.NestedMock;
++import dev.rail8.testkit.Ports;
+ import dev.rail8.testkit.RecordingComponent;
+ import io.vertx.core.Vertx;
+ import org.junit.jupiter.api.AfterAll;
+@@ -16,8 +17,6 @@ import org.junit.jupiter.params.provider.MethodSource;
+ import org.junit.jupiter.params.provider.ValueSource;
+ 
+ import java.io.IOException;
+-import java.net.InetAddress;
+-import java.net.ServerSocket;
+ import java.nio.file.Path;
+ import java.util.List;
+ import java.util.Map;
+@@ -51,9 +50,7 @@ class NodeTest {
+ 
+     /** A loopback port nothing listens on: bound by the kernel, then released. */
+     static int closedPort() throws IOException {
+-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+-            return s.getLocalPort();
+-        }
++        return Ports.free();
+     }
+ 
+     static Stream<Arguments> mocks() {
+diff --git a/platform/testkit/src/main/java/dev/rail8/testkit/Ports.java b/platform/testkit/src/main/java/dev/rail8/testkit/Ports.java
+new file mode 100644
+index 00000000..f0edda18
+--- /dev/null
++++ b/platform/testkit/src/main/java/dev/rail8/testkit/Ports.java
+@@ -0,0 +1,136 @@
++package dev.rail8.testkit;
++
++import java.io.IOException;
++import java.net.ServerSocket;
++import java.nio.file.Files;
++import java.nio.file.NoSuchFileException;
++import java.nio.file.Path;
++
++/**
++ * A pool of TCP ports for tests and the bench harness that never lie in the range the kernel chooses from. Probing "a free
++ * port" by binding port 0, reading the number and closing is racy: port 0 and every outbound connection draw from the same
++ * kernel range, so anything that binds 0 or connects between the probe and the real bind can be given the probed number.
++ * {@link #free()} hands out ports from 20000-32767 minus the kernel's range (on Linux the two numbers of
++ * {@code /proc/sys/net/ipv4/ip_local_port_range}, elsewhere 49152-65535), so only an explicit bind to that very number can
++ * take one.
++ *
++ * <p>A candidate is handed out only if a wildcard bind succeeds at that moment, and the cursor walks upward and wraps, so one
++ * JVM does not hand the same port out twice before it has wrapped. The process-wide cursor starts at an offset derived from
++ * the process id so that two JVMs on one host start apart.
++ *
++ * <p>What it does not guarantee: another process that binds the same number explicitly can still take it; and on a host whose
++ * kernel chooses from everywhere (its range covers the whole pool) there is no usable port, the helper falls back to binding
++ * port 0 and handing that number on, and the guarantee is gone. After one whole pass without a bindable port it throws
++ * {@link IllegalStateException}.
++ *
++ * <p>For this repository's tests and the bench harness only.
++ *
++ * @since 0.1
++ */
++public final class Ports {
++
++    static final int POOL_FROM = 20000;
++    static final int POOL_TO = 32767;
++    private static final Path KERNEL_RANGE_FILE = Path.of("/proc/sys/net/ipv4/ip_local_port_range");
++    private static final int[] IANA_DEFAULT = {49152, 65535};
++
++    private final int poolFrom;
++    private final int poolTo;
++    private final int kernelFrom;
++    private final int kernelTo;
++    private int cursor;
++
++    Ports(int poolFrom, int poolTo, int kernelFrom, int kernelTo, int start) {
++        this.poolFrom = poolFrom;
++        this.poolTo = poolTo;
++        this.kernelFrom = kernelFrom;
++        this.kernelTo = kernelTo;
++        this.cursor = start >= poolFrom && start <= poolTo ? start : poolFrom;
++    }
++
++    private static final class Holder {
++        static final Ports INSTANCE = create();
++
++        private static Ports create() {
++            int[] kernel = kernelRange(KERNEL_RANGE_FILE);
++            int size = POOL_TO - POOL_FROM + 1;
++            int start = POOL_FROM + (int) (ProcessHandle.current().pid() % size);
++            return new Ports(POOL_FROM, POOL_TO, kernel[0], kernel[1], start);
++        }
++    }
++
++    /**
++     * The process-wide pool's next port.
++     *
++     * @throws IllegalStateException when no port of the pool can be bound, or the kernel's range file is malformed
++     */
++    public static int free() {
++        return Holder.INSTANCE.next();
++    }
++
++    private boolean usable(int port) {
++        return port < kernelFrom || port > kernelTo;
++    }
++
++    private static boolean bindable(int port) {
++        try (ServerSocket s = new ServerSocket(port)) {
++            return true;
++        } catch (IOException refused) {
++            return false;
++        }
++    }
++
++    synchronized int next() {
++        int size = poolTo - poolFrom + 1;
++        boolean any = false;
++        for (int i = 0; i < size; i++) {
++            int port = cursor;
++            cursor = port == poolTo ? poolFrom : port + 1;
++            if (!usable(port)) {
++                continue;
++            }
++            any = true;
++            if (bindable(port)) {
++                return port;
++            }
++        }
++        if (!any) {
++            return kernelChosen();
++        }
++        throw new IllegalStateException("no bindable port in the pool " + poolFrom + ".." + poolTo
++                + " (kernel range " + kernelFrom + ".." + kernelTo + " excluded)");
++    }
++
++    private static int kernelChosen() {
++        try (ServerSocket s = new ServerSocket(0)) {
++            return s.getLocalPort();
++        } catch (IOException e) {
++            throw new IllegalStateException("cannot bind port 0", e);
++        }
++    }
++
++    static int[] kernelRange(Path file) {
++        String content;
++        try {
++            // read as lines: Files.readString/readAllBytes size a /proc file by its reported length 0 and can return a truncated read
++            content = String.join("\n", Files.readAllLines(file));
++        } catch (NoSuchFileException missing) {
++            return IANA_DEFAULT.clone();
++        } catch (IOException e) {
++            throw new IllegalStateException("cannot read " + file, e);
++        }
++        String[] parts = content.trim().split("\\s+");
++        if (parts.length == 2) {
++            try {
++                int from = Integer.parseInt(parts[0]);
++                int to = Integer.parseInt(parts[1]);
++                if (from >= 1 && to <= 65535 && from <= to) {
++                    return new int[] {from, to};
++                }
++            } catch (NumberFormatException notNumbers) {
++                // falls through to the exception naming the file
++            }
++        }
++        throw new IllegalStateException(file + " does not hold two port numbers: '" + content.trim() + "'");
++    }
++}
+diff --git a/platform/testkit/src/test/java/dev/rail8/testkit/PortsTest.java b/platform/testkit/src/test/java/dev/rail8/testkit/PortsTest.java
+new file mode 100644
+index 00000000..4a048e49
+--- /dev/null
++++ b/platform/testkit/src/test/java/dev/rail8/testkit/PortsTest.java
+@@ -0,0 +1,272 @@
++package dev.rail8.testkit;
++
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++
++import java.io.IOException;
++import java.net.ServerSocket;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Set;
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.concurrent.CountDownLatch;
++
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * The port pool: a port handed out is one the kernel does not choose from, so only an explicit bind to that number can take it.
++ * The small pools sit on a run of ports that this test bound and released in its set-up (a first bind check); a port of that
++ * run that somebody else takes between the check and a case would make the case fail loudly (a bind refused), never pass falsely.
++ */
++class PortsTest {
++
++    /** A kernel range far above every small pool of these cases (and above the real pool 20000-32767). */
++    static final int FAR_FROM = 40000;
++    static final int FAR_TO = 50000;
++
++    @TempDir Path tmp;
++
++    /** The first port of a run of six consecutive ports that can be bound right now. */
++    int base;
++
++    @BeforeEach
++    void findARunOfBindablePorts() throws IOException {
++        int from = 20000 + (int) (ProcessHandle.current().pid() % 2000);
++        for (int candidate = from; candidate < 32000; candidate++) {
++            if (runBindable(candidate, 6)) {
++                base = candidate;
++                return;
++            }
++        }
++        throw new AssertionError("no run of six bindable ports between " + from + " and 32000 on this host");
++    }
++
++    static boolean runBindable(int first, int count) throws IOException {
++        for (int p = first; p < first + count; p++) {
++            try (ServerSocket s = new ServerSocket(p)) {
++                assertEquals(p, s.getLocalPort());
++            } catch (java.net.BindException taken) {
++                return false;
++            }
++        }
++        return true;
++    }
++
++    static ServerSocket hold(int port) throws IOException {
++        return new ServerSocket(port);
++    }
++
++    static void closeAll(List<ServerSocket> held) throws IOException {
++        for (ServerSocket s : held) {
++            s.close();
++        }
++    }
++
++    // --- the pool, the kernel's range, the order
++
++    @Test
++    void portsLieInThePoolOutsideTheKernelRangeInAscendingOrderWithBothBoundsInclusive() {
++        // pool b..b+5, kernel b+2..b+3: usable b, b+1, b+4, b+5; both edges of the kernel range are excluded
++        Ports ports = new Ports(base, base + 5, base + 2, base + 3, base);
++        assertEquals(base, ports.next());
++        assertEquals(base + 1, ports.next());
++        assertEquals(base + 4, ports.next());
++        assertEquals(base + 5, ports.next());
++    }
++
++    @Test
++    void aPortHandedOutCanBeBoundByTheTestAtOnce() throws IOException {
++        Ports ports = new Ports(base, base + 5, FAR_FROM, FAR_TO, base);
++        for (int i = 0; i < 6; i++) {
++            int port = ports.next();
++            try (ServerSocket s = new ServerSocket(port)) {
++                assertEquals(port, s.getLocalPort(), "the port is released again after the helper's own bind check");
++            }
++        }
++    }
++
++    @Test
++    void successiveCallsGiveDistinctPortsUntilTheCursorWraps() {
++        Ports ports = new Ports(base, base + 5, FAR_FROM, FAR_TO, base);
++        Set<Integer> seen = new HashSet<>();
++        for (int i = 0; i < 6; i++) {
++            assertTrue(seen.add(ports.next()), "a port twice before the cursor wrapped");
++        }
++        assertEquals(6, seen.size());
++    }
++
++    @Test
++    void theCursorStartsAtTheGivenStartAndWrapsToTheBottomOfThePool() {
++        Ports ports = new Ports(base, base + 2, FAR_FROM, FAR_TO, base + 1);
++        assertEquals(base + 1, ports.next());
++        assertEquals(base + 2, ports.next());
++        assertEquals(base, ports.next(), "past the top of the pool the cursor wraps to the bottom");
++        assertEquals(base + 1, ports.next(), "and walks on");
++    }
++
++    // --- a held candidate
++
++    @Test
++    void aHeldCandidateIsSkippedAndTheNextBindableOneIsHandedOut() throws IOException {
++        Ports ports = new Ports(base, base + 3, FAR_FROM, FAR_TO, base);
++        try (ServerSocket held = hold(base)) {
++            assertEquals(base, held.getLocalPort());
++            assertEquals(base + 1, ports.next(), "base is held: the one after it is handed out");
++        }
++    }
++
++    @Test
++    void aHeldCandidateAtTheTopOfThePoolIsSkippedAcrossTheWrap() throws IOException {
++        Ports ports = new Ports(base, base + 2, FAR_FROM, FAR_TO, base + 2);
++        try (ServerSocket held = hold(base + 2)) {
++            assertEquals(base + 2, held.getLocalPort());
++            assertEquals(base, ports.next(), "the top is held: the cursor wraps to the bottom");
++        }
++    }
++
++    @Test
++    void aPortThatWasHeldIsHandedOutAgainOnceItIsReleased() throws IOException {
++        Ports ports = new Ports(base, base + 1, FAR_FROM, FAR_TO, base);
++        try (ServerSocket held = hold(base)) {
++            assertEquals(base, held.getLocalPort());
++            assertEquals(base + 1, ports.next());
++        }
++        assertEquals(base, ports.next(), "released and under the cursor again: bindable, so handed out");
++    }
++
++    // --- exhaustion and the fallback
++
++    @Test
++    void aPoolWhoseEveryUsablePortIsHeldThrowsNamingThePoolAndIsUsableAgainWhenOneIsReleased() throws IOException {
++        // pool b..b+3, kernel b+1: usable b, b+2, b+3, all three held; b+1 is kernel-chosen and free, yet never handed out
++        Ports ports = new Ports(base, base + 3, base + 1, base + 1, base);
++        List<ServerSocket> held = new ArrayList<>();
++        try {
++            held.add(hold(base));
++            held.add(hold(base + 2));
++            held.add(hold(base + 3));
++            IllegalStateException e = assertThrows(IllegalStateException.class, ports::next);
++            assertTrue(e.getMessage().contains(String.valueOf(base)) && e.getMessage().contains(String.valueOf(base + 3)),
++                    "the message names the pool " + base + ".." + (base + 3) + ": " + e.getMessage());
++        } finally {
++            closeAll(held);
++        }
++        int again = ports.next();
++        assertTrue(again == base || again == base + 2 || again == base + 3,
++                "the failure was the held ports: with them released the pool serves again, never the kernel's " + (base + 1) + ": " + again);
++    }
++
++    @Test
++    void aPoolWithNoUsablePortFallsBackToAKernelChosenPortThatCanBeBoundEvenWhenEveryPoolPortIsHeld() throws IOException {
++        // the kernel's range covers the whole pool; every pool port is held, so only a bind-0 fallback can answer
++        Ports ports = new Ports(base, base + 2, 1, 65535, base);
++        List<ServerSocket> held = new ArrayList<>();
++        try {
++            for (int p = base; p <= base + 2; p++) {
++                held.add(hold(p));
++            }
++            int port = ports.next();
++            assertFalse(port >= base && port <= base + 2, "a held pool port " + port + " was handed out");
++            assertTrue(port > 0, "a real port number: " + port);
++            try (ServerSocket s = new ServerSocket(port)) {
++                assertEquals(port, s.getLocalPort());
++            }
++        } finally {
++            closeAll(held);
++        }
++    }
++
++    // --- eight threads
++
++    @Test
++    void eightThreadsTakingFiftyPortsEachGetFourHundredDistinctPorts() throws InterruptedException {
++        Ports ports = new Ports(20000, 32767, FAR_FROM, FAR_TO, 20000);
++        ConcurrentLinkedQueue<Integer> got = new ConcurrentLinkedQueue<>();
++        ConcurrentLinkedQueue<Throwable> failures = new ConcurrentLinkedQueue<>();
++        CountDownLatch go = new CountDownLatch(1);
++        List<Thread> threads = new ArrayList<>();
++        for (int t = 0; t < 8; t++) {
++            threads.add(Thread.ofVirtual().start(() -> {
++                try {
++                    go.await();
++                    for (int i = 0; i < 50; i++) {
++                        got.add(ports.next());
++                    }
++                } catch (Throwable e) {
++                    failures.add(e);
++                }
++            }));
++        }
++        go.countDown();
++        for (Thread t : threads) {
++            t.join();
++        }
++        assertTrue(failures.isEmpty(), "a thread failed: " + failures);
++        assertEquals(400, got.size());
++        assertEquals(400, new HashSet<>(got).size(), "the same port was handed to two callers");
++    }
++
++    // --- the kernel's range file
++
++    @Test
++    void kernelRangeReadsTheTwoNumbersOfTheFile() throws IOException {
++        Path file = tmp.resolve("ip_local_port_range");
++        Files.writeString(file, "40001\t50002\n");
++        assertArrayEquals(new int[] {40001, 50002}, Ports.kernelRange(file));
++        Files.writeString(file, "1024 5000");
++        assertArrayEquals(new int[] {1024, 5000}, Ports.kernelRange(file), "blank-separated, no newline");
++    }
++
++    @Test
++    void kernelRangeOfAMissingFileIsTheIanaDefault() {
++        assertArrayEquals(new int[] {49152, 65535}, Ports.kernelRange(tmp.resolve("no-such-file")));
++    }
++
++    @Test
++    void kernelRangeOfAFileWithoutTwoPortNumbersIsAnIllegalStateExceptionNamingTheFileAndItsContent() throws IOException {
++        String[] contents = {"banana", "40000", "70000 80000", ""};
++        for (String content : contents) {
++            Path file = tmp.resolve("range-" + Math.abs(content.hashCode()));
++            Files.writeString(file, content + "\n");
++            IllegalStateException e = assertThrows(IllegalStateException.class, () -> Ports.kernelRange(file),
++                    "content '" + content + "'");
++            assertTrue(e.getMessage().contains(file.toString()), "names the file: " + e.getMessage());
++            assertTrue(e.getMessage().contains(content), "names the content '" + content + "': " + e.getMessage());
++        }
++    }
++
++    // --- the process-wide helper on this host
++
++    @Test
++    void freeGivesBindablePortsInThePoolOutsideTheKernelRangeOfThisHost() throws IOException {
++        Path file = Path.of("/proc/sys/net/ipv4/ip_local_port_range");
++        int[] kernel = Files.exists(file)
++                ? Ports.kernelRange(file)
++                : new int[] {49152, 65535};
++        // the expected range is read here from the file's two numbers, the reader under test is not trusted for it
++        if (Files.exists(file)) {
++            // a /proc sysctl file answers only a read at offset 0; readString reads it in several reads and returns "3", readAllLines reads once
++            String[] parts = Files.readAllLines(file).get(0).trim().split("\\s+");
++            assertEquals(2, parts.length, "the file holds two numbers");
++            assertArrayEquals(new int[] {Integer.parseInt(parts[0]), Integer.parseInt(parts[1])}, kernel);
++        }
++        Set<Integer> seen = new HashSet<>();
++        for (int i = 0; i < 20; i++) {
++            int port = Ports.free();
++            assertTrue(port >= 20000 && port <= 32767, "inside 20000-32767: " + port);
++            assertFalse(port >= kernel[0] && port <= kernel[1], port + " lies in the kernel's range " + kernel[0] + "-" + kernel[1]);
++            assertTrue(seen.add(port), "a port twice in twenty calls: " + port);
++            try (ServerSocket s = new ServerSocket(port)) {
++                assertEquals(port, s.getLocalPort());
++            }
++        }
++    }
++}

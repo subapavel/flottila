@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-201 the side branch's audit, reviewed and corrected — done, review PASS r4
+
+- Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
+- The audit of `634983a..99d8d04` (35 commits) had left no table per commit and its totals were wrong. Rebuilt and reviewed:
+  code commits 6 carried, 3 partly, 10 lost; doc commits 1 carried, 2 superseded, 6 lost or partly; the 7 "superseded" judged.
+- Round 2 found the document hunks of the code commits judged by nobody. Answer: the branch's net diff per document (39 files
+  outside src) - journal, backlog, notes, decisions, architecture, findings, packets, ci - each with its fate, and each of the
+  48 rows the branch spawned and the 27 it changed with its fate (`agent/work/FIX-201-audit.md`; it names what nobody checked).
+- Rows: corrections on FIX-54, 56, 57, 196, 197, 199, 203-208, 210, 211, 243; FIX-54, 56 and 71 closed (71 through FIX-195); new
+  rows FIX-238 to FIX-253 and CONSIDER-25 (owner: the branch's D-107 contradicts D-136). The branch's ids name other things on
+  main, so rows cite shas. NOTES: one paragraph restored; the branch's other 275 lines are row FIX-253.
+- Review (class B): r1 FAIL in both halves; second pass INCOMPLETE; r2 FAIL (the document hunks); r3 FAIL (one sentence on
+  D-056's amendment, the architect's, wrong in two facts); r4 PASS. Hand-backs: `agent/work/FIX-201-audit-review.md`.
+- Also here, documents only: `ci` runs 222 and 223 green, 224 failed on a fourth fault - a flow time of 2700 ms for 2400 in
+  the cli ITs, new row FIX-254; green runs in a row 0. FIX-149's work in progress is parked as `agent/wip/FIX-149.patch`.
+
 ## 2026-11-15 — FIX-234 the pool-wait fixture sends a deploy the pool refused again — done, review PASS
 
 - Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
