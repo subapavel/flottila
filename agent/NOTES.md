@@ -288,11 +288,14 @@ VM after a restart: `sudo pg_ctlcluster 16 main start`, `sudo dockerd &`. Reacto
 by dependencies): api → testkit → core → schemas → steps → runtime (test-depends on schemas,
 step-xslt, step-validate and component-http) → components → cli → archtest → bench. Every task
 commit: `mvn -B -ntp verify -Pit`, then `python3 ci/coverage_check.py --write`. Scoped PIT:
-`mvn -pl flottila-api,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage`
+`mvn -pl :flottila-api,:flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage`
 (floor 80 %). New code must be covered to the module's level (FIX-3) — the band bit once.
 In the cloud session the services die with the tool call that started them unless detached:
 `sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &` and
-`sudo -n setsid pg_ctlcluster 16 main start`. JFR (FIX-108, D-094): the repository is java.io.tmpdir; a read-only root needs `-XX:FlightRecorderOptions:repository=<dir>`; `RecordedEvent.getThread()` can be null under load; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests) — hand-mutate it. `-pl flottila-runtime` needs `-am` (no installed
+`sudo -n setsid pg_ctlcluster 16 main start`. A container restart kills both and every background agent; the working tree survives.
+`mvn install -DskipTests -Pit` still ran the ITs (2026-11-15, agent/work/BRAND-1-A-fix-install.log) — never assume `-Pit` is quiet.
+Waiting for Maven to end from inside `bash -c`: `pgrep -f '[p]lexus.classworlds'` — the unbracketed pattern matches its own command line
+and the loop never ends. JFR (FIX-108, D-094): the repository is java.io.tmpdir; a read-only root needs `-XX:FlightRecorderOptions:repository=<dir>`; `RecordedEvent.getThread()` can be null under load; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests) — hand-mutate it. `-pl :flottila-runtime` needs `-am` (no installed
 snapshots). Mutant runs (a reviewer's "would this test fail if…"): after `sed -i` on a source,
 restore it with `cp` or `touch` it — `mv backup file` keeps the backup's older mtime, Maven's
 incremental compile then keeps the mutated class in `target/classes` and the next "clean" run
@@ -356,10 +359,10 @@ the path either way and `-I` is what keeps a planted module out:
 `.github/workflows/ci.yml` uses the module form without `-I`, so CI was never affected.
 ## Reference package, fixtures, tags
 
-packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
+examples/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
 invoice.xsd, fixtures/); validated by flottila-schemas tests. Add a negative fixture under
-flottila-schemas/src/test/resources/invalid/<kind>/ for every new schema rule. ArchUnit rules in
-flottila-archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 done (D-074: complete/fast path/hold fenced by the attempts token) in the Fixes section.
+platform/schemas/src/test/resources/invalid/<kind>/ for every new schema rule. ArchUnit rules in
+platform/archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 done (D-074: complete/fast path/hold fenced by the attempts token) in the Fixes section.
 
 Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834; the last
 tree with the m1 module is dc85964.

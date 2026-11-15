@@ -1,0 +1,60 @@
+M	.claude/agent-memory/implementer/MEMORY.md
+M	.claude/agent-memory/test-author/MEMORY.md
+M	.github/workflows/ci.yml
+M	HANDOVER.md
+M	README.md
+M	agent/BACKLOG.md
+M	agent/NOTES.md
+R095	deploy/claude-cloud/README.md	agent/cloud/README.md
+A	agent/tools/rail8_rename.py
+R098	flottila-bench/pom.xml	bench/pom.xml
+M	bench/run.sh
+R098	flottila-bench/src/main/java/io/flottila/bench/InvoiceGenerator.java	bench/src/main/java/io/flottila/bench/InvoiceGenerator.java
+R096	flottila-bench/src/test/java/io/flottila/bench/BenchRunScriptCommitDelayTest.java	bench/src/test/java/io/flottila/bench/BenchRunScriptCommitDelayTest.java
+R098	flottila-bench/src/test/java/io/flottila/bench/BenchRunScriptOpenDbTest.java	bench/src/test/java/io/flottila/bench/BenchRunScriptOpenDbTest.java
+R097	flottila-bench/src/test/java/io/flottila/bench/BenchRunScriptOpenLevelTest.java	bench/src/test/java/io/flottila/bench/BenchRunScriptOpenLevelTest.java
+R098	flottila-bench/src/test/java/io/flottila/bench/BenchRunScriptOpenTest.java	bench/src/test/java/io/flottila/bench/BenchRunScriptOpenTest.java
+R096	flottila-bench/src/test/java/io/flottila/bench/BenchRunScriptTest.java	bench/src/test/java/io/flottila/bench/BenchRunScriptTest.java
+M	bin/flottila
+M	ci/coverage-baseline.json
+M	deploy/compose/README.md
+M	deploy/compose/docker-compose.yml
+M	deploy/quickstart/Dockerfile
+M	deploy/quickstart/Dockerfile.dockerignore
+M	deploy/quickstart/deploy.sh
+M	docker-compose.yml
+M	docs/ARCHITECTURE.md
+M	docs/GATE.md
+M	docs/PROTOTYPE-VS-ARCHITECTURE.md
+M	docs/QUICKSTART.md
+M	docs/WORKFLOW.md
+A	docs/findings/F-37.md
+R068	flottila-archtest/src/test/java/io/flottila/archtest/BuildHygieneTest.java	platform/archtest/src/test/java/io/flottila/archtest/BuildHygieneTest.java
+R094	flottila-cli/src/test/java/io/flottila/cli/CliRuns.java	platform/cli/src/test/java/io/flottila/cli/CliRuns.java
+R093	flottila-cli/src/test/java/io/flottila/cli/LauncherIT.java	platform/cli/src/test/java/io/flottila/cli/LauncherIT.java
+R099	flottila-cli/src/test/java/io/flottila/cli/TestCommandTest.java	platform/cli/src/test/java/io/flottila/cli/TestCommandTest.java
+R099	flottila-components/mock/src/test/java/io/flottila/components/mock/MockComponentTest.java	platform/components/mock/src/test/java/io/flottila/components/mock/MockComponentTest.java
+A	platform/pom.xml
+R099	flottila-runtime/pom.xml	platform/runtime/pom.xml
+R098	flottila-runtime/src/test/java/io/flottila/runtime/ComposeStackTest.java	platform/runtime/src/test/java/io/flottila/runtime/ComposeStackTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/InvoiceAsyncIT.java	platform/runtime/src/test/java/io/flottila/runtime/InvoiceAsyncIT.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/NodeIT.java	platform/runtime/src/test/java/io/flottila/runtime/NodeIT.java
+R091	flottila-runtime/src/test/java/io/flottila/runtime/PostgresImageSourcesTest.java	platform/runtime/src/test/java/io/flottila/runtime/PostgresImageSourcesTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/QuickstartIT.java	platform/runtime/src/test/java/io/flottila/runtime/QuickstartIT.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsValidateTest.java	platform/runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsValidateTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/flow/DeliveryModesIT.java	platform/runtime/src/test/java/io/flottila/runtime/flow/DeliveryModesIT.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/flow/DeliveryModesTest.java	platform/runtime/src/test/java/io/flottila/runtime/flow/DeliveryModesTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/flow/InvoiceSyncFlowTest.java	platform/runtime/src/test/java/io/flottila/runtime/flow/InvoiceSyncFlowTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/flow/InvoiceSyncHttpTest.java	platform/runtime/src/test/java/io/flottila/runtime/flow/InvoiceSyncHttpTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/flow/SftpIngressDedupeIT.java	platform/runtime/src/test/java/io/flottila/runtime/flow/SftpIngressDedupeIT.java
+R097	flottila-runtime/src/test/java/io/flottila/runtime/node/DemoBindingsTest.java	platform/runtime/src/test/java/io/flottila/runtime/node/DemoBindingsTest.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/store/InvoiceSyncRecordingIT.java	platform/runtime/src/test/java/io/flottila/runtime/store/InvoiceSyncRecordingIT.java
+R099	flottila-runtime/src/test/java/io/flottila/runtime/store/InvoiceSyncReplayIT.java	platform/runtime/src/test/java/io/flottila/runtime/store/InvoiceSyncReplayIT.java
+R096	flottila-runtime/src/test/resources/invoice-async/flows/invoice-async.yaml	platform/runtime/src/test/resources/invoice-async/flows/invoice-async.yaml
+R095	flottila-schemas/README.md	platform/schemas/README.md
+R099	flottila-schemas/src/test/java/io/flottila/schemas/DemoFlowsTest.java	platform/schemas/src/test/java/io/flottila/schemas/DemoFlowsTest.java
+R095	flottila-schemas/src/test/java/io/flottila/schemas/DemoPackageTest.java	platform/schemas/src/test/java/io/flottila/schemas/DemoPackageTest.java
+R099	flottila-steps/validate/src/test/java/io/flottila/steps/validate/XsdStepFactoryTest.java	platform/steps/validate/src/test/java/io/flottila/steps/validate/XsdStepFactoryTest.java
+R099	flottila-steps/xslt/src/test/java/io/flottila/steps/xslt/XsltStepFactoryTest.java	platform/steps/xslt/src/test/java/io/flottila/steps/xslt/XsltStepFactoryTest.java
+R097	flottila-testkit/src/test/java/io/flottila/testkit/LoopbackComponent.java	platform/testkit/src/test/java/io/flottila/testkit/LoopbackComponent.java
+M	pom.xml

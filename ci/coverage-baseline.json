@@ -1,53 +1,53 @@
 {
-  "flottila-api": {
-    "branch": 100.0,
-    "line": 99.3
-  },
-  "flottila-bench": {
+  "bench": {
     "branch": 97.8,
     "line": 98.1
   },
-  "flottila-cli": {
+  "platform/api": {
+    "branch": 100.0,
+    "line": 99.3
+  },
+  "platform/cli": {
     "branch": 100.0,
     "line": 99.0
   },
-  "flottila-components/http": {
+  "platform/components/http": {
     "branch": 94.8,
     "line": 99.5
   },
-  "flottila-components/mock": {
+  "platform/components/mock": {
     "branch": 99.2,
     "line": 100.0
   },
-  "flottila-components/sftp": {
+  "platform/components/sftp": {
     "branch": 99.0,
     "line": 100.0
   },
-  "flottila-core": {
+  "platform/core": {
     "branch": 99.4,
     "line": 99.6
   },
-  "flottila-runtime": {
+  "platform/runtime": {
     "branch": 99.4,
     "line": 99.5
   },
-  "flottila-schemas": {
+  "platform/schemas": {
     "branch": 99.5,
     "line": 99.0
   },
-  "flottila-sim": {
+  "platform/sim": {
     "branch": 95.9,
     "line": 97.2
   },
-  "flottila-steps/validate": {
+  "platform/steps/validate": {
     "branch": 100.0,
     "line": 100.0
   },
-  "flottila-steps/xslt": {
+  "platform/steps/xslt": {
     "branch": 100.0,
     "line": 100.0
   },
-  "flottila-testkit": {
+  "platform/testkit": {
     "branch": 96.6,
     "line": 98.1
   }

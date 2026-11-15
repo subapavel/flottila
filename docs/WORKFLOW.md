@@ -88,7 +88,7 @@ Next: P1-05
 - Body: what and why, then the evidence line (the `Checks:` line of the PROGRESS entry).
 - Trailers, in this order: `Task: P1-04`, `Co-authored-by: Claude <noreply@anthropic.com>`,
   `Signed-off-by: <owner name> <owner email>` (DCO; the author identity is the owner's, set through
-  the environment's git variables — see `deploy/claude-cloud/README.md`).
+  the environment's git variables — see `agent/cloud/README.md`).
 - Tags cannot be pushed from the cloud session; gates are recorded as commit hashes in
   `bench/RESULTS.md` and `PROGRESS.md`.
 

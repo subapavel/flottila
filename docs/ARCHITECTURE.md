@@ -90,6 +90,7 @@
 | 2026-11-13 | 3.20 | §4 Body journal: the peer link's version rule and channel in HELLO, a peer subkey for the link's keys, `FLOTTILA_PEER_READS` 1..64, 8 handshakes per source address (CORE-5a2, D-141) | F-35 |
 | 2026-11-13 | 3.21 | §4 Body journal: the holder side of replication — the repl channel, frames OPEN/DATA/SEAL/RECEIPT/REFUSE, replicas as `replicas/<owner>/<journal>/<n>.part` renamed `.seg` when sealed, receipt after pwrite, replicas at most half the intake edge, the owner's epoch bound (CORE-5b1, D-139, D-142) | F-35 |
 | 2026-11-14 | 3.22 | §3 Valkey from two nodes on (D-144) and §14 the owner's brainstorm list of 2026-10-29, recovered from an unmerged branch | — |
+| 2026-11-15 | 3.23 | §12: the repository is laid out by area — the platform's modules under `platform/` without the product prefix, the parent pom at `platform/pom.xml`, a thin root aggregator, the benchmark module in `bench/`, the mapping engine as the area `mapping/`; no rule changes (BRAND-1, BRAND-3; D-149, D-150) | F-37 (minor) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -501,22 +502,27 @@ Two execution layers run the same YAML: in-process mocks with in-memory stores (
 
 ## 12. Repository layout and modules
 
-One Maven monorepo (`~/flottila/`, Apache 2.0), dependency direction strictly downward and enforced by ArchUnit; no module named `common`.
+One monorepo (Apache 2.0), laid out by area (D-149, F-37). The root holds areas, not modules, and no directory carries the product's name: `platform/` — the integration platform's Maven modules, with their parent pom at `platform/pom.xml`; `mapping/` — the mapping engine, which moves in with its own parent pom (planned: BRAND-3, D-150; until then the root aggregates `platform` only); `bench/` — the benchmark module beside its scripts and `RESULTS.md`; `examples/` — the demo package; `deploy/`, `docs/`; and the working files `agent/`, `issues/`, `ci/`, `bin/`. The root `pom.xml` is a thin aggregator and nobody's parent: `cd platform && mvn verify` builds the platform and its benchmark module without the other areas. Artifact ids keep a product prefix although directories do not, because a jar's file name must stay unique beside the mapping engine's `api` and `runtime`. Dependency direction strictly downward and enforced by ArchUnit; no module named `common`.
 
-| Module | Contains | Depends on |
-| --- | --- | --- |
-| `flottila-api` | Step, Stage, Component, Envelope, Body, Props/Keys/Headers, BlobStore, Runtime record, extension manifest types — the only jar an extension classloader sees | nothing but the JDK (Vert.x `Buffer`/`ReadStream` as the one exception) |
-| `flottila-core` | pipeline builder, patterns, RequestScope, admission control, batcher, MessageStore/WorkQueue/MonitoringStore interfaces with in-memory implementations | api |
-| `flottila-runtime` | Vert.x bootstrap, endpoint verticles, the Postgres stores, the body journal (D-105), Valkey poller leases, the S3 deployment archive store (D-070) — no Kafka client (CORE-REWORK O-1, CORE-9), the ClickHouse mover to come (CORE-REWORK Q-3; CORE-10, pending) — wallet, caching, recording, replay, admin API server, node and deploy | core, schemas; `Main` wires the shipped components and steps (F-4) |
-| `flottila-components/*` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka (the optional add-on, CORE-REWORK O-1), mail, as2, as4, edi, db, mock | api |
-| `flottila-steps/*` | xslt, validate, groovy, js, map, ai, split/aggregate formats | api |
-| `flottila-sap` | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
-| `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (the flow-test runner lives in `flottila-cli`, F-16) | api (F-1, 2026-10-18; was core) |
-| `flottila-cli` | validate, test, deploy, package, migrate | every module (runtime, components incl. the mock, steps); nothing depends on it (F-16) |
-| `flottila-sim` | deterministic simulation: the real FlowBuilder/Delivery/FlowWorker/admission (Replay from P2-10b) over in-memory stores and its own SPI doubles; seeded workload, faults, schedule; oracle; never shipped | api, core, testkit (runtime from P2-10d only, for `io.flottila.sim.pg`, with a rule change then); nothing depends on it (F-36) |
-| `flottila-control` | Quarkus admin API, React UI, MCP server, developer portal | talks to runtime over HTTP only; no Java dependency on runtime |
-| `flottila-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |
-| `bench/`, `docs/`, `deploy/` | benchmarks, architecture and ADRs, Compose/Helm/systemd | — |
+| Directory | Artifact | Contains | Depends on |
+| --- | --- | --- | --- |
+| `platform/api` | `flottila-api` | Step, Stage, Component, Envelope, Body, Props/Keys/Headers, BlobStore, Runtime record, extension manifest types — the only jar an extension classloader sees | nothing but the JDK (Vert.x `Buffer`/`ReadStream` as the one exception) |
+| `platform/core` | `flottila-core` | pipeline builder, patterns, RequestScope, admission control, batcher, MessageStore/WorkQueue/MonitoringStore interfaces with in-memory implementations | api |
+| `platform/runtime` | `flottila-runtime` | Vert.x bootstrap, endpoint verticles, the Postgres stores, the body journal (D-105), Valkey poller leases, the S3 deployment archive store (D-070) — no Kafka client (CORE-REWORK O-1, CORE-9), the ClickHouse mover to come (CORE-REWORK Q-3; CORE-10, pending) — wallet, caching, recording, replay, admin API server, node and deploy | core, schemas; `Main` wires the shipped components and steps (F-4) |
+| `platform/components/*` | `flottila-component-<scheme>` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka (the optional add-on, CORE-REWORK O-1), mail, as2, as4, edi, db, mock | api |
+| `platform/steps/*` | `flottila-step-<name>` | xslt, validate, groovy, js, map, ai, split/aggregate formats | api |
+| `platform/sap` | `flottila-sap` (planned) | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
+| `platform/testkit` | `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (the flow-test runner lives in `flottila-cli`, F-16) | api (F-1, 2026-10-18; was core) |
+| `platform/cli` | `flottila-cli` | validate, test, deploy, package, migrate | every module (runtime, components incl. the mock, steps); nothing depends on it (F-16) |
+| `platform/sim` | `flottila-sim` | deterministic simulation: the real FlowBuilder/Delivery/FlowWorker/admission (Replay from P2-10b) over in-memory stores and its own SPI doubles; seeded workload, faults, schedule; oracle; never shipped | api, core, testkit (runtime from P2-10d only, for `io.flottila.sim.pg`, with a rule change then); nothing depends on it (F-36) |
+| `platform/control` | `flottila-control` (planned) | Quarkus admin API, React UI, MCP server, developer portal | talks to runtime over HTTP only; no Java dependency on runtime |
+| `platform/schemas` | `flottila-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |
+| `platform/archtest` | `flottila-archtest` | the ArchUnit rules and the build-hygiene checks; never shipped | api, core, runtime, the http and mock components, both steps, testkit, cli, sim — all test scope |
+| `bench/` | `flottila-bench` | the benchmark and ledger programs, the run scripts, `RESULTS.md` — a number not in that file does not exist | core, runtime, the http component, the xslt step; testkit in test scope. Listed from the platform parent as `../bench` |
+| `mapping/` | `flottila-mapping-*` (planned, BRAND-3) | the mapping engine (`engine/`), its service and its UI; it will keep its own parent pom, aggregated by the root and not inherited; its decisions are its ADRs | — (no platform module will depend on it at first; a mapping step needs a finding first) |
+| `examples/`, `docs/`, `deploy/` | — | the demo package, architecture and decisions, Compose/Helm/systemd | — |
+
+Later areas: `jq/` beside `mapping/` when the jq engine moves in.
 
 Extensions and customer packages live in their own git repos with the same layout conventions and `package.yaml`.
 

@@ -24,7 +24,7 @@ docker compose --profile history --profile kafka down -v   # stop, remove every 
 
 Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
-`deploy` (one-shot `flottila deploy` of `packages/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
+`deploy` (one-shot `flottila deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:
 `deploy/compose/README.md`.
 
@@ -32,14 +32,14 @@ Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` 
 
 ```sh
 A="Authorization: Bearer $FLOTTILA_ADMIN_TOKEN"
-INV=../../packages/demo/fixtures/sample-invoice.xml
+INV=../../examples/demo/fixtures/sample-invoice.xml
 
 # Flow A sync (invoice-sync): 200 with the partner's reply
 curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8080/in
 # Flow A async (invoice-async): 202 after the durable save; the worker delivers it
 curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8082/invoice/async
 # Flow B (sftp-invoice): drop a file. The poller picks it up within 10 s, saves it, deletes it and delivers it
-docker compose cp ../../packages/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
+docker compose cp ../../examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
 docker compose logs echo
 
 # Snapshots
@@ -58,8 +58,8 @@ curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                   
 ## 3. Run the tests
 
 ```sh
-bin/flottila validate packages/demo        # exit 0
-bin/flottila test packages/demo            # 6 cases: 6 passed, in-process, also run by CI
+bin/flottila validate examples/demo        # exit 0
+bin/flottila test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
 mvn -B -ntp verify -Pit                    # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
 python3 ci/coverage_check.py               # the no-decrease check against ci/coverage-baseline.json
 bench/run.sh                               # the bench harness (native Postgres); numbers go to bench/RESULTS.md
@@ -70,13 +70,13 @@ bench/run.sh                               # the bench harness (native Postgres)
 | # | check | evidence | result |
 |---|---|---|---|
 | 1 | stack, /health within 60 s | target/GATE2-stack.log "## up": 11 services healthy or exited (0); CI `stack` job 123931660052 waits on /health with a 60 s bound (green) | met |
-| 2 | deploy from git, validate, version per message | `bin/flottila validate packages/demo` exit 0 (target/GATE3-stack.log:1-7); deploy exit 0, /admin/packages demo 0.1.0 (sha256 archive), timeline `versions` `demo@0.1.0` (GATE2-stack.log:156,183,194) | met |
+| 2 | deploy from git, validate, version per message | `bin/flottila validate examples/demo` exit 0 (target/GATE3-stack.log:1-7); deploy exit 0, /admin/packages demo 0.1.0 (sha256 archive), timeline `versions` `demo@0.1.0` (GATE2-stack.log:156,183,194) | met |
 | 3 | invoice-sync | 200 with the PartnerInvoice body, timeline steps 0–5 OK | met |
 | 4 | invoice-async | 202, final step `partner` OK, work 0 | met |
 | 5 | sftp-invoice + kill | one file: inbox empty in ~6 s, sftp-invoice steps 0–4 OK, echo received it (GATE3-stack.log:49-65). Kill: 5 rounds × 50 files, node killed mid-round: 50/50 distinct ingress per round, DLQ 0, work 0, inbox empty, echo never restarted; outbound resends seen only as echo totals (at-least-once). No kill landed in the save-to-delete window (no dedupe line in run 2; run 1 on 5505b0f logged one); that window rests on SftpIngressDedupeIT (GATE2-stack.log:257-363) | met |
 | 6 | timeline, body per step, search by key | `?key=invoiceId:4711` finds the message; timeline steps 0–5 with wallNanos; `/steps/3/body` and `/steps/5/body` 200 with the payload as it was after each step (GATE3-stack.log:17-48). `cpuNanos` null on every step, as the check now reads (F-21, ISSUE-3 option 2) | met |
 | 7 | replay from 3, DLQ, retry | replay COMPLETE, replayOf set (GATE2-stack.log:198); DLQ row at step 5 `partner` after 1.11 s (GATE2:367) / ~3 s (GATE3:66-81) (FIX-107); retry COMPLETE, the echo logs the delivery, DLQ empty after (GATE3-stack.log:66-81) | met |
-| 8 | `flottila test packages/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
+| 8 | `flottila test examples/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
 | 9 | evidence | bench/RESULTS.md GATE section: ledger 2000×3, sync overhead, durable ACK, 50 MB, CI coverage + PIT | met (ACK p99 recorded, target missed: F-18) |
 
 GATE run 1 (on 5505b0f, target/GATE-stack.log) found three defects, fixed before this run: the echo lost its network namespace

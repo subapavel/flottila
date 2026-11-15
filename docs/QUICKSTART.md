@@ -1,6 +1,6 @@
 # Quickstart: send a message through Flottila on your machine
 
-One node, its Postgres and a partner echo in Docker; the demo package (`packages/demo`) deployed to the node; an invoice
+One node, its Postgres and a partner echo in Docker; the demo package (`examples/demo`) deployed to the node; an invoice
 sent in and read back through the admin API. Commands run from the repository root.
 
 **Prerequisites:** Docker with Compose v2, JDK 25, Maven 3.9, `curl`, and `zip` (else `deploy.sh` uses the JDK's `jar`).
@@ -8,7 +8,7 @@ sent in and read back through the admin API. Commands run from the repository ro
 ## 1. Build and start
 
 ```sh
-mvn -B -ntp -q package -DskipTests -pl flottila-runtime -am   # the jar and its target/lib, which the image copies
+mvn -B -ntp -q package -DskipTests -pl :flottila-runtime -am   # the jar and its target/lib, which the image copies
 export FLOTTILA_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
 docker compose up -d --build
 until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, not just postgres, is up
@@ -29,7 +29,7 @@ The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` i
 ## 2. Deploy the demo
 
 ```sh
-deploy/quickstart/deploy.sh packages/demo
+deploy/quickstart/deploy.sh examples/demo
 ```
 
 It zips the directory (`package.yaml` at the root), PUTs it to `/admin/packages/demo` with the token and prints the node's
@@ -44,7 +44,7 @@ carries placeholder secrets for them and the SFTP flow cannot connect; both flow
 ## 3. Send an invoice
 
 ```sh
-curl -X POST --data-binary @packages/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in
+curl -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in
 ```
 
 The flow validates the invoice, keys it by `invoiceId`, routes it by currency, maps it with XSLT and sends it to the partner;
@@ -68,7 +68,7 @@ n recorded: step 0 is the invoice as received, step 4 the mapped invoice, step 5
 ## 5. A foreign invoice
 
 ```sh
-sed -e 's/4711/4712/' -e 's/CZK/EUR/' packages/demo/fixtures/sample-invoice.xml \
+sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml \
   | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in
 docker compose logs echo        # POST /echo for 4711, POST /echo-foreign for 4712
 ```

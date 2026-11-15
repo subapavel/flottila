@@ -1,5 +1,5 @@
 # The local quickstart (docs/QUICKSTART.md): Postgres, one Flottila node and the demo's partner echo. Build the runtime on the
-# host first: mvn -B -ntp -q package -DskipTests -pl flottila-runtime -am. The node migrates the schema itself (Flyway).
+# host first: mvn -B -ntp -q package -DskipTests -pl :flottila-runtime -am. The node migrates the schema itself (Flyway).
 # Postgres is also published on loopback (127.0.0.1:5432, or FLOTTILA_PG_HOST_PORT) for psql and local tools. The database and
 # the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
 services:

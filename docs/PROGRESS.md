@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-1 A the directories move under platform/ — done, review PASS (r3); Deviation: F-37
+
+- Context compacted twice in this task; the state was re-read from the tree, `git status` and `git log -3` each time.
+- Commit A of three (D-149), no identifier changes: 1184 renames by `git mv` (1146 untouched), 60 files edited for a path the move broke.
+  Modules in `platform/`, the bench module in `bench/`, `examples/demo`, prompts and cloud files under `agent/`, the old root journal in
+  `docs/archive/`. Parent pom `platform/pom.xml`; the root pom is a thin aggregator (`flottila-all` until B).
+- By `agent/tools/rail8_rename.py moves` plus hand edits. A container restart cut the implementer before its hand-back; A was judged from the tree.
+- Others' tests edited, each only for a path the move broke: 25 `Path.of("..")` sites; `PostgresImageSourcesTest` (`moduleOf` helper);
+  `BuildHygieneTest` (depth 5, skips `mapping/` by name, D-149); `SimVerdictTest` with `Verdict` (`-pl :flottila-sim`).
+- Whole reactor in BASE-1's mode (`agent/work/BRAND-1-A-verify.log`): per-module counts identical to BASE-1 (4580, none skipped), ArchUnit 48.
+  EXECUTED_FAIL 2: StepBodiesIT (FIX-212, known), bench `NodeBenchMainWarmupIT` (a double against a whole byte count, not the move; FIX-216).
+  VERIFIED_PASS: `coverage_check.py --check-baseline`, the guards' tests, `git diff -- deploy/postgres` empty; after the fix sim 61, archtest 48.
+- Review r1 FAIL (sim's replay command named a directory that is gone), r2 FAIL (§12 described `mapping/` as present), r3 PASS.
+- F-37: ARCHITECTURE §12 to the new layout, changelog 3.23. Corrected: the FIX-196 row and HANDOFF cited a parked diff that never existed.
+- Next: B (identifiers), prepared but not verified, parked as `agent/work/BRAND-1-B-*.patch`; then C and BRAND-4.
+
 ## 2026-11-15 — BASE-1 the baseline of main before the rename — done: 4580 tests, a red set that moves
 
 - Why: nothing had been built since FIX-195 landed, and the rename needs a baseline to be compared against.

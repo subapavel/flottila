@@ -17,16 +17,16 @@ Where to look:
 
 - `docs/ARCHITECTURE.md` — the binding design (amendments block at the top, then the v3.3 text)
 - `docs/GATE.md` — what "you can test the first real iFlow" means
-- `agent/HANDOFF.md`, `PROGRESS.md` — where the work is, with measurements
+- `agent/HANDOFF.md`, `docs/PROGRESS.md` — where the work is, with measurements
 - `docs/WORKFLOW.md`, `CLAUDE.md`, `AGENTS.md` — how the work is done (TDD, review, roles)
 - `docs/DECISIONS.md`, `docs/findings/`, `issues/` — what was decided, what deviated, what is open
-- `deploy/claude-cloud/` — the cloud environment the autonomous session runs in
+- `agent/cloud/` — the cloud environment the autonomous session runs in
 
 Build at the current state: JDK 25 and Maven 3.9, `mvn -B -ntp verify` for the unit tests and
 `mvn -B -ntp verify -Pit` to include the Testcontainers tests (Docker required). Modules:
 `flottila-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
 `-archtest`. The milestone-1 prototype survives as tag `proto-m1` and in the history of the files
-that moved; the demo flow it ran lives in `packages/demo/` until P0-12 converts it.
+that moved; the demo flow it ran lives in `examples/demo/` until P0-12 converts it.
 
 "Flottila" is a working name. Contributions are accepted under the Developer Certificate of
 Origin: sign your commits (`git commit -s`).

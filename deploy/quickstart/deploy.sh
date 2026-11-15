@@ -5,7 +5,7 @@
 # <name> defaults to the directory's name and must equal the name in package.yaml. FLOTTILA_ADMIN_TOKEN, when set, is sent as
 # the bearer token (from a file in a private temp directory, never on curl's command line). Needs curl, and zip (else the JDK's jar).
 #
-#   deploy/quickstart/deploy.sh packages/demo
+#   deploy/quickstart/deploy.sh examples/demo
 set -eu
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then

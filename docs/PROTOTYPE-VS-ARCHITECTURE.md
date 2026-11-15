@@ -11,7 +11,7 @@ until the last kept file had moved; task P0-09 removed the module on 2026-10-18.
 Headers/Props/Key/Keys/Views → `flottila-api` (git mv, P0-05); Envelope/Body/Part rewritten in
 api (D-024); the batcher → `flottila-core` + `flottila-runtime` (P0-06); the WorkQueue claim SQL →
 `flottila-runtime` (P0-07); `db/init.sql` → `deploy/postgres/V1__m1_schema.sql` (P0-08);
-`flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` → `packages/demo/` (P0-09,
+`flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` → `examples/demo/` (P0-09,
 converted in P0-12); `bench/bench.py` stays for P0-10 (it drives an HTTP ingress that does not exist yet; P0-10
 decides whether it is rewritten or history-only); the root `docker-compose.yml` stays until
 P2-05 replaces it. Rows of §2 whose new home does not exist yet (Flow replay numbering → P1-03,
@@ -41,7 +41,7 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 | `runtime/Dlq*` semantics | `flottila-runtime` | Park by reference; a park never fails on write ordering; overload rejections and at-most-once drops never park. |
 | `Component.Consumer.durableIngress` semantics | `flottila-api` consumer contract | The durable save before an irreversible ACK belongs to the consumer, with a save timeout → NACK. Reimplemented on `Function<Envelope, Future<Ack>>`. |
 | `bench/bench.py`, `bench/RESULTS.md` | `bench/` | Baseline; rerun natively (cloud VM) in P0-10 and recorded as the Phase 0 baseline. |
-| `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` | `packages/demo/` | First golden flow. P0-12 converted `invoice.json` into `packages/demo/flows/invoice-sync.yaml` (+ `endpoints/*.yaml`, `invoice-sync.test.yaml`, `package.yaml`) and deleted the JSON; the XSL and the fixture stay. |
+| `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` | `examples/demo/` | First golden flow. P0-12 converted `invoice.json` into `examples/demo/flows/invoice-sync.yaml` (+ `endpoints/*.yaml`, `invoice-sync.test.yaml`, `package.yaml`) and deleted the JSON; the XSL and the fixture stay. |
 | `docker-compose.yml` | `deploy/compose/` (P2-05) | Grows from Postgres-only to the full stack. |
 
 ## 3. Replaced (deleted when the replacement lands)

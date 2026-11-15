@@ -76,9 +76,9 @@ if (( needs_pg )) && ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -v ON_ERROR_STOP=1 -c "create database $BENCH_DB"
 fi
 
-mvn -B -ntp -q -pl flottila-bench -am -DskipTests package
-jar="$(ls flottila-bench/target/flottila-bench-*.jar | grep -v -E 'sources|javadoc' | head -1)"
-cp="$jar:flottila-bench/target/lib/*"
+mvn -B -ntp -q -pl :flottila-bench -am -DskipTests package
+jar="$(ls bench/target/flottila-bench-*.jar | grep -v -E 'sources|javadoc' | head -1)"
+cp="$jar:bench/target/lib/*"
 mkdir -p bench/out
 
 pg_admin() { # statement — one autocommit statement on the postgres database (ALTER SYSTEM refuses a transaction block)

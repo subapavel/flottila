@@ -38,7 +38,10 @@ migrations `deploy/postgres/V*.sql` stay **byte-identical** (`git diff -- deploy
 after every commit); every `github.com/subapavel/flottila` URL stays (the owner renames the
 repository; `flottila-mapping` in such a URL stays too); the script itself and this packet.
 `agent/HANDOFF.md` and the open rows of BACKLOG are the architect's to word — the script may
-translate paths and identifiers in them, nothing else.
+translate paths and identifiers in them, nothing else. The changelog table at the top of
+`docs/ARCHITECTURE.md` (every row from `## Changelog` to the next heading) is history too: its rows
+keep the names they were written with. `docs/OPERATIONS-BRIEF.md` and `docs/CORE-REWORK.md` are the
+owner's briefs: paths and identifiers are translated, the wording is not otherwise touched.
 
 ## Commit A — directory moves and path strings; no identifier changes
 

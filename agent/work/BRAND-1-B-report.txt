@@ -1,0 +1,491 @@
+remaining occurrences of the old name outside the exclusion list: 390 line(s) in 100 file(s); [B untouched] 69, [C] 321
+.claude/agent-memory/test-author/MEMORY.md (2)
+  62: [C: PG application_name prefix] first save goes alone, the next `batchSize` form one batch); poll `pg_stat_activity where wait_event_type='Lock'` for n waiters, then roll back or commit. Unsorted inserts → 40P01. P2-07b2: `lock tabl
+  118: [C: NOTIFY channel; PG application_name prefix] - P2-16a: `PgWire.since` snapshots the COW list first (subList view threw CME under traffic); pg_locks advisory `objsubid` = 1 for one bigint key, 2 for the (int,int) form; core `RecordingWorkQueue` h
+.github/workflows/ci.yml (3)
+  174: [C: deploy names and default paths] # CREATEDB: bench/run.sh creates the flottila_bench database itself
+  175: [C: CI role] sudo -u postgres psql -c "CREATE ROLE flottila LOGIN CREATEDB PASSWORD 'flottila';"
+  176: [C: CI role] sudo -u postgres psql -c "CREATE DATABASE flottila OWNER flottila;"
+HANDOVER.md (2)
+  25: [C: documents a C name (service, container)] Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
+  55: [C: documents a C name (service, container)] # Kill test (check 5): drop files, then `docker kill -s KILL compose-flottila-1` and `docker compose up -d`
+agent/BACKLOG.md (1)
+  419: [C: documents a C name (service)] | FIX-99 | [A] P2-05 review leftovers: ComposeStackTest asserts Kafka is not wired (no RAIL8_* Kafka env, no depends_on kafka on `flottila`); the CI `stack` job records the `docker compose up -d` dura
+agent/NOTES.md (2)
+  278: [C: documents a C name] `bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB;
+  279: [C: deploy names and default paths; documents a C name] db flottila_bench; a fresh container has no role: `sudo -n -u postgres psql -c "create role flottila login createdb password 'flottila'"`, as ci.yml), results in bench/out/ (ignored), baselines as mar
+bench/run.sh (4)
+  9: [C: bench role and password defaults] # a remote PGHOST defaults to verify-full for the nodes, but the bench's own migration and pool links carry no TLS — FIX-166, D-124), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
+  10: [C: deploy names and default paths] # BENCH_DB (flottila_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
+  49: [C: deploy names and default paths; bench role and password defaults] : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
+  106: [C: deploy names and default paths] local image="clickhouse/clickhouse-server:25.8.33.6" name="flottila-bench-clickhouse" port="${BENCH_CH_PORT:-18123}" password="flottila-bench"
+bench/src/main/java/io/rail8/bench/BenchMain.java (3)
+  57: [C: deploy names and default paths] String db = a.getOrDefault("db", "flottila_bench");
+  58: [C: bench database, role and password] String user = a.getOrDefault("user", "flottila");
+  59: [C: bench database, role and password] String password = a.getOrDefault("password", "flottila");
+bench/src/main/java/io/rail8/bench/DbSampler.java (1)
+  224: [C: PG application_name of the bench sampler] static final String APPLICATION_NAME = "flottila-bench-sampler";
+bench/src/main/java/io/rail8/bench/LedgerMain.java (2)
+  158: [C: deploy names and default paths] String db = a.getOrDefault("db", "flottila_bench");
+  168: [C: bench database, role and password] a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"), Path.of(a.getOrDefault("out", "bench/out/ledger.json")),
+bench/src/main/java/io/rail8/bench/NodeBenchMain.java (2)
+  287: [C: deploy names and default paths] String db = a.getOrDefault("db", "flottila_bench");
+  298: [C: bench database, role and password] a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
+bench/src/main/java/io/rail8/bench/StreamHeapMain.java (2)
+  116: [C: deploy names and default paths] String db = a.getOrDefault("db", "flottila_bench");
+  121: [C: bench database, role and password] db, a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
+bench/src/test/java/io/rail8/bench/BenchRunScriptOpenDbTest.java (1)
+  125: [C: deploy names and default paths] .put("statements", "pg_stat_statements is not installed in flottila_bench"));
+bench/src/test/java/io/rail8/bench/DbSamplerCasesTest.java (2)
+  170: [C: deploy names and default paths] JsonObject r = DbSampler.reading(row(), "pg_stat_statements is not readable in flottila_bench: relation does not exist");
+  172: [C: deploy names and default paths] assertEquals("pg_stat_statements is not readable in flottila_bench: relation does not exist", r.getJsonObject("notes").getString("statements"));
+bench/src/test/java/io/rail8/bench/DbSamplerTest.java (1)
+  133: [C: deploy names and default paths] .put("statements", "pg_stat_statements is not installed in flottila_bench");
+bench/src/test/java/io/rail8/bench/LedgerIT.java (1)
+  70: [C: test-only name] static final String BUCKET = "flottila-ledger-it";
+bench/src/test/java/io/rail8/bench/LedgerMainTest.java (2)
+  68: [C: bench database, role and password] () -> LedgerMain.options(new String[] {"--db", "flottila"}));
+  69: [C: bench database, role and password] assertTrue(refused.getMessage().contains("flottila") && refused.getMessage().contains("bench"),
+bench/src/test/java/io/rail8/bench/NodeBenchMainRunTest.java (2)
+  31: [C: bench database, role and password] String[] production = java.util.stream.Stream.concat(java.util.Arrays.stream(NOWHERE), java.util.stream.Stream.of("--db", "flottila"))
+  34: [C: bench database, role and password] assertTrue(db.getMessage().contains("'flottila'") && db.getMessage().contains("truncates"), db.getMessage());
+bench/src/test/java/io/rail8/bench/StreamHeapMainTest.java (2)
+  50: [C: bench database, role and password] () -> StreamHeapMain.options(new String[] {"--db", "flottila"}));
+  51: [C: bench database, role and password] assertTrue(refused.getMessage().contains("flottila") && refused.getMessage().contains("bench"),
+ci/test_coverage_check.py (69)
+  18: [B untouched] <package name="io/flottila/x"><class name="io/flottila/x/A" sourcefilename="A.java"/></package>
+  27: [B untouched] <report name="{name}"><package name="io/flottila/x"/></report>
+  39: [B untouched] (m / "target" / "classes" / "io" / "flottila" / "x").mkdir(parents=True)
+  41: [B untouched] (m / "target" / "classes" / "io" / "flottila" / "x" / c).write_bytes(b"\xca\xfe")
+  60: [B untouched] module(self.root, "flottila-api", report=(10, 90, 5, 15))
+  62: [B untouched] self.assertEqual({"flottila-api": {"line": 90.0, "branch": 75.0}}, current)
+  65: [B untouched] module(self.root, "flottila-core", classes=("package-info.class",))
+  70: [B untouched] m = module(self.root, "flottila-api", classes=("package-info.class",))
+  76: [B untouched] module(self.root, "flottila-core", report=(0, 0, 0, 0))
+  80: [B untouched] module(self.root, "flottila-components/http", report=(0, 10, 0, 0))
+  81: [B untouched] self.assertEqual({"flottila-components/http": {"line": 100.0, "branch": 100.0}}, cc.measure(self.root))
+  84: [B untouched] module(self.root, "flottila-core")  # classes, no jacoco.xml: tests never ran here
+  86: [B untouched] self.assertEqual(["flottila-core: has classes but no JaCoCo report (no test ran)"], problems)
+  89: [B untouched] module(self.root, "flottila-legacy")
+  90: [B untouched] self.assertEqual([], cc.compare(cc.measure(self.root), {}, self.root, ignore=frozenset({"flottila-legacy"})))
+  91: [B untouched] self.assertEqual(["flottila-legacy: has classes but no JaCoCo report (no test ran)"],
+  96: [B untouched] module(self.root, "flottila-api", report=(20, 80, 5, 15))
+  97: [B untouched] baseline = {"flottila-api": {"line": 90.0, "branch": 75.0}}
+  99: [B untouched] self.assertEqual(["flottila-api: line 80.0 % < baseline 90.0 % - 2.0"], problems)
+  102: [B untouched] module(self.root, "flottila-api", report=(5, 95, 5, 15))
+  103: [B untouched] baseline = {"flottila-api": {"line": 90.0, "branch": 75.0}}
+  107: [B untouched] module(self.root, "flottila-core", report=(0, 10, 0, 2))
+  111: [B untouched] module(self.root, "flottila-api", report=(1, 2, 2, 1))
+  112: [B untouched] self.assertEqual({"flottila-api": {"line": 66.7, "branch": 33.3}}, cc.measure(self.root))
+  116: [B untouched] module(self.root, "flottila-api", report=(2, 98, 11, 89))      # line 98.0, branch 89.0
+  117: [B untouched] baseline = {"flottila-api": {"line": 99.9, "branch": 90.5}}
+  121: [B untouched] module(self.root, "flottila-core", report=(21, 979, 3, 97))    # line 97.9, branch 97.0
+  122: [B untouched] baseline = {"flottila-core": {"line": 100.0, "branch": 99.1}}
+  124: [B untouched] self.assertEqual(["flottila-core: line 97.9 % < baseline 100.0 % - 2.0",
+  125: [B untouched] "flottila-core: branch 97.0 % < baseline 99.1 % - 2.0"], problems)
+  128: [B untouched] module(self.root, "flottila-api", report=(0, 100, 0, 10))      # 100 / 100
+  129: [B untouched] module(self.root, "flottila-core", report=(50, 50, 5, 5))      # 50 / 50
+  130: [B untouched] baseline = {"flottila-api": {"line": 97.0, "branch": 100.0}}   # api rose by 3 pp, core absent
+  132: [B untouched] self.assertEqual(["flottila-api: line 100.0 % is above the committed baseline 97.0 % by more than 2.0 — run --write",
+  133: [B untouched] "flottila-core: not in the committed baseline — run --write"], problems)
+  136: [B untouched] module(self.root, "flottila-api", report=(2, 98, 11, 89))      # 98.0 / 89.0
+  137: [B untouched] baseline = {"flottila-api": {"line": 99.9, "branch": 90.5}, "flottila-old": {"line": 50.0, "branch": 50.0}}
+  138: [B untouched] self.assertEqual(["flottila-old: in the committed baseline but not measured — run --write"],
+  140: [B untouched] baseline.pop("flottila-old")
+  144: [B untouched] module(self.root, "flottila-api", report=(2, 98, 0, 10))       # line 98.0
+  145: [B untouched] self.assertEqual([], cc.compare(cc.measure(self.root), {"flottila-api": {"line": 100.0, "branch": 100.0}}, self.root))
+  148: [B untouched] module(self.root, "flottila-api", report=(10, 90, 0, 10))      # line 90.0
+  149: [B untouched] problems = cc.check_baseline(cc.measure(self.root), {"flottila-api": {"line": 95.0, "branch": 100.0}})
+  150: [B untouched] self.assertEqual(["flottila-api: line 90.0 % is below the committed baseline 95.0 % by more than 2.0 — coverage dropped; run --write and say why"], problems)
+  154: [B untouched] module(self.root, "flottila-api", report=(1, 99, 3, 197))      # 99.0 / 98.5 measured, each inside the 2.0 band below 100.0
+  157: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 100.0, "branch": 100.0}, "flottila-gone": {"line": 1.0, "branch": 1.0}}))
+  159: [B untouched] self.assertEqual({"flottila-api": {"line": 99.0, "branch": 98.5}}, json.loads(path.read_text()),
+  161: [B untouched] report = self.root / "flottila-api" / "target" / "site" / "jacoco" / "jacoco.xml"
+  162: [B untouched] report.write_text(JACOCO_XML.format(name="flottila-api", lm=3, lc=97, bm=20, bc=80))        # 97.0 / 80.0: branch drops beyond the band
+  164: [B untouched] self.assertEqual({"flottila-api": {"line": 97.0, "branch": 80.0}}, json.loads(path.read_text()),
+  166: [B untouched] report.write_text(JACOCO_XML.format(name="flottila-api", lm=2, lc=98, bm=11, bc=89))        # 98.0 / 89.0: a rise
+  168: [B untouched] self.assertEqual({"flottila-api": {"line": 98.0, "branch": 89.0}}, json.loads(path.read_text()), "a rise is written as measured")
+  171: [B untouched] module(self.root, "flottila-api", report=(1, 99, 3, 197))      # 99.0 / 98.5 measured
+  172: [B untouched] module(self.root, "flottila-core", report=(19, 981, 15, 985))  # 98.1 / 98.5 measured
+  175: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 100.0, "branch": 100.0},     # every committed value above the
+  176: [B untouched] "flottila-core": {"line": 100.0, "branch": 99.9}}))  # measurement by less than the band
+  187: [B untouched] module(self.root, "flottila-api", report=(0, 100, 0, 10))
+  190: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 90.0, "branch": 100.0}}))
+  192: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 99.0, "branch": 100.0}}))
+  196: [B untouched] module(self.root, "flottila-api", report=(10, 90, 5, 15))
+  200: [B untouched] self.assertEqual({"flottila-api": {"line": 90.0, "branch": 75.0}}, json.loads(path.read_text()))
+  212: [B untouched] path = self._repo_with_committed_baseline({"flottila-api": {"line": 90.0, "branch": 75.0}})
+  213: [B untouched] module(self.root, "flottila-api", report=(20, 80, 5, 15))
+  223: [B untouched] module(self.root, "flottila-api", report=(20, 80, 5, 15))
+  227: [B untouched] self._repo_with_committed_baseline({"flottila-api": {"line": 90.0, "branch": 75.0}})
+  228: [B untouched] module(self.root, "flottila-api", report=(20, 80, 5, 15))
+  234: [B untouched] module(self.root, "flottila-api", report=(20, 80, 5, 15))
+  237: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 90.0, "branch": 75.0}}))
+  239: [B untouched] path.write_text(json.dumps({"flottila-api": {"line": 80.0, "branch": 75.0}}))
+deploy/compose/README.md (3)
+  4: [C: documents a C name (service, container)] (persistence off), `s3` (SeaweedFS), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `flottila` (the node), `
+  12: [C: documents a C name] export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACCESS_KEY defaults to flottila
+  28: [C: documents a C name] - Postgres password: `RAIL8_PG_PASSWORD` (default `flottila`). S3: bucket `flottila`, one Admin identity written at start
+deploy/compose/docker-compose.yml (17)
+  10: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_DB: flottila
+  11: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_USER: flottila
+  12: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_PASSWORD: ${RAIL8_PG_PASSWORD:-flottila}
+  17: [C: compose: database, user, password, S3 identity, bucket, service] test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
+  37: [C: compose: database, user, password, S3 identity, bucket, service] RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-flottila}"
+  43: [C: compose: database, user, password, S3 identity, bucket, service] printf '{"identities":[{"name":"flottila","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$RAIL8_S3_ACCESS_KEY" "$$RAIL8_S3_SECRET_KEY" > 
+  122: [C: compose: database, user, password, S3 identity, bucket, service] - flottila
+  133: [C: compose: database, user, password, S3 identity, bucket, service] flottila:
+  146: [C: compose: database, user, password, S3 identity, bucket, service] RAIL8_PG_PASSWORD: ${RAIL8_PG_PASSWORD:-flottila}
+  153: [C: compose: database, user, password, S3 identity, bucket, service] RAIL8_S3_BUCKET: flottila
+  155: [C: compose: database, user, password, S3 identity, bucket, service] RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-flottila}"
+  166: [C: deploy names and default paths] - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/flottila/rail8-runtime.jar'
+  171: [C: deploy names and default paths] - flottila-data:/var/lib/flottila
+  201: [C: compose: database, user, password, S3 identity, bucket, service] flottila:
+  218: [C: deploy names and default paths] entrypoint: ["sh", "-c", "jar=$$(ls /cli/rail8-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy /packages/demo --admin http://flottila:8081"
+  220: [C: compose: database, user, password, S3 identity, bucket, service] flottila:
+  237: [C: deploy names and default paths] flottila-data:
+deploy/quickstart/Dockerfile (6)
+  1: [C: compose: database, user, password, S3 identity, bucket, service] # The quickstart's node image (docs/QUICKSTART.md, docker-compose.yml service `flottila`). It copies what the host built —
+  7: [C: deploy names and default paths; compose: database, user, password, S3 identity, bucket, service] RUN useradd --system --user-group --uid 10001 --create-home --home-dir /var/lib/flottila flottila
+  9: [C: deploy names and default paths] WORKDIR /opt/flottila
+  15: [C: compose: database, user, password, S3 identity, bucket, service] USER flottila
+  16: [C: deploy names and default paths] ENV RAIL8_DATA_DIR=/var/lib/flottila
+  19: [C: deploy names and default paths] ENTRYPOINT ["java", "-jar", "/opt/flottila/rail8-runtime.jar"]
+docker-compose.yml (13)
+  8: [C: deploy names and default paths] container_name: flottila-postgres
+  10: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_DB: flottila
+  11: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_USER: flottila
+  12: [C: compose: database, user, password, S3 identity, bucket, service] POSTGRES_PASSWORD: flottila
+  17: [C: deploy names and default paths] - flottila-pg:/var/lib/postgresql
+  19: [C: compose: database, user, password, S3 identity, bucket, service] test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
+  31: [C: compose: database, user, password, S3 identity, bucket, service] - flottila
+  41: [C: compose: database, user, password, S3 identity, bucket, service] flottila:
+  54: [C: compose: database, user, password, S3 identity, bucket, service] RAIL8_PG_PASSWORD: flottila
+  72: [C: deploy names and default paths] - flottila-data:/var/lib/flottila   # a restart restores the deployed packages from the archives here
+  92: [C: compose: database, user, password, S3 identity, bucket, service] flottila:
+  96: [C: deploy names and default paths] flottila-pg:
+  97: [C: deploy names and default paths] flottila-data:
+docs/ARCHITECTURE.md (6)
+  198: [C: JFR event names] - I/O goes through Vert.x clients with `Future.await()`; blocking SDKs run directly on the virtual thread (that is the point). The blocked-thread checker is not relied on: per-step wall time on the sn
+  215: [C: WAL message prefix] **Postgres durability profiles** (D-127 draft, D-114, D-115; D-061 amended): `RAIL8_PG_DURABILITY` says what an accepted message survives on the Postgres side. `local` — a single server's commit: it s
+  217: [C: PG application_name prefix] **Postgres pools by role** (D-130 draft, F-27 I4; amends D-109's bound): a node's pooled Postgres connections are two pools. The **intake pool** (`RAIL8_PG_POOL_INTAKE`) carries the at-least-once save
+  219: [C: NOTIFY channel] **Pickup** (D-121 (a), (b), F-30): a saved item reaches its node's worker by a local hand-off, not a claim. One `Workers` registry per node holds every started worker by flow; before its insert the in
+  337: [C: NOTIFY channel] | Node work events | Postgres `LISTEN flottila_work` on a dedicated connection per node, `pg_notify` on the work pool after the commit, 50 ms leading-edge window, fold above 64 payloads; reconnect wit
+  392: [C: HTTP header, stored as the audit actor] - Actor (human / agent / model) recorded on every audit entry. Today (D-126, draft) the `audit` table (V16: `id, at, actor, action, subject, detail jsonb`, append-only — no update or delete path in co
+docs/QUICKSTART.md (1)
+  19: [C: documents a C name (service)] the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs flottila`).
+platform/cli/src/main/java/io/rail8/cli/FlowTests.java (1)
+  93: [C: node ids of the CLI's in-process nodes] private static final String NODE_ID = "flottila-test";
+platform/cli/src/main/java/io/rail8/cli/Lock.java (1)
+  67: [C: package.lock header text] StringBuilder text = new StringBuilder("# written by flottila lock (D-087): the direct dependencies, sorted by name, each with its content digest\n")
+platform/cli/src/main/java/io/rail8/cli/Validate.java (1)
+  44: [C: node ids of the CLI's in-process nodes] private static final String NODE_ID = "flottila-validate";
+platform/cli/src/test/java/io/rail8/cli/DepsFixture.java (2)
+  96: [C: package content digest input] * {@code sha256:} and the lower-case hex SHA-256 over the UTF-8 lines {@code flottila-package-content 1} and
+  106: [C: package content digest input] all.update("flottila-package-content 1\n".getBytes(StandardCharsets.UTF_8));
+platform/cli/src/test/java/io/rail8/cli/TestCommandTest.java (1)
+  579: [C: test-only user, role, database; expectations of a NodeConfig default] user: flottila
+platform/cli/src/test/resources/packages/feed/endpoints/drop-keyed.yaml (1)
+  7: [C: test-only user, role, database; expectations of a NodeConfig default] user: flottila
+platform/cli/src/test/resources/packages/feed/endpoints/drop.yaml (1)
+  7: [C: test-only user, role, database; expectations of a NodeConfig default] user: flottila
+platform/components/mock/src/test/java/io/rail8/components/mock/MockPollingContractTest.java (1)
+  24: [C: test-only user, role, database; expectations of a NodeConfig default] Map.of("user", "flottila", "password", "not-used-by-the-mock", "hostKey", "SHA256:bm90LXVzZWQtYnktdGhlLW1vY2s", "maxBodyBytes", 1_000_000,
+platform/components/sftp/src/test/java/io/rail8/components/sftp/EmbeddedSftp.java (1)
+  53: [C: test-only user, role, database; expectations of a NodeConfig default] static final String USER = "flottila";
+platform/components/sftp/src/test/java/io/rail8/components/sftp/SftpComponentTest.java (8)
+  550: [C: test-only user, role, database; expectations of a NodeConfig default] Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+  654: [C: test-only user, role, database; expectations of a NodeConfig default] Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+  670: [C: test-only user, role, database; expectations of a NodeConfig default] Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+  724: [C: test-only user, role, database; expectations of a NodeConfig default] Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+  742: [C: test-only user, role, database; expectations of a NodeConfig default] Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+  786: [C: test-only user, role, database; expectations of a NodeConfig default] Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+  793: [C: test-only user, role, database; expectations of a NodeConfig default] assertEquals(Optional.of("sftp://files.example:2222"), component.target(at.apply("sftp://flottila@Files.Example:2222/inbox", Map.of())), "the URI alone, user and path dropped");
+  811: [C: test-only user, role, database; expectations of a NodeConfig default] Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+platform/components/sftp/src/test/java/io/rail8/components/sftp/SftpConsumerEdgeTest.java (1)
+  330: [C: test-only user, role, database; expectations of a NodeConfig default] OpenSSHKeyPairResourceWriter.INSTANCE.writePrivateKey(key, "flottila-test", (OpenSSHKeyEncryptionContext) null, out);
+platform/core/src/main/java/io/rail8/core/record/StepEvent.java (3)
+  28: [C: JFR event names, labels, categories, recording name] @Label("Flottila Step")
+  29: [C: JFR event names, labels, categories, recording name] @Category("Flottila")
+  36: [C: JFR event names] public static final String NAME = "io.flottila.Step";
+platform/core/src/test/java/io/rail8/core/flow/FlowBuilderStepEventTest.java (5)
+  62: [C: JFR event names; JFR event names, labels, categories, recording name] * {@code io.flottila.Step} (fields {@code flow}, {@code step}, {@code name}; category Flottila; no stack trace; no message id),
+  75: [C: JFR event names] static final String STEP_EVENT = "io.flottila.Step";
+  262: [C: JFR event names, labels, categories, recording name] assertEquals(List.of("Flottila"), type.getCategoryNames());
+  339: [C: JFR event names] * {@code stepEvents}, its pipeline, sync delivery, at-least-once worker and replay emit no {@code io.flottila.Step} under a recording
+  405: [C: JFR event names] * {@code stepEvents(false)}, flow B built — under a recording enabling {@code io.flottila.Step}, A's steps are marked and B's are
+platform/runtime/src/main/java/io/rail8/runtime/admin/AdminServer.java (2)
+  142: [C: HTTP header, stored as the audit actor] * {@code X-Flottila-Actor} over 128 characters; the actor is that header ({@code unknown} without one), self-declared under the
+  178: [C: HTTP header, stored as the audit actor] static final String ACTOR = "X-Flottila-Actor";
+platform/runtime/src/main/java/io/rail8/runtime/blob/SpoolCipher.java (1)
+  49: [C: HKDF info labels] private static final String INFO = "flottila-spool-v1";
+platform/runtime/src/main/java/io/rail8/runtime/deploy/FlowHash.java (2)
+  29: [C: flow hash input] *   <li>{@code flottila-flow-hash 2};</li>
+  66: [C: flow hash input] line(digest, "flottila-flow-hash 2");
+platform/runtime/src/main/java/io/rail8/runtime/journal/JournalStart.java (1)
+  177: [C: journal-loss file text] byte[] text = ("flottila journal loss v1\n" + node + "\n" + journal + "\n" + String.join("\n", items)).getBytes(StandardCharsets.UTF_8);
+platform/runtime/src/main/java/io/rail8/runtime/journal/RecordFormat.java (1)
+  43: [C: HKDF info labels] private static final String INFO = "flottila-journal-v1";
+platform/runtime/src/main/java/io/rail8/runtime/journal/peer/PeerHandshake.java (1)
+  54: [C: HKDF info labels] private static final String INFO = "flottila-peer-v1";
+platform/runtime/src/main/java/io/rail8/runtime/lease/ValkeyPollerLeases.java (2)
+  11: [C: Valkey key prefix] * {@link PollerLeases} in Valkey (D-083): a lease is the key {@code flottila:poller:<key>} holding its owner, with a millisecond
+  21: [C: Valkey key prefix] static final String PREFIX = "flottila:poller:";
+platform/runtime/src/main/java/io/rail8/runtime/node/CpuSampler.java (4)
+  85: [C: JFR event names] static final String DRAIN = "io.flottila.CpuSamplerDrain";
+  95: [C: JFR event names, labels, categories, recording name] @Label("Flottila CPU Sampler Drain")
+  96: [C: JFR event names, labels, categories, recording name] @Category("Flottila")
+  165: [C: JFR event names, labels, categories, recording name] recording.setName("flottila-cpu-sampler");
+platform/runtime/src/main/java/io/rail8/runtime/node/Node.java (2)
+  426: [C: PG application_name prefix] * session named {@code flottila-<role>@<nodeId>} ({@code application_name}, D-130 draft), so {@code pg_stat_activity} shows
+  430: [C: PG application_name prefix] return connectOptions(pg).addProperty("application_name", "flottila-" + role + "@" + nodeId);
+platform/runtime/src/main/java/io/rail8/runtime/node/NodeConfig.java (7)
+  42: [C: deploy names and default paths] * @param dataDir {@code RAIL8_DATA_DIR} (/var/lib/flottila): the spool lives under it, and the dir archive store by default
+  288: [C: NodeConfig defaults: database, user, S3 prefix] * @param database {@code RAIL8_PG_DATABASE} (flottila)
+  289: [C: NodeConfig defaults: database, user, S3 prefix] * @param user {@code RAIL8_PG_USER} (flottila)
+  553: [C: NodeConfig defaults: database, user, S3 prefix] * @param prefix {@code RAIL8_S3_PREFIX} (flottila): archives are the objects {@code <prefix>/archives/<sha256>.zip}
+  682: [C: NodeConfig defaults: database, user, S3 prefix] env.getOrDefault("RAIL8_PG_DATABASE", "flottila"), env.getOrDefault("RAIL8_PG_USER", "flottila"),
+  693: [C: deploy names and default paths] Path dataDir = Path.of(env.getOrDefault("RAIL8_DATA_DIR", "/var/lib/flottila"));
+  1017: [C: NodeConfig defaults: database, user, S3 prefix] return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("RAIL8_S3_PREFIX", "flottila"), accessKey, secretKey);
+platform/runtime/src/main/java/io/rail8/runtime/queue/PgWorkSignals.java (3)
+  31: [C: NOTIFY channel] * transaction: a leading edge as {@code select pg_notify('flottila_work', $1)}, a window's end as one {@code select
+  32: [C: NOTIFY channel] * pg_notify('flottila_work', p) from unnest($1::text[]) p} (one payload alone as the first form). A send that fails logs one WARNING
+  42: [C: NOTIFY channel] public static final String CHANNEL = "flottila_work";
+platform/runtime/src/main/java/io/rail8/runtime/store/PgIntake.java (1)
+  125: [C: WAL message prefix] static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')";
+platform/runtime/src/main/java/io/rail8/runtime/store/Retention.java (1)
+  57: [C: Retention.LOCK_KEY, ASCII of the name] /** The advisory lock every batch tries first: the bytes of "flottila" (D-088). */
+platform/runtime/src/test/java/io/rail8/runtime/ComposeStackTest.java (22)
+  29: [C: compose: database, user, password, S3 identity, bucket, service] Set.of("postgres", "valkey", "s3", "kafka", "sftp", "sftp-keys", "flottila", "echo", "deploy", "clickhouse");
+  83: [C: compose: database, user, password, S3 identity, bucket, service] // a service built from the repo's Dockerfile (flottila) or sharing another's network may have no registry image
+  143: [C: compose: database, user, password, S3 identity, bucket, service] assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "flottila", "echo", "deploy")),
+  174: [C: compose: database, user, password, S3 identity, bucket, service] assertTrue(environment(service("flottila")).containsKey("RAIL8_ENV") && keys >= 10, "environment keys read: " + keys);
+  186: [C: compose: database, user, password, S3 identity, bucket, service] assertTrue(joined(service("flottila").path("healthcheck").path("test")).contains("/health"), "the node is checked on GET /health");
+  191: [C: compose: database, user, password, S3 identity, bucket, service] JsonNode node = service("flottila");
+  214: [C: deploy names and default paths] assertTrue(command.contains("http://flottila:8081"), "deploy targets the node's admin port: " + command);
+  215: [C: compose: database, user, password, S3 identity, bucket, service] assertEquals("service_healthy", deploy.path("depends_on").path("flottila").path("condition").asText());
+  251: [C: compose: database, user, password, S3 identity, bucket, service] for (String name : List.of("flottila", "s3")) {
+  301: [C: compose: database, user, password, S3 identity, bucket, service] // FIX-105: the ports are published by the namespace holder `netns`, no longer by the node (the old pin on flottila contradicted it)
+  341: [C: compose: database, user, password, S3 identity, bucket, service] for (String name : List.of("flottila", "echo")) {
+  344: [C: compose: database, user, password, S3 identity, bucket, service] assertEquals("service_healthy", serviceIn(file, "flottila").path("depends_on").path("netns").path("condition").asText(),
+  349: [C: compose: database, user, password, S3 identity, bucket, service] assertTrue(echoDeps.has("flottila") || echoDeps.toString().contains("\"flottila\""), file + ": the echo still waits for the node: " + echoDeps);
+  351: [C: compose: database, user, password, S3 identity, bucket, service] assertEquals("service_healthy", echoDeps.path("flottila").path("condition").asText(), file + ": healthy, as today");
+  359: [C: compose: database, user, password, S3 identity, bucket, service] for (String name : List.of("flottila", "echo")) {
+  371: [C: compose: database, user, password, S3 identity, bucket, service] assertTrue(names.contains("flottila"), file + ": netns carries the alias flottila on the default network, was " + names);
+  372: [C: compose: database, user, password, S3 identity, bucket, service] assertFalse(serviceIn(file, "flottila").has("networks"), file + ": the node joins the holder's namespace, it has no networks of its own");
+  401: [C: compose: database, user, password, S3 identity, bucket, service] for (String waiter : List.of("sftp", "flottila")) {
+  440: [C: compose: database, user, password, S3 identity, bucket, service] JsonNode node = service("flottila");
+  445: [C: deploy names and default paths] assertEquals(List.of("sftp-fingerprint", "flottila-data"), mounted.stream().map(Mount::source).toList(),
+  448: [C: deploy names and default paths] assertEquals(new Mount("flottila-data", "/var/lib/flottila", false), mounted.get(1), "the data volume is the node's data directory, written");
+  449: [C: deploy names and default paths] assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("flottila-data"), "flottila-data is a declared volume");
+platform/runtime/src/test/java/io/rail8/runtime/NodeIT.java (7)
+  213: [C: test-only name] env.put("RAIL8_S3_BUCKET", "flottila-archives");
+  445: [C: Valkey key prefix] static final String FEED_LEASE = "flottila:poller:shop/feed/poll://drop";
+  813: [C: JFR event names] * external recording that enables {@code io.flottila.Step} sees none of {@code demo/invoice-sync} over three invoices —, while the
+  825: [C: JFR event names] external.enable("io.flottila.Step");
+  861: [C: JFR event names] .filter(e -> e.getEventType().getName().equals("io.flottila.Step") && e.getString("flow").endsWith("invoice-sync")).toList();
+  868: [C: JFR event names] assertEquals(List.of(), withoutSampling, "a node without sampling marks no step: the external recording sees no io.flottila.Step of its invoices");
+  939: [C: test-only name] String bucket = "flottila-node-it";
+platform/runtime/src/test/java/io/rail8/runtime/NodePoolRolesIT.java (7)
+  55: [C: PG application_name prefix] * ({@code flottila-<role>@<nodeId>}: intake, work, membership, listen), and a work pool held by two parks waiting on a lock
+  69: [C: PG application_name prefix] static final String INTAKE = "flottila-intake@" + NODE;
+  70: [C: PG application_name prefix] static final String WORK = "flottila-work@" + NODE;
+  71: [C: PG application_name prefix] static final String MEMBERSHIP = "flottila-membership@" + NODE;
+  72: [C: PG application_name prefix] static final String LISTEN = "flottila-listen@" + NODE;
+  193: [C: PG application_name prefix] * P3 (review r1): the names sit on the right connections — the session named {@code flottila-listen@<node>} is the one that
+  195: [C: PG application_name prefix] * {@code flottila-membership@<node>} ran the lease's statements and never a LISTEN. Swapping the two names fails here.
+platform/runtime/src/test/java/io/rail8/runtime/NodePoolWaitIT.java (3)
+  86: [C: PG application_name prefix] static final String INTAKE = "flottila-intake@" + NODE;
+  87: [C: PG application_name prefix] static final String WORK = "flottila-work@" + NODE;
+  339: [C: NOTIFY channel] observer.query("notify flottila_work, 'w1 test-sender * *'").execute().await();
+platform/runtime/src/test/java/io/rail8/runtime/PgPromotionLedgerIT.java (1)
+  264: [C: WAL message prefix] () -> execute(url, INTAKE, INTAKE, "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')"),
+platform/runtime/src/test/java/io/rail8/runtime/RestoreIT.java (1)
+  85: [C: test-only name] static final String BUCKET = "flottila-restore-it";
+platform/runtime/src/test/java/io/rail8/runtime/admin/AdminServerDiscardTest.java (2)
+  35: [C: HTTP header, stored as the audit actor] * {@code X-Flottila-Actor} is {@code unknown} as an absent one is; the remote is the client's address; a discard whose key has no
+  83: [C: HTTP header, stored as the audit actor] if (actor != null) req.header("X-Flottila-Actor", actor);
+platform/runtime/src/test/java/io/rail8/runtime/deploy/DeploymentsPollerLeaseTest.java (1)
+  60: [C: Valkey key prefix] * {@code flottila:poller:} prefix (the Valkey store's namespace, {@code ValkeyPollerLeasesIT}).
+platform/runtime/src/test/java/io/rail8/runtime/deploy/DeploymentsSecretsTest.java (3)
+  290: [C: test-only user, role, database; expectations of a NodeConfig default] .endpoint("drop", "sftp", "in", new JsonObject().put("user", "flottila").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
+  299: [C: test-only user, role, database; expectations of a NodeConfig default] assertEquals("flottila", options.get("user"), "the other options as written: " + options);
+  467: [C: test-only user, role, database; expectations of a NodeConfig default] .endpoint("drop", "sftp", "in", new JsonObject().put("user", "flottila").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
+platform/runtime/src/test/java/io/rail8/runtime/deploy/FlowHashTest.java (5)
+  78: [C: flow hash input] String text = "flottila-flow-hash 2\n"
+  93: [C: flow hash input] /** P2-02a (D-078): the text starts with the version line {@code flottila-flow-hash 2}; the yaml line is {@code yaml <sha256>}. */
+  103: [C: flow hash input] assertEquals("sha256:" + sha256("flottila-flow-hash 2\nyaml " + sha256("id: orders\n") + "\nendpoint orders-in doors {\"flow\":\"shop/orders\"}\n"), hash,
+  190: [C: flow hash input] String text = "flottila-flow-hash 2\n"
+  225: [C: flow hash input] assertEquals("sha256:" + sha256("flottila-flow-hash 2\nyaml " + sha256("id: invoice\n") + "\nfile flows/main.xsl " + sha256("main")
+platform/runtime/src/test/java/io/rail8/runtime/deploy/PackageDraft.java (2)
+  188: [C: package content digest input] * {@code flottila-package-content 1} and {@code file <path> <sha256>} for every file, sorted by path, each ended by {@code \n} —
+  192: [C: package content digest input] StringBuilder text = new StringBuilder("flottila-package-content 1\n");
+platform/runtime/src/test/java/io/rail8/runtime/deploy/S3ArchiveStoreIT.java (1)
+  41: [C: test-only name] static final String BUCKET = "flottila-archives-it";
+platform/runtime/src/test/java/io/rail8/runtime/deploy/S3ArchiveStoreTest.java (1)
+  42: [C: test-only name] ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet");
+platform/runtime/src/test/java/io/rail8/runtime/deploy/SecretsEqualityTest.java (1)
+  23: [C: test-only name] return Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "node-1", "RAIL8_DATA_DIR", "/tmp/flottila-secrets-equality");
+platform/runtime/src/test/java/io/rail8/runtime/deploy/SecretsTest.java (1)
+  106: [C: test-only name] env.put("RAIL8_DATA_DIR", "/tmp/flottila-secrets-test");
+platform/runtime/src/test/java/io/rail8/runtime/journal/JournalRecordFormatTest.java (3)
+  40: [C: HKDF info labels] * record is encrypted under HKDF-SHA256(tenant key, its salt, "flottila-journal-v1") — never under the tenant key itself —
+  96: [C: HKDF info labels] SecretKey k = hkdfSha256(tenantKey.getEncoded(), salt, "flottila-journal-v1");
+  136: [C: HKDF info labels] withDerived.init(Cipher.DECRYPT_MODE, hkdfSha256(tenantKey.getEncoded(), salt, "flottila-journal-v1"), new GCMParameterSpec(128, nonce));
+platform/runtime/src/test/java/io/rail8/runtime/journal/LostWorkAdminIT.java (2)
+  69: [C: HTTP header, stored as the audit actor] * answers 200 {@code {seq, auditId}}, writes one {@code audit} row whose actor is the {@code X-Flottila-Actor} header (absent:
+  196: [C: HTTP header, stored as the audit actor] if (actor != null) req.putHeader("X-Flottila-Actor", actor);
+platform/runtime/src/test/java/io/rail8/runtime/journal/MasterKeySourceEnvTest.java (2)
+  220: [C: test-only name] String file = MasterKeySource.fromEnv(Map.of(FILE, "/run/secrets/flottila-master")).toString();
+  226: [C: test-only name] assertTrue(file.contains("/run/secrets/flottila-master"), "a file source shows its path: " + file);
+platform/runtime/src/test/java/io/rail8/runtime/journal/NodeJournalIT.java (1)
+  183: [C: test-only name] env.put("RAIL8_S3_BUCKET", "flottila-archives");
+platform/runtime/src/test/java/io/rail8/runtime/journal/PgWorkSignalsIT.java (5)
+  58: [C: NOTIFY channel] * {@code flottila_work}. A node listens on a dedicated connection (relayed by {@link PgWire} {@code listenWire}, never the pool)
+  63: [C: NOTIFY channel] * <p>Witnesses: a raw observer session of the case's own, {@code LISTEN flottila_work}, records every payload in delivery order;
+  120: [C: NOTIFY channel] bounded(observer.query("LISTEN flottila_work").execute(), "the observer listens");
+  234: [C: NOTIFY channel] /** A NOTIFY of the case's own on {@code flottila_work}, committed when this returns. */
+  236: [C: NOTIFY channel] bounded(db.pool().preparedQuery("select pg_notify('flottila_work', $1)").execute(Tuple.of(payload)), "the NOTIFY " + payload);
+platform/runtime/src/test/java/io/rail8/runtime/journal/SchemaIT.java (1)
+  88: [C: test-only name] String marker = "FLOTTILA-PAYLOAD-MARKER-4c2-7d1e";
+platform/runtime/src/test/java/io/rail8/runtime/journal/TwoNodeWorkEventsIT.java (3)
+  207: [C: NOTIFY channel] * A raw session of the case's own, {@code LISTEN flottila_work}: every payload delivered on the channel, in delivery order —
+  215: [C: NOTIFY channel] o.query("LISTEN flottila_work").execute().await(10, TimeUnit.SECONDS);
+  438: [C: NOTIFY channel] assertTrue(a.pool.preparedQuery("select pg_notify('flottila_work', $1)").execute(Tuple.of(barrier))
+platform/runtime/src/test/java/io/rail8/runtime/journal/peer/PeerKnownAnswerTest.java (15)
+  30: [C: HKDF info labels] * nonce 0x60..0x7f). The fingerprint label is {@code INFO + " fingerprint"} with {@code INFO = "flottila-peer-v1"}
+  31: [C: HKDF info labels] * (PeerHandshake.java:35, :39) = {@code "flottila-peer-v1 fingerprint"}; the HKDF info is {@code "flottila-peer-v1"} (:114),
+  32: [C: HKDF info labels] * the proof label {@code "flottila-peer-v1 proof"} (:38). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
+  33: [C: HKDF info labels] * {@code "flottila-peer-v1 subkey"}, 32); the fingerprint is HMAC-SHA256(K_peer, label)[0..8] and the session keys HKDF over K_peer:
+  50: [C: HKDF info labels] * python3 -c "import hmac,hashlib;H=lambda k,m:hmac.new(k,m,hashlib.sha256).digest();prk=H(b'',bytes(range(32)));print(H(prk,b'flottila-peer-v1 subkey'+bytes([1])).hex())"
+  57: [C: HKDF info labels] * python3 -c "import hmac,hashlib;print(hmac.new(bytes.fromhex(SUB_K1),b'flottila-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
+  65: [C: HKDF info labels] * python3 -c "import hmac,hashlib;print(hmac.new(bytes(range(32)),b'flottila-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
+  92: [C: HKDF info labels] byte[] info = "flottila-peer-v1 subkey".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+  98: [C: HKDF info labels] * P5: the fingerprint a HELLO sends is HMAC-SHA256(K_peer, "flottila-peer-v1 fingerprint")[0..8]: not the master-keyed one of
+  174: [C: HKDF info labels] * HKDF-SHA256(salt = dialer nonce ‖ listener nonce, ikm = K_peer of K1, info "flottila-peer-v1", 128) split into dialer proof, listener
+  175: [C: HKDF info labels] * proof, dialer frames, listener frames; a proof = HMAC(direction proof key, "flottila-peer-v1 proof" ‖ dialer HELLO payload ‖
+  186: [C: HKDF info labels] * sub = lambda k: hkdf(b'', k, b'flottila-peer-v1 subkey', 32)            # SUB_K1, SUB_K2
+  187: [C: HKDF info labels] * fp = lambda k: H(sub(k), b'flottila-peer-v1 fingerprint')[:8]          # FP_K1, FP_K2
+  192: [C: HKDF info labels] * keys = hkdf(dn + ln, sub(k1), b'flottila-peer-v1', 128)
+  194: [C: HKDF info labels] *     f = struct.pack('>I', 57) + bytes([2]) + struct.pack('>q', 1) + H(pk, b'flottila-peer-v1 proof' + dh + lh)
+platform/runtime/src/test/java/io/rail8/runtime/journal/peer/ScriptedPeer.java (7)
+  35: [C: HKDF info labels] * HKDF-SHA256(salt empty, ikm master, info "flottila-peer-v1 subkey", 32); fingerprint = HMAC-SHA256(K_peer, "flottila-peer-v1
+  36: [C: HKDF info labels] * fingerprint")[0..8]; keys = HKDF-SHA256(salt dialer nonce ‖ listener nonce, ikm K_peer, info "flottila-peer-v1", 128) = dialer
+  37: [C: HKDF info labels] * proof, listener proof, dialer frames, listener frames; a proof = HMAC(its direction's proof key, "flottila-peer-v1 proof" ‖
+  147: [C: HKDF info labels] return hkdf(new byte[0], master.getEncoded(), ascii("flottila-peer-v1 subkey"), 32);
+  152: [C: HKDF info labels] return Arrays.copyOf(hmac(subkey(master), ascii("flottila-peer-v1 fingerprint")), 8);
+  158: [C: HKDF info labels] byte[] k = hkdf(salt, subkey(master), ascii("flottila-peer-v1"), 128);
+  171: [C: HKDF info labels] .put(hmac(proofKey, ascii("flottila-peer-v1 proof"), dialerHello, listenerHello));
+platform/runtime/src/test/java/io/rail8/runtime/lease/ValkeyPollerLeasesIT.java (4)
+  22: [C: Valkey key prefix] * {@code flottila:poller:<key>} whose value is the owner and whose ttl is set in milliseconds ({@code SET .. PX} to take,
+  26: [C: Valkey key prefix] * given with {@code flottila:poller:} (the key the node gives is {@code <package>/<flow>/<endpoint uri>}).
+  30: [C: Valkey key prefix] static final String PREFIX = "flottila:poller:";
+  72: [C: Valkey key prefix] * The lease is the key {@code flottila:poller:<key>} holding the owner, with a millisecond ttl: 45.678 s taken with
+platform/runtime/src/test/java/io/rail8/runtime/node/CpuSamplerIT.java (2)
+  79: [C: JFR event names] * {@code io.flottila.Step} events and, every read cycle, dumps it and feeds the window the previous cycle closed into a {@link StepCpu}
+  741: [C: JFR event names] @Name("io.flottila.Step")
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigJournalTest.java (2)
+  38: [C: test-only name] JournalConfig j = NodeConfig.from(with(env(), "RAIL8_DATA_DIR", "/srv/flottila")).journal();
+  40: [C: test-only name] () -> assertEquals(Path.of("/srv/flottila", "journal"), j.dir(), "RAIL8_JOURNAL_DIR defaults to <dataDir>/journal"),
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigPeerTest.java (2)
+  54: [C: test-only name] e.put("RAIL8_PEER_HOST", "flottila-1.internal");
+  57: [C: test-only name] assertEquals(new PeerConfig("10.1.2.3", 9083, "flottila-1.internal", Duration.ofSeconds(5), 32), NodeConfig.from(e).peer());
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigPoolWaitTest.java (8)
+  100: [C: test-only user, role, database; expectations of a NodeConfig default] defaulted.put("6-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16));
+  101: [C: test-only user, role, database; expectations of a NodeConfig default] defaulted.put("8-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty()));
+  102: [C: test-only user, role, database; expectations of a NodeConfig default] defaulted.put("9-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  104: [C: test-only user, role, database; expectations of a NodeConfig default] defaulted.put("10-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
+  105: [C: test-only name] Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7));
+  109: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  118: [C: test-only user, role, database; expectations of a NodeConfig default] return new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  174: [C: test-only user, role, database; expectations of a NodeConfig default] accepted.put("6-argument defaults PT5S / 1024", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16));
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigPoolsInProcessTest.java (3)
+  30: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
+  46: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
+  55: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "pw", 12, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigPoolsTest.java (11)
+  64: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg six = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
+  65: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg eight = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty());
+  66: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg nine = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  96: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
+  97: [C: test-only name] Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7);
+  106: [C: test-only user, role, database; expectations of a NodeConfig default] assertDoesNotThrow(() -> new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 4, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  117: [C: test-only user, role, database; expectations of a NodeConfig default] return new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+  129: [C: test-only user, role, database; expectations of a NodeConfig default] refused.put("6-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1));
+  130: [C: test-only user, role, database; expectations of a NodeConfig default] refused.put("8-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1,
+  132: [C: test-only user, role, database; expectations of a NodeConfig default] refused.put("9-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1,
+  150: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig six = assertDoesNotThrow(() -> inProcess(new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 2)),
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConfigTest.java (22)
+  63: [C: deploy names and default paths] () -> assertEquals(Path.of("/var/lib/flottila"), c.dataDir()),
+  66: [C: test-only user, role, database; expectations of a NodeConfig default] () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 21), c.pg(), "21 = 5 intake + 16 work (F-33)"),
+  79: [C: test-only name] env.put("RAIL8_DATA_DIR", "/srv/flottila");
+  99: [C: test-only name] () -> assertEquals(Path.of("/srv/flottila"), c.dataDir()),
+  222: [C: test-only name] return with(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "s3"), "RAIL8_S3_BUCKET", "flottila-archives"), "RAIL8_S3_REGION", "eu-central-1");
+  227: [C: test-only name] NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/flottila"));
+  230: [C: test-only name] () -> assertEquals(Path.of("/srv/flottila/archives"), c.archives().dir(), "RAIL8_ARCHIVE_DIR defaults to <dataDir>/archives"),
+  232: [C: deploy names and default paths] assertEquals(Path.of("/var/lib/flottila/archives"), NodeConfig.from(minimal()).archives().dir(), "under the default data dir too");
+  236: [C: test-only name] NodeConfig read = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/flottila"));
+  239: [C: test-only name] assertEquals(Path.of("/srv/flottila/archives"), built.archives().dir(), "under the data dir it was given");
+  249: [C: test-only name] () -> assertEquals("flottila-archives", s3.bucket()),
+  253: [C: test-only user, role, database; expectations of a NodeConfig default] () -> assertEquals("flottila", s3.prefix(), "RAIL8_S3_PREFIX defaults to flottila"),
+  274: [C: test-only name] () -> assertEquals("flottila-archives", s3.bucket()),
+  329: [C: test-only name] assertTrue(s3.toString().contains("flottila-archives"), "the rest still shows: " + s3);
+  330: [C: test-only name] assertTrue(c.toString().contains("flottila-archives"), "the config's line shows its S3 settings, redacted: " + c);
+  389: [C: test-only name] NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "redis://flottila:" + password + "@valkey.internal:6379"));
+  390: [C: test-only name] assertEquals(Optional.of(URI.create("redis://flottila:" + password + "@valkey.internal:6379")), c.leases().valkey(),
+  400: [C: deploy names and default paths] () -> NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "http://flottila:" + password + "@valkey.internal:6379")));
+  588: [C: test-only name] NodeConfig built = new NodeConfig("node-1", "ci", new AdminServer.Config("127.0.0.1", 0, Optional.empty()), Path.of("/tmp/flottila"),
+  589: [C: test-only user, role, database; expectations of a NodeConfig default] Duration.ofSeconds(10), 64 * MIB, new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16),
+  590: [C: test-only name] new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), new NodeConfig.Archives(NodeConfig.Archives.Store.DIR, Path.of("/tmp/flottila/archives")),
+  752: [C: test-only user, role, database; expectations of a NodeConfig default] assertEquals(NodeConfig.Pg.Durability.LOCAL, new NodeConfig.Pg("db.internal", 5432, "flottila", "flottila", "", 4).durability());
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConnectOptionsCacheLimitTest.java (1)
+  16: [C: test-only name] static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7);
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeConnectOptionsTest.java (9)
+  28: [C: test-only name] static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7);
+  35: [C: test-only name] assertEquals("flottila_orders", options.getDatabase(), "RAIL8_PG_DATABASE");
+  68: [C: test-only name] static final NodeConfig.Pg TLS = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7,
+  69: [C: test-only name] NodeConfig.Pg.SslMode.VERIFY_FULL, Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.HA);
+  73: [C: PG application_name prefix] * server, the credentials, the session pins and TLS — plus {@code application_name} {@code flottila-<role>@<nodeId>}, so a
+  83: [C: PG application_name prefix] () -> assertEquals("flottila-" + role + "@node-7", startup.get("application_name"), "the session names its role and its node: " + startup),
+  86: [C: test-only name] () -> assertEquals("flottila_orders", options.getDatabase(), "RAIL8_PG_DATABASE"),
+  96: [C: test-only name] () -> assertTrue(ssl != null && ssl.getTrustOptions() instanceof PemTrustOptions pem && pem.getCertPaths().equals(List.of("/etc/flottila/pg-ca.pem")),
+  102: [C: PG application_name prefix] expected.getJsonObject("properties").put("application_name", "flottila-" + role + "@node-7");
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeJdbcUrlTest.java (4)
+  29: [C: test-only name] Path ca = Path.of("/etc/flottila/ca dir/a&b=c?d%20e+f#g.pem");
+  42: [C: test-only name] Path ca = Path.of("/etc/flottila/ca.pem");
+  43: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg verifyCa = new NodeConfig.Pg("db.internal", 5432, "flottila", "node", "pw", 4, NodeConfig.Pg.SslMode.VERIFY_CA, Optional.of(ca));
+  44: [C: test-only user, role, database; expectations of a NodeConfig default] NodeConfig.Pg plain = new NodeConfig.Pg("localhost", 5432, "flottila", "node", "pw", 4);
+platform/runtime/src/test/java/io/rail8/runtime/node/NodeTest.java (1)
+  118: [C: test-only name] env.put("RAIL8_S3_BUCKET", "flottila-archives");
+platform/runtime/src/test/java/io/rail8/runtime/node/PgDurabilityTest.java (2)
+  141: [C: test-only name] @CsvSource({"intake", "flottila_ha"})
+  231: [C: test-only user, role, database; expectations of a NodeConfig default] Arbitraries.of("intake", "flottila"),
+platform/runtime/src/test/java/io/rail8/runtime/node/PgTlsIT.java (2)
+  53: [C: test-only name] * {@code db.flottila.test}. The admin channel is psql over the container's local socket (trust), independent of TLS. A third,
+  58: [C: test-only name] static final String MISNAMED_HOST = "db.flottila.test";
+platform/runtime/src/test/java/io/rail8/runtime/node/TestCertificates.java (1)
+  32: [C: test-only name] keytool(home, "-genkeypair", "-alias", "ca", "-keyalg", "EC", "-groupname", "secp256r1", "-dname", "CN=Flottila FIX-146 " + name,
+platform/schemas/src/main/java/io/rail8/schemas/Package.java (2)
+  512: [C: package content digest input] * SHA-256 over the UTF-8 lines {@code flottila-package-content 1} and {@code file <path> <sha256>} for every regular file below
+  524: [C: package content digest input] digest.update("flottila-package-content 1\n".getBytes(StandardCharsets.UTF_8));
+platform/schemas/src/main/java/io/rail8/schemas/Schemas.java (1)
+  42: [C: schema $id URN and base URI] .setDraft(Draft.DRAFT202012).setBaseUri("urn:flottila:schema:").setOutputFormat(OutputFormat.Basic));
+platform/schemas/src/main/resources/schemas/endpoint.schema.json (1)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:endpoint:1",
+platform/schemas/src/main/resources/schemas/flow.schema.json (1)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:flow:1",
+platform/schemas/src/main/resources/schemas/folder.schema.json (1)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:folder:1",
+platform/schemas/src/main/resources/schemas/lock.schema.json (2)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:lock:1",
+  5: [C: package content digest input] "description": "The exact version and content digest of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'flottila-
+platform/schemas/src/main/resources/schemas/package.schema.json (1)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:package:1",
+platform/schemas/src/main/resources/schemas/test.schema.json (1)
+  3: [C: schema $id URN and base URI] "$id": "urn:flottila:schema:test:1",
+platform/schemas/src/test/java/io/rail8/schemas/PackageDependenciesTest.java (3)
+  34: [C: package content digest input] * SHA-256 over the lines {@code flottila-package-content 1} and {@code file <path> <sha256>} per regular file, sorted by its
+  373: [C: package content digest input] * {@code Package.content(dir)}: {@code sha256:} over {@code flottila-package-content 1} and one {@code file <path> <sha256>} line
+  388: [C: package content digest input] StringBuilder text = new StringBuilder("flottila-package-content 1\n");
+platform/schemas/src/test/java/io/rail8/schemas/SchemasTest.java (1)
+  23: [C: schema $id URN and base URI] assertEquals("urn:flottila:schema:" + schema.kind() + ":1", json.getString("$id"));

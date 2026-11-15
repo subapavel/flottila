@@ -2,7 +2,7 @@
 ## Build
 - Agent files (logs, diffs, scratch, batch marker) live in `agent/work/` (FIX-111), outside every Maven `target/` (`mvn clean`).
   Reviewer diff = `git diff <packet Base> -- . ':!agent' ':!.claude'`: red tests are committed at approval, absent from `git status`.
-- `-rf :<module>` after a failed reactor fails dependency resolution (nothing installed): rerun whole, or `-Dmaven.test.failure.ignore=true`. Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and components need only `-pl flottila-api,flottila-testkit,<module>`.
+- `-rf :<module>` after a failed reactor fails dependency resolution (nothing installed): rerun whole, or `-Dmaven.test.failure.ignore=true`. Always `-am`: `-pl :flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and components need only `-pl :flottila-api,:flottila-testkit,<module>`.
 - `verify -Pit` needs Docker + native Postgres (die between calls: start detached, NOTES "Build and VM"; ~31 "find a Docker" errors = dockerd down).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
@@ -14,17 +14,17 @@
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
 - Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins; killers = the `-q` log's `[ERROR]   ` lines): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
-  `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
+  `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl :flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
 - FlowBuilder's default intake (2-arg SequentialIntake) hands nothing off: a test that waits for a run after `accept` needs `.workers(reg).intake(new SequentialIntake(store, queue, reg, node))` (CORE-14a). Pg `work.available_at` gates every claim.
 - Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`; `find -prune .. -delete` deletes NOTHING (find warns): list, then `xargs rm`.
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify` (never `install` there: it puts HEAD jars in ~/.m2, bench then needs a tree install). Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
-- Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
+- Scoped PIT `-pl :flottila-api,:flottila-testkit,:flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl :flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
 - `dependency:analyze` (plugin 3.8.1) dies on Java 25 classes ("Unsupported class file major version 69"): `/opt/temurin-25/bin/jdeps -verbose:class -cp <build-classpath> target/classes | grep <pkg>` names the jar per class (CORE-5b1 r2). A test-author building in the same tree deletes surefirebooter jars under you: run loops in a scratch copy.
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
-  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a). Disk: node ITs need >= 16 GiB free in /tmp (`df /tmp`).
+  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!:flottila-bench'` (whole reactor, ~7 min, CORE-4a). Disk: node ITs need >= 16 GiB free in /tmp (`df /tmp`).
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API only shows with `/opt/temurin-25/bin/javap`. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
 - *HeapTest (-Xmx48m fork, G1 1 MiB regions): a 1 MiB + header array spans TWO humongous regions; a red run by the test-author's launcher is not the fork
@@ -53,7 +53,7 @@
   the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause; on a platform thread it blocks on a latch.
 - P2-16a: Pg ITs save every message with partition key "K-1" ("keyed" in test names = dedupe key): a per-key xact lock blocks every held-COMMIT
   fixture. `(key is null or (select true from pg_advisory_xact_lock(..)))` in a WHERE runs the lock in the same statement.
-- jqwik keeps a failing sample in the tracked `flottila-core/.jqwik-database` and replays it first (SAMPLE_FIRST): one property killing EVERY mutant = a real bug sample (P2-16a). `git checkout` the file before a diff. Flakes: FlowWorkerOrderingPropertyTest:182 (FIX-155).
+- jqwik keeps a failing sample in the tracked `platform/core/.jqwik-database` and replays it first (SAMPLE_FIRST): one property killing EVERY mutant = a real bug sample (P2-16a). `git checkout` the file before a diff. Flakes: FlowWorkerOrderingPropertyTest:182 (FIX-155).
 - Vert.x 5.1.10 client (sources: `mvn dependency:get -Dartifact=io.vertx:vertx-core:5.1.10:jar:sources`, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
@@ -76,7 +76,7 @@
   `close()` = shutdown(0) flushes first (also via channel.close: VertxHandler.writeClose): a peer that never reads keeps it open, no closeHandler. FrameRelay pump: a WRITE failure is blamed on its own fromSide (PeerProtocolTest:767 LISTENER).
   Abort (r1c, PeerLink.abort): `((NetSocketInternal) s).channelHandlerContext()` is VertxHandler's ctx, `ctx.close()` skips the flush; SO_LINGER 0 = `ctx.channel().config().setOption(..)`, THROWS on a closed channel
   (guard isOpen). Netty close fails pending writes BEFORE channelInactive (a write waiter wakes before closeHandler). Linux close with unread rx sends RST anyway; a FIN close leaves FIN_WAIT2 in /proc/net/tcp. PeerLink `hold()` (CORE-5b1): the chunk in hand still delivers every frame: a pause case sends its witness in a read of its own (`allRead` + 3x `onLoop`).
-- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
+- `-pl :flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !:flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
@@ -100,7 +100,7 @@
 - Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
 - Tests outside allowed paths: scratch copy, hand its path back (FIX-66); subclass a packet test for its fixtures (P2-02b). Red fixtures can
   carry bugs (P1-09k2): check the fixture first, fix with a one-line reason (FIX-109: an assert after a hold's `release()` in `finally`).
-- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
+- Core mutants: `-pl :flottila-api,:flottila-testkit,:flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl :flottila-runtime -am -o
   test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured

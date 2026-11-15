@@ -1,0 +1,13 @@
+diff --git a/.claude/agent-memory/implementer/MEMORY.md b/.claude/agent-memory/implementer/MEMORY.md
+index dd05fb3..7f943ba 100644
+--- a/.claude/agent-memory/implementer/MEMORY.md
++++ b/.claude/agent-memory/implementer/MEMORY.md
+@@ -76,7 +76,7 @@
+   `close()` = shutdown(0) flushes first (also via channel.close: VertxHandler.writeClose): a peer that never reads keeps it open, no closeHandler. FrameRelay pump: a WRITE failure is blamed on its own fromSide (PeerProtocolTest:767 LISTENER).
+   Abort (r1c, PeerLink.abort): `((NetSocketInternal) s).channelHandlerContext()` is VertxHandler's ctx, `ctx.close()` skips the flush; SO_LINGER 0 = `ctx.channel().config().setOption(..)`, THROWS on a closed channel
+   (guard isOpen). Netty close fails pending writes BEFORE channelInactive (a write waiter wakes before closeHandler). Linux close with unread rx sends RST anyway; a FIN close leaves FIN_WAIT2 in /proc/net/tcp. PeerLink `hold()` (CORE-5b1): the chunk in hand still delivers every frame: a pause case sends its witness in a read of its own (`allRead` + 3x `onLoop`).
+-- `-pl :rail8-cli`/`rail8-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !:rail8-bench` fails at archtest (no artifact, after all bench needs): exclude `!rail8-archtest`, `cmp` target vs ~/.m2 jars.
++- `-pl :rail8-cli`/`:rail8-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !:rail8-bench` fails at archtest (no artifact, after all bench needs): exclude `!rail8-archtest`, `cmp` target vs ~/.m2 jars.
+ - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
+   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
+   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).

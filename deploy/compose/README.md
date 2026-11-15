@@ -6,15 +6,15 @@ A demo stack for GATE checks 1-2 (D-085), not production: the node runs `FLOTTIL
 `kafka` profile, off by default and not wired: a plain `up` does not start it.
 
 ```sh
-mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am   # the jars the node image and `deploy` use
+mvn -B -ntp -q package -DskipTests -pl :flottila-runtime,:flottila-cli -am   # the jars the node image and `deploy` use
 cd deploy/compose
 export FLOTTILA_ADMIN_TOKEN=$(openssl rand -hex 16)    # required: compose refuses to start without it
 export FLOTTILA_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; FLOTTILA_S3_ACCESS_KEY defaults to flottila
 docker compose up -d --build                           # returns once the node is healthy
 docker compose ps -a deploy                            # exited (0) after the demo is deployed
 curl -H "Authorization: Bearer $FLOTTILA_ADMIN_TOKEN" localhost:8081/admin/packages
-curl -X POST --data-binary @../../packages/demo/fixtures/sample-invoice.xml localhost:8080/in        # flow invoice-sync: the reply is the ACK
-curl -X POST --data-binary @../../packages/demo/fixtures/sample-invoice.xml localhost:8082/invoice/async   # flow invoice-async: 202 after the durable save
+curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8080/in        # flow invoice-sync: the reply is the ACK
+curl -X POST --data-binary @../../examples/demo/fixtures/sample-invoice.xml localhost:8082/invoice/async   # flow invoice-async: 202 after the durable save
 docker compose --profile history up -d clickhouse      # optional
 docker compose --profile kafka up -d kafka             # optional: the event-broker add-on
 docker compose --profile history --profile kafka down -v   # stop and remove every volume
@@ -41,6 +41,6 @@ before the first `up` after the upgrade; it deletes every volume of this demo st
   Drop a file into the inbox (it reaches the echo transformed; `docker compose logs echo`):
 
   ```sh
-  docker compose cp ../../packages/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
+  docker compose cp ../../examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
   # or over SFTP from the sftp container: docker compose exec sftp sftp demo@localhost (password above), then: put <file> inbox
   ```

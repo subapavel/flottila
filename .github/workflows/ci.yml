@@ -1,7 +1,7 @@
 # CI gates — docs/WORKFLOW.md §4. Every push to main runs dco and build (unit + Testcontainers
 # integration tests in one job, so the coverage floors count the ITs — D-030); bench and mutation
 # run nightly and on demand (workflow_dispatch).
-# build: JaCoCo floors halt `mvn verify` (root pom), ci/coverage_check.py refuses a decrease beyond
+# build: JaCoCo floors halt `mvn verify` (platform/pom.xml), ci/coverage_check.py refuses a decrease beyond
 # the 2 pp noise band (D-029) against the baseline committed at the previous main commit. bench: bench/run.sh (P0-10) exits
 # non-zero on a > 20 % regression against bench/RESULTS.md. mutation: PIT on api + core.
 name: ci
@@ -70,10 +70,10 @@ jobs:
         run: mvn -B -ntp verify -Pit ${{ matrix.image-args }}
       - name: The demo package validates through the launcher (D-079)
         if: matrix.image-args == ''
-        run: bin/flottila validate packages/demo
+        run: bin/flottila validate examples/demo
       - name: The demo package's flow tests pass through the launcher (D-080)
         if: matrix.image-args == ''
-        run: bin/flottila test packages/demo
+        run: bin/flottila test examples/demo
       - name: Coverage gate self-test
         if: matrix.image-args == ''
         run: python3 -m unittest ci.test_coverage_check
@@ -122,7 +122,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       - name: Build the jars the node image and the deploy one-shot use
-        run: mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am
+        run: mvn -B -ntp -q package -DskipTests -pl :flottila-runtime,:flottila-cli -am
       - name: Start the stack and wait for /health (60 s bound)
         working-directory: deploy/compose
         run: |
@@ -198,9 +198,9 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       # Scoped to api + core: -DskipTests would make pitest-maven skip silently, so tests are compiled
-      # the normal way; the ≥ 80 % threshold (root pom) fails the job below the floor.
+      # the normal way; the ≥ 80 % threshold (platform/pom.xml) fails the job below the floor.
       - name: PIT on api and core
-        run: mvn -B -ntp -pl flottila-api,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage
+        run: mvn -B -ntp -pl :flottila-api,:flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage
       - uses: actions/upload-artifact@v4
         with:
           name: pit-reports
