@@ -113,7 +113,13 @@ class UnitWeightsPropertyTest {
         });
   }
 
-  /** How one run ended: its results, what it threw, its steps, and the frames at each probe. */
+  /**
+   * How one run ended: its results, what it threw, its steps, and the frames at each probe. Outcomes and results are
+   * compared by {@code equals} and printed by {@code String.valueOf} in the failure's description: a run's results can
+   * nest a list per level, and AssertJ's representation formats a nested list on one line and then on several at every
+   * level, so its message for a failure on them takes time exponential in the depth and hangs the fork (F-99; #117's
+   * thread dump of a failing seed holds 68 nested {@code smartFormat} frames).
+   */
   record Ended(List<Object> results, Object thrown, long steps, long units, List<Integer> frames) {
     /** The run without its frames, which differ between stacks. */
     List<Object> outcome() {
@@ -182,11 +188,15 @@ class UnitWeightsPropertyTest {
   private static void modes(long seed, Supplier<Program> program) {
     Ended conservative = check(seed, Compiler.compile(program.get(), 0, CompileMode.CONSERVATIVE), "CONSERVATIVE");
     Ended unspecialised = check(seed, Compiler.compile(program.get(), 0, CompileMode.OPTIMISED, 0), "OPTIMISED under cap 0");
-    assertThat(unspecialised.outcome()).as("seed %d: the optimised reference run under cap 0 against the conservative one", seed).isEqualTo(conservative.outcome());
+    assertThat(unspecialised.outcome().equals(conservative.outcome()))
+        .as("seed %d: the optimised reference run under cap 0, %s, equals the conservative one, %s", seed, unspecialised.outcome(), conservative.outcome())
+        .isTrue();
 
     Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
     Ended specialised = check(seed, optimised, "OPTIMISED");
-    assertThat(specialised.results()).as("seed %d: the results of the optimised reference run against the conservative one's", seed).isEqualTo(conservative.results());
+    assertThat(specialised.results().equals(conservative.results()))
+        .as("seed %d: the results of the optimised reference run, %s, equal the conservative one's, %s", seed, specialised.results(), conservative.results())
+        .isTrue();
     assertThat(String.valueOf(specialised.thrown())).as("seed %d: what the optimised reference run threw against the conservative one", seed).isEqualTo(String.valueOf(conservative.thrown()));
     assertThat(specialised.frames().size()).as("seed %d: the probes of the optimised reference run against the conservative one's", seed).isEqualTo(conservative.frames().size());
     assertThat(specialised.steps()).as("seed %d: the steps of the optimised reference run against the conservative one's", seed).isLessThanOrEqualTo(conservative.steps());
@@ -230,7 +240,9 @@ class UnitWeightsPropertyTest {
       assertThat(run.frames())
           .as("seed %d, %s, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, mode, limit, callFree, starter, bound)
           .allSatisfy(frames -> assertThat((long) frames).isLessThan(bound));
-      assertThat(run.outcome()).as("seed %d, %s, U_f %d: the run against the default stack's", seed, mode, limit).isEqualTo(reference.outcome());
+      assertThat(run.outcome().equals(reference.outcome()))
+          .as("seed %d, %s, U_f %d: the run, %s, equals the default stack's, %s", seed, mode, limit, run.outcome(), reference.outcome())
+          .isTrue();
       assertThat(run.units()).as("seed %d, %s, U_f %d: units after the run", seed, mode, limit).isZero();
     }
     assertThat(reference.units()).as("seed %d, %s: units after the reference run", seed, mode).isZero();
