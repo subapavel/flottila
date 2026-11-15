@@ -38,7 +38,7 @@ Rules:
   its tail or the failing section, never the whole log. Run `mvn -B -ntp verify` (and the checks
   the packet names) before handing back. Report observed results only, with the evidence words
   `VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`.
-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/ARCHITECTURE.md`,
+- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/ARCHITECTURE.md`,
   `docs/DECISIONS.md`, `.claude/`. Do not start other agents. Do not change ArchUnit rules or pom
   module structure unless the packet says so.
 - If the task cannot be completed as specified, stop and hand back what you have, marked partial,

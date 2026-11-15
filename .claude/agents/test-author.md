@@ -29,7 +29,7 @@ Rules:
   the failing section. Report the observed red, never an assumed one.
 - Library and test-framework APIs: Context7 MCP tools first, then `javap -cp <jar>` on the jar
   under `~/.m2`. Never guess.
-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/`, `.claude/`. Do not start other
+- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/`, `.claude/`. Do not start other
   agents.
 
 Self-check before every hand-back (what the reviewer will check; a FAIL that repeats one of these

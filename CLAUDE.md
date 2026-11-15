@@ -48,7 +48,7 @@ build; this file holds the rules that keep the code and the way of working align
 - Clock, timers and id generation are injected through `Runtime`. No static singletons.
 - Dependencies: Apache 2.0, MIT, BSD, MPL 2.0, EPL only. AGPL, GPL, BSL, SSPL → `ISSUE`, never
   linked. SAP JCo is `provided` scope and never redistributed.
-- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited.
+- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited. A message's log has no per-message cap (D-147); its memory is bounded by the platform's record buffer, which stops intake when full (OPS-2, pending).
 
 ## Tests (TDD from day 1)
 
@@ -80,7 +80,7 @@ build; this file holds the rules that keep the code and the way of working align
   guess an API from memory.
 - One task = one commit, Conventional Commits, direct to `main`, green before push. Format and
   trailers in `docs/WORKFLOW.md`.
-- After every task: PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
+- After every task: docs/PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
   the reviewer agent. A task is `done` only with `review: PASS`.
 - Decisions: reversible → `docs/DECISIONS.md`; expensive-to-reverse → design it, mark it
   `draft — review at hand-over`; money, credentials, licences, a missed gate → `issues/ISSUE-<n>.md`
