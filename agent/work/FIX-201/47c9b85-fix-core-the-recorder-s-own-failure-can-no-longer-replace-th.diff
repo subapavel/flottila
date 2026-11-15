@@ -1,0 +1,307 @@
+COMMIT 47c9b857664c33e8b3471c9ace94113b60a86d2a
+fix(core): the recorder's own failure can no longer replace the throwable it rethrows
+
+FIX-133 widened this catch to Throwable so a step that threw an Error would
+leave a FAILED row. The review that passed it found what that exposed: the
+catch records the row and only then rethrows, so a recording that throws
+replaces the throwable it was about to rethrow. An Error could leave the
+recorder as the InterruptedException a sneaky Trail.add await throws, and
+Parking:49 would park it -- against D-098, and against D-111's own promise
+that the original is rethrown unchanged. The record call now sits in its own
+try. No control flow moved: the guard stays, throw failure stays last, and it
+still throws the same object.
+
+Two JDK facts shape the catch. addSuppressed(self) throws
+IllegalArgumentException, so the attach is guarded on identity -- and that is
+not hypothetical, because a toString() that does "throw this" makes the
+recording failure the original. And addSuppressed is a silent no-op when
+suppression is disabled, so the WARNING is the only report that case gets.
+That WARNING deliberately carries no throwable, only its class, the message id
+and the step: a handler would have to format it, and formatting is what threw
+in the first place. Nothing in this catch may be able to replace the original.
+The cost is the recording failure's message and stack, and the comment says so
+rather than leaving it to be discovered. A log handler that itself throws
+remains FIX-127's, contained node-wide rather than class by class.
+
+Review r1 FAILed this, on the only thing that could have mattered. Narrowing
+the new catch from Throwable back to RuntimeException left all four cases
+green, because every one of them made recording fail with an
+IllegalStateException. The widening that IS the fix was untested -- FIX-133's
+defect reintroduced one method deeper, in the commit that was meant to close
+that family. Two cases now pin it: a toString() that sneaky-throws a checked
+InterruptedException, and one that throws a StackOverflowError. The second is
+not redundant; under catch (Exception) it is the only one that dies.
+
+r1's second reason was acceptance evidence that my own instruction destroyed.
+I told the implementer to overwrite the green log, which erased the unfiltered
+module run it had already done, so the reviewer could not confirm it from disk
+and said so instead of taking my word. Logs are appended now, section by
+section.
+
+All five of the reviewer's mutants were run by the verifier and killed, with
+each mutated line quoted back from the file before its run and cmp clean after
+each restore. One result corrects both of us: dropping the identity guard is
+killed ONLY by the self-suppression fixture. The reviewer predicted case 1
+would kill it too and I agreed; we were both wrong, because every other case's
+recording failure is a different object, so addSuppressed succeeds with or
+without the guard. That single case is the entire guard against an
+IllegalArgumentException leaving in place of the original.
+
+Evidence: RecorderTest 20/20, flottila-core 517 tests with zero failures,
+errors and skips, and the integrated gate run shared with FIX-139 -- clean
+verify -Pit exit 0, BUILD SUCCESS, 12:00, 17 modules SUCCESS, every Tests run
+line at zero, no blocked platform thread, coverage "no decrease" with core at
+99.6 line and 99.5 branch.
+
+Task: FIX-140
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index 5479bbd..fab3691 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1421,3 +1421,19 @@ The guard earned itself inside the hour: writing FIX-143's row I put a raw pipe
+ reported `BACKLOG.md:228: expected 6 cells, found 7` against my own text. That is the FIX-132 defect, by me, caught.
+ VERIFIED_PASS: 19/19 OK, guard exit 0 on the real ledgers; integrated reactor `clean verify -Pit` exit 0 BUILD SUCCESS
+ 12:00, 17 modules, every `Tests run:` at 0 failures, coverage "no decrease". D-054: class A, rounds 2.
++
++## 2026-11-14 — FIX-140 Recorder's own recording can no longer replace the throwable it rethrows — done, review PASS r2
++The catch widened by FIX-133 recorded the FAILED row and only then rethrew, so a recording that threw REPLACED the
++original: an `Error` could leave as the `InterruptedException` a sneaky `Trail.add` await throws, and `Parking:49` would
++park it, against D-098. The `record` call is now in its own try; nothing in the catch can change what leaves. +10/-1.
++Review r1 FAILed on the thing that matters: narrowing the new `catch (Throwable)` back to `catch (RuntimeException)` left
++all four cases GREEN, because every one of them failed through an `IllegalStateException`. The widening that IS the fix
++was untested — FIX-133's own defect, reintroduced one method deeper. Cases 5 and 6 fix that with a `toString()` that
++sneaky-throws a checked `InterruptedException` and one that throws a `StackOverflowError`; the second is not redundant,
++because under `catch (Exception)` only it dies. r1 also caught missing acceptance evidence that MY instruction destroyed:
++I told the implementer to overwrite the green log, which erased the module run. Logs are appended now, not overwritten.
++`addSuppressed(self)` throws, so the attach is guarded by identity — and mutant M1, dropping that guard, is killed ONLY by
++the fixture whose `toString()` does `throw this`. Both the reviewer's prediction and mine said case 1 would kill it too;
++both were wrong, since every other case's recording failure is a different object. That one case is the whole guard.
++VERIFIED_PASS: 20/20 filtered, core 517/0/0/0, all 5 reviewer mutants killed by the verifier, `cmp` clean after each;
++integrated `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease. D-054: class B, rounds 2.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index a4295cc..374bff7 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -222,7 +222,7 @@ row, never lowers it mid-task.
+ | FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | ready | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | reviewer FIX-71 r4 |
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | ready | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | FIX-71 r5 test-author 2026-11-14 |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | done | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts; done 2026-11-14, review PASS r2 after a FAIL for a case that could not fail under any mutation (aligned separators over an all-good fixture) plus two reviewer-named surviving mutants and a dead clause, all closed; 19 cases, all 7 reviewer mutants KILLED by the verifier with the pipe-counting one dying to both FIX-54-shaped cases; one mutant result was first falsified by a stale `.pyc` of equal byte length, now a NOTES rule; the guard then caught a raw pipe in the architect's own FIX-143 row within the hour; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-139-red.log, -green.log, -verify.log, -mutants.log and integrated3-verify.log |
+-| FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | ready | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14 |
++| FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | done | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14; done 2026-11-14, review PASS r2 after a FAIL that found the fix itself untested - narrowing the new catch back to `RuntimeException` left all four cases green because each failed through an `IllegalStateException`, so cases 5 and 6 were added with a `toString()` sneaky-throwing a checked `InterruptedException` and one throwing a `StackOverflowError` (only the latter dies under `catch (Exception)`); r1 also caught acceptance evidence destroyed by the architect's own instruction to overwrite the log, now appended; 20/20 filtered, core 517 tests 0 failures, all 5 reviewer mutants KILLED by the verifier with M1 killed ONLY by the self-suppression fixture, against both the reviewer's prediction and the architect's; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-140-red.log, -green.log, -mutants.log and integrated3-verify.log |
+ | FIX-141 | [A] `Producers.java:49` catches `RuntimeException` only around `p.close()` in the close loop, so an `Error` from one producer abandons the loop: the remaining producers are never asked to close and their futures never join `settled`. Found by F-30 while tracing FIX-136 and deliberately left out of it, because this is a shutdown path rather than a delivery path and D-049 (d) does not cover it. The right behaviour is almost certainly the one the `recover` at `:52-55` already gives a failed future - log at WARNING and carry on to the next producer - but that is a decision about shutdown and needs stating rather than assuming | — | ready | an `Error` from one producer's `close()` does not stop the others being closed, every producer is asked exactly once, the close future still completes, and the decision is recorded | F-30 2026-11-14 |
+ | FIX-142 | [B] `Parking.java:86` catches `RuntimeException` only around `body.store().persist(body.key())`, under a javadoc at `:82` promising "what the store throws becomes the failed future's cause". An `Error` from `persist` therefore escapes `park()` - and `park()` is called at `:55` inside `wrap`'s `catch (Exception)`, so that `Error` SKIPS THE PARK-FAILURE HANDLING: the DLQ fails to record that it could not record. Same shape as FIX-140 one layer out, which is why this is [B] and not [A]. Found by the F-30 addendum sweep, the strongest of the two new candidates in 165 catch clauses | FIX-140 | ready | an `Error` from the blob store becomes the failed future the javadoc promises, the park failure is handled by the same path a thrown `RuntimeException` takes today, and nothing reaches `wrap`'s catch by a route that skips it | F-30 addendum 2026-11-14 |
+ | FIX-143 | [A] Triage the 9 catch sites the F-30 addendum sweep could not settle by reading, and either widen them or record why they are right - each has ONE question, so this is reading plus a decision, not a redesign. `Deployments.java:949`, `:1055`, `:1278`, `:1321`, `:1392`, `:1482` (six `RuntimeException` catches turned into problem-list entries): do they run inside the `Throwable` catch at `:826` that cleans up, or inside the rollback `RuntimeException \| Error` catch at `:927`? If inside either, they are already covered and the answer is a comment, not a change. `Retry.java:44` (`catch (Exception)`, so an `Error` is never retried): what does the class javadoc near `:25` mean by "failure and is never caught", and is skipping retry for an `Error` the intent? `Parking.java:49` and `:59` (`catch (Exception)` parking a step failure): is an `Error` from a step meant to go unparked, as `FlowWorker.java:352` leaves it to the lease? Also `AdminServer.java:405` (`catch (RuntimeException refused)` around `reply.send(res)`, javadoc `:399` promises "the request still ends"): needs the Vert.x fact of what happens to a throwable out of that handler before it can be called a defect | — | ready | each of the 9 is either widened with a test, or carries a comment saying why it is right, and none is left unexamined; the Deployments six are answered by one structural reading | F-30 addendum 2026-11-14 |
+diff --git a/agent/HANDOFF.md b/agent/HANDOFF.md
+index 458617a..2ad46d5 100644
+--- a/agent/HANDOFF.md
++++ b/agent/HANDOFF.md
+@@ -1,20 +1,20 @@
+ # Handoff
+ state: RUNNING (owner RESUME 11-14, autonomous to Mon 11-16 08:00 Prague). Max 2 subagent slots is the parallelism ceiling, not the 4 CPUs
+-last commit: 9a9c916 FIX-133 (core Recorder -> Throwable), e8bc787 FIX-134 (bench warmedUp), a31a26d FIX-132, e65f616/261c657 lane3, e835f43 FIX-71
+-branch: claude/relaxed-archimedes-q2nb4c. main is still 634983a, so the WORKFLOW §4 CI gates still do not run on this branch — owner asked, unanswered
+-integrated evidence (45d4100, VERIFIED_PASS 11-14): full unfiltered `clean verify -Pit` exit 0, BUILD SUCCESS, 12:30, 17 SUCCESS, core 511/0,
+-  bench 86 + 27 IT, nothing above 0 anywhere, no blocked platform thread; coverage "no decrease", api 99.3/100 core 99.6/99.5 runtime 99.5/99.5
+-lanes: lane2 (FIX-134) and lane3 (FIX-133) both hold INTEGRATED, cmp-verified work — reset both to HEAD before reuse. Ledgers are never
+-  edited in a lane, so a reviewer reading one sees a STALE row: say so in every review packet
+-next: pair FIX-139 (ci/ only, test precedent ci/test_coverage_check.py, wire into .github/workflows/ci.yml:65) with FIX-140 (core Recorder,
+-  from the FIX-133 review). No file overlap. Logs agent/work/integrated2-*.log
+-FIX-137 and FIX-138 both touch BatchingWriter.java: one batch or in sequence, never in parallel. FIX-136 needs its finding written first
+-FIX-140 before touching Recorder: `record` runs BEFORE `throw failure` and can throw (`Trail.java:90`), so an Error can become an
+-  InterruptedException that Parking:49 would park, against D-098. D-111 qualified. Also NOTES "Recording": the :86 guard is not killable
+-F-29: the catch half is CLOSED by FIX-133; still open and still CONSIDER-12's — the timeline is stitched, first-writer-wins, seam only in ATTEMPT
++last commit: 7dc0555 FIX-139 (ledger cell-shape guard), 8105b0f F-30 + packets, 6a0ee21/cbd563b packets, 9a9c916 FIX-133, e8bc787 FIX-134
++branch: claude/relaxed-archimedes-q2nb4c. main is still 634983a, so the WORKFLOW §4 CI gates still do not run on this branch - owner asked, unanswered
++gate evidence FIX-139+FIX-140 (VERIFIED_PASS 11-14, agent/work/integrated3-*.log): `clean verify -Pit` exit 0, BUILD SUCCESS, 12:00, 17 modules,
++  core 517, every Tests run line 0/0/0, no blocked platform thread; coverage "no decrease", api 99.3/100 core 99.6/99.5 runtime 99.5/99.5 bench 96.8/95.4
++lanes: lane2 (FIX-139) and lane3 (FIX-140) hold work that is now COMMITTED - both safe to reset to HEAD. Ledgers are never edited in a lane, so a
++  reviewer reading one sees a STALE row: say so in every review packet.
++next: FIX-138 then FIX-137, in sequence in ONE lane, never in parallel - both touch BatchingWriter.java javadoc. Both packets written. FIX-137 is
++  doc-only (no test is possible and the packet says why, with FIX-129 as precedent); FIX-138's test is green on arrival, so its red must come from
++  disabling the throwing cancel(). Then FIX-136 (packet written, 114 lines, read F-30 first), then FIX-141/142/143, all small.
++F-30 (committed): D-049 (d) means every throwable, D-049 needs NO amendment, proof inside the method at :296/:312. CORRECTED once - the permit leak
++  is at-least-once ONLY (sync :177-181, at-most-once :219-222 have their own finally). Addendum: only 2 new candidates in 165 catches, not an iceberg.
++F-29: the catch half is CLOSED by FIX-133; still open and still CONSIDER-12's - the timeline is stitched, first-writer-wins, seam only in ATTEMPT
+ CONSIDER-13 (per-message log) is BLOCKED on the owner, who takes it himself the evening of 11-14: agent/packets/CONSIDER-13-design-draft.md
+ open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
+-open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135..140; CONSIDER-1..11
++open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135..138,141..143; CONSIDER-1..11
+ pending at hand-over: D-022, D-025-61 exc 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..111
+ owner at hand-over: F-18 (5 ms target); D-064/65B/67A/72/73; P1-08 points (D-049); /DirArchiveStore.bak and /S3ArchiveStore.bak (root deletes)
+-rules that cost time: `commit -F -` takes only the INDEX; restore mutants with `cp` never `mv`; `mvn -q` hides the Surefire summary; rest in NOTES.md
++rules that cost time: `commit -F -` takes only the INDEX; restore mutants with `cp` never `mv`; clear `__pycache__` for python mutants; rest in NOTES.md
+diff --git a/flottila-core/src/main/java/io/flottila/core/record/Recorder.java b/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
+index 09d0924..d091397 100644
+--- a/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
++++ b/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
+@@ -28,6 +28,8 @@ import java.util.Optional;
+  */
+ public final class Recorder {
+ 
++    private static final System.Logger LOG = System.getLogger(Recorder.class.getName());
++
+     /** The name of step 0: {@code start(policy, INGRESS)} records what arrived. */
+     public static final String INGRESS = "ingress";
+ 
+@@ -84,7 +86,17 @@ public final class Recorder {
+                 });
+             } catch (Throwable failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056); an Error too, recorded and rethrown unchanged (D-111)
+                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
+-                    record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
++                    try {
++                        record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
++                    } catch (Throwable recordingFailure) {   // the original is what leaves, whatever recording did (D-111); a throwable cannot suppress itself
++                        if (recordingFailure != failure) failure.addSuppressed(recordingFailure);
++                        // The recording failure is deliberately NOT passed to the logger: a handler would have to format it (toString, stack), and
++                        // formatting is what threw in the first place; nothing in this catch may be able to replace the original. The cost: this
++                        // WARNING carries neither its message nor its stack, only its class, the message id and the step. A log handler that
++                        // throws is FIX-127's decision (contained node-wide at the logging setup), not guarded here.
++                        LOG.log(System.Logger.Level.WARNING, "Recorder: the FAILED row of message " + e.id() + " at step '" + step.name()
++                                + "' was not recorded (" + recordingFailure.getClass().getName() + "); the step's own failure goes on unchanged");
++                    }
+                 }
+                 throw failure;
+             }
+diff --git a/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java b/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
+index c27c8fd..db40f4f 100644
+--- a/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
+@@ -414,4 +414,132 @@ class RecorderTest {
+         assertSame(thrown, escaped, "a step that records nothing still lets the Error go on unchanged: handling does not depend on recording");
+         assertEquals(List.of(), store.timeline(in.id()).await(), "and records nothing: recording does not depend on handling");
+     }
++
++    /** An {@link AssertionError} whose text cannot be built: recording its failure row throws {@code recordingFailure} (FIX-140 trigger a). */
++    static final class HostileError extends AssertionError {
++        final RuntimeException recordingFailure = new IllegalStateException("toString exploded");
++        HostileError() { super("hostile"); }
++        @Override public String toString() { throw recordingFailure; }
++    }
++
++    /** The same, for an {@link Exception}. */
++    static final class HostileException extends RuntimeException {
++        final RuntimeException recordingFailure = new IllegalStateException("toString exploded");
++        HostileException() { super("hostile"); }
++        @Override public String toString() { throw recordingFailure; }
++    }
++
++    @Test
++    void aRecordingThatThrowsStillLetsTheOriginalErrorEscapeUnchanged() {
++        HostileError thrown = new HostileError();
++        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertSame(thrown, escaped, "the Error that left the step is what leaves the recorder, not the failure of recording it (D-111): an Exception here would be parked as transient");
++        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(thrown.recordingFailure),
++                "the recording failure is not discarded: it is among the suppressed of the original: " + java.util.Arrays.toString(escaped.getSuppressed()));
++    }
++
++    /** This WARNING is also the only report a throwable built with suppression disabled gets: its {@code addSuppressed} is a no-op, so the suppressed-list assertions of the cases around this one do not cover that path. */
++    @Test
++    void aRecordingThatThrowsIsLoggedOnceWithTheMessageAndStep() {
++        java.util.logging.Logger core = java.util.logging.Logger.getLogger("io.flottila.core");   // a strong reference: JUL holds loggers weakly
++        List<java.util.logging.LogRecord> logged = new java.util.concurrent.CopyOnWriteArrayList<>();
++        java.util.logging.Handler capture = new java.util.logging.Handler() {
++            @Override public void publish(java.util.logging.LogRecord r) { logged.add(r); }
++            @Override public void flush() { }
++            @Override public void close() { }
++        };
++        core.addHandler(capture);
++        try {
++            List<StepFactory> all = new java.util.ArrayList<>(with("fine", Stage.of(e -> { throw new IllegalStateException("readable"); })));
++            all.add(factory("hostile", s -> Stage.of(e -> { throw new HostileError(); })));
++            Function<String, List<String>> recorderWarnings = id -> logged.stream()
++                    .filter(r -> r.getLevel() == java.util.logging.Level.WARNING && Recorder.class.getName().equals(r.getLoggerName()))
++                    .map(r -> r.getMessage() + (r.getThrown() == null ? "" : " / " + r.getThrown()))
++                    .filter(m -> m.contains(id)).toList();
++
++            Envelope witness = in();
++            assertThrows(IllegalStateException.class, () -> buildWith(all, Map.of("level", "all"), step("mark", "a"), step("fine", "readable-step")).apply(witness));
++            assertEquals(Snapshot.Outcome.FAILED, store.timeline(witness.id()).await().getLast().outcome(), "witness: this step's failure was recorded");
++            assertEquals(List.of(), recorderWarnings.apply(witness.id()), "witness: a failure that is recorded logs nothing from the recorder");
++
++            Envelope in = in();
++            assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "all"), step("mark", "a"), step("hostile", "crashy-step")).apply(in));
++            List<String> warned = recorderWarnings.apply(in.id());
++            assertEquals(1, warned.size(), "a FAILED row that could not be recorded is logged exactly once at WARNING, naming the message: " + warned);
++            assertTrue(warned.getFirst().contains("crashy-step"), "the WARNING names the step: " + warned);
++        } finally {
++            core.removeHandler(capture);
++        }
++    }
++
++    @Test
++    void aFailureWhoseToStringThrowsStillLeavesARowOrNoneButNeverADifferentThrowable() {
++        HostileException thrown = new HostileException();
++        CountingStore counting = new CountingStore(store);
++        List<StepFactory> all = with("odd", Stage.of(e -> { throw thrown; }));
++        all.add(factory("plain", s -> Stage.of(e -> { throw new IllegalStateException("plain failure"); })));
++        Function<Map<String, Object>, Pipeline> flowWith = x -> new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(counting, meter)
++                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), x))), java.nio.file.Path.of(""));
++
++        Envelope witness = in();
++        assertThrows(IllegalStateException.class, () -> flowWith.apply(step("plain", "x")).apply(witness));
++        assertEquals(List.of(Snapshot.Outcome.FAILED), counting.handed(witness.id(), "x"), "witness: a failure whose text can be built is handed to the store as FAILED");
++
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> flowWith.apply(step("odd", "x")).apply(in));
++        assertSame(thrown, escaped, "the exception that left the step leaves the recorder, not the failure of building its text");
++        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(thrown.recordingFailure), "the failure of building the text is suppressed on it: " + java.util.Arrays.toString(escaped.getSuppressed()));
++        assertEquals(List.of(), counting.handed(in.id(), "x"), "no row for the step whose failure has no text: none is invented (no placeholder)");
++        assertEquals(List.of("ingress", "a"), names(store.timeline(in.id()).await()), "the rows before it stand, and the step's is absent");
++    }
++
++    /** Its text cannot be built, and the failure of building it is itself: the recording failure and the original are one object. */
++    static final class SelfThrowing extends AssertionError {
++        @Override public String toString() { throw this; }
++    }
++
++    @Test
++    void aFailureWhoseToStringThrowsItselfStillEscapesUnchanged() {
++        SelfThrowing thrown = new SelfThrowing();
++        Pipeline p = buildWith(with("self", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("self", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertTrue(!(escaped instanceof IllegalArgumentException), "the recorder must not leave with the IllegalArgumentException of suppressing a throwable into itself, but with the original: " + escaped.getClass().getName());
++        assertTrue(escaped.getMessage() == null || !escaped.getMessage().contains("Self-suppression"), "no self-suppression failure replaces the original: " + escaped.getClass().getName());
++        assertSame(thrown, escaped, "the original escapes by identity: " + escaped.getClass().getName());
++        assertEquals(0, escaped.getSuppressed().length, "nothing is attached: the recording failure is the original itself, and attaching it to itself is what throws");
++    }
++
++    /** An {@link AssertionError} whose text cannot be built: {@code toString} throws {@code recordingFailure}, checked or not, as an interrupted {@code await} does (D-056). */
++    static final class UnprintableError extends AssertionError {
++        final Throwable recordingFailure;
++        UnprintableError(Throwable recordingFailure) { super("unprintable"); this.recordingFailure = recordingFailure; }
++        @Override public String toString() { throw sneaky(recordingFailure); }
++    }
++
++    @Test
++    void aRecordingInterruptedByACheckedExceptionStillLetsTheOriginalEscapeWithItSuppressed() {
++        InterruptedException interrupted = new InterruptedException("stop deadline");
++        UnprintableError thrown = new UnprintableError(interrupted);
++        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertSame(thrown, escaped, "the original leaves, not the checked InterruptedException thrown sneakily while recording: " + escaped.getClass().getName());
++        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(interrupted),
++                "the InterruptedException is among the suppressed of the original (a catch narrower than Throwable lets it through): " + java.util.Arrays.toString(escaped.getSuppressed()));
++    }
++
++    @Test
++    void aRecordingThatFailsWithAnErrorStillLetsTheOriginalEscapeWithItSuppressed() {
++        StackOverflowError overflow = new StackOverflowError("while recording");
++        UnprintableError thrown = new UnprintableError(overflow);
++        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertSame(thrown, escaped, "the original leaves, not the Error thrown while recording: " + escaped.getClass().getName());
++        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(overflow),
++                "the Error is among the suppressed of the original (a catch of Exception only lets it through): " + java.util.Arrays.toString(escaped.getSuppressed()));
++    }
+ }

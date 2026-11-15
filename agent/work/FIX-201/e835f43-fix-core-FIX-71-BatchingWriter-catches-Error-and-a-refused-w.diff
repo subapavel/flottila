@@ -1,0 +1,1172 @@
+COMMIT e835f43d36b69f3378f938e8124b60444eaa8d1e
+fix(core): FIX-71 BatchingWriter catches Error, and a refused window commits
+
+D-104 as decided: the catches at BatchingWriter:156 and :298 widened to
+`RuntimeException | Error`, one take and one arm attempt per drain, and the
+batches a drain took before a refused window are COMMITTED rather than failed --
+they stay in flight, reach the sink in the order taken, and what stayed queued
+rides their completions. Adds the `windowsRefused` counter and its episode
+WARNINGs; removes `Refused`.
+
+Two test changes D-104 did not name, called out here because the rule is that an
+implementer may change a test it did not write only to fix a wrong expectation,
+with the reason in the commit:
+- BatchingWriterWindowRefusalTest's `assertEverySettled` went from "not sunk
+  implies failed with the refusal" to "every item sunk and succeeded". That is
+  strictly stronger, and the old helper would still pass against the new code; it
+  is replaced because it encoded FIX-69's superseded policy as a helper.
+- The FIX-71 packet's case 7, oneDrainHandsItsBatchesToTheSinkOldestFirst, could
+  not be written. A drain provably takes at most one batch, so there is nothing to
+  order. It is replaced by ErrorTest's
+  theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters,
+  which states that reason.
+
+Five review rounds. The fourth is the one worth recording, because it overturned
+my own judgement rather than the author's code. I had declared the survivor at
+:185 an equivalent mutant. It is not: remove `cancelQuietly(armed)` and the window
+flush dropped stays scheduled, later sets a newer window's `armed` to null and
+hands a newer partial batch to the sink early. The reviewer supplied the timing
+scenario, it is now
+aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow, and the
+mutant dies on its t50 assertion. The reviewer also named the fault in my
+reasoning -- "no item outcome differs" taken to mean "unobservable" -- which is the
+same model that made my prediction for mutant 7 wrong in the other direction.
+
+The second survivor, `.reversed()` at :272, IS equivalent, and the proof is an
+invariant rather than an intuition: at rest either the queue is shorter than a
+batch or inFlight is at the commit limit, and waiters exist only when the queue is
+full, which implies the limit; so a drain takes at most one batch. That proof
+exposed generality for a case that cannot happen -- a `while` that runs once, a
+`.reversed()` that cannot reverse, a javadoc describing unreachable ordering --
+which is FIX-137.
+
+Also fixed in the last round: a vacuous step in the log test (its "further
+accepted window" never actually got one accepted, so a log-recovery mutant
+survived it) and a tautological half of an assertion that re-checked a value set
+two lines above.
+
+Evidence, all observed: `clean verify -Pit` exit 0, BUILD SUCCESS, 16 modules,
+11:53 (agent/work/FIX-71-verify.log); coverage check exit 0, "coverage: no
+decrease", core 99.6% line and 99.5% branch (FIX-71-coverage.log); scoped PIT api
+179/180 and core 1019/1029, both 99% against the 80% floor (FIX-71-pit.log);
+scoped suite 47/0/0/0 on the restored file (FIX-71-r5-final.log). 23 hand mutants,
+all killed. BatchingWriter.java `cmp`-identical to the pre-mutant copy after every
+mutant run.
+
+Riding along in the ledger, stated rather than hidden: D-104 is amended twice from
+this review (the cancelQuietly policy and why it carries no counter; and that a
+dropped window may fire early, which costs batching and not data). D-111 is new
+and belongs to FIX-133, not here -- recording is independent of handling. New rows
+FIX-132 extended, FIX-135, FIX-136, FIX-137, FIX-138, and FIX-127 extended with
+the log-under-lock site this review found. They are here because they came out of
+this task's review and the next commit should not have to explain them.
+
+Task: FIX-71
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index e75b826..0bafd7b 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1341,3 +1341,19 @@ two lines above, so it could not fail while reading as coverage. Deleted, with a
+ the reviewer caught that too: an OVERSTATED `warmedUp` hangs and the 300 s class timeout catches it; the survivor is an UNDERSTATED one. Fixed as mine.
+ Coverage NOT claimed here: a filtered `-Pit` run passes `-Djacoco.skip=true` and is no evidence about coverage (NOTES, Build and VM); a test-only
+ addition cannot lower it, and the integrated tree's full run is the evidence. D-054: class A (test-author x1 resumed once, reviewer x2); rounds 2.
++
++## 2026-11-14 — FIX-71 BatchingWriter widened to Error, a refused window committed (D-104) — done, review PASS r5
++Five rounds, and the last two earned their keep. D-104 implemented as decided: the catches at `:156` and `:298` widened to
++`RuntimeException | Error`, one take and one arm attempt per drain, a refused window's batches COMMITTED instead of failed, the
++`windowsRefused` counter and its episode WARNINGs, `Refused` removed.
++Two changes the commit names because D-104 did not: `assertEverySettled` went from "not sunk implies failed with refusal" to "every item
++sunk and succeeded", which is strictly stronger; and packet case 7 could not be written at all, replaced by ErrorTest:158 — see below.
++The r4 review overturned my own judgement and that is the entry's point. I had called the `:185` survivor an equivalent mutant. It is not:
++drop `cancelQuietly(armed)` and the window flush dropped stays scheduled, later nulls a NEWER window's `armed` and hands a partial batch
++over early. The reviewer gave the timing scenario; it is now a test and kills the mutant at :308. It also named the wrong model behind my
++call — "no item outcome differs" is not "unobservable" — which is the same model that made my prediction for mutant 7 miss.
++`:272` `.reversed()` IS equivalent, proved by an invariant (at rest the queue is short or inFlight is at the limit, so a drain takes at most
++one batch). That proof exposed dead generality: a `while` that runs once, a `.reversed()` that cannot reverse, and a javadoc describing an
++unreachable case — FIX-137. Also spun off: FIX-135 (PIT counts a timeout as a kill), FIX-138 (a throwing cancel leaves a window live, which
++D-104 now accepts as losing batching not data), and FIX-127 extended with `cancelQuietly` logging under the writer lock.
++VERIFIED_PASS — verify -Pit exit 0, 16 modules, 11:53; coverage no decrease (core 99.6/99.5); PIT api 179/180, core 1019/1029, 99 % vs the 80 % floor; scoped 47/0. D-054: class B, rounds 5.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 91cb1ed..bf784ee 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -209,15 +209,18 @@ row, never lowers it mid-task.
+ | FIX-124 | [A] `flottila-core/.jqwik-database` is tracked by git and every jqwik run rewrites it, so each test run dirties the tree and the file lands in whatever commit follows unless someone remembers `git checkout --` (noticed twice in the FIX-71 red round). It is a local run cache, not source: add it to `.gitignore` and `git rm --cached` it, and check whether any CI job or agent instruction depends on it being present | — | ready | a jqwik run leaves `git status` clean; no CI job reads the file | FIX-71 red round |
+ | FIX-125 | [A] `Deployments.java:824` `Map.copyOf(kept)` is sensitive to a null value: on the install path, if `records.list()` ever returned two rows for the same package name, the second install would see `running != null` and `previous != null` at `:819`, `running.kept().get(previous)` would be null, and `Map.copyOf` rejects null values with an NPE (reviewer FIX-62, non-blocking). `restore()`'s contract at `:612-618` excludes that input today, so this is a guard against a future caller, not a live defect: either refuse the duplicate row where it is read, with the package name in the message, or make the `kept` lookup tolerate a missing entry — decide which, then pin it | FIX-62 | done | refuted 2026-11-14, not a defect — closed without a code change. The NPE is unreachable and the invariant is inductive: `kept` is never persisted (`V7__deployments.sql:5-9` plus `V9` have no such column, `PgDeploymentStore.java:27-30` SAVE writes six columns, `:56-71` reads them back), a FAILED row gives `running == null` so the `Map.of()` Deployed built at `:651-652` never reaches `:822`, both candidates for `previous` at `:819` have an entry put by the install that built `running` (`:821` for its own sha, `:822` carried forward), `relisted` copies `kept` and `previous` unchanged (`:969`), `Deployed` is a private record with three construction sites (`:651`, `:824`, `:969`) so no test or migration can forge one — and `Map.copyOf` at `:824` rejects a null value, so an install that stored one would already have thrown. `DeployedPackage.files()` at `:821` is non-null in every case (`DeployedPackage.java:45` `List.copyOf`). Not traced: concurrent edits and the admin paths at `:473` / `:549`, which only `get`. The inductive argument is in `agent/NOTES.md` ("fix main"), because it is the non-obvious part and the next reader of `:822` will ask the same question | reviewer FIX-62; RECON 2026-11-14 (read-only, no drift: `:824` is still `Map.copyOf(kept)`): the row's trigger is refuted on both traced branches — for a second store row with a different sha, `running.kept().get(previous)` finds the entry put at `:821`, and with the same sha `previous` is null so `:822` is skipped. What survives is the shape, not the trigger: `:822` is the one line that can put a null VALUE into `kept` (HashMap permits it) and `Map.copyOf` then throws an NPE with no message, no log line and no refusal, which on the restore path passes `restore()`'s DeployRefusedException-only catch (`:647`) and `Node.java:211` uncaught, so the node does not start. Nothing in the repo guarantees `running.kept()` holds `previous`. Reachability of that state is the open question; the row's wording must be rewritten before it is scheduled |
+ | FIX-126 | [A] `BatchingWriter.commit()` (`:297-300`) does not guard a `BatchSink` that returns `null` instead of a future: the `null` NPEs straight out of `save`, which the javadoc now promises never throws (reviewer FIX-71 r2, sized there as one line plus one case). Fail the batch the way a thrown `write` is failed, naming the sink, rather than letting the NPE escape | FIX-71 | ready | a sink returning `null` fails only its own batch, `save` does not throw, `inFlight()` returns to 0 and the writer stays usable | reviewer FIX-71 |
+-| FIX-127 | [B] A logging handler that itself throws escapes the component it is logging from: `BatchingWriter.dispatch` (`:263-271`) is one instance, and the reviewer's point (FIX-71 r3) is that it is not a `BatchingWriter` defect — `Trail`, `Delivery` and `FlowWorker` break identically, so the fix belongs at the node's logging setup, not in one class. Decide where a throwing handler is contained (a wrapping handler installed at node start, or a rule that every log site is inside an existing catch) and pin it once, node-wide | FIX-71 | ready | a handler that throws on every record does not fail a message, lose a trail row or strand a batch; the containment is pinned by a test at the level it is implemented | reviewer FIX-71 |
++| FIX-127 | [B] A logging handler that itself throws escapes the component it is logging from: `BatchingWriter.dispatch` (`:263-271`) is one instance, and the reviewer's point (FIX-71 r3) is that it is not a `BatchingWriter` defect — `Trail`, `Delivery` and `FlowWorker` break identically, so the fix belongs at the node's logging setup, not in one class. Decide where a throwing handler is contained (a wrapping handler installed at node start, or a rule that every log site is inside an existing catch) and pin it once, node-wide. FIX-71 r4 adds a worse site than `dispatch`: `cancelQuietly` logs while HOLDING the writer lock, so a throwing handler there escapes `takeLocked` after `inFlight++` and `flying.add` and strands a batch outright, rather than merely losing a log line. Whatever containment this row settles on must cover a log site inside a lock | FIX-71 | ready | a handler that throws on every record does not fail a message, lose a trail row or strand a batch; the containment is pinned by a test at the level it is implemented | reviewer FIX-71 |
+ | FIX-128 | [A] Nothing exercises a non-zero `warmupFailed` in the bench record: `NodeBenchMainIT.java:72` asserts it is 0, so the field could be hard-wired to 0 and the suite would not notice (the production half of FIX-63 is done, this is its residual). Drive a warm-up with refusals — the harness's `load(...).failed()` at `NodeBenchMain.java:313` is the value under test — and assert the count the record carries equals the refusals, plus that `warmedUp` is `warmup - warmupFailed` | FIX-63 | done | a warm-up with refusals reports its count in the JSON; a mutant that hard-wires `warmupFailed` to 0 or drops the subtraction fails | audit 2026-11-14. done 2026-11-14, review PASS r2, test-only, no production change. `aWarmupWhoseFirstSavesAreRefusedRecordsThatCountAndWaitsOnlyForTheRest` refuses the first 3 of a 5-message warm-up and asserts the record says exactly 3, by fault injection at the store boundary (a sequence plus a plpgsql BEFORE INSERT trigger on `work`, the pattern `PgIntakeIT:306-315` already uses). A guard, not a red: FIX-63's production half already counts correctly. VERIFIED_PASS whole class 12/0, BUILD SUCCESS (FIX-128-class.log); the mutant `.put("warmupFailed", 0)` at `NodeBenchMain.java:316` dies by assertion at :215 (FIX-128-mutant-record0.log), run in a scratch copy so no production file was edited. Acceptance 2 is NOT met and cannot be from a test: `warmedUp` is only a local at `:314`, so an understated value is unobservable — spun off as FIX-134 |
+ | FIX-129 | [A] `Trail`'s class javadoc (`Trail.java:32-33`) promises the persist warning only in substance, so the two phrases FIX-123 pinned have no documented source — a future rewording looks like a test being wrong rather than a contract being changed. Put the sentence itself in the javadoc, next to the `metadataOnly()` promise, so the test and the doc cite each other | FIX-123 | ready | the javadoc states the warning's wording; a reword of either is visibly a change to both | reviewer FIX-123, non-blocking |
+ | FIX-130 | [A] `TrailTest:359-360` still filters captured WARNINGs by the bare id substring `contains("m-f")` over message + `getThrown()` concatenated — the exact trap FIX-54 hit once and FIX-121 twice (`"m-w"` is a prefix of `"m-wait"`). Safe today only because `m-f` prefixes no other fixture id in that case; it is the next place the trap bites, and it also means an exception text could satisfy the filter. Make it key-based like the two persist cases | FIX-123 | done | done 2026-11-14, review PASS r3, test-only, commit 468022c (lane3). The filter now selects by Trail's logger name, maps `getMessage()` only, matches each of the three failing bodies by its own full `BlobKey`, and asserts exactly one WARNING per failing key instead of non-emptiness, plus a negative for the body that was made durable. Two FAILs were spent on one subtlety and it is worth keeping: `Trail.java:177` interpolates the cause INTO the message, so narrowing to `getMessage()` separates nothing — `BodyTooLargeException`'s text carries the key, so the `large` iteration still matched through its cause. The key is therefore pinned ahead of the `(` that opens the cause. `assertAll` makes all three iterations observable; without it the mutant aborted on the first body and the iteration whose independence was in question was never reached. Mutant naming the message id instead of the key fails all three separately: steps 2 and 4 on the count, step 3 on the prefix while its count passes | reviewer FIX-123, non-blocking |
+ | FIX-131 | [C] A redelivered at-least-once message loses the history of every run but its first, silently. `messages` is written with `on conflict (id, step) do nothing` (`PgMessageStore.java:55`) and its rows carry no attempt, while `Envelope.nextKey` already puts the attempt in the body key's part (`Envelope.java:90-96`, `part~2`, asserted by `ComponentContract.java:320-321`) and the worker sets `Envelope.ATTEMPT` from the second claim on (`FlowWorker.java:338`). So after a lease expiry or a second claim — no replay involved — the second run's bodies are stored and its snapshot rows are dropped, and the timeline shows the first attempt only. That contradicts D-106, the owner's own decision that a retried attempt is visible in the message's own history. Confirm against a real Postgres under `-Pit` before designing anything: drive a redelivery, then read the timeline and say exactly which rows exist and which were dropped. The fix is keying, so it shares a root cause with F-29 and belongs to CONSIDER-12, not here. ARCHITECT, 2026-11-14, after recon: the `-Pit` premise is WITHDRAWN. `InMemoryMessageStore.record` does `rows.putIfAbsent(new Row(messageId, step), snapshot)`, the same drop as Postgres, so a real Postgres adds nothing to the confirmation and the Postgres half is already pinned by `PgMessageStoreIT:122-132` under the name `aBatchCarriesManyMessagesAndDuplicatesAreIgnored` — which is also part of why this survived: the drop is named as a feature. The harm is also worse than this row first said. It is not that later runs are lost: if run 1 fails at step 3 and run 2 reaches step 7, `timeline(id)` returns steps 1-3 from run 1 and steps 4-7 from run 2 in one sequence with nothing marking the seam, so step 3 reads `FAILED` while steps 4-7 read `OK` — a sequence no single run can produce. The timeline is a chimera, not a truncation. This task is now test-only in `flottila-core` with no Docker: pin that stitch green and name it so it cannot be read as intended, for CONSIDER-12 to invert | — | done | an `-Pit` test drives a redelivery of one message id and asserts what the timeline holds for the second run; the result is written into F-29 whichever way it comes out | F-29 recon 2026-11-14. done 2026-11-14, review PASS r2, test-only, no production change. `RedeliveredTimelineTest` pins both shapes as exact row lists: case 1 (park refused, run 1 leaves a FAILED row) gives 0 ingress, 1-2 run 1, 3 FAILED run 1, 4-7 OK run 2; case 2 (run 1 dies on an `Error`, which `Recorder.wrap` does not catch, so step 3 gets no row) gives 0-7 all OK and reads as one clean successful run — the shape a node crash makes and the dangerous one. VERIFIED_PASS 2/0, FlowWorkerTest 42/0, 46/0 total (FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put` in `InMemoryMessageStore`: both cases EXECUTED_FAIL at their final list assertion (FIX-131-mutant.log), store restored and `cmp`-identical in both trees. The seam IS marked after all, by `Envelope.ATTEMPT` in the props of run 2's rows only — not a run boundary, but the value D-108 needs already reaches the store. Spun off FIX-133. Measured facts in F-29's addendum, fixture gotchas in NOTES |
+-| FIX-132 | [A] Five `docs/DECISIONS.md` rows render with phantom columns because their text contains an unescaped `\|`, so a reader on GitHub sees the decision split across cells that do not exist: D-040 (line 49), D-044 (:53), D-053 (:62), D-057 (:66), D-080 (:89) — 6 or 7 effective pipes in a 5-pipe table. GFM's fix is `\|` inside the cell, which keeps the quoted text verbatim and was applied to D-102 in this commit. Do it for the five, change no word of any decision, and leave the 30 legacy rows whose `Reason` cell is simply absent alone — that is a different and harmless shape | &mdash; | ready | `awk` over the file reports 5 effective pipes (pipes not preceded by a backslash) on every non-separator row that has a `Reason` cell, and `git diff --word-diff` shows no change to any decision's words | ledger audit 2026-11-14 |
+-| FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:84`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) | FIX-71 | ready | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it | FIX-131 test-author, architect-verified 2026-11-14 |
++| FIX-132 | [A] Five `docs/DECISIONS.md` rows render with phantom columns because their text contains an unescaped `\|`, so a reader on GitHub sees the decision split across cells that do not exist: D-040 (line 49), D-044 (:53), D-053 (:62), D-057 (:66), D-080 (:89) — 6 or 7 effective pipes in a 5-pipe table. GFM's fix is `\|` inside the cell, which keeps the quoted text verbatim and was applied to D-102 in this commit. Do it for the five, change no word of any decision, and leave the 30 legacy rows whose `Reason` cell is simply absent alone — that is a different and harmless shape. The same defect is in `agent/BACKLOG.md` itself: four rows carry an unescaped `\|` (FIX-15, FIX-54, FIX-56, FIX-57) and two others are missing a cell altogether (P1-GATE, P2-01), so six rows render with the wrong column count. Fix both files in one pass. Found by counting pipes per row, which is also the check: a 6-column row has exactly 7 pipe characters not preceded by a backslash, and a 4-column DECISIONS row exactly 5 | &mdash; | ready | `awk` over the file reports 5 effective pipes (pipes not preceded by a backslash) on every non-separator row that has a `Reason` cell, and `git diff --word-diff` shows no change to any decision's words; the same `awk` over `agent/BACKLOG.md` reports 7 on every non-separator row | ledger audit 2026-11-14 |
++| FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:84`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) DECIDED 2026-11-14 as D-111 after recon: the fix changes NO control flow — widen the catch to `RuntimeException \| Error` in D-104's exact form (`BatchingWriter` now uses that multicatch at four sites, and `TargetLimit.java:98`, `CpuSampler.java:177` and `SpoolCipher.java:79` already do), write the `FAILED` row with the throwable's text, rethrow unchanged. D-098 and D-049 stand: an `Error` is still not transient, not retried, and `FlowWorker.java:352` still leaves the item to its lease. DO NOT also change `Parking.java:49` — the scout read it as a second instance of this gap and that is wrong, because parking an `Error` would make it transient, which D-098 refused. `Delivery.java:319-320` IS a real second instance but contradicts D-049 (d) rather than D-111, so it is FIX-136, not this row | FIX-71 | ready | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it; the catch form matches D-104's multicatch rather than inventing a third style, and `FlowWorker` still leaves the item to its lease, asserted so the control-flow half cannot drift | FIX-131 test-author, architect-verified 2026-11-14 |
+ | FIX-134 | [A] The bench record does not carry `warmedUp`: it exists only as a local at `NodeBenchMain.java:314-316`, so the subtraction `warmup - warmupFailed`, which decides how long the warm-up settle waits, cannot be observed from outside. FIX-128 established the consequence and it is the reason this row exists. CORRECTED by the FIX-128 reviewer, because the architect's first version of this row had it backwards: an OVERSTATED `warmedUp` — which is what dropping the subtraction gives, `warmedUp = warmup` = 5 against 2 rows that exist — makes the warm-up `settle` poll until DRAIN (10 min) and so IS caught, but only by the class `@Timeout` at 300 s, which is slow and names no cause. The mutant that truly survives is an UNDERSTATED one: `warmedUp = 0`, or anything up to the real 2, makes the warm-up settle pass at once while the window's own settle still ends at 42 rows, so no assertion and no timeout notices. That is the mutant this row has to make killable, and it cannot be done from a test while the value is a local. Put `warmedUp` in the record beside `warmup` and `warmupFailed`, where the other two already are, and assert it | FIX-128 | ready | the record carries `warmedUp` and a test asserts it equals 2 for a warm-up of 5 with 3 refusals, so `warmedUp = 0` fails by an assertion naming the value; the overstated mutant (`warmedUp = warmup`) then also fails by assertion instead of waiting 300 s for the class timeout | FIX-128 hand-back 2026-11-14 |
+-| FIX-135 | [B] The PIT mutation score on this project is several points noisier than it looks, because a timed-out minion counts as a KILLED mutant and the timeout count swings widely between runs of nearly the same code on the same machine: the reference run at a0b3f74 logged 202 abnormal `TIMED_OUT` exits plus 5 `RUN_ERROR` (`agent/work/pit-a0b3f74.log`), the FIX-71 run 125 at 1338/1362 mutations (`agent/work/FIX-71-pit.log`) — a swing of order 70, about 7 % of core's 1019. The distinction matters: a mutant that makes the code hang IS legitimately killed, because a suite that never finishes does detect it, but a mutant that merely ran out of time on a loaded machine is not, and a swing that large says a good share are the second kind. Nothing is threatened today — api 179/180 and core 1010/1019 against an 80 % floor is enormous headroom — and that is why this is a row and not an ISSUE. But the mutation floor is a phase-gate condition, so the score must not be quoted to three figures as though it were stable, and a gate ever met by a narrow margin would have to account for this. Measure the `TIMED_OUT` count twice on one commit, then either raise pitest's `timeoutConstant` / `timeoutFactor` until it stabilises, or publish the noise band beside the score the way the coverage check already publishes its own (D-029 is the precedent for a declared noise band) | — | ready | the `TIMED_OUT` count on one commit is measured at least twice and either stabilises after a configuration change or is stated as a noise band beside the score, with machine and date as `bench/RESULTS.md` requires of any number | architect, comparing the FIX-71 and a0b3f74 PIT logs 2026-11-14 |
++| FIX-135 | [B] The PIT mutation score on this project is several points noisier than it looks, because a timed-out minion counts as a KILLED mutant and the timeout count swings widely between runs of nearly the same code on the same machine: the reference run at a0b3f74 logged 202 abnormal `TIMED_OUT` exits plus 5 `RUN_ERROR` (`agent/work/pit-a0b3f74.log`), the FIX-71 run 125 at 1338/1362 mutations (`agent/work/FIX-71-pit.log`) — a swing of order 70, about 7 % of core's 1019. The distinction matters: a mutant that makes the code hang IS legitimately killed, because a suite that never finishes does detect it, but a mutant that merely ran out of time on a loaded machine is not, and a swing that large says a good share are the second kind. Nothing is threatened today — api 179/180 and core 1010/1019 against an 80 % floor is enormous headroom — and that is why this is a row and not an ISSUE. But the mutation floor is a phase-gate condition, so the score must not be quoted to three figures as though it were stable, and a gate ever met by a narrow margin would have to account for this. Measure the `TIMED_OUT` count twice on one commit, then either raise pitest's `timeoutConstant` / `timeoutFactor` until it stabilises, or publish the noise band beside the score the way the coverage check already publishes its own (D-029 is the precedent for a declared noise band). Sharpened by the FIX-71 r4 review, which examined one of these timeouts in the specific: `BatchingWriter.java:248`'s `IncrementsMutator` turns a loop counter into `i--`, which spins forever under the writer lock on the first save of every test. That is a DETERMINISTIC hang, so counting it as killed is right and no assertion short of a timeout could catch it. The measurement this row asks for must therefore separate the two populations rather than count timeouts in bulk: a deterministic non-terminating mutant is a legitimate kill and should recur in every run, while a slow-machine artefact will not. The run-to-run swing is the signal that tells them apart | — | ready | the `TIMED_OUT` count on one commit is measured at least twice and either stabilises after a configuration change or is stated as a noise band beside the score, with machine and date as `bench/RESULTS.md` requires of any number | architect, comparing the FIX-71 and a0b3f74 PIT logs 2026-11-14 |
++| FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | ready | a finding states which reading of D-049 (d) is right and why; an `Error` from the ingress save then produces the behaviour that reading requires, asserted for all three delivery modes, and D-049 is amended if the narrow reading wins | FIX-133 recon 2026-11-14 |
++| FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | ready | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | reviewer FIX-71 r4 |
++| FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | ready | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | FIX-71 r5 test-author 2026-11-14 |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 |  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a |  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS
+@@ -234,7 +237,7 @@ row, never lowers it mid-task.
+ | FIX-68 | [B] Node stop closes the message store before in-flight trails close: RestoreIT logs 5 "was not recorded (… writer closed)" WARNINGs for one demo/invoice-sync message (rows lost at shutdown, silent before FIX-66). Stop order: flows (and their trails) drained before the store closes, or the store's close waits for open trails within the stop deadline | FIX-66 | ready | a Node stop with a trail in flight writes its rows (no WARNING) or, past the stop deadline, logs them | implementer FIX-66 |
+ | FIX-69 | [A] BatchingWriter:195-196: if the window timer's `schedule` throws after drainLocked took batches (and, since FIX-66, topped up waiters), those batches stay counted in flight and are never committed — fail them (and the moved waiters) or commit at once; FIX-45 class | FIX-66 | done (review: PASS) | a timer refusing the window schedule leaves no item pending forever (every future completes) | reviewer FIX-66 |
+ | FIX-70 | [A] Docs/tests after FIX-66: ARCHITECTURE §4 Writer (:147) points at D-071; rename InMemoryMessageStoreTest.recordWaitingPastTheBacklogLandsEveryRow (no backlog in memory); scoped PIT on BatchingWriter + Trail recorded before P1-GATE (core floor 80) | FIX-66 | done (review: PASS) | §4 pointer present; PIT report for both classes ≥ 80 % | reviewer FIX-66 |
+-| FIX-71 | [B] BatchingWriter after FIX-69: (a) `waitLocked` (row cited :145; it is at :143 and the catch at :147) catches only RuntimeException — an Error from a waiter deadline's schedule still reaches the `saveWaiting` caller, while the window path catches Error; (b) under a permanently refusing window timer one afterCommit fails the whole backlog plus all waiters (trail rows counted lost, PgMessageStore:86) though a taken batch would re-drain on its own commit — decide whether to commit instead of fail; (c) dispatch order (refused before commits) unpinned AUDIT 2026-11-14: LIVE, numbers confirmed — `waitLocked` at `flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java:143`, catch at :147 takes only `RuntimeException`. (b) and (c) are still policy with no code written. | FIX-69 | ready | an Error from the deadline schedule fails only that save (no throw); the refusal policy decided and pinned | reviewer FIX-69 |
++| FIX-71 | [B] BatchingWriter after FIX-69: (a) `waitLocked` (row cited :145; it is at :143 and the catch at :147) catches only RuntimeException — an Error from a waiter deadline's schedule still reaches the `saveWaiting` caller, while the window path catches Error; (b) under a permanently refusing window timer one afterCommit fails the whole backlog plus all waiters (trail rows counted lost, PgMessageStore:86) though a taken batch would re-drain on its own commit — decide whether to commit instead of fail; (c) dispatch order (refused before commits) unpinned AUDIT 2026-11-14: LIVE, numbers confirmed — `waitLocked` at `flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java:143`, catch at :147 takes only `RuntimeException`. (b) and (c) are still policy with no code written. | FIX-69 | done | an Error from the deadline schedule fails only that save (no throw); the refusal policy decided and pinned | reviewer FIX-69. done 2026-11-14, review PASS r5 after 5 rounds. D-104 implemented: the catches at `:156` and `:298` widened to `RuntimeException \| Error`, one take and one arm attempt, a refused window's batches COMMITTED, the `windowsRefused` counter and episode WARNINGs, `Refused` gone. VERIFIED_PASS: `clean verify -Pit` exit 0, BUILD SUCCESS, 16 modules, 11:53 (FIX-71-verify.log); coverage no decrease, core 99.6/99.5 (FIX-71-coverage.log); scoped PIT api 179/180 and core 1019/1029, both 99 % against the 80 % floor (FIX-71-pit.log); scoped suite 47/0 (FIX-71-r5-final.log). 23 hand mutants run: all killed. The two survivors are resolved rather than waved through — `:185` was NOT equivalent (the architect had called it so and was wrong; the reviewer disproved it with a timing scenario) and is now killed by `aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` at :308 (FIX-71-r5-mut8.log); `:272` `.reversed()` IS equivalent, proved by the at-most-one-batch invariant, which exposed dead generality -> FIX-137. Spun off FIX-135, FIX-137, FIX-138, and extended FIX-127 with the log-under-lock site. D-104 amended twice from the review
+ | FIX-72 | [A] GATE.md check 9: pin the sync-overhead measurement as "c=1, overhead = p50(flow) − p50(raw)" (the threshold names no concurrency) | — | pending | check 9 names c=1 and the formula | gate-reviewer P1-GATE; owner 2026-10-28: later (not before Phase 2 core rows) |
+ | FIX-73 | [A] Re-run the kill -9 ledger and the durable-ACK bench once on the current main for the hand-over record (both were measured on e129c77, before FIX-66 changed Trail/BatchingWriter); add the rows to RESULTS AUDIT 2026-11-14: probably STALE — `bench/RESULTS.md:43-58` holds a "Hand-over gate (GATE) — commit fea6c5c" section dated 2026-10-30 with 3 ledger runs and durable-ACK rows, after FIX-66; but `RESULTS.md:333` still attributes the Phase 1 rows to e129c77 and PROGRESS:829 still lists the row open. Settle with `git log -S` before closing. | — | pending | RESULTS has ledger and ACK rows with the new commit | gate-reviewer P1-GATE |
+ | FIX-74 | [A] Audit Phase 1 test-expectation removals whose commit names no reason: 2bbddb1, e077318, ca57fa8, b02c6db, 1231c23, 22da747, bfa400c, b536615, dd5fc7d, d5f45c7, 0c96758, 43a3c29 (target/P1-GATE-testhist-summary.txt). For each: the removed assertion was in a test the same commit wrote or rewrote (fine), or a reason is recorded in PROGRESS; any unexplained weakening becomes a finding AUDIT 2026-11-14: LIVE — none of the 12 hashes is classified anywhere; they appear only in BACKLOG, PROGRESS (:801, :776) and bench/RESULTS.md. No code, an audit of 12 commits. | — | pending | every listed commit classified in NOTES or a finding | P1-GATE evidence |
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 4be5cb5..e3f390b 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -109,10 +109,11 @@ ARCHITECTURE.md changelog instead.
+ | D-101 | 2026-11-03 | Deterministic simulation (P2-10, F-25), draft — review at hand-over (module coordinates, the two ArchUnit rules, stream salts and Action/FaultKind codes, SimConfig.V1, the pinned-seeds.tsv format, the `sim.*` replay properties, the trace-digest format). New module `flottila-sim` (harness in src/main `io.flottila.sim` so archtest sees it; variants, self-tests, pins in src/test), over api, core, testkit (runtime from P2-10d only, with a rule change then); nothing depends on it; never shipped; floor 75 % line and branch, no PIT. No scheduler seam: at most one message thread is runnable at a time, enforced at boundaries the sim owns (START, POLL with a claim cap of 1 and `[]` to non-driver claims, RELEASE of a held partner call, WAKE of a timer park classified by Retry on the stack, ADVANCE of the fake clock); quiescence by registration and join, never by polling thread state; a per-seed assertTimeoutPreemptively (30 s) is the hang guard. Seeds: SplitMix64(run ^ explicit salt) per stream (WORKLOAD, FAULTS, SCHEDULE), per-tick SplittableRandom, counter-based per-call faults; enums append-only with explicit codes. Oracle checks PREDICTED, ADMISSION_BOUNDS, KEY_ORDER, ONE_ID_PER_DEDUPE_KEY, REPLAY_YIELDS_RECORDED, ACKED_IS_FINAL, SNAPSHOT_PER_STEP, DRAINED, EMPTY; a verdict passes only with no failure and Σcompared > 0; SimSelfTest asserts the correct world's per-check counts above their floors (half the smallest per-seed landing count, RESULTS.md; lowering one needs a D-line). Broken variants built only from public seams (FIX-8 pattern), each asserted to fail its exact check set. Per push 32 seeds × 1 000 ticks inside `verify -Pit`, budget ≤ 30 s runner / ≤ 15 s cloud VM, measured in RESULTS.md §P2-10; nightly `sim-fuzz` job (P2-10b). Split: 10a harness + sync/at-least-once + 3 variants; 10b at-most-once, dedupe via a sim DedupingIntake double (PgIntake processed_ids in 10d), replay, retry, outage, the last 2 variants, sim-fuzz; 10c crash/restart and core redeploy; 10d Postgres under -Pit; 10e TargetLimit contention (needs a waiter-wake seam). The coupling of the timer classification to Retry is accepted and pinned by SimSchedulerTest.aRetryBackoffIsAWakeUnit. Rejected: core's test tree (PIT cost, floor, no Pg variant), a ThreadFactory seam through Runtime (timers and cross-thread wakes still race), one message at a time (admission and key-order checks vacuous), one sequential RNG, jqwik shrinking (breaks pins). | P2-10 |
+ | D-102 | 2026-11-14 | Durable marker for a handled failure (CONSIDER-11), draft — review at hand-over (persisted value `handled` in `messages.outcome`, admin wire `"outcome":"HANDLED"`, the marker's step slot and `error` format, `errors` recording it). `Snapshot.Outcome` gains `HANDLED`. A failure an `onError` handler ends with `then: handled` leaves one marker row of its own beside the failed step's `FAILED` row (unchanged: the error rate keeps counting it) and the handler's step rows: step = the last number of the handler's range, step name `onError:<handler>`, outcome `HANDLED`, `error` = `<failed step name>: <failure text>`, the envelope the handler ended with (headers, props, keys, body hash + size), always metadata-only (no body key: nothing to persist, nothing for retention to guard; never a replay input — `Replay.from` takes `OK` rows only). `Snapshot`'s invariant becomes: an error is present iff `FAILED` or `HANDLED`. Recording level: `all`, `ends` and `errors` record the marker (`RecordingPolicy.records`: `ERRORS` = `FAILED` or `HANDLED`), `off` does not — except at-least-once, where it is written whatever the level, as the ingress row is (F-2, D-049 b): there it stands where the DLQ row would have stood. At-least-once: the handler stage awaits `MessageStore.recordWaiting(marker)` on the message's virtual thread before the run ends as handled (as `Parking` awaits the park, D-045); a marker that cannot be written fails the handling like a failed handler — the step's failure parks with the write's failure suppressed — so every at-least-once failure ends in exactly one durable record (a DLQ row or a `HANDLED` row) or its item stays to its lease. Sync and at-most-once: the marker goes through the run's trail like any snapshot, not awaited (D-066). `then: rethrow`, an unmatched failure and a failed handler write no marker. No DDL, no migration: `messages.outcome` is `text` without a check constraint, written as the enum's name lower-cased and read back by name (`PgMessageStore.java:164`, `:219` — verified by the architect), never by ordinal; `deploy/postgres/V2__snapshots.sql:7` stays byte-identical including its now-incomplete `-- ok \| filtered \| failed` comment (Flyway checksum). A node older than this row cannot read a `handled` row (`Outcome.valueOf` throws); upgrades are stop-all already (D-097). ClickHouse: no table exists yet; its `outcome` column must take the value by name. Amends D-044 (the outcome set, the error invariant) and the CONSIDER-11 draft, whose "a handled message is never parked" now holds only once its marker is durable. Not here: an index or an admin route listing handled messages per flow (implementation row, additive); the handler name as a column of its own. Rejected: a `handled` table (a second persisted shape, migration, retention phase, key index and ClickHouse path for what `step_name` + `outcome` answer, and the timeline would read two tables); nothing on day 1 (at `errors` a handled message shows a FAILED row and no DLQ row, as a parked-then-retried one does — `RecordingPolicy.java:59`; at `off` the recorder is not installed at all — `Recorder.java:71` — so only its ingress row remains, as for a success); `HANDLED` on the failed step's row (the error rate loses it) or on the handler's last step row (gone when that step's recording is lowered); the marker through the trail for at-least-once (a row not written is only a WARNING there — `Trail.java:160-166` — and the worker completes the item anyway, `FlowWorker.java:346`); completing the item and the marker in one transaction (couples `WorkQueue` to `MessageStore`, impossible on the Kafka queue). Open for the owner: the marker takes the LAST number of the handler's range (each range = its steps + 1); the range base would work equally and must be fixed before the first implementation row. Decided by the advisor (Fable) on the owner's delegation — the owner's session instruction of 2026-11-14 routes any decision left unanswered for 20 minutes to the advisor; the owner was asked in chat, two reminders fired, no answer came. Review at hand-over. | CONSIDER-11 |
+ | D-103 | 2026-11-14 | An interrupt is never handled by a user error handler (CONSIDER-11), draft — review at hand-over. A `Fault` raised because the node is stopping or the message's deadline passed is a decision about the process, not about the message: it says nothing a flow author could answer, and the handler's own steps would be cut short by the same interrupt, so a handler that built a SOAP Fault would half-build it and the run would end with a `HANDLED` marker claiming the failure was dealt with. An interrupt therefore bypasses `onError` entirely and goes straight to the built-in path of D-045 / D-049 and the interrupt edges of D-098: at-least-once parks or leaves the item to its lease, sync answers with the kind's status, at-most-once drops. This is the one failure a handler cannot see, and the schema cannot express an exception to it: `on:` lists `Fault.Kind` values (`MALFORMED`, `INVALID`, `DOWNSTREAM`, `INTERNAL`) and an interrupt is not a kind. Reversible: making interrupts handlable later only widens what `on:` matches and adds no column and no migration. Written because the §6 draft asserted this rule as part of D-098, which does not contain it (D-098 covers parking, the Delivery sync path and Retry's suppression of earlier failures on attempt ≥ 2); the rule is wanted, the citation was wrong, so it gets a row of its own. | CONSIDER-11, D-102, D-098, F-27 |
+-| D-104 | 2026-11-14 | Window-refusal policy in `BatchingWriter` (FIX-71 b), reversible, supersedes FIX-69's "fail the taken batch". When the window `timer.schedule` throws (`RuntimeException` or `Error`) the batches the drain just took are **committed**, never failed: they stay in flight, reach the sink in the order taken, and what stayed queued rides their completions (`afterCommit` -> `drainLocked`, `BatchingWriter.java:274-281`) — the same reliance the empty-batch branch already has (:203-204), so FIX-69's invariant (nothing stays queued with no commit in flight and no window) holds with no item failed. **Sacrificed: tempo, and under sustained load the newest rows.** With no window a partial batch moves only when `inFlight == 0` (`takeLocked`, :220-221), so throughput falls to one commit at a time; if that cannot keep up, the backlog fills and the *newest* saves fail through the existing bounded paths (`OverloadedException`, `maxWait`), each logged per row by `Trail.write` (`Trail.java:160-166`, D-071). **Not sacrificed: a row the sink would have accepted is never failed by a timer.** The trade is one-sided for trails because failing the save *is* losing the row — `Trail.close()` never fails (`Trail.java:103`, :111) and `FlowWorker` completes the item regardless (`FlowWorker.java:346`, :349) — and the only two-sided caller, `SequentialIntake.java:46`, prefers committing too (a failure there is a retryable Nack, a commit writes the row). Rejected: today's behaviour, where one refusal fails up to `maxBacklog` rows plus every waiter (drain loop :194-214, waiters pulled in at :228-232), counted in `PgMessageStore.failed()` (:87) and never retried, for a device that only sets tempo; also rejected: failing only the taken batches and keeping the rest queued (that was FIX-69's bug), retrying the arm on a second timer (a new failure mode, and each commit completion already re-arms), and a sticky "no window" after a refusal (it hides a timer that recovers). Observability, architect's call on the designer's open point: the counter `windowsRefused()` always rises, and a WARNING is logged on the first refusal of an episode and on recovery, not once per refusal — bounded at two lines per episode, so a permanently refusing timer cannot flood the log, and silence (what F-13 was about) is still impossible. Not wired into `/health` in this row: that would add a JSON field to `AdminServer.HealthProbe` (`AdminServer.java:181`, :481), a wire surface, and the counter is enough for a test. Conflict declared, not discovered later: FIX-69's recorded acceptance and `BatchingWriterWindowRefusalTest.java:28-32`, :178, :236 and :251 assert the opposite, so those are wrong expectations to be changed with the reason in the commit message (CLAUDE.md, Tests); `BatchingWriter`'s javadoc at :99-101, :110-114 and `drainLocked`'s at :187-191 are rewritten in the same commit. Reversal is one file (~25 private lines, the javadoc and those tests): no schema, no migration, no persisted or wire format, no dependency. Settled 2026-11-14 by `javap -c` on the resolved jar (`~/.m2/.../vertx-core-5.1.10.jar`), not from memory: `Future.future(handler)` has the exception-table entry `from 4 to 11 target 14 Class java/lang/Throwable` and calls `Promise.tryFail` with it, so an `Error` thrown by the handler becomes the future's failure and a message's answer is always decided. The (a) widening therefore stays inside `BatchingWriter`; no change is needed at `SequentialIntake.java:47` for that path. | FIX-71, FIX-69, D-071, F-13 |
++| D-104 | 2026-11-14 | Window-refusal policy in `BatchingWriter` (FIX-71 b), reversible, supersedes FIX-69's "fail the taken batch". When the window `timer.schedule` throws (`RuntimeException` or `Error`) the batches the drain just took are **committed**, never failed: they stay in flight, reach the sink in the order taken, and what stayed queued rides their completions (`afterCommit` -> `drainLocked`, `BatchingWriter.java:274-281`) — the same reliance the empty-batch branch already has (:203-204), so FIX-69's invariant (nothing stays queued with no commit in flight and no window) holds with no item failed. **Sacrificed: tempo, and under sustained load the newest rows.** With no window a partial batch moves only when `inFlight == 0` (`takeLocked`, :220-221), so throughput falls to one commit at a time; if that cannot keep up, the backlog fills and the *newest* saves fail through the existing bounded paths (`OverloadedException`, `maxWait`), each logged per row by `Trail.write` (`Trail.java:160-166`, D-071). **Not sacrificed: a row the sink would have accepted is never failed by a timer.** The trade is one-sided for trails because failing the save *is* losing the row — `Trail.close()` never fails (`Trail.java:103`, :111) and `FlowWorker` completes the item regardless (`FlowWorker.java:346`, :349) — and the only two-sided caller, `SequentialIntake.java:46`, prefers committing too (a failure there is a retryable Nack, a commit writes the row). Rejected: today's behaviour, where one refusal fails up to `maxBacklog` rows plus every waiter (drain loop :194-214, waiters pulled in at :228-232), counted in `PgMessageStore.failed()` (:87) and never retried, for a device that only sets tempo; also rejected: failing only the taken batches and keeping the rest queued (that was FIX-69's bug), retrying the arm on a second timer (a new failure mode, and each commit completion already re-arms), and a sticky "no window" after a refusal (it hides a timer that recovers). Observability, architect's call on the designer's open point: the counter `windowsRefused()` always rises, and a WARNING is logged on the first refusal of an episode and on recovery, not once per refusal — bounded at two lines per episode, so a permanently refusing timer cannot flood the log, and silence (what F-13 was about) is still impossible. Not wired into `/health` in this row: that would add a JSON field to `AdminServer.HealthProbe` (`AdminServer.java:181`, :481), a wire surface, and the counter is enough for a test. Conflict declared, not discovered later: FIX-69's recorded acceptance and `BatchingWriterWindowRefusalTest.java:28-32`, :178, :236 and :251 assert the opposite, so those are wrong expectations to be changed with the reason in the commit message (CLAUDE.md, Tests); `BatchingWriter`'s javadoc at :99-101, :110-114 and `drainLocked`'s at :187-191 are rewritten in the same commit. Reversal is one file (~25 private lines, the javadoc and those tests): no schema, no migration, no persisted or wire format, no dependency. Settled 2026-11-14 by `javap -c` on the resolved jar (`~/.m2/.../vertx-core-5.1.10.jar`), not from memory: `Future.future(handler)` has the exception-table entry `from 4 to 11 target 14 Class java/lang/Throwable` and calls `Promise.tryFail` with it, so an `Error` thrown by the handler becomes the future's failure and a message's answer is always decided. The (a) widening therefore stays inside `BatchingWriter`; no change is needed at `SequentialIntake.java:47` for that path. AMENDED 2026-11-14 at the FIX-71 r4 review, which found a site beyond the packet: `cancel()` itself can throw. `cancelQuietly` therefore logs the first such throw per writer and is silent after it, with no counter — which contradicts the FIX-71 packet's “not swallowed” requirement, so the packet is wrong and this row decides. The reason a counter would be wrong here: a throwing `cancel` is a defect in the Timer implementation, not a condition of the writer, so it is a once-per-writer fault report and not a rate to watch, unlike `windowsRefused`. A throwing log handler at that site is a separate and worse problem, because `cancelQuietly` logs while holding the writer lock, so an escape strands a batch after `inFlight++`; that belongs to FIX-127, not here. One consequence of that policy was unstated and is settled here, raised by the FIX-71 r5 test-author: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays SCHEDULED, and when it later fires it can set a newer window's `armed` to null and hand a newer partial batch to the sink before its own window expired. That is a loss of batching, not a loss of data — every item still reaches the sink exactly once and in arrival order — and it is accepted, because a `cancel` that throws is already a Timer defect and degraded batching is the mildest available consequence. It is written down because the surrounding javadoc calls a leftover timer harmless only for WAITER DEADLINES, where `expire` returns without effect; a leftover WINDOW is not inert in that way, and the difference must not be left to be rediscovered. It is unpinned by any test today: FIX-138. | FIX-71, FIX-69, D-071, F-13 |
+ | D-105 | 2026-11-14 | A handled failure is not a flow error (CONSIDER-11, amends D-102 and §6 the same day it was written). A run that ends `HANDLED` counts as a **successful run** of the flow: it is not in the flow's error rate, not in error alerting and not in the SLA's failure count. What replaces it is a number of its own — `handled`, per flow, per step and per handler — which rises on every handled failure and is shown beside the error rate, so the failure is visible as a handled failure rather than invisible. Nothing is removed from the history: the failed step keeps its `FAILED` row with its error text, the handler's steps keep their rows, and the `HANDLED` marker keeps the failed step's name and failure text. The timeline is the record; the error rate is a question about outcomes, and the outcome of a handled run is success. | Owner's decision 2026-11-14, against my draft, which had the error rate keep counting the failed step. The owner's case: a target that is briefly unavailable, or a recipient who fixes their data and we resend, is not a failed integration — SAP PO reports it the same way, and an operator who sees permanent red for something that was handled stops trusting the colour. My reason for the draft was that an author could buy a green dashboard by writing a handler; a separate always-rising `handled` number answers that without calling a handled failure an error, which is the better of the two shapes and is why I did not argue the point. The owner also raised two cases that are NOT this decision — a retry that succeeds and a replay after the recipient's fix — which are about how retried and replayed runs aggregate, not about handlers: written up as F-28, not settled here. |
+ | D-106 | 2026-11-14 | A step attempt that failed and then succeeded on retry is visible in the message's own history and nowhere else (F-28, question 1). It is not a number on the per-flow screen: no `retried` metric, no entry in error alerting, nothing in the flow's error rate. The attempt rows stay in the timeline, where an operator who opens the message sees what happened. | Owner's decision 2026-11-14 ("v detailech logu zatím"). A retry that succeeded is the mechanism working as designed, so putting it on the flow's screen would report a number that rises when nothing is wrong. The word "zatím" is the owner's: if a partner's blips later need watching, the attempt rows are already recorded and a number can be derived from them without a migration. |
+ | D-107 | 2026-11-14 | One id for the life of a message, and only two operations on a failed one (owner's direction, F-29). A message keeps a single id from ingress to its end, and its own log carries what happened to it: that it failed, that it was resent, that it was cancelled. The operator's scenario is the requirement — a colleague hands over the id of a failed message, you find it, remove the cause and resend it, and it ends successful, or you cancel it and it ends cancelled, all under that one id. **Replay of a successful message goes out of the architecture**, and with it "replay from any recorded step": the only operations are retry of a failed message and cancel of a failed message. `cancel` does not exist in the codebase today and is new surface. Shape, storage and blast radius go to a class-C design; this row records the direction, which is settled. Draft — review at hand-over. | Owner's direction 2026-11-14 ("Tohle je potřeba mít evidované pod jedním id… já jsem nikdy nechtěl mít možnost replay úspěšné zprávy, jenom retry chybové anebo cancel… tak to má i SAP PO i CPI"). The platform today supports replaying a successful message — `Replay.from` requires only that the previous step was recorded `OK` (`Replay.java:22` of the `:80-110` span) — and §6's changelog and §9's per-message screen both promise "from any step". Important correction the owner should have, and which the design must carry: removing replay-of-successful does NOT remove the need for an attempt in the recording key. `Replay.retry` of a failed message re-runs steps that already have rows and collides on `messages`' PK `(id, step)` exactly as a replay would, so the keying change is required by the owner's own scenario, not by the capability being dropped. |
+ | D-108 | 2026-11-14 | Shape of the one-id lifecycle (D-107's design, class-C). Draft — review at hand-over. **Keying:** `messages` gains `attempt int not null default 1` and its PK becomes `(id, attempt, step)`, inserted `on conflict (id, attempt, step) do nothing` so the first write of each run still wins; `Snapshot` gains `attempt`, read by `Recorder` from `Envelope.ATTEMPT`; `TIMELINE` orders by `attempt, step`. One monotonic run number per id and never two counters: a worker run is `attempt_base + claims - 1`, a resend run is `parked.attempt + 1`, and `ATTEMPT` stays the single source of `nextKey`'s `part~N`, so `BlobKey`'s arity does not change and the 321 factory calls in tests stand. `bodies`, `message_keys`, `work` and `processed_ids` need no migration. **Lifecycle:** the current state is **derived, never a column** (the batching writer is insert-only, so a state transition would have to update N rows): cancelled if a cancel event exists, else failed if a DLQ row or a held work item exists, else the latest attempt's last row. New append-only table `message_lifecycle(id, seq, at, event, attempt, actor, reason)`, PK `(id, seq)`, events `resent` and `cancelled` only — run outcomes stay in `messages` — with the PK collision itself as the concurrency guard, so of two simultaneous cancels one wins. core `MessageLog` interface (in-memory + Pg on day 1) and core `Lifecycle(Dlq, WorkQueue, MessageLog)`. **Cancel:** append the event first, then delete the DLQ row, then complete a held item — the lifecycle row is the authority, so a crash after it leaves a stale DLQ row that reads render as cancelled. **Retry:** `Replay` becomes `Retry` with one entry point `retry(messageId)`, same id, attempt `parked.attempt + 1`, appending `resent` **before** the run and deleting the DLQ row only on success; no id is minted anywhere. **DLQ:** PK stays `id` (no PK migration), gains `attempt`, and park becomes `on conflict (id) do update ... where excluded.attempt > dlq.attempt` — the DLQ is the worklist of the latest failure, the history is `messages` + `message_lifecycle`. **Removed:** both `Replay.from` overloads, `REPLAY_INPUT`, the refusal reasons STEP_OUT_OF_RANGE / NOT_RECORDED / METADATA_ONLY, `Replay`'s `IdGenerator` and its wiring, the replay admin route, and `Envelope.REPLAY_OF` — `replayOf` does not survive, because a retry under the same id has nothing to point at. **Migration** V12, one file, including dropping and recreating `messages_created_at` as `(created_at, id, attempt, step)` and changing the retention job's keyset cursor. | Class-C design 2026-11-14 on D-107, accepted by me as the architect with three of its open questions answered here and two put to the owner. Rejected alternatives and why, from the design: a current-state column on `messages` (insert-only writer, N rows per transition); a separate `runs` table (`messages` already is the per-run log once keyed by attempt); DLQ PK `(id, attempt)` (turns the worklist into a history and makes `get`/`list` need max-attempt windows for no gain); a two-dimension `part~G.A` suffix (breaks `ComponentContract.java:320-321` and keeps two counters); keeping the new id with a parent link (the owner's direction forbids it); cancel by interrupting a running message (D-103: an interrupt is a shutdown signal, never a failure of the message); cancel as a prop on existing rows (mutates snapshots). My answers to the design's open questions: `actor` is nullable and written null until the admin API has authentication, which it does not have today; the number of resends per id takes a finite cap per flow (SUPERSEDED the same day by D-109: the owner refused a cap and was right, and that row says why my reading of "never default a limit to unlimited" was wrong here); and a resend of an ordered flow must go back through the queue rather than run inline, because an inline resend jumps the order its flow guarantees — that is correctness, not preference, and it is what needs `work.attempt_base`. |
+ | D-109 | 2026-11-14 | What a resend may and may not do (owner, closing D-108's open questions). **No cap on resends**: an operator may resend the same message id any number of times, and each resend is a further attempt with its own rows. **A sync message is never resendable**: a sync request/reply flow parks nothing (§4), the error went to the caller, and the caller is the one who retries — `Retry.retry` refuses a message whose flow is sync, naming the flow. **A cancelled message is never resendable**: cancel is terminal, so once a `cancelled` event exists in the message's log, retry is refused. The lifecycle is therefore `failed -> resent -> ok` or `failed -> resent -> failed`, any number of times, or `failed -> cancelled`, which ends it. | Owner's decision 2026-11-14 ("ne, žádný strop přeposílání nechci, sync zprávy nepújde přepossílat a zrušené zprávy taky ne"). On the cap the owner overruled me and was right: I had called for a finite cap in D-108 on the strength of "never default a limit to unlimited", and I had over-applied that rule. It guards limits the platform enforces on itself while running — body size, retries, concurrency, deadlines — where an unbounded value is a runaway. A resend is a human action taken one click at a time; there is no loop to run away, each one is recorded in the message's log with its actor, and storage is already bounded by the retention job. A cap would have bought nothing and would have had to be explained to an operator at the worst possible moment. The two refusals are preconditions on one entry point and cost nothing: the flow's delivery mode is known at retry time because the flow is deployed, and the cancel event is a single read of `message_lifecycle`. |
+ | D-110 | 2026-11-14 | A cancelled message counts as a failure of its flow (architect, on the owner's own principle; the owner did not answer this one). It stays in the error rate, in error alerting and in whatever counts failures, and it is not a success the way D-105's `handled` is. | Derived from the owner's reasoning for D-105 rather than decided afresh: a handled failure is a success because the flow dealt with it and the message reached its destination, and a cancelled message is the opposite — the operator abandoned it and it was never delivered. The business outcome is a non-delivery, so calling it anything but a failure would turn cancel into a button that makes a chart green. Recorded as mine, not the owner's: it was put to the owner together with the sync question on 2026-11-14 and the answer covered only resending. Review at hand-over. Sharpened by the owner the same day ("zrušená zpráva bude vidět v logu jako zrušená (třeba kvůli chybě)"): the two things are separate and must not be conflated. The message's STATE is `cancelled`, a state of its own, shown as such on its screen with the reason the operator gave — never flattened into `failed`, which is what D-108's derived state and the `reason` column on the cancel event already provide. What this row decides is only the COUNTING: for the flow's error rate a cancelled message is a failure, because it was never delivered. If the owner wants cancelled to be a third category in the counting too — neither error nor success — that is a one-line change here and in CONSIDER-11d's `handled` number. |
++| D-111 | 2026-11-14 | Recording is independent of handling (FIX-133, FIX-131 case 2), reversible. A failure is RECORDED even when it is deliberately not retried, not parked and not handled. `Recorder.wrap` catches `Exception` only (`Recorder.java:85`), so a step that throws an `Error` leaves no row at all and the timeline shows the step as one that never ran — measured by `RedeliveredTimelineTest` case 2, where a crashed first run plus a redelivery produces a timeline of steps 0-7 all `OK`, indistinguishable from one clean successful run. Monitoring is the product, so a failure the timeline cannot show is a product defect. The fix is narrow and changes NO control flow: widen that catch to `RuntimeException \| Error` as D-104 did in `BatchingWriter`, write the `FAILED` row with the throwable's text, and rethrow unchanged. Everything D-098 and D-049 decided about an `Error` stands — it is not transient, it is not retried, `FlowWorker` still leaves the item to its lease, and D-103's rule that a user error handler never sees an interrupt is untouched. Explicitly NOT changed: `Parking.java:49` catches `Exception` only and must keep doing so, because parking an `Error` would make it transient, which D-098 refused; the scout reading that line as a second instance of the same gap was wrong, and it is recorded here so nobody “fixes” it. Still open as its own row, because it contradicts D-049 (d) rather than this one: `Delivery.java:319-320` catches `RuntimeException` only around the ingress `intake.save`, so an `Error` escapes `apply()` where D-049 (d) promises “never an escaped exception”. | FIX-131, FIX-133 |
+diff --git a/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java b/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
+index 6ec4b49..cb3d077 100644
+--- a/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
++++ b/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
+@@ -64,11 +64,11 @@ public final class BatchingWriter<T> implements AutoCloseable {
+ 
+     private record Pending<T>(T item, Promise<Void> done) {}
+ 
+-    /** A batch a drain took and then failed: the window for what stayed behind it could not be scheduled. */
+-    private record Refused<T>(List<Pending<T>> batch, Throwable cause) {}
+-
+-    /** What a drain hands out once the lock is released: batches to commit, refused batches to fail. */
+-    private record Drained<T>(List<List<Pending<T>>> commit, List<Refused<T>> refused) {}
++    /**
++     * What a drain hands out once the lock is released: batches to commit; the window timer's refusal, when it refused
++     * and this is the first refusal of an episode (to be logged); whether this drain's accepted window ends an episode.
++     */
++    private record Drained<T>(List<List<Pending<T>>> commit, Throwable firstRefusal, boolean recovered) {}
+ 
+     /** A {@link #saveWaiting} item waiting for room; its deadline is cancelled when it enters the backlog. */
+     private static final class Waiter<T> {
+@@ -78,6 +78,8 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Waiter(Pending<T> pending) { this.pending = pending; }
+     }
+ 
++    private static final System.Logger LOG = System.getLogger(BatchingWriter.class.getName());
++
+     private final BatchSink<T> sink;
+     private final Timer timer;
+     private final Options options;
+@@ -88,6 +90,9 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     private int inFlight;
+     private Timer.Cancellable armed;
+     private boolean closed;
++    private long windowsRefused;      // under the lock: every refusal of the window timer
++    private boolean cancelLogged;  // under the lock: the first throwing cancel was logged
++    private boolean refusing;         // under the lock: a window was refused and none accepted since (one episode)
+ 
+     public BatchingWriter(BatchSink<T> sink, Timer timer, Options options) {
+         this.sink = Objects.requireNonNull(sink, "sink");
+@@ -97,8 +102,8 @@ public final class BatchingWriter<T> implements AutoCloseable {
+ 
+     /**
+      * Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is
+-     * full, and with the timer's exception when its batch was taken but the window for the items behind it could not be
+-     * scheduled (FIX-69: the batch is then never handed to the sink).
++     * full. A timer that refuses the window never fails it (D-104): the batch is committed and the refusal is counted
++     * ({@link #windowsRefused}) and logged. Never throws; every failure is the returned future's cause. A {@link Timer.Cancellable} whose {@code cancel()} throws is tolerated (logged once).
+      */
+     public Future<Void> save(T item) {
+         return enqueue(item, false);
+@@ -109,14 +114,18 @@ public final class BatchingWriter<T> implements AutoCloseable {
+      * waiter, and enters the moment a slot frees. Completes when the batch containing it is committed; fails when that
+      * commit fails, with {@link OverloadedException} when it still waits {@code maxWait} after the call (it is then never
+      * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with the timer's exception
+-     * when its deadline cannot be scheduled. Once queued (directly or moved in from the waiters) it also fails, as with
+-     * {@link #save}, with the timer's exception when its batch was taken but the window for the items behind it could not
+-     * be scheduled (FIX-69: the batch is then never handed to the sink).
++     * (an {@link Error} included) when its deadline cannot be scheduled. Once queued (directly or moved in from the
++     * waiters) a refused window does not fail it, as with {@link #save} (D-104). Never throws. A throwing {@code cancel()} of a waiter's deadline is tolerated; the deadline then fires late and is harmless.
+      */
+     public Future<Void> saveWaiting(T item) {
+         return enqueue(item, true);
+     }
+ 
++    /** How many times the window timer refused a schedule; a refusal commits instead of failing (D-104). */
++    public long windowsRefused() {
++        synchronized (lock) { return windowsRefused; }
++    }
++
+     /** Items waiting for room in a full backlog ({@link #saveWaiting}). */
+     public int waiting() {
+         synchronized (lock) { return waiters.size(); }
+@@ -144,7 +153,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Waiter<T> w = new Waiter<>(p);
+         try {
+             w.deadline = timer.schedule(options.maxWait(), () -> expire(w));
+-        } catch (RuntimeException e) {
++        } catch (RuntimeException | Error e) {
+             return Future.failedFuture(e);
+         }
+         waiters.add(w);
+@@ -164,6 +173,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     /**
+      * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
+      * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
++     * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once).
+      */
+     public Future<Void> flush() {
+         Drained<T> drained;
+@@ -172,7 +182,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+             for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
+             for (Pending<T> p : queue) waiting.add(p.done().future());
+             for (Waiter<T> w : waiters) waiting.add(w.pending.done().future());
+-            if (armed != null) { armed.cancel(); armed = null; }
++            if (armed != null) { cancelQuietly(armed); armed = null; }
+             drained = drainLocked(true);
+         }
+         dispatch(drained);
+@@ -185,32 +195,46 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     }
+ 
+     /**
+-     * Under the lock: takes every batch that may go now and arms the window timer for what stays. A timer that refuses the
+-     * window is never thrown at the caller (FIX-69): the batches just taken are released from flight and refused with its
+-     * exception, and the drain runs again on the freed slots, so nothing stays queued with no commit in flight and no window.
++     * Under the lock: takes every batch that may go now and arms the window timer for what stays; one take, one arm
++     * attempt. A timer that refuses the window (exception or {@link Error}) is never thrown at the caller and fails
++     * nothing (D-104): the batches taken stay in flight and are committed, and what stayed queued rides their completions
++     * ({@code afterCommit} drains again), so nothing stays queued with no commit in flight and no window. When nothing
++     * was taken the queue is non-empty, so a commit is already in flight and its completion drains.
++     *
++     * <p>The batches are returned oldest first, in the order taken, and {@link #dispatch} hands them to the sink in that
++     * order. This is <b>not</b> a global sink order: a sink that completes inline re-enters {@code afterCommit}, then
++     * {@code drainLocked} and {@code dispatch}, from inside the dispatch loop, so a younger batch can reach the sink
++     * before the outer loop's next one. No caller may rely on the order in which batches reach the sink.
+      */
+     private Drained<T> drainLocked(boolean windowElapsed) {
+-        Drained<T> out = new Drained<>(new ArrayList<>(), new ArrayList<>());
+-        while (true) {
+-            List<List<Pending<T>>> batches = takeLocked(windowElapsed);
+-            if (queue.isEmpty() || armed != null || options.window().isZero()) {
+-                out.commit().addAll(batches);
+-                return out;
+-            }
+-            try {
+-                armed = timer.schedule(options.window(), this::onWindow);
+-            } catch (RuntimeException | Error e) {
+-                // nothing taken: the queue is non-empty, so a commit is in flight and its completion drains again
+-                if (batches.isEmpty()) return out;
+-                for (List<Pending<T>> batch : batches) {
+-                    inFlight--;
+-                    flying.remove(batch);
+-                    out.refused().add(new Refused<>(batch, e));
+-                }
+-                continue;
+-            }
+-            out.commit().addAll(batches);
+-            return out;
++        List<List<Pending<T>>> batches = takeLocked(windowElapsed);
++        if (queue.isEmpty() || armed != null || options.window().isZero()) return new Drained<>(batches, null, false);
++        try {
++            armed = timer.schedule(options.window(), this::onWindow);
++        } catch (RuntimeException | Error e) {
++            windowsRefused++;
++            boolean first = !refusing;
++            refusing = true;
++            return new Drained<>(batches, first ? e : null, false);
++        }
++        boolean recovered = refusing;
++        refusing = false;
++        return new Drained<>(batches, null, recovered);
++    }
++
++    /**
++     * Under the lock: cancels a timer handle; a {@code cancel()} that throws (exception or {@link Error}) is tolerated, so
++     * the batch already taken is never stranded. Logged once per writer. A waiter's deadline that stays uncancelled fires
++     * harmlessly: the waiter has left {@code waiters}, so {@code expire} returns, and {@code tryFail} on a settled item is a no-op.
++     */
++    private void cancelQuietly(Timer.Cancellable c) {
++        try {
++            c.cancel();
++        } catch (RuntimeException | Error e) {
++            if (cancelLogged) return;
++            cancelLogged = true;
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: a timer handle's cancel() threw; ignored, the writer "
++                    + "carries on (further failures are not logged)", e);
+         }
+     }
+ 
+@@ -227,17 +251,23 @@ public final class BatchingWriter<T> implements AutoCloseable {
+             batches.add(batch);
+             while (!waiters.isEmpty() && queue.size() < options.maxBacklog()) {   // the freed room goes to the waiters first
+                 Waiter<T> w = waiters.poll();
+-                w.deadline.cancel();
++                cancelQuietly(w.deadline);
+                 queue.add(w.pending);
+             }
+         }
+         return batches;
+     }
+ 
+-    /** Outside the lock: fails the refused batches, oldest first, then hands the taken ones to the sink. */
++    /** Outside the lock: logs the episode's edges, then hands the taken batches to the sink, oldest first. */
+     private void dispatch(Drained<T> drained) {
+-        for (Refused<T> r : drained.refused()) {
+-            for (Pending<T> p : r.batch()) p.done().tryFail(r.cause());
++        if (drained.firstRefusal() != null) {
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the timer refused to schedule the batch window; "
++                    + "committing the taken batches instead of failing them (further refusals are only counted)",
++                    drained.firstRefusal());
++        }
++        if (drained.recovered()) {
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the batch window was scheduled again after "
++                    + "refusals; windowing is back to normal");
+         }
+         drained.commit().forEach(this::commit);
+     }
+@@ -265,7 +295,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Future<Void> written;
+         try {
+             written = sink.write(items);
+-        } catch (RuntimeException e) {
++        } catch (RuntimeException | Error e) {
+             written = Future.failedFuture(e);
+         }
+         written.onComplete(ar -> afterCommit(batch, ar.succeeded() ? null : ar.cause()));
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java
+new file mode 100644
+index 0000000..f2013f5
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java
+@@ -0,0 +1,386 @@
++package io.flottila.core.batch;
++
++import io.flottila.api.Timer;
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import io.vertx.core.Future;
++import io.vertx.core.Promise;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.EnumSource;
++
++import java.time.Duration;
++import java.time.Instant;
++import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Deque;
++import java.util.List;
++import java.util.Set;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.logging.Handler;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++import java.util.logging.Logger;
++
++import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertSame;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-71 (a) and (c): no public method of {@link BatchingWriter} ever completes by throwing; an {@link Error} from the
++ * timer (a waiter's deadline) or from the sink becomes the failure cause of the item it belongs to and of nothing else.
++ * (c): one batch after another reaches the sink in the order taken. A window that flush dropped never fires.
++ */
++class BatchingWriterErrorTest {
++
++    static final Duration WINDOW = Duration.ofMillis(50);
++    static final Duration MAX_WAIT = Duration.ofSeconds(7);
++
++    final FakeClock clock = FakeClock.at(Instant.EPOCH);
++
++    /** A FakeTimer that, while {@code refuse} is set, throws {@code refusal} on every schedule of {@link #MAX_WAIT} (a waiter's deadline). */
++    static final class DeadlineRefusingTimer implements Timer {
++        final FakeTimer inner;
++        final Error refusal = new InternalError("timer cannot schedule the deadline");
++        volatile boolean refuse;
++
++        DeadlineRefusingTimer(FakeTimer inner) { this.inner = inner; }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            if (refuse && delay.equals(MAX_WAIT)) throw refusal;
++            return inner.schedule(delay, task);
++        }
++    }
++
++    /** A manual sink: every write stays open until the test completes its gate; the writes whose index is in {@code throwOn} throw an Error. */
++    static final class ScriptedSink implements BatchSink<String> {
++        final List<List<String>> batches = new CopyOnWriteArrayList<>();
++        final Deque<Promise<Void>> gates = new ArrayDeque<>();
++        final Set<Integer> throwOn;
++        final Error error = new InternalError("sink cannot write");
++
++        ScriptedSink(Set<Integer> throwOn) { this.throwOn = throwOn; }
++
++        @Override public Future<Void> write(List<String> batch) {
++            int index = batches.size();
++            batches.add(List.copyOf(batch));
++            if (throwOn.contains(index)) throw error;
++            Promise<Void> p = Promise.promise();
++            synchronized (gates) { gates.add(p); }
++            return p.future();
++        }
++
++        Promise<Void> gate() {
++            synchronized (gates) { return gates.poll(); }
++        }
++    }
++
++    // --- (a) waitLocked: an Error from the deadline's schedule
++
++    @Test
++    void anErrorFromAWaiterDeadlineScheduleFailsOnlyThatSaveWithoutThrowing() {
++        DeadlineRefusingTimer timer = new DeadlineRefusingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        assertEquals(2, w.backlog(), "fixture: the backlog is full behind a's commit");
++
++        timer.refuse = true;
++        Future<Void> refused = assertDoesNotThrow(() -> w.saveWaiting("w"), "an Error from the deadline's schedule is never thrown at the saver");
++        assertTrue(refused.failed(), "the save whose deadline could not be scheduled fails: " + refused);
++        assertSame(timer.refusal, refused.cause(), "it fails with the Error itself as cause");
++        assertEquals(0, w.waiting(), "it was not left waiting");
++
++        timer.refuse = false;
++        Future<Void> later = w.saveWaiting("later");
++        assertEquals(1, w.waiting(), "the writer still lets a save wait once the timer works");
++        gateA.complete();
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(a.succeeded() && b.succeeded() && c.succeeded(), "the saves already queued were not touched by the refusal");
++        assertTrue(later.succeeded(), "the later waiter commits: " + later);
++        assertEquals(List.of("a", "b", "c", "later"), sink.batches.stream().flatMap(List::stream).toList(), "the refused item never reached the sink");
++        assertEquals(0, w.inFlight());
++    }
++
++    // --- (a) commit: an Error from sink.write
++
++    @Test
++    void anErrorFromTheSinkFailsOnlyItsBatchAndReleasesItsSlot() {
++        ScriptedSink sink = new ScriptedSink(Set.of(0));
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 1, 10, MAX_WAIT));
++
++        Future<Void> a = assertDoesNotThrow(() -> w.save("a"), "an Error from the sink is never thrown at the saver");
++        assertTrue(a.failed(), "the item whose batch the sink threw on fails: " + a);
++        assertSame(sink.error, a.cause(), "with the Error itself as cause");
++        assertEquals(0, w.inFlight(), "the batch's slot is released");
++        assertEquals(0, w.backlog());
++
++        Future<Void> b = w.save("b");
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "the writer still hands a later save to the sink at once");
++        sink.gate().complete();
++        assertTrue(b.succeeded(), "and commits it: " + b);
++        assertEquals(0, w.inFlight());
++    }
++
++    @Test
++    void anErrorFromTheSinkInsideACompletionFailsOnlyThatBatchAndTheRestStillCommits() {
++        ScriptedSink sink = new ScriptedSink(Set.of(1));       // the second write throws: the batch [b, c]
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 1, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> d = w.save("d");
++
++        assertDoesNotThrow(() -> gateA.complete(), "an Error from a drain run by a completion does not escape the completing thread");
++        assertTrue(a.succeeded(), "a was committed before the drain that met the Error: " + a);
++        for (Future<Void> f : List.of(b, c)) {
++            assertTrue(f.failed(), "the batch the sink threw on fails: " + f);
++            assertSame(sink.error, f.cause());
++        }
++        assertEquals(List.of(List.of("a"), List.of("b", "c"), List.of("d")), sink.batches, "d rides the failed batch's completion onto the freed slot");
++        sink.gate().complete();
++        assertTrue(d.succeeded(), "d is not failed by its neighbour's Error: " + d);
++        assertEquals(0, w.inFlight());
++        assertEquals(0, w.backlog());
++    }
++
++    // --- (c) dispatch order
++
++    @Test
++    void theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters() {
++        // Known: the loop inside one drain is dead code, a freed slot is refilled one batch at a time, so the two batches
++        // here come from two drains. This pins global FIFO (queue then waiters) and batchSize, not the intra-drain order.
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 2, 6, MAX_WAIT));
++        List<String> arrival = new ArrayList<>();
++        List<Future<Void>> futures = new ArrayList<>();
++        for (int i = 0; i < 12; i++) {                          // the backlog (6) fills, the rest waits: queue first, then waiters, FIFO
++            String item = "i" + i;
++            arrival.add(item);
++            futures.add(w.saveWaiting(item));
++        }
++        assertEquals(List.of(List.of("i0"), List.of("i1", "i2")), sink.batches, "fixture: both slots are busy");
++        assertTrue(w.waiting() > 0, "fixture: waiters exist, so the order spans queue and waiters");
++
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 50, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(arrival, sink.batches.stream().flatMap(List::stream).toList(), "the concatenation of the batches, in hand-off order, is arrival order");
++        for (List<String> b : sink.batches) assertTrue(b.size() <= 2);
++        futures.forEach(f -> assertTrue(f.succeeded(), "" + f));
++    }
++
++    // --- (a) a fourth throw site: Cancellable.cancel()
++
++    enum Throws {
++        RUNTIME { @Override Throwable make() { return new IllegalStateException("cancel refused"); } },
++        ERROR { @Override Throwable make() { return new InternalError("cancel refused"); } };
++
++        abstract Throwable make();
++    }
++
++    /** A FakeTimer whose handles throw from cancel() while {@code armed}; the task is then NOT cancelled and still fires. */
++    static final class CancelThrowingTimer implements Timer {
++        final FakeTimer inner;
++        volatile Throwable cancelThrows;
++
++        CancelThrowingTimer(FakeTimer inner) { this.inner = inner; }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            Cancellable real = inner.schedule(delay, task);
++            return () -> {
++                Throwable t = cancelThrows;
++                if (t instanceof Error e) throw e;
++                if (t != null) throw (RuntimeException) t;
++                return real.cancel();
++            };
++        }
++    }
++
++    /**
++     * a goes; b, c fill the backlog; w waits with a deadline. a's completion takes [b, c] and moves w in, which cancels w's
++     * deadline: that throws. Nothing is stranded, the slot is released, w commits, and the deadline that was never
++     * cancelled and fires later finds w gone from the line ({@code expire}: {@code waiters.remove(w)} is false) and fails nothing.
++     */
++    @ParameterizedTest
++    @EnumSource(Throws.class)
++    void aCancelThatThrowsWhenAWaiterEntersTheBacklogStrandsNothingAndFailsNoSucceededItem(Throws kind) {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> waiter = w.saveWaiting("w");
++        assertEquals(1, w.waiting(), "fixture: w waits for room");
++
++        timer.cancelThrows = kind.make();
++        assertDoesNotThrow(() -> gateA.complete(), "a throwing cancel does not escape the completion that drained");
++        assertTrue(a.succeeded(), "a was committed: its completion is not lost to the drain's throw: " + a);
++        timer.cancelThrows = null;
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(List.of("a", "b", "c", "w"), sink.batches.stream().flatMap(List::stream).toList(), "every item reached the sink once, in order");
++        for (Future<Void> f : List.of(b, c, waiter)) assertTrue(f.succeeded(), "stranded or failed: " + f);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        assertEquals(0, w.backlog());
++        assertEquals(0, w.waiting());
++
++        clock.advance(MAX_WAIT);                                // the deadline whose cancel failed fires for real
++        assertTrue(waiter.succeeded(), "a late deadline never fails an item that already succeeded: " + waiter);
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++
++    /** flush cancels the armed window: a cancel that throws neither escapes flush nor strands anything. */
++    @ParameterizedTest
++    @EnumSource(Throws.class)
++    void aCancelThatThrowsWhileFlushDropsTheArmedWindowDoesNotEscapeAndFlushCompletes(Throws kind) {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 2, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        Future<Void> b = w.save("b");
++        assertEquals(1, timer.inner.pending(), "fixture: the window for b is armed");
++
++        timer.cancelThrows = kind.make();
++        Future<Void> flush = assertDoesNotThrow(w::flush, "a throwing cancel is never thrown at the flusher");
++        timer.cancelThrows = null;
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "flush handed b to the sink");
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertTrue(a.succeeded() && b.succeeded(), "nothing stranded: " + a + " " + b);
++        assertTrue(flush.succeeded(), "flush completes: " + flush);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        clock.advance(WINDOW);                                  // the window whose cancel failed fires on an empty queue
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++
++    /**
++     * flush drops the armed window by cancelling it: the dropped window never fires. Worked example (reviewer, FIX-71 r5),
++     * window 50 ms, batch 2, two commits in flight: at t0 a goes, b arms W1 (due t50), flush hands b over; at t10 c goes,
++     * d arms W2 (due t60). At t50 only a dropped-but-live W1 could fire, and it would hand the partial batch [d] over ten
++     * milliseconds before its own window: d must reach the sink at t60, not at t50.
++     */
++    @Test
++    void aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow() {
++        FakeTimer timer = new FakeTimer(clock);
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 2, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");                           // t0: idle, a goes alone
++        Future<Void> b = w.save("b");                           // a in flight: b waits, W1 armed for t50
++        assertEquals(1, timer.pending(), "fixture: W1 is armed for b");
++        Future<Void> flush = w.flush();                         // b goes on the second slot
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "fixture: flush handed b to the sink");
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(a.succeeded() && b.succeeded() && flush.succeeded(), "fixture: a, b and the flush completed: " + flush);
++
++        clock.advance(Duration.ofMillis(10));                   // t10
++        Future<Void> c = w.save("c");                           // idle again: c goes alone
++        Future<Void> d = w.save("d");                           // c in flight: d waits, W2 armed for t60
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c")), sink.batches, "fixture: d waits for its window");
++
++        clock.advance(Duration.ofMillis(40));                   // t50: W1's due time
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c")), sink.batches,
++                "at t50 d has not reached the sink: the window flush dropped did not fire and drain d before its own window");
++        assertFalse(d.isComplete(), "d still waits at t50: " + d);
++
++        clock.advance(Duration.ofMillis(10));                   // t60: W2's due time
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c"), List.of("d")), sink.batches,
++                "at t60 d's own window hands it to the sink");
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(c.succeeded() && d.succeeded(), "c and d commit: " + c + " " + d);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        assertEquals(0, timer.pending(), "no window is left scheduled");
++    }
++
++    // --- a throwing cancel() is logged once per writer, never per throw (no flood, no silence)
++
++    final List<LogRecord> logged = new CopyOnWriteArrayList<>();
++    /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
++    final Logger flottila = Logger.getLogger("io.flottila");
++    final Handler capture = new Handler() {
++        @Override public void publish(LogRecord r) { logged.add(r); }
++        @Override public void flush() {}
++        @Override public void close() {}
++    };
++
++    @BeforeEach
++    void listen() {
++        capture.setLevel(Level.ALL);
++        flottila.addHandler(capture);
++    }
++
++    @AfterEach
++    void unlisten() {
++        flottila.removeHandler(capture);
++    }
++
++    private long batchWarnings() {
++        return logged.stream().filter(r -> r.getLevel().intValue() >= Level.WARNING.intValue()
++                && r.getLoggerName() != null && r.getLoggerName().startsWith("io.flottila.core.batch")).count();
++    }
++
++    /**
++     * Two waiters enter the backlog in one drain while every cancel() throws: two throwing cancels for the same writer, one
++     * WARNING. The window timer never refuses here (only cancel does), so no window episode contributes to the count.
++     */
++    @Test
++    void aCancelThatThrowsTwiceForTheSameWriterIsLoggedOnceAndStrandsNothing() {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> w1 = w.saveWaiting("w1");
++        Future<Void> w2 = w.saveWaiting("w2");
++        assertEquals(2, w.waiting(), "fixture: both wait for room");
++        assertEquals(0, batchWarnings(), "fixture: nothing logged before a cancel throws");
++
++        timer.cancelThrows = new IllegalStateException("cancel refused");
++        gateA.complete();                                       // takes [b, c] and moves w1 and w2 in: two throwing cancels
++        assertEquals(0, w.waiting(), "fixture: both waiters entered, so both deadlines were cancelled (and threw)");
++        assertEquals(1, batchWarnings(), "two throwing cancels for one writer log exactly one WARNING, not two and not none");
++
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(1, batchWarnings(), "no further WARNING from the rest of the run");
++        assertEquals(List.of("a", "b", "c", "w1", "w2"), sink.batches.stream().flatMap(List::stream).toList());
++        for (Future<Void> f : List.of(a, b, c, w1, w2)) assertTrue(f.succeeded(), "stranded or failed: " + f);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        timer.cancelThrows = null;
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++}
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
+index d677460..33be7c8 100644
+--- a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
+@@ -1,5 +1,6 @@
+ package io.flottila.core.batch;
+ 
++import io.flottila.api.Timer;
+ import io.flottila.testkit.FakeClock;
+ import io.flottila.testkit.FakeTimer;
+ import io.vertx.core.Future;
+@@ -232,4 +233,96 @@ class BatchingWriterPropertyTest {
+             }
+         }
+     }
++
++    // --- FIX-71 (D-104): a window timer that refuses commits, it never fails
++
++    enum Step { SAVE, SAVE_WAITING, COMPLETE_OK, TICK }
++
++    @Provide
++    Arbitrary<List<Step>> steps() {
++        return Arbitraries.of(Step.class).list().ofMinSize(1).ofMaxSize(80);
++    }
++
++    /** A FakeTimer that, while {@code refuse} is set, throws on every schedule of the window delay: a RuntimeException or an Error. */
++    private static final class MaybeRefusingTimer implements Timer {
++        final FakeTimer inner;
++        final Duration window;
++        final boolean refuse;
++        final boolean asError;
++
++        MaybeRefusingTimer(FakeTimer inner, Duration window, boolean refuse, boolean asError) {
++            this.inner = inner;
++            this.window = window;
++            this.refuse = refuse;
++            this.asError = asError;
++        }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            if (refuse && delay.equals(window)) {
++                if (asError) throw new InternalError("window refused");
++                throw new IllegalStateException("window refused");
++            }
++            return inner.schedule(delay, task);
++        }
++    }
++
++    /**
++     * Any mix of save, saveWaiting, commit completion and clock ticks, with the window timer refusing every schedule or none
++     * (a RuntimeException or an Error): every item the writer accepted reaches the sink exactly once, the concatenation of the
++     * batches is the arrival order, each batch is at most batchSize, and every accepted item succeeds — a refusal fails no
++     * one. The writer drains: nothing is queued, waiting or in flight once the commits are completed, with no clock tick.
++     */
++    @Property(tries = 300)
++    void everyItemReachesTheSinkOnceAndTheirConcatenationIsArrivalOrder(@ForAll("steps") List<Step> steps,
++                                                                       @ForAll boolean refuses,
++                                                                       @ForAll boolean asError,
++                                                                       @ForAll @IntRange(min = 1, max = 4) int batchSize,
++                                                                       @ForAll @IntRange(min = 1, max = 3) int concurrency,
++                                                                       @ForAll @IntRange(min = 1, max = 3) int backlogBatches,
++                                                                       @ForAll @IntRange(min = 1, max = 5) int windowMs) {
++        FakeClock clock = FakeClock.at(Instant.EPOCH);
++        Duration window = Duration.ofMillis(windowMs);
++        Duration maxWait = Duration.ofHours(1);   // no tick below reaches it: no waiter fails at its deadline
++        MaybeRefusingTimer timer = new MaybeRefusingTimer(new FakeTimer(clock), window, refuses, asError);
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        int maxBacklog = batchSize * backlogBatches;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(batchSize, window, concurrency, maxBacklog, maxWait));
++
++        Map<String, Future<Void>> accepted = new HashMap<>();
++        List<String> arrival = new ArrayList<>();
++        int n = 0;
++        for (Step s : steps) {
++            switch (s) {
++                case SAVE -> {
++                    String item = "s" + (n++);
++                    Future<Void> f = w.save(item);
++                    if (f.failed()) assertInstanceOf(OverloadedException.class, f.cause(), item + ": only a full backlog refuses a save: " + f.cause());
++                    else { accepted.put(item, f); arrival.add(item); }
++                }
++                case SAVE_WAITING -> {
++                    String item = "w" + (n++);
++                    Future<Void> f = w.saveWaiting(item);
++                    assertFalse(f.failed(), item + ": a waiting save is never refused before maxWait: " + f.cause());
++                    accepted.put(item, f);
++                    arrival.add(item);
++                }
++                case COMPLETE_OK -> { if (sink.open() > 0) sink.gate().complete(); }
++                case TICK -> clock.advance(window);
++            }
++            assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
++            assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
++        }
++        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();   // commits only: no tick, no window
++        if (!refuses) clock.advance(window);                                                       // a working window may still hold a partial batch
++        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();
++
++        assertEquals(0, w.backlog(), "nothing stays queued with no commit in flight and no window");
++        assertEquals(0, w.waiting(), "nobody is left waiting");
++        assertEquals(0, w.inFlight());
++        List<String> flushed = sink.batches.stream().flatMap(List::stream).toList();
++        assertEquals(arrival, flushed, "every accepted item reaches the sink once, in arrival order");
++        for (List<String> b : sink.batches) assertTrue(b.size() <= batchSize, "batch of " + b.size() + " > " + batchSize);
++        accepted.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, a refused window fails no one: " + f));
++    }
+ }
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java
+new file mode 100644
+index 0000000..f0e3efc
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java
+@@ -0,0 +1,138 @@
++package io.flottila.core.batch;
++
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++
++import java.time.Duration;
++import java.time.Instant;
++import java.util.List;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.logging.Handler;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++import java.util.logging.Logger;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-71 (D-104) observability: a refused window is never silent (F-13) and never a flood. {@code windowsRefused()} rises
++ * once per refusal; the WARNING is logged on the first refusal of an episode and on recovery, not once per refusal.
++ */
++class BatchingWriterWindowRefusalLogTest {
++
++    static final Duration WINDOW = BatchingWriterWindowRefusalTest.WINDOW;
++
++    final FakeClock clock = FakeClock.at(Instant.EPOCH);
++    final BatchingWriterWindowRefusalTest.RefusingWindowTimer timer =
++            new BatchingWriterWindowRefusalTest.RefusingWindowTimer(new FakeTimer(clock), WINDOW);
++    final FakeSink sink = new FakeSink();
++
++    private BatchingWriter<String> writer(int batchSize, int concurrency, int maxBacklog) {
++        sink.manual = true;
++        return new BatchingWriter<>(sink, timer, new BatchingWriter.Options(batchSize, WINDOW, concurrency, maxBacklog, BatchingWriterWindowRefusalTest.MAX_WAIT));
++    }
++
++    private void completeEveryOpenCommit() {
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 50, "fixture: commits keep coming after 50 completions");
++            sink.gate().complete();
++        }
++    }
++
++    final List<LogRecord> logged = new CopyOnWriteArrayList<>();
++    /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
++    final Logger flottila = Logger.getLogger("io.flottila");
++    final Handler capture = new Handler() {
++        @Override public void publish(LogRecord r) { logged.add(r); }
++        @Override public void flush() {}
++        @Override public void close() {}
++    };
++
++    @BeforeEach
++    void listen() {
++        capture.setLevel(Level.ALL);
++        flottila.addHandler(capture);
++    }
++
++    @AfterEach
++    void unlisten() {
++        flottila.removeHandler(capture);
++    }
++
++    private long warnings() {
++        return logged.stream().filter(r -> r.getLevel().intValue() >= Level.WARNING.intValue()
++                && r.getLoggerName() != null && r.getLoggerName().startsWith("io.flottila.core.batch")).count();
++    }
++
++    /**
++     * An episode is the run of refusals between two window schedules the timer accepted: observed through the log, the
++     * first refusal logs one WARNING, further refusals only raise the counter, the first accepted schedule after them logs
++     * the recovery WARNING, and a refusal after that opens a new episode with its own WARNING.
++     */
++    @Test
++    void aRefusedWindowIsCountedAndNotSilent() {
++        BatchingWriter<String> w = writer(2, 1, 10);
++        assertEquals(0, w.windowsRefused(), "fixture: nothing refused yet");
++        assertEquals(0, warnings(), "fixture: nothing logged yet");
++
++        timer.refuse = true;
++        w.save("a");
++        var gateA = sink.gate();
++        w.save("b");
++        assertEquals(1, timer.refused.get(), "fixture: one refusal");
++        assertEquals(1, w.windowsRefused(), "the counter rose by the one refusal");
++        assertEquals(1, warnings(), "the first refusal of the episode is logged");
++        w.save("c");
++        w.save("d");
++        assertEquals(3, timer.refused.get(), "fixture: three refusals so far");
++        assertEquals(3, w.windowsRefused(), "the counter rises once per refusal");
++        assertEquals(1, warnings(), "refusals two and three are counted, not logged again");
++
++        gateA.complete();                                       // takes [b, c], refused again
++        assertEquals(4, w.windowsRefused());
++        assertEquals(timer.refused.get(), w.windowsRefused(), "the counter equals the refusals the timer threw");
++        sink.gate().complete();                                 // [d] goes on the freed slot, nothing to arm
++        sink.gate().complete();
++        assertEquals(1, warnings(), "a drain that arms nothing is neither a refusal nor a recovery");
++
++        timer.refuse = false;
++        w.save("p");
++        var gateP = sink.gate();
++        assertEquals(1, warnings(), "fixture: an idle save asks for no window, so the timer has not recovered yet");
++        w.save("q");                                            // the window is asked for and accepted
++        assertEquals(1, timer.inner.pending(), "fixture: the window was armed");
++        assertEquals(2, warnings(), "the first accepted window after the refusals logs the recovery");
++        assertEquals(4, w.windowsRefused(), "recovery does not touch the counter");
++        gateP.complete();                                       // takes [q]; q's window stays armed
++        sink.gate().complete();
++        clock.advance(WINDOW);                                  // q's window fires on an empty queue and arms nothing
++        assertEquals(0, timer.inner.pending(), "fixture: no window is armed");
++        w.save("x");                                            // idle: x goes alone
++        var gateX = sink.gate();
++        w.save("y");                                            // a second window is asked for after the recovery
++        assertEquals(1, timer.inner.pending(), "fixture: the timer accepted a second window");
++        assertEquals(2, warnings(), "a further accepted window logs nothing: only the first one after refusals is a recovery");
++        assertEquals(4, w.windowsRefused(), "an accepted window does not touch the counter");
++        gateX.complete();                                       // takes [y]
++        sink.gate().complete();
++        clock.advance(WINDOW);                                  // y's window fires on an empty queue
++        assertEquals(0, timer.inner.pending(), "fixture: idle again, no window armed");
++
++        timer.refuse = true;                                    // a new episode
++        w.save("r");
++        var gateR = sink.gate();
++        w.save("s");
++        assertEquals(5, w.windowsRefused());
++        assertEquals(3, warnings(), "a refusal after a recovery is a new episode and is logged");
++        w.save("t");
++        assertEquals(6, w.windowsRefused());
++        assertEquals(3, warnings(), "and only its first refusal");
++        gateR.complete();
++        completeEveryOpenCommit();
++        assertEquals(List.of(), timer.escaped);
++    }
++}
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
+index fe8f483..d2b7730 100644
+--- a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
+@@ -21,14 +21,13 @@ import java.util.concurrent.atomic.AtomicInteger;
+ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+-import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ /**
+- * FIX-69: a timer that refuses the window schedule (throws) leaves no item pending forever. Every save / saveWaiting
+- * future completes; an item handed to the sink completes with its commit, an item that is not fails with the timer's
+- * exception as cause (the architect's decision: the batches a drain took when its window could not be scheduled fail,
+- * they are not committed); no item reaches the sink twice; flush() completes; the writer stays usable afterwards.
++ * FIX-69 / FIX-71 (D-104): a timer that refuses the window schedule (throws) leaves no item pending forever and fails
++ * none. Every save / saveWaiting future completes and succeeds: the batches a drain took when its window could not be
++ * scheduled are committed, in the order taken, and what stayed queued rides their completions; no item reaches the sink
++ * twice; flush() completes; the writer stays usable afterwards.
+  * The refusing timer refuses only the window delay, never a waiter's deadline (maxWait differs from the window).
+  */
+ class BatchingWriterWindowRefusalTest {
+@@ -98,18 +97,14 @@ class BatchingWriterWindowRefusalTest {
+         }
+     }
+ 
+-    /** Every future complete; committed ⇔ handed to the sink (once); not handed ⇒ failed with the timer's refusal as cause. */
++    /** Every future complete and succeeded; every item handed to the sink exactly once (D-104: a refused window fails nothing). */
+     private void assertEverySettled(Map<String, Future<Void>> futures) {
+         List<String> sunk = flushed();
+         assertEquals(new HashSet<>(sunk).size(), sunk.size(), "no item reaches the sink twice: " + sunk);
+         futures.forEach((item, f) -> {
+             assertTrue(f.isComplete(), item + " never completed (left counted in flight or queued with no window): " + f + ", sink saw " + sunk);
+-            if (sunk.contains(item)) {
+-                assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
+-            } else {
+-                assertTrue(f.failed(), item + " never reached the sink, so it cannot have succeeded");
+-                assertSame(timer.refusal, f.cause(), item + " never reached the sink: it fails with the timer's exception as cause, got " + f.cause());
+-            }
++            assertTrue(sunk.contains(item), item + " never reached the sink: a refused window commits, it never drops a batch: " + f);
++            assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
+         });
+         assertEquals(List.of(), timer.escaped, "no window task threw on the timer's thread");
+     }
+@@ -175,7 +170,7 @@ class BatchingWriterWindowRefusalTest {
+     }
+ 
+     @Test
+-    void theBatchTakenWhenTheWindowIsRefusedFailsWithTheTimersExceptionAndEveryWaiterCompletes() {
++    void theBatchTakenWhenTheWindowIsRefusedIsCommittedAndEveryWaiterCompletes() {
+         BatchingWriter<String> w = writer(2, 1, 4);
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         futures.put("a", w.save("a"));
+@@ -193,12 +188,11 @@ class BatchingWriterWindowRefusalTest {
+ 
+         gateA.complete();                                       // the drain takes [b, c], tops up w1, w2, and is refused a window
+         assertTrue(futures.get("a").succeeded(), "a was committed: it completes although the drain after it met a refusing timer: " + futures.get("a"));
++        assertEquals(List.of("a", "b", "c"), flushed(), "the batch taken when the window was refused is handed to the sink, not dropped");
+         for (String item : List.of("b", "c")) {
+-            Future<Void> f = futures.get(item);
+-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once, not left in flight: " + f);
+-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's exception as cause, got " + f.cause());
++            assertFalse(futures.get(item).isComplete(), item + " is in flight until its commit completes, it is not failed at once: " + futures.get(item));
+         }
+-        assertFalse(flushed().contains("b") || flushed().contains("c"), "the failed batch is not committed as well: " + flushed());
++        assertEquals(1, w.inFlight(), "the committed batch holds the slot");
+ 
+         Future<Void> flush = assertDoesNotThrow(w::flush, "a refused window is never thrown at the flusher");
+         completeEveryOpenCommit();
+@@ -210,7 +204,7 @@ class BatchingWriterWindowRefusalTest {
+ 
+     /**
+      * a goes at once; b, c, d queue behind it, their window refused; a's completion takes [b, c] and is refused a window for
+-     * [d]: [b, c] fail with the refusal, and the drain runs again on the freed slot and hands [d] to the sink.
++     * [d]: [b, c] are committed all the same, and [d] rides their completion onto the freed slot.
+      */
+     private BatchingWriter<String> refusedBatchThenCommitted(Map<String, Future<Void>> futures) {
+         timer.refuse = true;
+@@ -221,19 +215,19 @@ class BatchingWriterWindowRefusalTest {
+             futures.put(item, assertDoesNotThrow(() -> w.save(item), "a refused window is never thrown at the saver of " + item));
+         }
+         gateA.complete();
++        assertEquals(List.of("a", "b", "c"), flushed(), "the batch taken when the window was refused reaches the sink; d stays queued behind it");
++        sink.gate().complete();                                 // [b, c] commits; its completion drains d onto the freed slot
+         for (String item : List.of("b", "c")) {
+-            Future<Void> f = futures.get(item);
+-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once: " + f);
+-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's own throwable as cause, got " + f.cause());
++            assertTrue(futures.get(item).succeeded(), item + " was in the batch taken when the window was refused: it is committed: " + futures.get(item));
+         }
+-        assertEquals(List.of("a", "d"), flushed(), "the failed batch never reaches the sink; d goes on the freed slot");
++        assertEquals(List.of("a", "b", "c", "d"), flushed(), "d rides the completion of the refused batch");
+         completeEveryOpenCommit();
+         assertEverySettled(futures);
+         return w;
+     }
+ 
+     @Test
+-    void aLaterFlushOnAWorkingTimerSucceedsOnceARefusedBatchHasFailed() {
++    void aLaterFlushOnAWorkingTimerWaitsOnlyOnItsOwnItemOnceARefusedBatchIsCommitted() {
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         BatchingWriter<String> w = refusedBatchThenCommitted(futures);
+         timer.refuse = false;
+@@ -243,19 +237,66 @@ class BatchingWriterWindowRefusalTest {
+         assertFalse(flush.isComplete(), "flush waits for e, which is in flight: " + flush);
+         sink.gate().complete();
+         assertTrue(e.succeeded());
+-        assertTrue(flush.succeeded(), "the failed batch left flight with its refusal: a later flush waits only on e and succeeds, got " + flush.cause());
++        assertTrue(flush.succeeded(), "nothing else is in flight: a later flush waits only on e and succeeds, got " + flush.cause());
+         assertUsableAfterwards(w);
+     }
+ 
+     @Test
+-    void anErrorFromTheWindowScheduleFailsTheTakenBatchWithThatErrorAndTheWriterStaysUsable() {
++    void anErrorFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable() {
+         timer.refusal = new InternalError("timer cannot schedule");
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         BatchingWriter<String> w = refusedBatchThenCommitted(futures);
+-        assertTrue(futures.get("b").cause() instanceof InternalError, "fixture: the refusal was the Error: " + futures.get("b").cause());
++        assertTrue(timer.refused.get() >= 1, "fixture: the timer refused with the Error");
++        assertTrue(futures.get("b").succeeded() && futures.get("c").succeeded(), "the batch taken when the Error was thrown is committed");
+         timer.refuse = false;
+         Future<Void> flush = w.flush();
+         assertTrue(flush.succeeded(), "nothing is left in flight after an Error refusal: " + flush);
+         assertUsableAfterwards(w);
+     }
++
++    // --- FIX-71 (D-104): a refused window commits, it never fails
++
++    @ParameterizedTest
++    @EnumSource(Mode.class)
++    void aRefusedWindowCommitsTheTakenBatchAndEveryItemSucceeds(Mode mode) {
++        timer.refuse = true;
++        BatchingWriter<String> w = writer(2, 1, 10);
++        Map<String, Future<Void>> futures = new LinkedHashMap<>();
++        futures.put("a", mode.save(w, "a"));
++        var gateA = sink.gate();
++        for (String item : List.of("b", "c", "d")) futures.put(item, mode.save(w, item));
++        assertTrue(timer.refused.get() >= 1, "fixture: the window for the partial batch was asked for and refused");
++
++        gateA.complete();                                       // takes [b, c], is refused a window for [d]
++        assertEquals(List.of("a", "b", "c"), flushed(), "the taken batch reaches the sink although its drain was refused a window");
++        assertFalse(futures.get("b").isComplete(), "b is in flight, not failed: " + futures.get("b"));
++        assertEquals(1, w.backlog(), "d stays queued behind the committed batch");
++        sink.gate().complete();                                 // [b, c] committed; its completion hands d to the sink
++        assertEquals(List.of("a", "b", "c", "d"), flushed(), "d rides the completion of the refused batch");
++        sink.gate().complete();
++        futures.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, nothing is failed by a timer: " + f));
++        assertEverySettled(futures);
++        assertUsableAfterwards(w);
++    }
++
++    @Test
++    void aPermanentlyRefusedWindowDrainsTheWholeBacklogAndEveryWaiter() {
++        timer.refuse = true;
++        BatchingWriter<String> w = writer(2, 1, 4);
++        Map<String, Future<Void>> futures = new LinkedHashMap<>();
++        futures.put("a", w.save("a"));
++        for (String item : List.of("b", "c", "d", "e")) futures.put(item, w.save(item));
++        for (String item : List.of("w1", "w2", "w3")) futures.put(item, w.saveWaiting(item));
++        assertEquals(4, w.backlog(), "fixture: the backlog is full behind a");
++        assertEquals(3, w.waiting(), "fixture: three wait for room");
++
++        completeEveryOpenCommit();                              // no clock tick: only commit completions move the writer
++        assertEquals(0, w.backlog(), "the whole backlog was drained");
++        assertEquals(0, w.waiting(), "every waiter was drained");
++        assertEquals(0, w.inFlight());
++        assertEquals(List.of("a", "b", "c", "d", "e", "w1", "w2", "w3"), flushed(), "arrival order, once each");
++        futures.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, nothing fails with the timer's cause: " + f));
++        assertEverySettled(futures);
++        assertUsableAfterwards(w);
++    }
+ }

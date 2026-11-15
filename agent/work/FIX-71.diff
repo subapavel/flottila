@@ -1,0 +1,1025 @@
+diff --git a/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java b/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
+index 6ec4b49..cb3d077 100644
+--- a/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
++++ b/flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java
+@@ -64,11 +64,11 @@ public final class BatchingWriter<T> implements AutoCloseable {
+ 
+     private record Pending<T>(T item, Promise<Void> done) {}
+ 
+-    /** A batch a drain took and then failed: the window for what stayed behind it could not be scheduled. */
+-    private record Refused<T>(List<Pending<T>> batch, Throwable cause) {}
+-
+-    /** What a drain hands out once the lock is released: batches to commit, refused batches to fail. */
+-    private record Drained<T>(List<List<Pending<T>>> commit, List<Refused<T>> refused) {}
++    /**
++     * What a drain hands out once the lock is released: batches to commit; the window timer's refusal, when it refused
++     * and this is the first refusal of an episode (to be logged); whether this drain's accepted window ends an episode.
++     */
++    private record Drained<T>(List<List<Pending<T>>> commit, Throwable firstRefusal, boolean recovered) {}
+ 
+     /** A {@link #saveWaiting} item waiting for room; its deadline is cancelled when it enters the backlog. */
+     private static final class Waiter<T> {
+@@ -78,6 +78,8 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Waiter(Pending<T> pending) { this.pending = pending; }
+     }
+ 
++    private static final System.Logger LOG = System.getLogger(BatchingWriter.class.getName());
++
+     private final BatchSink<T> sink;
+     private final Timer timer;
+     private final Options options;
+@@ -88,6 +90,9 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     private int inFlight;
+     private Timer.Cancellable armed;
+     private boolean closed;
++    private long windowsRefused;      // under the lock: every refusal of the window timer
++    private boolean cancelLogged;  // under the lock: the first throwing cancel was logged
++    private boolean refusing;         // under the lock: a window was refused and none accepted since (one episode)
+ 
+     public BatchingWriter(BatchSink<T> sink, Timer timer, Options options) {
+         this.sink = Objects.requireNonNull(sink, "sink");
+@@ -97,8 +102,8 @@ public final class BatchingWriter<T> implements AutoCloseable {
+ 
+     /**
+      * Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is
+-     * full, and with the timer's exception when its batch was taken but the window for the items behind it could not be
+-     * scheduled (FIX-69: the batch is then never handed to the sink).
++     * full. A timer that refuses the window never fails it (D-104): the batch is committed and the refusal is counted
++     * ({@link #windowsRefused}) and logged. Never throws; every failure is the returned future's cause. A {@link Timer.Cancellable} whose {@code cancel()} throws is tolerated (logged once).
+      */
+     public Future<Void> save(T item) {
+         return enqueue(item, false);
+@@ -109,14 +114,18 @@ public final class BatchingWriter<T> implements AutoCloseable {
+      * waiter, and enters the moment a slot frees. Completes when the batch containing it is committed; fails when that
+      * commit fails, with {@link OverloadedException} when it still waits {@code maxWait} after the call (it is then never
+      * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with the timer's exception
+-     * when its deadline cannot be scheduled. Once queued (directly or moved in from the waiters) it also fails, as with
+-     * {@link #save}, with the timer's exception when its batch was taken but the window for the items behind it could not
+-     * be scheduled (FIX-69: the batch is then never handed to the sink).
++     * (an {@link Error} included) when its deadline cannot be scheduled. Once queued (directly or moved in from the
++     * waiters) a refused window does not fail it, as with {@link #save} (D-104). Never throws. A throwing {@code cancel()} of a waiter's deadline is tolerated; the deadline then fires late and is harmless.
+      */
+     public Future<Void> saveWaiting(T item) {
+         return enqueue(item, true);
+     }
+ 
++    /** How many times the window timer refused a schedule; a refusal commits instead of failing (D-104). */
++    public long windowsRefused() {
++        synchronized (lock) { return windowsRefused; }
++    }
++
+     /** Items waiting for room in a full backlog ({@link #saveWaiting}). */
+     public int waiting() {
+         synchronized (lock) { return waiters.size(); }
+@@ -144,7 +153,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Waiter<T> w = new Waiter<>(p);
+         try {
+             w.deadline = timer.schedule(options.maxWait(), () -> expire(w));
+-        } catch (RuntimeException e) {
++        } catch (RuntimeException | Error e) {
+             return Future.failedFuture(e);
+         }
+         waiters.add(w);
+@@ -164,6 +173,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     /**
+      * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
+      * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
++     * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once).
+      */
+     public Future<Void> flush() {
+         Drained<T> drained;
+@@ -172,7 +182,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+             for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
+             for (Pending<T> p : queue) waiting.add(p.done().future());
+             for (Waiter<T> w : waiters) waiting.add(w.pending.done().future());
+-            if (armed != null) { armed.cancel(); armed = null; }
++            if (armed != null) { cancelQuietly(armed); armed = null; }
+             drained = drainLocked(true);
+         }
+         dispatch(drained);
+@@ -185,32 +195,46 @@ public final class BatchingWriter<T> implements AutoCloseable {
+     }
+ 
+     /**
+-     * Under the lock: takes every batch that may go now and arms the window timer for what stays. A timer that refuses the
+-     * window is never thrown at the caller (FIX-69): the batches just taken are released from flight and refused with its
+-     * exception, and the drain runs again on the freed slots, so nothing stays queued with no commit in flight and no window.
++     * Under the lock: takes every batch that may go now and arms the window timer for what stays; one take, one arm
++     * attempt. A timer that refuses the window (exception or {@link Error}) is never thrown at the caller and fails
++     * nothing (D-104): the batches taken stay in flight and are committed, and what stayed queued rides their completions
++     * ({@code afterCommit} drains again), so nothing stays queued with no commit in flight and no window. When nothing
++     * was taken the queue is non-empty, so a commit is already in flight and its completion drains.
++     *
++     * <p>The batches are returned oldest first, in the order taken, and {@link #dispatch} hands them to the sink in that
++     * order. This is <b>not</b> a global sink order: a sink that completes inline re-enters {@code afterCommit}, then
++     * {@code drainLocked} and {@code dispatch}, from inside the dispatch loop, so a younger batch can reach the sink
++     * before the outer loop's next one. No caller may rely on the order in which batches reach the sink.
+      */
+     private Drained<T> drainLocked(boolean windowElapsed) {
+-        Drained<T> out = new Drained<>(new ArrayList<>(), new ArrayList<>());
+-        while (true) {
+-            List<List<Pending<T>>> batches = takeLocked(windowElapsed);
+-            if (queue.isEmpty() || armed != null || options.window().isZero()) {
+-                out.commit().addAll(batches);
+-                return out;
+-            }
+-            try {
+-                armed = timer.schedule(options.window(), this::onWindow);
+-            } catch (RuntimeException | Error e) {
+-                // nothing taken: the queue is non-empty, so a commit is in flight and its completion drains again
+-                if (batches.isEmpty()) return out;
+-                for (List<Pending<T>> batch : batches) {
+-                    inFlight--;
+-                    flying.remove(batch);
+-                    out.refused().add(new Refused<>(batch, e));
+-                }
+-                continue;
+-            }
+-            out.commit().addAll(batches);
+-            return out;
++        List<List<Pending<T>>> batches = takeLocked(windowElapsed);
++        if (queue.isEmpty() || armed != null || options.window().isZero()) return new Drained<>(batches, null, false);
++        try {
++            armed = timer.schedule(options.window(), this::onWindow);
++        } catch (RuntimeException | Error e) {
++            windowsRefused++;
++            boolean first = !refusing;
++            refusing = true;
++            return new Drained<>(batches, first ? e : null, false);
++        }
++        boolean recovered = refusing;
++        refusing = false;
++        return new Drained<>(batches, null, recovered);
++    }
++
++    /**
++     * Under the lock: cancels a timer handle; a {@code cancel()} that throws (exception or {@link Error}) is tolerated, so
++     * the batch already taken is never stranded. Logged once per writer. A waiter's deadline that stays uncancelled fires
++     * harmlessly: the waiter has left {@code waiters}, so {@code expire} returns, and {@code tryFail} on a settled item is a no-op.
++     */
++    private void cancelQuietly(Timer.Cancellable c) {
++        try {
++            c.cancel();
++        } catch (RuntimeException | Error e) {
++            if (cancelLogged) return;
++            cancelLogged = true;
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: a timer handle's cancel() threw; ignored, the writer "
++                    + "carries on (further failures are not logged)", e);
+         }
+     }
+ 
+@@ -227,17 +251,23 @@ public final class BatchingWriter<T> implements AutoCloseable {
+             batches.add(batch);
+             while (!waiters.isEmpty() && queue.size() < options.maxBacklog()) {   // the freed room goes to the waiters first
+                 Waiter<T> w = waiters.poll();
+-                w.deadline.cancel();
++                cancelQuietly(w.deadline);
+                 queue.add(w.pending);
+             }
+         }
+         return batches;
+     }
+ 
+-    /** Outside the lock: fails the refused batches, oldest first, then hands the taken ones to the sink. */
++    /** Outside the lock: logs the episode's edges, then hands the taken batches to the sink, oldest first. */
+     private void dispatch(Drained<T> drained) {
+-        for (Refused<T> r : drained.refused()) {
+-            for (Pending<T> p : r.batch()) p.done().tryFail(r.cause());
++        if (drained.firstRefusal() != null) {
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the timer refused to schedule the batch window; "
++                    + "committing the taken batches instead of failing them (further refusals are only counted)",
++                    drained.firstRefusal());
++        }
++        if (drained.recovered()) {
++            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the batch window was scheduled again after "
++                    + "refusals; windowing is back to normal");
+         }
+         drained.commit().forEach(this::commit);
+     }
+@@ -265,7 +295,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
+         Future<Void> written;
+         try {
+             written = sink.write(items);
+-        } catch (RuntimeException e) {
++        } catch (RuntimeException | Error e) {
+             written = Future.failedFuture(e);
+         }
+         written.onComplete(ar -> afterCommit(batch, ar.succeeded() ? null : ar.cause()));
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java
+new file mode 100644
+index 0000000..f2013f5
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java
+@@ -0,0 +1,386 @@
++package io.flottila.core.batch;
++
++import io.flottila.api.Timer;
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import io.vertx.core.Future;
++import io.vertx.core.Promise;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.EnumSource;
++
++import java.time.Duration;
++import java.time.Instant;
++import java.util.ArrayDeque;
++import java.util.ArrayList;
++import java.util.Deque;
++import java.util.List;
++import java.util.Set;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.logging.Handler;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++import java.util.logging.Logger;
++
++import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertSame;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-71 (a) and (c): no public method of {@link BatchingWriter} ever completes by throwing; an {@link Error} from the
++ * timer (a waiter's deadline) or from the sink becomes the failure cause of the item it belongs to and of nothing else.
++ * (c): one batch after another reaches the sink in the order taken. A window that flush dropped never fires.
++ */
++class BatchingWriterErrorTest {
++
++    static final Duration WINDOW = Duration.ofMillis(50);
++    static final Duration MAX_WAIT = Duration.ofSeconds(7);
++
++    final FakeClock clock = FakeClock.at(Instant.EPOCH);
++
++    /** A FakeTimer that, while {@code refuse} is set, throws {@code refusal} on every schedule of {@link #MAX_WAIT} (a waiter's deadline). */
++    static final class DeadlineRefusingTimer implements Timer {
++        final FakeTimer inner;
++        final Error refusal = new InternalError("timer cannot schedule the deadline");
++        volatile boolean refuse;
++
++        DeadlineRefusingTimer(FakeTimer inner) { this.inner = inner; }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            if (refuse && delay.equals(MAX_WAIT)) throw refusal;
++            return inner.schedule(delay, task);
++        }
++    }
++
++    /** A manual sink: every write stays open until the test completes its gate; the writes whose index is in {@code throwOn} throw an Error. */
++    static final class ScriptedSink implements BatchSink<String> {
++        final List<List<String>> batches = new CopyOnWriteArrayList<>();
++        final Deque<Promise<Void>> gates = new ArrayDeque<>();
++        final Set<Integer> throwOn;
++        final Error error = new InternalError("sink cannot write");
++
++        ScriptedSink(Set<Integer> throwOn) { this.throwOn = throwOn; }
++
++        @Override public Future<Void> write(List<String> batch) {
++            int index = batches.size();
++            batches.add(List.copyOf(batch));
++            if (throwOn.contains(index)) throw error;
++            Promise<Void> p = Promise.promise();
++            synchronized (gates) { gates.add(p); }
++            return p.future();
++        }
++
++        Promise<Void> gate() {
++            synchronized (gates) { return gates.poll(); }
++        }
++    }
++
++    // --- (a) waitLocked: an Error from the deadline's schedule
++
++    @Test
++    void anErrorFromAWaiterDeadlineScheduleFailsOnlyThatSaveWithoutThrowing() {
++        DeadlineRefusingTimer timer = new DeadlineRefusingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        assertEquals(2, w.backlog(), "fixture: the backlog is full behind a's commit");
++
++        timer.refuse = true;
++        Future<Void> refused = assertDoesNotThrow(() -> w.saveWaiting("w"), "an Error from the deadline's schedule is never thrown at the saver");
++        assertTrue(refused.failed(), "the save whose deadline could not be scheduled fails: " + refused);
++        assertSame(timer.refusal, refused.cause(), "it fails with the Error itself as cause");
++        assertEquals(0, w.waiting(), "it was not left waiting");
++
++        timer.refuse = false;
++        Future<Void> later = w.saveWaiting("later");
++        assertEquals(1, w.waiting(), "the writer still lets a save wait once the timer works");
++        gateA.complete();
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(a.succeeded() && b.succeeded() && c.succeeded(), "the saves already queued were not touched by the refusal");
++        assertTrue(later.succeeded(), "the later waiter commits: " + later);
++        assertEquals(List.of("a", "b", "c", "later"), sink.batches.stream().flatMap(List::stream).toList(), "the refused item never reached the sink");
++        assertEquals(0, w.inFlight());
++    }
++
++    // --- (a) commit: an Error from sink.write
++
++    @Test
++    void anErrorFromTheSinkFailsOnlyItsBatchAndReleasesItsSlot() {
++        ScriptedSink sink = new ScriptedSink(Set.of(0));
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 1, 10, MAX_WAIT));
++
++        Future<Void> a = assertDoesNotThrow(() -> w.save("a"), "an Error from the sink is never thrown at the saver");
++        assertTrue(a.failed(), "the item whose batch the sink threw on fails: " + a);
++        assertSame(sink.error, a.cause(), "with the Error itself as cause");
++        assertEquals(0, w.inFlight(), "the batch's slot is released");
++        assertEquals(0, w.backlog());
++
++        Future<Void> b = w.save("b");
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "the writer still hands a later save to the sink at once");
++        sink.gate().complete();
++        assertTrue(b.succeeded(), "and commits it: " + b);
++        assertEquals(0, w.inFlight());
++    }
++
++    @Test
++    void anErrorFromTheSinkInsideACompletionFailsOnlyThatBatchAndTheRestStillCommits() {
++        ScriptedSink sink = new ScriptedSink(Set.of(1));       // the second write throws: the batch [b, c]
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 1, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> d = w.save("d");
++
++        assertDoesNotThrow(() -> gateA.complete(), "an Error from a drain run by a completion does not escape the completing thread");
++        assertTrue(a.succeeded(), "a was committed before the drain that met the Error: " + a);
++        for (Future<Void> f : List.of(b, c)) {
++            assertTrue(f.failed(), "the batch the sink threw on fails: " + f);
++            assertSame(sink.error, f.cause());
++        }
++        assertEquals(List.of(List.of("a"), List.of("b", "c"), List.of("d")), sink.batches, "d rides the failed batch's completion onto the freed slot");
++        sink.gate().complete();
++        assertTrue(d.succeeded(), "d is not failed by its neighbour's Error: " + d);
++        assertEquals(0, w.inFlight());
++        assertEquals(0, w.backlog());
++    }
++
++    // --- (c) dispatch order
++
++    @Test
++    void theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters() {
++        // Known: the loop inside one drain is dead code, a freed slot is refilled one batch at a time, so the two batches
++        // here come from two drains. This pins global FIFO (queue then waiters) and batchSize, not the intra-drain order.
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, new FakeTimer(clock), new BatchingWriter.Options(2, WINDOW, 2, 6, MAX_WAIT));
++        List<String> arrival = new ArrayList<>();
++        List<Future<Void>> futures = new ArrayList<>();
++        for (int i = 0; i < 12; i++) {                          // the backlog (6) fills, the rest waits: queue first, then waiters, FIFO
++            String item = "i" + i;
++            arrival.add(item);
++            futures.add(w.saveWaiting(item));
++        }
++        assertEquals(List.of(List.of("i0"), List.of("i1", "i2")), sink.batches, "fixture: both slots are busy");
++        assertTrue(w.waiting() > 0, "fixture: waiters exist, so the order spans queue and waiters");
++
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 50, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(arrival, sink.batches.stream().flatMap(List::stream).toList(), "the concatenation of the batches, in hand-off order, is arrival order");
++        for (List<String> b : sink.batches) assertTrue(b.size() <= 2);
++        futures.forEach(f -> assertTrue(f.succeeded(), "" + f));
++    }
++
++    // --- (a) a fourth throw site: Cancellable.cancel()
++
++    enum Throws {
++        RUNTIME { @Override Throwable make() { return new IllegalStateException("cancel refused"); } },
++        ERROR { @Override Throwable make() { return new InternalError("cancel refused"); } };
++
++        abstract Throwable make();
++    }
++
++    /** A FakeTimer whose handles throw from cancel() while {@code armed}; the task is then NOT cancelled and still fires. */
++    static final class CancelThrowingTimer implements Timer {
++        final FakeTimer inner;
++        volatile Throwable cancelThrows;
++
++        CancelThrowingTimer(FakeTimer inner) { this.inner = inner; }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            Cancellable real = inner.schedule(delay, task);
++            return () -> {
++                Throwable t = cancelThrows;
++                if (t instanceof Error e) throw e;
++                if (t != null) throw (RuntimeException) t;
++                return real.cancel();
++            };
++        }
++    }
++
++    /**
++     * a goes; b, c fill the backlog; w waits with a deadline. a's completion takes [b, c] and moves w in, which cancels w's
++     * deadline: that throws. Nothing is stranded, the slot is released, w commits, and the deadline that was never
++     * cancelled and fires later finds w gone from the line ({@code expire}: {@code waiters.remove(w)} is false) and fails nothing.
++     */
++    @ParameterizedTest
++    @EnumSource(Throws.class)
++    void aCancelThatThrowsWhenAWaiterEntersTheBacklogStrandsNothingAndFailsNoSucceededItem(Throws kind) {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> waiter = w.saveWaiting("w");
++        assertEquals(1, w.waiting(), "fixture: w waits for room");
++
++        timer.cancelThrows = kind.make();
++        assertDoesNotThrow(() -> gateA.complete(), "a throwing cancel does not escape the completion that drained");
++        assertTrue(a.succeeded(), "a was committed: its completion is not lost to the drain's throw: " + a);
++        timer.cancelThrows = null;
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(List.of("a", "b", "c", "w"), sink.batches.stream().flatMap(List::stream).toList(), "every item reached the sink once, in order");
++        for (Future<Void> f : List.of(b, c, waiter)) assertTrue(f.succeeded(), "stranded or failed: " + f);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        assertEquals(0, w.backlog());
++        assertEquals(0, w.waiting());
++
++        clock.advance(MAX_WAIT);                                // the deadline whose cancel failed fires for real
++        assertTrue(waiter.succeeded(), "a late deadline never fails an item that already succeeded: " + waiter);
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++
++    /** flush cancels the armed window: a cancel that throws neither escapes flush nor strands anything. */
++    @ParameterizedTest
++    @EnumSource(Throws.class)
++    void aCancelThatThrowsWhileFlushDropsTheArmedWindowDoesNotEscapeAndFlushCompletes(Throws kind) {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 2, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        Future<Void> b = w.save("b");
++        assertEquals(1, timer.inner.pending(), "fixture: the window for b is armed");
++
++        timer.cancelThrows = kind.make();
++        Future<Void> flush = assertDoesNotThrow(w::flush, "a throwing cancel is never thrown at the flusher");
++        timer.cancelThrows = null;
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "flush handed b to the sink");
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertTrue(a.succeeded() && b.succeeded(), "nothing stranded: " + a + " " + b);
++        assertTrue(flush.succeeded(), "flush completes: " + flush);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        clock.advance(WINDOW);                                  // the window whose cancel failed fires on an empty queue
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++
++    /**
++     * flush drops the armed window by cancelling it: the dropped window never fires. Worked example (reviewer, FIX-71 r5),
++     * window 50 ms, batch 2, two commits in flight: at t0 a goes, b arms W1 (due t50), flush hands b over; at t10 c goes,
++     * d arms W2 (due t60). At t50 only a dropped-but-live W1 could fire, and it would hand the partial batch [d] over ten
++     * milliseconds before its own window: d must reach the sink at t60, not at t50.
++     */
++    @Test
++    void aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow() {
++        FakeTimer timer = new FakeTimer(clock);
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 2, 10, MAX_WAIT));
++        Future<Void> a = w.save("a");                           // t0: idle, a goes alone
++        Future<Void> b = w.save("b");                           // a in flight: b waits, W1 armed for t50
++        assertEquals(1, timer.pending(), "fixture: W1 is armed for b");
++        Future<Void> flush = w.flush();                         // b goes on the second slot
++        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "fixture: flush handed b to the sink");
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(a.succeeded() && b.succeeded() && flush.succeeded(), "fixture: a, b and the flush completed: " + flush);
++
++        clock.advance(Duration.ofMillis(10));                   // t10
++        Future<Void> c = w.save("c");                           // idle again: c goes alone
++        Future<Void> d = w.save("d");                           // c in flight: d waits, W2 armed for t60
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c")), sink.batches, "fixture: d waits for its window");
++
++        clock.advance(Duration.ofMillis(40));                   // t50: W1's due time
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c")), sink.batches,
++                "at t50 d has not reached the sink: the window flush dropped did not fire and drain d before its own window");
++        assertFalse(d.isComplete(), "d still waits at t50: " + d);
++
++        clock.advance(Duration.ofMillis(10));                   // t60: W2's due time
++        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c"), List.of("d")), sink.batches,
++                "at t60 d's own window hands it to the sink");
++        sink.gate().complete();
++        sink.gate().complete();
++        assertTrue(c.succeeded() && d.succeeded(), "c and d commit: " + c + " " + d);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        assertEquals(0, timer.pending(), "no window is left scheduled");
++    }
++
++    // --- a throwing cancel() is logged once per writer, never per throw (no flood, no silence)
++
++    final List<LogRecord> logged = new CopyOnWriteArrayList<>();
++    /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
++    final Logger flottila = Logger.getLogger("io.flottila");
++    final Handler capture = new Handler() {
++        @Override public void publish(LogRecord r) { logged.add(r); }
++        @Override public void flush() {}
++        @Override public void close() {}
++    };
++
++    @BeforeEach
++    void listen() {
++        capture.setLevel(Level.ALL);
++        flottila.addHandler(capture);
++    }
++
++    @AfterEach
++    void unlisten() {
++        flottila.removeHandler(capture);
++    }
++
++    private long batchWarnings() {
++        return logged.stream().filter(r -> r.getLevel().intValue() >= Level.WARNING.intValue()
++                && r.getLoggerName() != null && r.getLoggerName().startsWith("io.flottila.core.batch")).count();
++    }
++
++    /**
++     * Two waiters enter the backlog in one drain while every cancel() throws: two throwing cancels for the same writer, one
++     * WARNING. The window timer never refuses here (only cancel does), so no window episode contributes to the count.
++     */
++    @Test
++    void aCancelThatThrowsTwiceForTheSameWriterIsLoggedOnceAndStrandsNothing() {
++        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 1, 2, MAX_WAIT));
++        Future<Void> a = w.save("a");
++        var gateA = sink.gate();
++        Future<Void> b = w.save("b");
++        Future<Void> c = w.save("c");
++        Future<Void> w1 = w.saveWaiting("w1");
++        Future<Void> w2 = w.saveWaiting("w2");
++        assertEquals(2, w.waiting(), "fixture: both wait for room");
++        assertEquals(0, batchWarnings(), "fixture: nothing logged before a cancel throws");
++
++        timer.cancelThrows = new IllegalStateException("cancel refused");
++        gateA.complete();                                       // takes [b, c] and moves w1 and w2 in: two throwing cancels
++        assertEquals(0, w.waiting(), "fixture: both waiters entered, so both deadlines were cancelled (and threw)");
++        assertEquals(1, batchWarnings(), "two throwing cancels for one writer log exactly one WARNING, not two and not none");
++
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 10, "fixture: commits keep coming");
++            sink.gate().complete();
++        }
++        assertEquals(1, batchWarnings(), "no further WARNING from the rest of the run");
++        assertEquals(List.of("a", "b", "c", "w1", "w2"), sink.batches.stream().flatMap(List::stream).toList());
++        for (Future<Void> f : List.of(a, b, c, w1, w2)) assertTrue(f.succeeded(), "stranded or failed: " + f);
++        assertEquals(0, w.inFlight(), "no commit slot is leaked");
++        timer.cancelThrows = null;
++        Future<Void> later = w.save("later");
++        sink.gate().complete();
++        assertTrue(later.succeeded(), "the writer stays usable: " + later);
++    }
++}
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
+index d677460..33be7c8 100644
+--- a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterPropertyTest.java
+@@ -1,5 +1,6 @@
+ package io.flottila.core.batch;
+ 
++import io.flottila.api.Timer;
+ import io.flottila.testkit.FakeClock;
+ import io.flottila.testkit.FakeTimer;
+ import io.vertx.core.Future;
+@@ -232,4 +233,96 @@ class BatchingWriterPropertyTest {
+             }
+         }
+     }
++
++    // --- FIX-71 (D-104): a window timer that refuses commits, it never fails
++
++    enum Step { SAVE, SAVE_WAITING, COMPLETE_OK, TICK }
++
++    @Provide
++    Arbitrary<List<Step>> steps() {
++        return Arbitraries.of(Step.class).list().ofMinSize(1).ofMaxSize(80);
++    }
++
++    /** A FakeTimer that, while {@code refuse} is set, throws on every schedule of the window delay: a RuntimeException or an Error. */
++    private static final class MaybeRefusingTimer implements Timer {
++        final FakeTimer inner;
++        final Duration window;
++        final boolean refuse;
++        final boolean asError;
++
++        MaybeRefusingTimer(FakeTimer inner, Duration window, boolean refuse, boolean asError) {
++            this.inner = inner;
++            this.window = window;
++            this.refuse = refuse;
++            this.asError = asError;
++        }
++
++        @Override public Cancellable schedule(Duration delay, Runnable task) {
++            if (refuse && delay.equals(window)) {
++                if (asError) throw new InternalError("window refused");
++                throw new IllegalStateException("window refused");
++            }
++            return inner.schedule(delay, task);
++        }
++    }
++
++    /**
++     * Any mix of save, saveWaiting, commit completion and clock ticks, with the window timer refusing every schedule or none
++     * (a RuntimeException or an Error): every item the writer accepted reaches the sink exactly once, the concatenation of the
++     * batches is the arrival order, each batch is at most batchSize, and every accepted item succeeds — a refusal fails no
++     * one. The writer drains: nothing is queued, waiting or in flight once the commits are completed, with no clock tick.
++     */
++    @Property(tries = 300)
++    void everyItemReachesTheSinkOnceAndTheirConcatenationIsArrivalOrder(@ForAll("steps") List<Step> steps,
++                                                                       @ForAll boolean refuses,
++                                                                       @ForAll boolean asError,
++                                                                       @ForAll @IntRange(min = 1, max = 4) int batchSize,
++                                                                       @ForAll @IntRange(min = 1, max = 3) int concurrency,
++                                                                       @ForAll @IntRange(min = 1, max = 3) int backlogBatches,
++                                                                       @ForAll @IntRange(min = 1, max = 5) int windowMs) {
++        FakeClock clock = FakeClock.at(Instant.EPOCH);
++        Duration window = Duration.ofMillis(windowMs);
++        Duration maxWait = Duration.ofHours(1);   // no tick below reaches it: no waiter fails at its deadline
++        MaybeRefusingTimer timer = new MaybeRefusingTimer(new FakeTimer(clock), window, refuses, asError);
++        FakeSink sink = new FakeSink();
++        sink.manual = true;
++        int maxBacklog = batchSize * backlogBatches;
++        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(batchSize, window, concurrency, maxBacklog, maxWait));
++
++        Map<String, Future<Void>> accepted = new HashMap<>();
++        List<String> arrival = new ArrayList<>();
++        int n = 0;
++        for (Step s : steps) {
++            switch (s) {
++                case SAVE -> {
++                    String item = "s" + (n++);
++                    Future<Void> f = w.save(item);
++                    if (f.failed()) assertInstanceOf(OverloadedException.class, f.cause(), item + ": only a full backlog refuses a save: " + f.cause());
++                    else { accepted.put(item, f); arrival.add(item); }
++                }
++                case SAVE_WAITING -> {
++                    String item = "w" + (n++);
++                    Future<Void> f = w.saveWaiting(item);
++                    assertFalse(f.failed(), item + ": a waiting save is never refused before maxWait: " + f.cause());
++                    accepted.put(item, f);
++                    arrival.add(item);
++                }
++                case COMPLETE_OK -> { if (sink.open() > 0) sink.gate().complete(); }
++                case TICK -> clock.advance(window);
++            }
++            assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
++            assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
++        }
++        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();   // commits only: no tick, no window
++        if (!refuses) clock.advance(window);                                                       // a working window may still hold a partial batch
++        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();
++
++        assertEquals(0, w.backlog(), "nothing stays queued with no commit in flight and no window");
++        assertEquals(0, w.waiting(), "nobody is left waiting");
++        assertEquals(0, w.inFlight());
++        List<String> flushed = sink.batches.stream().flatMap(List::stream).toList();
++        assertEquals(arrival, flushed, "every accepted item reaches the sink once, in arrival order");
++        for (List<String> b : sink.batches) assertTrue(b.size() <= batchSize, "batch of " + b.size() + " > " + batchSize);
++        accepted.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, a refused window fails no one: " + f));
++    }
+ }
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java
+new file mode 100644
+index 0000000..f0e3efc
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalLogTest.java
+@@ -0,0 +1,138 @@
++package io.flottila.core.batch;
++
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++
++import java.time.Duration;
++import java.time.Instant;
++import java.util.List;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.logging.Handler;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++import java.util.logging.Logger;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-71 (D-104) observability: a refused window is never silent (F-13) and never a flood. {@code windowsRefused()} rises
++ * once per refusal; the WARNING is logged on the first refusal of an episode and on recovery, not once per refusal.
++ */
++class BatchingWriterWindowRefusalLogTest {
++
++    static final Duration WINDOW = BatchingWriterWindowRefusalTest.WINDOW;
++
++    final FakeClock clock = FakeClock.at(Instant.EPOCH);
++    final BatchingWriterWindowRefusalTest.RefusingWindowTimer timer =
++            new BatchingWriterWindowRefusalTest.RefusingWindowTimer(new FakeTimer(clock), WINDOW);
++    final FakeSink sink = new FakeSink();
++
++    private BatchingWriter<String> writer(int batchSize, int concurrency, int maxBacklog) {
++        sink.manual = true;
++        return new BatchingWriter<>(sink, timer, new BatchingWriter.Options(batchSize, WINDOW, concurrency, maxBacklog, BatchingWriterWindowRefusalTest.MAX_WAIT));
++    }
++
++    private void completeEveryOpenCommit() {
++        for (int i = 0; sink.open() > 0; i++) {
++            assertTrue(i < 50, "fixture: commits keep coming after 50 completions");
++            sink.gate().complete();
++        }
++    }
++
++    final List<LogRecord> logged = new CopyOnWriteArrayList<>();
++    /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
++    final Logger flottila = Logger.getLogger("io.flottila");
++    final Handler capture = new Handler() {
++        @Override public void publish(LogRecord r) { logged.add(r); }
++        @Override public void flush() {}
++        @Override public void close() {}
++    };
++
++    @BeforeEach
++    void listen() {
++        capture.setLevel(Level.ALL);
++        flottila.addHandler(capture);
++    }
++
++    @AfterEach
++    void unlisten() {
++        flottila.removeHandler(capture);
++    }
++
++    private long warnings() {
++        return logged.stream().filter(r -> r.getLevel().intValue() >= Level.WARNING.intValue()
++                && r.getLoggerName() != null && r.getLoggerName().startsWith("io.flottila.core.batch")).count();
++    }
++
++    /**
++     * An episode is the run of refusals between two window schedules the timer accepted: observed through the log, the
++     * first refusal logs one WARNING, further refusals only raise the counter, the first accepted schedule after them logs
++     * the recovery WARNING, and a refusal after that opens a new episode with its own WARNING.
++     */
++    @Test
++    void aRefusedWindowIsCountedAndNotSilent() {
++        BatchingWriter<String> w = writer(2, 1, 10);
++        assertEquals(0, w.windowsRefused(), "fixture: nothing refused yet");
++        assertEquals(0, warnings(), "fixture: nothing logged yet");
++
++        timer.refuse = true;
++        w.save("a");
++        var gateA = sink.gate();
++        w.save("b");
++        assertEquals(1, timer.refused.get(), "fixture: one refusal");
++        assertEquals(1, w.windowsRefused(), "the counter rose by the one refusal");
++        assertEquals(1, warnings(), "the first refusal of the episode is logged");
++        w.save("c");
++        w.save("d");
++        assertEquals(3, timer.refused.get(), "fixture: three refusals so far");
++        assertEquals(3, w.windowsRefused(), "the counter rises once per refusal");
++        assertEquals(1, warnings(), "refusals two and three are counted, not logged again");
++
++        gateA.complete();                                       // takes [b, c], refused again
++        assertEquals(4, w.windowsRefused());
++        assertEquals(timer.refused.get(), w.windowsRefused(), "the counter equals the refusals the timer threw");
++        sink.gate().complete();                                 // [d] goes on the freed slot, nothing to arm
++        sink.gate().complete();
++        assertEquals(1, warnings(), "a drain that arms nothing is neither a refusal nor a recovery");
++
++        timer.refuse = false;
++        w.save("p");
++        var gateP = sink.gate();
++        assertEquals(1, warnings(), "fixture: an idle save asks for no window, so the timer has not recovered yet");
++        w.save("q");                                            // the window is asked for and accepted
++        assertEquals(1, timer.inner.pending(), "fixture: the window was armed");
++        assertEquals(2, warnings(), "the first accepted window after the refusals logs the recovery");
++        assertEquals(4, w.windowsRefused(), "recovery does not touch the counter");
++        gateP.complete();                                       // takes [q]; q's window stays armed
++        sink.gate().complete();
++        clock.advance(WINDOW);                                  // q's window fires on an empty queue and arms nothing
++        assertEquals(0, timer.inner.pending(), "fixture: no window is armed");
++        w.save("x");                                            // idle: x goes alone
++        var gateX = sink.gate();
++        w.save("y");                                            // a second window is asked for after the recovery
++        assertEquals(1, timer.inner.pending(), "fixture: the timer accepted a second window");
++        assertEquals(2, warnings(), "a further accepted window logs nothing: only the first one after refusals is a recovery");
++        assertEquals(4, w.windowsRefused(), "an accepted window does not touch the counter");
++        gateX.complete();                                       // takes [y]
++        sink.gate().complete();
++        clock.advance(WINDOW);                                  // y's window fires on an empty queue
++        assertEquals(0, timer.inner.pending(), "fixture: idle again, no window armed");
++
++        timer.refuse = true;                                    // a new episode
++        w.save("r");
++        var gateR = sink.gate();
++        w.save("s");
++        assertEquals(5, w.windowsRefused());
++        assertEquals(3, warnings(), "a refusal after a recovery is a new episode and is logged");
++        w.save("t");
++        assertEquals(6, w.windowsRefused());
++        assertEquals(3, warnings(), "and only its first refusal");
++        gateR.complete();
++        completeEveryOpenCommit();
++        assertEquals(List.of(), timer.escaped);
++    }
++}
+diff --git a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
+index fe8f483..d2b7730 100644
+--- a/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterWindowRefusalTest.java
+@@ -21,14 +21,13 @@ import java.util.concurrent.atomic.AtomicInteger;
+ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+-import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ /**
+- * FIX-69: a timer that refuses the window schedule (throws) leaves no item pending forever. Every save / saveWaiting
+- * future completes; an item handed to the sink completes with its commit, an item that is not fails with the timer's
+- * exception as cause (the architect's decision: the batches a drain took when its window could not be scheduled fail,
+- * they are not committed); no item reaches the sink twice; flush() completes; the writer stays usable afterwards.
++ * FIX-69 / FIX-71 (D-104): a timer that refuses the window schedule (throws) leaves no item pending forever and fails
++ * none. Every save / saveWaiting future completes and succeeds: the batches a drain took when its window could not be
++ * scheduled are committed, in the order taken, and what stayed queued rides their completions; no item reaches the sink
++ * twice; flush() completes; the writer stays usable afterwards.
+  * The refusing timer refuses only the window delay, never a waiter's deadline (maxWait differs from the window).
+  */
+ class BatchingWriterWindowRefusalTest {
+@@ -98,18 +97,14 @@ class BatchingWriterWindowRefusalTest {
+         }
+     }
+ 
+-    /** Every future complete; committed ⇔ handed to the sink (once); not handed ⇒ failed with the timer's refusal as cause. */
++    /** Every future complete and succeeded; every item handed to the sink exactly once (D-104: a refused window fails nothing). */
+     private void assertEverySettled(Map<String, Future<Void>> futures) {
+         List<String> sunk = flushed();
+         assertEquals(new HashSet<>(sunk).size(), sunk.size(), "no item reaches the sink twice: " + sunk);
+         futures.forEach((item, f) -> {
+             assertTrue(f.isComplete(), item + " never completed (left counted in flight or queued with no window): " + f + ", sink saw " + sunk);
+-            if (sunk.contains(item)) {
+-                assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
+-            } else {
+-                assertTrue(f.failed(), item + " never reached the sink, so it cannot have succeeded");
+-                assertSame(timer.refusal, f.cause(), item + " never reached the sink: it fails with the timer's exception as cause, got " + f.cause());
+-            }
++            assertTrue(sunk.contains(item), item + " never reached the sink: a refused window commits, it never drops a batch: " + f);
++            assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
+         });
+         assertEquals(List.of(), timer.escaped, "no window task threw on the timer's thread");
+     }
+@@ -175,7 +170,7 @@ class BatchingWriterWindowRefusalTest {
+     }
+ 
+     @Test
+-    void theBatchTakenWhenTheWindowIsRefusedFailsWithTheTimersExceptionAndEveryWaiterCompletes() {
++    void theBatchTakenWhenTheWindowIsRefusedIsCommittedAndEveryWaiterCompletes() {
+         BatchingWriter<String> w = writer(2, 1, 4);
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         futures.put("a", w.save("a"));
+@@ -193,12 +188,11 @@ class BatchingWriterWindowRefusalTest {
+ 
+         gateA.complete();                                       // the drain takes [b, c], tops up w1, w2, and is refused a window
+         assertTrue(futures.get("a").succeeded(), "a was committed: it completes although the drain after it met a refusing timer: " + futures.get("a"));
++        assertEquals(List.of("a", "b", "c"), flushed(), "the batch taken when the window was refused is handed to the sink, not dropped");
+         for (String item : List.of("b", "c")) {
+-            Future<Void> f = futures.get(item);
+-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once, not left in flight: " + f);
+-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's exception as cause, got " + f.cause());
++            assertFalse(futures.get(item).isComplete(), item + " is in flight until its commit completes, it is not failed at once: " + futures.get(item));
+         }
+-        assertFalse(flushed().contains("b") || flushed().contains("c"), "the failed batch is not committed as well: " + flushed());
++        assertEquals(1, w.inFlight(), "the committed batch holds the slot");
+ 
+         Future<Void> flush = assertDoesNotThrow(w::flush, "a refused window is never thrown at the flusher");
+         completeEveryOpenCommit();
+@@ -210,7 +204,7 @@ class BatchingWriterWindowRefusalTest {
+ 
+     /**
+      * a goes at once; b, c, d queue behind it, their window refused; a's completion takes [b, c] and is refused a window for
+-     * [d]: [b, c] fail with the refusal, and the drain runs again on the freed slot and hands [d] to the sink.
++     * [d]: [b, c] are committed all the same, and [d] rides their completion onto the freed slot.
+      */
+     private BatchingWriter<String> refusedBatchThenCommitted(Map<String, Future<Void>> futures) {
+         timer.refuse = true;
+@@ -221,19 +215,19 @@ class BatchingWriterWindowRefusalTest {
+             futures.put(item, assertDoesNotThrow(() -> w.save(item), "a refused window is never thrown at the saver of " + item));
+         }
+         gateA.complete();
++        assertEquals(List.of("a", "b", "c"), flushed(), "the batch taken when the window was refused reaches the sink; d stays queued behind it");
++        sink.gate().complete();                                 // [b, c] commits; its completion drains d onto the freed slot
+         for (String item : List.of("b", "c")) {
+-            Future<Void> f = futures.get(item);
+-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once: " + f);
+-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's own throwable as cause, got " + f.cause());
++            assertTrue(futures.get(item).succeeded(), item + " was in the batch taken when the window was refused: it is committed: " + futures.get(item));
+         }
+-        assertEquals(List.of("a", "d"), flushed(), "the failed batch never reaches the sink; d goes on the freed slot");
++        assertEquals(List.of("a", "b", "c", "d"), flushed(), "d rides the completion of the refused batch");
+         completeEveryOpenCommit();
+         assertEverySettled(futures);
+         return w;
+     }
+ 
+     @Test
+-    void aLaterFlushOnAWorkingTimerSucceedsOnceARefusedBatchHasFailed() {
++    void aLaterFlushOnAWorkingTimerWaitsOnlyOnItsOwnItemOnceARefusedBatchIsCommitted() {
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         BatchingWriter<String> w = refusedBatchThenCommitted(futures);
+         timer.refuse = false;
+@@ -243,19 +237,66 @@ class BatchingWriterWindowRefusalTest {
+         assertFalse(flush.isComplete(), "flush waits for e, which is in flight: " + flush);
+         sink.gate().complete();
+         assertTrue(e.succeeded());
+-        assertTrue(flush.succeeded(), "the failed batch left flight with its refusal: a later flush waits only on e and succeeds, got " + flush.cause());
++        assertTrue(flush.succeeded(), "nothing else is in flight: a later flush waits only on e and succeeds, got " + flush.cause());
+         assertUsableAfterwards(w);
+     }
+ 
+     @Test
+-    void anErrorFromTheWindowScheduleFailsTheTakenBatchWithThatErrorAndTheWriterStaysUsable() {
++    void anErrorFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable() {
+         timer.refusal = new InternalError("timer cannot schedule");
+         Map<String, Future<Void>> futures = new LinkedHashMap<>();
+         BatchingWriter<String> w = refusedBatchThenCommitted(futures);
+-        assertTrue(futures.get("b").cause() instanceof InternalError, "fixture: the refusal was the Error: " + futures.get("b").cause());
++        assertTrue(timer.refused.get() >= 1, "fixture: the timer refused with the Error");
++        assertTrue(futures.get("b").succeeded() && futures.get("c").succeeded(), "the batch taken when the Error was thrown is committed");
+         timer.refuse = false;
+         Future<Void> flush = w.flush();
+         assertTrue(flush.succeeded(), "nothing is left in flight after an Error refusal: " + flush);
+         assertUsableAfterwards(w);
+     }
++
++    // --- FIX-71 (D-104): a refused window commits, it never fails
++
++    @ParameterizedTest
++    @EnumSource(Mode.class)
++    void aRefusedWindowCommitsTheTakenBatchAndEveryItemSucceeds(Mode mode) {
++        timer.refuse = true;
++        BatchingWriter<String> w = writer(2, 1, 10);
++        Map<String, Future<Void>> futures = new LinkedHashMap<>();
++        futures.put("a", mode.save(w, "a"));
++        var gateA = sink.gate();
++        for (String item : List.of("b", "c", "d")) futures.put(item, mode.save(w, item));
++        assertTrue(timer.refused.get() >= 1, "fixture: the window for the partial batch was asked for and refused");
++
++        gateA.complete();                                       // takes [b, c], is refused a window for [d]
++        assertEquals(List.of("a", "b", "c"), flushed(), "the taken batch reaches the sink although its drain was refused a window");
++        assertFalse(futures.get("b").isComplete(), "b is in flight, not failed: " + futures.get("b"));
++        assertEquals(1, w.backlog(), "d stays queued behind the committed batch");
++        sink.gate().complete();                                 // [b, c] committed; its completion hands d to the sink
++        assertEquals(List.of("a", "b", "c", "d"), flushed(), "d rides the completion of the refused batch");
++        sink.gate().complete();
++        futures.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, nothing is failed by a timer: " + f));
++        assertEverySettled(futures);
++        assertUsableAfterwards(w);
++    }
++
++    @Test
++    void aPermanentlyRefusedWindowDrainsTheWholeBacklogAndEveryWaiter() {
++        timer.refuse = true;
++        BatchingWriter<String> w = writer(2, 1, 4);
++        Map<String, Future<Void>> futures = new LinkedHashMap<>();
++        futures.put("a", w.save("a"));
++        for (String item : List.of("b", "c", "d", "e")) futures.put(item, w.save(item));
++        for (String item : List.of("w1", "w2", "w3")) futures.put(item, w.saveWaiting(item));
++        assertEquals(4, w.backlog(), "fixture: the backlog is full behind a");
++        assertEquals(3, w.waiting(), "fixture: three wait for room");
++
++        completeEveryOpenCommit();                              // no clock tick: only commit completions move the writer
++        assertEquals(0, w.backlog(), "the whole backlog was drained");
++        assertEquals(0, w.waiting(), "every waiter was drained");
++        assertEquals(0, w.inFlight());
++        assertEquals(List.of("a", "b", "c", "d", "e", "w1", "w2", "w3"), flushed(), "arrival order, once each");
++        futures.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, nothing fails with the timer's cause: " + f));
++        assertEverySettled(futures);
++        assertUsableAfterwards(w);
++    }
+ }

@@ -1,0 +1,516 @@
+COMMIT 9a9c91640b328804bd878cbb5fc06883ecb1d3b9
+fix(core): FIX-133 Recorder catches Throwable, so a crashed step leaves a row
+
+`Recorder.wrap` caught `Exception`, so a step that threw an `Error` propagated
+with no row at all and the message's timeline showed it as a step that never ran.
+For a platform whose product is monitoring, a failure the timeline cannot show is
+a product defect. One line now catches `Throwable`, writes the FAILED row with the
+throwable's text and rethrows it unchanged by precise rethrow, which compiled with
+no `throws` clause as D-111 expected. No control flow moved: same `!handedOn[0]`
+and `policy.records` guards, same `record` call.
+
+The form is `Throwable`, not the `RuntimeException | Error` that D-111 first
+prescribed by copying D-104. That would have been a NARROWING here, because the
+old `catch (Exception)` deliberately caught the checked `InterruptedException`
+that D-056's stop-deadline cancel throws sneakily; it would have deleted the
+FAILED row of every cancelled delivery to gain one for an `Error`. The mutant log
+shows it: with `RuntimeException | Error`, `aCancelledStepRecordsItsFailureSnapshot`
+fails with `[ingress, a]`. `Exception | Error` would close that hole but still
+miss a direct `Throwable` subclass, and the mutant for it was killed by the one
+case written for that distinction. D-111 was amended before any code was written.
+
+Case 3, `anErrorAfterTheStepHandedOnLeavesNoSecondRow`, was written three times
+and is the part of this commit worth reading. As the packet specified it, it was
+green against the unfixed code, because today's narrow catch hid the very guard it
+targets. The test-author added a witness so the method could fail for a stated
+reason. The implementer then found the witness was carrying the whole method: the
+guard half could not fail under ANY mutant in `Recorder`, because
+`InMemoryMessageStore:39` keeps only the first row per `(id, step)`, so the second
+FAILED row that a dropped `!handedOn[0]` writes never reached `timeline()`. A test
+named "leaves no second row" that could not observe a second row. It now counts
+the rows handed to the store, through a `CountingStore` wrapping the store
+interface — the allowed boundary, not a mock of the class under test — and the
+mutant dies at `RecorderTest:388` with `<[OK, FAILED]>`.
+
+That is a class of vacuity rather than one bug, and it is the same drop F-29 is
+about: any assertion that a second row is ABSENT for one `(id, step)` is
+unfalsifiable, whatever the production code does. agent/NOTES.md records the
+question to ask before asserting an absence — which layer swallows it?
+
+A test the implementer did not write was changed, which CLAUDE.md allows only to
+fix a wrong expectation with the reason here. `RedeliveredTimelineTest` case 2 was
+renamed from `...WithNoFailureAnywhere` to
+`aMessageWhoseFirstRunCrashedShowsTheCrashAsAFailedRowStitchedBeforeTheRedeliveredRun`,
+and seven expectations flipped: run 1's interim timeline gains `3 check FAILED`,
+`recorded("check")` goes 0 -> 1, "check" moves into the two-row loop, the final
+step-3 row becomes FAILED, "no row is FAILED" becomes "step 3 is the only FAILED
+row", step 3's `x-run` goes 2 -> 1 and its ATTEMPT goes `of(2)` -> `empty()`. Those
+expectations recorded the defect, not intended behaviour: run 1's FAILED row now
+wins the `putIfAbsent` over run 2's OK row. Beyond the seven flips, one assertion
+was ADDED at line 230 — that the error text names "crashed at check on the first
+run" — which the reviewer asked be named here rather than counted among them.
+
+Evidence, all observed. Red first: each new case failed with `[ingress, a]` for
+`[ingress, a, x]`. Green: `RecorderTest` 14/0/0/0. Final tree after the case-3
+rewrite: `-pl flottila-core -am clean verify` exit 0, BUILD SUCCESS, core
+511/0/0/0; `ci/coverage_check.py` exit 0, "coverage: no decrease", core 99.6 line
+/ 99.5 branch, api 99.3 / 100.0. That run carries NO `-Pit`, so it is not a full
+reactor run and this commit claims none: the earlier full `-Pit` run predates the
+rewrite and does not describe this tree. Six mutants killed, each restored with
+`cp` plus `touch` and proven byte-identical with `cmp`: the catch narrowed to
+`Exception`, to `RuntimeException | Error`, to `Error`, to `Exception | Error`;
+`!handedOn[0]` dropped; `throw failure` removed (compile error).
+
+Not killable, and deliberately so: the `policy.records(..., FAILED)` guard. For a
+FAILED outcome `records` is true under ALL, ERRORS and ENDS alike, and the only
+false level, OFF, returns the bare stage at `:71` before the catch exists, so the
+guard is unreachable-false. JaCoCo corroborates it independently — the only missed
+branch in `Recorder` is that one, "1 of 4 branches missed". It stays in the code
+because it states the policy correctly and goes live the moment a level declines
+FAILED; removing it would be a trap, not a cleanup. Proof in agent/NOTES.md so no
+later review spends a round on it.
+
+Raised by this review and in these ledgers: FIX-140, because `record` runs BEFORE
+the rethrow and can itself throw — `Trail.add` does `flush().await()` at
+`Trail.java:90`, which an interrupt turns into a sneaky `InterruptedException` — so
+the original throwable can be replaced by the recording's own failure. For an
+`Error` that matters more than it sounds: the replacement is an `Exception`, and
+`Parking.java:49` would park it, making transient what D-098 and D-111 both say is
+not. D-111 is qualified accordingly: "rethrown unchanged" holds only when
+recording succeeds. `Parking.java:49` itself is unchanged and must stay so.
+
+docs/findings/F-29.md now closes the half this fixes and states what it does not:
+the timeline is still stitched from two runs, the seam is still marked only by
+`Envelope.ATTEMPT` in run 2's props, and surviving rows are still chosen by which
+run wrote first. The dangerous shape is gone — a crashed run no longer reads as one
+clean successful run — but a run-scoped key remains CONSIDER-12's.
+
+Task: FIX-133
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index e81af79..d1c3a4f 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1389,3 +1389,19 @@ it was also in this row; I corrected the row but not the packet, so it survived
+ was itself imprecise, because M3 shows an overstated RECORD is caught. One sentence, four places, two rounds.
+ VERIFIED_PASS as above. NOT_RUN: coverage — every run here carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires, so
+ none of it is coverage evidence. D-054: class A, rounds 2.
++
++## 2026-11-14 — FIX-133 Recorder catches Throwable, so a crashed step leaves a row — done, review PASS r1
++One production line (`Recorder.java:85`, `Exception` -> `Throwable`, D-111 as amended), no control flow moved. A step that threw an
++`Error` used to leave NO row, so the timeline showed it as a step that never ran. Four new `RecorderTest` cases, red first, green
++14/0; `aCancelledStepRecordsItsFailureSnapshot` untouched and green, which is the guard that the catch widened and did not narrow.
++Six mutants killed, `cmp` clean after each. Final tree: core 511/0/0/0 `clean verify` exit 0, coverage "no decrease" 99.6/99.5 — that
++run carries no `-Pit`, so it is NOT a full reactor run and the commit does not claim one.
++Case 3 had to be written three times and that is the entry's point. As I specified it, it was green. The test-author added a witness so
++it could fail. Then the implementer found the witness was carrying it: the guard half could not fail under ANY mutant, because
++`InMemoryMessageStore:39` drops the second row per `(id, step)`, so `timeline()` could never see the row the mutant writes — a test named
++"leaves no second row" that cannot observe a second row. It now counts what reaches the store. This is a CLASS of vacuity, not one bug:
++the same drop F-29 is about, and NOTES now carries the question to ask before asserting any absence — which layer swallows it?
++Two more of my citations were wrong: `FlowWorkerTest:90` is a fixture javadoc, not an assertion, and NOTES said `:84` for a catch at
++`:85`. F-29's addendum now closes the half this fixes and says what it does not: still stitched, still first-writer-wins, CONSIDER-12's.
++VERIFIED_PASS as above. Raised from the review: FIX-140, and D-111 qualified — `record` runs before the rethrow and can throw, so
++"rethrown unchanged" holds only when recording succeeds. D-054: class B, rounds 1.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 44460a0..83efd1b 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -215,13 +215,14 @@ row, never lowers it mid-task.
+ | FIX-130 | [A] `TrailTest:359-360` still filters captured WARNINGs by the bare id substring `contains("m-f")` over message + `getThrown()` concatenated — the exact trap FIX-54 hit once and FIX-121 twice (`"m-w"` is a prefix of `"m-wait"`). Safe today only because `m-f` prefixes no other fixture id in that case; it is the next place the trap bites, and it also means an exception text could satisfy the filter. Make it key-based like the two persist cases | FIX-123 | done | done 2026-11-14, review PASS r3, test-only, commit 468022c (lane3). The filter now selects by Trail's logger name, maps `getMessage()` only, matches each of the three failing bodies by its own full `BlobKey`, and asserts exactly one WARNING per failing key instead of non-emptiness, plus a negative for the body that was made durable. Two FAILs were spent on one subtlety and it is worth keeping: `Trail.java:177` interpolates the cause INTO the message, so narrowing to `getMessage()` separates nothing — `BodyTooLargeException`'s text carries the key, so the `large` iteration still matched through its cause. The key is therefore pinned ahead of the `(` that opens the cause. `assertAll` makes all three iterations observable; without it the mutant aborted on the first body and the iteration whose independence was in question was never reached. Mutant naming the message id instead of the key fails all three separately: steps 2 and 4 on the count, step 3 on the prefix while its count passes | reviewer FIX-123, non-blocking |
+ | FIX-131 | [C] A redelivered at-least-once message loses the history of every run but its first, silently. `messages` is written with `on conflict (id, step) do nothing` (`PgMessageStore.java:55`) and its rows carry no attempt, while `Envelope.nextKey` already puts the attempt in the body key's part (`Envelope.java:90-96`, `part~2`, asserted by `ComponentContract.java:320-321`) and the worker sets `Envelope.ATTEMPT` from the second claim on (`FlowWorker.java:338`). So after a lease expiry or a second claim — no replay involved — the second run's bodies are stored and its snapshot rows are dropped, and the timeline shows the first attempt only. That contradicts D-106, the owner's own decision that a retried attempt is visible in the message's own history. Confirm against a real Postgres under `-Pit` before designing anything: drive a redelivery, then read the timeline and say exactly which rows exist and which were dropped. The fix is keying, so it shares a root cause with F-29 and belongs to CONSIDER-12, not here. ARCHITECT, 2026-11-14, after recon: the `-Pit` premise is WITHDRAWN. `InMemoryMessageStore.record` does `rows.putIfAbsent(new Row(messageId, step), snapshot)`, the same drop as Postgres, so a real Postgres adds nothing to the confirmation and the Postgres half is already pinned by `PgMessageStoreIT:122-132` under the name `aBatchCarriesManyMessagesAndDuplicatesAreIgnored` — which is also part of why this survived: the drop is named as a feature. The harm is also worse than this row first said. It is not that later runs are lost: if run 1 fails at step 3 and run 2 reaches step 7, `timeline(id)` returns steps 1-3 from run 1 and steps 4-7 from run 2 in one sequence with nothing marking the seam, so step 3 reads `FAILED` while steps 4-7 read `OK` — a sequence no single run can produce. The timeline is a chimera, not a truncation. This task is now test-only in `flottila-core` with no Docker: pin that stitch green and name it so it cannot be read as intended, for CONSIDER-12 to invert | — | done | an `-Pit` test drives a redelivery of one message id and asserts what the timeline holds for the second run; the result is written into F-29 whichever way it comes out | F-29 recon 2026-11-14. done 2026-11-14, review PASS r2, test-only, no production change. `RedeliveredTimelineTest` pins both shapes as exact row lists: case 1 (park refused, run 1 leaves a FAILED row) gives 0 ingress, 1-2 run 1, 3 FAILED run 1, 4-7 OK run 2; case 2 (run 1 dies on an `Error`, which `Recorder.wrap` does not catch, so step 3 gets no row) gives 0-7 all OK and reads as one clean successful run — the shape a node crash makes and the dangerous one. VERIFIED_PASS 2/0, FlowWorkerTest 42/0, 46/0 total (FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put` in `InMemoryMessageStore`: both cases EXECUTED_FAIL at their final list assertion (FIX-131-mutant.log), store restored and `cmp`-identical in both trees. The seam IS marked after all, by `Envelope.ATTEMPT` in the props of run 2's rows only — not a run boundary, but the value D-108 needs already reaches the store. Spun off FIX-133. Measured facts in F-29's addendum, fixture gotchas in NOTES |
+ | FIX-132 | [A] Five `docs/DECISIONS.md` rows render with phantom columns because their text contains an unescaped `\|`, so a reader on GitHub sees the decision split across cells that do not exist: D-040 (line 49), D-044 (:53), D-053 (:62), D-057 (:66), D-080 (:89) — 6 or 7 effective pipes in a 5-pipe table. GFM's fix is `\|` inside the cell, which keeps the quoted text verbatim and was applied to D-102 in this commit. Do it for the five, change no word of any decision, and leave the 30 legacy rows whose `Reason` cell is simply absent alone — that is a different and harmless shape. The same defect is in `agent/BACKLOG.md` itself: four rows carry an unescaped `\|` (FIX-15, FIX-54, FIX-56, FIX-57) and two others are missing a cell altogether (P1-GATE, P2-01), so six rows render with the wrong column count. Fix both files in one pass. Found by counting pipes per row, which is also the check: a 6-column row has exactly 7 pipe characters not preceded by a backslash, and a 4-column DECISIONS row exactly 5 | &mdash; | done | `awk` over the file reports 5 effective pipes (pipes not preceded by a backslash) on every non-separator row that has a `Reason` cell, and `git diff --word-diff` shows no change to any decision's words; the same `awk` over `agent/BACKLOG.md` reports 7 on every non-separator row | ledger audit 2026-11-14. done 2026-11-14, review PASS r4 after three FAILs. Checked by CELL SHAPE, not by pipe count: every row of both files must split on unescaped pipes into exactly the header's cells with an empty part at each end. After: `agent/BACKLOG.md` 260/260 rows well-formed, `docs/DECISIONS.md` 113/113 (81 four-cell rows and the 32 legacy rows whose `Reason` cell is absent, deliberately left). Twelve escapes over seven rows (nine in DECISIONS over five rows, three in BACKLOG over two), one closing pipe restored on FIX-71, and three rows rejoined. `git diff --word-diff` shows no word of any decision or title changed, only pipes inside cells gaining their GFM backslash. Markdown only: no production code, no test, no build — the FIX-71 evidence at e65f616 stands unaffected. TWO of the architect's own claims here were wrong and were caught, not by him: (1) the first check counted pipes per row, which cannot see a row that has the right count and the wrong shape, so FIX-54, FIX-56 and FIX-57 — `reviewer <id> \|  evidence: ...` with no closing pipe, 7 pipes but 7 cells — passed it while GitHub went on dropping their whole evidence cell; the reviewer found all three and they are rejoined with `; evidence:`. (2) The inventory call was itself overstated: the row was wrong about P1-GATE and P2-01 only (well-formed all along), RIGHT about FIX-15 and FIX-54/56/57, and missed FIX-10 and FIX-71. Recurrence guard raised as FIX-139 rather than smuggled in here, and it checks cell shape |
+-| FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:85`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) DECIDED 2026-11-14 as D-111 after recon: the fix changes NO control flow — widen the catch at `Recorder.java:85` to `Throwable`, write the `FAILED` row with the throwable's text, rethrow unchanged by precise rethrow. CORRECTED 2026-11-14 before dispatch: this row first said `RuntimeException \| Error`, copying D-104's form, and that is a NARROWING here — `Exception` deliberately catches the checked `InterruptedException` D-056's stop-deadline cancel throws sneakily, which `aCancelledStepRecordsItsFailureSnapshot` already pins, so the prescribed form would have deleted a cancelled delivery's `FAILED` row to gain an `Error`'s. See D-111's AMENDED sentence and `agent/packets/FIX-133.md`; D-104's multicatch style stands where its code cannot throw a checked exception at all. D-098 and D-049 stand: an `Error` is still not transient, not retried, and `FlowWorker.java:352` still leaves the item to its lease. DO NOT also change `Parking.java:49` — the scout read it as a second instance of this gap and that is wrong, because parking an `Error` would make it transient, which D-098 refused. `Delivery.java:319-320` IS a real second instance but contradicts D-049 (d) rather than D-111, so it is FIX-136, not this row | FIX-71 | ready | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it, and so does one narrowing it to `RuntimeException \| Error`; the catch is `Throwable` with a precise rethrow and no `throws` clause; `aCancelledStepRecordsItsFailureSnapshot` stays green untouched, which is what proves the catch was widened and not narrowed; and `FlowWorkerTest`'s existing lease assertions stay green (`:90`, `:1030`) — CORRECTED 2026-11-14: this cell first demanded a new assertion there, which was wrong, because an `Error` leaving the item to its lease is already pinned by those two; no new test for it. Also NOT expected killable: the `policy.records(..., FAILED)` guard at `Recorder.java:86`, which is unreachable-false and so an equivalent mutant — for FAILED, `records` is true under ALL, ERRORS and ENDS alike (`outcome != OK`), and the only false level, OFF, returns the bare stage at `:71` before the catch exists. Reported by the test-author, premise verified by the architect in the code | FIX-131 test-author, architect-verified 2026-11-14 |
++| FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:85`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) DECIDED 2026-11-14 as D-111 after recon: the fix changes NO control flow — widen the catch at `Recorder.java:85` to `Throwable`, write the `FAILED` row with the throwable's text, rethrow unchanged by precise rethrow. CORRECTED 2026-11-14 before dispatch: this row first said `RuntimeException \| Error`, copying D-104's form, and that is a NARROWING here — `Exception` deliberately catches the checked `InterruptedException` D-056's stop-deadline cancel throws sneakily, which `aCancelledStepRecordsItsFailureSnapshot` already pins, so the prescribed form would have deleted a cancelled delivery's `FAILED` row to gain an `Error`'s. See D-111's AMENDED sentence and `agent/packets/FIX-133.md`; D-104's multicatch style stands where its code cannot throw a checked exception at all. D-098 and D-049 stand: an `Error` is still not transient, not retried, and `FlowWorker.java:352` still leaves the item to its lease. DO NOT also change `Parking.java:49` — the scout read it as a second instance of this gap and that is wrong, because parking an `Error` would make it transient, which D-098 refused. `Delivery.java:319-320` IS a real second instance but contradicts D-049 (d) rather than D-111, so it is FIX-136, not this row | FIX-71 | done | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it, and so does one narrowing it to `RuntimeException \| Error`; the catch is `Throwable` with a precise rethrow and no `throws` clause; `aCancelledStepRecordsItsFailureSnapshot` stays green untouched, which is what proves the catch was widened and not narrowed; and `FlowWorkerTest`'s existing lease assertions stay green (`:90`, `:1030`) — CORRECTED 2026-11-14: this cell first demanded a new assertion there, which was wrong, because an `Error` leaving the item to its lease is already pinned by those two; no new test for it. Also NOT expected killable: the `policy.records(..., FAILED)` guard at `Recorder.java:86`, which is unreachable-false and so an equivalent mutant — for FAILED, `records` is true under ALL, ERRORS and ENDS alike (`outcome != OK`), and the only false level, OFF, returns the bare stage at `:71` before the catch exists. Reported by the test-author, premise verified by the architect in the code | FIX-131 test-author, architect-verified 2026-11-14. done 2026-11-14, review PASS r1. One production line: `Recorder.java:85` catches `Throwable`, comment extended; no control flow moved. Four new `RecorderTest` cases, all observed red first (`[ingress, a]` instead of `[ingress, a, x]`); green 14/0. `aCancelledStepRecordsItsFailureSnapshot` untouched and green — the guard proving the catch widened and did not narrow. Final tree: `-pl flottila-core -am clean verify` exit 0, core 511/0/0/0, BUILD SUCCESS (FIX-133-final-verify.log; NO `-Pit`, so NOT a full reactor run); coverage exit 0 "no decrease", core 99.6/99.5, api 99.3/100 (FIX-133-final-coverage.log). The earlier full `-Pit` run predates the case-3 rewrite and is not claimed for this tree. Six mutants killed: catch to `Exception`, to `RuntimeException \| Error`, to `Error`, to `Exception \| Error`, `!handedOn[0]` dropped, `throw failure` removed (compile error); `cmp` clean after each. Case 3 had to be rewritten TWICE: as the architect specified it, its guard half could not fail at all, because `InMemoryMessageStore:39` drops the second row per `(id, step)` so `timeline()` could never show it — the same drop F-29 is about. It now counts rows handed to the store and the dropped-guard mutant dies at `:388` with `<[OK, FAILED]>`. The `Exception \| Error` mutant, named by the reviewer, is the only one separating the chosen form from the obvious alternative and it was killed by the one case written for it. Raised from this review: FIX-140 (recording can replace the rethrown throwable), and D-111 qualified accordingly|
+ | FIX-134 | [A] The bench record does not carry `warmedUp`: it exists only as a local at `NodeBenchMain.java:314-316`, so the subtraction `warmup - warmupFailed`, which decides how long the warm-up settle waits, cannot be observed from outside. FIX-128 established the consequence and it is the reason this row exists. CORRECTED by the FIX-128 reviewer, because the architect's first version of this row had it backwards: an OVERSTATED `warmedUp` — which is what dropping the subtraction gives, `warmedUp = warmup` = 5 against 2 rows that exist — makes the warm-up `settle` poll until DRAIN (10 min) and so IS caught, but only by the class `@Timeout` at 300 s, which is slow and names no cause. The mutant that truly survives is an UNDERSTATED one: `warmedUp = 0`, or anything up to the real 2, makes the warm-up settle pass at once while the window's own settle still ends at 42 rows, so no assertion and no timeout notices. That is the mutant this row has to make killable, and it cannot be done from a test while the value is a local. Put `warmedUp` in the record beside `warmup` and `warmupFailed`, where the other two already are, and assert it | FIX-128 | done | the record carries `warmedUp` and a test asserts it equals 2 for a warm-up of 5 with 3 refusals, so `warmedUp = 0` fails by an assertion naming the value; CORRECTED 2026-11-14 by the test-author's red hand-back, because this cell promised something the test cannot deliver: the overstated mutant (`warmedUp = warmup`) is NOT killed by the assertion and still dies only by the 300 s class timeout, since `warmedUp` also drives the warm-up `settle` at `NodeBenchMain.java:315`, which runs BEFORE the record is written, so the run never reaches the new assertion. Killing it by assertion would mean writing the record before the settle, which is a behaviour change and not this row's. REFINED after the review's mutants M3/M4 were measured, because the sentence above is true only of the COMPUTATION and reads as a blanket claim: overstating the RECORD alone (`.put("warmedUp", o.warmup())` at `:316`, leaving `:314` correct) keeps the settle right, reaches the assertion and IS killed — `expected: <2> but was: <5>` in 27.5 s (M3, FIX-134-mut3.log). Only an overstatement at `:314` escapes to the timeout. Understatement is killed wherever it sits: M4 (`o.warmup() - warmupFailed - 1` at `:314`) gave `expected: <2> but was: <1>` in 28.0 s with the settle still returning (FIX-134-mut4.log). Both mutants were named by the reviewer, not by the architect, whose own pair (0 and a missing `.put`) tested neither the off-by-one nor the record-only overstatement | FIX-128 hand-back 2026-11-14. done 2026-11-14, review PASS r2 after one FAIL. One production line: `.put("warmedUp", warmedUp)` at `NodeBenchMain.java:316`, beside the `warmupFailed` already there; `:314`, the `settle` at `:315` and `Harness` untouched, and `bench/RESULTS.md` not touched at all, so no benchmark number is claimed. Red observed first: `expected: <2> but was: <null>` (FIX-134-red.log). Green: filtered case 12/0/0/0 and the whole module 27/0/0/0, both BUILD SUCCESS (FIX-134-green.log, FIX-134-module.log). Four mutants, all killed by the assertion at `:218` in about 28 s each, none by a timeout: `.put(...,0)` -> `<0>`, the `.put` removed -> `<null>`, M3 `.put(..., o.warmup())` -> `<5>`, M4 `:314 - 1` -> `<1>` (FIX-134-mut1..4.log). M3 and M4 were named by the REVIEWER and are the better pair: the architect's own two tested neither the off-by-one nor the record-only overstatement, and M3 is what disproved his correction of this very cell. `cmp` proved the file byte-identical after every mutant; restores with `cp` plus `touch`, never `mv`. The FAIL was documentation only: a false sentence of the architect's, in the packet, in this cell and copied from the packet into a code comment, that the overstated mutant dies by assertion. NO coverage evidence here: every run carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires |
+ | FIX-135 | [B] The PIT mutation score on this project is several points noisier than it looks, because a timed-out minion counts as a KILLED mutant and the timeout count swings widely between runs of nearly the same code on the same machine: the reference run at a0b3f74 logged 202 abnormal `TIMED_OUT` exits plus 5 `RUN_ERROR` (`agent/work/pit-a0b3f74.log`), the FIX-71 run 125 at 1338/1362 mutations (`agent/work/FIX-71-pit.log`) — a swing of order 70, about 7 % of core's 1019. The distinction matters: a mutant that makes the code hang IS legitimately killed, because a suite that never finishes does detect it, but a mutant that merely ran out of time on a loaded machine is not, and a swing that large says a good share are the second kind. Nothing is threatened today — api 179/180 and core 1010/1019 against an 80 % floor is enormous headroom — and that is why this is a row and not an ISSUE. But the mutation floor is a phase-gate condition, so the score must not be quoted to three figures as though it were stable, and a gate ever met by a narrow margin would have to account for this. Measure the `TIMED_OUT` count twice on one commit, then either raise pitest's `timeoutConstant` / `timeoutFactor` until it stabilises, or publish the noise band beside the score the way the coverage check already publishes its own (D-029 is the precedent for a declared noise band). Sharpened by the FIX-71 r4 review, which examined one of these timeouts in the specific: `BatchingWriter.java:248`'s `IncrementsMutator` turns a loop counter into `i--`, which spins forever under the writer lock on the first save of every test. That is a DETERMINISTIC hang, so counting it as killed is right and no assertion short of a timeout could catch it. The measurement this row asks for must therefore separate the two populations rather than count timeouts in bulk: a deterministic non-terminating mutant is a legitimate kill and should recur in every run, while a slow-machine artefact will not. The run-to-run swing is the signal that tells them apart | — | ready | the `TIMED_OUT` count on one commit is measured at least twice and either stabilises after a configuration change or is stated as a noise band beside the score, with machine and date as `bench/RESULTS.md` requires of any number | architect, comparing the FIX-71 and a0b3f74 PIT logs 2026-11-14 |
+ | FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | ready | a finding states which reading of D-049 (d) is right and why; an `Error` from the ingress save then produces the behaviour that reading requires, asserted for all three delivery modes, and D-049 is amended if the narrow reading wins | FIX-133 recon 2026-11-14 |
+ | FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | ready | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | reviewer FIX-71 r4 |
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | ready | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | FIX-71 r5 test-author 2026-11-14 |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | ready | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts |
++| FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | ready | a step throwing an `AssertionError` whose recording then fails still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14 |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 ;  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2 |
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a ;  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS |
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 907adf4..64a613b 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -237,11 +237,12 @@ sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dr
+ consider `Meter` on `Runtime`.
+ 
+ FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
+-- `Recorder.wrap` catches `Exception` only (`Recorder.java:84`; the comment there explains the
+-  checked case, D-056). A step that throws an `Error` therefore leaves NO row, not even `FAILED`.
+-  That is FIX-133, not a feature. To get a `FAILED` row at step N in a test, throw a
+-  `RuntimeException` AND make the park fail; with a working DLQ the message parks and the item
+-  completes, so there is no second run to observe.
++- HISTORICAL since FIX-133 (2026-11-14): `Recorder.wrap` caught `Exception` only (`:85`, not the `:84`
++  this note first said), so a step throwing an `Error` left NO row, not even `FAILED`. It now catches
++  `Throwable` (D-111 as amended), so an `Error` DOES leave a `FAILED` row and the trick below is no
++  longer needed for an `Error`. What still holds: to observe a second RUN you must stop the message
++  parking, because with a working DLQ it parks and the item completes. Throwing an `Error` no longer
++  achieves that on its own — make the park fail, as the FIX-131 test does.
+ - A run that dies on an `Error` still gets its completed steps recorded: the trail closes in a
+   `finally` (`FlowWorker.java` around `:344`).
+ - A repeated `(id, step)` is dropped by BOTH stores — `on conflict (id, step) do nothing`
+@@ -255,6 +256,21 @@ FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
+   `Replay.rebuild(..., id, ...)` and adds `Envelope.ATTEMPT` at `:338`. It runs without stage 0, so
+   it writes no second ingress row.
+ 
++- `Recorder.wrap`'s `policy.records(..., FAILED)` guard at `:86` is UNREACHABLE-FALSE, and deleting it is an equivalent mutant.
++  Proof, read in the code 2026-11-14, not inferred: for a FAILED outcome `RecordingPolicy.records` (`:55-61`) returns true under ALL,
++  under ERRORS, and under ENDS too, because ENDS is `step == 0 || last || outcome != OK` and FAILED is not OK. The one level that
++  answers false is OFF, and `wrap` returns the bare stage for OFF at `:71`, before the catch is installed. The guard stays in the code
++  on purpose: it states the policy correctly and goes live the moment a level is added that declines FAILED, so removing it would be a
++  trap rather than a FIX-137-shaped cleanup. Do not spend a review round trying to kill it; the OK and FILTERED guards beside it ARE
++  killable, because ENDS declines a middle step's OK. CORROBORATED independently by JaCoCo on the FIX-133 run: the only missed
++  branch in `Recorder` is L86, "1 of 4 branches missed" — the false arm of exactly that guard, and the widened catch adds none.
++- `InMemoryMessageStore`'s first-row-wins drop (`:39`, `putIfAbsent`) is not only F-29's subject: it makes a whole CLASS of assertion
++  vacuous. Any test asserting that a SECOND row is absent for one `(id, step)` cannot fail, because the store drops the second row
++  whether the production guard is there or not. FIX-133's case 3 was written that way and had to be rewritten to count what reaches
++  the store. Before asserting an absence, ask which layer swallows it.
++- An `Error` leaving the item to its lease is already pinned by `FlowWorkerTest:90` and `:1030`. A row asking for a new assertion there
++  is asking for a duplicate (the FIX-133 Done-when did, and was corrected).
++
+ ## Pipeline (P1-03, D-043)
+ 
+ Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
+diff --git a/agent/packets/FIX-133.md b/agent/packets/FIX-133.md
+index 700b813..0bc20d1 100644
+--- a/agent/packets/FIX-133.md
++++ b/agent/packets/FIX-133.md
+@@ -95,4 +95,26 @@ narrowed. Then the whole reactor `clean verify -Pit` and `python3 ci/coverage_ch
+ 
+ Reviewer will name mutants: production code changes, so the FIX-7 rule applies. Expect at least the
+ catch narrowed back to `Exception`, to `RuntimeException | Error`, and to `Error`; the `!handedOn[0]`
+-guard dropped; the `policy.records` guard dropped; and `throw failure` removed.
++guard dropped; and `throw failure` removed.
++
++**Do NOT expect the `policy.records(..., FAILED)` guard at `:86` to be killable.** The test-author
++reported it unkillable and the architect verified the premise by reading the code rather than taking
++the report: for a `FAILED` outcome `RecordingPolicy.records` returns true under ALL, under ERRORS, and
++under ENDS as well (`ENDS -> step == 0 || last || outcome != OK`, and FAILED is not OK —
++`RecordingPolicy.java:58`). The only level that answers false is OFF, and `wrap` returns the bare
++stage for OFF at `Recorder.java:71`, before the catch is ever installed. So that guard is always true
++when reached and deleting it is an equivalent mutant. It stays in the code deliberately: it states the
++policy correctly and becomes live the moment a level is added that declines FAILED. Removing it would
++be a trap, so this is not a FIX-137-shaped dead-generality row. Proof recorded in `agent/NOTES.md`.
++
++**`FlowWorker` leaving the item to its lease needs no new test.** The BACKLOG Done-when asked for one
++and was wrong to: `FlowWorkerTest` already asserts it at `:1030` (`an Error leaves the item to
++its lease`), and `RedeliveredTimelineTest:180` asserts it too. The architect first cited `:90` as an
++assertion; it is a fixture javadoc, not an assertion — corrected after the review caught it. The requirement is that those stay green, which the full reactor run shows. Do
++not add an assertion there and do not touch that file.
++
++**Cases 3 and 4 are guard tests, not tests of the fix.** The test-author found that both are green as
++this packet wrote them, because today's narrow catch hides the very guard each one targets, and added
++a witness inside each so the method is red for a stated reason. Their guard halves are green before
++AND after the fix; what they pin is the mutant. The fix itself is pinned by cases 1 and 2 only. Keep
++the witnesses: without them those two methods could not fail at all.
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index b9cd735..29a2c35 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -116,4 +116,4 @@ ARCHITECTURE.md changelog instead.
+ | D-108 | 2026-11-14 | Shape of the one-id lifecycle (D-107's design, class-C). Draft — review at hand-over. **Keying:** `messages` gains `attempt int not null default 1` and its PK becomes `(id, attempt, step)`, inserted `on conflict (id, attempt, step) do nothing` so the first write of each run still wins; `Snapshot` gains `attempt`, read by `Recorder` from `Envelope.ATTEMPT`; `TIMELINE` orders by `attempt, step`. One monotonic run number per id and never two counters: a worker run is `attempt_base + claims - 1`, a resend run is `parked.attempt + 1`, and `ATTEMPT` stays the single source of `nextKey`'s `part~N`, so `BlobKey`'s arity does not change and the 321 factory calls in tests stand. `bodies`, `message_keys`, `work` and `processed_ids` need no migration. **Lifecycle:** the current state is **derived, never a column** (the batching writer is insert-only, so a state transition would have to update N rows): cancelled if a cancel event exists, else failed if a DLQ row or a held work item exists, else the latest attempt's last row. New append-only table `message_lifecycle(id, seq, at, event, attempt, actor, reason)`, PK `(id, seq)`, events `resent` and `cancelled` only — run outcomes stay in `messages` — with the PK collision itself as the concurrency guard, so of two simultaneous cancels one wins. core `MessageLog` interface (in-memory + Pg on day 1) and core `Lifecycle(Dlq, WorkQueue, MessageLog)`. **Cancel:** append the event first, then delete the DLQ row, then complete a held item — the lifecycle row is the authority, so a crash after it leaves a stale DLQ row that reads render as cancelled. **Retry:** `Replay` becomes `Retry` with one entry point `retry(messageId)`, same id, attempt `parked.attempt + 1`, appending `resent` **before** the run and deleting the DLQ row only on success; no id is minted anywhere. **DLQ:** PK stays `id` (no PK migration), gains `attempt`, and park becomes `on conflict (id) do update ... where excluded.attempt > dlq.attempt` — the DLQ is the worklist of the latest failure, the history is `messages` + `message_lifecycle`. **Removed:** both `Replay.from` overloads, `REPLAY_INPUT`, the refusal reasons STEP_OUT_OF_RANGE / NOT_RECORDED / METADATA_ONLY, `Replay`'s `IdGenerator` and its wiring, the replay admin route, and `Envelope.REPLAY_OF` — `replayOf` does not survive, because a retry under the same id has nothing to point at. **Migration** V12, one file, including dropping and recreating `messages_created_at` as `(created_at, id, attempt, step)` and changing the retention job's keyset cursor. | Class-C design 2026-11-14 on D-107, accepted by me as the architect with three of its open questions answered here and two put to the owner. Rejected alternatives and why, from the design: a current-state column on `messages` (insert-only writer, N rows per transition); a separate `runs` table (`messages` already is the per-run log once keyed by attempt); DLQ PK `(id, attempt)` (turns the worklist into a history and makes `get`/`list` need max-attempt windows for no gain); a two-dimension `part~G.A` suffix (breaks `ComponentContract.java:320-321` and keeps two counters); keeping the new id with a parent link (the owner's direction forbids it); cancel by interrupting a running message (D-103: an interrupt is a shutdown signal, never a failure of the message); cancel as a prop on existing rows (mutates snapshots). My answers to the design's open questions: `actor` is nullable and written null until the admin API has authentication, which it does not have today; the number of resends per id takes a finite cap per flow (SUPERSEDED the same day by D-109: the owner refused a cap and was right, and that row says why my reading of "never default a limit to unlimited" was wrong here); and a resend of an ordered flow must go back through the queue rather than run inline, because an inline resend jumps the order its flow guarantees — that is correctness, not preference, and it is what needs `work.attempt_base`. |
+ | D-109 | 2026-11-14 | What a resend may and may not do (owner, closing D-108's open questions). **No cap on resends**: an operator may resend the same message id any number of times, and each resend is a further attempt with its own rows. **A sync message is never resendable**: a sync request/reply flow parks nothing (§4), the error went to the caller, and the caller is the one who retries — `Retry.retry` refuses a message whose flow is sync, naming the flow. **A cancelled message is never resendable**: cancel is terminal, so once a `cancelled` event exists in the message's log, retry is refused. The lifecycle is therefore `failed -> resent -> ok` or `failed -> resent -> failed`, any number of times, or `failed -> cancelled`, which ends it. | Owner's decision 2026-11-14 ("ne, žádný strop přeposílání nechci, sync zprávy nepújde přepossílat a zrušené zprávy taky ne"). On the cap the owner overruled me and was right: I had called for a finite cap in D-108 on the strength of "never default a limit to unlimited", and I had over-applied that rule. It guards limits the platform enforces on itself while running — body size, retries, concurrency, deadlines — where an unbounded value is a runaway. A resend is a human action taken one click at a time; there is no loop to run away, each one is recorded in the message's log with its actor, and storage is already bounded by the retention job. A cap would have bought nothing and would have had to be explained to an operator at the worst possible moment. The two refusals are preconditions on one entry point and cost nothing: the flow's delivery mode is known at retry time because the flow is deployed, and the cancel event is a single read of `message_lifecycle`. |
+ | D-110 | 2026-11-14 | A cancelled message counts as a failure of its flow (architect, on the owner's own principle; the owner did not answer this one). It stays in the error rate, in error alerting and in whatever counts failures, and it is not a success the way D-105's `handled` is. | Derived from the owner's reasoning for D-105 rather than decided afresh: a handled failure is a success because the flow dealt with it and the message reached its destination, and a cancelled message is the opposite — the operator abandoned it and it was never delivered. The business outcome is a non-delivery, so calling it anything but a failure would turn cancel into a button that makes a chart green. Recorded as mine, not the owner's: it was put to the owner together with the sync question on 2026-11-14 and the answer covered only resending. Review at hand-over. Sharpened by the owner the same day ("zrušená zpráva bude vidět v logu jako zrušená (třeba kvůli chybě)"): the two things are separate and must not be conflated. The message's STATE is `cancelled`, a state of its own, shown as such on its screen with the reason the operator gave — never flattened into `failed`, which is what D-108's derived state and the `reason` column on the cancel event already provide. What this row decides is only the COUNTING: for the flow's error rate a cancelled message is a failure, because it was never delivered. If the owner wants cancelled to be a third category in the counting too — neither error nor success — that is a one-line change here and in CONSIDER-11d's `handled` number. |
+-| D-111 | 2026-11-14 | Recording is independent of handling (FIX-133, FIX-131 case 2), reversible. A failure is RECORDED even when it is deliberately not retried, not parked and not handled. `Recorder.wrap` catches `Exception` only (`Recorder.java:85`), so a step that throws an `Error` leaves no row at all and the timeline shows the step as one that never ran — measured by `RedeliveredTimelineTest` case 2, where a crashed first run plus a redelivery produces a timeline of steps 0-7 all `OK`, indistinguishable from one clean successful run. Monitoring is the product, so a failure the timeline cannot show is a product defect. The fix is narrow and changes NO control flow: widen that catch to `RuntimeException \| Error` as D-104 did in `BatchingWriter`, write the `FAILED` row with the throwable's text, and rethrow unchanged. Everything D-098 and D-049 decided about an `Error` stands — it is not transient, it is not retried, `FlowWorker` still leaves the item to its lease, and D-103's rule that a user error handler never sees an interrupt is untouched. Explicitly NOT changed: `Parking.java:49` catches `Exception` only and must keep doing so, because parking an `Error` would make it transient, which D-098 refused; the scout reading that line as a second instance of the same gap was wrong, and it is recorded here so nobody “fixes” it. Still open as its own row, because it contradicts D-049 (d) rather than this one: `Delivery.java:319-320` catches `RuntimeException` only around the ingress `intake.save`, so an `Error` escapes `apply()` where D-049 (d) promises “never an escaped exception”. AMENDED 2026-11-14, same day, by the architect against his own text, before any code was written: the form this row prescribed is WRONG and would have been a regression. `Exception` catches CHECKED exceptions too, and that is deliberate — the comment at the catch cites D-056, where the cancel at a stop deadline interrupts the message's virtual thread and `await` wakes by throwing `InterruptedException` sneakily. `RuntimeException \| Error` does not include it, so copying D-104's form here would have removed the `FAILED` row for every cancelled delivery in order to add one for an `Error`. The form is `Throwable`, not a multicatch: `Exception \| Error` would also close the hole, but only for a reader who already knows that a direct `Throwable` subclass cannot reach this line, and nobody knows that — completeness is this row's entire premise, so the catch states it. D-104's multicatch style stands where it is, because the code under those four catches cannot throw a checked exception at all; `CpuSampler.java:259` is the in-repo precedent for a checked type inside a multicatch when it can. Everything else in this row is unchanged: the row is written with the throwable's text, it is rethrown unchanged by precise rethrow (JLS 11.2.2 — the implementer confirms it compiles with no `throws` clause rather than wrapping it), and no control flow moves. The line is 85, not the 84 the FIX-133 row cites. | FIX-131, FIX-133 |
++| D-111 | 2026-11-14 | Recording is independent of handling (FIX-133, FIX-131 case 2), reversible. A failure is RECORDED even when it is deliberately not retried, not parked and not handled. `Recorder.wrap` catches `Exception` only (`Recorder.java:85`), so a step that throws an `Error` leaves no row at all and the timeline shows the step as one that never ran — measured by `RedeliveredTimelineTest` case 2, where a crashed first run plus a redelivery produces a timeline of steps 0-7 all `OK`, indistinguishable from one clean successful run. Monitoring is the product, so a failure the timeline cannot show is a product defect. The fix is narrow and changes NO control flow: widen that catch to `RuntimeException \| Error` as D-104 did in `BatchingWriter`, write the `FAILED` row with the throwable's text, and rethrow unchanged. Everything D-098 and D-049 decided about an `Error` stands — it is not transient, it is not retried, `FlowWorker` still leaves the item to its lease, and D-103's rule that a user error handler never sees an interrupt is untouched. Explicitly NOT changed: `Parking.java:49` catches `Exception` only and must keep doing so, because parking an `Error` would make it transient, which D-098 refused; the scout reading that line as a second instance of the same gap was wrong, and it is recorded here so nobody “fixes” it. Still open as its own row, because it contradicts D-049 (d) rather than this one: `Delivery.java:319-320` catches `RuntimeException` only around the ingress `intake.save`, so an `Error` escapes `apply()` where D-049 (d) promises “never an escaped exception”. AMENDED 2026-11-14, same day, by the architect against his own text, before any code was written: the form this row prescribed is WRONG and would have been a regression. `Exception` catches CHECKED exceptions too, and that is deliberate — the comment at the catch cites D-056, where the cancel at a stop deadline interrupts the message's virtual thread and `await` wakes by throwing `InterruptedException` sneakily. `RuntimeException \| Error` does not include it, so copying D-104's form here would have removed the `FAILED` row for every cancelled delivery in order to add one for an `Error`. The form is `Throwable`, not a multicatch: `Exception \| Error` would also close the hole, but only for a reader who already knows that a direct `Throwable` subclass cannot reach this line, and nobody knows that — completeness is this row's entire premise, so the catch states it. D-104's multicatch style stands where it is, because the code under those four catches cannot throw a checked exception at all; `CpuSampler.java:259` is the in-repo precedent for a checked type inside a multicatch when it can. Everything else in this row is unchanged: the row is written with the throwable's text, it is rethrown unchanged by precise rethrow (JLS 11.2.2 — the implementer confirms it compiles with no `throws` clause rather than wrapping it), and no control flow moves. The line is 85, not the 84 the FIX-133 row cites. IMPLEMENTED 2026-11-14 (FIX-133, review PASS): the catch is `Throwable`. One qualification this row's "rethrow unchanged" did not anticipate, raised as FIX-140 by the FIX-133 reviewer and verified in the code: `record` is called BEFORE the rethrow and can itself throw — `Trail.add` does `flush().await()` at `Trail.java:90`, which an interrupt turns into a sneaky `InterruptedException` — so the original throwable can be replaced by the recording's own failure. For an `Error` that is worse than it sounds, because the replacement is an `Exception` and `Parking.java:49` would park it, making transient what this row and D-098 both say is not. Until FIX-140, "rethrown unchanged" holds only when recording succeeds. | FIX-131, FIX-133 |
+diff --git a/docs/findings/F-29.md b/docs/findings/F-29.md
+index 8f48a5a..7fdfb9c 100644
+--- a/docs/findings/F-29.md
++++ b/docs/findings/F-29.md
+@@ -204,3 +204,19 @@ The `Recorder.wrap` gap is a defect in its own right, independent of the key: a
+ cannot show is a product defect for a platform whose product is monitoring, and D-104 already made
+ the opposite call for `BatchingWriter` (`RuntimeException` and `Error` alike). It is FIX-133, and it
+ does not wait for CONSIDER-12.
++
++**FIXED by FIX-133 on 2026-11-14, in the half that belongs to the catch; the key half is still open.**
++`Recorder.java:85` now catches `Throwable` (D-111 as amended — `RuntimeException | Error` would have
++been a narrowing, dropping the row for the checked `InterruptedException` of a stop-deadline cancel).
++Everything above about the `Error` leaving no row is therefore the state BEFORE that commit, kept
++because it is what the measurement found. What changed in the measured timeline: run 1 now writes
++`3 check FAILED`, and because the store keeps the first row per `(id, step)` that row WINS over run
++2's `3 check OK`. So the dangerous shape described above — a stitched timeline that reads as one
++clean successful run — is gone: step 3 is FAILED and its error names the crash. `RedeliveredTimelineTest`
++case 2 was renamed and seven of its expectations flipped to record exactly that.
++
++What this finding still says, unfixed: the timeline is STILL stitched from two runs, the seam is still
++marked only by `Envelope.ATTEMPT` in run 2's props, and the surviving rows are still chosen by which
++run wrote first rather than by which run they belong to. A FAILED row from run 1 beside OK rows from
++run 2 is now visibly odd, which is an improvement over invisible, but it is not a run-scoped key.
++That remains CONSIDER-12's.
+diff --git a/flottila-core/src/main/java/io/flottila/core/record/Recorder.java b/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
+index 7c941b1..09d0924 100644
+--- a/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
++++ b/flottila-core/src/main/java/io/flottila/core/record/Recorder.java
+@@ -82,7 +82,7 @@ public final class Recorder {
+                     }
+                     return rest.apply(out);
+                 });
+-            } catch (Exception failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056)
++            } catch (Throwable failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056); an Error too, recorded and rethrown unchanged (D-111)
+                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
+                     record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
+                 }
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java b/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java
+index bd9c32b..cff47f3 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java
+@@ -151,22 +151,21 @@ class RedeliveredTimelineTest {
+ 
+     /**
+      * FIX-131, F-29, the worst shape: run 1 dies at step 3 with an {@link Error} (the {@code crashFirst} harness; a node dying
+-     * mid-run). Today {@code Recorder.wrap} catches {@code Exception} only, so run 1 leaves OK rows at steps 1-2 and no row at
+-     * all at step 3 — a second defect, FIX-133, not intended behaviour; run 2 (attempt 2, after one lease) goes through, its
+-     * rows at steps 1-2 are dropped on {@code (id, step)} and its rows 3-7 kept. This case produces a timeline that reads as a
+-     * single successful run, which is worse than case 1 because case 1's FAILED-then-OK sequence at least looks wrong to an
+-     * operator, while this one carries no failure anywhere and only the attempt prop on steps 3-7 betrays the seam.
++     * mid-run). Since FIX-133 {@code Recorder.wrap} catches {@code Throwable} (D-111), so run 1 leaves OK rows at steps 1-2 and
++     * a FAILED row at step 3 naming the Error; run 2 (attempt 2, after one lease) goes through, its rows at steps 1-3 are
++     * dropped on {@code (id, step)} and its rows 4-7 kept. The crash is visible: the timeline reads as case 1's, a FAILED
++     * step 3 with OK steps past it, and only the attempt prop on steps 4-7 betrays the seam.
+      *
+      * <p>Two separate triggers change this case, and either may land first. <b>FIX-133</b> (record a FAILED row on an
+      * {@code Error}, then rethrow; it does not wait for CONSIDER-12) flips the step-3 expectations, all of them deliberately:
+      * run 1's interim timeline gains {@code "3 check FAILED run=1 attempt=none"}; {@code recorded("check")} becomes 1 after run 1
+      * and 2 after run 2; the final list's step-3 row becomes run 1's FAILED row ({@code run=1 attempt=none}); the "no row is
+      * FAILED" assertion, the step-3 {@code x-run} assertion and the step-3 entry of the ATTEMPT list flip with it — case 2 then
+-     * reads as case 1. Under FIX-133 those are wrong expectations to fix, with the reason in the commit; the rest stands.
++     * reads as case 1. FIX-133 has landed and those expectations are flipped below; the rest stands.
+      * <b>CONSIDER-12</b> (the row key gains {@code attempt}) inverts the whole case together with case 1.
+      */
+     @Test
+-    void aMessageWhoseFirstRunCrashedReadsAsOneCleanRunStitchedFromTwoWithNoFailureAnywhere() throws Exception {
++    void aMessageWhoseFirstRunCrashedShowsTheCrashAsAFailedRowStitchedBeforeTheRedeliveredRun() throws Exception {
+         FlowDefinition def = FlowDefinition.from(flow(4, List.of(
+                 step("mark-run", "mark"), step("pass", "enrich"), step("crash-first", "check"),
+                 step("pass", "map"), step("pass", "route"), step("pass", "audit"), TO_PARTNER)));
+@@ -187,10 +186,11 @@ class RedeliveredTimelineTest {
+         List<String> warnings = logs.at(Level.WARNING, leftToLease);
+         assertEquals(1, warnings.size(), "fixture: run 1 left to its lease: " + logs.all());
+         assertTrue(warnings.get(0).contains("crashed at check on the first run"), "fixture: by the Error at check: " + warnings.get(0));
+-        assertEquals(List.of("0 ingress OK run=none attempt=none", "1 mark OK run=1 attempt=none", "2 enrich OK run=1 attempt=none"),
++        assertEquals(List.of("0 ingress OK run=none attempt=none", "1 mark OK run=1 attempt=none", "2 enrich OK run=1 attempt=none",
++                        "3 check FAILED run=1 attempt=none"),
+                 w.store.timeline(in.id()).await().stream().map(RedeliveredTimelineTest::row).toList(),
+-                "run 1's trail kept its rows up to the crash and wrote nothing at step 3");
+-        assertEquals(0, w.store.recorded("check"), "the Error left no row at step 3: run 1 never handed the store one");
++                "run 1's trail kept its rows up to the crash and a FAILED row at step 3 (D-111)");
++        assertEquals(1, w.store.recorded("check"), "the Error left its row at step 3: run 1 handed the store one (D-111)");
+ 
+         // run 2: one lease later, the same id claimed again as attempt 2, goes through to step 7 (partner)
+         w.rt.clock().advance(LEASE);
+@@ -200,10 +200,10 @@ class RedeliveredTimelineTest {
+         assertEquals(2, runs.get(), "fixture: the pipeline ran twice");
+         assertEquals(List.of(in.id()), w.sentIds(), "fixture: run 2 reached the partner, under the same id");
+         assertEquals(0, w.rows.size(), "fixture: run 2 completed the item");
+-        for (String name : List.of("mark", "enrich")) {
++        for (String name : List.of("mark", "enrich", "check")) {
+             assertEquals(2, w.store.recorded(name), "both runs handed the store a row for " + name + ": the second one collides on (id, step)");
+         }
+-        for (String name : List.of("check", "map", "route", "audit", "partner")) {
++        for (String name : List.of("map", "route", "audit", "partner")) {
+             assertEquals(1, w.store.recorded(name), "only run 2 handed the store a row for " + name);
+         }
+ 
+@@ -213,23 +213,24 @@ class RedeliveredTimelineTest {
+                         "0 ingress OK run=none attempt=none",   // the delivery's save
+                         "1 mark OK run=1 attempt=none",          // run 1's; run 2's dropped
+                         "2 enrich OK run=1 attempt=none",        // run 1's; run 2's dropped
+-                        "3 check OK run=2 attempt=2",            // run 2's: run 1 crashed here and left nothing
++                        "3 check FAILED run=1 attempt=none",     // run 1's crash (D-111); run 2 passed this step, its OK row dropped
+                         "4 map OK run=2 attempt=2",
+                         "5 route OK run=2 attempt=2",
+                         "6 audit OK run=2 attempt=2",
+                         "7 partner OK run=2 attempt=2"),
+                 timeline.stream().map(RedeliveredTimelineTest::row).toList(),
+-                "the timeline of one id is stitched: steps 1-2 from run 1, steps 3-7 from run 2, every row OK");
++                "the timeline of one id is stitched: steps 1-3 from run 1, steps 4-7 from run 2");
+ 
+-        // no failure anywhere: the crash at step 3 is invisible
+-        assertEquals(List.of(), timeline.stream().filter(s -> s.outcome() != Snapshot.Outcome.OK || s.error().isPresent()).toList(),
+-                "no row is FAILED or carries an error");
++        // the crash at step 3 is visible: its row is the only one FAILED or carrying an error, and it names the Error
++        assertEquals(List.of(3), timeline.stream().filter(s -> s.outcome() != Snapshot.Outcome.OK || s.error().isPresent()).map(Snapshot::step).toList(),
++                "step 3 is the one row FAILED or carrying an error");
+         Snapshot check = timeline.get(3);
+         assertEquals(3, check.step());
+-        assertEquals(Optional.of(2), check.props().get(RUN), "the step-3 row is run 2's, not a record of run 1's crash");
++        assertEquals(Optional.of(1), check.props().get(RUN), "the step-3 row is run 1's record of its crash, not run 2's pass");
++        assertTrue(check.error().orElse("").contains("crashed at check on the first run"), "and it names the Error: " + check.error());
+ 
+-        // the only mark of two runs: ATTEMPT on the rows run 2 wrote (3-7), absent from the delivery's and run 1's (0-2)
+-        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
++        // the only mark of two runs: ATTEMPT on the rows run 2 wrote (4-7), absent from the delivery's and run 1's (0-3)
++        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
+                 timeline.stream().map(s -> s.props().get(Envelope.ATTEMPT)).toList(), "attempt 2 on run 2's rows only");
+     }
+ }
+diff --git a/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java b/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
+index 6eda5d3..c27c8fd 100644
+--- a/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java
+@@ -17,6 +17,9 @@ import io.vertx.core.Promise;
+ import io.vertx.core.buffer.Buffer;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.Timeout;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.Arguments;
++import org.junit.jupiter.params.provider.MethodSource;
+ 
+ import java.io.IOException;
+ import java.time.Duration;
+@@ -25,6 +28,7 @@ import java.util.Map;
+ import java.util.Optional;
+ import java.util.concurrent.atomic.AtomicLong;
+ import java.util.function.Function;
++import java.util.stream.Stream;
+ 
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertSame;
+@@ -276,4 +280,138 @@ class RecorderTest {
+             assertEquals("yes", t.get(2).headers().get("seen-a"), c.getKey() + ": the failed step's snapshot shows what it was given");
+         }
+     }
++
++    /** The errors a step may throw (D-111): one carrying a message, and one that carries none, so only its class can be named. */
++    static Stream<Arguments> errors() {
++        return Stream.of(
++                Arguments.of(new AssertionError("invariant broken at x"), "java.lang.AssertionError", "invariant broken at x"),
++                Arguments.of(new StackOverflowError(), "java.lang.StackOverflowError", null));
++    }
++
++    /** {@code factories} plus one step type, {@code type}, whose stage is {@code stage}. */
++    List<StepFactory> with(String type, Stage stage) {
++        List<StepFactory> all = new java.util.ArrayList<>(factories);
++        all.add(factory(type, s -> stage));
++        return all;
++    }
++
++    Pipeline buildWith(List<StepFactory> all, Map<String, Object> recording, Map<String, Object>... steps) {
++        return new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, meter)
++                .build(FlowDefinition.from(flow(recording, List.of(steps))), java.nio.file.Path.of(""));
++    }
++
++    @ParameterizedTest
++    @MethodSource("errors")
++    void aStepThatThrowsAnErrorRecordsItsFailureSnapshot(Error thrown, String className, String message) {
++        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertSame(thrown, escaped, className + ": the error goes on unchanged, not wrapped");
++        List<Snapshot> t = store.timeline(in.id()).await();
++        assertEquals(List.of("ingress", "a", "x"), names(t), className + ": the step that threw an Error has its row (D-111)");
++        assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome(), className);
++        String error = t.get(2).error().orElse("");
++        assertTrue(error.contains(className), className + ": the row names what failed: " + error);
++        if (message != null) assertTrue(error.contains(message), className + ": and its message: " + error);
++        assertEquals("yes", t.get(2).headers().get("seen-a"), className + ": the failed step's snapshot shows what it was given");
++        assertEquals(List.of(Snapshot.Outcome.OK, Snapshot.Outcome.OK), List.of(t.get(0).outcome(), t.get(1).outcome()), className + ": the rows before it are untouched");
++        assertTrue(t.get(0).error().isEmpty() && t.get(1).error().isEmpty(), className + ": and carry no error");
++    }
++
++    /** Neither an {@link Exception} nor an {@link Error}: what only a {@code Throwable} catch records (D-111 AMENDED). */
++    static final class DirectThrowable extends Throwable {
++        DirectThrowable(String message) { super(message); }
++    }
++
++    @Test
++    void aStepThatThrowsADirectThrowableSubclassIsRecordedToo() {
++        DirectThrowable thrown = new DirectThrowable("neither exception nor error");
++        Pipeline p = buildWith(with("odd", Stage.of(e -> { throw sneaky(thrown); })), Map.of("level", "all"), step("mark", "a"), step("odd", "x"));
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
++        assertSame(thrown, escaped, "the throwable goes on unchanged, not wrapped");
++        List<Snapshot> t = store.timeline(in.id()).await();
++        assertEquals(List.of("ingress", "a", "x"), names(t), "a direct Throwable subclass leaves the step's row too: the catch is Throwable, not Exception | Error");
++        assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome());
++        String error = t.get(2).error().orElse("");
++        assertTrue(error.contains("DirectThrowable") && error.contains("neither exception nor error"), "the row says what failed: " + error);
++        assertEquals("yes", t.get(2).headers().get("seen-a"), "the failed step's snapshot shows what it was given");
++    }
++
++    /**
++     * A {@link MessageStore} decorator that logs every {@code record} call before passing it on — what reaches the store,
++     * not what survives in it. The delegate keeps only the first row per {@code (id, step)} (F-29), so a second row for a step
++     * is invisible to {@code timeline()}; only a count of the calls can see it. The approach of {@code HoldingMessageStore#recorded}
++     * (RedeliveredTimelineTest), which is package-private in {@code core.flow}.
++     */
++    static final class CountingStore implements MessageStore {
++        private final MessageStore delegate;
++        private final List<Snapshot> handed = new java.util.ArrayList<>();   // guarded by this
++
++        CountingStore(MessageStore delegate) { this.delegate = delegate; }
++
++        /** The outcomes of every row handed to the store for {@code messageId} at {@code stepName}, in call order. */
++        synchronized List<Snapshot.Outcome> handed(String messageId, String stepName) {
++            return handed.stream().filter(s -> s.messageId().equals(messageId) && s.stepName().equals(stepName)).map(Snapshot::outcome).toList();
++        }
++
++        @Override public Future<Void> record(Snapshot s) {
++            synchronized (this) { handed.add(s); }
++            return delegate.record(s);
++        }
++        @Override public Future<List<Snapshot>> timeline(String messageId) { return delegate.timeline(messageId); }
++        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return delegate.findByKey(name, value, after, limit); }
++    }
++
++    @Test
++    void anErrorAfterTheStepHandedOnLeavesNoSecondRow() {
++        AssertionError after = new AssertionError("after handing on");
++        AssertionError before = new AssertionError("before handing on");
++        List<StepFactory> all = new java.util.ArrayList<>(factories);
++        all.add(factory("late", s -> (e, rest) -> { rest.apply(e.withHeader("handed", "yes")); throw after; }));
++        all.add(factory("early", s -> (e, rest) -> { throw before; }));
++        CountingStore counting = new CountingStore(store);
++        Function<Map<String, Object>, Pipeline> flowWith = x -> new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(counting, meter)
++                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), x, step("mark", "b")))), java.nio.file.Path.of(""));
++
++        Envelope witness = in();
++        Throwable early = assertThrows(Throwable.class, () -> flowWith.apply(step("early", "x")).apply(witness));
++        assertSame(before, early);
++        List<Snapshot> w = store.timeline(witness.id()).await();
++        assertEquals(List.of("ingress", "a", "x"), names(w), "witness: the same Error before any hand-on does leave a row, so the absence below is the guard's");
++        assertEquals(Snapshot.Outcome.FAILED, w.get(2).outcome());
++        assertEquals(List.of(Snapshot.Outcome.FAILED), counting.handed(witness.id(), "x"), "witness: the counter sees the FAILED row the Error before any hand-on writes");
++
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> flowWith.apply(step("late", "x")).apply(in));
++        assertSame(after, escaped, "the error goes on unchanged");
++        assertEquals(List.of(Snapshot.Outcome.OK), counting.handed(in.id(), "x"),
++                "step x handed the store exactly one row, the OK one its hand-on wrote: a second row was written for step x if FAILED follows it"
++                        + " (the store keeps the first per (id, step), so timeline() alone cannot show it, F-29)");
++        assertEquals(List.of(Snapshot.Outcome.OK), counting.handed(in.id(), "b"), "the step x handed on to recorded itself once");
++        List<Snapshot> t = store.timeline(in.id()).await();
++        assertEquals(List.of("ingress", "a", "x", "b"), names(t), "one row for step x, the OK one its hand-on wrote");
++        assertEquals(Snapshot.Outcome.OK, t.get(2).outcome());
++        assertEquals("yes", t.get(2).headers().get("handed"), "x's row shows what it handed on");
++        assertTrue(t.stream().allMatch(s -> s.outcome() == Snapshot.Outcome.OK && s.error().isEmpty()), "no row of this run carries the error");
++    }
++
++    @Test
++    void aPolicyThatDoesNotRecordFailuresStillLetsAnErrorEscape() {
++        AssertionError thrown = new AssertionError("not recorded, still thrown");
++        List<StepFactory> all = with("crash", Stage.of(e -> { throw thrown; }));
++
++        Envelope recorded = in();
++        Throwable control = assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "errors"), step("mark", "a"), step("crash", "x")).apply(recorded));
++        assertSame(thrown, control);
++        List<Snapshot> r = store.timeline(recorded.id()).await();
++        assertEquals(List.of(2), r.stream().map(Snapshot::step).toList(), "control: under errors the same Error leaves exactly the failed step's row");
++        assertEquals(Snapshot.Outcome.FAILED, r.get(0).outcome());
++
++        Envelope in = in();
++        Throwable escaped = assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "errors"), step("mark", "a"),
++                Map.of("type", "crash", "name", "x", "recording", Map.of("level", "off"))).apply(in));
++        assertSame(thrown, escaped, "a step that records nothing still lets the Error go on unchanged: handling does not depend on recording");
++        assertEquals(List.of(), store.timeline(in.id()).await(), "and records nothing: recording does not depend on handling");
++    }
+ }

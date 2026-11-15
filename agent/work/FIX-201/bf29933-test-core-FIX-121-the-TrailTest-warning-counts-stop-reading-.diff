@@ -1,0 +1,51 @@
+COMMIT bf299330145cd1a34da41552f3053554b8b31205
+test(core): FIX-121 the TrailTest warning counts stop reading the whole JVM
+
+Two counts in TrailTest totalled every Trail WARNING in the JVM rather than
+the ones their own case produced — the same leakage FIX-54 fixed two sites
+earlier. :648 now filters by the case's own `bad.key().toString()`. :630 could
+not: its step 4 is the metadata-only row, whose warning carries no BlobKey at
+all, so a key-only filter finds three of the four rows. Its second clause is
+the delimited row head "message m-nw of flow f: " — never a bare id substring,
+which is the trap FIX-54 hit, where "m-w" is a prefix of the "m-wait" fixture.
+
+The counts 4 and 1 are unchanged and were re-derived from the fixtures during
+review rather than taken on trust.
+
+Checks: VERIFIED_PASS exit 0, TrailTest 13/0 (agent/work/FIX-121-green.log);
+mutant Trail.java:164 key -> "K" EXECUTED_FAIL 13/2, killing the :648 count
+(FIX-121-mutA.log); production byte-identical afterwards (cmp, git diff empty).
+Disclosed: a mutant on the persist sentence at Trail.java:177 left all 13 green
+(FIX-121-mutB.log) — that wording is unasserted anywhere, now row FIX-123.
+
+Task: FIX-121
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java b/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
+index 61ad8aa..49425cd 100644
+--- a/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
+@@ -626,7 +626,9 @@ class TrailTest {
+                 assertFalse(r.getMessage().contains("its body"), "a row that kept no body names none: " + r.getMessage());
+             }
+         }
+-        assertEquals(4, trailWarnings().size(), "nothing else was logged at WARNING by the trail: " + trailWarnings());
++        // this case's message only: its body key (steps 1-3 name it) or step 4's metadata-only row head, which names no key
++        List<String> own = trailWarnings().stream().filter(m -> m.contains(b.key().toString()) || m.contains("message m-nw of flow f: ")).toList();
++        assertEquals(4, own.size(), "nothing else was logged at WARNING by the trail for this message: " + own);
+     }
+ 
+     @Test
+@@ -643,7 +645,7 @@ class TrailTest {
+         assertEquals(List.of(1, 2), full.rows.timeline("m-ok").await().stream().map(Snapshot::step).toList(), "fixture: m-ok's rows were written");
+         assertEquals(0, full.records.get(), "fixture: through recordWaiting");
+         assertEquals(List.of(), trailWarningsOf("m-ok"), "a row written logs no WARNING");
+-        List<String> warned = trailWarnings();
++        List<String> warned = trailWarnings().stream().filter(m -> m.contains(bad.key().toString())).toList();   // this case's failing message only
+         assertEquals(1, warned.size(), "the capture sees the witness row's WARNING, and only it: " + warned);
+         assertTrue(warned.getFirst().contains("message m-bad "), warned.toString());
+     }

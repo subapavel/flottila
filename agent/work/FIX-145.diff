@@ -1,0 +1,152 @@
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+index 37d8c32..0713396 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+@@ -14,6 +14,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
+  * together, once. A producer whose close fails — its future, or anything {@code close()} itself throws, an {@link Error} and a
+  * sneaky checked exception included (FIX-141, F-30) — is logged at WARNING and stops no other; the close completes, never fails,
+  * once every producer's close has settled.
++ *
++ * <p>When a {@code close()} throws an {@code InterruptedException}, the flag it swallowed is restored mid-loop, so every
++ * producer after the interrupting one is asked to close on a thread whose interrupt flag is now set and a later blocking
++ * {@code close()} may fail fast because of it — a consequence of honouring the flag, not a defect; the loop still asks each of
++ * them (pinned by ProducersCloseTest.anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers). A producer whose
++ * returned future instead <em>fails</em> with an {@code InterruptedException} leaves the flag alone: the thread that was
++ * interrupted is in general not the one that asked for the close — the failure is observed on whichever thread completed the
++ * future — and setting the flag here would invent an interrupt nobody raised on the closing thread. The price is a producer that
++ * caught the interrupt itself and failed its future on the closing thread: that thread's cancellation is then genuinely lost,
++ * and nothing in the failure lets this loop tell that case from the common one (D-098 (2), pinned by
++ * ProducersCloseTest.aCloseWhoseFutureFailsWithAnInterruptedExceptionLeavesTheFlagClear).
+  */
+ final class Producers {
+ 
+@@ -46,6 +57,12 @@ final class Producers {
+             try {
+                 closing = p.close();
+             } catch (Throwable thrown) {   // a producer that throws instead of failing its future, an Error or a sneaky checked exception too (FIX-141, F-30): the same failed close; a narrower catch abandons the loop and strands every later producer, pinned by ProducersCloseTest.theLoopFinishesTheThirdProducerIsAskedWhenTheMiddleOnesCloseThrows
++                // Swallowed, an interrupt leaves the caller's next blocking call unaware that its thread was cancelled.
++                // An InterruptedException reaches this catch at all because the enclosing clause is wide enough to see a sneaky
++                // checked throwable (FIX-141, F-30); the rule this line implements is D-098 (1): a swallowed interrupt is
++                // restored for the thread that was interrupted, so the cancelling caller still sees it.
++                // Pinned by ProducersCloseTest.anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers
++                if (thrown instanceof InterruptedException) Thread.currentThread().interrupt();
+                 closing = Future.failedFuture(thrown);
+             }
+             settled.add(closing.recover(failure -> {
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+index 82a8988..e770af9 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+@@ -263,4 +263,112 @@ class ProducersCloseTest {
+         assertAskedOnce("after the second close", first, middle, third);
+         assertEquals(1, warnings().size(), "still one WARNING: " + dump());
+     }
++
++    // --- FIX-145 (D-098): a sneaky InterruptedException out of a close() is swallowed; the flag must not be. Three cases:
++    // an interrupt thrown by close() on the closing thread sets the flag again (D-098 (1)); a close that fails for its own
++    // reason, no interrupt anywhere, leaves it clear; an InterruptedException arriving in the producer's failed future, in
++    // general not the closing thread's own interrupt, leaves it clear too (D-098 (2)).
++
++    /**
++     * FIX-145 (D-098): a producer whose {@code close()} throws a sneaky {@link InterruptedException} is a cancelled close, and
++     * the thread that ran it must not carry on as if it had not been interrupted: the interrupt flag is set again for the
++     * caller (the cancelling caller still sees its interrupt, and the next blocking call on that thread still throws). The
++     * WARNING behaviour is unchanged — the close still completes successfully — and the other producers are still closed,
++     * each exactly once, counted on the fixture. The flag is cleared before the call, so no earlier case can make this pass,
++     * and read with {@link Thread#interrupted()} (read and cleared) on the thread that ran the close, so it never leaks.
++     * Red before the fix: {@code catch (Throwable)} (FIX-141) swallows the interrupt into a succeeded future, flag clear.
++     */
++    @Test
++    void anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.throwing("middle-producer", new InterruptedException("close cancelled"));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close, whatever it did
++        }
++
++        assertNull(closed.escaped(), "the interrupt does not escape the close");
++        assertAskedOnce("after the middle one's close was interrupted", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close still succeeds: " + closed.future().cause());
++        assertEquals(1, warnings().size(), "still exactly one WARNING from Producers: " + dump());
++        assertTrue(texts(warnings().get(0)).get(0).contains("middle-producer"), "the WARNING names the interrupted producer: " + texts(warnings().get(0)));
++        assertTrue(flagAfter, "the interrupt flag is set again for the caller");
++    }
++
++    /**
++     * FIX-145, the other side of the interrupt edge, and the witness that the flag is restored for an interrupt and not for
++     * every failure: a close that fails for its own reason — a sneaky checked {@link IOException}, no interrupt anywhere —
++     * leaves the interrupt flag clear. Green on arrival (the current code sets the flag for nothing at all); what it kills is
++     * a fix that sets the flag unconditionally in the close loop, which would otherwise pass
++     * {@link #anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers} untouched.
++     */
++    @Test
++    void aCloseThatFailsWithoutAnInterruptLeavesTheFlagClear() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.throwing("middle-producer", Thrown.CHECKED.make("partner socket reset"));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close
++        }
++
++        assertNull(closed.escaped(), "the checked failure does not escape the close");
++        assertAskedOnce("after the middle one's close threw a checked failure", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close succeeds: " + closed.future().cause());
++        assertFalse(flagAfter, "a close that failed without an interrupt leaves the flag clear");
++    }
++
++    /**
++     * FIX-145, what pins where the guard sits (D-098 (2)): a producer that does not throw but returns a future already
++     * <em>failed</em> with an {@link InterruptedException} was interrupted on its own thread — the closing thread was never
++     * cancelled — so the close must leave that thread's interrupt flag CLEAR. This is the opposite of
++     * {@link #anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers}, where {@code close()} threw the
++     * interrupt <em>on the closing thread</em> and the flag it swallowed is the caller's own, so it must be set again.
++     * Restoring it here would invent an interrupt nobody raised, and the continuation that observes such a failure runs on
++     * whichever thread completed the future — in general not the one that asked for the close.
++     *
++     * <p>So the guard belongs in the synchronous {@code catch}, not in the {@code recover} lambda that is shared with
++     * futures failing later: this case is the only one that separates the two placements (for a
++     * {@link Future#failedFuture} the recover body runs inline on the caller's thread, which is why the two sibling cases
++     * cannot tell them apart). The rest of the contract is unchanged — the close still succeeds, exactly one WARNING names
++     * the failed producer, and every producer is asked to close exactly once.
++     */
++    @Test
++    void aCloseWhoseFutureFailsWithAnInterruptedExceptionLeavesTheFlagClear() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.answering("middle-producer",
++                Future.failedFuture(new InterruptedException("cancelled on the producer's own thread")));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close, whatever it did
++        }
++
++        assertNull(closed.escaped(), "the failed future does not escape the close");
++        assertAskedOnce("after the middle one's close answered a failed future", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close still succeeds: " + closed.future().cause());
++        assertEquals(1, warnings().size(), "still exactly one WARNING from Producers: " + dump());
++        assertTrue(texts(warnings().get(0)).get(0).contains("middle-producer"),
++                "the WARNING names the producer whose close failed: " + texts(warnings().get(0)));
++        assertFalse(flagAfter, "the producer was interrupted on its own thread: the closing thread's flag stays clear");
++    }
+ }

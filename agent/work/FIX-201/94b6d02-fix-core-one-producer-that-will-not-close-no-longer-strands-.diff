@@ -1,0 +1,457 @@
+COMMIT 94b6d02198607f3d36f8e9d0e5713ff215736219
+fix(core): one producer that will not close no longer strands the others
+
+The close loop caught RuntimeException around p.close(), so an Error from one producer abandoned the
+loop itself: every producer after it was never asked to close and never joined settled, leaking the
+sockets, pools and file handles of producers nothing ever touched. Widened to Throwable, which hands
+a synchronous throw to the recover that already defines the right shutdown behaviour - log at WARNING
+naming the flow and the producer, carry on to the next. A multicatch was refused for the reason
+FIX-136 recorded, and the measurement here says the same (M2 below): it drops the sneaky checked
+throwable an interrupted await produces.
+
+The reviewer found the defect worse than the packet stated, in two ways worth keeping. Before the fix
+the Error escaped after `asked` was set true and before `closed` completed, so a SECOND close() hung
+for good. And at FlowBuilder:464, where closeAll sits in a finally with its return value discarded,
+the escaping Error REPLACED the build's own exception - FIX-140's shape a third time. It checked the
+three callers and grepped for a fatal-Error policy (UncaughtExceptionHandler, VirtualMachineError,
+halt), finding none on this path, so nothing relied on the escape.
+
+The class javadoc is rewritten beyond the packet, because it had documented the defect as if it were
+intended: "an Error is not caught: it propagates... the close never completes". The provenance was
+checked before accepting that rewrite - nothing in docs/DECISIONS.md mentions Producers and nothing
+in docs/ARCHITECTURE.md covers close semantics, so the sentence described the code rather than
+recording an intent. Had a decision backed it, this task would have needed a finding first.
+
+Checks: VERIFIED_PASS integrated on 0adcbed - ProducersCloseTest 19/0/0/0, flottila-core 555/0/0/0,
+and the four classes the last four tasks touched run together 124/0/0/0
+(agent/work/FIX-141-integrated.log). All five mutants killed, cmp clean after each, every section
+opening with a diff of the backup against the mutated file (agent/work/FIX-141-mutants.log): the
+catch narrowed back to RuntimeException 13 failures; the D-104 multicatch 6; failedFuture(thrown) to
+succeededFuture() 7; the WARNING losing its attached throwable 3; Future.all(settled).mapEmpty() to
+succeededFuture() 3.
+
+Also in this commit, from the preceding tasks: FIX-145, the interrupt flag this widened catch now
+makes reachable, split out of the review rather than left inside it; FIX-146, six PROGRESS entries
+that exist only in docs/PROGRESS.md and never reached the journal docs/WORKFLOW.md:48 names; and the
+NOTES lesson that cost the most here - a lane hand-off diff made with `git diff` silently omits
+untracked files, so this task's diff carried the production fix with no test and would have gone
+green because nothing tested it. Caught by git status --porcelain in the lane before applying.
+
+Task: FIX-141
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index f1f6432..090a2a0 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1484,3 +1484,19 @@ plainly that the measurement proved it wrong.
+ Review r1 FAILed on three things, all MY text: an assertion that was UNREACHABLE (no clock advance, and `FakeTimer` fires
+ only on `advance`), now documenting rather than acceptance; an untested narrowing; and comments giving a false reason,
+ which took my "one frame deeper" premise with it — F-30 corrected a 3rd and 4th time. VERIFIED_PASS: 99/0/0/0 filtered, core 535/0/0/0. D-054: class B, r2.
++
++## 2026-11-14 — FIX-141 one producer that will not close no longer strands the others — done, review PASS
++`Producers`' close loop caught `RuntimeException` around `p.close()`, so an `Error` from one producer abandoned the LOOP:
++every producer after it was never asked to close and never joined `settled`. Widened to `Throwable`, which hands the
++synchronous throw to the `recover` that already defines the right shutdown behaviour — log at WARNING and carry on.
++The reviewer found the defect worse than my packet stated, in two ways: the `Error` escaped after `asked` was set and
++before `closed` completed, so a SECOND `close()` hung for good; and at `FlowBuilder:464` (`closeAll` in a `finally`, return
++discarded) it REPLACED the build's own exception — FIX-140's shape a third time. It also grepped for a fatal-Error policy
++(`UncaughtExceptionHandler`, `VirtualMachineError`, `halt`) and found none on this path, so nothing relied on the escape.
++Beyond the packet, the implementer rewrote the class javadoc, which had documented the defect as if intended. I checked the
++provenance before accepting it: no `Producers` in DECISIONS.md, no close semantics in ARCHITECTURE.md, so that sentence
++described the code rather than recording an intent. Had a decision backed it, this task needed a finding first.
++The hand-off diff was made with `git diff` and SILENTLY OMITTED the new test class; applying it blindly would have landed
++the fix with NO test, green because nothing tested it. Caught by `git status --porcelain` in the lane (NOTES, lanes).
++All 5 mutants killed. VERIFIED_PASS integrated on 0adcbed: 19/19, core 555/0/0/0, and the four classes the last four tasks
++touched run together 124/0/0/0. Residual split out as FIX-145 (the interrupt flag). D-054: class A, r1.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 57ed4a2..98c2851 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -223,10 +223,12 @@ row, never lowers it mid-task.
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | done | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | VERIFIED_PASS 2026-11-14 (agent/work/FIX-138-green.log, 3 sections, appended never overwritten): 11/11 filtered and flottila-core 518/0/0/0 BUILD SUCCESS on every section; red observed in agent/work/FIX-138-red.log section 3, where the BEHAVIOURAL line fails with `expected: <[[a], [b], [c], [d]]> but was: <[[a], [b], [c]]>` once the fixture checks are stripped in a temporary copy (restored byte-for-byte; the reviewer confirmed from the diff that nothing survived). No production code: 5 comment lines in BatchingWriter.flush()'s javadoc and 1 in the test's. review PASS r3 - r1 and r2 both FAILed on the ARCHITECT's wording, not the agents' work: "never of order" contradicted `:209-212` of the same class, and my replacement contradicted itself. The guarantee is the order items are TAKEN from the queue, each batch an in-order slice; the order whole batches reach the sink stays unconstrained. Reviewer's wording taken verbatim. |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | done | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts; done 2026-11-14, review PASS r2 after a FAIL for a case that could not fail under any mutation (aligned separators over an all-good fixture) plus two reviewer-named surviving mutants and a dead clause, all closed; 19 cases, all 7 reviewer mutants KILLED by the verifier with the pipe-counting one dying to both FIX-54-shaped cases; one mutant result was first falsified by a stale `.pyc` of equal byte length, now a NOTES rule; the guard then caught a raw pipe in the architect's own FIX-143 row within the hour; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-139-red.log, -green.log, -verify.log, -mutants.log and integrated3-verify.log |
+ | FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | done | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14; done 2026-11-14, review PASS r2 after a FAIL that found the fix itself untested - narrowing the new catch back to `RuntimeException` left all four cases green because each failed through an `IllegalStateException`, so cases 5 and 6 were added with a `toString()` sneaky-throwing a checked `InterruptedException` and one throwing a `StackOverflowError` (only the latter dies under `catch (Exception)`); r1 also caught acceptance evidence destroyed by the architect's own instruction to overwrite the log, now appended; 20/20 filtered, core 517 tests 0 failures, all 5 reviewer mutants KILLED by the verifier with M1 killed ONLY by the self-suppression fixture, against both the reviewer's prediction and the architect's; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-140-red.log, -green.log, -mutants.log and integrated3-verify.log |
+-| FIX-141 | [A] `Producers.java:49` catches `RuntimeException` only around `p.close()` in the close loop, so an `Error` from one producer abandons the loop: the remaining producers are never asked to close and their futures never join `settled`. Found by F-30 while tracing FIX-136 and deliberately left out of it, because this is a shutdown path rather than a delivery path and D-049 (d) does not cover it. The right behaviour is almost certainly the one the `recover` at `:52-55` already gives a failed future - log at WARNING and carry on to the next producer - but that is a decision about shutdown and needs stating rather than assuming | — | ready | an `Error` from one producer's `close()` does not stop the others being closed, every producer is asked exactly once, the close future still completes, and the decision is recorded | F-30 2026-11-14 |
++| FIX-141 | [A] `Producers.java:49` catches `RuntimeException` only around `p.close()` in the close loop, so an `Error` from one producer abandons the loop: the remaining producers are never asked to close and their futures never join `settled`. Found by F-30 while tracing FIX-136 and deliberately left out of it, because this is a shutdown path rather than a delivery path and D-049 (d) does not cover it. The right behaviour is almost certainly the one the `recover` at `:52-55` already gives a failed future - log at WARNING and carry on to the next producer - but that is a decision about shutdown and needs stating rather than assuming | — | done | an `Error` from one producer's `close()` does not stop the others being closed, every producer is asked exactly once, the close future still completes, and the decision is recorded | F-30 2026-11-14 VERIFIED_PASS 2026-11-14, INTEGRATED on 0adcbed: 19/19 and flottila-core 555/0/0/0, plus the four classes the last four tasks touched run together 124/0/0/0 (agent/work/FIX-141-integrated.log); in lane3 beforehand 19/19 and core 537/0/0/0 (agent/work/FIX-141-green.log); red was 19 run / 13 failures (agent/work/FIX-141-red.log) - the 6 RUNTIME rows are green on arrival BY DESIGN, the regression guard that the catch was WIDENED and not SHIFTED. Catch at `:49` is now `Throwable` per the packet's own decision. BEYOND THE PACKET and worth keeping: the implementer also rewrote the `Producers` CLASS JAVADOC, which had documented the defect as if it were intended - "an Error is not caught: it propagates... the close never completes". ARCHITECT CHECKED THE PROVENANCE: nothing in docs/DECISIONS.md mentions `Producers` and nothing in docs/ARCHITECTURE.md covers close semantics, so that sentence DESCRIBED the code rather than recording an intent - which makes this an oversight fix and the javadoc rewrite a correction, not the reversal of a decision. Had a decision backed it, this task would have needed a finding first. review PASS 2026-11-14, and the reviewer found the defect WORSE than the packet stated, in two ways worth keeping: (a) before the fix the `Error` escaped AFTER `asked` was set true and BEFORE `closed` completed, so a SECOND `close()` hung for good; (b) at `FlowBuilder.java:464` (`closeAll` in a `finally`, return value discarded) the escaping `Error` REPLACED the build's own exception - FIX-140's shape a third time. Callers checked: `Delivery.java:412`, `FlowWorker.java:418`, `FlowBuilder.java:464`; the close future never fails by contract, so no caller was reading an `Error` out of it, and the `Error` is not lost - the `recover` logs it at WARNING with the throwable attached. The reviewer also grepped for a fatal-Error policy (`UncaughtExceptionHandler`, `VirtualMachineError`, `halt`) and found none on this path; the only `ExitOnOutOfMemoryError` is a child-JVM flag in the bench module. So nothing relied on an `Error` escaping `Producers`. ALL FIVE MUTANTS KILLED (agent/work/FIX-141-mutants.log; baseline 19/0/0/0, each section opens with a `diff` of the backup against the mutated file and ends `cmp clean`): the catch narrowed back to `RuntimeException` 13 failures; the D-104 multicatch (`RuntimeException` or `Error`) 6 - so the sneaky-checked rows are load-bearing here too, exactly as in FIX-136, and a multicatch is refused here for the same reason; `failedFuture(thrown)` to `succeededFuture()` 7; the WARNING losing its attached throwable 3; `Future.all(settled).mapEmpty()` to `succeededFuture()` 3. Residual split out as FIX-145. |
++| FIX-145 | [B] `Producers.java:48` now catches `Throwable`, so a sneaky `InterruptedException` out of a producer's `close()` is swallowed and logged - but **the interrupt flag is never restored**. A thread that was interrupted continues as if it was not, and the next blocking call on it behaves as though nothing happened. Swallowing an interrupt without re-asserting it is the classic form of this bug, and FIX-141 widened the catch that makes it reachable: the narrow `catch (RuntimeException)` could not see an `InterruptedException` at all. D-056 is the decision that cares about sneaky interrupts. | FIX-141 | ready | a sneaky `InterruptedException` out of `close()` is logged AND `Thread.currentThread().interrupt()` is re-asserted, pinned by a case that asserts the flag is set after `close()` returns, with the flag cleared before the call so the assertion cannot pass by accident; the surrounding WARNING behaviour is unchanged and the other producers are still closed. Check the same question at every catch FIX-136, FIX-141 and FIX-142 widened to `Throwable` or `Exception` - if any of those can see an interrupt and drops the flag, it belongs in this row rather than a new one. | Found 2026-11-14 by FIX-141's reviewer as a non-blocking residual; split out rather than left in a review comment, because a residual in a review nobody re-reads is a residual nobody fixes. NOT a regression introduced by FIX-141 in spirit - the interrupt was previously not caught at all, so it propagated with its flag irrelevant - but FIX-141 is what made the path reachable, hence the dependency. The reviewer also noted an `Error` thrown by `LOG.log` inside the `recover` body is uncovered; that is FIX-127's decision (contained node-wide at the logging setup) and deliberately NOT in this row. |
+ | FIX-142 | [B] TWO recovery sites in `Parking.java` are narrower than the promise above them, and the consequence is FIX-140's defect one layer out: the recovery path REPLACES the step's original failure. Verified by the architect reading the file, not relayed. (a) `:86` catches `RuntimeException` around `body.store().persist(body.key())`, while BOTH the `persist` javadoc at `:82` and `park`'s own at `:73` promise that a store which "throws" becomes the failed future's cause. (b) `:59` catches `Exception` around `durable.await()`. The chain that matters: `park(e, step, failure)` is called at `:55`, which is already INSIDE `wrap`'s `catch (Exception failure)` at `:49`, and the inner catch at `:59` guards only the await - NOT the `park` call. So an `Error` from `persist` propagates straight out of the stage: `failure.addSuppressed(parkFailure)` at `:61` never runs, the step's own failure is lost and replaced by the `Error`, and there is no park, no DLQ row and no `ParkedException`. The DLQ fails to record, fails to say it failed, and destroys the reason it was invoked for. Found by the F-30 addendum sweep | FIX-140 | ready | both sites take the broad form; an `Error` from the blob store becomes the failed future `:82` and `:73` promise; an `Error` from the await is suppressed onto the step's failure exactly as a checked one is at `:61`; in both cases THE STEP'S ORIGINAL FAILURE IS WHAT LEAVES THE STAGE, asserted by identity, with the recovery failure on its suppressed list; `:49` is NOT touched here - whether a step's own `Error` should be parked at all is FIX-143's semantic question, not this translation | F-30 addendum 2026-11-14 |
+ | FIX-143 | [A] Triage the 8 catch sites the F-30 addendum sweep could not settle by reading, and either widen them or record why they are right - each has ONE question, so this is reading plus a decision, not a redesign. `Deployments.java:949`, `:1055`, `:1278`, `:1321`, `:1392`, `:1482` (six `RuntimeException` catches turned into problem-list entries): do they run inside the `Throwable` catch at `:826` that cleans up, or inside the rollback `RuntimeException \| Error` catch at `:927`? If inside either, they are already covered and the answer is a comment, not a change. `Retry.java:44` (`catch (Exception)`, so an `Error` is never retried): what does the class javadoc near `:25` mean by "failure and is never caught", and is skipping retry for an `Error` the intent? `Parking.java:49` (`catch (Exception)` parking a step failure): is an `Error` from a step meant to go unparked, as `FlowWorker.java:352` leaves it to the lease? `:59` was moved OUT of this triage into FIX-142 on 11-14, because reading it settled the question - it is a recovery site that loses the original failure, not an open decision. Also `AdminServer.java:405` (`catch (RuntimeException refused)` around `reply.send(res)`, javadoc `:399` promises "the request still ends"): needs the Vert.x fact of what happens to a throwable out of that handler before it can be called a defect | — | ready | each of the 9 is either widened with a test, or carries a comment saying why it is right, and none is left unexamined; the Deployments six are answered by one structural reading | F-30 addendum 2026-11-14 GROUNDWORK CORRECTED 2026-11-14 (architect's own grep, NOT the scout's, no build run; the first version of this cell, written an hour earlier, was WRONG and the row's own list above was right). The 19 `catch (` clauses in Deployments.java resolve as: `:826` `catch (Throwable)` and `:927` `catch (RuntimeException \| Error)` are the two STRUCTURAL ones; `:1655` already catches `Throwable`, which is exactly what disqualifies it - my first version listed it as a candidate, which inverted the test; nine are type-specific (`:556` `:647` `:671` `:673` `:978` `:986` `:995` `:1365` `:1806`); and the candidates are the five bare `RuntimeException` catches `:1055` `:1278` `:1321` `:1392` `:1482` TOGETHER WITH `:949`, which is `catch (IOException \| RuntimeException)` - compound, but an `Error` still escapes it, so it belongs here and my first version wrongly dropped it. NEW, not in the F-30 sweep and to be triaged with the rest: `:1682` is `catch (IOException \| RuntimeException failed)`, the same shape as `:949`. Count discrepancy to settle in the triage: the F-30 addendum says 8 sites, this row's Done-when says 9, and the row lists 6 Deployments + `Retry.java:44` + `Parking.java:49` + `AdminServer.java:405` = 9; with `:1682` it is 10. All the Deployments ones still turn on ONE question: does each run inside `:826` or inside `:927`? The 19 account for themselves: 2 structural + 1 already-Throwable + 9 type-specific + 5 bare `RuntimeException` + 2 compound = 19. |
+ | FIX-144 | [B] `PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile` is FLAKY: it failed once and passed on an immediate re-run with no change in between, and the failing run took 10.09 s - a duration that says it waited on wall-clock time rather than on a fake clock. CLAUDE.md forbids sleep-based timing outright ("a fake clock drives backoff, leases and deadlines"), so either this test breaks that rule or it races on something real in the contract suite. A flake is not noise: it is the suite telling us it cannot distinguish a pass from a fail, and every gate measurement after it is worth less. | — | ready | the test is deterministic - run it 20 times in a row green with no re-run - and EITHER its wait is driven by the fake clock, OR a finding says why real time is unavoidable here and what bounds it. If the cause turns out to be a real race in the polling consumer rather than in the test, that becomes its own row and this one points at it. | Found 2026-11-14 by FIX-137's implementer, which reported it instead of burying it: a comment-only change could not have caused it. Evidence in agent/work/FIX-137-green.log - first full-suite run `Tests run: 256, Failures: 1` in flottila-testkit with that case failing at 10.09 s; the re-run with an unchanged tree gave `Tests run: 518, Failures: 0, Errors: 0, Skipped: 0` BUILD SUCCESS. Both runs are in the log, the second headed as a re-run. NOT diagnosed - nobody has looked at why yet. |
++| FIX-146 | [A] Six PROGRESS entries exist ONLY in `docs/PROGRESS.md` and never reached the journal. `docs/WORKFLOW.md:48` names `PROGRESS.md` (repo root) as the append-only journal, one entry per task, and that file holds 1486 lines newest-at-the-bottom. `docs/PROGRESS.md` is a 56-line file written newest-at-the-TOP, last touched 2026-11-02 (84b47f0) and never since, holding six entries whose ids appear NOWHERE in the journal: FIX-111, WF-1, P2-08b, P2-02L, P2-02D and P2-05. Each came from a real commit (6f069a4, b86678e, ecb721a, a326f1b, f8a28b9, 84b47f0), so six completed tasks have no entry in the record that `docs/WORKFLOW.md` §2 and CLAUDE.md treat as the project's evidence. Nothing in the repo references the stray path, so a reader greps PROGRESS, finds two files and cannot tell from the names which is current - and the stray one's newest entry reads as the project's latest state. For a platform whose product is monitoring, a hole in its own evidence record is the defect, not the duplicate file | — | ready | exactly one journal exists at the path `docs/WORKFLOW.md` names; all six entries are folded into it at their chronological positions, each reformatted to the §2 format and the 15-line limit, with its commit named and nothing invented - an entry whose evidence cannot be recovered from the commit says `NOT_RUN` rather than claiming a check; `docs/PROGRESS.md` is deleted; `grep -rn 'docs/PROGRESS'` gives 0 hits; the journal's entry count rises by exactly six and no existing entry changes (`git diff` shows only insertions and the deletion) | Found 2026-11-14 by the architect while landing FIX-141, looking for the journal to append to and finding two. Read the stray file's git history FIRST: all six commits are 2026-10-29..11-02, so the entries were written to the wrong path over four days by whatever session held it, and the convention differs too (descending, newest-first), which is the tell. Do NOT simply delete the file - that would drop the only record of six tasks. Do NOT rewrite the journal's existing entries while folding: it is append-only by `docs/WORKFLOW.md:48` and the chronological insert is the one exception this row buys. Check whether `agent/NOTES.md` or `agent/HANDOFF.md` ever pointed at the stray path, and whether the ledger guard `ci/ledger_check.py` could have caught it - if a one-line check would have, add it in this task and say so. |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 ;  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2 |
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a ;  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS |
+diff --git a/agent/HANDOFF.md b/agent/HANDOFF.md
+index bd3ecdc..1dadd53 100644
+--- a/agent/HANDOFF.md
++++ b/agent/HANDOFF.md
+@@ -1,20 +1,20 @@
+ # Handoff
+ state: RUNNING (owner RESUME 11-14, autonomous to Mon 11-16 08:00 Prague). Max 2 subagent slots is the parallelism ceiling, not the 4 CPUs
+-last commit: FIX-138 (this one); 59bbad3 F-30 3rd correction + packets 141/142; 47c9b85 FIX-140; 7dc0555 FIX-139; 8105b0f F-30
+-NOT PUSHED since 47c9b85: push needs one integrated `clean verify -Pit`. main is still 634983a so WORKFLOW §4 CI gates do not run here - owner asked
+-WIP FIX-136: implemented and module-green in lane2 (96 targeted, core 532, both 0/0/0) but NOT reviewed and NO mutants run. Next exact action: reviewer
+-  on lane2, then verifier for the mutants it names PLUS the packet's designated one - stop the widened catch deciding the answer, let the :286 save
+-  timeout answer instead, and the assertFalse on "durable save timed out" is then its only killer. Its commit MUST note D-056 on that decision's row:
+-  sites :176 and :218 go Exception -> Throwable and landAfter's parameter :227 with them (the implementer reported that; it is beyond the packet).
+-then FIX-137 in lane3 (reset lane3 first - FIX-138 is applied to main now): doc-only, packet written, needs D-112 in docs/DECISIONS.md at commit time.
+-  Then FIX-141 (Producers:49), FIX-142 (Parking:86 AND :59), FIX-143 (no packet yet; its row now carries the Deployments.java groundwork).
+-  Ledgers are never edited in a lane, so a reviewer reading a lane worktree sees a STALE row: say so in every review packet.
+-F-30: D-049 (d) means every throwable, D-049 needs NO amendment, proof inside the method at :296/:312. CORRECTED THREE TIMES: the permit leak is
+-  at-least-once only; Parking is two sites and REPLACES the step's failure; the permit is held for saveTimeout then COMES BACK, not leaked for good, so
+-  the sharp half is the false record - "durable save timed out" for an Error recorded nowhere. Addendum: 2 new candidates in 165 catches, no iceberg.
+-F-29: the catch half is CLOSED by FIX-133; still open and still CONSIDER-12's - the timeline is stitched, first-writer-wins, seam only in ATTEMPT.
+-CONSIDER-13 (per-message log) is BLOCKED on the owner, who takes it himself the evening of 11-14: agent/packets/CONSIDER-13-design-draft.md
++commits today: FIX-141 is the newest (`git log -1`), before it 0adcbed FIX-136, c42887a FIX-137, 27d4b9b FIX-138, 59bbad3 F-30 3rd, 47c9b85 FIX-140
++NOT PUSHED since 47c9b85: a push needs one integrated `clean verify -Pit` over all five. main is still 634983a so WORKFLOW §4 CI gates do not run here
++WIP FIX-142: implemented and green in lane2 (21/21, core 543/0/0/0), UNDER REVIEW, no mutants run yet. Diff agent/work/FIX-142.diff, 252 lines, 3 files
++  (regenerated with `git add -A && git diff --cached`; plain `git diff` OMITTED the new fixture). On the verdict: apply to the main tree, mutants through
++  the verifier, then PROGRESS + row + commit. OPEN, given to the reviewer: the implementer added `if (parkFailure instanceof InterruptedException)
++  Thread.currentThread().interrupt();` BEYOND the packet; ParkingTest:393/:450/:472 assert the flag but may not drive that catch. If unpinned it is FIX-145's
++next: FIX-143 (triage, packet written - read its CORRECTED site list; the count 8 vs 9 vs 10 is itself to be settled), then FIX-144, the flake:
++  PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaited... failed once at 10.09 s and passed on an immediate re-run, so a wall-clock wait
++  breaks the no-sleep rule. Not diagnosed. Both runs are in agent/work/FIX-137-green.log. Then FIX-146: six PROGRESS entries live ONLY in docs/PROGRESS.md
++Ledgers are never edited in a lane, so a reviewer reading a lane worktree sees a STALE row: say so in every review packet.
++F-30: D-049 (d) means every throwable; D-049 needs NO amendment; proof inside the method at :296/:312. CORRECTED FOUR TIMES - the last two matter:
++  the permit is held for saveTimeout and COMES BACK (the sharp half is the false record, "durable save timed out" for an Error recorded nowhere), and
++  widening Delivery:319 alone does NOT leave a hole one frame deeper, so SequentialIntake:41/:47 are widened for Intake.save's own contract instead.
++F-29: the catch half is CLOSED by FIX-133; still open and still CONSIDER-12's. CONSIDER-13 is the owner's own, evening of 11-14 (draft in agent/packets).
+ open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
+-open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135,137,141..143; CONSIDER-1..11
+-pending at hand-over: D-022, D-025-61 exc 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..111
+-owner at hand-over: F-18 (5 ms); D-064/65B/67A/72/73; P1-08 (D-049); /DirArchiveStore.bak + /S3ArchiveStore.bak (root deletes); `commit -F -` takes the INDEX
++open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135,142..146; CONSIDER-1..11
++pending at hand-over: D-022, D-025-61 exc 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..112
++owner at hand-over: F-18 (5 ms); D-064/65B/67A/72/73; P1-08 (D-049); /DirArchiveStore.bak + /S3ArchiveStore.bak (root deletes); `commit -F -` takes INDEX
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 2c28079..1e1f471 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -489,3 +489,23 @@ tree with the m1 module is dc85964.
+   merely whether the case fails. And read a verifier's quoted failure message rather than its narration:
+   this one reported the failure as being on the `assertFalse` while the message it pasted (`names the
+   cause: ... expected: <true> but was: <false>`, an `assertTrue` shape) showed otherwise.
++- **A loop inside a test hides every element after the first failure.** FIX-142's first red run reported
++  4 failures in 19 tests; split into one method per throwable kind it reported 6 in 21. An
++  `assertEquals` inside a `for` over kinds throws on the first kind and the rest never run, so the suite
++  under-reports and a mutant can look killed by a case that never executed. Use `@ParameterizedTest` with
++  one row per kind, or separate methods — never a loop over cases inside one test. The test-author found
++  this itself, by noticing the count did not match the number of kinds, which is the same arithmetic
++  check that caught the stale `.pyc` on FIX-139.
++- **A lane hand-off diff made with `git diff` SILENTLY OMITS new files.** FIX-141's diff held only
++  `Producers.java`; its whole new test class was untracked, so applying that diff to the main tree would
++  have landed the fix with NO test — green because nothing tested it. Caught by running
++  `git status --porcelain` in the lane before applying, not by reading the diff, which looked complete.
++  **Every lane diff is to be made with `git add -A && git diff --cached > <file>.diff`**, and before
++  applying one, check the lane's `git status --porcelain` for `??` entries. The same hazard applies to
++  any new fixture or test file, and FIX-142's lane had one queued behind it.
++- **`diff` of backup vs mutated beats `grep -n` of the mutated line.** FIX-141's verifier substituted
++  `diff <file>.orig <file>`, logged before each run, for the required `grep -n` quote-back, and said so
++  rather than claiming it had followed the rule. The substitute is STRONGER: `grep` shows a line that
++  matches a pattern, while `diff` shows the change actually present and proves the file differs from the
++  backup in exactly that way — and the same `diff` being empty after restore is the `cmp` check. Make
++  `diff` the required form; keep `cmp` after restore.
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+index 41a8c2f..37d8c32 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+@@ -11,10 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
+ 
+ /**
+  * The producers {@link FlowBuilder} created for one built flow (FIX-30): a {@link Delivery}'s or a {@link FlowWorker}'s, closed
+- * together, once. A producer whose close fails — its future, or a RuntimeException from {@code close()} itself — is logged at WARNING
+- * and stops no other; the close completes, never fails, once every producer's close has settled. An {@link Error} thrown by a
+- * producer's {@code close()} is not caught: it propagates to the caller, the producers after it are not closed and the close
+- * never completes.
++ * together, once. A producer whose close fails — its future, or anything {@code close()} itself throws, an {@link Error} and a
++ * sneaky checked exception included (FIX-141, F-30) — is logged at WARNING and stops no other; the close completes, never fails,
++ * once every producer's close has settled.
+  */
+ final class Producers {
+ 
+@@ -46,7 +45,7 @@ final class Producers {
+             Future<Void> closing;
+             try {
+                 closing = p.close();
+-            } catch (RuntimeException thrown) {   // a producer that throws instead of failing its future: the same failed close
++            } catch (Throwable thrown) {   // a producer that throws instead of failing its future, an Error or a sneaky checked exception too (FIX-141, F-30): the same failed close; a narrower catch abandons the loop and strands every later producer, pinned by ProducersCloseTest.theLoopFinishesTheThirdProducerIsAskedWhenTheMiddleOnesCloseThrows
+                 closing = Future.failedFuture(thrown);
+             }
+             settled.add(closing.recover(failure -> {
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+new file mode 100644
+index 0000000..82a8988
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+@@ -0,0 +1,266 @@
++package io.flottila.core.flow;
++
++import io.flottila.api.Envelope;
++import io.flottila.api.Producer;
++import io.vertx.core.Future;
++import io.vertx.core.Promise;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.EnumSource;
++
++import java.io.IOException;
++import java.util.List;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.logging.Handler;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++import java.util.logging.Logger;
++
++import static io.flottila.core.flow.FlowCloseTest.texts;
++import static io.flottila.core.flow.FlowCloseTest.within;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertNull;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-141: a producer whose {@code close()} throws — whatever it throws, an {@link Error} and a sneaky checked exception
++ * included — is the same failed close as a failed future: logged at WARNING, naming the flow and the producer, and no other
++ * producer is stranded. The loop finishes, every producer is asked exactly once (counted on the fixture, not inferred from
++ * a side effect), and the close completes successfully once every producer's close has settled.
++ *
++ * <p>Seam: {@link Producers#close()}, the one a {@link Delivery} and a {@link FlowWorker} call. Fixture: a hand-written
++ * {@link Producer} that counts its closes and throws (through {@link ParkingTest#sneaky}, no proxy) or answers as told.
++ * The FIX-30 cases ({@link FlowCloseTest}, {@link FlowCloseEdgeTest}) cover the RuntimeException and failed-future shapes
++ * through the builder; this class is the only one that throws an {@link Error}.
++ */
++class ProducersCloseTest {
++
++    static final String FLOW = "flow-141";
++    static final String PRODUCERS_LOGGER = Producers.class.getName();
++
++    /** What a producer's close throws. {@link #RUNTIME} is green before the fix (the regression guard); the others are the defect. */
++    enum Thrown {
++        ERROR, RUNTIME, CHECKED;
++
++        Throwable make(String text) {
++            return switch (this) {
++                case ERROR -> new BrokenProducer(text);
++                case RUNTIME -> new IllegalStateException(text);
++                case CHECKED -> new IOException(text);
++            };
++        }
++    }
++
++    /** An Error that is not an OutOfMemoryError: one producer is broken, the JVM is not. */
++    static final class BrokenProducer extends Error {
++        BrokenProducer(String message) { super(message); }
++    }
++
++    /** A producer that counts its closes and answers as told: a throw, a given future, or a succeeded one. */
++    static final class Counting implements Producer {
++        final String name;
++        final AtomicInteger closes = new AtomicInteger();
++        private final Throwable thrown;
++        private final Future<Void> answer;
++
++        private Counting(String name, Throwable thrown, Future<Void> answer) {
++            this.name = name;
++            this.thrown = thrown;
++            this.answer = answer;
++        }
++
++        static Counting clean(String name) { return new Counting(name, null, Future.succeededFuture()); }
++        static Counting answering(String name, Future<Void> answer) { return new Counting(name, null, answer); }
++        static Counting throwing(String name, Throwable thrown) { return new Counting(name, thrown, null); }
++
++        @Override
++        public Future<Envelope> send(Envelope e) {
++            throw new AssertionError(name + ": a send is not part of a close");
++        }
++
++        @Override
++        public Future<Void> close() {
++            closes.incrementAndGet();
++            if (thrown != null) throw ParkingTest.sneaky(thrown);
++            return answer;
++        }
++
++        @Override
++        public String toString() { return name; }
++    }
++
++    /** The outcome of one {@code Producers.close()}: the future, or what escaped the call. */
++    record Closed(Future<Void> future, Throwable escaped) {}
++
++    final List<LogRecord> logged = new CopyOnWriteArrayList<>();
++    /** Strongly held: JUL keeps loggers weakly, and a collected logger loses its handler. */
++    final Logger flottila = Logger.getLogger("io.flottila");
++    final Handler capture = new Handler() {
++        @Override public void publish(LogRecord r) { logged.add(r); }
++        @Override public void flush() {}
++        @Override public void close() {}
++    };
++
++    @BeforeEach
++    void listen() {
++        capture.setLevel(Level.ALL);
++        flottila.addHandler(capture);
++    }
++
++    @AfterEach
++    void unlisten() {
++        flottila.removeHandler(capture);
++    }
++
++    /** Closes; what escapes is returned, not swallowed, so a case asserts on the producers before it asserts on the escape. */
++    static Closed close(Producer... producers) {
++        try {
++            return new Closed(new Producers(FLOW, List.of(producers)).close(), null);
++        } catch (Throwable escaped) {
++            return new Closed(null, escaped);
++        }
++    }
++
++    List<LogRecord> warnings() {
++        return logged.stream()
++                .filter(r -> r.getLevel() == Level.WARNING && PRODUCERS_LOGGER.equals(r.getLoggerName()))
++                .toList();
++    }
++
++    String dump() {
++        return logged.stream().map(r -> r.getLoggerName() + " " + r.getLevel() + " " + texts(r)).toList().toString();
++    }
++
++    static void assertAskedOnce(String when, Counting... producers) {
++        for (Counting p : producers) assertEquals(1, p.closes.get(), when + ": " + p.name + " is asked to close exactly once");
++    }
++
++    /**
++     * Case 1, the whole defect: the MIDDLE producer's close throws, so the loop must go on to the THIRD. The third's call count is
++     * what separates "the loop was abandoned" from "a warning is missing"; the escape is asserted last, so a skipped third is
++     * the failure reported.
++     */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void theLoopFinishesTheThirdProducerIsAskedWhenTheMiddleOnesCloseThrows(Thrown how) {
++        Counting first = Counting.clean("first"), middle = Counting.throwing("middle", how.make("lid welded")), third = Counting.clean("third");
++
++        Closed closed = close(first, middle, third);
++
++        assertAskedOnce("after the middle one threw " + how + " (escaped: " + closed.escaped() + ")", first, middle, third);
++        assertNull(closed.escaped(), "a throwing close does not escape the close");
++    }
++
++    /** The first and the last position too: a throw in the first stops nothing after it; a throw in the last strands nobody and still logs. */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void theLoopFinishesWhicheverProducerThrows(Thrown how) {
++        Counting a = Counting.throwing("a", how.make("jam a")), b = Counting.clean("b"), c = Counting.clean("c");
++        Closed throwsFirst = close(a, b, c);
++        assertAskedOnce("first threw " + how + " (escaped: " + throwsFirst.escaped() + ")", a, b, c);
++        assertNull(throwsFirst.escaped(), "the first one's throw does not escape");
++
++        Counting x = Counting.clean("x"), y = Counting.clean("y"), z = Counting.throwing("z", how.make("jam z"));
++        Closed throwsLast = close(x, y, z);
++        assertAskedOnce("last threw " + how + " (escaped: " + throwsLast.escaped() + ")", x, y, z);
++        assertNull(throwsLast.escaped(), "the last one's throw does not escape");
++    }
++
++    /** Case 2: the returned future completes, and completes successfully — it neither fails with the throwable nor hangs. */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void theCloseCompletesSuccessfullyWhenAProducersCloseThrows(Thrown how) throws Exception {
++        Closed closed = close(Counting.clean("first"), Counting.throwing("middle", how.make("lid welded")), Counting.clean("third"));
++
++        assertNull(closed.escaped(), "the throw does not escape the close");
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close succeeds, whatever one producer did: " + closed.future().cause());
++    }
++
++    /**
++     * Case 3: exactly one WARNING, from {@link Producers}, naming the flow and the producer whose close threw — not another
++     * producer — and carrying the throwable's own text; so a change that logs twice, or not at all, or the wrong producer, fails.
++     */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void aThrowingCloseIsLoggedOnceAtWarningNamingTheFlowAndTheProducer(Thrown how) {
++        Closed closed = close(Counting.clean("first-producer"), Counting.throwing("middle-producer", how.make("lid welded")), Counting.clean("third-producer"));
++
++        assertNull(closed.escaped(), "the throw does not escape the close");
++        List<LogRecord> warnings = warnings();
++        assertEquals(1, warnings.size(), "exactly one WARNING from Producers: " + dump());
++        List<String> texts = texts(warnings.get(0));
++        assertTrue(texts.get(0).contains(FLOW), "the WARNING names the flow: " + texts);
++        assertTrue(texts.get(0).contains("middle-producer"), "the WARNING names the producer that failed: " + texts);
++        assertFalse(texts.get(0).contains("first-producer") || texts.get(0).contains("third-producer"), "and no other producer: " + texts);
++        assertTrue(texts.stream().skip(1).anyMatch(t -> t.contains("lid welded")), "the WARNING carries the throwable itself: " + texts);
++    }
++
++    /**
++     * Case 4: a producer whose close threw takes nobody's result with it. The first producer's close is genuinely pending; the
++     * second throws. The close must still wait for the first — complete only once the first's close answers — so the first's
++     * result is in what the caller sees, and the third (after the thrower) is asked too.
++     */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void aThrowingCloseKeepsTheEarlierProducersResultInTheClose(Thrown how) throws Exception {
++        Promise<Void> firstClosing = Promise.promise();
++        Counting first = Counting.answering("first", firstClosing.future()), second = Counting.throwing("second", how.make("lid welded")), third = Counting.clean("third");
++
++        Closed closed = close(first, second, third);
++
++        assertAskedOnce("after the second threw " + how + " (escaped: " + closed.escaped() + ")", first, second, third);
++        assertNull(closed.escaped(), "the throw does not escape the close");
++        assertFalse(closed.future().isComplete(), "the close waits for the first producer, whose close is still pending");
++        firstClosing.complete();
++        within(closed.future(), "the close once the first producer's close answered");
++        assertTrue(closed.future().succeeded(), "the close succeeds: " + closed.future().cause());
++    }
++
++    /** The same, the other way round: the first's close FAILS its future and the second throws — two WARNINGs, one per producer, each naming its own. */
++    @ParameterizedTest(name = "{0}")
++    @EnumSource(Thrown.class)
++    void aThrowingCloseAndAFailedFutureAreEachLoggedOnceAndEachProducerIsClosedOnce(Thrown how) throws Exception {
++        Counting first = Counting.answering("first-producer", Future.failedFuture(new IllegalStateException("future failed")));
++        Counting second = Counting.throwing("second-producer", how.make("lid welded"));
++        Counting third = Counting.clean("third-producer");
++
++        Closed closed = close(first, second, third);
++
++        assertAskedOnce("after the second threw " + how + " (escaped: " + closed.escaped() + ")", first, second, third);
++        assertNull(closed.escaped(), "the throw does not escape the close");
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close succeeds: " + closed.future().cause());
++        List<LogRecord> warnings = warnings();
++        assertEquals(2, warnings.size(), "one WARNING per failed producer: " + dump());
++        assertTrue(texts(warnings.get(0)).get(0).contains("first-producer"), "the failed future is named: " + texts(warnings.get(0)));
++        assertTrue(texts(warnings.get(1)).get(0).contains("second-producer"), "the throw is named: " + texts(warnings.get(1)));
++    }
++
++    /** A second close is the first one: no producer is asked again, whatever one of them threw. */
++    @Test
++    void aSecondCloseAsksNoProducerAgainAfterAnErrorFromOne() throws Exception {
++        Counting first = Counting.clean("first"), middle = Counting.throwing("middle", Thrown.ERROR.make("lid welded")), third = Counting.clean("third");
++        Producers producers = new Producers(FLOW, List.of(first, middle, third));
++        Future<Void> one = null;
++        Throwable escaped = null;
++        try {
++            one = producers.close();
++        } catch (Throwable thrown) {
++            escaped = thrown;
++        }
++        assertAskedOnce("after the first close (escaped: " + escaped + ")", first, middle, third);
++        assertNull(escaped, "the Error does not escape the first close");
++
++        Future<Void> two = producers.close();
++
++        assertEquals(one, two, "a second close is the first one");
++        within(two, "the close");
++        assertAskedOnce("after the second close", first, middle, third);
++        assertEquals(1, warnings().size(), "still one WARNING: " + dump());
++    }
++}

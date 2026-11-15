@@ -1,0 +1,475 @@
+COMMIT 232ed9dde0113d4b79fd6fb2186e21b3847db6fd
+fix(core): give a swallowed interrupt back to the caller of closeAll
+
+Producers.closeAll turns whatever a producer's close() throws into a
+failed future, so the loop finishes and no later producer is stranded
+(FIX-141). When that throw is a sneaky InterruptedException, swallowing
+it left the caller's next blocking call unaware that its thread had been
+cancelled. Three lines restore the flag, which is D-098 (1).
+
+The decision here is the PLACEMENT, not the guard. It sits in the
+synchronous catch rather than in the recover lambda, because that lambda
+also serves producers whose future fails later: there the failure is
+observed on whichever thread completed it, and setting the flag would
+invent an interrupt nobody raised, which D-098 (2) refuses.
+
+Three cases, each killing a different mutant. Only the third separates
+the two placements, because a recover body on an already-failed future
+runs inline on the caller's thread, so a misplaced guard still sets the
+flag on the very thread doing the asserting. That case is green on
+arrival and earns its place by the mutant it kills, logged with its diff
+before the run and cmp after the restore.
+
+Review FAILed twice and both were mine. First: the mutation kills were
+claims with no log on disk, and the placement was pinned by nothing.
+Second: the comment said D-056 widened this catch. It did not. D-056
+widened Delivery.java:176 and :218; FIX-141 and F-30 widened this one,
+which the comment one line above already said. I commissioned that
+citation and accepted it without checking, with the fact sitting in a
+packet I had written myself. D-056 is now cited nowhere in the file --
+the reviewer's reason for dropping it rather than demoting it is that
+keeping it would attribute a rule to a decision that does not contain
+it, which is the F-27 defect class.
+
+Evidence: scoped PIT on Producers has 0 survivors and 0 without
+coverage. Honestly that is 6 killed by named tests and 1 TIMED_OUT
+unattributed on untouched line 67, not the 7 killed PIT rolls it up as;
+that line is now FIX-154. Module verify -Pit green, core 566 with 0
+skipped, coverage no decrease, and the FIX-144 flake did not fire.
+Counts reconcile exactly: 563 after FIX-142 plus three cases is 566, and
+the class goes 19 to 22.
+
+Residual: FIX-153, where the restore belongs, as a decision rather than
+a refactor -- the same sneaky throw can mean the caller interrupted this
+thread while it blocked in close(), and nothing in the code can tell
+that from a producer's own interrupt.
+
+Task: FIX-145
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index 2e0e95a..235e5d1 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1532,3 +1532,19 @@ The comment now anchors to a NAME, not a number, so an insert above it cannot ro
+ Reviewer's finding worth more than the task: the module `verify` I spent on this change tested nothing I bought it for —
+ there is no `maven-javadoc-plugin` in any pom, so a broken `{@link}` cannot fail this build. ParkingTest 22/22 was the
+ whole of the real evidence. A comment-only diff changes no bytecode, so no mutants are owed and none were invented.
++
++## 2026-11-14 — FIX-145 a swallowed interrupt out of a producer's close is given back to the caller — done, review PASS r3
++`Producers.closeAll` turns whatever a producer's `close()` throws into a failed future, so the loop finishes and strands no
++producer (FIX-141). When that throw is a sneaky `InterruptedException`, swallowing it left the caller's next blocking call
++unaware its thread had been cancelled. Three lines restore the flag, D-098 (1).
++The decision is the PLACEMENT, not the guard: it sits in the synchronous catch, not in the `recover` lambda, which also
++serves producers whose future fails later - there the failure is seen on whichever thread completed it, and setting the flag
++would invent an interrupt nobody raised (D-098 (2)). Three cases, each killing a different mutant; only the third separates
++the two placements: a `recover` body on an already-failed future runs inline on the caller's thread, so a misplaced guard still sets the flag on the very thread doing the asserting.
++Review FAILed twice, both mine. r1: the mutation kills were claims with no log on disk, and the placement was pinned by
++nothing. r2: the comment said D-056 widened this catch. It did not - it widened `Delivery.java:176` and `:218`; FIX-141 and
++F-30 widened this one, which the comment one line above already said. I commissioned it and accepted it unchecked, with the
++fact sitting in a packet I wrote. D-056 is now cited nowhere in the file.
++Scoped PIT on `Producers`: 0 survivors, 0 without coverage - honestly 6 killed by named tests and 1 TIMED_OUT unattributed,
++on an untouched line, now FIX-154. Counts reconcile: 563 after FIX-142 plus three cases is 566, the class 19 to 22. Module
++`verify -Pit` green, coverage no decrease, the FIX-144 flake did not fire. Residual FIX-153. D-054: class A, r3.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 70cad56..bb20f05 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -224,7 +224,7 @@ row, never lowers it mid-task.
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | done | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts; done 2026-11-14, review PASS r2 after a FAIL for a case that could not fail under any mutation (aligned separators over an all-good fixture) plus two reviewer-named surviving mutants and a dead clause, all closed; 19 cases, all 7 reviewer mutants KILLED by the verifier with the pipe-counting one dying to both FIX-54-shaped cases; one mutant result was first falsified by a stale `.pyc` of equal byte length, now a NOTES rule; the guard then caught a raw pipe in the architect's own FIX-143 row within the hour; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-139-red.log, -green.log, -verify.log, -mutants.log and integrated3-verify.log |
+ | FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | done | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14; done 2026-11-14, review PASS r2 after a FAIL that found the fix itself untested - narrowing the new catch back to `RuntimeException` left all four cases green because each failed through an `IllegalStateException`, so cases 5 and 6 were added with a `toString()` sneaky-throwing a checked `InterruptedException` and one throwing a `StackOverflowError` (only the latter dies under `catch (Exception)`); r1 also caught acceptance evidence destroyed by the architect's own instruction to overwrite the log, now appended; 20/20 filtered, core 517 tests 0 failures, all 5 reviewer mutants KILLED by the verifier with M1 killed ONLY by the self-suppression fixture, against both the reviewer's prediction and the architect's; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-140-red.log, -green.log, -mutants.log and integrated3-verify.log |
+ | FIX-141 | [A] `Producers.java:49` catches `RuntimeException` only around `p.close()` in the close loop, so an `Error` from one producer abandons the loop: the remaining producers are never asked to close and their futures never join `settled`. Found by F-30 while tracing FIX-136 and deliberately left out of it, because this is a shutdown path rather than a delivery path and D-049 (d) does not cover it. The right behaviour is almost certainly the one the `recover` at `:52-55` already gives a failed future - log at WARNING and carry on to the next producer - but that is a decision about shutdown and needs stating rather than assuming | — | done | an `Error` from one producer's `close()` does not stop the others being closed, every producer is asked exactly once, the close future still completes, and the decision is recorded | F-30 2026-11-14 VERIFIED_PASS 2026-11-14, INTEGRATED on 0adcbed: 19/19 and flottila-core 555/0/0/0, plus the four classes the last four tasks touched run together 124/0/0/0 (agent/work/FIX-141-integrated.log); in lane3 beforehand 19/19 and core 537/0/0/0 (agent/work/FIX-141-green.log); red was 19 run / 13 failures (agent/work/FIX-141-red.log) - the 6 RUNTIME rows are green on arrival BY DESIGN, the regression guard that the catch was WIDENED and not SHIFTED. Catch at `:49` is now `Throwable` per the packet's own decision. BEYOND THE PACKET and worth keeping: the implementer also rewrote the `Producers` CLASS JAVADOC, which had documented the defect as if it were intended - "an Error is not caught: it propagates... the close never completes". ARCHITECT CHECKED THE PROVENANCE: nothing in docs/DECISIONS.md mentions `Producers` and nothing in docs/ARCHITECTURE.md covers close semantics, so that sentence DESCRIBED the code rather than recording an intent - which makes this an oversight fix and the javadoc rewrite a correction, not the reversal of a decision. Had a decision backed it, this task would have needed a finding first. review PASS 2026-11-14, and the reviewer found the defect WORSE than the packet stated, in two ways worth keeping: (a) before the fix the `Error` escaped AFTER `asked` was set true and BEFORE `closed` completed, so a SECOND `close()` hung for good; (b) at `FlowBuilder.java:464` (`closeAll` in a `finally`, return value discarded) the escaping `Error` REPLACED the build's own exception - FIX-140's shape a third time. Callers checked: `Delivery.java:412`, `FlowWorker.java:418`, `FlowBuilder.java:464`; the close future never fails by contract, so no caller was reading an `Error` out of it, and the `Error` is not lost - the `recover` logs it at WARNING with the throwable attached. The reviewer also grepped for a fatal-Error policy (`UncaughtExceptionHandler`, `VirtualMachineError`, `halt`) and found none on this path; the only `ExitOnOutOfMemoryError` is a child-JVM flag in the bench module. So nothing relied on an `Error` escaping `Producers`. ALL FIVE MUTANTS KILLED (agent/work/FIX-141-mutants.log; baseline 19/0/0/0, each section opens with a `diff` of the backup against the mutated file and ends `cmp clean`): the catch narrowed back to `RuntimeException` 13 failures; the D-104 multicatch (`RuntimeException` or `Error`) 6 - so the sneaky-checked rows are load-bearing here too, exactly as in FIX-136, and a multicatch is refused here for the same reason; `failedFuture(thrown)` to `succeededFuture()` 7; the WARNING losing its attached throwable 3; `Future.all(settled).mapEmpty()` to `succeededFuture()` 3. Residual split out as FIX-145. |
+-| FIX-145 | [B] `Producers.java:48` now catches `Throwable`, so a sneaky `InterruptedException` out of a producer's `close()` is swallowed and logged - but **the interrupt flag is never restored**. A thread that was interrupted continues as if it was not, and the next blocking call on it behaves as though nothing happened. Swallowing an interrupt without re-asserting it is the classic form of this bug, and FIX-141 widened the catch that makes it reachable: the narrow `catch (RuntimeException)` could not see an `InterruptedException` at all. D-056 is the decision that cares about sneaky interrupts. | FIX-141 | ready | a sneaky `InterruptedException` out of `close()` is logged AND `Thread.currentThread().interrupt()` is re-asserted, pinned by a case that asserts the flag is set after `close()` returns, with the flag cleared before the call so the assertion cannot pass by accident; the surrounding WARNING behaviour is unchanged and the other producers are still closed. Check the same question at every catch FIX-136 and FIX-141 widened - if any can see an interrupt and drops the flag, it belongs in this row rather than a new one. FIX-142 is ANSWERED and out of scope: its new catch restores the flag and FIX-142's reviewer showed the restoration is pinned by `ParkingTest:414`/`:450` with the negative witness at `:472`, so `Parking` needs nothing here. | Found 2026-11-14 by FIX-141's reviewer as a non-blocking residual; split out rather than left in a review comment, because a residual in a review nobody re-reads is a residual nobody fixes. NOT a regression introduced by FIX-141 in spirit - the interrupt was previously not caught at all, so it propagated with its flag irrelevant - but FIX-141 is what made the path reachable, hence the dependency. The reviewer also noted an `Error` thrown by `LOG.log` inside the `recover` body is uncovered; that is FIX-127's decision (contained node-wide at the logging setup) and deliberately NOT in this row. |
++| FIX-145 | [B] `Producers.java:48` now catches `Throwable`, so a sneaky `InterruptedException` out of a producer's `close()` is swallowed and logged - but **the interrupt flag is never restored**. A thread that was interrupted continues as if it was not, and the next blocking call on it behaves as though nothing happened. Swallowing an interrupt without re-asserting it is the classic form of this bug, and FIX-141 widened the catch that makes it reachable: the narrow `catch (RuntimeException)` could not see an `InterruptedException` at all. D-056 is the decision that cares about sneaky interrupts. | FIX-141 | done | a sneaky `InterruptedException` out of `close()` is logged AND `Thread.currentThread().interrupt()` is re-asserted, pinned by a case that asserts the flag is set after `close()` returns, with the flag cleared before the call so the assertion cannot pass by accident; the surrounding WARNING behaviour is unchanged and the other producers are still closed. Check the same question at every catch FIX-136 and FIX-141 widened - if any can see an interrupt and drops the flag, it belongs in this row rather than a new one. FIX-142 is ANSWERED and out of scope: its new catch restores the flag and FIX-142's reviewer showed the restoration is pinned by `ParkingTest:414`/`:450` with the negative witness at `:472`, so `Parking` needs nothing here. | Found 2026-11-14 by FIX-141's reviewer as a non-blocking residual; split out rather than left in a review comment, because a residual in a review nobody re-reads is a residual nobody fixes. NOT a regression introduced by FIX-141 in spirit - the interrupt was previously not caught at all, so it propagated with its flag irrelevant - but FIX-141 is what made the path reachable, hence the dependency. The reviewer also noted an `Error` thrown by `LOG.log` inside the `recover` body is uncovered; that is FIX-127's decision (contained node-wide at the logging setup) and deliberately NOT in this row. review PASS r3 2026-11-14, after two FAILs that were both the architect's. r1: the mutation kills were claims with no log on disk, and the PLACEMENT of the guard was pinned by nothing - the mutant moving it into the `recover` lambda passed both cases, because a recover body on an already-failed future runs inline on the caller's thread. r2: the comment claimed D-056 widened this catch; it widened `Delivery.java:176` and `:218`, while FIX-141/F-30 widened this one, as the comment one line above already said. The r3 reviewer sharpened why dropping D-056 was right rather than merely demotable: keeping it would have been the F-27 defect class, a rule attributed to a decision that does not contain it. EVIDENCE: 3 cases (19 to 22 in the class), scoped PIT on `Producers` 0 survivors and 0 without coverage - honestly 6 killed by named tests plus 1 TIMED_OUT unattributed on untouched line 67 (FIX-154), the placement mutant logged in agent/work/FIX-145-M3.log with its `diff` before the run and `cmp` after the restore, module `verify -Pit` core 566 with 0 skipped, `coverage: no decrease`, and the FIX-144 flake did not fire. Counts reconcile exactly: 563 after FIX-142 plus three cases is 566. Residual FIX-153 (where the restore belongs, as a decision). |
+ | FIX-142 | [B] TWO recovery sites in `Parking.java` are narrower than the promise above them, and the consequence is FIX-140's defect one layer out: the recovery path REPLACES the step's original failure. Verified by the architect reading the file, not relayed. (a) `:86` catches `RuntimeException` around `body.store().persist(body.key())`, while BOTH the `persist` javadoc at `:82` and `park`'s own at `:73` promise that a store which "throws" becomes the failed future's cause. (b) `:59` catches `Exception` around `durable.await()`. The chain that matters: `park(e, step, failure)` is called at `:55`, which is already INSIDE `wrap`'s `catch (Exception failure)` at `:49`, and the inner catch at `:59` guards only the await - NOT the `park` call. So an `Error` from `persist` propagates straight out of the stage: `failure.addSuppressed(parkFailure)` at `:61` never runs, the step's own failure is lost and replaced by the `Error`, and there is no park, no DLQ row and no `ParkedException`. The DLQ fails to record, fails to say it failed, and destroys the reason it was invoked for. Found by the F-30 addendum sweep | FIX-140 | done | both sites take the broad form; an `Error` from the blob store becomes the failed future `:82` and `:73` promise; an `Error` from the await is suppressed onto the step's failure exactly as a checked one is at `:61`; in both cases THE STEP'S ORIGINAL FAILURE IS WHAT LEAVES THE STAGE, asserted by identity, with the recovery failure on its suppressed list; `:49` is NOT touched here - whether a step's own `Error` should be parked at all is FIX-143's semantic question, not this translation | F-30 addendum 2026-11-14 IN REVIEW r1 FAIL 2026-11-14, one blocker: the park call MOVED INSIDE the try at `:58` is UNPINNED. With `persist`'s catch at `:93` now `Throwable`, a throwable out of `persist` becomes a failed future and the `await` rethrows it wherever the `park(...)` call sits, and `FailingDlq.park` returns a failed future and never throws, so every existing case passes with the call back above the try. NOT an equivalent mutant though: `Parked.of` reads `failure.toString()` at `Parked.java:48-49`, synchronously, before any future exists, so a step failure whose `toString()` throws makes `park(...)` itself throw - inside the try it is suppressed on the step's failure, above it it REPLACES it, which is the defect this task exists for. Fix round in flight: one case for that, plus the comment at `:60-64` whose "Pinned by" sentence names two cases that do NOT pin the move (a false reason in a comment, NOTES). ANSWERS WORTH KEEPING: the interrupt-flag line the implementer added beyond the packet IS pinned, and the architect's grep was wrong about which catch - `ParkingTest:393` drives the OUTER clause at `:52` (a step's own `InterruptedException`, which never reaches `:59`), while `:414`/`:450` drive the NEW catch and `:472` is its negative witness. Each site is pinned separately: `:93` only by the direct-park pair, `:59` only by the await cases, which never reach `:93`. The self-suppression guard is pinned solely by `aDlqFailingWithTheStepsOwnFailureLeavesThatFailureUnchangedAndSuppressesNothing`, discriminating the real `IllegalArgumentException: Self-suppression not permitted`. The multicatch mutant at `:93` is killed ONLY by the sneaky-checked twin - the FIX-136 pattern a third time, and the reason that twin earns its place. Eight mutants named by the reviewer; `ci/coverage_check.py` after `verify -Pit` is REQUIRED before the commit (two new production branches plus a new test class, and core's floor is 90 percent line and branch with no decrease), so NOT_RUN is not acceptable at commit. Non-blocking, folded into the fix round: the class javadoc at `:18-19` omits the exception the new guard creates; the truncated "Pinned by" names will not grep and will rot; `ThrowingPersistBlobStore.persisted(BlobKey)` is dead fixture code. The reviewer confirmed no test was weakened or removed - the `ParkingTest` hunk is a pure append. review PASS r2 2026-11-14. Fix round: one case, `aStepFailureWhoseToStringThrowsStillLeavesAsThatFailureWithTheErrorSuppressed`, pinning the POSITION of the park call (`Parked.of` reads `failure.toString()` at `Parked.java:49` before any future exists, so that throw is synchronous), plus the comment rewritten to separate the width of the catch from the position of the call, full test names, one javadoc clause, and a dead fixture method removed. ALL TEN MUTANTS KILLED (agent/work/FIX-142-mutants.log; `diff` logged per mutant, `cmp` clean after every `cp` restore, all runs 22 tests, Errors 0): A position 1 failure; B catch to `Exception` 3 - the reviewer predicted 2 and the extra killer is the new case, reported as a mismatch rather than trimmed to the prediction; C multicatch 3; D guard removed 1; E guard negated 10; F suppression removed 9; G flag not restored 1; H persist to `RuntimeException` 2; I persist multicatch 1 - the sneaky-checked twin alone, the FIX-136 pattern a third time; J persist failure dropped 6. VERIFIED_PASS INTEGRATED in the main tree on 94b6d02 (agent/work/FIX-142-integrated.log): ParkingTest 22, ProducersCloseTest 19, whole reactor `clean verify -Pit` exit 0 BUILD SUCCESS all 17 modules, flottila-core 563, `ci/coverage_check.py` exit 0 "coverage: no decrease" (core line 99.6 percent, branch 99.5). The known FIX-144 flake did not occur in this run. COUNT RECONCILED, and the error was the architect's twice over: 563 was predicted as 564 because FIX-142 was said to add nine cases when it adds eight - `ParkingTest` went 14 to 22, and 563 minus the 555 measured after FIX-141 is exactly 8. The "unexplained +1" carried in FIX-141's notes was likewise arithmetic against a baseline that did not belong to it; the suite never drifted and no row is owed for it. Residual text items split out as FIX-147.|
+ | FIX-143 | [A] Triage the 8 catch sites the F-30 addendum sweep could not settle by reading, and either widen them or record why they are right - each has ONE question, so this is reading plus a decision, not a redesign. `Deployments.java:949`, `:1055`, `:1278`, `:1321`, `:1392`, `:1482` (six `RuntimeException` catches turned into problem-list entries): do they run inside the `Throwable` catch at `:826` that cleans up, or inside the rollback `RuntimeException \| Error` catch at `:927`? If inside either, they are already covered and the answer is a comment, not a change. `Retry.java:44` (`catch (Exception)`, so an `Error` is never retried): what does the class javadoc near `:25` mean by "failure and is never caught", and is skipping retry for an `Error` the intent? `Parking.java:49` is NO LONGER A SITE - struck 2026-11-14, see the notes: D-111 settles it and says it must keep catching `Exception`. `AdminServer.java:597` (`catch (Exception failed)`) takes its place, never having been in the sweep. `:59` was moved OUT of this triage into FIX-142 on 11-14, because reading it settled the question - it is a recovery site that loses the original failure, not an open decision. Also `AdminServer.java:405` (`catch (RuntimeException refused)` around `reply.send(res)`, javadoc `:399` promises "the request still ends"): needs the Vert.x fact of what happens to a throwable out of that handler before it can be called a defect | — | ready | each of the 10 (SETTLED 2026-11-14, packet section "The count, SETTLED") is either widened with a test, or carries a comment saying why it is right, and each is labelled TRANSLATION or POLICY because that is what decides it, and none is left unexamined; the Deployments six are answered by one structural reading | F-30 addendum 2026-11-14 GROUNDWORK CORRECTED 2026-11-14 (architect's own grep, NOT the scout's, no build run; the first version of this cell, written an hour earlier, was WRONG and the row's own list above was right). The 19 `catch (` clauses in Deployments.java resolve as: `:826` `catch (Throwable)` and `:927` `catch (RuntimeException \| Error)` are the two STRUCTURAL ones; `:1655` already catches `Throwable`, which is exactly what disqualifies it - my first version listed it as a candidate, which inverted the test; nine are type-specific (`:556` `:647` `:671` `:673` `:978` `:986` `:995` `:1365` `:1806`); and the candidates are the five bare `RuntimeException` catches `:1055` `:1278` `:1321` `:1392` `:1482` TOGETHER WITH `:949`, which is `catch (IOException \| RuntimeException)` - compound, but an `Error` still escapes it, so it belongs here and my first version wrongly dropped it. NEW, not in the F-30 sweep and to be triaged with the rest: `:1682` is `catch (IOException \| RuntimeException failed)`, the same shape as `:949`. Count discrepancy to settle in the triage: the F-30 addendum says 8 sites, this row's Done-when says 9, and the row lists 6 Deployments + `Retry.java:44` + `Parking.java:49` + `AdminServer.java:405` = 9; with `:1682` it is 10. All the Deployments ones still turn on ONE question: does each run inside `:826` or inside `:927`? The 19 account for themselves: 2 structural + 1 already-Throwable + 9 type-specific + 5 bare `RuntimeException` + 2 compound = 19. COUNT SETTLED 2026-11-14 by the architect, in the packet: **10**, and not the 10 this cell's corrected list gave. `Parking.java:49` is REMOVED - D-111 already settles it ("catches `Exception` only and must keep doing so, because parking an `Error` would make it transient, which D-098 refused") and D-111 goes on to say "the scout reading that line as a second instance of the same gap was wrong". The packet and this row put it back on the list anyway, so the architect repeated a mistake the ledger had already recorded and corrected - worse than making it once. Rule taken from it: before a site goes on a triage list, grep docs/DECISIONS.md for its file and line. `AdminServer.java:597` is ADDED, `catch (Exception failed)`, the same shape as `Retry.java:44` and never in the F-30 sweep. So: seven in Deployments (`:949` `:1055` `:1278` `:1321` `:1392` `:1482` `:1682`), two in AdminServer (`:405` `:597`), one in Retry (`:44`). F-30's addendum (8) and this row's old Done-when (9) are both stale and the triage corrects both in place. LEADING HYPOTHESIS for `Retry.java:44`, to be tested and not inherited: no decision protects it (Retry appears 12 times in DECISIONS.md, never about that catch's width), but D-111's argument transfers - retrying a step that threw an `Error` treats it as transient, and an OOM retried with backoff is worse than one that propagates - so the likely verdict is RIGHT, deliberately narrow, whose output is a decision row rather than a change. TRIAGED 2026-11-14, verdicts in D-113: eight RIGHT, two WRONG. The eight RIGHT split three ways - contained one frame out by a deliberate wider clause (`:949` by `:927`, `:1482` by `:826` and `:927`); policy clauses where aborting is the intended answer and a problem line would lie about the flow (`:1055`, `:1278`, `:1321`, `:1392`); and narrow ON PURPOSE with the javadoc saying so (`AdminServer:597` "an Error is the caller's (500)", with `run()` catching `Throwable` above it, and `Retry:44` "An Error is not a transient failure and is never caught"). `Retry:44` CONFIRMS the hypothesis this row carried, and from Retry's own words rather than by analogy with D-111. The two WRONG are split out as FIX-149 (`Deployments:1682`) and FIX-150 (`AdminServer:405`). Remaining work on THIS row: one comment on each of the eight RIGHT clauses giving its reason in one line, so the next sweep does not re-ask - comments only, no behaviour change, D-113 the reference. The scout gathered facts only, as asked, and `grep 'catch ('` confirmed 19 clauses in Deployments.java, matching this row's arithmetic, with the caveat that the grep would miss `catch(` written without a space.|
+ | FIX-144 | [B] `PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile` is FLAKY: it failed once and passed on an immediate re-run with no change in between. CORRECTED 2026-11-14 by the architect, who read the assertion instead of the elapsed time. The row first said the 10.09 s duration "says it waited on wall-clock time" and called it a sleep-rule breach; that was a GUESS and the failure message refutes it. The case injects `removedBeforeTheAnswer = true` into a consumer and asserts that all 8 contract cases that keep a file then FAIL. On the flaky run SEVEN failed and `stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval` PASSED AGAINST THE DELIBERATELY BROKEN CONSUMER. So what is defective is the contract suite's SENSITIVITY: a case that must catch a removal before the answer sometimes does not. That is worse than a sleep, because the contract suite is what every component's real implementation and its mock are judged by - on that interleaving it passes a broken consumer. `PollingConsumerContract.java:454-476` shows the mechanism: the case takes `stopped = consumer.stop()` and at once asserts `assertFalse(stopped.isComplete())` and that `remaining()` holds both files; under the defect both still hold if the removal has not landed when the test thread reads them, so detection depends on an interleaving. Its sibling `aRemovalOnAnyAnswerFailsEveryCaseWhoseAnswerKeepsAFile` already excludes STOP_WAITS from its expected set, so this conditional sensitivity is half-known already. A flake is not noise: it is the suite saying it cannot tell a pass from a fail, and every gate measurement after it is worth less. | — | ready | the measurement comes first (in flight 2026-11-14, agent/work/FIX-144-flake.log): the failure rate idle and under load, and which case goes missing on each failure. CORRECTED 2026-11-14, before the measurement came back, because the first version was wrong in a way that would have closed this row on a false basis: it said 40 green runs pin the detection. They do not. A green meta-test means all 8 cases failed under the injected defect on THAT interleaving, so green runs bound the failure RATE and nothing more, while the one observed failure already proves the detection is not guaranteed. A rate bound is not determinism, and no number of green runs turns it into one. So: EITHER the case is made to detect `removedBeforeTheAnswer` on every interleaving BY CONSTRUCTION - it waits for the removal to have landed or not before it reads `remaining()`, instead of racing it - with the 40 runs kept only as a regression bound, OR a finding says why that case cannot detect it, the expected set drops STOP_WAITS exactly as the sibling case already does, and the contract case carries a comment naming the defects it does NOT catch. Weakening the expected set WITHOUT the finding is forbidden - that is the "skip a test to go green" rule. If the cause is a real race in the polling consumer rather than in this case's assertion order, that becomes its own row and this one points at it. | Found 2026-11-14 by FIX-137's implementer, which reported it instead of burying it: a comment-only change could not have caused it. Evidence in agent/work/FIX-137-green.log - the first full-suite run gave `Tests run: 256, Failures: 1` in flottila-testkit with that case failing at 10.09 s; the re-run on an unchanged tree gave `Tests run: 518, Failures: 0, Errors: 0, Skipped: 0` BUILD SUCCESS. Both runs are in the log, the second headed as a re-run. Row CORRECTED 2026-11-14: the first version's sleep-rule diagnosis was the architect's guess from the elapsed time, and the assertion message refutes it - see the description. SUSPECT WORTH TESTING: the temporary parallel-lane mode runs up to two Maven reactors on a 4-CPU machine, so the load the architect introduced is itself a plausible trigger for the interleaving. That is why the measurement asks for idle AND loaded runs, and why 20 green runs on an idle machine alone do not close this row. MEASURED 2026-11-14 (agent/work/FIX-144-flake.log): **IDLE 0/20, LOADED 1/20**, the load being four busy loops on the four cores, started before the runs and confirmed gone after. The failure is the SAME shape as FIX-137's: expected 8 cases, got 7, and the missing one is again `stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval`. So the flake is REAL and LOAD-DEPENDENT, which confirms the suspect this row named: the temporary parallel-lane mode is itself a trigger, and a rate of about 1 in 20 under load is high enough to hit a full reactor run regularly. SECOND CORRECTION to this row's reasoning, and it finishes off the inference the first version was built on: the elapsed time carries NO information. Every run takes about 10.15 s whether it passes or fails - 21 sampled runs gave min 10.051, median 10.162, max 10.207, and the FAILING run took 10.138, squarely inside that range. `patience()` is exactly 10 s (`ComponentContract.java:77`), so the 10.09 s in the original report was this test's ORDINARY runtime and never evidence of anything. Honest gap in the measurement, reported rather than papered over: the per-run timings for IDLE runs 1-19 were lost because Surefire prints a per-test time only for failures and the script copied the XML only from the last idle run; the verifier did not re-run to fill the gap, which was right. `soon(...)` (`ComponentContract.java:92-100`) spins on `Thread.onSpinWait()` and `Thread.yield()` until `patience()` is spent - never a sleep, but wall-clock all the same, which is the tension FIX-148 now carries.|
+@@ -288,6 +288,8 @@ row, never lowers it mid-task.
+ | FIX-104 | [B] Retention cost at scale (P2-07 implementer): phase 2 anti-joins dlq.body_key and work.id without indexes (a hash anti-join over each table per batch); V10 builds its indexes with plain CREATE INDEX, locking inserts on large existing tables — measure with a large dlq/work, decide indexes vs. a per-run snapshot of the referenced keys; CONCURRENTLY outside Flyway's transaction | P2-07 | pending | a measured retention batch on 1M messages / 10k dlq; the migration does not block inserts | D-088 |
+ | FIX-151 | [A] `FlowWorker.java:354` concatenates the step failure into its WARNING text, so a failure whose `toString()` throws takes the logging line with it. The throw leaves `verdict()` on the NON-exhausted branch, which unlike the exhausted branch at `:352` has no `catch (Throwable)` above it. The `finally` at `:274` still completes the promise with LEAVE, so the item is left to its lease and no message is lost - but the WARNING is lost and the throwable dies on the virtual thread with nothing recorded, on a platform whose product is monitoring. Same family as FIX-140 and FIX-142 but outside both: those are the park path, this is the retry verdict | FIX-142 | ready | a step failure whose `toString()` throws still produces the WARNING and still reaches its verdict, asserted on the NON-exhausted branch; the `UnprintableFailure` fixture `ParkingTest` already has is reused rather than a second one invented | Found 2026-11-14 by FIX-147's reviewer while checking that the two files it touched stayed consistent, and reported as outside its own task rather than folded in silently. One line of production code. Check whether the exhausted branch's `catch (Throwable)` at `:352` really does cover its own concatenation before assuming only one branch is affected. |
+ | FIX-152 | [A] Line-number rot in the ledgers, pre-existing and slightly worse after FIX-147's four added javadoc lines. D-113 and D-111 both cite `Parking:49` for the outer catch, which now sits at `:51`; FIX-142's row calls the persist catch `:93`, which is now `:106`. A decision that cites a line a reader cannot find is a decision the next sweep re-derives from scratch, which is exactly how `Parking.java:49` got put back on FIX-143's triage list after D-111 had already settled it | — | ready | each stale citation points at the right line, or is re-anchored to a NAME so it cannot rot again, which is the better fix where a name exists; no decision text changes meaning | Found 2026-11-14 by FIX-147's reviewer. Prefer re-anchoring to method or clause names over renumbering, per the NOTES rule earned by FIX-147 itself. Grep the whole of `docs/DECISIONS.md` and `agent/BACKLOG.md` for `Parking.java:` and `Parking:` rather than fixing only the three instances named here. |
++| FIX-153 | [B] DECIDE then act: where the interrupt flag is restored in `Producers.closeAll` changes who gets closed. FIX-145 restores it mid-loop, inside the catch, so every producer after the interrupting one is asked to close on a thread whose flag is set - and any of them that blocks fails fast, so it is asked but does NOT close, leaking the sockets FIX-141 exists to release. A deferred restore (flag in a local, re-set once after the loop) closes every later producer on a clean thread and the caller still learns of the interrupt, which looks strictly better until the ambiguity is faced: the SAME sneaky throw can mean the CALLER interrupted this thread while it blocked in `close()`, and then prompt winding-down is the correct response and deferring would swallow a genuine cancel for the rest of the loop. Nothing in the code can tell the two apart. So this is a decision, not a refactor | FIX-145 | ready | the decision is written in `docs/DECISIONS.md` with both readings of the throw stated, and the code matches it; if the deferred form wins, a case pins that a producer AFTER the interrupting one still closes on a thread whose flag is clear, and the mid-loop case is updated rather than deleted | Found 2026-11-14 by FIX-145's r2 reviewer as a non-blocking note (it called the deferred form arguably the better one). The ambiguity above is the architect's, added because the reviewer's note did not have it and it is what makes this a decision. Do not change the code before the decision row exists. FIX-145's class javadoc documents the current mid-loop behaviour, so that paragraph changes with the code. ADDED 2026-11-14 by FIX-145's r3 reviewer, which marked it as its own late miss (behaviour, not text, so it did not block that commit): `Delivery.java:418` reaches `producers.close()` through `stop.future().compose(...)`, so the restored flag can land on whichever Vert.x thread completed that future - a thread where no cancelling caller will ever read it. That is a second reason the restore's position is a decision and not a detail, and it is evidence AGAINST the mid-loop form that this row's own ambiguity argument does not supply. The reviewer could not resolve the ambiguity either, and narrowed it usefully: a flag read before each `p.close()` could at least tell a flag already set on entry from one the throw cleared, which does not identify the interrupter but does separate the two commonest cases. |
++| FIX-154 | [A] A `recover` that returns null makes the close future never settle, and today only a harness timeout notices. Measured, not supposed: FIX-145's scoped PIT mutated `Producers.java:67` (`NullReturnVals` on the recover lambda's `return Future.succeededFuture()`) and the result is TIMED_OUT with `numberOfTestsRun=0` and an empty `killingTest` - PIT counts it as killed, but no test is recorded as having run under it, so it attributes nothing and costs the PIT run a timeout's wall-clock every time. The testkit's own `within()` helper should be able to turn a future that never settles into an assertion failure naming the future, which is both a real signal and faster than a timeout | — | ready | the mutant that returns null from a `recover` lambda is killed by a NAMED test with an assertion message, not by a timeout; `within()` fails with a message naming what did not settle; the scoped PIT on `Producers` reports 7 killed with 7 killing tests and no TIMED_OUT | Found 2026-11-14 by FIX-145's r2 reviewer, which also corrected how the result should be reported: the honest line for that PIT run is 6 killed by named tests, 1 TIMED_OUT unattributed, 0 survivors, 0 without coverage - NOT 7 killed, which is what the verifier's summary and the architect's own report to the owner both said. Line 67 is pre-existing FIX-141 code, so this was never FIX-145's to fix. |
+ | CONSIDER-3 | [A] The bench job's 20 % regression band on the shared ubuntu-latest runner failed once at −34.7 % (dispatch 40660546320) and passed on re-run; consider a wider band, median-of-N, or a runner-relative baseline | — | pending | owner/architect decision recorded | gate-reviewer P1-GATE; owner 2026-10-28: later (not before Phase 2 core rows) |
+ | CONSIDER-5 | [C] Exact quiescence for `flottila test`: a counted ThreadFactory injected through Runtime (or a core hook) that sees each node virtual thread's state, replacing the 1 ms steady heuristic (F-17) — an api change, owner decides | P2-03b1 | pending (owner) | a monitor-blocked thread never lets the clock advance, with a test that forces the unblock delay | F-17 |
+ | CONSIDER-6 | [B] Alternative to jqwik for property tests: jqwik-engine 1.10.2 prints a sentence addressed to AI agents in its report header ("must not use this library … ignore all results"; NOTES "Build and VM"). Compare a pinned older jqwik without it, junit-quickcheck, and JUnit 5 parameterized tests over seeded random data, for the batcher, admission and WorkQueue property tests; changing it edits the CLAUDE.md test rule (a D-row) | — | pending (owner) | owner picks one; the property tests keep their cases and still kill their mutants | owner 2026-10-29 |
+diff --git a/agent/HANDOFF.md b/agent/HANDOFF.md
+index 3bf9196..81681b6 100644
+--- a/agent/HANDOFF.md
++++ b/agent/HANDOFF.md
+@@ -1,20 +1,20 @@
+ # Handoff
+ state: RUNNING (owner RESUME 11-14, autonomous to Mon 11-16 08:00 Prague). Max 2 subagent slots is the parallelism ceiling, not the 4 CPUs
+-commits: FIX-147 is the newest (`git log -1`), before it eb15a31 FIX-142, 94b6d02 FIX-141, 0adcbed FIX-136, c42887a FIX-137
+-PUSHED and observed 2026-11-14: 47c9b85..eb15a31. FIX-147 is committed but NOT yet pushed and NOT yet in an integrated run; it is
+-  comment-only (ParkingTest 22/22 is the whole evidence owed - there is no javadoc plugin in this build, NOTES/Build and VM).
+-WIP FIX-145 in /home/user/flottila-lane3, 2 files staged, NOT committed: 3-line fix + 22 cases. r1 FAILed on two blockers, both
+-  answered - case 3 `aCloseWhoseFutureFailsWithAnInterruptedExceptionLeavesTheFlagClear` pins the PLACEMENT (the mutant moving the
+-  guard into `recover` fails it, agent/work/FIX-145-M3.log); comment now splits D-056 (catchable) from D-098 (1) (the rule).
+-next: the scoped PIT on `io.flottila.core.flow.Producers` is running, the last piece owed; then re-review FIX-145, PROGRESS +
+-  row + commit, then ONE integrated `clean verify -Pit` in the main tree covering FIX-147 and FIX-145 together, then push.
++commits: FIX-145 is the newest (`git log -1`), before it e885ed8 CONSIDER-13 prompt, 7ccbaad FIX-147, eb15a31 FIX-142, 94b6d02 FIX-141
++PUSHED and observed 2026-11-14: 47c9b85..eb15a31. THREE commits are NOT yet pushed (FIX-147, the CONSIDER-13 prompt, FIX-145) and the
++  whole reactor has NOT run since eb15a31. NEXT EXACT ACTION: verifier runs `clean verify -Pit` in the MAIN tree covering all three,
++  then push. FIX-145 alone has module `verify -Pit` green (core 566, 0 skipped, coverage no decrease, FIX-144 flake did not fire).
++FIX-145 done, review PASS r3 after two FAILs both mine: r1 mutation kills were claims with no log and the guard's PLACEMENT was pinned
++  by nothing; r2 the comment credited D-056 for a widening that was FIX-141/F-30's. Counts reconcile: 563 + 3 cases = 566, class 19 to 22.
++next after the push: FIX-146, packet WRITTEN at agent/packets/FIX-146.md - six PROGRESS entries exist only in docs/PROGRESS.md and must
++  be folded into the journal with NOTHING invented; an entry whose evidence is unrecoverable says NOT_RUN. Ledger-only, no Maven.
+ then FIX-143 triage (count SETTLED at 10; label each TRANSLATION or POLICY, that decides the verdict; Retry.java:44 likely RIGHT).
+-then FIX-144 + FIX-148 (same test, judge together; flake is REAL and load-dependent; do NOT shorten patience()), FIX-146, FIX-149..152.
++then FIX-144 + FIX-148 (same test, judge together; flake REAL and load-dependent; do NOT shorten patience()), FIX-149..154.
+ Ledgers are never edited in a lane, so a reviewer reading a lane worktree sees a STALE row: say so in every review packet.
+ Lanes: before dispatching anything that runs Maven, ask what the other lanes are MEASURING, and NEVER two Maven jobs in one worktree.
+-OWNER ASKED 2026-11-14 evening: brainstorm prompt for CONSIDER-13 (the message log) in a separate Fable session - written to
+-  agent/packets/CONSIDER-13-fable-brainstorm-prompt.md. The design draft it summarises is CONSIDER-13-design-draft.md, NOT DECIDED.
++OWNER, CONSIDER-13 (the message log): brainstorm prompt at agent/packets/CONSIDER-13-fable-brainstorm-prompt.md plus an addendum at
++  CONSIDER-13-fable-addendum.md (the designer's rejections verbatim - they are two SENTENCES, not two paragraphs as I wrote). NOT DECIDED.
+ open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
+-open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135,143..146,148..152; CONSIDER-1..11
++open fixes: 16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135,143,144,146,148..154; CONSIDER-1..11
+ pending at hand-over: D-022, D-025-61 exc 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..113
+ owner at hand-over: F-18 (5 ms); D-064/65B/67A/72/73; P1-08 (D-049); /DirArchiveStore.bak + /S3ArchiveStore.bak (root deletes); `commit -F -` takes INDEX
+diff --git a/agent/packets/CONSIDER-13-fable-addendum.md b/agent/packets/CONSIDER-13-fable-addendum.md
+new file mode 100644
+index 0000000..9f6aa5f
+--- /dev/null
++++ b/agent/packets/CONSIDER-13-fable-addendum.md
+@@ -0,0 +1,70 @@
++# CONSIDER-13 — addendum to the Fable brainstorming prompt
++
++Written 2026-11-14, after the Fable session reported that `agent/packets/CONSIDER-13-design-draft.md`
++is not on `main` (`main` is `634983a`, whose last CONSIDER is 11) and that it had not seen the
++designer's rejection of the alternatives.
++
++Both are true. The draft is committed in `94fceab` on the branch
++`claude/relaxed-archimedes-q2nb4c`, which is pushed, so it can be read from that branch — it is
++only absent from `main`. Whether that branch merges to `main` is the owner's open decision.
++
++Everything below the line is pasteable into the Fable session as a follow-up message.
++
++---
++
++Correction to the prompt I gave you, and then the missing text.
++
++**The prompt overstated the rejections.** It said the designer rejected the two alternatives "one
++paragraph each". They are not paragraphs. They are two bullet points of one sentence each, quoted
++here verbatim and in full, with nothing omitted:
++
++> - Folding it into the snapshots as a `level` + `text` column: one row per step, gated by
++>   `recording.level`, cannot hold several sentences nor a severity.
++> - Folding it into `System.Logger` with an MDC-style context from `MessageContext`: not retrievable
++>   per message, not retained with the message, not queryable.
++
++That is the entire argument against the two cheapest designs. Judge it on that basis — and note
++that the thinness is itself evidence about how carefully the premise was examined.
++
++For completeness, the designer's other five rejections, which are about the shape rather than the
++premise:
++
++> - Two tables (`message_log` + `flow_log`): same shape, same retention, same screen; a nullable
++>   `message_id` with a partial unique index is cheaper.
++> - Reusing `PgMessageStore`'s writer: a trace flood would evict snapshot rows from a shared 6400
++>   backlog.
++> - `saveWaiting` for log lines: it holds the run's admission permit for a line whose loss loses no
++>   message.
++> - `warning` as the schema value, in favour of `warn`.
++> - A per-flow lines-per-second budget: needs a window and a clock; the writer's backlog bounds it.
++
++**What the draft itself lists as expensive to reverse**, which is where I most want your attention:
++
++> - `StepResources` gaining a component and being built per step: public API, every `StepFactory` and
++>   every day-1 call site (`SimSteps`, `FlowTests`, `FlowHash`, both step modules).
++> - `message_log`'s columns and its unique index: a persisted format; `ordinal` is the public
++>   ordering key and appears in the admin JSON.
++> - The level names and their order: flow-file wire format (schema v1) and an admin query parameter.
++> - `GET /admin/messages/:id/log` and `/admin/flows/:flow/log`, and the `log` object added to the
++>   timeline response.
++
++**Three conflicts the designer found with the architecture document**, unresolved:
++
++> - §7's persistence table list already names an `audit` table, so "audit log" is taken; the draft
++>   calls this the message log throughout. The name needs confirming before any edit.
++> - §8's write path says every snapshot goes "local batch queue → Kafka `monitoring` → ClickHouse".
++>   Log lines are Postgres-only today (no ClickHouse client exists), so §8 must say the message log
++>   follows the snapshots to ClickHouse in P2-S1/S2, or the deviation is silent.
++> - `recording.payload: metadata-only` keeps bodies out of the store; a declarative `log` step whose
++>   `message` expression renders a payload defeats that per-flow choice.
++
++Two facts that bear on cost and that the prompt did not give you:
++
++- There is **no benchmark number** anywhere in `bench/RESULTS.md` for this write path. Nothing about
++  it has been measured.
++- The table is designed to come **after** two migrations that are not written yet (the ones adding
++  an `attempt` column and a message-lifecycle table), and it assumes `attempt` exists. So this is
++  not a change that can land on its own.
++
++Everything else in my first message stands, including the request that you challenge the premise
++before anything else.
+diff --git a/agent/packets/FIX-146.md b/agent/packets/FIX-146.md
+new file mode 100644
+index 0000000..9cd1765
+--- /dev/null
++++ b/agent/packets/FIX-146.md
+@@ -0,0 +1,105 @@
++# FIX-146 — six completed tasks have no entry in the journal
++
++Class **[A]**. Mechanical, but it edits the one file `docs/WORKFLOW.md` calls append-only, so the
++care goes into *not* disturbing what is already there.
++
++## The defect
++
++`docs/WORKFLOW.md:48` names **`PROGRESS.md` at the repo root** as the journal: append-only, one
++entry per task, newest at the bottom, 1486 lines today.
++
++There is a second file, **`docs/PROGRESS.md`**: 56 lines, written newest-at-the-**top**, last
++touched 2026-11-02 and never since. It holds six entries whose ids appear nowhere in the journal:
++
++| id | commit |
++| --- | --- |
++| FIX-111 | 6f069a4 |
++| WF-1 | b86678e |
++| P2-08b | ecb721a |
++| P2-02L | a326f1b |
++| P2-02D | f8a28b9 |
++| P2-05 | 84b47f0 |
++
++All six commits are real and land between 2026-10-29 and 2026-11-02, so for four days some session
++appended to the wrong path. The descending order is the tell that it never read the journal it was
++supposed to be writing to.
++
++Two consequences, and the second is why this is a row rather than a tidy-up: six completed tasks
++have no entry in the record that `docs/WORKFLOW.md` §2 and CLAUDE.md both treat as the project's
++evidence; and a reader who greps for PROGRESS finds two files, cannot tell from the names which is
++current, and the stray one's **top** entry reads as the project's latest state.
++
++## What to do
++
++Fold all six into the journal at their **chronological positions**, delete the stray file.
++
++### Reconstructing an entry
++
++Each entry is rebuilt from its commit — `git show --stat <sha>` and the commit message — and
++reformatted to §2's format and the 15-line limit (the limit includes the `##` heading line).
++
++**Read `docs/WORKFLOW.md` §2 for the format, and read the two newest entries in `PROGRESS.md` as
++working models.** The stray entries are in a different format and a different order; do not carry
++their shape across.
++
++**Invent nothing.** This is the whole risk of the task. The stray entries may claim a check whose
++output no longer exists, and a commit message is not an observation. Where an entry would state a
++build, test, coverage or benchmark result that cannot be recovered from the commit itself, write
++`NOT_RUN` and say the evidence was not recoverable. An entry that reads thinner than its
++neighbours is the correct outcome; a fabricated green is not. If the stray entry asserts something
++the commit contradicts, keep the commit and note the discrepancy in one line.
++
++### Not disturbing the journal
++
++- **Insertion only.** Do not reword, reorder, reformat or re-wrap a single existing entry. The
++  journal is append-only by `docs/WORKFLOW.md:48`; the chronological insert is the one exception
++  this row buys, and it buys nothing else.
++- Prove it: `git diff PROGRESS.md` must show **only added lines** — no deletions, no modifications.
++  Say so with the `--numstat` figures, and if a single line shows as changed, find out why before
++  going further.
++- The journal's entry count must rise by **exactly six**. Count `^## ` before and after, and report
++  both numbers.
++- Each new entry **≤15 lines including its heading**. Measure every one with a script that prints
++  the count before you write it; do not eyeball it.
++
++### The two questions the row asks
++
++1. Did `agent/NOTES.md`, `agent/HANDOFF.md` or anything else ever point at `docs/PROGRESS.md`?
++   `grep -rn 'docs/PROGRESS'` across the repo must end at **0 hits**. If a file does reference it,
++   fix that reference rather than leaving a dangling path.
++2. **Could `ci/ledger_check.py` have caught this?** Read it. If a one-line check would have — a
++   journal at exactly one path, or no `^## ` heading outside the journal — **add it in this task**
++   and say what it now rejects. If it would have taken more than a line, do not build it: report
++   what the check would need and leave it for a row of its own. Either way, say which.
++
++## Allowed paths
++
++- `PROGRESS.md` (insertions only)
++- `docs/PROGRESS.md` (deleted — with `git rm`, so the deletion is in the diff)
++- `ci/ledger_check.py` (only if question 2's answer is a one-line check)
++- `agent/NOTES.md` or `agent/HANDOFF.md` only if question 1 finds a reference to repair
++
++Nothing under `src/`. No test. No Maven.
++
++## Evidence
++
++No code changes, so the build is **`NOT_RUN` and must be reported that way** — do not invent a
++green. The evidence for this task is counts and greps, each quoted as observed output:
++
++- `^## ` headings in `PROGRESS.md` before and after, and the difference
++- `git diff --numstat PROGRESS.md` showing insertions only
++- the per-entry line counts, all ≤15
++- `grep -rn 'docs/PROGRESS'` → 0 hits
++- `git status --porcelain -uall` showing the staged deletion and no `??`
++- if `ci/ledger_check.py` changed: its exit code before and after, and what it now rejects
++
++## Note for the reviewer
++
++The thing to be sceptical about is **fabrication**, not formatting. Six entries are being written
++today for work done two weeks ago by sessions whose context is gone. Pick at least two entries and
++check every factual claim in them against the commit they name — particularly any test name, any
++count and any assertion of a passing check. A claim that cannot be traced to the commit or to a log
++on disk is a defect even if it is probably true.
++
++Second: confirm from `git diff --numstat` that no existing entry moved. The journal's integrity
++matters more than whether the six new entries are elegant.
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+index 37d8c32..0713396 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/Producers.java
+@@ -14,6 +14,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
+  * together, once. A producer whose close fails — its future, or anything {@code close()} itself throws, an {@link Error} and a
+  * sneaky checked exception included (FIX-141, F-30) — is logged at WARNING and stops no other; the close completes, never fails,
+  * once every producer's close has settled.
++ *
++ * <p>When a {@code close()} throws an {@code InterruptedException}, the flag it swallowed is restored mid-loop, so every
++ * producer after the interrupting one is asked to close on a thread whose interrupt flag is now set and a later blocking
++ * {@code close()} may fail fast because of it — a consequence of honouring the flag, not a defect; the loop still asks each of
++ * them (pinned by ProducersCloseTest.anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers). A producer whose
++ * returned future instead <em>fails</em> with an {@code InterruptedException} leaves the flag alone: the thread that was
++ * interrupted is in general not the one that asked for the close — the failure is observed on whichever thread completed the
++ * future — and setting the flag here would invent an interrupt nobody raised on the closing thread. The price is a producer that
++ * caught the interrupt itself and failed its future on the closing thread: that thread's cancellation is then genuinely lost,
++ * and nothing in the failure lets this loop tell that case from the common one (D-098 (2), pinned by
++ * ProducersCloseTest.aCloseWhoseFutureFailsWithAnInterruptedExceptionLeavesTheFlagClear).
+  */
+ final class Producers {
+ 
+@@ -46,6 +57,12 @@ final class Producers {
+             try {
+                 closing = p.close();
+             } catch (Throwable thrown) {   // a producer that throws instead of failing its future, an Error or a sneaky checked exception too (FIX-141, F-30): the same failed close; a narrower catch abandons the loop and strands every later producer, pinned by ProducersCloseTest.theLoopFinishesTheThirdProducerIsAskedWhenTheMiddleOnesCloseThrows
++                // Swallowed, an interrupt leaves the caller's next blocking call unaware that its thread was cancelled.
++                // An InterruptedException reaches this catch at all because the enclosing clause is wide enough to see a sneaky
++                // checked throwable (FIX-141, F-30); the rule this line implements is D-098 (1): a swallowed interrupt is
++                // restored for the thread that was interrupted, so the cancelling caller still sees it.
++                // Pinned by ProducersCloseTest.anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers
++                if (thrown instanceof InterruptedException) Thread.currentThread().interrupt();
+                 closing = Future.failedFuture(thrown);
+             }
+             settled.add(closing.recover(failure -> {
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+index 82a8988..e770af9 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/ProducersCloseTest.java
+@@ -263,4 +263,112 @@ class ProducersCloseTest {
+         assertAskedOnce("after the second close", first, middle, third);
+         assertEquals(1, warnings().size(), "still one WARNING: " + dump());
+     }
++
++    // --- FIX-145 (D-098): a sneaky InterruptedException out of a close() is swallowed; the flag must not be. Three cases:
++    // an interrupt thrown by close() on the closing thread sets the flag again (D-098 (1)); a close that fails for its own
++    // reason, no interrupt anywhere, leaves it clear; an InterruptedException arriving in the producer's failed future, in
++    // general not the closing thread's own interrupt, leaves it clear too (D-098 (2)).
++
++    /**
++     * FIX-145 (D-098): a producer whose {@code close()} throws a sneaky {@link InterruptedException} is a cancelled close, and
++     * the thread that ran it must not carry on as if it had not been interrupted: the interrupt flag is set again for the
++     * caller (the cancelling caller still sees its interrupt, and the next blocking call on that thread still throws). The
++     * WARNING behaviour is unchanged — the close still completes successfully — and the other producers are still closed,
++     * each exactly once, counted on the fixture. The flag is cleared before the call, so no earlier case can make this pass,
++     * and read with {@link Thread#interrupted()} (read and cleared) on the thread that ran the close, so it never leaks.
++     * Red before the fix: {@code catch (Throwable)} (FIX-141) swallows the interrupt into a succeeded future, flag clear.
++     */
++    @Test
++    void anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.throwing("middle-producer", new InterruptedException("close cancelled"));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close, whatever it did
++        }
++
++        assertNull(closed.escaped(), "the interrupt does not escape the close");
++        assertAskedOnce("after the middle one's close was interrupted", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close still succeeds: " + closed.future().cause());
++        assertEquals(1, warnings().size(), "still exactly one WARNING from Producers: " + dump());
++        assertTrue(texts(warnings().get(0)).get(0).contains("middle-producer"), "the WARNING names the interrupted producer: " + texts(warnings().get(0)));
++        assertTrue(flagAfter, "the interrupt flag is set again for the caller");
++    }
++
++    /**
++     * FIX-145, the other side of the interrupt edge, and the witness that the flag is restored for an interrupt and not for
++     * every failure: a close that fails for its own reason — a sneaky checked {@link IOException}, no interrupt anywhere —
++     * leaves the interrupt flag clear. Green on arrival (the current code sets the flag for nothing at all); what it kills is
++     * a fix that sets the flag unconditionally in the close loop, which would otherwise pass
++     * {@link #anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers} untouched.
++     */
++    @Test
++    void aCloseThatFailsWithoutAnInterruptLeavesTheFlagClear() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.throwing("middle-producer", Thrown.CHECKED.make("partner socket reset"));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close
++        }
++
++        assertNull(closed.escaped(), "the checked failure does not escape the close");
++        assertAskedOnce("after the middle one's close threw a checked failure", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close succeeds: " + closed.future().cause());
++        assertFalse(flagAfter, "a close that failed without an interrupt leaves the flag clear");
++    }
++
++    /**
++     * FIX-145, what pins where the guard sits (D-098 (2)): a producer that does not throw but returns a future already
++     * <em>failed</em> with an {@link InterruptedException} was interrupted on its own thread — the closing thread was never
++     * cancelled — so the close must leave that thread's interrupt flag CLEAR. This is the opposite of
++     * {@link #anInterruptFromAProducersCloseRestoresTheFlagAndStillClosesTheOthers}, where {@code close()} threw the
++     * interrupt <em>on the closing thread</em> and the flag it swallowed is the caller's own, so it must be set again.
++     * Restoring it here would invent an interrupt nobody raised, and the continuation that observes such a failure runs on
++     * whichever thread completed the future — in general not the one that asked for the close.
++     *
++     * <p>So the guard belongs in the synchronous {@code catch}, not in the {@code recover} lambda that is shared with
++     * futures failing later: this case is the only one that separates the two placements (for a
++     * {@link Future#failedFuture} the recover body runs inline on the caller's thread, which is why the two sibling cases
++     * cannot tell them apart). The rest of the contract is unchanged — the close still succeeds, exactly one WARNING names
++     * the failed producer, and every producer is asked to close exactly once.
++     */
++    @Test
++    void aCloseWhoseFutureFailsWithAnInterruptedExceptionLeavesTheFlagClear() throws Exception {
++        Counting first = Counting.clean("first-producer");
++        Counting middle = Counting.answering("middle-producer",
++                Future.failedFuture(new InterruptedException("cancelled on the producer's own thread")));
++        Counting third = Counting.clean("third-producer");
++        assertFalse(Thread.interrupted(), "fixture: the flag is clear before the close (read and cleared)");
++
++        Closed closed;
++        boolean flagAfter;
++        try {
++            closed = close(first, middle, third);
++        } finally {
++            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the close, whatever it did
++        }
++
++        assertNull(closed.escaped(), "the failed future does not escape the close");
++        assertAskedOnce("after the middle one's close answered a failed future", first, middle, third);
++        within(closed.future(), "the close");
++        assertTrue(closed.future().succeeded(), "the close still succeeds: " + closed.future().cause());
++        assertEquals(1, warnings().size(), "still exactly one WARNING from Producers: " + dump());
++        assertTrue(texts(warnings().get(0)).get(0).contains("middle-producer"),
++                "the WARNING names the producer whose close failed: " + texts(warnings().get(0)));
++        assertFalse(flagAfter, "the producer was interrupted on its own thread: the closing thread's flag stays clear");
++    }
+ }

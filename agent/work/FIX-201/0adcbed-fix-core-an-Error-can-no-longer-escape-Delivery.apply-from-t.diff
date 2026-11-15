@@ -1,0 +1,883 @@
+COMMIT 0adcbedc3784b0d9a480d05c1969311dac35ed40
+fix(core): an Error can no longer escape Delivery.apply() from the ingress save
+
+D-049 (d) promises that a save which throws synchronously becomes the same
+retryable NACK and "never an escaped exception". Delivery:319 caught
+RuntimeException only, so an Error left apply() as a thrown throwable where the
+caller expected a Future<Ack> -- no reply, no 5xx, nothing the http component
+can map. F-30 settled that "exception" in that sentence means every throwable,
+and that D-049 needs no amendment: the proof is inside the same method, where
+:296 and :312 already catch Throwable using D-049 (d)'s own words.
+
+Five catches go to Throwable -- the ingress save, SequentialIntake:41 and :47,
+and the sync and at-most-once pipeline runs -- plus landAfter's parameter,
+without which the widened local does not compile. A RuntimeException | Error
+multicatch was refused at the last two sites: it would stop catching the sneaky
+InterruptedException an interrupted await throws, which is what D-056 widened
+them for in the first place. D-056's row carries that amendment rather than the
+change being slipped in; the verifier measured the refusal as mutant M7, killed
+by six cases all failing with "apply threw instead of answering".
+
+All nine of the reviewer's mutants were run and all nine killed, with cmp clean
+after each restore. The three that earn their keep: narrowing any of the three
+save-path sites to the multicatch is killed by exactly one case each, the one
+that throws a sneaky checked IOException. Without those three cases the widening
+was untested, because all thirteen original cases threw a LinkageError -- which
+is FIX-140's trap exactly one task later. The reviewer had predicted that mutant
+would survive and recorded plainly that the measurement proved it wrong. The
+cases use hand-written delegates rather than the proxy-based helper, because a
+java.lang.reflect.Proxy wraps an undeclared checked exception in
+UndeclaredThrowableException, a RuntimeException, so they would have passed
+against the very mutants they exist to kill.
+
+All three of the first review's FAIL reasons were the architect's text, not the
+implementation. The assertion on the NACK text was unreachable -- the case never
+advanced the fake clock, and the clock is the only thing that fires a timer -- so
+it is now recorded as a documenting assertion rather than acceptance; measured,
+the line above it is what kills the mutant. The comments at SequentialIntake:41
+and :47 gave a reason that stops being true once Delivery's own catch is widened
+in the same commit, and that took with it the premise this task was built on:
+widening the Delivery site alone does not leave a hole one frame deeper. F-30 is
+corrected a third and fourth time accordingly, and the comments now give
+Intake.save's real contract and name the case that pins each.
+
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/PROGRESS.md b/PROGRESS.md
+index 0385d82..f1f6432 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1468,3 +1468,19 @@ missing its only interesting entry, `afterCommit`, the one path where waiters do
+ the javadoc says `<`; r2 checked they now agree — entry can reach exactly `batchSize`, at rest it cannot, two claims.
+ VERIFIED_PASS: 32/32 filtered, core 518/0/0/0 BUILD SUCCESS. A flake surfaced in the first full run and is now FIX-144.
+ D-054: class A, rounds 2.
++
++## 2026-11-14 — FIX-136 an Error can no longer escape Delivery.apply() at five catch sites — done, review PASS r2
++D-049 (d) promises "never an escaped exception" from a save that throws; `Delivery:319` caught `RuntimeException`, so an
++`Error` left `apply` as a thrown throwable where the caller expected a `Future<Ack>`. F-30 settled that "exception" there
++means EVERY throwable and D-049 needs no amendment — the proof is inside the method, at `:296`/`:312`. Five catches went
++to `Throwable` (the ingress save, `SequentialIntake:41`/`:47`, the sync and at-most-once pipeline runs) plus `landAfter`'s
++parameter, which would not otherwise compile. A multicatch was REFUSED at the last two: it would drop the sneaky
++`InterruptedException` D-056 added, and D-056's row carries that amendment rather than taking it silently.
++All nine mutants killed, `cmp` clean after each. The three that matter: narrowing the ingress save to a multicatch is
++killed by ONE case, the sneaky-checked one, and likewise at both `SequentialIntake` sites — so each of the three cases the
++reviewer forced is the unique killer of one mutant. Without them the widening was untested, because all 13 original cases
++threw a `LinkageError`: FIX-140's trap one task later. The reviewer had predicted that mutant would survive and recorded
++plainly that the measurement proved it wrong.
++Review r1 FAILed on three things, all MY text: an assertion that was UNREACHABLE (no clock advance, and `FakeTimer` fires
++only on `advance`), now documenting rather than acceptance; an untested narrowing; and comments giving a false reason,
++which took my "one frame deeper" premise with it — F-30 corrected a 3rd and 4th time. VERIFIED_PASS: 99/0/0/0 filtered, core 535/0/0/0. D-054: class B, r2.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 5a98fe1..57ed4a2 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -218,7 +218,7 @@ row, never lowers it mid-task.
+ | FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:85`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) DECIDED 2026-11-14 as D-111 after recon: the fix changes NO control flow — widen the catch at `Recorder.java:85` to `Throwable`, write the `FAILED` row with the throwable's text, rethrow unchanged by precise rethrow. CORRECTED 2026-11-14 before dispatch: this row first said `RuntimeException \| Error`, copying D-104's form, and that is a NARROWING here — `Exception` deliberately catches the checked `InterruptedException` D-056's stop-deadline cancel throws sneakily, which `aCancelledStepRecordsItsFailureSnapshot` already pins, so the prescribed form would have deleted a cancelled delivery's `FAILED` row to gain an `Error`'s. See D-111's AMENDED sentence and `agent/packets/FIX-133.md`; D-104's multicatch style stands where its code cannot throw a checked exception at all. D-098 and D-049 stand: an `Error` is still not transient, not retried, and `FlowWorker.java:352` still leaves the item to its lease. DO NOT also change `Parking.java:49` — the scout read it as a second instance of this gap and that is wrong, because parking an `Error` would make it transient, which D-098 refused. `Delivery.java:319-320` IS a real second instance but contradicts D-049 (d) rather than D-111, so it is FIX-136, not this row | FIX-71 | done | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it, and so does one narrowing it to `RuntimeException \| Error`; the catch is `Throwable` with a precise rethrow and no `throws` clause; `aCancelledStepRecordsItsFailureSnapshot` stays green untouched, which is what proves the catch was widened and not narrowed; and `FlowWorkerTest`'s existing lease assertions stay green (`:90`, `:1030`) — CORRECTED 2026-11-14: this cell first demanded a new assertion there, which was wrong, because an `Error` leaving the item to its lease is already pinned by those two; no new test for it. Also NOT expected killable: the `policy.records(..., FAILED)` guard at `Recorder.java:86`, which is unreachable-false and so an equivalent mutant — for FAILED, `records` is true under ALL, ERRORS and ENDS alike (`outcome != OK`), and the only false level, OFF, returns the bare stage at `:71` before the catch exists. Reported by the test-author, premise verified by the architect in the code | FIX-131 test-author, architect-verified 2026-11-14. done 2026-11-14, review PASS r1. One production line: `Recorder.java:85` catches `Throwable`, comment extended; no control flow moved. Four new `RecorderTest` cases, all observed red first (`[ingress, a]` instead of `[ingress, a, x]`); green 14/0. `aCancelledStepRecordsItsFailureSnapshot` untouched and green — the guard proving the catch widened and did not narrow. Final tree: `-pl flottila-core -am clean verify` exit 0, core 511/0/0/0, BUILD SUCCESS (FIX-133-final-verify.log; NO `-Pit`, so NOT a full reactor run); coverage exit 0 "no decrease", core 99.6/99.5, api 99.3/100 (FIX-133-final-coverage.log). The earlier full `-Pit` run predates the case-3 rewrite and is not claimed for this tree. Six mutants killed: catch to `Exception`, to `RuntimeException \| Error`, to `Error`, to `Exception \| Error`, `!handedOn[0]` dropped, `throw failure` removed (compile error); `cmp` clean after each. Case 3 had to be rewritten TWICE: as the architect specified it, its guard half could not fail at all, because `InMemoryMessageStore:39` drops the second row per `(id, step)` so `timeline()` could never show it — the same drop F-29 is about. It now counts rows handed to the store and the dropped-guard mutant dies at `:388` with `<[OK, FAILED]>`. The `Exception \| Error` mutant, named by the reviewer, is the only one separating the chosen form from the obvious alternative and it was killed by the one case written for it. Raised from this review: FIX-140 (recording can replace the rethrown throwable), and D-111 qualified accordingly|
+ | FIX-134 | [A] The bench record does not carry `warmedUp`: it exists only as a local at `NodeBenchMain.java:314-316`, so the subtraction `warmup - warmupFailed`, which decides how long the warm-up settle waits, cannot be observed from outside. FIX-128 established the consequence and it is the reason this row exists. CORRECTED by the FIX-128 reviewer, because the architect's first version of this row had it backwards: an OVERSTATED `warmedUp` — which is what dropping the subtraction gives, `warmedUp = warmup` = 5 against 2 rows that exist — makes the warm-up `settle` poll until DRAIN (10 min) and so IS caught, but only by the class `@Timeout` at 300 s, which is slow and names no cause. The mutant that truly survives is an UNDERSTATED one: `warmedUp = 0`, or anything up to the real 2, makes the warm-up settle pass at once while the window's own settle still ends at 42 rows, so no assertion and no timeout notices. That is the mutant this row has to make killable, and it cannot be done from a test while the value is a local. Put `warmedUp` in the record beside `warmup` and `warmupFailed`, where the other two already are, and assert it | FIX-128 | done | the record carries `warmedUp` and a test asserts it equals 2 for a warm-up of 5 with 3 refusals, so `warmedUp = 0` fails by an assertion naming the value; CORRECTED 2026-11-14 by the test-author's red hand-back, because this cell promised something the test cannot deliver: the overstated mutant (`warmedUp = warmup`) is NOT killed by the assertion and still dies only by the 300 s class timeout, since `warmedUp` also drives the warm-up `settle` at `NodeBenchMain.java:315`, which runs BEFORE the record is written, so the run never reaches the new assertion. Killing it by assertion would mean writing the record before the settle, which is a behaviour change and not this row's. REFINED after the review's mutants M3/M4 were measured, because the sentence above is true only of the COMPUTATION and reads as a blanket claim: overstating the RECORD alone (`.put("warmedUp", o.warmup())` at `:316`, leaving `:314` correct) keeps the settle right, reaches the assertion and IS killed — `expected: <2> but was: <5>` in 27.5 s (M3, FIX-134-mut3.log). Only an overstatement at `:314` escapes to the timeout. Understatement is killed wherever it sits: M4 (`o.warmup() - warmupFailed - 1` at `:314`) gave `expected: <2> but was: <1>` in 28.0 s with the settle still returning (FIX-134-mut4.log). Both mutants were named by the reviewer, not by the architect, whose own pair (0 and a missing `.put`) tested neither the off-by-one nor the record-only overstatement | FIX-128 hand-back 2026-11-14. done 2026-11-14, review PASS r2 after one FAIL. One production line: `.put("warmedUp", warmedUp)` at `NodeBenchMain.java:316`, beside the `warmupFailed` already there; `:314`, the `settle` at `:315` and `Harness` untouched, and `bench/RESULTS.md` not touched at all, so no benchmark number is claimed. Red observed first: `expected: <2> but was: <null>` (FIX-134-red.log). Green: filtered case 12/0/0/0 and the whole module 27/0/0/0, both BUILD SUCCESS (FIX-134-green.log, FIX-134-module.log). Four mutants, all killed by the assertion at `:218` in about 28 s each, none by a timeout: `.put(...,0)` -> `<0>`, the `.put` removed -> `<null>`, M3 `.put(..., o.warmup())` -> `<5>`, M4 `:314 - 1` -> `<1>` (FIX-134-mut1..4.log). M3 and M4 were named by the REVIEWER and are the better pair: the architect's own two tested neither the off-by-one nor the record-only overstatement, and M3 is what disproved his correction of this very cell. `cmp` proved the file byte-identical after every mutant; restores with `cp` plus `touch`, never `mv`. The FAIL was documentation only: a false sentence of the architect's, in the packet, in this cell and copied from the packet into a code comment, that the overstated mutant dies by assertion. NO coverage evidence here: every run carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires |
+ | FIX-135 | [B] The PIT mutation score on this project is several points noisier than it looks, because a timed-out minion counts as a KILLED mutant and the timeout count swings widely between runs of nearly the same code on the same machine: the reference run at a0b3f74 logged 202 abnormal `TIMED_OUT` exits plus 5 `RUN_ERROR` (`agent/work/pit-a0b3f74.log`), the FIX-71 run 125 at 1338/1362 mutations (`agent/work/FIX-71-pit.log`) — a swing of order 70, about 7 % of core's 1019. The distinction matters: a mutant that makes the code hang IS legitimately killed, because a suite that never finishes does detect it, but a mutant that merely ran out of time on a loaded machine is not, and a swing that large says a good share are the second kind. Nothing is threatened today — api 179/180 and core 1010/1019 against an 80 % floor is enormous headroom — and that is why this is a row and not an ISSUE. But the mutation floor is a phase-gate condition, so the score must not be quoted to three figures as though it were stable, and a gate ever met by a narrow margin would have to account for this. Measure the `TIMED_OUT` count twice on one commit, then either raise pitest's `timeoutConstant` / `timeoutFactor` until it stabilises, or publish the noise band beside the score the way the coverage check already publishes its own (D-029 is the precedent for a declared noise band). Sharpened by the FIX-71 r4 review, which examined one of these timeouts in the specific: `BatchingWriter.java:248`'s `IncrementsMutator` turns a loop counter into `i--`, which spins forever under the writer lock on the first save of every test. That is a DETERMINISTIC hang, so counting it as killed is right and no assertion short of a timeout could catch it. The measurement this row asks for must therefore separate the two populations rather than count timeouts in bulk: a deterministic non-terminating mutant is a legitimate kill and should recur in every run, while a slow-machine artefact will not. The run-to-run swing is the signal that tells them apart | — | ready | the `TIMED_OUT` count on one commit is measured at least twice and either stabilises after a configuration change or is stated as a noise band beside the score, with machine and date as `bench/RESULTS.md` requires of any number | architect, comparing the FIX-71 and a0b3f74 PIT logs 2026-11-14 |
+-| FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | ready | SETTLED by F-30 (2026-11-14), so the first clause is already done: the BROAD reading wins and D-049 needs NO amendment - the evidence is inside the method, where `:296` and `:312` already catch `Throwable` with comments using D-049 (d)'s own phrase "never an exception out of apply" and saying "an Error too". Widen `Delivery.java:319` AND `SequentialIntake.java:41` and `:47` (the same path - a throwable escaping either one arrives at that narrow catch). Then assert PER MODE, because the behaviour differs per mode and the ingress save itself exists only in at-least-once (F-30 corrected 2026-11-14 - do not read "all three modes" as one assertion): at-least-once, an Error from the ingress save gives a retryable NACK, THE PERMIT RETURNS and `stop()` completes, which is the acceptance that matters because that path has no finally at all; sync, an Error from the pipeline comes back as a failed future instead of being thrown out of `apply`, and the permit already returns there via the finally at `:177-181`, so assert it keeps returning rather than calling that the fix; at-most-once, an Error is logged and dropped per D-049 (b) instead of ending as an uncaught throwable on the message's thread, permit likewise already fine. The sync and at-most-once halves need `:176` and `:218` widened from `Exception` together with their `Exception failure` and `Exception dropped` locals, which changes what D-056 settled: say so in the commit and note it on D-056's row. Also assert the NACK NAMES THE ERROR: today the pending save timeout at `:286` decides the answer with "durable save timed out after <d>", so the sender and the record are told a save timed out when a step threw an Error that is never recorded - the widened catch gives `retryable(done.cause())` at `:324` instead (F-30 third correction 2026-11-14: the permit is held for saveTimeout and comes back, NOT leaked for good; the lie in the record is the sharp half). `Producers.java:49` is NOT in scope - see FIX-141 | FIX-133 recon 2026-11-14; finding F-30 written 2026-11-14 before any code, as the row required |
++| FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | done | SETTLED by F-30 (2026-11-14), so the first clause is already done: the BROAD reading wins and D-049 needs NO amendment - the evidence is inside the method, where `:296` and `:312` already catch `Throwable` with comments using D-049 (d)'s own phrase "never an exception out of apply" and saying "an Error too". Widen `Delivery.java:319` AND `SequentialIntake.java:41` and `:47` (the same path - a throwable escaping either one arrives at that narrow catch). Then assert PER MODE, because the behaviour differs per mode and the ingress save itself exists only in at-least-once (F-30 corrected 2026-11-14 - do not read "all three modes" as one assertion): at-least-once, an Error from the ingress save gives a retryable NACK, THE PERMIT RETURNS and `stop()` completes, which is the acceptance that matters because that path has no finally at all; sync, an Error from the pipeline comes back as a failed future instead of being thrown out of `apply`, and the permit already returns there via the finally at `:177-181`, so assert it keeps returning rather than calling that the fix; at-most-once, an Error is logged and dropped per D-049 (b) instead of ending as an uncaught throwable on the message's thread, permit likewise already fine. The sync and at-most-once halves need `:176` and `:218` widened from `Exception` together with their `Exception failure` and `Exception dropped` locals, which changes what D-056 settled: say so in the commit and note it on D-056's row. Also assert the NACK NAMES THE ERROR: today the pending save timeout at `:286` decides the answer with "durable save timed out after <d>", so the sender and the record are told a save timed out when a step threw an Error that is never recorded - the widened catch gives `retryable(done.cause())` at `:324` instead (F-30 third correction 2026-11-14: the permit is held for saveTimeout and comes back, NOT leaked for good; the lie in the record is the sharp half). `Producers.java:49` is NOT in scope - see FIX-141 | VERIFIED_PASS 2026-11-14. Red: agent/work/FIX-136-red.log, `Tests run: 96, Failures: 13`. Green: agent/work/FIX-136-green.log (5 appended sections, never overwritten), 99/0/0/0 filtered and flottila-core 535/0/0/0 BUILD SUCCESS. Mutants: agent/work/FIX-136-mutants.log, baseline plus 9 sections each quoting its mutated line - ALL NINE KILLED, every `cmp` clean, every `.orig` removed. M2/M5/M6 (each site narrowed to `RuntimeException \| Error`) are each killed by EXACTLY ONE case, the sneaky-checked one, so each of those three cases is the unique killer of one mutant; the reviewer had predicted M2 would survive and recorded that the measurement proved it wrong. M7 (`:176` narrowed) killed by 6 cases, all "apply threw instead of answering", which is why sites 4 and 5 must stay `Throwable` and a multicatch was refused there. D-056 amended on its own row. review PASS r2: r1's three FAIL reasons were all the ARCHITECT's text - a vacuous assertion (no clock advance; now documenting, not acceptance), an untested narrowing at three sites, and comments giving a false reason. That last one also killed the "one frame deeper" premise this task was built on; F-30 corrected a 3rd and 4th time. |
+ | FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | done | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | VERIFIED_PASS 2026-11-14 (agent/work/FIX-137-green.log, appended never overwritten): 32/0/0/0 filtered and flottila-core 518/0/0/0 BUILD SUCCESS. Doc-only, 26 comment lines in BatchingWriter.java, no statement changed; no test is possible and the packet says why (FIX-129 precedent) - the reviewer looked for a non-vacuous case and found none. Decision D-112 written. review PASS r2: r1 FAILed on MY D-112 rationale, which claimed an `if` would cause "a silent stall" - false, and contradicted by `drainLocked`'s own javadoc four lines above the block ("nothing stays queued with no commit in flight and no window"); a take always does `inFlight++` and that commit's completion drains the rest, so an `if` costs LATENCY, not correctness. r1 also found the case analysis omitted the `afterCommit` entry, the only path where waiters refill. I then put `<=` into D-112 where the javadoc says `<`; corrected, and r2 confirmed the two now agree (at rest `<`, entry "at most" because `enqueue` can reach exactly `batchSize` for an instant). The surviving equivalent mutant (the loop's repeat) is recorded as UNMEASURED: PIT has no while-to-if mutator, so it may not be a PIT mutant at all. |
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | done | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | VERIFIED_PASS 2026-11-14 (agent/work/FIX-138-green.log, 3 sections, appended never overwritten): 11/11 filtered and flottila-core 518/0/0/0 BUILD SUCCESS on every section; red observed in agent/work/FIX-138-red.log section 3, where the BEHAVIOURAL line fails with `expected: <[[a], [b], [c], [d]]> but was: <[[a], [b], [c]]>` once the fixture checks are stripped in a temporary copy (restored byte-for-byte; the reviewer confirmed from the diff that nothing survived). No production code: 5 comment lines in BatchingWriter.flush()'s javadoc and 1 in the test's. review PASS r3 - r1 and r2 both FAILed on the ARCHITECT's wording, not the agents' work: "never of order" contradicted `:209-212` of the same class, and my replacement contradicted itself. The guarantee is the order items are TAKEN from the queue, each batch an in-order slice; the order whole batches reach the sink stays unconstrained. Reviewer's wording taken verbatim. |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | done | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts; done 2026-11-14, review PASS r2 after a FAIL for a case that could not fail under any mutation (aligned separators over an all-good fixture) plus two reviewer-named surviving mutants and a dead clause, all closed; 19 cases, all 7 reviewer mutants KILLED by the verifier with the pipe-counting one dying to both FIX-54-shaped cases; one mutant result was first falsified by a stale `.pyc` of equal byte length, now a NOTES rule; the guard then caught a raw pipe in the architect's own FIX-143 row within the hour; integrated gate `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease; logs agent/work/FIX-139-red.log, -green.log, -verify.log, -mutants.log and integrated3-verify.log |
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 422cc7e..2c28079 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -451,3 +451,41 @@ tree with the m1 module is dc85964.
+   equivalent, or the named test is weaker than it reads. Both are worth more than a clean sweep, so
+   report the mismatch rather than the verdict. Reviewers' predictions about WHICH case kills a mutant
+   have been wrong twice this session while the kill itself held.
++
++- **Designate a mutant only after checking the assertion can be REACHED under it.** FIX-136: I named a
++  mutant (let the `Error` fall through to the pending save timeout) and claimed one `assertFalse` would
++  be its only killer. The reviewer showed the assertion was unreachable: the case never advances the fake
++  clock, `FakeTimer` fires only on `advance`, so under that mutant the answer stays pending for ever and
++  the earlier `settled(...)` fails first — after a real-time wait. The cure was one line,
++  `clock().advance(saveTimeout)` before `settled`, which is a no-op under a correct fix and the whole
++  point under the mutant. **Before naming a mutant, trace the case line by line as it would run under
++  it**, not as it runs under the fix. An assertion that cannot be reached is worse than no assertion: it
++  reads like coverage and is not.
++- **A fake clock means nothing fires unless a test advances it.** A pending timer is not a timer that
++  will go off. Any assertion whose subject is "what the timeout does" needs an explicit advance, and any
++  claim about a *timeout* path in a test that never advances the clock is about a path that never ran.
++- **One fixture kind for every case of a family is the FIX-140 trap, and it recurs.** FIX-136 again: all
++  13 cases threw a `LinkageError`, so narrowing a widened `catch (Throwable)` back to
++  `RuntimeException | Error` left every one of them green, and the production comment's claim about
++  sneaky checked throwables had nothing behind it. When a catch is widened for *two* reasons, there must
++  be a case per reason — `Error` and sneaky-checked are different fixtures, not one.
++- **A reviewer's "this comment gives a false reason" is a real defect, not a nit.** FIX-136's comments at
++  `SequentialIntake:41`/`:47` said the widening stopped a throwable escaping `Delivery`'s catch, which
++  stops being true the moment `Delivery`'s own catch is widened in the same commit. A comment that
++  justifies code with a reason that does not hold invites the next reader to undo it.
++- **Never sneak a checked throwable through a `java.lang.reflect.Proxy`.** The proxy wraps an undeclared
++  checked exception in `UndeclaredThrowableException`, which is a `RuntimeException` — so a case meant to
++  prove that a catch takes *sneaky checked* throwables would pass under `catch (RuntimeException ...)`
++  too, for the wrong reason, and the mutant it exists to kill would survive. FIX-136's test-author caught
++  this before writing the cases and hand-wrote two small delegate records instead of extending the
++  module's proxy-based `erroringOn` helper. Where a test must deliver a sneaky checked throwable, give it
++  a hand-written delegate and `sneaky(...)`, never a proxy.
++- **An assertion placed after one that subsumes it can never be the killer.** FIX-136, measured: M9 made
++  the NACK read "durable save timed out after PT2S", and the case failed on
++  `assertTrue(reason.contains(LINKAGE))` one line ABOVE the `assertFalse(reason.contains("durable save
++  timed out"))` that was written for exactly that mutant. For that fixture the reason is either the
++  cause's message or the timeout text and never both, so the earlier line always fires first. When
++  judging whether an assertion is load-bearing, ask which assertion fires FIRST under the mutant — not
++  merely whether the case fails. And read a verifier's quoted failure message rather than its narration:
++  this one reported the failure as being on the `assertFalse` while the message it pasted (`names the
++  cause: ... expected: <true> but was: <false>`, an `assertTrue` shape) showed otherwise.
+diff --git a/agent/packets/FIX-136.md b/agent/packets/FIX-136.md
+index 65ff393..fe17848 100644
+--- a/agent/packets/FIX-136.md
++++ b/agent/packets/FIX-136.md
+@@ -29,8 +29,15 @@ policy, not translation. Say this choice out loud in the commit; do not leave it
+ 2. **`SequentialIntake.java:41`** — `catch (RuntimeException failure)` around
+    `arrived.body().store().persist(arrived.body().key())`.
+ 3. **`SequentialIntake.java:47`** — `catch (RuntimeException failure)` around `store.record(ingress)`.
+-   Sites 2 and 3 sit **inside** the `intake.save` that site 1 calls, so widening site 1 alone leaves the
+-   hole open one frame deeper. All three or none.
++   Sites 2 and 3 sit **inside** the `intake.save` that site 1 calls. *(Corrected 2026-11-14 by the
++   reviewer: what stood here said widening site 1 alone "leaves the hole open one frame deeper". It does
++   not — once site 1 catches `Throwable` it catches whatever escapes `SequentialIntake` too, and the
++   reviewer showed that with only site 1 widened every `Site`-parameterised `DeliveryTest` case goes
++   green and only the two `SequentialIntakeTest` cases still fail.)* Sites 2 and 3 are widened for a
++   smaller and different reason: **`Intake.save`'s own contract**, which its class javadoc states — a
++   store that throws "is the same failed save". That contract holds with or without a `Delivery` above
++   it, and the comment on each of those two catches must give **that** reason. F-30's fourth correction
++   has the detail.
+ 4. **`Delivery.java:176` and `:218`** — `catch (Exception thrown)` / `catch (Exception failure)` around
+    the sync and at-most-once pipeline runs, **plus their locals**: `Exception failure` at `:172` and
+    `Exception dropped` at `:214` widen to `Throwable` with them. `Future.failedFuture` takes a
+@@ -145,12 +152,34 @@ Two things follow, and the reviewer must hold the task to both.
+    `assertTrue(nack.reason().contains(LINKAGE))` therefore pins the cause's identity as strongly as the
+    reason affords. A `toString()` or class-name assertion would fail *after* a correct fix, or force a
+    change to `retryable()` that nobody asked for. None was added, correctly.
+-2. **The designated mutant for the `assertFalse` is this**: with the fix in place, stop the widened catch
+-   from deciding the answer — let the `Error` fall through to the pending `:286` save timeout instead.
+-   The reason then reads `"durable save timed out after PT2S"` and the `assertFalse` is the line that
+-   kills it, while every other assertion in the case still passes. That mutant is the proof the
+-   assertion is load-bearing, and the verifier must run it. Until it has been run, the assertion is a
+-   prediction, not evidence — the test-author said so and the word stands.
++2. **The designated mutant for the `assertFalse`** — *corrected 2026-11-14, because as first written
++   this was wrong and the assertion it described was vacuous.* The mutant is: with the fix in place, stop
++   the widened catch from deciding the answer, so the `Error` falls through to the pending `:286` save
++   timeout. What was claimed next — that the `assertFalse` then kills it while every other assertion
++   passes — **was false**. The reviewer found why: the case never advances `rt.clock()`, and `FakeTimer`
++   fires only on `advance`, so under that mutant the answer stays pending for ever, `settled(ack)` fails
++   first with "still pending" after a real-time wait, and the `assertFalse` is never reached. No
++   realistic mutant reached it at all: a catch that answered with the timeout text would already fail
++   `contains(LINKAGE)` one line above.
++
++   The fix is one line in the case, `rt.clock().advance(SAVE_TIMEOUT)` before `settled(ack)`. Under a
++   correct implementation the timeout is already cancelled, so it changes nothing; under the mutant the
++   timeout fires and the case reaches its assertions instead of hanging.
++
++   **Measured 2026-11-14, and it settles this against what I wrote twice.** The verifier ran the mutant
++   (M9: `saved = Promise.<String>promise().future()`). The case failed — but on
++   `assertTrue(nack.reason().contains(LINKAGE), "names the cause: ...")` at `:2009`, one line **above**
++   the `assertFalse`, with `names the cause: durable save timed out after PT2S ==> expected: <true> but
++   was: <false>`. So **the `assertFalse` is not the killer and cannot be**: for this fixture the reason is
++   either the cause's message or the timeout text, never both, so `contains(LINKAGE)` always fires first.
++   I claimed the `assertFalse` was load-bearing twice and the measurement says it is not.
++
++   It stays, as a **documenting assertion**: its message states why a timeout text there would be a false
++   record, which is the point the finding turns on, and it would bite if a future fixture used a
++   throwable with a null message. It is not counted as acceptance. The clock advance earned its place
++   anyway, and not for the reason I gave: without it the case hangs instead of failing — the verifier saw
++   exactly that in the sibling case `anIntakeThatFailsOrThrowsIsARetryableNackAndReleasesThePermit[2]`,
++   which has no advance and timed out after 10 s under M9.
+ 
+ `SequentialIntakeTest` deliberately has no such assertion: it calls `save` directly and gets a failed
+ future, with no NACK and no reason text. Its two sites reach the assertion anyway, because the
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 1aafcb0..4330f90 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -62,7 +62,7 @@ ARCHITECTURE.md changelog instead.
+ | D-053 | 2026-10-20 | Turn economy of the autonomous session (docs/WORKFLOW.md §10): the architect waits for a single subagent in the foreground; a batch under review is marked by `target/.batch-in-review` (touched on hand-off to the reviewer, removed by the commit command); the environment's Stop hook is fronted by `.claude/hooks/stop-hook-git-check.gated.sh` (silent while the marker exists or on a dirty `claude/*` branch, one reminder per 30 minutes, then the original hook), installed by a `startup\|resume` SessionStart hook in `.claude/settings.json` because the environment manager rewrites the hook at every container start; the writer agents carry a self-check list mirroring the reviewer memory; fix packets name file, line, evidence and sentence. Changes under `.claude/` are committed by the owner from `agent/patches/`. Reversible. | Measured on 2026-10-20 over the 2026-10-19 session: 119 architect turns answered the Stop hook's "uncommitted changes" reminder while a batch was mid-flight and 131 only relayed a background subagent's completion, against 41 owner turns — every one priced over the whole context on the most expensive model. FIX-6 needed four review FAILs; the last one repeated a lesson already in the reviewer's memory (a baseline drop beyond the band in the task's own new code is a FAIL, D-050) that never reached the author. The sister project iflow-forge measured and fixed the same on 2026-10-20 (its D-024). [Amended by D-093: the marker is `agent/work/.batch-in-review`.] |
+ | D-054 | 2026-10-26 | Architect on Opus 5.5, effort by task class, superseding the model lines of D-007 and D-048 (owner's decision): the main session runs `claude-opus-5-5` at `medium` (`.claude/settings.json` `model` + `modelSettings`, because Opus 5.5 ignores a plain `effortLevel`; pick Opus 5.5 at session start too, since whether the cloud picker overrides the repo key is not documented). Every BACKLOG row carries a class — A mechanical, B standard, C hard path, G gate — that sets `model` and `effort` per call (AGENTS.md matrix: A sonnet/medium writers and opus/medium reviewer, B opus/high, C opus/xhigh); a new read-only **designer** (Opus 5.5, xhigh) drafts class-C design (public types, schemas, findings, expensive-to-reverse decisions, the spec rewrite after a second FAIL) in its own small context and the architect approves it; a second FAIL raises the class. Gate-reviewer stays on Fable 5.1 high: it runs once per phase, and a model other than the one that wrote and reviewed the phase catches its blind spots. `CLAUDE_CODE_EFFORT_LEVEL` must stay unset (it overrides per-call effort, which needs Claude Code ≥ 2.1.292). Changes under `.claude/` are in `agent/patches/opus-architect-claude.patch` for the owner (D-053). Reversible: re-measure turns and tokens per task after five tasks against the 2026-10-19 session; more review FAILs on spec grounds → architect to `high`. | The Fable architect consumed most of the session's tokens: every architect turn is priced over the whole context, and Fable costs 2.5× Opus 5.5 per token (D-048). Deep reasoning belongs where the context is small — a fresh designer or writer — not in the long-lived architect context. |
+ | D-055 | 2026-10-26 | Worker driver, lease and attempts (P1-08b), draft — review at hand-over; supersedes in part D-049 (c) ("any other failure leaves the item to its lease", unbounded). **Lease renewed while the item runs**, not derived: `WorkQueue.Item` gains `int attempts` (claims so far, this one included), incremented by `claim` and `completeAndTakeNext`, and used as the fencing token; `renew(seq, attempts, lease)` → `Future<Boolean>` extends `locked_until` only while the row exists, is not held and its attempts are unchanged (an expired lease nobody re-claimed is revived); `hold(seq, attempts)` (fenced) marks the row held — never claimed again, still the oldest row of its key, so it blocks its key (§4 EOIO block-on-failure) and waits for a human (an admin route in P1-09; SQL until then). Migration `V4__work_attempts.sql` adds `attempts int not null default 0` and `held_at timestamptz`; CLAIM increments and returns attempts, ELIGIBLE excludes held rows while the key check still counts them; `InMemoryWorkQueue` mirrors it. **Policy**: core record `WorkerPolicy(Duration lease, int maxAttempts, Duration pollInterval)`, `DEFAULT` (30 s, 5, 1 s; all positive, `maxAttempts ≥ 1`; numbers to be measured in P1-10), `FlowBuilder.worker(flow, baseDir, workerId, WorkerPolicy)` overload, the old call uses `DEFAULT`; `FlowWorker.LEASE` deleted; no flow-schema keys yet (adding is additive). **Renewal**: per running item a one-shot timer every lease/3 on the injected `Timer`; true → reschedule, false → WARNING "lease lost" and stop, failed future → WARNING and reschedule; cancelled when the run ends. **Driver**: at most one `claim` in flight per worker, asking for `max − running` (running = claimed and unfinished across rounds); a `poll()` requested while a claim is in flight returns the future of one shared follow-up round that starts once when the claim returns; triggers — `start()` ticks every `pollInterval`, `stop()` cancels the tick and starts no new round (running items finish and keep renewing), `pollingAfterAccept(handler)` polls on `Ack.Accepted` only, and each finished item polls once (a backlog drains without waiting for ticks); a trigger's failure is logged, never thrown on the event loop. A claim returning a seq this worker already runs starts no second run. **Attempts bound**: an item claimed with `attempts > maxAttempts` is not run: the ingress envelope is rebuilt and parked at step 1 with `AttemptsExhaustedException` through `Parking.park(Envelope, StepConfig, Throwable)`; park OK → complete; park or the timeline read failing → `hold` + an ERROR log line (message id, flow, attempts, cause) — the held row is the durable alert, never an endless retry; a ghost (no ingress snapshot) is completed with a WARNING as before. `complete` stays unfenced (an old holder deleting a new holder's row after its own outcome loses nothing; fencing lands with the ordered queues, P2-01) [superseded by D-074]. Gap kept open, not closed here: worker runs are bounded by the request count per worker, not by the flow's byte budget (FIX-19). | Review P1-08: the 30 s `LEASE` equals the http producer's 30 s `timeoutMs`, so a slow healthy message is claimed and sent twice at once; a lease derived from `timeoutMs` is impossible without reading an opaque component option from core and still has no bound on run time (several `to` steps, split, retry); cancelling at a deadline kills slow healthy messages; attempts counted in memory are lost on restart and a kill -9 / OOM loop never counts; completing at the bound with the DLQ down drops a message the sender holds a 202 for. Designer draft 2026-10-26. |
+-| D-056 | 2026-10-26 | Stop and cancel of a consumer mid-delivery (P1-08c), draft — review at hand-over; closes D-049 (g). **Split**: the component's `stop()` only drains, core `Delivery` owns the deadline and the cancel (D-046: the delivery modes decide the semantics); no api / SPI change — a cancel reaches every component as `Ack.Nack(reason, retryable = true)`, which http already answers 503 + `retry-after`. **`Delivery.stop(Duration deadline)`** → `Future<Void>` (null or negative refused; zero cancels at once; a second call returns the same future): from the call on `apply` answers `Nack("flow <f> is stopping", true)` before admission; in-flight deliveries (registered after the permit, removed when their answer is decided) complete normally until the deadline on the injected `Timer`; at the deadline a sync delivery's thread (the message's virtual thread, D-049 b) is interrupted — scopes opened on it cancel their children (D-038), `await` and `Retry` wake — and a pipeline failing after that answers `Nack("cancelled: flow stopping after <D>", true)` whatever its fault kind, while a pipeline that still returns keeps its `Reply` (a real answer beats a retry); Delivery clears the interrupt it caused before returning; an at-least-once answer still pending is `tryComplete`d with the retryable Nack (a late save enqueues nothing, D-049 b) and one already `Accepted` keeps its 202; at-most-once runs are interrupted and their failure logged and dropped as today; `stop()` completes when no delivery is in flight and cancels its deadline timer; the permit is released once on every path; the sync catch widens to `Exception` (an `await` may throw `InterruptedException` sneakily). `Recorder` records a failure snapshot for a checked (sneaky) throwable too, so a cancelled step is visible (monitoring is the product). The deadline is the caller's: the P1-09 deploy wiring holds it (no flow-schema key now; additive later). `FlowWorker.stop()` never cancels (D-055: its items are durable and leases re-run them). **http** `HttpConsumer.stop()`: health DOWN at once, new and late-completing requests answered 503 + `retry-after` without calling the handler, then `HttpServer.shutdown(Duration)` (javap on vertx-core 5.1.10: `shutdown()`, `shutdown(long, TimeUnit)`, `shutdown(Duration)`, `close()`) with the endpoint option `shutdownTimeoutMs` (default 30 000, finite, positive) as the transport backstop; the handler-failure catch widens to `Exception` (500). **mock**: `stop()` unregisters the handler and completes once every outstanding handler future has completed. **Contract suite**: `stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender` and the "cancel" case `aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable`. No check of deadline vs `saveTimeout`. Known limit: a CPU-bound step (XSLT) delays the answer by its own run time; the http backstop force-closes after `shutdownTimeoutMs`. | Row P1-08c; D-046 left the semantics open; an api `Consumer.stop(Duration)` or a cancel token is an SPI change for what core can do behind the handler (Vert.x `Future` has no cancel); a deadline per consumer repeats racy logic in every component and cannot stop a late at-least-once enqueue; a sync pipeline as a `RequestScope` child costs one more virtual thread per message against §4. ARCHITECTURE §4 "a RequestScope wraps each message" is not yet true in production code (no per-delivery scope); the cancel here interrupts the message thread, which cancels any scope opened on it — the wrap itself stays open. Designer draft 2026-10-26. |
++| D-056 | 2026-10-26 | Stop and cancel of a consumer mid-delivery (P1-08c), draft — review at hand-over; closes D-049 (g). **Split**: the component's `stop()` only drains, core `Delivery` owns the deadline and the cancel (D-046: the delivery modes decide the semantics); no api / SPI change — a cancel reaches every component as `Ack.Nack(reason, retryable = true)`, which http already answers 503 + `retry-after`. **`Delivery.stop(Duration deadline)`** → `Future<Void>` (null or negative refused; zero cancels at once; a second call returns the same future): from the call on `apply` answers `Nack("flow <f> is stopping", true)` before admission; in-flight deliveries (registered after the permit, removed when their answer is decided) complete normally until the deadline on the injected `Timer`; at the deadline a sync delivery's thread (the message's virtual thread, D-049 b) is interrupted — scopes opened on it cancel their children (D-038), `await` and `Retry` wake — and a pipeline failing after that answers `Nack("cancelled: flow stopping after <D>", true)` whatever its fault kind, while a pipeline that still returns keeps its `Reply` (a real answer beats a retry); Delivery clears the interrupt it caused before returning; an at-least-once answer still pending is `tryComplete`d with the retryable Nack (a late save enqueues nothing, D-049 b) and one already `Accepted` keeps its 202; at-most-once runs are interrupted and their failure logged and dropped as today; `stop()` completes when no delivery is in flight and cancels its deadline timer; the permit is released once on every path; the sync catch widens to `Exception` (an `await` may throw `InterruptedException` sneakily). `Recorder` records a failure snapshot for a checked (sneaky) throwable too, so a cancelled step is visible (monitoring is the product). The deadline is the caller's: the P1-09 deploy wiring holds it (no flow-schema key now; additive later). `FlowWorker.stop()` never cancels (D-055: its items are durable and leases re-run them). **http** `HttpConsumer.stop()`: health DOWN at once, new and late-completing requests answered 503 + `retry-after` without calling the handler, then `HttpServer.shutdown(Duration)` (javap on vertx-core 5.1.10: `shutdown()`, `shutdown(long, TimeUnit)`, `shutdown(Duration)`, `close()`) with the endpoint option `shutdownTimeoutMs` (default 30 000, finite, positive) as the transport backstop; the handler-failure catch widens to `Exception` (500). **mock**: `stop()` unregisters the handler and completes once every outstanding handler future has completed. **Contract suite**: `stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender` and the "cancel" case `aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable`. No check of deadline vs `saveTimeout`. Known limit: a CPU-bound step (XSLT) delays the answer by its own run time; the http backstop force-closes after `shutdownTimeoutMs`. **AMENDED 2026-11-14 by FIX-136, not silently: the two catches this decision widened are widened again.** D-056 widened `Delivery.java:176` (sync) and `:218` (at-most-once) from `RuntimeException` to `Exception`, for the sneaky `InterruptedException` an interrupted `await()` throws, and did NOT consider `Error`. Both are now `Throwable`, and `landAfter`'s parameter at `:227` with them, because the widened local would not otherwise compile. A `RuntimeException \| Error` multicatch was REFUSED at these two sites: it would stop catching the sneaky checked throwable this decision exists for, which is a regression - the verifier measured it, mutant M7, killed by six cases all failing with "apply threw instead of answering". What changes: sync now returns a FAILED FUTURE for an `Error` instead of throwing out of `apply` (and, if a stop deadline cancelled the flight, the cancel NACK); at-most-once now logs one WARNING naming the message with the `Error` attached, instead of leaving it uncaught on the message's own virtual thread where only the thread's default handler would see it. The permit already returned on both paths via their own `finally`, and still does, exactly once. D-056's own semantics are untouched - this is about which throwables reach its catches. F-30 is the finding. | Row P1-08c; D-046 left the semantics open; an api `Consumer.stop(Duration)` or a cancel token is an SPI change for what core can do behind the handler (Vert.x `Future` has no cancel); a deadline per consumer repeats racy logic in every component and cannot stop a late at-least-once enqueue; a sync pipeline as a `RequestScope` child costs one more virtual thread per message against §4. ARCHITECTURE §4 "a RequestScope wraps each message" is not yet true in production code (no per-delivery scope); the cancel here interrupts the message thread, which cancels any scope opened on it — the wrap itself stays open. Designer draft 2026-10-26. |
+ | D-057 | 2026-10-26 | Runtime admin API, node and deploy (P1-09, split into P1-09a/b/c), draft — review at hand-over. **Paging (a)**: core `record Page<T>(List<T> items, Optional<String> next)`, `MAX_LIMIT` 500, default 50; `MessageStore.findByKey(name, value, Optional<String> after, int limit)` and `Dlq.list(after, limit)` replace the unbounded methods (all call sites migrated in the same commit); the cursor is opaque base64url owned by each store (Pg keys: `seq`; Pg DLQ: `parked_at` µs + id; in-memory: insertion index for keys, parkedAt + id for the DLQ so a removal before the cursor skips nothing); limit+1 fetch; a garbled cursor or a limit outside 1..500 → `IllegalArgumentException` → 400. `V5__admin_paging.sql`: `message_keys.seq bigint generated always as identity`, duplicates (name, value, message_id) deleted keeping the lowest seq, unique (name, value, message_id), index (name, value, seq), partial index `work(seq) where held_at is not null`; inserts de-duplicated, sorted (D-044 deadlock rule), `on conflict do nothing`; key search is in insertion (`seq`) order. **Admin server (a)**: `runtime.admin.AdminServer` on vertx-web `Router` (managed 5.1.10, EPL-2.0/Apache-2.0; signatures by javap); the verticle owns the socket, every route body runs on a fresh virtual thread and answers on the context; binds 127.0.0.1:8081 by default; `/admin/**` needs `Authorization: Bearer $FLOTTILA_ADMIN_TOKEN` (`MessageDigest.isEqual`), a non-loopback bind without a token refuses to start; `/health` open, status only. Routes: `GET /health` 200/503 `{status, checks, snapshotWriteFailures}`; `GET /admin/messages/{id}` `{id, flow, steps:[{step, name, outcome, error, startedAt, wallNanos, cpuNanos\|null, headers, props, keys, body:{hash, size, kept}, versions}]}` or 404; `GET /admin/messages/{id}/steps/{n}/body` streams the payload (content-type from the snapshot, else octet-stream; 404 names unknown vs metadata-only); `GET /admin/messages?key=name:value` (split at the first colon) and `GET /admin/dlq` → `{items, next\|null}` with `limit`/`after`; every error body `{error}`. **Node and deploy (b)**: `runtime.Node.start(NodeConfig, Vertx, components, steps, languages)` / `close()`; `NodeConfig.from(env)` (FLOTTILA_NODE_ID, FLOTTILA_ENV, FLOTTILA_ADMIN_HOST/PORT/TOKEN, FLOTTILA_DATA_DIR, FLOTTILA_STOP_DEADLINE default 10 s, FLOTTILA_MAX_PACKAGE_BYTES default 64 MiB, Postgres and blob settings); `runtime.Main` wires http, xslt, xsd and xpath explicitly (no ServiceLoader: components need `Vertx`, which api may not name — the `Component` javadoc is corrected); a deployed environment (FLOTTILA_ENV not dev/test) refuses an endpoint with the `mock` scheme at deploy. `PUT /admin/packages/{name}?revision=<sha>` with an application/zip body (≤ max bytes → else 413, ≤ 10 000 entries and ≤ 4× max uncompressed → else 400, zip-slip → 400, nothing written), unpacked to `<dataDir>/packages/<name>/<sha256>/` (current + previous kept); validated whole (package, schemas, cross-check, endpoint options against `configSchema()`, every flow's `delivery`, `worker`, `replay` built) before anything stops: failure → 422 `{error, problems}` with the old version untouched, a flow id owned by another package → 409; swap per flow: `worker.stop()`, `Future.all(delivery.stop(D), consumer.stop())`, new consumer over `worker.pollingAfterAccept(delivery)` started, `worker.start()`; a failed start rebuilds the old version and answers 500; one deploy at a time; versions gain `package=<name>@<version>` and `revision`; deployed state in memory (`GET /admin/flows`); at-least-once items accepted under v1 run on v2 (documented). Contract case: a handler runs on a virtual thread of its own per delivery (mock and RecordingComponent change; the deadline interrupt then never reaches a sender's thread). `Node.close` stops flows in parallel, then the admin server, the store flush, the pool and Vert.x. **Write routes and restore (c)**: `POST /admin/messages/{id}/replay?from=n` and `POST /admin/dlq/{id}/retry` → 200 `{id, replayOf, from, outcome}`, 502 with the same body on FAILED/PARKED, 400 step out of range, 404 unknown, 409 flow not deployed or step unrecorded/metadata-only [amended by D-067 at P1-09c2: an unrecorded or metadata-only step, a step beyond the redeployed flow or a body above the budget is 422; 409 = flow not RUNNING here or a retry of the id already running on this node; replay runs the version deployed now, F-11]; replay and retry take a permit from the flow's own `Admission` (refused → 429 + retry-after) — closing the P1-05 bypass rather than a node-wide bound; `Replay.from(id, n, replayId)` / `retry(id, replayId)` overloads. `WorkQueue.held(after, limit)` and `release(seq)` (clears `held_at` and the lease, keeps attempts — the next claim parks the item, then DLQ retry); `GET /admin/work/held`, `POST /admin/work/{seq}/release` (200/404). `V6__deployments.sql` keeps each package's archive, revision and sha256; node start restores every row; a failed restore is logged, the flow listed FAILED and `/health` DOWN naming it [amended by D-070 at P1-09c3b: the V7 row holds only the record (package, version, revision, archive sha256, deployed_at); the archive is stored once in S3 by sha256 and fetched and verified at restore, never a bytea; a package refused whole at restore is a FAILED package and /health names it in detail only]. **Amendment 2026-10-26 (P1-09b design, designer draft, architect):** (b) splits into P1-09b (node: `NodeConfig.from(env)`, `Node.start(config, vertx, Function<ComponentContext, List<Component>>, steps, languages)` — a factory because components need the node's BlobStore — `Node.close` stops flows, admin, store, pool and leaves Vert.x to its caller; `Main`; ArchUnit rules of F-4; the per-delivery handler-thread contract case) and P1-09d (deploy: `Deployments`, `PUT /admin/packages/{name}`, `GET /admin/flows`, swap of F-5; AdminServer gains an optional `Deployments` parameter). A deployed environment is any FLOTTILA_ENV except `dev` and `ci` (§11: test is deployed); a mock is refused by scheme and by the component's package. `revision` is optional. Removing an at-least-once flow that still has queued items is refused (422). A second deploy while one runs → 409 (no queue). The demo package's partner URL moves off 8081 (the admin default). Moved out: building the replay → P1-09c; closing a replaced version's producers → P1-09e; `StepFactory.configSchema` at deploy → P1-09f; a listener shared across packages → P1-09g; S3 tier env → P2-05. FIX-17 is not a redeploy hazard: each version builds from its own `<sha256>` directory. | Row P1-09 (raised to C, split 2026-10-26); GATE checks 1, 2, 6, 7, 9; D-044 and D-045 deferred paging and the key sequence here; D-055 left the held-row release to an admin route; D-056 left the stop deadline to the deploy wiring. Rejected: hand-rolled routing on vertx-core; ServiceLoader (api cannot name `Vertx`; a runtime SPI breaks the component → api rule); a separate node module; key paging by `group by`; visible offsets; deploy by host path; deployed state only in memory (kill -9 leaves at-least-once work until a human redeploys); release resetting attempts; a node-wide replay bound (bypasses the per-flow semaphore). Designer draft 2026-10-26. |
+ | D-058 | 2026-10-26 | Durable at-least-once bodies and the deploy split, draft — review at hand-over. api `Future<Void> BlobStore.persist(BlobKey)` completes once the bytes outlive the process and every node can read them (`BodyTooLargeException` above the bound). `Delivery.atLeastOnce` saves `Future.all(persist(body key), record(ingress))`, then enqueues, under the save timeout; a failed persist is a retryable Nack, nothing enqueued. `TieredBlobStore` gains a Postgres tier: `V6__bodies.sql` `bodies(message_id text, step int, part text, bytes bytea not null, primary key(message_id, step, part))`, insert `on conflict do nothing`, then the memory budget is released and any spool copy evicted off the hot path; an index miss reads by key. `FLOTTILA_BLOB_DURABLE_MAX` default 1 MiB; a deploy refuses an at-least-once flow whose `maxBodyBytes` exceeds it (422, every environment) until S3 (P2-05). P1-09c's deployments migration becomes V7. Deploy split: P1-09d1 archive, validation, first deploy, flows list, versions, close drain; P1-09d2 swap, deadline, rollback, add/remove (queued-items 422 via `WorkQueue.hasItems(flow)`, post-stop re-check logs a WARNING), pruning; P1-09d3 `Main` stopper refactor and the process-level test (separate JVM, JaCoCo agent). | F-6; P1-09b review (spool key per start, heap index, shared queue). Rejected: persisting the spool key and index (bytes node-local, the queue shared; KMS open, D-041); S3 pulled forward (a service on the gate path, a PUT per ACK against 5 ms p99); refusing at-least-once flows outright (GATE checks 4, 5 and the kill -9 ledger need them); bytes in `payloads.body` (content-hash keyed). Designer draft 2026-10-26. |
+ | D-059 | 2026-10-26 | Deploy, first version (P1-09d1, split into d1a validation blocks and d1b Deployments/admin/Node), draft — review at hand-over. The packet is agent/packets/P1-09d1.md. **API**: `PUT /admin/packages/{name}?revision=` answers 200 `{package, version, revision, archive:"sha256:<hex>", flows}`. Refusals are 400 (name, revision, zip: not a zip, >10 000 entries, >4×max uncompressed, absolute/duplicate/escaping entry), 403 in a deployed env (§9: manual deploy is non-production only; the control plane deploys production), 409 (a deploy is running, the package is already deployed until P1-09d2, or a flow id belongs to another package), 413 (Content-Length or streamed bytes above max, file deleted), 422 `{error, problems}` with every problem, 500 when a flow fails to start (the package's flows stopped, its dir deleted), and 503 while closing. `GET /admin/flows` → `{items:[{id, package, packageVersion, revision, flowVersion, delivery}]}`, sorted, not paged. **Layout**: `<dataDir>/packages/<name>/<sha256>/` via ATOMIC_MOVE from `.incoming`; `package.yaml` at the archive root. **Versions**: snapshots and DLQ rows carry `package=<name>@<version>` and `revision` only when given (core `FlowBuilder.versions`, a `flow` key refused). **Consumer options**: the deploy sets `flow` and `maxBodyBytes` on every `in` endpoint; a package that sets them itself is 422. **Bound**: an at-least-once flow with max body above `FLOTTILA_BLOB_DURABLE_MAX` (1 B..64 MiB, default 1 MiB) is 422 from d1 (D-058); P1-09h makes the bytes under it durable. `dependencies` are refused until package.lock exists. **Close**: `Node.close` runs `Deployments.close` first, which refuses deploys, then stops workers and drains delivery and consumer within the stop deadline. Deployed state stays in memory until P1-09c (F-5). |
+diff --git a/docs/findings/F-30.md b/docs/findings/F-30.md
+index af455eb..2a1b1a8 100644
+--- a/docs/findings/F-30.md
++++ b/docs/findings/F-30.md
+@@ -121,10 +121,22 @@ thing this platform exists to sell.
+ The row asked for these to be checked in the same pass.
+ 
+ - **`SequentialIntake.java:41` and `:47`** — `catch (RuntimeException failure)` around
+-  `body().store().persist(...)` and around `store.record(ingress)`. These are **the same path**: they
+-  sit inside the `intake.save` that `Delivery:319` calls, so a throwable escaping either one arrives at
+-  the narrow catch above and escapes with it. They must be widened in the same task, or widening
+-  `Delivery:319` alone leaves the hole open one frame deeper.
++  `body().store().persist(...)` and around `store.record(ingress)`. They sit inside the `intake.save`
++  that `Delivery:319` calls, so under **today's** narrow catch a throwable escaping either one reaches
++  that catch and escapes with it.
++
++  *(Corrected 2026-11-14, fourth correction, by FIX-136's reviewer.)* What stood here next was that
++  widening `Delivery:319` alone "leaves the hole open one frame deeper". **That is wrong**, and it was
++  the premise the packet and the task were built on. Once `:319` is widened it catches a throwable out
++  of `SequentialIntake` whatever `SequentialIntake` itself did, so the hole is closed from above. The
++  reviewer demonstrated it: with only `:319` widened, every `Site`-parameterised `DeliveryTest` case goes
++  green, and only the two `SequentialIntakeTest` cases still fail.
++
++  `:41` and `:47` are still worth widening, but for a different and smaller reason: **`Intake.save`'s own
++  contract**, which its class javadoc states — a store that throws "is the same failed save". An
++  implementation that lets a throwable escape `save` breaks that contract whether or not a caller happens
++  to catch it, and a future `Intake` with no `Delivery` above it would have no net. Any comment on those
++  two catches must give that reason and not the one corrected here.
+ - **`Producers.java:49`** — `catch (RuntimeException thrown)` around `p.close()` in the close loop. A
+   different path and a different consequence: an `Error` from one producer's `close()` abandons the
+   loop, so the remaining producers are never asked to close and their futures never join `settled`.
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/Delivery.java b/flottila-core/src/main/java/io/flottila/core/flow/Delivery.java
+index 7cac02c..15a6242 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/Delivery.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/Delivery.java
+@@ -169,11 +169,14 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
+             public Future<Ack> deliver(Envelope e, Flight flight) {
+                 Trail trail = new Trail(List.of());
+                 Envelope reply = null;
+-                Exception failure = null;
++                Throwable failure = null;
+                 Ack.Nack cancel;
+                 try {
+                     reply = trail.apply(pipeline, e);
+-                } catch (Exception thrown) {   // an interrupted await throws InterruptedException, sneakily
++                } catch (Throwable thrown) {
++                    // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: a failed
++                    // future, never a throw out of apply (D-049 d); the finally below still runs; D-111 rethrow discipline does not
++                    // apply, the caller is a future
+                     failure = thrown;
+                 } finally {
+                     cancel = flight.leave();
+@@ -212,10 +215,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
+ 
+             private void run(Envelope e, Flight flight) {
+                 Trail trail = new Trail(List.of());
+-                Exception dropped = null;
++                Throwable dropped = null;
+                 try {
+                     trail.apply(pipeline, e);
+-                } catch (Exception failure) {   // an interrupted await throws InterruptedException, sneakily
++                } catch (Throwable failure) {   // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: logged and dropped (D-049 b), not uncaught on the message's thread
+                     dropped = failure;
+                 } finally {
+                     flight.leave();
+@@ -224,7 +227,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
+             }
+ 
+             /** The run is over once its trail closed: the permit is back before anything is logged. */
+-            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Exception dropped) {
++            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Throwable dropped) {
+                 closed.onComplete(done -> {
+                     flight.land();
+                     if (dropped != null) {
+@@ -317,7 +320,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
+                 Future<String> saved;
+                 try {
+                     saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
+-                } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
++                } catch (Throwable failure) {
++                    // an intake that throws instead of failing its future, an Error or a sneaky checked throwable too (F-30, D-049 d): the
++                    // same failed save, never a throw out of apply; a translation to a future, so D-111's rethrow does not apply; the
++                    // sneaky checked throwable is pinned by DeliveryTest.aSneakyCheckedThrowableFromTheIntakeIsARetryableNackNotAnExceptionOutOfApply
+                     saved = Future.failedFuture(failure);
+                 }
+                 saved.onComplete(done -> {
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/SequentialIntake.java b/flottila-core/src/main/java/io/flottila/core/flow/SequentialIntake.java
+index 4594e59..c2a46dd 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/SequentialIntake.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/SequentialIntake.java
+@@ -38,13 +38,19 @@ public final class SequentialIntake implements Intake {
+         Future<Void> persist;
+         try {
+             persist = arrived.body().store().persist(arrived.body().key());
+-        } catch (RuntimeException failure) {   // a blob store that throws instead of failing its future: the same failed save
++        } catch (Throwable failure) {
++            // this class's javadoc: "a store that throws instead of failing its future is the same
++            // failed save"; it holds with no Delivery above it, so an Error and a sneaky checked throwable are taken too; pinned by
++            // SequentialIntakeTest.aSneakyCheckedThrowableFromTheBodyPersistIsAFailedSaveNotAnEscape
+             persist = Future.failedFuture(failure);
+         }
+         Future<Void> record;
+         try {
+             record = store.record(ingress);
+-        } catch (RuntimeException failure) {   // a store that throws instead of failing its future: the same failed save
++        } catch (Throwable failure) {
++            // this class's javadoc: "a store that throws instead of failing its future is the same
++            // failed save"; it holds with no Delivery above it, so an Error and a sneaky checked throwable are taken too; pinned by
++            // SequentialIntakeTest.aSneakyCheckedThrowableFromTheIngressRecordIsAFailedSaveNotAnEscape
+             record = Future.failedFuture(failure);
+         }
+         // the first failure decides at once, without waiting for the other save
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/DeliveryTest.java b/flottila-core/src/test/java/io/flottila/core/flow/DeliveryTest.java
+index c46f13e..43722c2 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/DeliveryTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/DeliveryTest.java
+@@ -2,6 +2,7 @@ package io.flottila.core.flow;
+ 
+ import io.flottila.api.Ack;
+ import io.flottila.api.BlobKey;
++import io.flottila.api.BlobStore;
+ import io.flottila.api.Body;
+ import io.flottila.api.EndpointConfig;
+ import io.flottila.api.Envelope;
+@@ -9,6 +10,7 @@ import io.flottila.api.Fault;
+ import io.flottila.api.Headers;
+ import io.flottila.api.Key;
+ import io.flottila.api.NackException;
++import io.flottila.api.Pipeline;
+ import io.flottila.api.Stage;
+ import io.flottila.api.StepConfig;
+ import io.flottila.api.StepFactory;
+@@ -38,10 +40,13 @@ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.Timeout;
+ import org.junit.jupiter.params.ParameterizedTest;
+ import org.junit.jupiter.params.provider.Arguments;
++import org.junit.jupiter.params.provider.EnumSource;
+ import org.junit.jupiter.params.provider.MethodSource;
+ import org.junit.jupiter.params.provider.ValueSource;
+ 
+ import java.io.IOException;
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Proxy;
+ import java.net.URI;
+ import java.nio.file.Path;
+ import java.time.Duration;
+@@ -53,6 +58,7 @@ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.concurrent.CopyOnWriteArrayList;
+ import java.util.concurrent.CountDownLatch;
+ import java.util.concurrent.ExecutionException;
+@@ -61,6 +67,7 @@ import java.util.concurrent.TimeoutException;
+ import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.concurrent.atomic.AtomicReference;
+ import java.util.function.BooleanSupplier;
++import java.util.function.Function;
+ import java.util.function.Supplier;
+ import java.util.stream.Stream;
+ 
+@@ -69,6 +76,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+ import static org.junit.jupiter.api.Assertions.assertNotNull;
++import static org.junit.jupiter.api.Assertions.assertNull;
+ import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertThrows;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+@@ -1525,16 +1533,42 @@ class DeliveryTest {
+ 
+         final List<Save> saves = new CopyOnWriteArrayList<>();
+         private final AtomicReference<RuntimeException> throwNext = new AtomicReference<>();
++        private volatile Error throwAlways;
++        private volatile Throwable throwSneakily;
++        private volatile Runnable onSave = () -> { };
+ 
+         @Override
+         public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+             Promise<String> answer = Promise.promise();
+             saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, abandoned, answer));
++            onSave.run();
+             RuntimeException thrown = throwNext.getAndSet(null);
+             if (thrown != null) throw thrown;
++            Error error = throwAlways;
++            if (error != null) throw error;
++            Throwable checked = throwSneakily;
++            if (checked != null) throw HeldPipeline.sneaky(checked);
+             return answer.future();
+         }
+ 
++        /** FIX-136: every save throws {@code error} (an {@link Error}, not a {@link RuntimeException}) instead of returning a future. */
++        HeldIntake throwing(Error error) {
++            throwAlways = error;
++            return this;
++        }
++
++        /** FIX-136: every save throws {@code checked}, a checked throwable this method declares none of, as a blocked {@code Future.await()} does. */
++        HeldIntake throwingSneakily(Throwable checked) {
++            throwSneakily = checked;
++            return this;
++        }
++
++        /** FIX-136: {@code seen} runs inside every save call, before it answers or throws — what the delivery holds at that moment. */
++        HeldIntake seeing(Runnable seen) {
++            onSave = seen;
++            return this;
++        }
++
+         HeldIntake throwNext(RuntimeException failure) {
+             throwNext.set(failure);
+             return this;
+@@ -1875,4 +1909,298 @@ class DeliveryTest {
+         assertSame(notOurs, a.ack().cause(), "the pipeline's InterruptedException, as thrown");
+         assertFalse(a.interruptedAfter(), "the delivery does not set a flag the pipeline left clear");
+     }
++
++    // --- FIX-136 (F-30, D-049 d): an Error is an answer, never an exception out of apply — in every mode, and for at-least-once
++    // it must also give the permit back and let stop() complete. The expectations are literals (1 request, ORDER's byte count,
++    // 0, a Nack naming the Error's message); nothing here is computed by the code under test.
++
++    static final String LINKAGE = "linkage broken by the test";
++
++    /** The at-least-once save timeout of the FIX-136 fixtures: a case that advances the fake clock by it fires whatever timeout is still pending. */
++    static final Duration SAVE_TIMEOUT = Duration.ofSeconds(2);
++
++    /** Where an at-least-once ingress save throws an {@link Error}: the intake itself, or one of the two stores inside {@link SequentialIntake}. */
++    enum Site { INTAKE, BODY_PERSIST, INGRESS_RECORD }
++
++    /**
++     * {@code delegate} as a {@code type} whose {@code method} throws {@code error} after running {@code atThrow}; every other call
++     * reaches {@code delegate}. A stand-in at the store boundary, never of the class under test.
++     */
++    static <T> T erroringOn(Class<T> type, T delegate, String method, Error error, Runnable atThrow) {
++        return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, (proxy, called, args) -> {
++            if (called.getName().equals(method)) {
++                atThrow.run();
++                throw error;
++            }
++            try {
++                return called.invoke(delegate, args);
++            } catch (InvocationTargetException thrown) {
++                throw thrown.getCause();
++            }
++        }));
++    }
++
++    /** What {@link #apply} did: the answer it returned, or the throwable that escaped it. Recorded, so a case can look at the permit either way. */
++    record Outcome(Future<Ack> ack, Throwable escaped) {
++        @Override public String toString() { return ack != null ? "answered " + ack : "escaped " + escaped; }
++    }
++
++    static Outcome tryApply(Delivery delivery, Envelope in) {
++        try {
++            return new Outcome(delivery.apply(in), null);
++        } catch (Throwable escaped) {
++            return new Outcome(null, escaped);
++        }
++    }
++
++    /**
++     * An at-least-once delivery of one permit (and {@code 1 << 20} bytes) whose ingress save throws {@code error}; {@code
++     * requestsAtThrow} and {@code bytesAtThrow} hold what the admission counted at each throw — the witness that the permit was taken.
++     */
++    record Subject(Delivery delivery, Admission admission, Supplier<Envelope> arrivals, List<Long> requestsAtThrow, List<Long> bytesAtThrow) {}
++
++    Envelope arrivalOver(BlobStore blobs) {
++        Envelope plain = ingressInOwnStore(ORDER);
++        Body written = plain.body();
++        return Envelope.ingress(plain.id(), "orders", plain.headers(), Body.of(blobs, written.key(), written.hash(), written.size()));
++    }
++
++    Subject erroringAtLeastOnce(Site site, Error error) {
++        Admission admission = new Admission(1, 1 << 20);
++        List<Long> requests = new CopyOnWriteArrayList<>();
++        List<Long> bytes = new CopyOnWriteArrayList<>();
++        Runnable seen = () -> {
++            requests.add(admission.inFlightRequests());
++            bytes.add(admission.inFlightBytes());
++        };
++        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
++        Function<Envelope, Snapshot> ingress = e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT);
++        Duration saveTimeout = SAVE_TIMEOUT;
++        return switch (site) {
++            case INTAKE -> {
++                HeldIntake intake = new HeldIntake().throwing(error).seeing(seen);
++                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, e -> Optional.empty(), e -> Optional.empty(), intake, rt.timer(), saveTimeout);
++                yield new Subject(delivery, admission, () -> ingressInOwnStore(ORDER), requests, bytes);
++            }
++            case BODY_PERSIST -> {
++                BlobStore erroring = erroringOn(BlobStore.class, own, "persist", error, seen);
++                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, store, queue, rt.timer(), saveTimeout);
++                yield new Subject(delivery, admission, () -> arrivalOver(erroring), requests, bytes);
++            }
++            case INGRESS_RECORD -> {
++                MessageStore erroring = erroringOn(MessageStore.class, store, "record", error, seen);
++                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, erroring, queue, rt.timer(), saveTimeout);
++                yield new Subject(delivery, admission, () -> ingressInOwnStore(ORDER), requests, bytes);
++            }
++        };
++    }
++
++    @ParameterizedTest(name = "an Error from {0}")
++    @EnumSource(Site.class)
++    void anErrorFromTheIngressSaveIsARetryableNackNotAnExceptionOutOfApply(Site site) {
++        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
++        Future<Ack> ack = assertDoesNotThrow(() -> s.delivery().apply(s.arrivals().get()), "an Error from the save is an answer, never an exception out of apply (D-049 d)");
++        // Under a correct fix the widened catch has already decided the answer and the save timeout is cancelled, so this advance is a
++        // no-op. Its only job is to let a WRONG implementation (an Error that fell through to the pending timeout) reach the
++        // assertFalse below with the timeout's Nack, instead of hanging in settled() on a fake timer that fires only on advance.
++        rt.clock().advance(SAVE_TIMEOUT);
++        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "a failed save is an answer, not a failed future: " + ack);
++        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
++        assertTrue(nack.reason().contains(LINKAGE), "names the cause: " + nack.reason());
++        // A timeout reported for an Error that never timed out is a false record, not just a wrong string: the sender and the
++        // monitoring would be told the save timed out while the Error itself is recorded nowhere. The reason is the Error's own message.
++        assertFalse(nack.reason().contains("durable save timed out"), "the save threw, it did not time out — a timeout text here is a false record: " + nack.reason());
++        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: the save really ran, with the permit taken");
++        assertEquals(0, queue.size(), "nothing queued");
++    }
++
++    /**
++     * FIX-136: the widened save catch is {@code Throwable}, so a sneaky checked throwable (what an intake blocking on {@code
++     * Future.await()} throws when a deadline interrupts it) is an answer too, not an exception out of {@code apply}. Discriminates on
++     * the throwable's kind only: an {@link IOException}, neither an {@link Error} nor a {@link RuntimeException}, where the
++     * LinkageError cases above throw an Error. Narrowing the catch to {@code RuntimeException | Error} lets it escape {@code apply}.
++     */
++    @Test
++    void aSneakyCheckedThrowableFromTheIntakeIsARetryableNackNotAnExceptionOutOfApply() {
++        String message = "socket closed under the save";
++        Admission admission = new Admission(1, 1 << 20);
++        List<Long> requests = new CopyOnWriteArrayList<>();
++        HeldIntake intake = new HeldIntake().throwingSneakily(new IOException(message)).seeing(() -> requests.add(admission.inFlightRequests()));
++        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
++        Delivery delivery = Delivery.atLeastOnce(admission, "orders", e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
++                e -> Optional.empty(), e -> Optional.empty(), intake, rt.timer(), SAVE_TIMEOUT);
++
++        Outcome outcome = tryApply(delivery, ingressInOwnStore(ORDER));
++        assertNull(outcome.escaped(), "a sneaky checked throwable from the save is an answer, never an exception out of apply: " + outcome);
++        assertEquals(List.of(1L), requests, "witness: the save really ran, with the permit taken: " + outcome);
++        rt.clock().advance(SAVE_TIMEOUT);   // a no-op when the throw decided the answer; lets a wrong implementation reach the assertions below
++        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(outcome.ack()).result(), "a failed save is an answer, not a failed future: " + outcome);
++        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
++        assertTrue(nack.reason().contains(message), "names the cause: " + nack.reason());
++        assertFalse(nack.reason().contains("durable save timed out"), "the save threw, it did not time out: " + nack.reason());
++        assertEquals(0, admission.inFlightRequests(), "the permit is back: " + outcome);
++        assertEquals(0, admission.inFlightBytes(), "its bytes too: " + outcome);
++        assertEquals(0, queue.size(), "nothing queued");
++    }
++
++    @ParameterizedTest(name = "an Error from {0}")
++    @EnumSource(Site.class)
++    void anErrorFromTheIngressSaveReturnsThePermit(Site site) {
++        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
++        Outcome first = tryApply(s.delivery(), s.arrivals().get());
++        // the trap: a counter never incremented also reads 0, so first show the permit was taken while the save ran
++        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: one request was in flight while the save ran: " + first);
++        assertEquals(List.of((long) ORDER.length()), s.bytesAtThrow(), "witness: its bytes were counted too: " + first);
++        assertEquals(0, s.admission().inFlightRequests(), "the permit is back once the save failed: " + first);
++        assertEquals(0, s.admission().inFlightBytes(), "and its bytes: " + first);
++        assertSame(s.admission(), s.delivery().admission(), "fixture: the admission the counters are read from is the delivery's own");
++
++        Outcome second = tryApply(s.delivery(), s.arrivals().get());
++        assertEquals(List.of(1L, 1L), s.requestsAtThrow(), "the next message is admitted — the one permit is free again — and reaches the save: " + second);
++        assertEquals(0, s.admission().inFlightRequests(), "and gives it back too: " + second);
++    }
++
++    @ParameterizedTest(name = "an Error from {0}")
++    @EnumSource(Site.class)
++    void stopCompletesAtOnceAfterAnErrorFromTheIngressSave(Site site) {
++        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
++        Outcome failed = tryApply(s.delivery(), s.arrivals().get());
++        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: a delivery was admitted and reached the save, so there was a flight to leave: " + failed);
++        Future<Void> stopped = s.delivery().stop(DEADLINE);
++        // no clock advance, no sleep: with nothing in flight stop is done when it returns; a flight that never landed holds it open
++        assertTrue(stopped.isComplete(), "nothing is in flight any more, so stop completes without the deadline: " + failed);
++        assertTrue(stopped.succeeded(), "stop: " + stopped);
++        assertEquals(0, rt.timer().pending(), "neither the save timeout nor the stop's deadline is left pending: " + failed);
++    }
++
++    /**
++     * The sync mode already answers every throwable by its {@code Exception} catch; since FIX-136 an {@link Error} is one too: a
++     * failed future carrying it, not an exception out of {@code apply} that the consumer cannot map to a reply.
++     */
++    @Test
++    void aSyncPipelineErrorFailsTheFutureNotTheCaller() {
++        LinkageError error = new LinkageError(LINKAGE);
++        Pipeline throwing = e -> { throw error; };
++        Delivery delivery = Delivery.sync(new Admission(1, 1 << 20), throwing, rt.timer());
++        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(ingress(ORDER)), "an Error from the pipeline is an answer, never an exception out of apply (D-049 d)");
++        assertTrue(ack.isComplete() && ack.failed(), "a failed future, like any step failure: " + ack);
++        assertSame(error, ack.cause(), "the Error as thrown");
++    }
++
++    /**
++     * A regression guard, not the fix: the sync run's {@code finally} already gives the permit back whatever the pipeline threw,
++     * an {@link Error} included, and this pins that it stays so. Green before FIX-136 by design.
++     */
++    @Test
++    void aSyncPipelineErrorKeepsReturningThePermit() {
++        Admission admission = new Admission(1, 1 << 20);
++        List<Long> requestsInFlight = new CopyOnWriteArrayList<>();
++        List<Long> bytesInFlight = new CopyOnWriteArrayList<>();
++        Pipeline throwing = e -> {
++            requestsInFlight.add(admission.inFlightRequests());
++            bytesInFlight.add(admission.inFlightBytes());
++            throw new LinkageError(LINKAGE);
++        };
++        Delivery delivery = Delivery.sync(admission, throwing, rt.timer());
++        Outcome first = tryApply(delivery, ingress(ORDER));
++        assertEquals(List.of(1L), requestsInFlight, "witness: the permit was taken while the pipeline ran: " + first);
++        assertEquals(List.of((long) ORDER.length()), bytesInFlight, "witness: its bytes too: " + first);
++        assertEquals(0, admission.inFlightRequests(), "the permit is back: " + first);
++        assertEquals(0, admission.inFlightBytes(), "its bytes are back: " + first);
++        Outcome second = tryApply(delivery, ingress(ORDER));
++        assertEquals(List.of(1L, 1L), requestsInFlight, "the next message is admitted: " + second);
++        assertEquals(0, admission.inFlightRequests(), "and gives it back: " + second);
++    }
++
++    /** The WARNING lines {@link Delivery}'s logger writes, kept with the latches the cases wait on (a bounded wait, never a sleep). */
++    static final class Lines implements AutoCloseable {
++        private final List<java.util.logging.LogRecord> records = new CopyOnWriteArrayList<>();
++        private final Map<String, CountDownLatch> naming = new ConcurrentHashMap<>();
++        private final java.util.logging.Logger jul = java.util.logging.Logger.getLogger(Delivery.class.getName());   // System.Logger delegates to it
++        private final java.util.logging.Handler handler = new java.util.logging.Handler() {
++            @Override public void publish(java.util.logging.LogRecord r) {
++                records.add(r);
++                String text = new java.util.logging.SimpleFormatter().formatMessage(r);
++                naming.forEach((id, latch) -> {
++                    if (text != null && text.contains(id)) latch.countDown();
++                });
++            }
++            @Override public void flush() { }
++            @Override public void close() { }
++        };
++
++        Lines() {
++            handler.setLevel(java.util.logging.Level.ALL);
++            jul.addHandler(handler);
++        }
++
++        /** Counts down once a line naming {@code id} is written. */
++        CountDownLatch awaiting(String id) {
++            return naming.computeIfAbsent(id, k -> new CountDownLatch(1));
++        }
++
++        List<java.util.logging.LogRecord> naming(String id) {
++            return records.stream().filter(r -> new java.util.logging.SimpleFormatter().formatMessage(r).contains(id)).toList();
++        }
++
++        @Override public void close() { jul.removeHandler(handler); }
++    }
++
++    /**
++     * D-049 b: an at-most-once failure is logged and dropped. An {@link Error} from the pipeline is that failure too: one WARNING
++     * naming the message and carrying the Error, not an uncaught throwable on the run's own virtual thread, which reaches stderr and
++     * no {@code System.Logger} line at all. The ordinary failure beside it proves the capture is not matching everything: each id
++     * has exactly its own line.
++     */
++    @Test
++    void anAtMostOnceErrorIsLoggedAndDroppedNamingTheMessage() throws InterruptedException {
++        Envelope ordinary = ingress(ORDER);
++        Envelope bad = ingress(ORDER);
++        LinkageError error = new LinkageError(LINKAGE);
++        IllegalStateException partnerDown = new IllegalStateException("partner down");
++        Pipeline pipeline = e -> {
++            if (e.id().equals(bad.id())) throw error;
++            throw partnerDown;
++        };
++        Delivery delivery = Delivery.atMostOnce(roomy(), pipeline, rt.timer());
++        try (Lines lines = new Lines()) {
++            CountDownLatch ordinaryLogged = lines.awaiting(ordinary.id());
++            CountDownLatch badLogged = lines.awaiting(bad.id());
++            assertEquals(new Ack.Accepted(ordinary.id()), delivery.apply(ordinary).await());
++            assertTrue(ordinaryLogged.await(3, TimeUnit.SECONDS), "witness: an ordinary failure writes a line naming " + ordinary.id());
++            assertEquals(new Ack.Accepted(bad.id()), delivery.apply(bad).await());
++            assertTrue(badLogged.await(3, TimeUnit.SECONDS), "a line naming " + bad.id() + " — the Error was logged and dropped, not left uncaught on its thread");
++
++            List<java.util.logging.LogRecord> ofBad = lines.naming(bad.id());
++            assertEquals(1, ofBad.size(), "exactly one line for the Error: " + ofBad.stream().map(java.util.logging.LogRecord::getMessage).toList());
++            assertEquals(java.util.logging.Level.WARNING, ofBad.get(0).getLevel());
++            assertTrue(ofBad.get(0).getMessage().contains("failed and is dropped"), ofBad.get(0).getMessage());
++            assertSame(error, ofBad.get(0).getThrown(), "the Error itself");
++            List<java.util.logging.LogRecord> ofOrdinary = lines.naming(ordinary.id());
++            assertEquals(1, ofOrdinary.size(), "witness: the ordinary failure has exactly its own line");
++            assertSame(partnerDown, ofOrdinary.get(0).getThrown(), "witness: and that line is its own, not the Error's");
++        }
++        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "dropped, not parked");
++    }
++
++    /** A regression guard, not the fix: the at-most-once run's {@code finally} already gives the permit back after an {@link Error}. Green before FIX-136 by design. */
++    @Test
++    void anAtMostOnceErrorKeepsReturningThePermit() {
++        Admission admission = new Admission(1, 1 << 20);
++        List<Long> requestsInFlight = new CopyOnWriteArrayList<>();
++        List<Long> bytesInFlight = new CopyOnWriteArrayList<>();
++        Pipeline throwing = e -> {
++            requestsInFlight.add(admission.inFlightRequests());
++            bytesInFlight.add(admission.inFlightBytes());
++            throw new LinkageError(LINKAGE);
++        };
++        Delivery delivery = Delivery.atMostOnce(admission, throwing, rt.timer());
++        Envelope in = ingress(ORDER);
++        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
++        assertTrue(settled(delivery.stop(DEADLINE)).succeeded(), "the run is over and its flight landed");
++        assertEquals(List.of(1L), requestsInFlight, "witness: the permit was taken while the pipeline ran");
++        assertEquals(List.of((long) ORDER.length()), bytesInFlight, "witness: its bytes too");
++        assertEquals(0, admission.inFlightRequests(), "the permit is back");
++        assertEquals(0, admission.inFlightBytes(), "its bytes are back");
++    }
+ }
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/SequentialIntakeTest.java b/flottila-core/src/test/java/io/flottila/core/flow/SequentialIntakeTest.java
+index c07586b..b93d0a9 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/SequentialIntakeTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/SequentialIntakeTest.java
+@@ -1,12 +1,14 @@
+ package io.flottila.core.flow;
+ 
+ import io.flottila.api.BlobKey;
++import io.flottila.api.BlobStore;
+ import io.flottila.api.Body;
+ import io.flottila.api.Envelope;
+ import io.flottila.api.Headers;
+ import io.flottila.core.queue.InMemoryWorkQueue;
+ import io.flottila.core.queue.WorkQueue;
+ import io.flottila.core.record.InMemoryMessageStore;
++import io.flottila.core.record.MessageStore;
+ import io.flottila.core.record.Meter;
+ import io.flottila.core.record.Recorder;
+ import io.flottila.core.record.RecordingPolicy;
+@@ -21,10 +23,12 @@ import org.junit.jupiter.params.ParameterizedTest;
+ import org.junit.jupiter.params.provider.EnumSource;
+ import org.junit.jupiter.params.provider.ValueSource;
+ 
++import java.io.IOException;
+ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Proxy;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
+ import java.util.concurrent.CopyOnWriteArrayList;
+ import java.util.concurrent.atomic.AtomicReference;
+ import java.util.function.BooleanSupplier;
+@@ -32,6 +36,7 @@ import java.util.function.BooleanSupplier;
+ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ /**
+@@ -215,4 +220,122 @@ class SequentialIntakeTest {
+         assertEquals(in.id(), unkeyed.result());
+         assertEquals(1, items.size());
+     }
++
++    /**
++     * FIX-136 (F-30): an {@link Error} from the body's persist is the same failed save as a {@link RuntimeException} from it
++     * ({@code SequentialIntake:41}): the future fails with it, nothing is queued, nothing escapes {@code save}.
++     */
++    @Test
++    void anErrorFromTheBodyPersistIsAFailedSaveNotAnEscape() {
++        LinkageError error = new LinkageError("persist linkage broken by the test");
++        List<Integer> asked = new CopyOnWriteArrayList<>();
++        BlobStore erroring = DeliveryTest.erroringOn(BlobStore.class, own, "persist", error, () -> asked.add(1));
++        Envelope plain = arrived();
++        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(), Body.of(erroring, plain.body().key(), plain.body().hash(), plain.body().size()));
++        SequentialIntake intake = new SequentialIntake(store, items);
++        Asked abandoned = Asked.answering(false, items);
++
++        AtomicReference<Future<String>> returned = new AtomicReference<>();
++        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
++                "an Error from the persist is a failed save, not an exception escaping save");
++        assertEquals(List.of(1), asked, "witness: the persist was asked, and threw");
++        Future<String> saved = done(returned.get());
++        assertTrue(saved.failed(), "the save fails: " + saved);
++        assertSame(error, saved.cause(), "with the Error itself");
++        assertEquals(List.of(), items.snapshot(), "nothing queued");
++        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
++    }
++
++    /**
++     * FIX-136 (F-30): an {@link Error} from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
++     * persist is asked before it and succeeds, so only the record's catch decides this case.
++     */
++    @Test
++    void anErrorFromTheIngressRecordIsAFailedSaveNotAnEscape() {
++        LinkageError error = new LinkageError("record linkage broken by the test");
++        List<Integer> asked = new CopyOnWriteArrayList<>();
++        MessageStore erroring = DeliveryTest.erroringOn(MessageStore.class, store, "record", error, () -> asked.add(1));
++        SequentialIntake intake = new SequentialIntake(erroring, items);
++        Envelope in = arrived();
++        Asked abandoned = Asked.answering(false, items);
++
++        AtomicReference<Future<String>> returned = new AtomicReference<>();
++        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
++                "an Error from the record is a failed save, not an exception escaping save");
++        assertEquals(List.of(1), asked, "witness: the record was asked, and threw");
++        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
++        Future<String> saved = done(returned.get());
++        assertTrue(saved.failed(), "the save fails: " + saved);
++        assertSame(error, saved.cause(), "with the Error itself");
++        assertEquals(List.of(), items.snapshot(), "nothing queued");
++        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
++    }
++
++    // --- the sneaky checked half of FIX-136's widened catches. A java.lang.reflect.Proxy wraps an undeclared checked throwable in an
++    // UndeclaredThrowableException (a RuntimeException), which would make these cases pass for the wrong reason, so the stores
++    // below are written out: each throws the IOException from a method that declares none, the way Future.await() does.
++
++    /** {@code delegate}, except that {@code persist} throws {@code checked} sneakily. */
++    record SneakingPersist(BlobStore delegate, Throwable checked) implements BlobStore {
++        @Override public long treeLimit() { return delegate.treeLimit(); }
++        @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) { return delegate.write(key, whole, maxSize); }
++        @Override public Future<Body> write(BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) { return delegate.write(key, in, maxSize); }
++        @Override public io.vertx.core.streams.ReadStream<Buffer> open(BlobKey key) { return delegate.open(key); }
++        @Override public Future<Buffer> read(BlobKey key) { return delegate.read(key); }
++        @Override public Future<Void> persist(BlobKey key) { throw HeldPipeline.sneaky(checked); }
++    }
++
++    /** {@code delegate}, except that {@code record} throws {@code checked} sneakily. */
++    record SneakingRecord(MessageStore delegate, Throwable checked) implements MessageStore {
++        @Override public Future<Void> record(Snapshot snapshot) { throw HeldPipeline.sneaky(checked); }
++        @Override public Future<List<Snapshot>> timeline(String messageId) { return delegate.timeline(messageId); }
++        @Override public Future<io.flottila.core.record.Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return delegate.findByKey(name, value, after, limit); }
++    }
++
++    /**
++     * FIX-136: a sneaky checked throwable from the body's persist is the same failed save as an {@link Error} from it
++     * ({@code SequentialIntake:41}, a {@code Throwable} catch): the future fails with it, nothing is queued, nothing escapes
++     * {@code save}. Narrowing that catch to {@code RuntimeException | Error} lets the {@link IOException} escape.
++     */
++    @Test
++    void aSneakyCheckedThrowableFromTheBodyPersistIsAFailedSaveNotAnEscape() {
++        IOException checked = new IOException("persist socket closed under the save");
++        Envelope plain = arrived();
++        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(),
++                Body.of(new SneakingPersist(own, checked), plain.body().key(), plain.body().hash(), plain.body().size()));
++        SequentialIntake intake = new SequentialIntake(store, items);
++        Asked abandoned = Asked.answering(false, items);
++
++        AtomicReference<Future<String>> returned = new AtomicReference<>();
++        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
++                "a sneaky checked throwable from the persist is a failed save, not an exception escaping save");
++        Future<String> saved = done(returned.get());
++        assertTrue(saved.failed(), "the save fails: " + saved);
++        assertSame(checked, saved.cause(), "with the throwable itself");
++        assertEquals(List.of(), items.snapshot(), "nothing queued");
++        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
++    }
++
++    /**
++     * FIX-136: a sneaky checked throwable from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
++     * persist is asked before it and succeeds, so only the record's catch decides this case. Narrowing that catch to
++     * {@code RuntimeException | Error} lets the {@link IOException} escape.
++     */
++    @Test
++    void aSneakyCheckedThrowableFromTheIngressRecordIsAFailedSaveNotAnEscape() {
++        IOException checked = new IOException("record socket closed under the save");
++        SequentialIntake intake = new SequentialIntake(new SneakingRecord(store, checked), items);
++        Envelope in = arrived();
++        Asked abandoned = Asked.answering(false, items);
++
++        AtomicReference<Future<String>> returned = new AtomicReference<>();
++        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
++                "a sneaky checked throwable from the record is a failed save, not an exception escaping save");
++        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
++        Future<String> saved = done(returned.get());
++        assertTrue(saved.failed(), "the save fails: " + saved);
++        assertSame(checked, saved.cause(), "with the throwable itself");
++        assertEquals(List.of(), items.snapshot(), "nothing queued");
++        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
++    }
+ }

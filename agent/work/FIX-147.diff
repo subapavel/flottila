@@ -1,0 +1,50 @@
+diff --git a/flottila-core/src/main/java/io/flottila/core/dlq/Parking.java b/flottila-core/src/main/java/io/flottila/core/dlq/Parking.java
+index daae72e..d1b644f 100644
+--- a/flottila-core/src/main/java/io/flottila/core/dlq/Parking.java
++++ b/flottila-core/src/main/java/io/flottila/core/dlq/Parking.java
+@@ -60,8 +60,8 @@ public final class Parking {
+                 } catch (Throwable parkFailure) {
+                     // Two choices here (FIX-142, F-30), each with its own witness; neither implies the other.
+                     // The width: Throwable, not Exception, because an Error out of the park or its await used to leave the
+-                    // stage in place of the step's failure, unrecorded; and not RuntimeException | Error (D-104), because a
+-                    // sneaky checked throwable is reachable (an interrupted await throws InterruptedException, flag cleared).
++                    // stage in place of the step's failure, unrecorded; and not RuntimeException | Error (D-111, D-104), because
++                    // a sneaky checked throwable is reachable (an interrupted await throws InterruptedException, flag cleared).
+                     // Pinned by anErrorFromTheParksAwaitLeavesTheStageAsTheStepsOwnFailureWithTheErrorSuppressed,
+                     // anErrorThrownByThePersistLeavesTheStageAsTheStepsOwnFailureAndWritesNoRow and
+                     // aCheckedParkFailureIsSuppressedOnTheStepsFailureWhichStillLeaves.
+@@ -88,6 +88,10 @@ public final class Parking {
+      * (D-062) — and the row is written only after that completed: a DLQ row implies a durable body. A persist that fails, or
+      * throws, fails the park with its cause and writes no row. A persist that succeeded tells the run's {@link Trail}, when one
+      * is bound on the calling thread, that the key is durable: the trail does not persist it again (D-066).
++     * <p>Throws synchronously, before any future exists, when {@code failure.toString()} throws: {@link Parked#of}, this
++     * method's first statement, reads it for the row's error text. A direct caller has to guard the call itself and not only
++     * the future it returns — uncaught, that throw replaces the failure being parked, which is why {@link #wrap} calls this
++     * inside the try that suppresses a park failure (FIX-142).
+      */
+     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure) {
+         Parked parked = Parked.of(e, step, failure, clock.instant(), versions);
+@@ -101,7 +105,7 @@ public final class Parking {
+             return body.store().persist(body.key());
+         } catch (Throwable thrown) {
+             // Throwable, not RuntimeException (FIX-142, F-30): an Error, or a checked throwable thrown sneakily, fails the
+-            // park with itself as cause as the javadocs above promise; no RuntimeException | Error (D-104), as a sneaky
++            // park with itself as cause as the javadocs above promise; no RuntimeException | Error (D-111, D-104), as a sneaky
+             // checked one is reachable. Pinned by
+             // anErrorThrownByThePersistFailsTheParkWithItAsCauseAndWritesNoRow and
+             // aCheckedThrowableThrownSneakilyByThePersistFailsTheParkWithItAsCauseAndWritesNoRow
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/ParkingTest.java b/flottila-core/src/test/java/io/flottila/core/flow/ParkingTest.java
+index 0365b62..f952d82 100644
+--- a/flottila-core/src/test/java/io/flottila/core/flow/ParkingTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/flow/ParkingTest.java
+@@ -631,7 +631,9 @@ class ParkingTest {
+         // The suppressed throwable first, identity after: this failure cannot be printed, and a failing assertSame hands both
+         // values to an opentest4j ValueWrapper (1.3.0) whose toString guard catches Exception only — the Error out of toString()
+         // then escapes the assertion machinery in place of the mismatch (observed: "java.lang.Error: the step failure's
+-        // toString() exploded" at the assertSame line). Both assertions carry literal messages, so neither prints this failure.
++        // toString() exploded", its topmost frame the line fromToString is constructed on, because a trace is filled in at
++        // construction and not where it is thrown: no frame names the assertSame it escapes from, so that report sends a reader
++        // to the wrong line). Both assertions carry literal messages, so neither prints this failure.
+         assertEquals(List.of(fromToString), List.of(boom.getSuppressed()), "what toString() threw, suppressed on the step's failure");
+         assertSame(boom, thrown, "the step's own failure leaves, by identity, not what toString() threw");
+         assertEquals(List.of(), bodies.persists(), "the park threw before it asked for a persist");

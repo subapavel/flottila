@@ -1,0 +1,15 @@
+--- F-26 ---
+# F-26 — §5 puts `http.status` in `headers`; the code carries it as a prop
+
+Date: 2026-11-14 · Task: CONSIDER-11 · ARCHITECTURE section: §5 (version 3.4)
+
+--- F-27 ---
+# F-27 — §5 refuses the exception as a property and §6 puts nothing in its place
+
+Date: 2026-11-14 · Task: CONSIDER-11 · ARCHITECTURE section: §6 (version 3.4)
+
+--- F-29 ---
+# F-29 — a resent message is the same message, and the key `(id, step)` cannot hold two runs of it
+
+Date: 2026-11-14 · Task: CONSIDER-11 / F-28 question 2 · Raised by the owner · ARCHITECTURE
+sections: §6, §4 (version 3.4) · **Direction settled by the owner 2026-11-14 as D-107; the shape is

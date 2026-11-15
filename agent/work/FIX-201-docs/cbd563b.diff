@@ -1,0 +1,261 @@
+COMMIT cbd563b88d2a7402a0be6b40f2545c7b1169bfe4
+docs(agent): integrated-tree evidence, and packets for FIX-139 and FIX-140
+
+The full unfiltered reactor finally describes this tree: clean verify -Pit exit 0,
+BUILD SUCCESS, 12:30, 17 modules SUCCESS, flottila-core 511 tests and
+flottila-bench 86 plus 27 integration tests, nothing above zero anywhere, no
+blocked platform thread; coverage no decrease, api 99.3 line / 100.0 branch, core
+99.6 / 99.5, runtime 99.5 / 99.5, lowest module bench 96.8 / 95.4. Logs are
+agent/work/integrated2-verify.log and integrated2-coverage.log. FIX-133 and
+FIX-134 each deliberately claimed no coverage evidence; this run is theirs.
+
+FIX-140's row is sharpened before dispatch, because its first wording would have
+cost a round. 'Whose recording then fails' invites a throwing MessageStore, and
+that cannot reproduce the defect: Trail.flush() ends in a transform to a succeeded
+future and close() says so outright, so a store's failure never surfaces. The two
+real triggers are a throwing toString and an interrupt while add() awaits a flush
+of more than FLUSH_AT rows. Verified in the code rather than taken from the
+comment.
+
+FIX-139's packet settles the rule its row left open: DECISIONS rows with no Reason
+cell are tolerated rather than filled, because filling 32 long design rows risks
+putting words in a past decision's mouth, while an absent trailing cell loses
+nothing. Over-count is what loses text and is what the guard refuses.
+
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 83efd1b..7300dbe 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -222,7 +222,7 @@ row, never lowers it mid-task.
+ | FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | ready | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | reviewer FIX-71 r4 |
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | ready | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | FIX-71 r5 test-author 2026-11-14 |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | ready | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts |
+-| FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | ready | a step throwing an `AssertionError` whose recording then fails still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14 |
++| FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | ready | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14 |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 ;  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2 |
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a ;  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS |
+diff --git a/agent/HANDOFF.md b/agent/HANDOFF.md
+index 47f65e4..458617a 100644
+--- a/agent/HANDOFF.md
++++ b/agent/HANDOFF.md
+@@ -2,12 +2,12 @@
+ state: RUNNING (owner RESUME 11-14, autonomous to Mon 11-16 08:00 Prague). Max 2 subagent slots is the parallelism ceiling, not the 4 CPUs
+ last commit: 9a9c916 FIX-133 (core Recorder -> Throwable), e8bc787 FIX-134 (bench warmedUp), a31a26d FIX-132, e65f616/261c657 lane3, e835f43 FIX-71
+ branch: claude/relaxed-archimedes-q2nb4c. main is still 634983a, so the WORKFLOW §4 CI gates still do not run on this branch — owner asked, unanswered
+-NO FULL -Pit RUN describes this tree: FIX-133 has `-pl flottila-core -am clean verify` (no -Pit, core 511/0) + coverage "no decrease"
+-  99.6/99.5; FIX-134's runs all carry -Djacoco.skip=true. Order one unfiltered `clean verify -Pit` + coverage_check before any gate claim
++integrated evidence (45d4100, VERIFIED_PASS 11-14): full unfiltered `clean verify -Pit` exit 0, BUILD SUCCESS, 12:30, 17 SUCCESS, core 511/0,
++  bench 86 + 27 IT, nothing above 0 anywhere, no blocked platform thread; coverage "no decrease", api 99.3/100 core 99.6/99.5 runtime 99.5/99.5
+ lanes: lane2 (FIX-134) and lane3 (FIX-133) both hold INTEGRATED, cmp-verified work — reset both to HEAD before reuse. Ledgers are never
+   edited in a lane, so a reviewer reading one sees a STALE row: say so in every review packet
+-next: one full `clean verify -Pit` + coverage_check on this tree; then pair FIX-139 (ci/ only, test precedent ci/test_coverage_check.py,
+-  wire into .github/workflows/ci.yml:65) with FIX-140 (core Recorder, from the FIX-133 review). No file overlap between them
++next: pair FIX-139 (ci/ only, test precedent ci/test_coverage_check.py, wire into .github/workflows/ci.yml:65) with FIX-140 (core Recorder,
++  from the FIX-133 review). No file overlap. Logs agent/work/integrated2-*.log
+ FIX-137 and FIX-138 both touch BatchingWriter.java: one batch or in sequence, never in parallel. FIX-136 needs its finding written first
+ FIX-140 before touching Recorder: `record` runs BEFORE `throw failure` and can throw (`Trail.java:90`), so an Error can become an
+   InterruptedException that Parking:49 would park, against D-098. D-111 qualified. Also NOTES "Recording": the :86 guard is not killable
+diff --git a/agent/packets/FIX-139.md b/agent/packets/FIX-139.md
+new file mode 100644
+index 0000000..89b7fe1
+--- /dev/null
++++ b/agent/packets/FIX-139.md
+@@ -0,0 +1,80 @@
++# FIX-139 — a CI guard on ledger table shape
++
++Class A. Depends on FIX-132 (done, a31a26d). Small, self-contained, `ci/` only.
++
++## Why it exists
++
++FIX-132 fixed eleven malformed rows across the two ledgers, ten of which were silently losing text
++when GitHub rendered them. Nothing stops that from coming back, and during FIX-132 itself it came
++back twice in one day: the architect dropped a row's closing pipe while editing it, then wrote two
++raw pipes into FIX-132's own evidence cell while describing how to escape them.
++
++**Counting pipes is not the check, and must not be the check.** FIX-54, FIX-56 and FIX-57 each had
++the "right" count of 7 and seven cells, because a stray separator was paid for by a missing closing
++pipe. A pipe-counting check called all three clean while GitHub dropped their entire evidence cell.
++That is the case this guard exists to catch, and the done-when requires a red case shaped like it.
++
++## The rule, decided here so the implementer does not have to guess
++
++For each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables —
++the FIX-139 row listed it and was wrong), take the cell count from the header row, then for every
++non-separator row of that table:
++
++- it must END with an unescaped pipe. A row that does not is a defect even when GFM tolerates it,
++  because 257 of 260 BACKLOG rows do and the three that did not were all broken in a second way.
++- splitting it on pipes NOT preceded by a backslash must give exactly the header's cells in
++  `agent/BACKLOG.md`.
++- in `docs/DECISIONS.md` it must give AT MOST the header's cells. **Decision: the 32 legacy rows with
++  no `Reason` cell are tolerated, not filled.** Filling 32 long design rows is content work with a
++  real chance of putting words in a past decision's mouth; a missing trailing cell renders as an
++  empty cell and loses nothing. Over-count is what loses text, and that is what the guard refuses.
++
++A failure names the file, the line number, the expected cell count and the actual one, and exits
++non-zero. One message per bad row, all bad rows reported in one run rather than only the first.
++
++## Where it goes
++
++Follow `ci/coverage_check.py` exactly — it is the precedent for everything here:
++
++- `ci/ledger_check.py`, a module with a `main()` and the same argument style, runnable as
++  `python3 ci/ledger_check.py` from the repository root.
++- `ci/test_ledger_check.py`, tests in the style of `ci/test_coverage_check.py` (unittest, `tempfile`,
++  fixture strings built in the test, no network, no repository files read by the tests themselves).
++- wire BOTH into `.github/workflows/ci.yml`: the unittest run beside line 65
++  (`python3 -m unittest ci.test_coverage_check`) and the check itself beside the coverage steps at
++  lines 80-82. Keep the existing steps untouched.
++
++## Red tests (test-author, before the script exists)
++
++In `ci/test_ledger_check.py`. Three must be red and stay red if the guard is weakened:
++
++1. a row with an extra unescaped pipe added → non-zero, and the message names that row's line number
++2. a row with its closing pipe removed → non-zero, naming the line
++3. **a FIX-54-shaped row**: a stray separator AND a missing closing pipe, so the pipe COUNT still
++   matches the header while the cell count does not → non-zero. A guard that counts pipes passes this
++   row, so this case is the one that pins the rule rather than an implementation of it.
++
++Plus: an unmodified fixture of each shape exits 0, a DECISIONS fixture with a legacy `Reason`-less row
++exits 0, and an escaped `\|` inside a cell does not count as a separator.
++
++Write the fixtures as strings in the test. Do NOT make the tests read the real `agent/BACKLOG.md` —
++a test that fails because someone edited a ledger is a test that will be disabled within a week.
++
++## Done when
++
++The three red cases above fail the check with their line numbers, the unmodified tree exits 0, and
++`python3 -m unittest ci.test_ledger_check` passes. Run the guard against the real ledgers once by
++hand and report the result: it should be clean at this commit, since FIX-132 left both files
++well-formed.
++
++## Allowed paths
++
++- `ci/ledger_check.py` (new), `ci/test_ledger_check.py` (new), `.github/workflows/ci.yml`
++
++Nothing in `agent/` or `docs/` is edited by this task. If the guard finds a real malformed row, do NOT
++fix the row — report it, because that is a finding about a ledger and belongs to whoever owns that row.
++
++## Note for the reviewer
++
++This guard catches SHAPE, not content. Every ledger error that cost time today was a false SENTENCE,
++not a broken table, and no CI check will catch those. Do not let this row imply otherwise.
+diff --git a/agent/packets/FIX-140.md b/agent/packets/FIX-140.md
+new file mode 100644
+index 0000000..88e22d7
+--- /dev/null
++++ b/agent/packets/FIX-140.md
+@@ -0,0 +1,105 @@
++# FIX-140 — recording must not replace the throwable it is about to rethrow
++
++Class B. Depends on FIX-133 (done, 9a9c916). Found by the FIX-133 reviewer as non-blocking; the
++premise was then verified in the code by the architect, and that verification narrowed the task.
++
++## The defect
++
++`Recorder.java:85-90` catches, records, and only then rethrows:
++
++    } catch (Throwable failure) {
++        if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
++            record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
++        }
++        throw failure;
++    }
++
++If `record(...)` throws, the catch block leaves with the RECORDING's failure and the original
++throwable is lost. D-111 promises the opposite — "write the `FAILED` row, rethrow unchanged" — and is
++now qualified to say that holds only when recording succeeds.
++
++For an `Error` this is worse than a swapped exception. The replacement is an `Exception`, and
++`Parking.java:49` catches `Exception`, so it would PARK it: an `Error` would become transient, which
++is exactly what D-098 refused and what D-111 explicitly leaves standing. FIX-133 did not create the
++risk — it existed for an `Exception` — it changed the consequence, by sending `Error`s through
++`record` for the first time.
++
++## What CANNOT reproduce it, so nobody spends a round there
++
++**A throwing `MessageStore` will not do it.** `Trail.flush()` ends with
++`.transform(settled -> Future.<Void>succeededFuture())`, and `Trail.close()` states it outright with
++the comment "no flush ever fails". A store's own failure never surfaces to the caller. Verified in
++the code by the architect, not inferred from the comment.
++
++The two real triggers:
++
++- **(a) `failure.toString()` at `:88` throws.** A `Throwable` subclass whose `toString` throws tests
++  this in a few lines and needs nothing else. It is enough to pin the fix, and it is the trigger the
++  red test should use.
++- **(b) An interrupt while `Trail.add:90` awaits a flush.** That line is `if (full) flush().await()`,
++  and `full` means more than `FLUSH_AT` = 256 rows buffered. An `await` on an interrupted virtual
++  thread throws `InterruptedException` sneakily (D-056, the stop-deadline cancel). This is the
++  realistic production cause but the expensive one to stage. Attempt it only if (a) is already green;
++  if it needs more than a simple fixture, say so in the hand-back and leave it — do NOT weaken (a) to
++  make room for it.
++
++## The shape (implementer)
++
++Wrap the `record` call in its own try. On a failure, attach it to the original with `addSuppressed`
++and rethrow the original unchanged:
++
++- the original throwable is what leaves `wrap`, always, `assertSame`-identical;
++- the recording failure is reachable via `getSuppressed()`, never discarded;
++- no control flow moves, exactly as in FIX-133: the guards, the row's contents and the rethrow stay.
++
++Watch two JDK details: `addSuppressed` throws if you pass the throwable to itself, and it is a no-op
++when suppression was disabled by the two-arg `Throwable` constructor. Neither may turn into a second
++failure inside the catch — a failure in the salvage path would reintroduce the very defect.
++
++**One decision, made here so the packet does not ask for it twice.** A `FAILED` row that was never
++written is a lost row, and monitoring is the product, so the recording failure is ALSO logged once at
++`WARNING` with the message id and the step. Not a counter and not once-per-writer (D-104's shape is
++for a shared writer; this is per message). The flood is bounded by the number of in-flight messages,
++because trigger (b) arrives with a stop that interrupts each of them once, and a stop that loses rows
++for every in-flight message is an incident an operator must see rather than a line to suppress.
++
++## Red tests (test-author, before any production change)
++
++In `flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java`, as NEW methods. Reuse the
++existing fixtures and the `CountingStore` from FIX-133 where useful; do not edit
++`aCancelledStepRecordsItsFailureSnapshot`, its `Map<String, Exception>`, `sneaky`, or FIX-133's four
++cases.
++
++1. `aRecordingThatThrowsStillLetsTheOriginalErrorEscapeUnchanged` — a step throws an `AssertionError`;
++   recording fails through trigger (a). The escaping throwable is `assertSame` the `AssertionError`,
++   and the recording failure is among its `getSuppressed()`. This is the case that fails today.
++2. `aRecordingThatThrowsIsLoggedOnceWithTheMessageAndStep` — the `WARNING` is captured and names both.
++   Follow `TrailTest`'s log-capture style; FIX-123 and FIX-130 pinned the sentence shape there.
++3. `aFailureWhoseToStringThrowsStillLeavesARowOrNoneButNeverADifferentThrowable` — state and assert
++   what the row does in that case. Decide it from the code and say which you chose in the hand-back:
++   either no row (the text could not be built) or a row with a placeholder text. Do NOT invent a
++   third behaviour in production to make a test pretty — that is the implementer's line to hold.
++
++Report honestly which cases were red. If one is green against today's code, name the assertion that
++would fail if the fix were reverted, or replace it — a test that cannot fail is worth nothing, and
++FIX-133 lost two rounds to exactly that.
++
++## Allowed paths
++
++- `flottila-core/src/main/java/io/flottila/core/record/Recorder.java`
++- `flottila-core/src/test/java/io/flottila/core/record/RecorderTest.java`
++
++`Parking.java:49` must NOT change. `Trail.java` must NOT change: "no flush ever fails" is load-bearing
++elsewhere and changing it is a different task with its own finding.
++
++## Acceptance
++
++Scoped first, then the module, neither with `-q`:
++
++    mvn -B -ntp -pl flottila-core -am -Dtest='RecorderTest,TrailTest,RedeliveredTimelineTest' -Dsurefire.failIfNoSpecifiedTests=false test
++    mvn -B -ntp -pl flottila-core -am clean verify
++    python3 ci/coverage_check.py
++
++Reviewer will name mutants: production code changes. Expect at least the `addSuppressed` dropped, the
++rethrow swapped for the recording failure, and the try wrapped around too much so the row's own guard
++is skipped.

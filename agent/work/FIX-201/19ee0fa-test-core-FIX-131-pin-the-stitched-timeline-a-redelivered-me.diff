@@ -1,0 +1,549 @@
+COMMIT 19ee0fa162734c0a5490f18ebbde3e3421cc2305
+test(core): FIX-131 pin the stitched timeline a redelivered message leaves
+
+Two cases in a new RedeliveredTimelineTest, both green on today's code, both
+documenting a defect so CONSIDER-12 has a regression test to invert.
+
+The row asked for an -Pit test against a real Postgres before anything was
+designed. I withdrew that premise: both stores drop a repeated (id, step) by
+construction -- `on conflict (id, step) do nothing` in PgMessageStore and
+`rows.putIfAbsent` in InMemoryMessageStore -- so a container proves nothing a
+core test does not, and the Postgres half is already pinned by
+PgMessageStoreIT:122-132 under a name ending DuplicatesAreIgnored. That name is
+fair for an idempotent batch replay and wrong for a second run of one message,
+and it is part of why this went unnoticed.
+
+The harm is also worse than the row described, and is now measured rather than
+argued. Case 1, with the park refused so run 1 leaves a FAILED row: timeline(id)
+returns 0 ingress, steps 1-2 from run 1, step 3 FAILED from run 1, steps 4-7 OK
+from run 2 -- a FAILED step followed by successful later steps, which no single
+run can produce. Case 2 is the shape a node crash makes, and it is the dangerous
+one: run 1 dies on an Error, which Recorder.wrap does not catch, so step 3 gets
+no row at all, and the timeline comes back as steps 0-7 all OK, indistinguishable
+from one clean successful run. The first shape invites an operator's question;
+the second does not.
+
+One correction to my own description, from the measurement: the seam is not
+unmarked. Envelope.ATTEMPT is in the props of every row run 2 wrote and in none
+of run 1's. It does not rescue the timeline -- a props entry is not a run
+boundary, and it is a property of the rows that survived rather than a statement
+about the rows that did not -- but it does mean D-108 has the value it needs
+already reaching the store. What is missing is a column that means it.
+
+Evidence: VERIFIED_PASS, 2/0 for the new class and 42/0 for FlowWorkerTest, 46/0
+in total (agent/work/FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put` in
+InMemoryMessageStore: both cases EXECUTED_FAIL at their final exact-list
+assertion (FIX-131-mutant.log), so they are green because the store keeps the
+first run's row on a collision and not for some other reason. The store was
+restored with `cp` and verified byte-identical to HEAD by `cmp` in both trees, by
+me rather than on the author's word; no production file is changed here.
+
+The review's one FAIL is worth recording. Case 2 pins FIX-133 as well as the key
+defect, and its javadoc named only CONSIDER-12 as a reason the test would ever be
+inverted -- so an implementer of FIX-133, which does not wait for CONSIDER-12,
+would have met red tests it is not allowed to change. The javadoc now names both
+triggers and every assertion each one flips. Spun off FIX-133 (Recorder.wrap
+catches Exception only, so a step that throws an Error leaves no row at all --
+the same asymmetry D-104 already settled for BatchingWriter) and FIX-132.
+
+Task: FIX-131
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/.claude/agent-memory/reviewer/MEMORY.md b/.claude/agent-memory/reviewer/MEMORY.md
+index d3d6e34..83fa61f 100644
+--- a/.claude/agent-memory/reviewer/MEMORY.md
++++ b/.claude/agent-memory/reviewer/MEMORY.md
+@@ -119,3 +119,11 @@
+ - Contract wording (P2-07b1..FIX-109): a helper moved between a javadoc and its method detaches it; a split row leaves old-id pointers (§, D-rows, findings); a Pg-only behaviour on a core interface must name the implementation; a changed bench shape strands every machine label's markers; 'leaves X as the callee left it' needs both callee states pinned.
+ - Timing (P2-09a): `isDone` right after a FakeTimer advance does not pin 'not before T' (refusal synchronous, completion on another thread) — assert timer.pending or a gauge; finite defaults asserted by value (PIT does not mutate constants). Redaction in list-valued config must run before the separator split (P2-09b). A schema gap deferred to a FIX row also falsifies FlowDefinition's 'never fails here' — check it on every new flow key (FIX-115). A probe in one step sees overlap only there; runs resumed after it (RELEASE/WAKE) go unseen (P2-10a).
+ - Log-capture tests in `flottila-core` TrailTest (FIX-54, FIX-121 twice, FIX-123): filters drift back to bare id substrings — check the filter key before the assertions, `"m-w"` prefixes `"m-wait"`, and the capture concatenates message + `getThrown()` so an exception text can satisfy a `contains`. A pinned log sentence is not evidence of independence: `assertTrue` aborts its test, so `Failures: 2` under a mutant says nothing about which assertion fired — read the failing assertion line and check the quoted captured text still contains the half you did not mutate. PIT's default mutators do not alter string literals, so a message's wording can only be pinned by a hand mutant.
++- A test deliberately written GREEN to document a defect (FIX-131) has two failure modes a review must
++  catch. First, vacuity: ask whether it would fail if the defect were FIXED, and whether any assertion
++  would still pass if the mechanism changed the other way — an exact-list assertion built from literals
++  is strong, one built from values the test computed is not. Second, and easier to miss: such a test
++  pins every defect its path crosses, not only the one the row names. If its javadoc names one trigger
++  for inverting it, an implementer of a DIFFERENT row meets red tests it may not change and is stuck.
++  Require the javadoc to name every trigger and every assertion each one flips — and check the method
++  NAME too: `...WithNoFailureAnywhere` becomes a false name the moment the other fix lands.
+diff --git a/PROGRESS.md b/PROGRESS.md
+index 381f98e..656e33c 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -1309,3 +1309,19 @@ cmp Trail.java byte-identical to HEAD; `git status --porcelain` on the lane's Tr
+ Discipline worth keeping: a failure count is not evidence of which assertion fired, and a green log from a no-op mutant is indistinguishable from
+ a real green — the author discarded one such log itself and said so. Logs of superseded rounds stay on disk and must not be cited.
+ D-054 data: class A (test-author x1 resumed twice, reviewer x3); review rounds 3. No Maven in the main tree.
++
++## 2026-11-14 — FIX-131 a redelivered message's timeline is stitched from two runs — done, review PASS r2
++Test-only in flottila-core, no production change. I withdrew the row's own `-Pit` premise: both stores drop a repeated (id, step) by construction
++(`on conflict (id, step) do nothing`; `rows.putIfAbsent`), so a container proves nothing a core test does not — and the Postgres half is already pinned by
++`PgMessageStoreIT:122-132` as `...DuplicatesAreIgnored`: a feature for an idempotent batch replay, a defect for a second run, part of why this survived.
++The harm is worse than the row said and is now measured. Case 1 (park refused): 0 ingress, 1-2 run 1, 3 FAILED run 1, 4-7 OK run 2 — a sequence no single
++run can produce. Case 2 is the shape a node crash makes and the dangerous one: run 1 dies on an `Error`, which `Recorder.wrap` does not catch, so step 3
++gets no row and the timeline comes back 0-7 all OK, indistinguishable from one clean run.
++Corrected my own claim that nothing marks the seam: `Envelope.ATTEMPT` is in the props of every row run 2 wrote and none of run 1's. A props entry is not a
++run boundary and it describes only the rows that survived, so it rescues nothing — but D-108's value already reaches the store; a column that means it does not.
++VERIFIED_PASS — 2/0, FlowWorkerTest 42/0, 46/0 total (FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put`: both cases EXECUTED_FAIL at their final
++exact-list assertion (FIX-131-mutant.log), so they are green on the drop, not for some other reason. Store restored, `cmp` identical to HEAD in both trees,
++checked by me rather than taken from the author.
++The review round was spent on a trap worth keeping: case 2 pins FIX-133 too and its javadoc named only CONSIDER-12 as a reason to invert, so a FIX-133
++implementer would have met red tests it may not change. Spun off FIX-133 and FIX-132.
++D-054: class B in effect (test-author x1 resumed twice, scout x1, reviewer x2); review rounds 2. No Maven in the main tree.
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index f4c934e..85200c6 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -213,8 +213,9 @@ row, never lowers it mid-task.
+ | FIX-128 | [A] Nothing exercises a non-zero `warmupFailed` in the bench record: `NodeBenchMainIT.java:72` asserts it is 0, so the field could be hard-wired to 0 and the suite would not notice (the production half of FIX-63 is done, this is its residual). Drive a warm-up with refusals — the harness's `load(...).failed()` at `NodeBenchMain.java:313` is the value under test — and assert the count the record carries equals the refusals, plus that `warmedUp` is `warmup - warmupFailed` | FIX-63 | ready | a warm-up with refusals reports its count in the JSON; a mutant that hard-wires `warmupFailed` to 0 or drops the subtraction fails | audit 2026-11-14 |
+ | FIX-129 | [A] `Trail`'s class javadoc (`Trail.java:32-33`) promises the persist warning only in substance, so the two phrases FIX-123 pinned have no documented source — a future rewording looks like a test being wrong rather than a contract being changed. Put the sentence itself in the javadoc, next to the `metadataOnly()` promise, so the test and the doc cite each other | FIX-123 | ready | the javadoc states the warning's wording; a reword of either is visibly a change to both | reviewer FIX-123, non-blocking |
+ | FIX-130 | [A] `TrailTest:359-360` still filters captured WARNINGs by the bare id substring `contains("m-f")` over message + `getThrown()` concatenated — the exact trap FIX-54 hit once and FIX-121 twice (`"m-w"` is a prefix of `"m-wait"`). Safe today only because `m-f` prefixes no other fixture id in that case; it is the next place the trap bites, and it also means an exception text could satisfy the filter. Make it key-based like the two persist cases | FIX-123 | done | done 2026-11-14, review PASS r3, test-only, commit 468022c (lane3). The filter now selects by Trail's logger name, maps `getMessage()` only, matches each of the three failing bodies by its own full `BlobKey`, and asserts exactly one WARNING per failing key instead of non-emptiness, plus a negative for the body that was made durable. Two FAILs were spent on one subtlety and it is worth keeping: `Trail.java:177` interpolates the cause INTO the message, so narrowing to `getMessage()` separates nothing — `BodyTooLargeException`'s text carries the key, so the `large` iteration still matched through its cause. The key is therefore pinned ahead of the `(` that opens the cause. `assertAll` makes all three iterations observable; without it the mutant aborted on the first body and the iteration whose independence was in question was never reached. Mutant naming the message id instead of the key fails all three separately: steps 2 and 4 on the count, step 3 on the prefix while its count passes | reviewer FIX-123, non-blocking |
+-| FIX-131 | [C] A redelivered at-least-once message loses the history of every run but its first, silently. `messages` is written with `on conflict (id, step) do nothing` (`PgMessageStore.java:55`) and its rows carry no attempt, while `Envelope.nextKey` already puts the attempt in the body key's part (`Envelope.java:90-96`, `part~2`, asserted by `ComponentContract.java:320-321`) and the worker sets `Envelope.ATTEMPT` from the second claim on (`FlowWorker.java:338`). So after a lease expiry or a second claim — no replay involved — the second run's bodies are stored and its snapshot rows are dropped, and the timeline shows the first attempt only. That contradicts D-106, the owner's own decision that a retried attempt is visible in the message's own history. Confirm against a real Postgres under `-Pit` before designing anything: drive a redelivery, then read the timeline and say exactly which rows exist and which were dropped. The fix is keying, so it shares a root cause with F-29 and must not be designed before F-29 is answered | — | ready | an `-Pit` test drives a redelivery of one message id and asserts what the timeline holds for the second run; the result is written into F-29 whichever way it comes out | F-29 recon 2026-11-14 |
++| FIX-131 | [C] A redelivered at-least-once message loses the history of every run but its first, silently. `messages` is written with `on conflict (id, step) do nothing` (`PgMessageStore.java:55`) and its rows carry no attempt, while `Envelope.nextKey` already puts the attempt in the body key's part (`Envelope.java:90-96`, `part~2`, asserted by `ComponentContract.java:320-321`) and the worker sets `Envelope.ATTEMPT` from the second claim on (`FlowWorker.java:338`). So after a lease expiry or a second claim — no replay involved — the second run's bodies are stored and its snapshot rows are dropped, and the timeline shows the first attempt only. That contradicts D-106, the owner's own decision that a retried attempt is visible in the message's own history. Confirm against a real Postgres under `-Pit` before designing anything: drive a redelivery, then read the timeline and say exactly which rows exist and which were dropped. The fix is keying, so it shares a root cause with F-29 and belongs to CONSIDER-12, not here. ARCHITECT, 2026-11-14, after recon: the `-Pit` premise is WITHDRAWN. `InMemoryMessageStore.record` does `rows.putIfAbsent(new Row(messageId, step), snapshot)`, the same drop as Postgres, so a real Postgres adds nothing to the confirmation and the Postgres half is already pinned by `PgMessageStoreIT:122-132` under the name `aBatchCarriesManyMessagesAndDuplicatesAreIgnored` — which is also part of why this survived: the drop is named as a feature. The harm is also worse than this row first said. It is not that later runs are lost: if run 1 fails at step 3 and run 2 reaches step 7, `timeline(id)` returns steps 1-3 from run 1 and steps 4-7 from run 2 in one sequence with nothing marking the seam, so step 3 reads `FAILED` while steps 4-7 read `OK` — a sequence no single run can produce. The timeline is a chimera, not a truncation. This task is now test-only in `flottila-core` with no Docker: pin that stitch green and name it so it cannot be read as intended, for CONSIDER-12 to invert | — | done | an `-Pit` test drives a redelivery of one message id and asserts what the timeline holds for the second run; the result is written into F-29 whichever way it comes out | F-29 recon 2026-11-14. done 2026-11-14, review PASS r2, test-only, no production change. `RedeliveredTimelineTest` pins both shapes as exact row lists: case 1 (park refused, run 1 leaves a FAILED row) gives 0 ingress, 1-2 run 1, 3 FAILED run 1, 4-7 OK run 2; case 2 (run 1 dies on an `Error`, which `Recorder.wrap` does not catch, so step 3 gets no row) gives 0-7 all OK and reads as one clean successful run — the shape a node crash makes and the dangerous one. VERIFIED_PASS 2/0, FlowWorkerTest 42/0, 46/0 total (FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put` in `InMemoryMessageStore`: both cases EXECUTED_FAIL at their final list assertion (FIX-131-mutant.log), store restored and `cmp`-identical in both trees. The seam IS marked after all, by `Envelope.ATTEMPT` in the props of run 2's rows only — not a run boundary, but the value D-108 needs already reaches the store. Spun off FIX-133. Measured facts in F-29's addendum, fixture gotchas in NOTES |
+ | FIX-132 | [A] Five `docs/DECISIONS.md` rows render with phantom columns because their text contains an unescaped `\|`, so a reader on GitHub sees the decision split across cells that do not exist: D-040 (line 49), D-044 (:53), D-053 (:62), D-057 (:66), D-080 (:89) — 6 or 7 effective pipes in a 5-pipe table. GFM's fix is `\|` inside the cell, which keeps the quoted text verbatim and was applied to D-102 in this commit. Do it for the five, change no word of any decision, and leave the 30 legacy rows whose `Reason` cell is simply absent alone — that is a different and harmless shape | &mdash; | ready | `awk` over the file reports 5 effective pipes (pipes not preceded by a backslash) on every non-separator row that has a `Reason` cell, and `git diff --word-diff` shows no change to any decision's words | ledger audit 2026-11-14 |
++| FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:84`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) | FIX-71 | ready | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it | FIX-131 test-author, architect-verified 2026-11-14 |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 |  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a |  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index e500f93..2e74fc3 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -236,6 +236,25 @@ counter (`failed()`) until P1-09 shows it; `findByKey` order is `min(ctid)` (add
+ sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dry run only);
+ consider `Meter` on `Runtime`.
+ 
++FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
++- `Recorder.wrap` catches `Exception` only (`Recorder.java:84`; the comment there explains the
++  checked case, D-056). A step that throws an `Error` therefore leaves NO row, not even `FAILED`.
++  That is FIX-133, not a feature. To get a `FAILED` row at step N in a test, throw a
++  `RuntimeException` AND make the park fail; with a working DLQ the message parks and the item
++  completes, so there is no second run to observe.
++- A run that dies on an `Error` still gets its completed steps recorded: the trail closes in a
++  `finally` (`FlowWorker.java` around `:344`).
++- A repeated `(id, step)` is dropped by BOTH stores — `on conflict (id, step) do nothing`
++  (`PgMessageStore.java:51-55`) and `rows.putIfAbsent(...)` (`InMemoryMessageStore.java:39`) — so a
++  redelivery's recording behaviour needs no container to reproduce. The Postgres half is pinned by
++  `PgMessageStoreIT:122-132` under the name `...DuplicatesAreIgnored`: a feature for an idempotent
++  batch replay, a defect for a second run of one message.
++- The `to` step's row holds the PARTNER'S REPLY envelope. It does not carry headers the run set, but
++  it does carry props. Marking runs with a header shows step 7 as `run=null`; use a prop.
++- Run 2 keeps the id: `FlowWorker.java:337` rebuilds ingress from the stored row via
++  `Replay.rebuild(..., id, ...)` and adds `Envelope.ATTEMPT` at `:338`. It runs without stage 0, so
++  it writes no second ingress row.
++
+ ## Pipeline (P1-03, D-043)
+ 
+ Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
+diff --git a/agent/packets/FIX-131.md b/agent/packets/FIX-131.md
+new file mode 100644
+index 0000000..0e8bc3b
+--- /dev/null
++++ b/agent/packets/FIX-131.md
+@@ -0,0 +1,90 @@
++# Packet FIX-131 — a redelivered message's timeline is stitched from two runs
++
++Module: `flottila-core` (test only). Row: `agent/BACKLOG.md`, FIX-131.
++
++## Scope, and what this task is NOT
++
++This task does **not** fix the defect. The fix is keying — `(id, attempt, step)` — and belongs to
++CONSIDER-12 under D-107/D-108. This task produces the test that pins today's behaviour exactly, so
++that CONSIDER-12 has a regression test to invert and so the defect cannot be rediscovered a third
++time.
++
++The row said "confirm against a real Postgres under `-Pit` before designing anything". **That
++premise is withdrawn by the architect**: recon established that both store implementations drop the
++duplicate by construction, so a real Postgres adds nothing to the confirmation. No Docker, no
++`-Pit`, no Testcontainers in this task.
++
++## Facts recon established — do not re-derive them, do rely on them
++
++- `PgMessageStore.java:51-55` inserts into `messages(...)` with `on conflict (id, step) do nothing`.
++  `messages` has no attempt column; the attempt columns in `deploy/postgres` are on `work`
++  (`V4__work_attempts.sql:4`). Highest migration on disk is `V11__drop_payloads.sql`.
++- `InMemoryMessageStore.record` does `rows.putIfAbsent(new Row(snapshot.messageId(),
++  snapshot.step()), snapshot)` (`flottila-core/src/main/java/io/flottila/core/record/InMemoryMessageStore.java`,
++  the `record` method). The same drop as Postgres, which is why this is a core test.
++- `Snapshot` (`Snapshot.java:36-38`) has no attempt component. `Envelope.ATTEMPT` is a props key
++  (`Envelope.java:40`); `FlowWorker.java:338` sets it on rerun ingress when `item.attempts() > 1`;
++  nothing in the `record` package reads it. So two runs of one id write the same row keys.
++- `MessageStore.timeline(String)` (`MessageStore.java:30`) returns the rows in step order — Postgres
++  `where id = $1 order by step` (`:58-59`), in-memory sorts by step.
++- `PgMessageStoreIT:122-132` already pins the Postgres half, under the name
++  `aBatchCarriesManyMessagesAndDuplicatesAreIgnored`: it records `m-7` step 1 as `to`, flushes,
++  records `to-again` for the same `(id, step)`, and asserts the step-1 name is still `to`.
++- No existing test runs one message id through a pipeline twice and asserts the timeline.
++  `FlowWorkerTest.aLeaseNobodyRenewsExpiresAfterOneLease:360` makes a second claim with attempts 2
++  (`:385-388`) but asserts no timeline rows; `crashFirst` (`:191-193`) reruns with `ATTEMPT` set.
++  `FlowWorkerTest` uses the in-memory store (class javadoc, `:76`).
++
++## The harm, stated precisely — this is what the test must show
++
++The row says the message "loses the history of every run but its first". That undersells it. If run
++1 fails at step 3 and run 2 reaches step 7, `timeline(id)` returns **steps 1-3 from run 1 and steps
++4-7 from run 2, in one sequence, with nothing marking the seam** — and step 3 reads `FAILED` while
++steps 4-7 read `OK`, which is a sequence no single run can produce. The timeline is not short, it is
++a chimera, and an operator reading it cannot tell what happened. That is the observation worth
++pinning.
++
++## Acceptance
++
++1. One test in `flottila-core` drives **one** message id through `FlowWorker` twice against the
++   in-memory store: run 1 fails at a middle step, the lease expires or a second claim happens, run 2
++   gets past that step. Reuse the machinery `FlowWorkerTest` already has rather than inventing a
++   path.
++2. `timeline(id)` is then asserted **row by row**: which step numbers exist, and for each row which
++   run it came from — distinguished by a value the two runs genuinely differ in (step name, outcome,
++   or a prop), not by position. Not a size assertion, not a `contains`.
++3. The stitch is asserted explicitly: a `FAILED` row at step N and `OK` rows at steps greater than N
++   in the same timeline.
++4. Whether the attempt is visible anywhere in that timeline is asserted either way. If
++   `Envelope.ATTEMPT` does reach run 2's props and so appears in the props of the rows run 2 did
++   write, assert that it does and that it is absent from the rows run 1 wrote — that asymmetry is
++   the one place a reader could notice two runs, and CONSIDER-12 needs to know it exists. If it
++   reaches nothing, assert its absence from every row.
++5. The test is **green on today's code**, and its naming makes unmistakable that it documents a
++   defect: the method name states the wrong behaviour as a fact, and the javadoc cites FIX-131, F-29
++   and CONSIDER-12 and says the test is to be inverted when the row key gains `attempt`. Do not give
++   it a name that reads as intended behaviour — `...DuplicatesAreIgnored` at `PgMessageStoreIT:122`
++   is exactly that trap, and it is part of why this went unnoticed.
++6. No production change, and no new seam added to production code for testability.
++
++## Red first — deliberately absent, and the one thing that outranks the test
++
++There is no red here: the output is a true description of today's behaviour. **If what you observe
++is not what the section above describes** — the second run never writes colliding rows, the worker
++does not re-run ingress recording, the message is re-identified somewhere, or the timeline comes
++back some third way — then **stop, write no test, and hand back exactly what you observed with the
++file and line that caused it**. A correction to the architect's description is worth more than the
++test, and you will not be marked down for it.
++
++## Allowed paths
++
++- `flottila-core/src/test/java/io/flottila/core/flow/` — a new test class, or an addition to
++  `FlowWorkerTest`. Prefer a new class if the setup is long.
++
++Nothing else. In particular do **not** touch any `BatchingWriter*` file in this module: FIX-71 is in
++flight on those files in another tree, and a change here would collide with it.
++
++## Out of scope
++
++The fix itself. `(id, attempt, step)`, a migration, any change to `Snapshot`, `PgMessageStore`,
++`InMemoryMessageStore` or `FlowWorker`. FIX-128 and FIX-129. Do not "tidy" `FlowWorkerTest`.
+diff --git a/docs/findings/F-29.md b/docs/findings/F-29.md
+index 387c081..8f48a5a 100644
+--- a/docs/findings/F-29.md
++++ b/docs/findings/F-29.md
+@@ -140,3 +140,67 @@ changelog entry. ARCHITECTURE.md is deliberately still untouched: the direction
+ document changes belong with the code that makes them true, in one commit, so the repository never
+ describes a platform that does not exist.
+ 
++
++## Addendum 2026-11-14 — the defect is worse than this finding first described it
++
++FIX-131 came out of this finding's recon as "a redelivered at-least-once message loses the history
++of every run but its first". That wording is too mild, and a second recon pass established why.
++
++`Snapshot` carries no attempt (`Snapshot.java:36-38`); `Envelope.ATTEMPT` is only a props key
++(`Envelope.java:40`), set on rerun ingress at `FlowWorker.java:338` and read by nothing in the
++`record` package. Both stores then drop a repeated `(id, step)`: Postgres by `on conflict (id, step)
++do nothing` (`PgMessageStore.java:51-55`), the in-memory store by `rows.putIfAbsent(new
++Row(messageId, step), snapshot)`. So a second run of one id does not fail to be recorded — it is
++recorded only where it reaches a step the first run never reached.
++
++The consequence is a **stitched timeline**. If run 1 fails at step 3 and run 2 reaches step 7,
++`timeline(id)` returns steps 1-3 from run 1 and steps 4-7 from run 2, in one step-ordered sequence.
++The operator sees `FAILED` at step 3 followed by `OK` at steps 4 to 7 — a sequence no single run can
++produce. A truncated history is obviously incomplete; a chimera reads as complete and is false. That
++is the harm, and it is the thing D-108's `(id, attempt, step)` has to fix.
++
++Measured, not reasoned: the test written for FIX-131 drives exactly this and `timeline(id)` came back
++as `0 ingress OK`, `1 mark OK`, `2 enrich OK`, `3 check FAILED`, then `4 map`, `5 route`, `6 audit`,
++`7 partner`, all `OK`, with the store's own counter showing two record calls each for steps 1, 2 and 3
++and one each for 4 to 7. So run 2 did write the colliding rows and the store dropped them.
++
++One correction to my own wording above, from that measurement: the seam is **not** entirely unmarked.
++`Envelope.ATTEMPT` = 2 is present in the props of every row run 2 wrote and absent from every row run
++1 wrote, and that asymmetry is the only mark there is. It does not rescue the timeline. The value sits
++in a props map, which neither `MessageStore.timeline`'s contract nor any reading surface treats as a
++run boundary, and it is a property of the rows that happen to have survived rather than a statement
++about the rows that did not. It does mean D-108 has the value it needs already flowing to the store;
++what is missing is a column that means it.
++
++Two notes on how this went unnoticed. The Postgres half is already pinned by a passing test,
++`PgMessageStoreIT:122-132`, under the name `aBatchCarriesManyMessagesAndDuplicatesAreIgnored` — the
++drop is named as a feature, because for an idempotent batch replay it is one. And the `-Pit`
++confirmation this finding asked for was unnecessary: with both implementations dropping by
++construction, a real Postgres adds nothing a core test does not show. FIX-131 is therefore test-only
++and needs no container; the premise is withdrawn in its row.
++
++### The shape that is actually dangerous
++
++The stitched timeline above needs run 1 to have left a `FAILED` row, and that needs the park to have
++been refused. The common production event is different: a node dies in the middle of a run, the item
++is left to its lease, and another worker picks it up. Writing the FIX-131 test exposed why that case
++is worse, and the second case of that test measures it.
++
++`Recorder.wrap` catches `Exception` only (`Recorder.java:84`, read and verified). A step that throws
++an `Error` therefore leaves **no row at all** — not a `FAILED` row, nothing. Run 1's trail still
++flushes the rows for the steps it completed, because the trail closes in a `finally`
++(`FlowWorker.java` around `:344`). So for a crash at step 3, `timeline(id)` came back as: `0 ingress
++OK`, `1 mark OK` and `2 enrich OK` from run 1, then `3 check OK`, `4 map OK`, `5 route OK`, `6 audit
++OK`, `7 partner OK` from run 2. No row anywhere is `FAILED` and no row carries an error. The store's
++counter shows `mark` and `enrich` recorded twice, `check` recorded once — by run 2 only, because run
++1 never handed the store a row for the step it died on.
++
++That timeline is indistinguishable from one clean successful run. The first shape at least shows an
++operator something impossible and invites the question; this one shows nothing wrong at all, and it
++is the shape a node crash produces. `Envelope.ATTEMPT` on steps 3 to 7 remains the only trace, in a
++props map, and the rows of the run that actually died are simply not there.
++
++The `Recorder.wrap` gap is a defect in its own right, independent of the key: a failure the timeline
++cannot show is a product defect for a platform whose product is monitoring, and D-104 already made
++the opposite call for `BatchingWriter` (`RuntimeException` and `Error` alike). It is FIX-133, and it
++does not wait for CONSIDER-12.
+diff --git a/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java b/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java
+new file mode 100644
+index 0000000..bd9c32b
+--- /dev/null
++++ b/flottila-core/src/test/java/io/flottila/core/flow/RedeliveredTimelineTest.java
+@@ -0,0 +1,235 @@
++package io.flottila.core.flow;
++
++import io.flottila.api.Envelope;
++import io.flottila.api.Key;
++import io.flottila.api.Stage;
++import io.flottila.api.StepFactory;
++import io.flottila.core.record.Meter;
++import io.flottila.core.record.Page;
++import io.flottila.core.record.Snapshot;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.Timeout;
++
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.logging.Level;
++
++import static io.flottila.core.flow.FlowWorkerTest.LEASE;
++import static io.flottila.core.flow.FlowWorkerTest.NO_FILES;
++import static io.flottila.core.flow.FlowWorkerTest.TO_PARTNER;
++import static io.flottila.core.flow.FlowWorkerTest.flow;
++import static io.flottila.core.flow.FlowWorkerTest.policy;
++import static io.flottila.core.flow.FlowWorkerTest.until;
++import static java.util.concurrent.TimeUnit.SECONDS;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-131 — documents a defect, F-29: one message id run twice by the worker leaves a timeline stitched from both runs. The
++ * row key of the message store is {@code (id, step)} (in memory {@code putIfAbsent}, in Postgres {@code on conflict (id, step)
++ * do nothing}), so a rerun's rows at the steps its first run already recorded are dropped and only the steps the first run
++ * never reached are kept. Run 1 fails at step 3 ({@code FAILED}, its park refused so the item is left to its lease), run 2
++ * goes through to step 7: {@code timeline(id)} returns steps 1-3 from run 1 and steps 4-7 from run 2 in one sequence, a
++ * {@code FAILED} step followed by {@code OK} steps, which no single run can produce. The only trace of the seam is the
++ * {@link Envelope#ATTEMPT} prop on the rows run 2 wrote.
++ *
++ * <p>This test pins today's wrong behaviour so CONSIDER-12 (D-107, D-108) has a regression test to invert: when the row key
++ * gains {@code attempt} — {@code (id, attempt, step)} — this test is to be inverted, each run's rows kept whole under its own
++ * attempt. It is green on the defect, not on intended behaviour.
++ */
++@Timeout(30)
++class RedeliveredTimelineTest {
++
++    /**
++     * The prop the {@code mark-run} step stamps with the run's number: the value each row's run is read from. A prop, not a
++     * header: the {@code to} step hands on the partner's reply, whose headers are the partner's, while props are carried.
++     */
++    static final Key<Integer> RUN = new Key<>("x-run");
++
++    FlowWorkerTest.World w;
++    FlowWorkerTest.Logs logs;
++    /** How many runs the {@code mark-run} step has started. */
++    final AtomicInteger runs = new AtomicInteger();
++
++    @BeforeEach
++    void setUp() {
++        w = new FlowWorkerTest.World();
++        logs = FlowWorkerTest.Logs.attach();
++    }
++
++    @AfterEach
++    void tearDown() {
++        logs.detach();
++        w.close();
++    }
++
++    /** Step 1: counts the run and stamps its number on the envelope it hands on. */
++    final StepFactory markRun = ParkingTest.factory("mark-run", s -> Stage.of(e -> e.with(RUN, runs.incrementAndGet())));
++    final StepFactory pass = ParkingTest.factory("pass", s -> Stage.of(e -> e));
++    /** Throws a RuntimeException on run 1 only (recorded FAILED; the park this case refuses); every later run passes. */
++    final StepFactory failFirstRun = ParkingTest.factory("fail-first-run", s -> Stage.of(e -> {
++        if (e.get(RUN).orElseThrow() == 1) throw new IllegalStateException("refused at " + s.name() + " on run 1");
++        return e;
++    }));
++
++    static Map<String, Object> step(String type, String name) {
++        return Map.of("type", type, "name", name);
++    }
++
++    /** One row of the timeline as the test reads it: step, name, outcome, the run that wrote it (its {@code x-run} prop), its attempt prop. */
++    static String row(Snapshot s) {
++        return s.step() + " " + s.stepName() + " " + s.outcome() + " run=" + s.props().get(RUN).map(String::valueOf).orElse("none") + " attempt=" + s.props().get(Envelope.ATTEMPT).map(String::valueOf).orElse("none");
++    }
++
++    @Test
++    void aRedeliveredMessagesTimelineIsStitchedFromTwoRunsWithNothingButTheAttemptPropMarkingTheSeam() throws Exception {
++        FlowDefinition def = FlowDefinition.from(flow(4, List.of(
++                step("mark-run", "mark"), step("pass", "enrich"), step("fail-first-run", "check"),
++                step("pass", "map"), step("pass", "route"), step("pass", "audit"), TO_PARTNER)));
++        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(markRun, pass, failFirstRun), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
++                .recording(w.store, Meter.system()).queue(w.queue).dlq(w.dlq);
++        Envelope in = w.accept(b.delivery(def, NO_FILES));
++        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
++        w.dlq.failParks(new IllegalStateException("dlq down"));   // run 1's park is refused: its item is left to its lease
++
++        // run 1: fails at step 3 (check), the park refused, the item left to its lease
++        assertEquals(1, w1.poll().await(5, SECONDS), "run 1");
++        until(() -> w.queue.claimsInFlight() == 0, () -> "run 1's claim answered");
++        assertEquals(1, w.rows.size(), "fixture: run 1 failed and its item is left to its lease");
++        assertEquals(List.of(), w.partner.sent(), "fixture: run 1 never reached the partner");
++        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: run 1 was not parked");
++        String leftToLease = "message " + in.id() + " of flow orders failed at worker w1 (attempt 1 of 5) and is left to its lease";
++        assertEquals(1, logs.at(Level.WARNING, leftToLease).size(), "fixture: run 1 left to its lease: " + logs.all());
++
++        // run 2: one lease later, the same id claimed again as attempt 2, goes through to step 7 (partner)
++        w.dlq.parksOk();
++        w.rt.clock().advance(LEASE);
++        assertEquals(1, w1.poll().await(5, SECONDS), "run 2");
++        until(() -> w.queue.claimsInFlight() == 0, () -> "run 2's claim answered");
++        assertEquals(List.of(1, 2), w.claimedAttempts(), "fixture: one item, claimed as attempts 1 and 2");
++        assertEquals(2, runs.get(), "fixture: the pipeline ran twice");
++        assertEquals(List.of(in.id()), w.sentIds(), "fixture: run 2 reached the partner, under the same id");
++        assertEquals(0, w.rows.size(), "fixture: run 2 completed the item");
++        for (String name : List.of("mark", "enrich", "check")) {
++            assertEquals(2, w.store.recorded(name), "both runs handed the store a row for " + name + ": the second one collides on (id, step)");
++        }
++        for (String name : List.of("map", "route", "audit", "partner")) {
++            assertEquals(1, w.store.recorded(name), "only run 2 handed the store a row for " + name);
++        }
++
++        assertEquals(1, w.store.recorded("ingress"), "one ingress row, the delivery's save: neither run writes step 0");
++        List<Snapshot> timeline = w.store.timeline(in.id()).await();
++        assertEquals(List.of(
++                        "0 ingress OK run=none attempt=none",   // the delivery's save; neither run writes step 0
++                        "1 mark OK run=1 attempt=none",          // run 1's row; run 2's row for step 1 was dropped
++                        "2 enrich OK run=1 attempt=none",        // run 1's
++                        "3 check FAILED run=1 attempt=none",     // run 1's failure; run 2 passed this step, its OK row dropped
++                        "4 map OK run=2 attempt=2",              // run 2's from here on: steps run 1 never reached
++                        "5 route OK run=2 attempt=2",
++                        "6 audit OK run=2 attempt=2",
++                        "7 partner OK run=2 attempt=2"),
++                timeline.stream().map(RedeliveredTimelineTest::row).toList(),
++                "the timeline of one id is stitched: steps 1-3 from run 1, steps 4-7 from run 2");
++
++        // the stitch: a FAILED step 3 and OK steps past it, in one timeline — a sequence no single run produces
++        Snapshot check = timeline.get(3);
++        assertEquals(3, check.step());
++        assertEquals(Snapshot.Outcome.FAILED, check.outcome());
++        assertEquals(Optional.of("java.lang.IllegalStateException: refused at check on run 1"), check.error(), "run 1's failure");
++        List<Snapshot> past = timeline.stream().filter(s -> s.step() > 3).toList();
++        assertEquals(List.of(4, 5, 6, 7), past.stream().map(Snapshot::step).toList());
++        assertTrue(past.stream().allMatch(s -> s.outcome() == Snapshot.Outcome.OK && s.error().isEmpty()), "every step past the FAILED one reads OK: " + past);
++
++        // the only mark of two runs: ATTEMPT on the rows run 2 wrote, absent from every row run 1 (or the delivery) wrote
++        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
++                timeline.stream().map(s -> s.props().get(Envelope.ATTEMPT)).toList(), "attempt 2 on run 2's rows only");
++    }
++
++    /**
++     * FIX-131, F-29, the worst shape: run 1 dies at step 3 with an {@link Error} (the {@code crashFirst} harness; a node dying
++     * mid-run). Today {@code Recorder.wrap} catches {@code Exception} only, so run 1 leaves OK rows at steps 1-2 and no row at
++     * all at step 3 — a second defect, FIX-133, not intended behaviour; run 2 (attempt 2, after one lease) goes through, its
++     * rows at steps 1-2 are dropped on {@code (id, step)} and its rows 3-7 kept. This case produces a timeline that reads as a
++     * single successful run, which is worse than case 1 because case 1's FAILED-then-OK sequence at least looks wrong to an
++     * operator, while this one carries no failure anywhere and only the attempt prop on steps 3-7 betrays the seam.
++     *
++     * <p>Two separate triggers change this case, and either may land first. <b>FIX-133</b> (record a FAILED row on an
++     * {@code Error}, then rethrow; it does not wait for CONSIDER-12) flips the step-3 expectations, all of them deliberately:
++     * run 1's interim timeline gains {@code "3 check FAILED run=1 attempt=none"}; {@code recorded("check")} becomes 1 after run 1
++     * and 2 after run 2; the final list's step-3 row becomes run 1's FAILED row ({@code run=1 attempt=none}); the "no row is
++     * FAILED" assertion, the step-3 {@code x-run} assertion and the step-3 entry of the ATTEMPT list flip with it — case 2 then
++     * reads as case 1. Under FIX-133 those are wrong expectations to fix, with the reason in the commit; the rest stands.
++     * <b>CONSIDER-12</b> (the row key gains {@code attempt}) inverts the whole case together with case 1.
++     */
++    @Test
++    void aMessageWhoseFirstRunCrashedReadsAsOneCleanRunStitchedFromTwoWithNoFailureAnywhere() throws Exception {
++        FlowDefinition def = FlowDefinition.from(flow(4, List.of(
++                step("mark-run", "mark"), step("pass", "enrich"), step("crash-first", "check"),
++                step("pass", "map"), step("pass", "route"), step("pass", "audit"), TO_PARTNER)));
++        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(markRun, pass, w.crashFirst), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
++                .recording(w.store, Meter.system()).queue(w.queue).dlq(w.dlq);
++        Envelope in = w.accept(b.delivery(def, NO_FILES));
++        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
++
++        // run 1: an Error at step 3 (check), never parked; the item is left to its lease
++        assertEquals(1, w1.poll().await(5, SECONDS), "run 1");
++        until(() -> w.queue.claimsInFlight() == 0, () -> "run 1's claim answered");
++        assertEquals(1, w.rows.size(), "fixture: run 1 crashed and its item is left to its lease");
++        assertEquals(List.of(), w.queue.completes(), "fixture: run 1 did not complete the item");
++        assertEquals(List.of(), w.queue.holds(), "fixture: nor hold it");
++        assertEquals(List.of(), w.partner.sent(), "fixture: run 1 never reached the partner");
++        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: an Error is never parked");
++        String leftToLease = "message " + in.id() + " of flow orders failed at worker w1 (attempt 1 of 5) and is left to its lease";
++        List<String> warnings = logs.at(Level.WARNING, leftToLease);
++        assertEquals(1, warnings.size(), "fixture: run 1 left to its lease: " + logs.all());
++        assertTrue(warnings.get(0).contains("crashed at check on the first run"), "fixture: by the Error at check: " + warnings.get(0));
++        assertEquals(List.of("0 ingress OK run=none attempt=none", "1 mark OK run=1 attempt=none", "2 enrich OK run=1 attempt=none"),
++                w.store.timeline(in.id()).await().stream().map(RedeliveredTimelineTest::row).toList(),
++                "run 1's trail kept its rows up to the crash and wrote nothing at step 3");
++        assertEquals(0, w.store.recorded("check"), "the Error left no row at step 3: run 1 never handed the store one");
++
++        // run 2: one lease later, the same id claimed again as attempt 2, goes through to step 7 (partner)
++        w.rt.clock().advance(LEASE);
++        assertEquals(1, w1.poll().await(5, SECONDS), "run 2");
++        until(() -> w.queue.claimsInFlight() == 0, () -> "run 2's claim answered");
++        assertEquals(List.of(1, 2), w.claimedAttempts(), "fixture: one item, claimed as attempts 1 and 2");
++        assertEquals(2, runs.get(), "fixture: the pipeline ran twice");
++        assertEquals(List.of(in.id()), w.sentIds(), "fixture: run 2 reached the partner, under the same id");
++        assertEquals(0, w.rows.size(), "fixture: run 2 completed the item");
++        for (String name : List.of("mark", "enrich")) {
++            assertEquals(2, w.store.recorded(name), "both runs handed the store a row for " + name + ": the second one collides on (id, step)");
++        }
++        for (String name : List.of("check", "map", "route", "audit", "partner")) {
++            assertEquals(1, w.store.recorded(name), "only run 2 handed the store a row for " + name);
++        }
++
++        assertEquals(1, w.store.recorded("ingress"), "one ingress row, the delivery's save: neither run writes step 0");
++        List<Snapshot> timeline = w.store.timeline(in.id()).await();
++        assertEquals(List.of(
++                        "0 ingress OK run=none attempt=none",   // the delivery's save
++                        "1 mark OK run=1 attempt=none",          // run 1's; run 2's dropped
++                        "2 enrich OK run=1 attempt=none",        // run 1's; run 2's dropped
++                        "3 check OK run=2 attempt=2",            // run 2's: run 1 crashed here and left nothing
++                        "4 map OK run=2 attempt=2",
++                        "5 route OK run=2 attempt=2",
++                        "6 audit OK run=2 attempt=2",
++                        "7 partner OK run=2 attempt=2"),
++                timeline.stream().map(RedeliveredTimelineTest::row).toList(),
++                "the timeline of one id is stitched: steps 1-2 from run 1, steps 3-7 from run 2, every row OK");
++
++        // no failure anywhere: the crash at step 3 is invisible
++        assertEquals(List.of(), timeline.stream().filter(s -> s.outcome() != Snapshot.Outcome.OK || s.error().isPresent()).toList(),
++                "no row is FAILED or carries an error");
++        Snapshot check = timeline.get(3);
++        assertEquals(3, check.step());
++        assertEquals(Optional.of(2), check.props().get(RUN), "the step-3 row is run 2's, not a record of run 1's crash");
++
++        // the only mark of two runs: ATTEMPT on the rows run 2 wrote (3-7), absent from the delivery's and run 1's (0-2)
++        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
++                timeline.stream().map(s -> s.props().get(Envelope.ATTEMPT)).toList(), "attempt 2 on run 2's rows only");
++    }
++}

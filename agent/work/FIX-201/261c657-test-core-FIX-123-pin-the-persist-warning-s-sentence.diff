@@ -1,0 +1,58 @@
+COMMIT 261c6570e78137ffda54a1066d5bbd382decf3a2
+test(core): FIX-123 pin the persist warning's sentence
+
+`Trail.persist()` tells the operator the body could not be made durable and
+that the message's rows are therefore recorded metadata-only. FIX-54 pinned
+the `message <id>: ` prefix and FIX-121 fixed how the two cases filter the
+captured records, but nothing asserted the sentence itself: the reviewer's
+hand mutant for FIX-121 reworded it and all 13 cases stayed green.
+
+Four assertions in the two persist cases, two per case, so each half of the
+sentence is load-bearing on its own. Proved by one hand mutant per half: the
+cause phrase mutated fails TrailTest:390/:412 while the tail still reads
+correctly, the tail mutated fails :391/:413 while the cause phrase still
+reads correctly. Neither assertion subsumes the other.
+
+The cause text ("pg down") is deliberately not asserted: it is the fake
+store's words, not Trail's, and pinning it would break this test whenever an
+unrelated fixture changes its exception message.
+
+PIT could not have found this gap — its default mutators do not alter string
+literals — so a hand mutant is the only instrument for a message's wording.
+
+Checks: VERIFIED_PASS Tests run: 13, Failures: 0, Errors: 0, Skipped: 0,
+BUILD SUCCESS before and after the restores (agent/work/FIX-123-green.log,
+-green3.log); Tests run: 13, Failures: 2 under each mutant (-mutant.log,
+-mutant-tail.log); cmp shows Trail.java byte-identical to HEAD after each
+restore. Scoped to flottila-core, no production code changed.
+
+Task: FIX-123
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+(cherry picked from commit ffa043121d05d1f079a32798320a959d9c184220)
+
+---DIFF---
+
+diff --git a/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java b/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
+index 49425cd..94a45cb 100644
+--- a/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
++++ b/flottila-core/src/test/java/io/flottila/core/record/TrailTest.java
+@@ -387,6 +387,8 @@ class TrailTest {
+         assertEquals(1, warned.size(), "a persist that fails logs exactly one WARNING: " + warned);
+         assertTrue(warned.getFirst().startsWith("message m-w: "), "the WARNING opens with the message id prefix: " + warned);
+         assertTrue(warned.getFirst().contains(down.key().toString()), "and the key: " + warned);
++        assertTrue(warned.getFirst().contains("could not be made durable"), "the WARNING says the body could not be made durable: " + warned);
++        assertTrue(warned.getFirst().contains("its rows are recorded metadata-only"), "and tells the operator the rows are metadata-only: " + warned);
+     }
+ 
+     @Test
+@@ -407,6 +409,8 @@ class TrailTest {
+         List<String> warned = all.stream().filter(m -> m.contains(down.key().toString())).toList();   // this case's failing message only
+         assertEquals(1, warned.size(), "the capture sees the failed persist's WARNING, and only it: " + warned);
+         assertTrue(warned.getFirst().startsWith("message m-down: "), warned.toString());
++        assertTrue(warned.getFirst().contains("could not be made durable"), "the witness WARNING says the body could not be made durable: " + warned);
++        assertTrue(warned.getFirst().contains("its rows are recorded metadata-only"), "and that its rows are metadata-only: " + warned);
+     }
+ 
+     @Test

@@ -1,0 +1,37 @@
+COMMIT 6a0ee218a1d60cd1eab0db40e0c0e3a4942352d2
+docs(agent): make FIX-139's red mean something
+
+A Python suite against a missing module reds once, with ModuleNotFoundError,
+and that error says nothing about whether the three cases can each fail for
+their own reason. The test-author therefore writes ci/ledger_check.py as a
+deliberately wrong stub that exits 0 for every input, so each case fails on its
+own assertion with its fixture named. That is the red worth observing, and the
+hand-back must quote it.
+
+Task: FIX-139
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/agent/packets/FIX-139.md b/agent/packets/FIX-139.md
+index 89b7fe1..3244ba1 100644
+--- a/agent/packets/FIX-139.md
++++ b/agent/packets/FIX-139.md
+@@ -78,3 +78,15 @@ fix the row — report it, because that is a finding about a ledger and belongs
+ 
+ This guard catches SHAPE, not content. Every ledger error that cost time today was a false SENTENCE,
+ not a broken table, and no CI check will catch those. Do not let this row imply otherwise.
++
++## Red that means something (architect addendum, before dispatch)
++
++A Python test suite against a module that does not exist reds with `ModuleNotFoundError`, and that
++single error says nothing about whether any of the three cases can fail for its own reason. So the
++test-author also writes `ci/ledger_check.py` as a **deliberately wrong stub**: the real argument
++handling and a `main()` that prints nothing and returns 0 for every input. Every red case then fails
++on its own assertion — "expected non-zero, got 0", with the fixture named — which is the red that is
++worth observing. The hand-back must quote those three failures, not an import error.
++
++The implementer replaces the stub's body and keeps its signature. The stub is the one piece of
++non-test code the test-author writes here, and it is specified rather than invented.

@@ -1,0 +1,624 @@
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
+index cd752bb..aeb942c 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
+@@ -238,7 +238,7 @@ public final class Deployments {
+     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter) {
+         this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, new InMemoryDeploymentStore(),
+-                new DirArchiveStore(config.archives().dir()));
++                new DirArchiveStore(config.archives().dir(), config.maxPackageBytes()));
+     }
+ 
+     /**
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/DirArchiveStore.java b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/DirArchiveStore.java
+index 57675bb..dd5bd7e 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/DirArchiveStore.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/DirArchiveStore.java
+@@ -1,9 +1,12 @@
+ package io.flottila.runtime.deploy;
+ 
+ import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.nio.file.StandardCopyOption;
++import java.nio.file.StandardOpenOption;
+ import java.util.Objects;
+ 
+ /**
+@@ -16,9 +19,13 @@ import java.util.Objects;
+ public final class DirArchiveStore implements ArchiveStore {
+ 
+     private final Path dir;
++    private final long maxBytes;
+ 
+-    public DirArchiveStore(Path dir) {
++    /** @param maxBytes the most bytes a fetch copies, at least 1: a larger archive is refused while it is copied */
++    public DirArchiveStore(Path dir, long maxBytes) {
+         this.dir = Objects.requireNonNull(dir, "dir");
++        if (maxBytes < 1) throw new IllegalArgumentException("maxBytes must be at least 1, was " + maxBytes);
++        this.maxBytes = maxBytes;
+     }
+ 
+     @Override
+@@ -34,9 +41,40 @@ public final class DirArchiveStore implements ArchiveStore {
+         }
+     }
+ 
+-    /** @throws java.nio.file.NoSuchFileException naming {@code <dir>/<sha256>.zip} when nothing is stored under the key */
++    /**
++     * @throws java.nio.file.NoSuchFileException naming {@code <dir>/<sha256>.zip} when nothing is stored under the key
++     * @throws IOException the archive is larger than the cap: refused while it is copied, nothing of it stays at {@code target}
++     */
+     @Override
+     public void fetch(String sha256, Path target) throws IOException {
+-        Files.copy(dir.resolve(ArchiveName.of(sha256)), target, StandardCopyOption.REPLACE_EXISTING);
++        try (InputStream in = Files.newInputStream(dir.resolve(ArchiveName.of(sha256)))) {
++            copyBounded(in, target, maxBytes);
++        }
++    }
++
++    /**
++     * Copies {@code in} to {@code target}, replacing it, and fails as soon as more than {@code maxBytes} have been read; on any
++     * failure, unchecked ones included, no file stays at {@code target}.
++     */
++    static void copyBounded(InputStream in, Path target, long maxBytes) throws IOException {
++        boolean done = false;
++        try {
++            try (OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
++                    StandardOpenOption.WRITE)) {
++                byte[] chunk = new byte[64 * 1024];
++                long copied = 0;
++                for (int n = in.read(chunk); n >= 0; n = in.read(chunk)) {
++                    copied += n;
++                    if (copied > maxBytes) {
++                        throw new IOException("the archive is larger than the cap of " + maxBytes + " bytes (FLOTTILA_MAX_PACKAGE_BYTES): refused after "
++                                + copied + " bytes");
++                    }
++                    out.write(chunk, 0, n);
++                }
++            }
++            done = true;
++        } finally {
++            if (!done) Files.deleteIfExists(target);
++        }
+     }
+ }
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/S3ArchiveStore.java b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/S3ArchiveStore.java
+index 5b48a98..e25c07a 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/S3ArchiveStore.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/S3ArchiveStore.java
+@@ -10,10 +10,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.UncheckedIOException;
+-import java.nio.file.Files;
+ import java.nio.file.NoSuchFileException;
+ import java.nio.file.Path;
+-import java.nio.file.StandardCopyOption;
+ import java.util.Objects;
+ 
+ /**
+@@ -30,11 +28,15 @@ public final class S3ArchiveStore implements ArchiveStore {
+     private final S3Client client;
+     private final String bucket;
+     private final String prefix;
++    private final long maxBytes;
+ 
+-    public S3ArchiveStore(S3Client client, String bucket, String prefix) {
++    /** @param maxBytes the most bytes a fetch copies, at least 1: a larger object is refused while it is copied */
++    public S3ArchiveStore(S3Client client, String bucket, String prefix, long maxBytes) {
+         this.client = Objects.requireNonNull(client, "client");
+         this.bucket = Objects.requireNonNull(bucket, "bucket");
+         this.prefix = Objects.requireNonNull(prefix, "prefix");
++        if (maxBytes < 1) throw new IllegalArgumentException("maxBytes must be at least 1, was " + maxBytes);
++        this.maxBytes = maxBytes;
+     }
+ 
+     @Override
+@@ -57,7 +59,7 @@ public final class S3ArchiveStore implements ArchiveStore {
+     public void fetch(String sha256, Path target) throws IOException {
+         String key = key(sha256);
+         try (InputStream in = client.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build())) {
+-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
++            DirArchiveStore.copyBounded(in, target, maxBytes);
+         } catch (NoSuchKeyException missing) {
+             NoSuchFileException absent = new NoSuchFileException(key, null, "no archive under this key in the bucket " + bucket);
+             absent.initCause(missing);
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/node/Node.java b/flottila-runtime/src/main/java/io/flottila/runtime/node/Node.java
+index 2ea1372..f5659a4 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/node/Node.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/node/Node.java
+@@ -182,12 +182,12 @@ public final class Node implements AutoCloseable {
+             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
+             PgDlq dlq = new PgDlq(pool);
+             PgWorkQueue work = new PgWorkQueue(pool);
+-            ArchiveStore archives = new DirArchiveStore(config.archives().dir());
++            ArchiveStore archives = new DirArchiveStore(config.archives().dir(), config.maxPackageBytes());
+             if (config.s3().isPresent()) {
+                 NodeConfig.S3 settings = config.s3().get();
+                 S3Client s3 = s3Client(settings);
+                 closeS3 = s3::close;
+-                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
++                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix(), config.maxPackageBytes());
+             }
+             PollerLeases leases;
+             if (config.leases().valkey().isPresent()) {
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/node/NodeConfig.java b/flottila-runtime/src/main/java/io/flottila/runtime/node/NodeConfig.java
+index 9faea50..391b400 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/node/NodeConfig.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/node/NodeConfig.java
+@@ -488,7 +488,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
+             throw new IllegalArgumentException((accessKey.isPresent() ? "FLOTTILA_S3_SECRET_KEY" : "FLOTTILA_S3_ACCESS_KEY") + " is missing: the S3 keys "
+                     + "are given both or neither (neither: the AWS SDK's default credentials chain)");
+         }
+-        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila"), accessKey, secretKey);
++        return new S3(bucket, region, endpoint, pathStyle, prefix(env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila")), accessKey, secretKey);
++    }
++
++    /** {@code FLOTTILA_S3_PREFIX}: not blank, neither starting nor ending with a slash (inner slashes are fine). */
++    private static String prefix(String raw) {
++        if (raw.isBlank() || raw.startsWith("/") || raw.endsWith("/")) {
++            throw new IllegalArgumentException("FLOTTILA_S3_PREFIX must not be blank or start or end with a slash, such as flottila or a/b, was '" + raw + "'");
++        }
++        return raw;
+     }
+ 
+     /** {@code key}'s value, which must be there and not blank. */
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerDeployTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerDeployTest.java
+index 2625a22..6a0f62b 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerDeployTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerDeployTest.java
+@@ -744,7 +744,7 @@ class AdminServerDeployTest {
+     void packagesListStateAndProblems() throws Exception {
+         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+         Path bucket = tmp.resolve("bucket");
+-        DirArchiveStore archives = new DirArchiveStore(bucket);
++        DirArchiveStore archives = new DirArchiveStore(bucket, 64L << 20);
+         Deployments first = deployments(tmp.resolve("node-1"), rows, archives);
+         byte[] alpha = pkg("alpha", "2.0.0", Map.of("orders", "sync")).zip();
+         byte[] zeta = pkg("zeta", "3.0.0", Map.of("beta", "sync")).zip();
+@@ -952,7 +952,7 @@ class AdminServerDeployTest {
+             @Override public Future<List<DeploymentRecord>> list() { return rows.list(); }
+             @Override public Future<Void> delete(String name) { return Future.failedFuture(new IllegalStateException("connection reset by peer")); }
+         };
+-        Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, new DirArchiveStore(tmp.resolve("bucket-3")));
++        Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, new DirArchiveStore(tmp.resolve("bucket-3"), 64L << 20));
+         OnVirtualThread.call(() -> failing.deploy("solo", Optional.empty(), PackageDraft.write(tmp.resolve("uploads"), pkg("solo", "1.0.0", Map.of("one", "sync")).zip())));
+         int at = serve(Optional.of(failing));
+ 
+@@ -1038,7 +1038,7 @@ class AdminServerDeployTest {
+                 listed.getJsonArray("artifacts").stream().map(o -> item((JsonObject) o, artifactFields)).toList(), listed.encode());
+ 
+         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
++        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
+         byte[] legacy = pkg("legacy", "1.0.0", Map.of("beta", "sync")).move("flows/beta.yaml", "urn-a/beta.yaml")
+                 .file("urn-a/folder.yaml", FOLDER_ONLY + "namespace: urn:legacy\n")
+                 .file("urn-a/beta.test.yaml", "schemaVersion: 1\nkind: test\nflow: beta\ncases: [ { name: c, send: in.xml, expect: { steps: 1 } } ]\n")
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerTargetsTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerTargetsTest.java
+index 9889b5a..6674b80 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerTargetsTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/admin/AdminServerTargetsTest.java
+@@ -103,7 +103,7 @@ class AdminServerTargetsTest {
+         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
+         deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
+-                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives")), new SequentialIntake(messages, queue),
++                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives"), 64L << 20), new SequentialIntake(messages, queue),
+                 new InMemoryPollerLeases(rt.clock()), targets);
+     }
+ 
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/ArchiveStoreContract.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/ArchiveStoreContract.java
+index 87e25b4..4a81992 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/ArchiveStoreContract.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/ArchiveStoreContract.java
+@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.io.TempDir;
+ 
++import java.io.IOException;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.Files;
+ import java.nio.file.NoSuchFileException;
+@@ -13,6 +14,8 @@ import java.util.List;
+ import java.util.Random;
+ 
+ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertThrows;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+@@ -41,6 +44,12 @@ public abstract class ArchiveStoreContract {
+     /** The name the case's store gives the archive of {@code sha256}: its object key, or its file. */
+     protected abstract String keyOf(String sha256);
+ 
++    /**
++     * The most bytes the case's store fetches (FIX-60): the maximum size {@link #emptyStore()} builds it with; above the largest
++     * archive the other cases put (300 007 bytes).
++     */
++    protected abstract long cap();
++
+     @BeforeEach
+     void openTheStore() throws Exception {
+         store = emptyStore();
+@@ -177,4 +186,55 @@ public abstract class ArchiveStoreContract {
+         fetch(sha, out);
+         assertArrayEquals(zip, Files.readAllBytes(out), "the target holds the archive and nothing of what it held before");
+     }
++
++    // --- FIX-60: a fetch is bounded
++
++    @Test
++    void anObjectExactlyAtTheCapIsFetchedByteForByte() throws Exception {
++        byte[] zip = bytes(9, Math.toIntExact(cap()));
++        String sha = sha256(zip);
++        put(sha, archive("at-cap.zip", zip));
++        Path out = target("at-cap-fetched.zip");
++        fetch(sha, out);
++        assertArrayEquals(zip, Files.readAllBytes(out), "an object of exactly " + cap() + " bytes is within the cap");
++    }
++
++    @Test
++    void anObjectOneByteOverTheCapIsRefusedAndLeavesNoTarget() throws Exception {
++        byte[] zip = bytes(10, Math.toIntExact(cap()) + 1);
++        String sha = sha256(zip);
++        put(sha, archive("over-cap.zip", zip));
++        Path out = target("over-cap-fetched.zip");
++        IOException refused = assertThrows(IOException.class, () -> fetch(sha, out), "one byte over the cap");
++        assertTrue(String.valueOf(refused.getMessage()).contains(String.valueOf(cap())),
++                "the refusal names the cap " + cap() + ": " + refused.getMessage());
++        assertFalse(Files.exists(out), "no partial file is left at the target");
++    }
++
++    @Test
++    void anObjectFourTimesTheCapIsRefusedAndLeavesNoTargetNorTemporaryFile() throws Exception {
++        byte[] zip = bytes(11, Math.toIntExact(cap() * 4));
++        String sha = sha256(zip);
++        put(sha, archive("far-over-cap.zip", zip));
++        Path out = target("far-over-cap-fetched.zip");
++        IOException refused = assertThrows(IOException.class, () -> fetch(sha, out), "four times the cap");
++        assertTrue(String.valueOf(refused.getMessage()).contains(String.valueOf(cap())),
++                "the refusal names the cap " + cap() + ": " + refused.getMessage());
++        assertFalse(Files.exists(out), "no partial file is left at the target");
++        try (var siblings = Files.list(out.getParent())) {
++            assertEquals(List.of(), siblings.map(p -> p.getFileName().toString()).toList(), "no temporary file is left beside the target either");
++        }
++    }
++
++    @Test
++    void aStoreStillFetchesAfterARefusedFetch() throws Exception {
++        byte[] big = bytes(12, Math.toIntExact(cap()) + 1);
++        put(sha256(big), archive("big.zip", big));
++        assertThrows(IOException.class, () -> fetch(sha256(big), target("big-fetched.zip")), "the oversize object");
++        byte[] small = bytes(13, 4_096);
++        put(sha256(small), archive("small.zip", small));
++        Path out = target("small-fetched.zip");
++        fetch(sha256(small), out);
++        assertArrayEquals(small, Files.readAllBytes(out), "a refusal does not poison the store: a small archive is fetched after it");
++    }
+ }
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsDedupeTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsDedupeTest.java
+index e3b5a42..7e96f84 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsDedupeTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsDedupeTest.java
+@@ -78,7 +78,7 @@ class DeploymentsDedupeTest {
+         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
+         InMemoryMessageStore messages = new InMemoryMessageStore();
+         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, new InMemoryDlq(),
+-                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), intake,
++                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir(), 64L << 20), intake,
+                 new InMemoryPollerLeases(rt.clock()));
+     }
+ 
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerEdgeTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerEdgeTest.java
+index 0bc99ae..73c1b0a 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerEdgeTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerEdgeTest.java
+@@ -89,7 +89,7 @@ class DeploymentsListenerEdgeTest {
+         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), byScheme);
+         deployments = new Deployments(NodeConfig.from(env), runtime, byScheme, rt.clock(), rt.timer(), List.of(), List.of(), new InMemoryMessageStore(),
+                 new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(),
+-                new DirArchiveStore(tmp.resolve("node-1").resolve("archives")));
++                new DirArchiveStore(tmp.resolve("node-1").resolve("archives"), 64L << 20));
+     }
+ 
+     @AfterEach
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerTest.java
+index 9efce5c..0437d65 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsListenerTest.java
+@@ -108,7 +108,7 @@ class DeploymentsListenerTest {
+ 
+     /** A node of its own records and archive directory, serving {@link #doors} ({@value Doors#SCHEME}) and {@link #gates} ({@value #GATE}). */
+     Deployments node(Map<String, String> env) {
+-        return node(env, new InMemoryDeploymentStore(), new DirArchiveStore(Path.of(env.get("FLOTTILA_DATA_DIR")).resolve("archives")), doors, gates);
++        return node(env, new InMemoryDeploymentStore(), new DirArchiveStore(Path.of(env.get("FLOTTILA_DATA_DIR")).resolve("archives"), 64L << 20), doors, gates);
+     }
+ 
+     /** {@code name} 1.0.0 with only its out endpoint {@code partner}. */
+@@ -411,7 +411,7 @@ class DeploymentsListenerTest {
+     @Test
+     void aFailedFlowOrFailedPackageHoldsNoPort() throws Exception {
+         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
++        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
+         Deployments first = node(env("node-a"), rows, bucket, new Doors());
+         deploy(first, listening(listening(pkg("alpha"), "a1", port(8080)), "a2", port(8082)));
+         String omega = deploy(first, listening(pkg("omega"), "w", port(8083))).pkg().archiveSha256();
+@@ -435,7 +435,7 @@ class DeploymentsListenerTest {
+     @Test
+     void aRestoredPackageClashingWithOneRestoredBeforeIsFailed() throws Exception {
+         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
++        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
+         deploy(node(env("node-a"), rows, bucket, new Doors()), listening(pkg("alpha"), "invoices", port(8080)));
+         deploy(node(env("node-b"), rows, bucket, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));   // node b runs nothing else
+         Doors third = new Doors();
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsPollerLeaseTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsPollerLeaseTest.java
+index 3c2f0c6..d0939db 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsPollerLeaseTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsPollerLeaseTest.java
+@@ -100,7 +100,7 @@ class DeploymentsPollerLeaseTest {
+         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
+         CountingQueue queue = new CountingQueue(rt.clock());
+         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq, queue, () -> 0L,
+-                new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), new SequentialIntake(messages, queue), leases);
++                new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir(), 64L << 20), new SequentialIntake(messages, queue), leases);
+     }
+ 
+     @AfterEach
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsRestoreGuardTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsRestoreGuardTest.java
+index dfe2d81..3cf2495 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsRestoreGuardTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsRestoreGuardTest.java
+@@ -54,7 +54,7 @@ class DeploymentsRestoreGuardTest {
+         e.put("FLOTTILA_DATA_DIR", tmp.resolve(id).toString());
+         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+         Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
+-                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, new DirArchiveStore(tmp.resolve("bucket")));
++                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, new DirArchiveStore(tmp.resolve("bucket"), 64L << 20));
+         made.add(d);
+         return d;
+     }
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsSecretsTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsSecretsTest.java
+index e9fb234..db19d28 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsSecretsTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsSecretsTest.java
+@@ -513,7 +513,7 @@ class DeploymentsSecretsTest {
+     @Test
+     void aRestoreWithoutTheVariableListsThePackageFailedNamingIt() throws Exception {
+         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
+-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
++        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"), 64L << 20);
+         Node first = new Node("node-1", "dev", Map.of("FLOTTILA_SECRET_PARTNER_URL", "rec://first-value"), records, archives);
+         first.deploy(one("restored", url("rec://inbound"), url("secret://partner-url")));
+         for (Map<String, Object> options : first.produced("partner")) assertEquals("rec://first-value", options.get("url"));
+@@ -547,7 +547,7 @@ class DeploymentsSecretsTest {
+         String partnerValue = "rec://partner-V4LUE-7f3a";
+         String inboundValue = "inbound-V4LUE-9c1d";
+         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
+-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
++        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"), 64L << 20);
+         Node n = new Node("node-1", "dev", Map.of("FLOTTILA_SECRET_PARTNER_URL", partnerValue, "FLOTTILA_SECRET_INBOUND", inboundValue),
+                 records, archives);
+ 
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsTargetsTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsTargetsTest.java
+index 11a1e7a..ffec262 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsTargetsTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsTargetsTest.java
+@@ -122,7 +122,7 @@ class DeploymentsTargetsTest {
+     }
+ 
+     Peer node(String id) {
+-        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives")));
++        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives"), 64L << 20));
+     }
+ 
+     Envelope envelope(String flow) {
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DirArchiveStoreTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DirArchiveStoreTest.java
+index 723cbbd..f92b909 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DirArchiveStoreTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DirArchiveStoreTest.java
+@@ -3,6 +3,7 @@ package io.flottila.runtime.deploy;
+ import org.junit.jupiter.api.Test;
+ 
+ import java.io.IOException;
++import java.io.InputStream;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+ import java.util.List;
+@@ -10,7 +11,9 @@ import java.util.List;
+ import static io.flottila.runtime.deploy.DeploymentsTest.children;
+ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ /**
+  * P1-09c3a (D-070): the directory archive store (dev; {@code FLOTTILA_ARCHIVE_DIR}, default {@code <dataDir>/archives}) passes the
+@@ -24,7 +27,12 @@ class DirArchiveStoreTest extends ArchiveStoreContract {
+     @Override
+     protected ArchiveStore emptyStore() {
+         dir = work.resolve("data").resolve("archives");
+-        return new DirArchiveStore(dir);
++        return new DirArchiveStore(dir, cap());
++    }
++
++    @Override
++    protected long cap() {
++        return 1L << 20;
+     }
+ 
+     @Override
+@@ -46,4 +54,49 @@ class DirArchiveStoreTest extends ArchiveStoreContract {
+         assertThrows(IOException.class, () -> put(other, work.resolve("uploads").resolve("absent.zip")), "a put of a file that is not there");
+         assertEquals(List.of(sha + ".zip"), children(dir), "a failed put leaves no temporary file and no object");
+     }
++
++    @Test
++    void aCapBelowOneIsRefusedAtConstructionNamingTheValue() {
++        for (long bad : new long[] {0L, -1L}) {
++            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> new DirArchiveStore(work.resolve("cap"), bad), "cap " + bad);
++            assertTrue(String.valueOf(e.getMessage()).contains(String.valueOf(bad)), "the refusal names " + bad + ": " + e.getMessage());
++        }
++    }
++
++    @Test
++    void aCapOfOneIsTheSmallestLegalAndFetchesAOneByteObject() throws Exception {
++        ArchiveStore tiny = new DirArchiveStore(work.resolve("tiny"), 1L);
++        byte[] one = bytes(14, 1);
++        put(tiny, sha256(one), archive("one.zip", one));
++        Path out = target("one-fetched.zip");
++        fetch(tiny, sha256(one), out);
++        assertArrayEquals(one, Files.readAllBytes(out), "a cap of 1 admits a one-byte object");
++    }
++
++    /** The javadoc of {@code copyBounded}: on any failure no file stays at the target. Here the source fails after one chunk. */
++    @Test
++    void aCopyWhoseSourceFailsMidwayLeavesNoFileAtTheTarget() throws Exception {
++        Path out = target("midway.zip");
++        Files.writeString(out, "stale");   // a target that existed is replaced by nothing, not left stale or truncated
++        InputStream failing = new InputStream() {
++            private boolean sent;
++
++            @Override
++            public int read() {
++                throw new AssertionError("copyBounded reads chunks");
++            }
++
++            @Override
++            public int read(byte[] b, int off, int len) throws IOException {
++                if (sent) throw new IOException("source broke");
++                sent = true;
++                java.util.Arrays.fill(b, off, off + 1_000, (byte) 7);
++                return 1_000;
++            }
++        };
++        IOException e = assertThrows(IOException.class, () -> DirArchiveStore.copyBounded(failing, out, 1L << 20));
++        assertEquals("source broke", e.getMessage());
++        assertFalse(Files.exists(out), "the failed copy leaves no file at the target");
++        assertEquals(List.of(), children(out.getParent()), "and nothing else beside it");
++    }
+ }
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreIT.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreIT.java
+index d07f93e..6f14225 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreIT.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreIT.java
+@@ -71,7 +71,12 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
+     @Override
+     protected ArchiveStore emptyStore() {
+         prefix = "it-" + System.nanoTime() + "/fleet";
+-        return new S3ArchiveStore(s3, BUCKET, prefix);
++        return new S3ArchiveStore(s3, BUCKET, prefix, cap());
++    }
++
++    @Override
++    protected long cap() {
++        return 1L << 20;
+     }
+ 
+     @Override
+@@ -118,7 +123,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
+         Path upload = archive("shop.zip", zip);
+         String key = "fleet/archives/" + sha + ".zip";
+         try (S3Client down = client(URI.create("http://127.0.0.1:" + closedPort()))) {
+-            ArchiveStore unreachable = new S3ArchiveStore(down, BUCKET, "fleet");
++            ArchiveStore unreachable = new S3ArchiveStore(down, BUCKET, "fleet", 64L << 20);
+             IOException putFailed = assertThrows(IOException.class, () -> put(unreachable, sha, upload), "a put to an endpoint nothing listens on");
+             assertNamedIOException(putFailed, BUCKET, key, "put");
+             IOException fetchFailed = assertThrows(IOException.class, () -> fetch(unreachable, sha, target("down.zip")), "a fetch from it");
+@@ -132,7 +137,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
+         byte[] zip = bytes(13, 1_000);
+         String sha = sha256(zip);
+         String absent = "absent-" + System.nanoTime();
+-        ArchiveStore nowhere = new S3ArchiveStore(s3, absent, "fleet");
++        ArchiveStore nowhere = new S3ArchiveStore(s3, absent, "fleet", 64L << 20);
+         String key = "fleet/archives/" + sha + ".zip";
+         IOException putFailed = assertThrows(IOException.class, () -> put(nowhere, sha, archive("shop.zip", zip)), "a put to a bucket that does not exist");
+         assertNamedIOException(putFailed, absent, key, "put");
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreTest.java
+index caf187a..99e84a1 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/S3ArchiveStoreTest.java
+@@ -17,7 +17,9 @@ import java.nio.file.NoSuchFileException;
+ import java.nio.file.Path;
+ 
+ import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
+ import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+ /**
+  * P1-09c3a (D-070), beside the contract {@code S3ArchiveStoreIT} runs: a put of a file that is not there is the file system's
+@@ -39,7 +41,7 @@ class S3ArchiveStoreTest {
+         try (S3Client nowhere = S3Client.builder().region(Region.EU_CENTRAL_1).endpointOverride(URI.create("http://127.0.0.1:" + closedPort()))
+                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAEXAMPLE", "secret-example")))
+                 .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build()) {
+-            ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet");
++            ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet", 64L << 20);
+             Path absent = tmp.resolve("absent.zip");
+             NoSuchFileException missing = assertThrows(NoSuchFileException.class, () -> OnVirtualThread.call(() -> {
+                 store.put("ab".repeat(32), absent);
+@@ -48,4 +50,18 @@ class S3ArchiveStoreTest {
+             assertEquals(absent.toString(), missing.getFile(), "the file the put was given");
+         }
+     }
++
++    @Test
++    void aCapBelowOneIsRefusedAtConstructionAndOneIsAccepted() throws Exception {
++        try (S3Client nowhere = S3Client.builder().region(Region.EU_CENTRAL_1).endpointOverride(URI.create("http://127.0.0.1:" + closedPort()))
++                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAEXAMPLE", "secret-example")))
++                .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build()) {
++            for (long bad : new long[] {0L, -1L}) {
++                IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
++                        () -> new S3ArchiveStore(nowhere, "flottila-archives", "fleet", bad), "cap " + bad);
++                assertTrue(String.valueOf(e.getMessage()).contains(String.valueOf(bad)), "the refusal names " + bad + ": " + e.getMessage());
++            }
++            assertNotNull(new S3ArchiveStore(nowhere, "flottila-archives", "fleet", 1L), "a cap of 1 is the smallest legal");
++        }
++    }
+ }
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/Shelf.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/Shelf.java
+index 42d1922..4d8a2c6 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/Shelf.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/Shelf.java
+@@ -30,7 +30,7 @@ final class Shelf implements ArchiveStore {
+ 
+     /** Objects under {@code dir}; {@link #bytes} fetches into {@code reads}. */
+     Shelf(Path dir, Path reads, Consumer<String> trace) {
+-        this.objects = new DirArchiveStore(dir);
++        this.objects = new DirArchiveStore(dir, 64L << 20);
+         this.reads = Objects.requireNonNull(reads, "reads");
+         this.trace = Objects.requireNonNull(trace, "trace");
+     }
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/node/NodeConfigTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/node/NodeConfigTest.java
+index 2de6c62..1d6f055 100644
+--- a/flottila-runtime/src/test/java/io/flottila/runtime/node/NodeConfigTest.java
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/node/NodeConfigTest.java
+@@ -277,6 +277,21 @@ class NodeConfigTest {
+                 () -> assertEquals(Optional.of("secret-example"), s3.secretKey()));
+     }
+ 
++    @Test
++    void anS3PrefixWithAnEmptyBlankOrSlashEndIsRefusedNamingKeyAndValue() {
++        for (String bad : List.of("", "   ", "/flottila", "flottila/", "/")) {
++            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", bad)),
++                    "refused: '" + bad + "'");
++            assertTrue(String.valueOf(e.getMessage()).contains("FLOTTILA_S3_PREFIX"), "the refusal of '" + bad + "' names the key: " + e.getMessage());
++            assertTrue(String.valueOf(e.getMessage()).contains("'" + bad + "'"), "the refusal shows the value '" + bad + "': " + e.getMessage());
++        }
++    }
++
++    @Test
++    void anS3PrefixWithAnInnerSlashIsAccepted() {
++        assertEquals("a/b", NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", "a/b")).s3().orElseThrow().prefix(), "only the ends are wrong");
++    }
++
+     @Test
+     void anS3EndpointMustBeAnAbsoluteHttpUri() {
+         for (String ok : List.of("http://127.0.0.1:4566", "https://s3.example.net")) {

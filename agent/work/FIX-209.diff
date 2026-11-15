@@ -1,0 +1,302 @@
+diff --git a/ci/ledger_check.py b/ci/ledger_check.py
+index 574c0ee..db74a9d 100644
+--- a/ci/ledger_check.py
++++ b/ci/ledger_check.py
+@@ -5,7 +5,13 @@ the header's cell count (BACKLOG: exactly; DECISIONS: at most, legacy rows witho
+ tolerated). Counting pipes is not the check: a stray separator paid for by a missing closing pipe has the
+ header's pipe count and the wrong cell count, and GitHub drops the cell it cannot place. An unterminated
+ trailing fragment counts as a cell. Reports every bad row (file, line, expected, actual), exits non-zero.
+-This guard catches shape, never content.
++
++It also catches one content collision the shape rule cannot see (FIX-209): within one ledger file no id may
++be the id cell of more than one row. Two sessions in parallel each read the same highest id and each take
++the next one; the merge is the first moment one file holds both rows. A row allocates an id only when it
++sits inside a table and is neither that table's header nor a separator, and the id it allocates is its first
++cell -- never an id named in a Depends-on cell, a title or prose. Ids are compared whole, as text: D-020 and
++D-020a are different ids. Every occurrence line of a duplicated id is reported.
+ 
+ Usage:
+   python3 ci/ledger_check.py              # from the repository root
+@@ -73,22 +79,57 @@ def check_text(name: str, text: str, allow_fewer: bool) -> list[str]:
+     return problems
+ 
+ 
++def id_cells(text: str) -> dict[str, list[int]]:
++    """Id cell -> the 1-based lines of every row that allocates it. A row allocates an id when it sits inside
++    a table (a header over a separator opened it) and is neither that header nor a separator; its id is the
++    first cell, stripped. The whole cell text is the id, so no prefix or substring ever matches."""
++    occurrences: dict[str, list[int]] = {}
++    lines = text.split("\n")
++    in_table = False
++    for i, line in enumerate(lines):
++        if not is_row(line):
++            in_table = False
++            continue
++        if not in_table:
++            # A header only opens a table when a separator follows; the header itself allocates nothing.
++            in_table = i + 1 < len(lines) and is_separator(lines[i + 1])
++            continue
++        if is_separator(line):
++            continue
++        cells = split_row(line)[0]
++        ident = cells[0].strip() if cells else ""
++        if ident:
++            occurrences.setdefault(ident, []).append(i + 1)
++    return occurrences
++
++
++def check_duplicate_ids(name: str, text: str) -> list[str]:
++    return [f"{name}: id {ident} on {len(lns)} rows: lines {', '.join(str(n) for n in lns)}"
++            for ident, lns in id_cells(text).items() if len(lns) > 1]
++
++
+ def main(argv: list[str] | None = None) -> int:
+     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     ap.add_argument("--root", default=".", help="repository root (default: .)")
+     args = ap.parse_args(argv)
+     root = Path(args.root)
+     problems: list[str] = []
++    duplicates: list[str] = []
+     for rel, allow_fewer in LEDGERS:
+         path = root / rel
+         if not path.is_file():
+             problems.append(f"{rel.as_posix()}: ledger file not found at {path}")
+             continue
+-        problems += check_text(rel.as_posix(), path.read_text(encoding="utf-8"), allow_fewer)
++        text = path.read_text(encoding="utf-8")
++        problems += check_text(rel.as_posix(), text, allow_fewer)
++        duplicates += check_duplicate_ids(rel.as_posix(), text)
+     for p in problems:
+         print(f"LEDGER SHAPE: {p}", file=sys.stderr)
+-    print("ledgers: well-formed" if not problems else f"ledgers: {len(problems)} problem(s)")
+-    return 1 if problems else 0
++    for d in duplicates:
++        print(f"LEDGER DUPLICATE ID: {d}", file=sys.stderr)
++    total = len(problems) + len(duplicates)
++    print("ledgers: well-formed" if not total else f"ledgers: {total} problem(s)")
++    return 1 if total else 0
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/ci/test_ledger_check.py b/ci/test_ledger_check.py
+index f98880f..6e8d295 100644
+--- a/ci/test_ledger_check.py
++++ b/ci/test_ledger_check.py
+@@ -75,6 +75,12 @@ class LedgerCheckTest(unittest.TestCase):
+             code = lc.main(["--root", str(self.root)])
+         return code, out.getvalue() + err.getvalue()
+ 
++    @staticmethod
++    def summary_lines(output):
++        """The run's summary line(s): `ledgers: well-formed` or `ledgers: <n> problem(s)`, where n counts every
++        reported problem — each badly shaped row and each duplicated id (one entry per id, not per row)."""
++        return [m for m in output.splitlines() if m.startswith("ledgers:")]
++
+     @staticmethod
+     def messages_for(output, filename, line_no):
+         """Output lines that name this file and this line number as a whole word."""
+@@ -239,6 +245,204 @@ class LedgerCheckTest(unittest.TestCase):
+             self.assertFalse(self.messages_for(output, "BACKLOG.md", line_no),
+                              f"well-formed row on line {line_no} reported: {output!r}")
+ 
++    # ---- duplicate ids (FIX-209)
++    #
++    # Two parallel sessions each read the same highest id and each allocate the next one; the merge is the
++    # first moment one file holds both rows, so the merge is where a machine can see it. Within one ledger
++    # file no id may be the id of more than one row. The id of a row is its first cell: an id named in a
++    # Depends-on cell, in a title or in prose is not an allocation.
++    #
++    # Padding: neither real ledger contains a pair of ids differing only by padding (checked by hand over
++    # docs/DECISIONS.md and agent/BACKLOG.md on 2026-11-15), but an id cell is the cell's text stripped, so
++    # two rows that pad the same id differently are the same id; one case below pins that.
++
++    @staticmethod
++    def mentions_id(message, ledger_id):
++        """The message names this whole id. `D-020` does not match inside `D-020a`, nor `D-02` inside `D-020`."""
++        return re.search(rf"(?<![\w-]){re.escape(ledger_id)}(?![\w-])", message) is not None
++
++    def duplicate_messages(self, output, filename, ledger_id):
++        return [m for m in output.splitlines() if filename in m and self.mentions_id(m, ledger_id)]
++
++    def assert_reports_duplicate(self, output, filename, ledger_id, line_nos):
++        """At least one message names `filename` and the whole id, and across those messages every one of
++        the occurrence line numbers is named — naming one of them is not enough."""
++        found = self.duplicate_messages(output, filename, ledger_id)
++        self.assertTrue(found, f"no message names {filename} and the duplicate id {ledger_id}; output: {output!r}")
++        named = {n for n in line_nos if any(re.search(rf"\b{n}\b", m) for m in found)}
++        self.assertEqual(set(line_nos), named,
++                         f"messages for duplicate {ledger_id} in {filename} name lines {sorted(named)}, "
++                         f"expected every occurrence {sorted(line_nos)}: {found!r}")
++
++    def test_two_decisions_rows_with_the_same_id_are_reported_with_the_id_and_both_line_numbers(self):
++        first = "| D-004 | 2026-10-19 | Valkey for the rate limiter | tempo only |"
++        second = "| D-004 | 2026-10-19 | Saxon HE for XSLT 3.0 | MPL 2.0, no new runtime |"
++        lines = decisions(GOOD_DECISIONS_ROWS + [first, second])
++        self.write(decisions_lines=lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"two rows share id D-004, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-004",
++                                      [lines.index(first) + 1, lines.index(second) + 1])
++
++    def test_three_backlog_rows_with_the_same_id_are_all_named(self):
++        dups = [f"| P0-09 | Title {n} | P0-01 | ready | the goal | commit {n} |" for n in ("one", "two", "three")]
++        lines = backlog(GOOD_BACKLOG_ROWS + dups)
++        self.write(lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"three rows share id P0-09, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "BACKLOG.md", "P0-09", [lines.index(d) + 1 for d in dups])
++
++    def test_d020_and_d020a_are_different_ids_while_a_real_duplicate_beside_them_is_reported(self):
++        # D-020 / D-020a is a real pair in docs/DECISIONS.md: a check that compares id prefixes flags it and is
++        # wrong. The genuine D-031 duplicate in the same table is the witness that the check ran at all.
++        suffixed = ["| D-020 | 2026-10-17 | The Vert.x surface api and core may use | closed and reviewable |",
++                    "| D-020a | 2026-10-18 | Primitive arrays count as JDK | correctness fix of D-020 |",
++                    "| D-020b | 2026-10-19 | Records count as JDK too | same reason |"]
++        dup_a = "| D-031 | 2026-10-20 | Body journal keyed by message id | D-070 |"
++        dup_b = "| D-031 | 2026-10-20 | Deployment archive keyed by sha256 | content addressed |"
++        lines = decisions(GOOD_DECISIONS_ROWS + suffixed + [dup_a, dup_b])
++        self.write(decisions_lines=lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"two rows share id D-031, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-031",
++                                      [lines.index(dup_a) + 1, lines.index(dup_b) + 1])
++        for not_a_duplicate in ("D-020", "D-020a", "D-020b"):
++            self.assertFalse(self.duplicate_messages(output, "DECISIONS.md", not_a_duplicate),
++                             f"{not_a_duplicate} reported though no other row carries that id: {output!r}")
++
++    def test_an_id_carried_only_in_another_rows_depends_on_cell_is_not_a_duplicate(self):
++        # P0-01 is the id of one row and the Depends-on of three others; a check that scans whole lines, or any
++        # cell rather than the first, turns every dependency edge into a duplicate.
++        self.assertGreater(sum(1 for r in GOOD_BACKLOG_ROWS if r.split("|")[3].strip() == "P0-01"), 1)
++        self.write()
++        code, output = self.run_check()
++        self.assertEqual(0, code, f"the well-formed ledgers must stay clean; output: {output!r}")
++        self.assertEqual("ledgers: well-formed", output.strip(), f"unexpected extra output: {output!r}")
++
++    def test_the_repeated_id_header_of_several_tables_in_one_file_is_not_a_duplicate_id(self):
++        # agent/BACKLOG.md really holds six tables, each headed `| Id | ... |` over the same separator; header
++        # and separator rows are not rows that allocate an id. Three tables, so the word `Id` heads three rows:
++        # with only two, a check that lets a table stay open across the prose between tables (and so reads the
++        # next header as a data row allocating the id `Id`) sees that id once, finds no duplicate and passes.
++        lines = (backlog(GOOD_BACKLOG_ROWS)
++                 + ["", "## Second table", ""]
++                 + backlog(["| P1-01 | Flow builder | P0-05 | ready | flows build | — |"], prelude=())
++                 + ["", "## Third table", ""]
++                 + backlog(["| P2-01 | Deployments | P1-01 | ready | packages deploy | — |"], prelude=()))
++        self.assertEqual(3, lines.count(BACKLOG_HEADER))   # the fixture's whole point: one repeated header
++        self.write(lines)
++        code, output = self.run_check()
++        self.assertEqual(0, code, f"three tables with the same header are not duplicate ids; output: {output!r}")
++        self.assertEqual("ledgers: well-formed", output.strip(), f"unexpected extra output: {output!r}")
++
++    def test_cell_shape_problems_are_reported_unchanged_beside_a_duplicate_id(self):
++        # The new check must not swallow, renumber or reorder the shape output. The two expected strings are the
++        # observed output of the guard before the duplicate check existed, with only the line numbers filled in.
++        shape_b = "| P0-10 | Title | P0-01 | done | stray | pipe | commit ddd |"          # 7 cells against 6
++        dup_b1 = "| P0-09 | Admission bytes | P0-05 | ready | bytes counted | — |"
++        dup_b2 = "| P0-09 | Resequencer | P0-03 | ready | order held | — |"
++        shape_d = "| D-005 | 2026-10-20 | Decision | Reason | one more |"                  # 5 cells against 4
++        dup_d1 = "| D-004 | 2026-10-19 | Valkey for the rate limiter | tempo only |"
++        dup_d2 = "| D-004 | 2026-10-19 | Saxon HE for XSLT 3.0 | MPL 2.0 |"
++        b_lines = backlog(GOOD_BACKLOG_ROWS + [dup_b1, shape_b, dup_b2])
++        d_lines = decisions(GOOD_DECISIONS_ROWS + [dup_d1, shape_d, dup_d2])
++        self.write(b_lines, d_lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, output)
++        expected_shape = [
++            f"LEDGER SHAPE: agent/BACKLOG.md:{b_lines.index(shape_b) + 1}: expected 6 cells, found 7 "
++            f"(wrong cell count)",
++            f"LEDGER SHAPE: docs/DECISIONS.md:{d_lines.index(shape_d) + 1}: expected at most 4 cells, found 5 "
++            f"(wrong cell count)",
++        ]
++        self.assertEqual(expected_shape, [m for m in output.splitlines() if "cells, found" in m],
++                         f"the cell-shape output changed; full output: {output!r}")
++        self.assert_reports_duplicate(output, "BACKLOG.md", "P0-09",
++                                      [b_lines.index(dup_b1) + 1, b_lines.index(dup_b2) + 1])
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-004",
++                                      [d_lines.index(dup_d1) + 1, d_lines.index(dup_d2) + 1])
++        # Four problems, counted off the fixture: the two badly shaped rows (shape_b, shape_d) and the two
++        # duplicated ids (P0-09 in BACKLOG, D-004 in DECISIONS — one entry per id, though each spans two rows).
++        # A summary that counts only the shape problems says `2` here while the run reports four.
++        self.assertEqual(["ledgers: 4 problem(s)"], self.summary_lines(output),
++                         f"the summary must count shape problems and duplicate ids together: {output!r}")
++
++    def test_duplicate_ids_in_both_ledgers_are_reported_in_one_run(self):
++        # Six-cell rows and four-cell rows: the check covers both files, not only the one it was written for.
++        b1 = "| FIX-209 | Duplicate-id guard | P0-01 | ready | duplicates reported | — |"
++        b2 = "| FIX-209 | Ledger CI wiring | P0-02 | ready | job runs the guard | — |"
++        d1 = "| D-144 | 2026-11-14 | Bodies keyed by message id and step | D-070 |"
++        d2 = "| D-144 | 2026-11-14 | Kafka only as an add-on component | no core Kafka client |"
++        b_lines = backlog(GOOD_BACKLOG_ROWS + [b1, b2])
++        d_lines = decisions(GOOD_DECISIONS_ROWS + [d1, d2])
++        self.write(b_lines, d_lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, output)
++        self.assert_reports_duplicate(output, "BACKLOG.md", "FIX-209",
++                                      [b_lines.index(b1) + 1, b_lines.index(b2) + 1])
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-144",
++                                      [d_lines.index(d1) + 1, d_lines.index(d2) + 1])
++        # Two problems, counted off the fixture: every row here is well shaped, so the count is exactly the two
++        # duplicated ids, FIX-209 and D-144. A summary blind to duplicates calls this run `well-formed` while it
++        # exits non-zero — a report nobody can act on, and the state CI shows for the collision this row guards.
++        self.assertEqual(["ledgers: 2 problem(s)"], self.summary_lines(output),
++                         f"a run whose only problems are duplicate ids must not be summarised as clean: {output!r}")
++
++    def test_the_same_id_in_two_different_tables_of_one_file_is_a_duplicate(self):
++        # The rule is "within one ledger file", not "within one table": agent/BACKLOG.md holds six tables, and
++        # two sessions that each append to a different table (a phase table and a fix table) are exactly the
++        # collision this guard exists for. A check that keys its occurrences per table never sees this pair.
++        first = "| P0-09 | Admission bytes | P0-05 | ready | bytes counted | — |"
++        second = "| P0-09 | Resequencer | P0-03 | ready | order held | — |"
++        lines = (backlog(GOOD_BACKLOG_ROWS + [first])
++                 + ["", "## Phase 1", ""]
++                 + backlog([second, "| P1-01 | Flow builder | P0-05 | ready | flows build | — |"], prelude=()))
++        # The fixture's whole point: a second header (and its separator) stands between the two rows, so they
++        # are rows of two different tables, not two rows of one.
++        self.assertLess(lines.index(first), lines.index(BACKLOG_HEADER, lines.index(first)))
++        self.assertLess(lines.index(BACKLOG_HEADER, lines.index(first)), lines.index(second))
++        self.write(lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"two tables of one file share id P0-09, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "BACKLOG.md", "P0-09",
++                                      [lines.index(first) + 1, lines.index(second) + 1])
++
++    def test_two_rows_padding_the_same_id_differently_are_one_id_and_are_reported(self):
++        # The id of a row is its first cell stripped of surrounding whitespace, so `|D-004|` and `| D-004 |`
++        # allocate the same id. A check that compares the raw cell text sees two different ids and passes the
++        # collision through. The two rows are written with deliberately different padding; nothing else differs.
++        tight = "|D-004|2026-10-19|Valkey for the rate limiter|tempo only|"
++        padded = "|   D-004   | 2026-10-19 | Saxon HE for XSLT 3.0 | MPL 2.0, no new runtime |"
++        self.assertNotEqual(tight.split("|")[1], padded.split("|")[1])  # the fixture's whole point
++        lines = decisions(GOOD_DECISIONS_ROWS + [tight, padded])
++        self.write(decisions_lines=lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"two rows pad the same id D-004, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-004",
++                                      [lines.index(tight) + 1, lines.index(padded) + 1])
++
++    def test_several_rows_with_a_blank_first_cell_are_continuations_and_never_collide_as_one_id(self):
++        # A continuation row leaves its id cell empty; its text belongs to the row above. Such rows allocate no
++        # id, so any number of them may stand in one table. A check that treats the empty cell as an id reports
++        # them as duplicates of each other and fails every ledger that uses continuations.
++        blank = ["|  | 2026-10-21 | continued: the second half of the reason | — |",
++                 "|  | 2026-10-21 | continued: a third line of the same reason | — |",
++                 "|| 2026-10-22 | a continuation with no padding at all | — |"]
++        lines = decisions(GOOD_DECISIONS_ROWS + blank)
++        self.write(decisions_lines=lines)
++        code, output = self.run_check()
++        self.assertEqual(0, code, f"blank first cells are continuations, not ids; output: {output!r}")
++        self.assertEqual("ledgers: well-formed", output.strip(), f"unexpected extra output: {output!r}")
++        # Witness that those three rows really sit inside the table and really reach the duplicate check: give
++        # them all the same non-blank id and the very same fixture must be reported. Without this, the silence
++        # above would also be the silence of rows the check never looked at.
++        named = [r.replace("|  |", "| D-900 |", 1).replace("||", "| D-900 |", 1) for r in blank]
++        named_lines = decisions(GOOD_DECISIONS_ROWS + named)
++        self.write(decisions_lines=named_lines)
++        code, output = self.run_check()
++        self.assertNotEqual(0, code, f"three rows share id D-900, expected non-zero; output: {output!r}")
++        self.assert_reports_duplicate(output, "DECISIONS.md", "D-900", [named_lines.index(r) + 1 for r in named])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

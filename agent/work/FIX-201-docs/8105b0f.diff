@@ -1,0 +1,679 @@
+COMMIT 8105b0fee0e8babd2664d6c9f78b19a682d64c48
+docs(findings): F-30 settles D-049 (d), and measures how far its pattern reaches
+
+FIX-136 could not start without this: practice contradicting a recorded
+decision is never a silent fix. The question the row left open was whether
+D-049 (d)'s "never an escaped exception" means every throwable or only
+RuntimeException. It means every throwable, D-049 needs no amendment, and the
+proof is inside the method rather than in an argument about wording: Delivery
+:296 and :312 already catch Throwable, and their comments use D-049 (d)'s own
+phrase "never an exception out of apply" and say "an Error too". The same
+author, in the same method, applied the broad reading twice and wrote it into
+the comments, then wrote the save's catch narrower. A decision scoped to
+RuntimeException would not look like that; an oversight looks exactly like it.
+
+F-30 is recorded as corrected rather than as written, because its first draft
+was wrong in a way that would have cost a round. It implied the permit leak
+follows from Delivery.apply calling mode.deliver with no try or finally. That
+is true of apply and false of the modes: sync has its own finally at :177-181
+and at-most-once at :219-222, so both return the permit, and only
+at-least-once has no finally anywhere on its path. The consequence is therefore
+one mode's, and it is the consequence that matters -- one permit leaked per
+Error until the flow refuses every message while nothing is in flight, and a
+stop() that can never complete because the flight never leaves. A lost reply
+costs one message, which the sender retries. A leaked permit costs the flow.
+The FIX-136 row's Done-when is rewritten to the per-mode form for the same
+reason: that cell is what binds the test-author, so a half-truth there is not a
+documentation defect but a wrong instruction.
+
+The addendum answers the generalisation F-30 itself made. "Every one of those
+comments is a candidate site" was written from four sites, so all 165 catch
+clauses in flottila-*/src/main/java were read. Two new candidates, not a long
+tail; nine that cannot be settled by reading, six of those resolvable by one
+structural question; about 102 type-specific catches that are not this family
+at all. So FIX-136 is not the tip of an iceberg, and nobody needs to sweep for
+this again. FIX-142 takes the strongest straggler, Parking.java:86, which is
+strongest for where it sits rather than what it catches: an Error from the blob
+store escapes park(), and park() is called inside wrap's catch (Exception), so
+it skips the park-failure handling entirely -- the DLQ failing to record that
+it could not record. FIX-143 takes the nine for triage. FIX-141 takes
+Producers.java:49, deliberately out of FIX-136 because it is a shutdown path.
+
+Packets for FIX-136, FIX-137 and FIX-138 ride along. FIX-137's decision is the
+architect's and is stated there: keep takeLocked's loop and fix the javadoc,
+never narrow it to an if, because a future violation of the invariant then
+degrades into extra batches rather than into items queued with no commit in
+flight and no window -- a silent stall, the worst failure this class has. Part
+of the FIX-137 row is struck rather than deleted: the .reversed() it names is
+no longer in the file, so the record keeps what was claimed and what disproved
+it. FIX-138's test is green the moment it is written, so its packet requires
+the red to come from the only honest place available -- the case must fail when
+the throwing cancel() is disabled, or it asserts nothing.
+
+NOTES gains the Recording entries and a new mutant-runs section. Both describe
+FIX-139 and FIX-140, which land in the next two commits; they are here because
+splitting one file across three commits buys nothing.
+
+Co-authored-by: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_018sN5AVzyKMX7zznVqEiZqT
+Signed-off-by: subapavel <subapav@gmail.com>
+
+---DIFF---
+
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 7300dbe..c019187 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -218,11 +218,14 @@ row, never lowers it mid-task.
+ | FIX-133 | [B] A step that throws an `Error` leaves no row at all in the message's timeline: `Recorder.wrap` catches `Exception` only (`Recorder.java:85`, read and verified by the architect), so a `FAILED` snapshot is written for a `RuntimeException` and even for a sneaky `InterruptedException` (the comment there cites D-056) but not for an `AssertionError`, a `StackOverflowError` or any other `Error`. The step then appears in the timeline as one that never ran, and the `Snapshot` invariant that an error is present iff `FAILED` or `HANDLED` (D-044, D-102) says nothing about the case where no row exists at all. Monitoring is the product, so a failure the timeline cannot show is a product defect, not a theoretical one. D-104 is both the precedent and the asymmetry: it widened `BatchingWriter` to `RuntimeException \| Error` for this same reason and FIX-71 is implementing it now. Found while writing the FIX-131 test, which had to make a park refuse rather than throw an `Error`, precisely because an `Error` left no `FAILED` row to assert. If the answer is anything other than record-then-rethrow — e.g. that an `Error` means the node is unsound and recording must not be attempted — write the D-row first and say there why the two classes differ. Reviewer FIX-131 r2: this also flips seven assertions in `RedeliveredTimelineTest` case 2 and makes its method name `...WithNoFailureAnywhere` and its “reads as a single successful run” sentence false, so the FIX-133 commit renames that case along with the expectations it flips, with the reason in the commit message (the javadoc there lists each flipping line) DECIDED 2026-11-14 as D-111 after recon: the fix changes NO control flow — widen the catch at `Recorder.java:85` to `Throwable`, write the `FAILED` row with the throwable's text, rethrow unchanged by precise rethrow. CORRECTED 2026-11-14 before dispatch: this row first said `RuntimeException \| Error`, copying D-104's form, and that is a NARROWING here — `Exception` deliberately catches the checked `InterruptedException` D-056's stop-deadline cancel throws sneakily, which `aCancelledStepRecordsItsFailureSnapshot` already pins, so the prescribed form would have deleted a cancelled delivery's `FAILED` row to gain an `Error`'s. See D-111's AMENDED sentence and `agent/packets/FIX-133.md`; D-104's multicatch style stands where its code cannot throw a checked exception at all. D-098 and D-049 stand: an `Error` is still not transient, not retried, and `FlowWorker.java:352` still leaves the item to its lease. DO NOT also change `Parking.java:49` — the scout read it as a second instance of this gap and that is wrong, because parking an `Error` would make it transient, which D-098 refused. `Delivery.java:319-320` IS a real second instance but contradicts D-049 (d) rather than D-111, so it is FIX-136, not this row | FIX-71 | done | a stage that throws an `AssertionError` leaves a `FAILED` row carrying that error's text and the `Error` still propagates unchanged; a mutant narrowing the catch back to `Exception` fails it, and so does one narrowing it to `RuntimeException \| Error`; the catch is `Throwable` with a precise rethrow and no `throws` clause; `aCancelledStepRecordsItsFailureSnapshot` stays green untouched, which is what proves the catch was widened and not narrowed; and `FlowWorkerTest`'s existing lease assertions stay green (`:90`, `:1030`) — CORRECTED 2026-11-14: this cell first demanded a new assertion there, which was wrong, because an `Error` leaving the item to its lease is already pinned by those two; no new test for it. Also NOT expected killable: the `policy.records(..., FAILED)` guard at `Recorder.java:86`, which is unreachable-false and so an equivalent mutant — for FAILED, `records` is true under ALL, ERRORS and ENDS alike (`outcome != OK`), and the only false level, OFF, returns the bare stage at `:71` before the catch exists. Reported by the test-author, premise verified by the architect in the code | FIX-131 test-author, architect-verified 2026-11-14. done 2026-11-14, review PASS r1. One production line: `Recorder.java:85` catches `Throwable`, comment extended; no control flow moved. Four new `RecorderTest` cases, all observed red first (`[ingress, a]` instead of `[ingress, a, x]`); green 14/0. `aCancelledStepRecordsItsFailureSnapshot` untouched and green — the guard proving the catch widened and did not narrow. Final tree: `-pl flottila-core -am clean verify` exit 0, core 511/0/0/0, BUILD SUCCESS (FIX-133-final-verify.log; NO `-Pit`, so NOT a full reactor run); coverage exit 0 "no decrease", core 99.6/99.5, api 99.3/100 (FIX-133-final-coverage.log). The earlier full `-Pit` run predates the case-3 rewrite and is not claimed for this tree. Six mutants killed: catch to `Exception`, to `RuntimeException \| Error`, to `Error`, to `Exception \| Error`, `!handedOn[0]` dropped, `throw failure` removed (compile error); `cmp` clean after each. Case 3 had to be rewritten TWICE: as the architect specified it, its guard half could not fail at all, because `InMemoryMessageStore:39` drops the second row per `(id, step)` so `timeline()` could never show it — the same drop F-29 is about. It now counts rows handed to the store and the dropped-guard mutant dies at `:388` with `<[OK, FAILED]>`. The `Exception \| Error` mutant, named by the reviewer, is the only one separating the chosen form from the obvious alternative and it was killed by the one case written for it. Raised from this review: FIX-140 (recording can replace the rethrown throwable), and D-111 qualified accordingly|
+ | FIX-134 | [A] The bench record does not carry `warmedUp`: it exists only as a local at `NodeBenchMain.java:314-316`, so the subtraction `warmup - warmupFailed`, which decides how long the warm-up settle waits, cannot be observed from outside. FIX-128 established the consequence and it is the reason this row exists. CORRECTED by the FIX-128 reviewer, because the architect's first version of this row had it backwards: an OVERSTATED `warmedUp` — which is what dropping the subtraction gives, `warmedUp = warmup` = 5 against 2 rows that exist — makes the warm-up `settle` poll until DRAIN (10 min) and so IS caught, but only by the class `@Timeout` at 300 s, which is slow and names no cause. The mutant that truly survives is an UNDERSTATED one: `warmedUp = 0`, or anything up to the real 2, makes the warm-up settle pass at once while the window's own settle still ends at 42 rows, so no assertion and no timeout notices. That is the mutant this row has to make killable, and it cannot be done from a test while the value is a local. Put `warmedUp` in the record beside `warmup` and `warmupFailed`, where the other two already are, and assert it | FIX-128 | done | the record carries `warmedUp` and a test asserts it equals 2 for a warm-up of 5 with 3 refusals, so `warmedUp = 0` fails by an assertion naming the value; CORRECTED 2026-11-14 by the test-author's red hand-back, because this cell promised something the test cannot deliver: the overstated mutant (`warmedUp = warmup`) is NOT killed by the assertion and still dies only by the 300 s class timeout, since `warmedUp` also drives the warm-up `settle` at `NodeBenchMain.java:315`, which runs BEFORE the record is written, so the run never reaches the new assertion. Killing it by assertion would mean writing the record before the settle, which is a behaviour change and not this row's. REFINED after the review's mutants M3/M4 were measured, because the sentence above is true only of the COMPUTATION and reads as a blanket claim: overstating the RECORD alone (`.put("warmedUp", o.warmup())` at `:316`, leaving `:314` correct) keeps the settle right, reaches the assertion and IS killed — `expected: <2> but was: <5>` in 27.5 s (M3, FIX-134-mut3.log). Only an overstatement at `:314` escapes to the timeout. Understatement is killed wherever it sits: M4 (`o.warmup() - warmupFailed - 1` at `:314`) gave `expected: <2> but was: <1>` in 28.0 s with the settle still returning (FIX-134-mut4.log). Both mutants were named by the reviewer, not by the architect, whose own pair (0 and a missing `.put`) tested neither the off-by-one nor the record-only overstatement | FIX-128 hand-back 2026-11-14. done 2026-11-14, review PASS r2 after one FAIL. One production line: `.put("warmedUp", warmedUp)` at `NodeBenchMain.java:316`, beside the `warmupFailed` already there; `:314`, the `settle` at `:315` and `Harness` untouched, and `bench/RESULTS.md` not touched at all, so no benchmark number is claimed. Red observed first: `expected: <2> but was: <null>` (FIX-134-red.log). Green: filtered case 12/0/0/0 and the whole module 27/0/0/0, both BUILD SUCCESS (FIX-134-green.log, FIX-134-module.log). Four mutants, all killed by the assertion at `:218` in about 28 s each, none by a timeout: `.put(...,0)` -> `<0>`, the `.put` removed -> `<null>`, M3 `.put(..., o.warmup())` -> `<5>`, M4 `:314 - 1` -> `<1>` (FIX-134-mut1..4.log). M3 and M4 were named by the REVIEWER and are the better pair: the architect's own two tested neither the off-by-one nor the record-only overstatement, and M3 is what disproved his correction of this very cell. `cmp` proved the file byte-identical after every mutant; restores with `cp` plus `touch`, never `mv`. The FAIL was documentation only: a false sentence of the architect's, in the packet, in this cell and copied from the packet into a code comment, that the overstated mutant dies by assertion. NO coverage evidence here: every run carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires |
+ | FIX-135 | [B] The PIT mutation score on this project is several points noisier than it looks, because a timed-out minion counts as a KILLED mutant and the timeout count swings widely between runs of nearly the same code on the same machine: the reference run at a0b3f74 logged 202 abnormal `TIMED_OUT` exits plus 5 `RUN_ERROR` (`agent/work/pit-a0b3f74.log`), the FIX-71 run 125 at 1338/1362 mutations (`agent/work/FIX-71-pit.log`) — a swing of order 70, about 7 % of core's 1019. The distinction matters: a mutant that makes the code hang IS legitimately killed, because a suite that never finishes does detect it, but a mutant that merely ran out of time on a loaded machine is not, and a swing that large says a good share are the second kind. Nothing is threatened today — api 179/180 and core 1010/1019 against an 80 % floor is enormous headroom — and that is why this is a row and not an ISSUE. But the mutation floor is a phase-gate condition, so the score must not be quoted to three figures as though it were stable, and a gate ever met by a narrow margin would have to account for this. Measure the `TIMED_OUT` count twice on one commit, then either raise pitest's `timeoutConstant` / `timeoutFactor` until it stabilises, or publish the noise band beside the score the way the coverage check already publishes its own (D-029 is the precedent for a declared noise band). Sharpened by the FIX-71 r4 review, which examined one of these timeouts in the specific: `BatchingWriter.java:248`'s `IncrementsMutator` turns a loop counter into `i--`, which spins forever under the writer lock on the first save of every test. That is a DETERMINISTIC hang, so counting it as killed is right and no assertion short of a timeout could catch it. The measurement this row asks for must therefore separate the two populations rather than count timeouts in bulk: a deterministic non-terminating mutant is a legitimate kill and should recur in every run, while a slow-machine artefact will not. The run-to-run swing is the signal that tells them apart | — | ready | the `TIMED_OUT` count on one commit is measured at least twice and either stabilises after a configuration change or is stated as a noise band beside the score, with machine and date as `bench/RESULTS.md` requires of any number | architect, comparing the FIX-71 and a0b3f74 PIT logs 2026-11-14 |
+-| FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | ready | a finding states which reading of D-049 (d) is right and why; an `Error` from the ingress save then produces the behaviour that reading requires, asserted for all three delivery modes, and D-049 is amended if the narrow reading wins | FIX-133 recon 2026-11-14 |
++| FIX-136 | [B] An `Error` escapes `Delivery.apply()` from the ingress save, where D-049 (d) promises it cannot. `Delivery.java:319-320` catches `RuntimeException` only around `intake.save(...)`, while D-049 (d) says “a save that throws synchronously is the same retryable NACK, never an escaped exception”. So the documented intent and the code disagree, and the consequence is the one D-111 is about: no ingress row, no NACK, and for sync and at-most-once nothing catches it further out either (`Delivery.java:175-176` and `:218` both catch `Exception` only, and `Delivery.apply` at `:345-361` has no catch), so the caller gets no reply and the message leaves no record. Settle whether D-049 (d) means every throwable or only `RuntimeException`: if the former, widen to the D-104 multicatch; if the latter, D-049 needs the amendment, because as written it promises more than the code gives. Check `SequentialIntake.java:41` and `:47` and `Producers.java:49` in the same pass — the scout found the same `RuntimeException`-only shape there and did not trace them. Write the finding first: this is practice contradicting a recorded decision, so it is not a silent fix | FIX-133 | ready | SETTLED by F-30 (2026-11-14), so the first clause is already done: the BROAD reading wins and D-049 needs NO amendment - the evidence is inside the method, where `:296` and `:312` already catch `Throwable` with comments using D-049 (d)'s own phrase "never an exception out of apply" and saying "an Error too". Widen `Delivery.java:319` AND `SequentialIntake.java:41` and `:47` (the same path - a throwable escaping either one arrives at that narrow catch). Then assert PER MODE, because the behaviour differs per mode and the ingress save itself exists only in at-least-once (F-30 corrected 2026-11-14 - do not read "all three modes" as one assertion): at-least-once, an Error from the ingress save gives a retryable NACK, THE PERMIT RETURNS and `stop()` completes, which is the acceptance that matters because that path has no finally at all; sync, an Error from the pipeline comes back as a failed future instead of being thrown out of `apply`, and the permit already returns there via the finally at `:177-181`, so assert it keeps returning rather than calling that the fix; at-most-once, an Error is logged and dropped per D-049 (b) instead of ending as an uncaught throwable on the message's thread, permit likewise already fine. The sync and at-most-once halves need `:176` and `:218` widened from `Exception` together with their `Exception failure` and `Exception dropped` locals, which changes what D-056 settled: say so in the commit and note it on D-056's row. `Producers.java:49` is NOT in scope - see FIX-141 | FIX-133 recon 2026-11-14; finding F-30 written 2026-11-14 before any code, as the row required |
+ | FIX-137 | [A] `BatchingWriter` carries code and documentation for a case that cannot happen, proved by the FIX-71 r4 review rather than guessed. The invariant it established and checked at every lock section is: at rest, either `queue.size() < batchSize` or `inFlight == commitConcurrency`; waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`. Therefore each drain takes AT MOST ONE batch, so `takeLocked`'s `while` runs at most once, the `.reversed()` at `:272` can never reverse anything (which is why hand mutant 23 is a genuinely equivalent mutant and no test can kill it), and `drainLocked`'s javadoc at `:204-207` describes multi-batch ordering that no execution reaches. Only FIX-69's removed `continue` ever produced several batches per drain. It also cost a test: the FIX-71 packet's case 7 `oneDrainHandsItsBatchesToTheSinkOldestFirst` could not be written and was replaced by `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters`. Decide whether to narrow the code to the one batch it can take, or to keep the generality and say in the javadoc that it is unreachable today and why — but the javadoc must stop describing behaviour as if it occurred | FIX-71 | ready | the unreachable path is either removed or documented as unreachable with the invariant that makes it so; no behaviour change, the scoped tests unchanged and green, and if the code is narrowed, a mutant on the removed branch no longer exists to survive | reviewer FIX-71 r4 |
+ | FIX-138 | [A] The consequence D-104 now states for a throwing `cancel()` is unpinned: because `cancelQuietly` swallows the throw, a window that `flush` dropped stays scheduled and can later null a newer window's `armed` and hand a newer partial batch to the sink early. Accepted as a loss of batching rather than of data, but nothing asserts it, so the opposite could become true without a test noticing — and the effect is the same one mutant 8 produced, which did turn out to be observable (`BatchingWriterErrorTest.aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow` now exists for the non-throwing path). Raised by the FIX-71 r5 test-author, which deliberately did not test it because it was out of that round's scope. Also add the missing half-sentence to `flush()`'s javadoc at `BatchingWriter.java:176`: it calls a throwing `cancel()` “tolerated”, which is accurate, but does not say the dropped window may then fire early — the r5 reviewer's point, and the one place a reader of the code would look for what D-104 now records | FIX-71 | ready | a flush whose `cancel()` throws is driven to the point where the orphaned window fires; the test asserts the early hand-off happens, that every item still reaches the sink exactly once in arrival order, and that nothing fails; the `flush()` javadoc says the dropped window may fire early | FIX-71 r5 test-author 2026-11-14 |
+ | FIX-139 | [A] Nothing stops the FIX-132 defect from coming back, and it came back twice in one day: the architect dropped FIX-71's closing pipe while editing it, and then wrote two raw pipes into the FIX-132 evidence cell itself. A row whose pipe count exceeds the header's loses text silently on GitHub - the reader sees neither an error nor the missing words - and a row one short shifts every later cell. The guard is six lines: for each markdown table in `agent/BACKLOG.md` and `docs/DECISIONS.md` (`PROGRESS.md` has no tables), take the cell count from the header row and assert that every non-separator row SPLITS on pipes not preceded by a backslash into exactly that many cells with an empty part at each end. Counting pipes is NOT enough and must not be the check: FIX-54, FIX-56 and FIX-57 each had the right count of 7 and seven cells, because a stray separator was paid for by a missing closing pipe, and GitHub dropped their entire evidence cell while a pipe-counting check called them clean. That is the defect this guard exists to catch, except that a row MAY be short of trailing empty cells only in `docs/DECISIONS.md`, where 32 legacy rows have no `Reason` cell (FIX-132 left them, so the guard must tolerate them or they all have to be filled first - decide which in the packet, do not silently widen). Fails the build with the file, the line and both counts. | FIX-132 | ready | a row with a pipe added by hand, a row with one removed by hand, and a row made to look like FIX-54 did (a stray separator plus a missing closing pipe, so the count still matches) each make the check exit non-zero and name their own line number, and the unmodified tree exits 0 | found while closing FIX-132, where the pipe count the architect chose as proof is itself what waved three broken rows through; the reviewer caught them. Counting is only evidence of what it counts |
+ | FIX-140 | [B] `Recorder.wrap`'s own recording can REPLACE the throwable it was about to rethrow, and D-111 promises it does not. The catch at `Recorder.java:85-90` calls `record(...)` and only then `throw failure`. `record` reaches `keep` (`:104`), which calls `Trail.add`, which at `Trail.java:90` does `if (full) flush().await()` — verified by the architect in the code, not relayed. An `await` on an interrupted virtual thread throws `InterruptedException` sneakily (D-056), and `failure.toString()` at `:88` can throw for a pathological throwable (reviewer memory note 89). Either one leaves the catch block with a DIFFERENT exception and the original lost. The risk pre-dates FIX-133 for an `Exception`, where it swaps one exception for another; what FIX-133 changed is the consequence, because an `Error` now goes through `record` too. An `Error` turned into an `InterruptedException` is no longer an `Error`: `Parking.java:49` catches `Exception`, so it would PARK it and make it transient, which is exactly what D-098 refused and what D-111 explicitly left standing. Found by the FIX-133 reviewer as non-blocking. | FIX-133 | ready | SHARPENED 2026-11-14 before dispatch, because the first wording would have cost a round: "whose recording then fails" invites a throwing `MessageStore`, and that CANNOT reproduce this. `Trail.flush()` ends `.transform(settled -> succeededFuture())` and `close()` says so outright ("no flush ever fails"), verified by the architect in the code, so a store failure never surfaces. The two real triggers are: (a) `failure.toString()` at `Recorder.java:88` throwing, which a `Throwable` subclass with a throwing `toString` tests cheaply and which is enough to pin the fix; and (b) an interrupt while `Trail.add:90` awaits a flush, which only happens with more than `FLUSH_AT` = 256 rows buffered and is the realistic cause during a stop (D-056). A step throwing an `AssertionError` whose recording hits trigger (a) still propagates the ORIGINAL `AssertionError`, with the recording failure attached as a suppressed exception, and no park happens; a mutant that drops the `addSuppressed` or rethrows the recording failure instead fails that test by naming which throwable escaped. Shape to design: wrap the `record` call in its own try, `addSuppressed` the recording failure onto `failure`, rethrow `failure` unchanged. Note the ordering question the packet must settle: a FAILED row that was never written is a lost row, so decide whether the suppressed failure is also logged once | FIX-133 review 2026-11-14 |
++| FIX-141 | [A] `Producers.java:49` catches `RuntimeException` only around `p.close()` in the close loop, so an `Error` from one producer abandons the loop: the remaining producers are never asked to close and their futures never join `settled`. Found by F-30 while tracing FIX-136 and deliberately left out of it, because this is a shutdown path rather than a delivery path and D-049 (d) does not cover it. The right behaviour is almost certainly the one the `recover` at `:52-55` already gives a failed future - log at WARNING and carry on to the next producer - but that is a decision about shutdown and needs stating rather than assuming | — | ready | an `Error` from one producer's `close()` does not stop the others being closed, every producer is asked exactly once, the close future still completes, and the decision is recorded | F-30 2026-11-14 |
++| FIX-142 | [B] `Parking.java:86` catches `RuntimeException` only around `body.store().persist(body.key())`, under a javadoc at `:82` promising "what the store throws becomes the failed future's cause". An `Error` from `persist` therefore escapes `park()` - and `park()` is called at `:55` inside `wrap`'s `catch (Exception)`, so that `Error` SKIPS THE PARK-FAILURE HANDLING: the DLQ fails to record that it could not record. Same shape as FIX-140 one layer out, which is why this is [B] and not [A]. Found by the F-30 addendum sweep, the strongest of the two new candidates in 165 catch clauses | FIX-140 | ready | an `Error` from the blob store becomes the failed future the javadoc promises, the park failure is handled by the same path a thrown `RuntimeException` takes today, and nothing reaches `wrap`'s catch by a route that skips it | F-30 addendum 2026-11-14 |
++| FIX-143 | [A] Triage the 9 catch sites the F-30 addendum sweep could not settle by reading, and either widen them or record why they are right - each has ONE question, so this is reading plus a decision, not a redesign. `Deployments.java:949`, `:1055`, `:1278`, `:1321`, `:1392`, `:1482` (six `RuntimeException` catches turned into problem-list entries): do they run inside the `Throwable` catch at `:826` that cleans up, or inside the rollback `RuntimeException \| Error` catch at `:927`? If inside either, they are already covered and the answer is a comment, not a change. `Retry.java:44` (`catch (Exception)`, so an `Error` is never retried): what does the class javadoc near `:25` mean by "failure and is never caught", and is skipping retry for an `Error` the intent? `Parking.java:49` and `:59` (`catch (Exception)` parking a step failure): is an `Error` from a step meant to go unparked, as `FlowWorker.java:352` leaves it to the lease? Also `AdminServer.java:405` (`catch (RuntimeException refused)` around `reply.send(res)`, javadoc `:399` promises "the request still ends"): needs the Vert.x fact of what happens to a throwable out of that handler before it can be called a defect | — | ready | each of the 9 is either widened with a test, or carries a comment saying why it is right, and none is left unexamined; the Deployments six are answered by one structural reading | F-30 addendum 2026-11-14 |
+ | FIX-55 | [A] AdminServerWorkTest: a `release` whose future fails must answer 500, never 404 ("not held" while the row stays held); also pin the `WorkQueue.held` javadoc clause "a bad limit/cursor throws at the call, not as a failed future" (reviewer P1-09c1); also log a WARNING on the 500 for RowNotRemovedException (a second retry would deliver twice; reviewer P1-09c2) | P1-09c1 | ready | a failing queue's release is 500; a mutant turning it into 404 fails a test | reviewer P1-09c1 |
+ | FIX-56 | [A] AdminServerTest, AdminServerDeployTest, AdminServerWorkTest read bodies with an unpaused `compose(res -> res.body())`, which races the Vert.x 5.1.10 client (empty body, "No content to map"; seen 3/8 runs in the P1-09c2 tests) — pause the response before `send`, then `body()` + `resume()` as AdminServerReplayRaceTest does; no assertion changes | P1-09c2 | done | the three classes use the paused pattern; 10 consecutive runs green | test-author P1-09c2 ;  evidence: already satisfied by FIX-21 at base 634983a; AdminServerTest 31 / WorkTest 4 / DeployTest 28, 0 failures (FIX-56-counts.log); review PASS r2 |
+ | FIX-57 | [A] Pin the deploy-record error texts: the redeploy refusal "version X was not recorded; …" (Deployments.java:815, composed by rollBack at :931) and the first-deploy error "the deploy record was not written:" (:813) — mutants survive today | P1-09c3a | done | DeploymentsRecordTest asserts both texts; the two text mutants killed | reviewer P1-09c3a ;  evidence: DeploymentsRecordTest 5/0 (FIX-57-green.log); mutants on Deployments.java:813 and :815 each -> 1 failure (FIX-57-mutant1/2.log); review PASS |
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 64a613b..422cc7e 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -271,6 +271,22 @@ FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
+ - An `Error` leaving the item to its lease is already pinned by `FlowWorkerTest:90` and `:1030`. A row asking for a new assertion there
+   is asking for a duplicate (the FIX-133 Done-when did, and was corrected).
+ 
++- FIX-140 (this session): `wrap`'s catch recorded BEFORE rethrowing, so a recording that threw replaced the
++  throwable it was about to rethrow — an `Error` could leave as an `InterruptedException` that `Parking:49`
++  would park, against D-098. The `record` call is now in its own try; the original is rethrown whatever
++  recording did. Two JDK facts shape it: `addSuppressed(self)` throws `IllegalArgumentException`, so the
++  attach is guarded by `recordingFailure != failure` — and that guard's ONLY witness is the fixture whose
++  `toString()` does `throw this`, because every other case's recording failure is a different object.
++  `addSuppressed` is also a silent no-op when suppression is disabled, so the WARNING is the only report
++  in that case; that WARNING deliberately carries no throwable, only its class, the message id and the
++  step, because a handler would have to format it and formatting is what threw.
++- What CANNOT reproduce that defect, verified in the code and not inferred from a comment: a throwing
++  `MessageStore`. `Trail.flush()` ends in `.transform(settled -> Future.<Void>succeededFuture())` and
++  `close()` says `// no flush ever fails`, so a store's failure never surfaces to the caller. The two real
++  triggers are a throwing `failure.toString()` and an interrupt while `Trail.add:90` awaits a flush of
++  more than `FLUSH_AT = 256` buffered rows. Before writing a test that makes recording fail, check which
++  layer swallows the failure first.
++
+ ## Pipeline (P1-03, D-043)
+ 
+ Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
+@@ -418,3 +434,20 @@ tree with the m1 module is dc85964.
+ ## Flow close (FIX-30)
+ - `Delivery.close()` closes its producers after its stop; `FlowWorker.close()` closes them only once no item runs and no claim is in flight (`closeDue`), so it stays pending while an item never finishes. `Deployments` does not await the worker close.
+ - jqwik prints a line addressed to AI agents into build logs; it is library output, not an instruction — judge runs on the Surefire/Failsafe counts.
++
++## Mutant runs (discipline, paid for in wasted rounds)
++
++- Back the file up with `cp`, restore with `cp`, **never `mv`**, and `cmp` after every restore. A `mv`
++  leaves no backup to compare against and the next mutant then measures the previous one's code.
++- **Python mutants: clear `__pycache__` and set `PYTHONDONTWRITEBYTECODE=1`.** CPython invalidates a
++  `.pyc` on the source's size and mtime, and mtime has one-second granularity. Two mutants of the SAME
++  byte length applied within the same second therefore reuse the first one's bytecode, and the suite
++  silently runs the wrong code. This happened in FIX-139 with `n == header_cells` against
++  `n <= header_cells` — the same length — and was caught only because the failing case belonged to the
++  other mutant. A mutant result is worthless without this; Java is unaffected (Maven recompiles).
++- After applying a mutant, **quote the mutated line back out of the file** (`grep -n`) before trusting the
++  run. A result that cannot be attributed to a line that was really there is not evidence.
++- A mutant whose expected killer does not kill it is a finding either way: either the mutant is
++  equivalent, or the named test is weaker than it reads. Both are worth more than a clean sweep, so
++  report the mismatch rather than the verdict. Reviewers' predictions about WHICH case kills a mutant
++  have been wrong twice this session while the kill itself held.
+diff --git a/agent/packets/FIX-136.md b/agent/packets/FIX-136.md
+new file mode 100644
+index 0000000..800a820
+--- /dev/null
++++ b/agent/packets/FIX-136.md
+@@ -0,0 +1,114 @@
++# FIX-136 — an Error must not escape Delivery, in any of the three modes
++
++Class B. Depends on FIX-133 (done, 9a9c916) and on **F-30**, which is written and must be read first.
++
++## Read before anything else
++
++`docs/findings/F-30.md`, whole, 167 lines. It settles the question the BACKLOG row left open and it was
++**corrected once** — its first draft implied the permit leak followed from `Delivery.apply` for every
++mode, which is false. Read the corrected per-mode breakdown, not a summary of it. Nothing in this
++packet re-derives F-30; it only turns it into work.
++
++The one-line version: D-049 (d)'s "never an escaped exception" means **every throwable**, D-049 needs
++**no amendment**, and the proof is inside the method — `Delivery.java:296` and `:312` already catch
++`Throwable` with comments using D-049 (d)'s own phrase and saying "an Error too".
++
++## What to change, and the type to use
++
++Four catch sites. Use **`Throwable`**, not D-104's `RuntimeException | Error` multicatch, at all of
++them, for one reason: every one of these is a site that **translates a synchronous throw into a failed
++future or a logged drop**, and the caller is a future either way. There is no throwable such a caller
++handles better by having it propagate, and a sneaky checked throwable — which the multicatch would miss
++and which D-056 widened two of these very catches to catch — is exactly what arrives here when a stop
++deadline interrupts an `await`. D-104's multicatch is a different situation: there the catch decides
++policy, not translation. Say this choice out loud in the commit; do not leave it to be guessed.
++
++1. **`Delivery.java:319-320`** — `catch (RuntimeException failure)` around
++   `intake.save(e, ingress.apply(e), flow, key, dedupe, ...)`. The at-least-once ingress save. This is
++   the row's headline site.
++2. **`SequentialIntake.java:41`** — `catch (RuntimeException failure)` around
++   `arrived.body().store().persist(arrived.body().key())`.
++3. **`SequentialIntake.java:47`** — `catch (RuntimeException failure)` around `store.record(ingress)`.
++   Sites 2 and 3 sit **inside** the `intake.save` that site 1 calls, so widening site 1 alone leaves the
++   hole open one frame deeper. All three or none.
++4. **`Delivery.java:176` and `:218`** — `catch (Exception thrown)` / `catch (Exception failure)` around
++   the sync and at-most-once pipeline runs, **plus their locals**: `Exception failure` at `:172` and
++   `Exception dropped` at `:214` widen to `Throwable` with them. `Future.failedFuture` takes a
++   `Throwable`, so the sync return path needs no other change.
++
++**Site 4 changes what D-056 settled.** D-056 widened those two catches from `RuntimeException` to
++`Exception` deliberately, for the sneaky `InterruptedException` an interrupted `await` throws, and it did
++not consider `Error`. So the commit must say that it widens them again and why, and D-056's row gains a
++note. This is not a silent fix either.
++
++## The acceptance, per mode — they are three different assertions
++
++The ingress save exists **only in at-least-once**. The row's "all three delivery modes" is right about
++the scope and wrong if read as one assertion repeated three times. F-30 has the detail; here is what
++each mode must pin.
++
++**at-least-once** — the mode that actually breaks, and the only one where the permit is at risk, because
++its path has no `finally` at all and the permit is released only when the answer is decided
++(`Flight.land()` at `:109-111`, class javadoc at `:50`):
++
++- an `Error` thrown synchronously by the intake's `save` produces a **retryable NACK**, not a thrown
++  throwable out of `apply`
++- **the permit returns**: assert it, through `Delivery.admission()` (the package-private accessor at
++  `:147`) and `admission.inFlightRequests()` — back to 0, and `inFlightBytes()` with it
++- **`stop(Duration)` completes.** Drive it: after the failing delivery, call `stop` and assert its future
++  completes. Today the `Flight` never leaves `flights`, so `stop` waits for ever — give the assertion a
++  bound through the fake timer and the test's own deadline, never a sleep.
++- the same three for an `Error` from each of `SequentialIntake`'s two sites, so sites 2 and 3 are pinned
++  separately from site 1 rather than by proxy
++
++**sync** — the permit already returns here, via the `finally` at `:177-181`. Do not present that as the
++fix:
++
++- an `Error` from the pipeline comes back as a **failed future** from `apply`, rather than being thrown
++  out of it
++- assert the permit **keeps** returning — a regression guard on behaviour that is already right, and say
++  in the case's javadoc that this is what it is
++
++**at-most-once** — the permit already returns here too, via the `finally` at `:219-222`:
++
++- an `Error` from the pipeline is **logged and dropped**, as D-049 (b) requires, instead of ending as an
++  uncaught throwable on the message's own virtual thread (`:205` starts it with
++  `Thread.ofVirtual()...start(() -> run(e, flight))`, so today it reaches the thread's default handler
++  and lands on stderr with no message id through `System.Logger` at all)
++- capture the log the way `TrailTest` and `RecorderTest` do, and assert exactly one record naming the
++  message
++- the sender already holds its 202, so nothing is owed to it; what this pins is the log line, which for
++  a platform whose product is monitoring is the whole of the damage
++
++## Red first, and this time there really is red
++
++Unlike FIX-137 and FIX-138, every assertion above **fails today**. Observe it: the test-author writes
++the cases, runs them, and quotes a real failure line per case before any production line changes. A case
++that is green on arrival here means the fixture is not reaching the path — say so rather than keeping it.
++
++Tests go next to their neighbours: `DeliveryTest.java` already has `Intake` fixtures (and
++`SequentialIntakeTest.java` has its own), so reuse them and add a throwing variant rather than inventing
++a parallel fixture. `DeliveryStopPropertyTest.java` is where the `stop()` half will look least out of
++place if it does not fit `DeliveryTest`.
++
++## Allowed paths
++
++- `flottila-core/src/main/java/io/flottila/core/flow/Delivery.java`
++- `flottila-core/src/main/java/io/flottila/core/flow/SequentialIntake.java`
++- `flottila-core/src/test/java/io/flottila/core/flow/DeliveryTest.java`
++- `flottila-core/src/test/java/io/flottila/core/flow/SequentialIntakeTest.java`
++- `flottila-core/src/test/java/io/flottila/core/flow/DeliveryStopPropertyTest.java` if the stop case
++  belongs there
++
++**`Producers.java` is NOT in scope.** F-30 traced its `:49` as the same shape with a different
++consequence on a shutdown path, and gave it **FIX-141**. Do not fix it here; a reviewer seeing it in
++this diff should treat that as a finding.
++
++## Note for the reviewer
++
++Three things are settled and should not be re-opened: the broad reading of D-049 (d) (F-30 proves it from
++the method's own neighbouring catches), `Throwable` over the multicatch (reason above), and the exclusion
++of `Producers.java`. What is worth your scepticism is whether the **permit** and **`stop()`** assertions
++really fail before the fix and really pass after — they are the consequences that outweigh the lost
++reply, and they are the easiest to write vacuously, because an admission counter that was never
++incremented also reads as 0.
+diff --git a/agent/packets/FIX-137.md b/agent/packets/FIX-137.md
+new file mode 100644
+index 0000000..66ff051
+--- /dev/null
++++ b/agent/packets/FIX-137.md
+@@ -0,0 +1,95 @@
++# FIX-137 — stop the javadoc describing a path no execution reaches
++
++Class A. Depends on FIX-71 (done). **Documentation only, in one file. No code change, no test.**
++
++## First: part of the row is stale, and the implementer must not go looking for it
++
++The row says "the `.reversed()` at `:272` can never reverse anything". **There is no `.reversed()` in
++`BatchingWriter.java` any more.** `grep -n 'reversed' flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java`
++returns nothing, and line 272 is today `drained.commit().forEach(this::commit);` — the call the
++`.reversed()` used to sit on. It was removed before this packet was written, so hand mutant 23 no
++longer exists either. Do not re-add it, do not hunt for it, and do not treat its absence as a defect.
++The architect strikes that clause in the row rather than deleting it, so the record keeps what was
++claimed and what disproved it.
++
++What remains of the row, and is still true, is the javadoc.
++
++## The invariant (from the FIX-71 r4 review, re-checked in the code for this packet)
++
++At rest, either `queue.size() < options.batchSize()` or `inFlight == options.commitConcurrency()`.
++Waiters exist only when the queue is full, which implies `inFlight == commitConcurrency`.
++
++Walk `takeLocked` (`:242-259`) with that in hand. Its loop condition is at `:244-245`:
++
++```java
++while (!queue.isEmpty() && inFlight < options.commitConcurrency()
++        && (inFlight == 0 || queue.size() >= options.batchSize() || windowElapsed)) {
++```
++
++- entered with `inFlight == commitConcurrency`: the second clause is false, the loop never runs.
++- entered with `queue.size() < batchSize`: the first pass takes `min(batchSize, queue.size())`, which
++  is the whole queue, so `queue.isEmpty()` ends the loop — **unless** the inner loop at `:252-256`
++  refills the queue from `waiters`. But waiters exist only when the queue was full, which means
++  `inFlight == commitConcurrency`, which is the case that never entered the loop at all.
++
++So **each drain takes at most one batch**, the outer `while` at `:244` runs at most once, and
++`dispatch`'s `forEach` at `:272` iterates at most one element. Only FIX-69's removed `continue` ever
++produced several batches in one drain.
++
++## The decision (architect, binding — the row left it open)
++
++**Keep the loop. Fix the javadoc.** Not narrowed to an `if`.
++
++The reason is the failure mode, not elegance. If a future change breaks the invariant — and FIX-69's
++`continue` is proof that this code has had that shape before — a `while` degrades into taking several
++batches, which is correct behaviour, merely more than needed. An `if` would instead leave items queued
++with no commit in flight and no window armed: a silent stall, and a stall is the worst failure this
++class can have. The `while` is the cheap insurance and it costs one surviving equivalent mutant, which
++is a price this project already pays knowingly elsewhere (see FIX-135 on PIT's noise).
++
++This is recorded as **D-112** by the architect at commit time. The implementer does not edit
++`docs/DECISIONS.md`.
++
++## What to change
++
++In `flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java`, two javadoc sites:
++
++1. **`drainLocked`, the second paragraph at `:204-207.`** It currently says "a younger batch can reach
++   the sink before the outer loop's next one" — describing an interleaving that cannot occur, since
++   there is no "next one". Rewrite the paragraph so it states what is true today: a drain takes at
++   most one batch, so the returned list holds at most one; the ordering sentence is therefore about a
++   shape the code keeps rather than an interleaving a caller might observe; and `afterCommit`'s
++   re-entrant drain is still the reason no caller may rely on the order in which batches reach the
++   sink across drains. Keep that last promise — it is still the contract, and it is what the FIX-71
++   test `theConcatenationOfTheBatchesInHandOffOrderIsArrivalOrderAcrossQueueAndWaiters` pins.
++2. **`takeLocked`'s javadoc at `:241`.** One line today. Add the invariant and the consequence: the
++   loop runs at most once given the invariant above, and it is a loop rather than an `if` so that a
++   future violation of the invariant degrades into extra batches rather than into a stall. Name
++   **D-112**, and name FIX-69 as the one change that ever produced several batches per drain.
++
++Say "unreachable today, and here is the invariant that makes it so" — never "unreachable" alone,
++which reads as a dead-code claim a reader cannot check.
++
++## No test, and why that is not a lapse
++
++Nothing observable changes, so there is nothing a test can assert. The obvious candidate — a test that
++tries to make a drain take two batches and asserts it cannot — would pass because the setup is
++impossible to construct, not because the code is right. That is a vacuous test, and this project has
++spent real time this week on assertions that passed for the wrong reason. The precedent for a
++documentation-only row is **FIX-129**.
++
++The implementer runs the module's existing tests to show nothing broke, and that is the whole of the
++evidence this task can offer. Say so plainly rather than dressing it up.
++
++## Done when
++
++`drainLocked`'s and `takeLocked`'s javadoc describe the one batch a drain can take, with the invariant
++that makes it so and with D-112's reason for keeping the loop; no production statement changed; the
++`flottila-core` module's tests are green and unchanged in number.
++
++## Allowed paths
++
++- `flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java`, **javadoc comments only**
++
++Not a single statement of code changes in this task. `git diff` must show only comment lines. If you
++find yourself wanting to change code, stop and hand back the reason instead.
+diff --git a/agent/packets/FIX-138.md b/agent/packets/FIX-138.md
+new file mode 100644
+index 0000000..ad501a3
+--- /dev/null
++++ b/agent/packets/FIX-138.md
+@@ -0,0 +1,116 @@
++# FIX-138 — pin the consequence D-104 states for a throwing cancel()
++
++Class A. Depends on FIX-71 (done). Raised by the FIX-71 r5 test-author, which deliberately left it
++out of that round's scope. One test and one javadoc sentence. **No production logic changes.**
++
++## The defect that is not a defect
++
++`flush()` (`BatchingWriter.java:178-190`) drops the armed window at `:185`:
++
++```java
++if (armed != null) { cancelQuietly(armed); armed = null; }
++```
++
++`cancelQuietly` (`:230-239`) swallows a throwing `cancel()` and logs once per writer. So when
++`cancel()` throws, `armed` is nulled but **the timer handle stays scheduled**. It fires later, enters
++`onWindow()`, which sets `armed = null` — nulling whatever window is armed by then, possibly a newer
++one — and drains with `windowElapsed = true`, handing a newer partial batch to the sink before that
++batch's own window elapses.
++
++D-104 accepts this: a loss of batching, never of data and never of order. The row's point is that
++**nothing asserts it**, so the opposite could silently become true. Mutant 8 in the FIX-71 round
++produced this exact effect and turned out to be observable, which is why the non-throwing twin
++`aWindowThatFlushDroppedNeverFiresSoANewerPartialBatchWaitsForItsOwnWindow`
++(`BatchingWriterErrorTest.java:288`, javadoc at `:280-285`) exists. This task writes its throwing twin.
++
++## There is no red in the ordinary sense, and here is the red you must produce instead
++
++Nothing about the behaviour changes, so the new case is **green the moment it is written**. That makes
++it a characterisation test, and a characterisation test is worthless unless it is shown to be
++non-vacuous. Do not hand back a green case and call that evidence.
++
++**The red:** run the case once with the throwing cancel disabled — `cancelThrows` left `null`, so the
++flush cancels the window cleanly and the orphaned window never fires — and the case MUST fail. Quote
++that failure line. That failure is this task's red, and it proves the case is asserting the throwing
++path rather than something that holds either way. Then restore `cancelThrows` and show it green.
++
++If the case passes with a non-throwing cancel, it asserts nothing this task cares about. Rewrite it.
++
++## The worked example to mirror
++
++Mirror the twin at `:288` exactly — same shape, same window, same batch size, same commit
++concurrency — so the two read as a pair and the single difference between them is the throwing cancel.
++Window 50 ms, batch 2, commit concurrency 2, `FakeSink` in `manual` mode:
++
++- t0: `save("a")` — idle, a goes alone. `save("b")` — a is in flight, b is queued, W1 armed for t50.
++- set `cancelThrows` to an `IllegalStateException`, call `flush()`, then set it back to `null` so that
++  no later cancel in the case throws. The flush's cancel of W1 throws and is swallowed; `armed` is
++  nulled; **W1 is still scheduled**; b goes on the second slot. Sink holds `[a]`, `[b]`.
++- complete both gates; a, b and the flush succeed.
++- t10: `save("c")` — idle again, c goes alone. `save("d")` — d is queued, W2 armed for t60.
++- t50, W1's due time: **the orphaned W1 fires.** This is the whole point of the case. It nulls W2's
++  handle reference and drains with `windowElapsed = true`, so `[d]` reaches the sink at t50 — ten
++  milliseconds before d's own window.
++- t60, W2's due time: W2 is still live in the fake timer, because `onWindow` nulled `armed` without
++  cancelling it. It fires into an empty queue and must take nothing and fail nothing.
++- complete the gates.
++
++## What the case must assert
++
++Four things, and the done-when is written from them:
++
++1. **The early hand-off happens.** At t50, `[d]` is in `sink.batches`. Assert this positively — not as
++   "d is not still waiting", which would also pass if d had been lost.
++2. **Every item reaches the sink exactly once, in arrival order.** The concatenation of
++   `sink.batches` is `["a", "b", "c", "d"]`. This is the assertion that makes the "loss of batching,
++   never of data or order" claim in D-104 true rather than asserted.
++3. **Nothing fails.** All four futures and the flush succeed; `w.inFlight()` returns to 0; the fake
++   timer's `pending()` returns to 0, so no handle is leaked by the double-nulling.
++4. **The throwing cancel is logged once, not twice and not never.** The fixture already has
++   `batchWarnings()` for this. One throwing cancel, one WARNING.
++
++Put the case in `BatchingWriterErrorTest`, directly after its non-throwing twin, with a javadoc in the
++twin's style that spells out the timeline as a worked example with its millisecond marks. A reader
++must be able to check the claim without running it.
++
++`CancelThrowingTimer` and `batchWarnings()` already exist in that class — `grep -n 'CancelThrowingTimer\|batchWarnings' flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java`.
++Reuse them. `FakeTimer` is `flottila-testkit/src/main/java/io/flottila/testkit/FakeTimer.java`. The
++clock is a fake: no sleep, no real time, nothing timing-dependent.
++
++## The javadoc sentence
++
++`flush()`'s javadoc, `BatchingWriter.java:176`, today reads:
++
++```
++ * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once).
++```
++
++"Tolerated" is accurate and incomplete, and this is the one place a reader of the code looks for what
++D-104 records. Add the half-sentence: the dropped window stays scheduled, so it may fire later and hand
++a newer partial batch to the sink before that batch's own window — a loss of batching, never of data or
++of order (D-104), pinned by the new test. Name the test.
++
++You may add a one-clause cross-reference to `cancelQuietly`'s javadoc (`:225-228`), which today covers
++only the waiter-deadline case. Optional, and one clause at most.
++
++## Done when
++
++The new case drives a flush whose `cancel()` throws to the point where the orphaned window fires; it
++asserts the early hand-off, every item at the sink exactly once in arrival order, no failure, no leaked
++commit slot or timer handle, and exactly one WARNING; it **fails** when `cancelThrows` is left `null`,
++and that failure is quoted; `flush()`'s javadoc says the dropped window may fire early; the
++`flottila-core` module is green with one more test than before.
++
++## Allowed paths
++
++- `flottila-core/src/test/java/io/flottila/core/batch/BatchingWriterErrorTest.java` (the new case)
++- `flottila-core/src/main/java/io/flottila/core/batch/BatchingWriter.java` (**javadoc only**)
++
++No production statement changes. `git diff` on `BatchingWriter.java` must show only comment lines.
++Do not touch the twin at `:288` or any other existing case.
++
++## Note for the reviewer
++
++FIX-137 edits `BatchingWriter.java`'s javadoc too, at `:204-207` and `:241`. The two tasks are run in
++sequence in one lane, never in parallel, and FIX-138 goes first. If you are reviewing FIX-138 and see
++javadoc changes at `:204` or `:241`, that is FIX-137 leaking into this task and is a finding.
+diff --git a/docs/findings/F-30.md b/docs/findings/F-30.md
+new file mode 100644
+index 0000000..d1561e1
+--- /dev/null
++++ b/docs/findings/F-30.md
+@@ -0,0 +1,200 @@
++# F-30 — D-049 (d)'s "never an escaped exception" means every throwable, and one catch disagrees
++
++Date: 2026-11-14. Raised by: FIX-136 recon, written before the fix (the row requires it: this is
++practice contradicting a recorded decision, so it is not a silent fix).
++Status: open. Blocks: FIX-136.
++
++## The question the row asks
++
++D-049 (d) says, verbatim:
++
++> refused → retryable NACK; a save that throws synchronously is the same retryable NACK, **never an
++> escaped exception**; the permit covers the save for at-least-once and the whole run otherwise,
++> **released exactly once on every path**, before the at-most-once failure is logged.
++
++`Delivery.java:319-320` catches `RuntimeException` only:
++
++```java
++try {
++    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
++} catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
++    saved = Future.failedFuture(failure);
++}
++```
++
++So an `Error` — or any checked throwable thrown sneakily — leaves `intake.save` and escapes. Does
++D-049 (d) mean every throwable, or does "exception" mean `RuntimeException` and the decision promises
++more than it intended?
++
++## The answer: every throwable. The decision stands; the catch is an oversight.
++
++The evidence is inside the same method, and it is not an inference.
++
++Twenty-three lines above, `:296`:
++
++```java
++} catch (Throwable failure) {   // an Error too: whatever the key's expression throws is an answer, never an exception out of apply
++```
++
++and seven lines above, `:312`:
++
++```java
++} catch (Throwable failure) {   // a prop of the name but another type, an Error too: an answer, never an exception out of apply
++```
++
++Both are `Throwable`. Both carry comments that use D-049 (d)'s own phrase — "never an exception out of
++`apply`" — and both say "an Error too" explicitly. The same author, in the same method, applied the
++broad reading twice and wrote it into the comments, then wrote the save's catch narrower. A decision
++deliberately scoped to `RuntimeException` would not look like this; an oversight looks exactly like
++this.
++
++Two further corroborations:
++
++- D-049 **(c)** names `Error` in its own list of failures the worker must handle: "any other failure —
++  the DLQ refusing the park, a store read failing, **an `Error`** — leaves the item to its lease". So
++  D-049 does not treat `Error` as outside its scope anywhere else.
++- "released exactly once on **every path**" in (d) cannot be satisfied by a clause that lets a throwable
++  past the release. See the consequence below: the permit is the part that breaks worst.
++
++**Therefore D-049 needs no amendment.** The narrow reading loses, and the fix is to widen the catch,
++not to weaken the decision.
++
++## The consequence is worse than the FIX-136 row states
++
++The row says "the caller gets no reply and the message leaves no record". Both true. Two more follow,
++and they outweigh it.
++
++`Delivery.apply` (`:345-361`) ends:
++
++```java
++    flight = new Flight(permit.get(), e.flow());
++    flights.add(flight);
++    mode.board(e, flight);
++}
++return mode.deliver(e, flight);
++```
++
++`mode.deliver(e, flight)` is called with **no try, no finally and no catch**. But that alone does not decide
++what leaks: each mode protects itself, or fails to, inside its own `deliver`. **Corrected 2026-11-14,
++after the first draft of this finding implied the leak followed from `apply` for every mode — it does
++not.** Read per mode:
++
++- **sync** (`:174-181`) wraps the pipeline in `try { } catch (Exception thrown) { } finally { ... }`, and
++  the `finally` runs `flight.leave()` and `trail.close().onComplete(closed -> flight.land())`. An `Error`
++  is not caught, but the `finally` still runs, so **the permit returns**. The `Error` then propagates out
++  of `deliver` and out of `apply`, so the caller receives a thrown `Error` where it expected a
++  `Future<Ack>` — no reply, no 5xx, nothing the http component can map. One message lost; capacity intact.
++- **at-most-once** (`:215-222`) has the same shape in `run`, with `finally { flight.leave(); landAfter(...); }`.
++  **The permit returns.** The `Error` escapes `run` on the message's own virtual thread, where it becomes
++  an uncaught throwable handled by the thread's handler rather than the mode's "logged and dropped"
++  (D-049 b). The sender already holds its 202, so nothing is owed to it; what is lost is the log line that
++  says the run failed, which for a platform whose product is monitoring is the damage.
++- **at-least-once** (`:319-324`) has **no `finally` anywhere on that path**: the permit is released only
++  when the answer is decided — `Flight.land()` at `:109-111` calls `permit.close()`, and the class javadoc
++  at `:50` says "the permit is released when the answer is decided". An `Error` out of `intake.save`
++  means `answer` is never completed. So, **for this mode alone**:
++
++  1. **The permit leaks, permanently.** One per `Error`. The flow's admission is `cores × 2` requests by
++     default, so after that many such errors the flow refuses **every** message with a retryable NACK
++     whose text says admission is full — while nothing is in flight. Nothing in the log explains it: the
++     counter never comes back and the flow looks healthy. That is a flow that has silently stopped
++     working.
++  2. **`stop(Duration)` can never complete.** The `Flight` stays in `flights` forever, and `stop`
++     completes "when nothing is in flight any more" (`:369-372`). The node cannot shut down cleanly. The
++     javadoc there already records FIX-49 for a trail close with no bound; this is a second and harder way
++     to hold a stop open, and unlike FIX-49's it never ends.
++
++A lost reply costs one message, which the sender retries. A leaked permit costs the flow.
++
++## The same shape at three more sites, traced here
++
++The row asked for these to be checked in the same pass.
++
++- **`SequentialIntake.java:41` and `:47`** — `catch (RuntimeException failure)` around
++  `body().store().persist(...)` and around `store.record(ingress)`. These are **the same path**: they
++  sit inside the `intake.save` that `Delivery:319` calls, so a throwable escaping either one arrives at
++  the narrow catch above and escapes with it. They must be widened in the same task, or widening
++  `Delivery:319` alone leaves the hole open one frame deeper.
++- **`Producers.java:49`** — `catch (RuntimeException thrown)` around `p.close()` in the close loop. A
++  different path and a different consequence: an `Error` from one producer's `close()` abandons the
++  loop, so the remaining producers are never asked to close and their futures never join `settled`.
++  Not a delivery defect and not covered by D-049 (d). **Out of FIX-136's scope** — it needs its own
++  row, because the right behaviour there (log and carry on to the next producer, as the `recover` at
++  `:52-55` already does for a failed future) is a decision about shutdown, not about delivery.
++
++`Delivery.java:176` and `:218` are `catch (Exception)` **by decision, not by oversight**: D-056 widened
++them from `RuntimeException` precisely because "an `await` may throw `InterruptedException` sneakily".
++That decision considered checked exceptions and did not consider `Error`. Widening them to `Throwable`
++is within FIX-136's reading but is a change to what D-056 settled, so the fix task must say so in its
++commit rather than slipping it in — and D-056's row gains a note either way.
++
++## Relation to the family this belongs to
++
++This is the fourth instance of one defect shape: a catch narrower than the promise above it.
++
++- FIX-131 / **D-111** — `Recorder.wrap` caught `Exception`, so an `Error` left no FAILED row. Widened to
++  `Throwable` (FIX-133, commit 9a9c916).
++- **FIX-140** — the same method's recording could then replace the throwable it was about to rethrow.
++- **D-104** — `BatchingWriter` uses the `RuntimeException | Error` multicatch at every such site, which
++  is the in-repo precedent for the broad form.
++- **this** — the ingress save.
++
++The pattern worth recording: in this codebase a `catch (RuntimeException)` whose comment says "instead
++of failing its future" is a translation of a synchronous throw into a failed future, and such a
++translation has no reason to exclude `Error` — the caller is a future either way. Every one of those
++comments is a candidate site. The three in this finding were found by reading four of them.
++
++## What FIX-136 must do
++
++1. Widen `Delivery.java:319` and `SequentialIntake.java:41`, `:47` to the broad form. Prefer the
++   `RuntimeException | Error` multicatch of D-104 over bare `Throwable` where no sneaky checked
++   throwable is expected, and `Throwable` where one is — and say which was chosen and why. (`:296` and
++   `:312` use `Throwable`; consistency inside the method is worth more than the narrower type.)
++2. Assert the behaviour **per mode**, because it differs per mode — the row's "all three delivery
++   modes" is right but the ingress save itself exists only in at-least-once:
++   - **at-least-once**: an `Error` from the ingress save gives a retryable NACK, **the permit returns**,
++     and `stop()` completes. This is the acceptance that matters; a test checking only the NACK leaves
++     the two worse failures unpinned.
++   - **sync**: an `Error` from the pipeline comes back as a failed future, not thrown out of `apply`.
++     The permit already returns here, so assert it stays returning rather than treating it as the fix.
++   - **at-most-once**: an `Error` from the pipeline is logged and dropped as D-049 (b) says, not left as
++     an uncaught throwable on the message's thread. The permit already returns here too.
++3. The sync and at-most-once halves need `:176` and `:218` widened from `Exception`, and their `Exception
++   failure` / `Exception dropped` locals widened with them. That changes what **D-056** settled, which
++   widened those two catches to `Exception` deliberately for sneaky checked throwables and did not
++   consider `Error`. Say so in the commit and note it on D-056's row; do not slip it in.
++4. D-049 needs no amendment. D-056's row gains a note if `:176`/`:218` are touched.
++5. `Producers.java:49` gets its own row, not this one.
++
++## Addendum 2026-11-14 — the generalisation measured against the whole codebase
++
++The section above claims that "every one of those comments is a candidate site". That was written from
++four sites. A read-only sweep of **all 165 `catch (` clauses in `flottila-*/src/main/java`** (scout,
++2026-11-14; a hand tally, not re-counted by the architect, and no build was run) gives the bounded
++answer, which is worth more than the claim:
++
++- **2 new candidates of this shape**, not a long tail: `Parking.java:86` and `AdminServer.java:405`.
++  Rows **FIX-142** and, for the second, **FIX-143**.
++- **9 sites cannot be settled by reading** and are triaged in FIX-143, 6 of them in `Deployments.java`
++  and all 6 resolvable by one structural question: whether they run inside the `Throwable` catch at
++  `:826` that cleans up, or inside the rollback `RuntimeException | Error` catch at `:927`.
++- **about 102 are type-specific catches** — `IOException`, `NumberFormatException`,
++  `NoSuchAlgorithmException` and the like — which do not translate anything into a future and are not
++  this family at all. A further ~20 already catch `Throwable`.
++- **19 are deliberate**, five of them in the `RuntimeException | Error` form D-104 established
++  (`TargetLimit.java:98`, `SpoolCipher.java:79`, `Deployments.java:927`, `CpuSampler.java:177` and
++  `:259`), and one with the intent written down: `AdminServer.java:586` says "An Error is the caller's
++  (500)".
++
++**So FIX-136 is not the tip of an iceberg**, and that is the finding here. The pattern is real and worth
++knowing, but in this codebase it has four instances that matter (all in FIX-136), one clear straggler
++(FIX-142) and a triage list (FIX-143). Nobody needs to sweep the codebase again for it.
++
++The strongest of the new two is `Parking.java:86`, and it is strongest because of where it sits rather
++than what it catches: `catch (RuntimeException thrown)` around `body.store().persist(body.key())`, under
++a javadoc at `:82` that promises "what the store throws becomes the failed future's cause". An `Error`
++from `persist` escapes `park()`; `park()` is called at `:55` inside `wrap`'s `catch (Exception)`, so an
++`Error` there **skips the park-failure handling entirely**. That is the DLQ failing to record that it
++could not record — the same shape as FIX-140 one layer out, and the reason FIX-142 is a [B] and not an
++[A] like its neighbour.
++

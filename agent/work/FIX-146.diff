@@ -1,0 +1,174 @@
+diff --git a/PROGRESS.md b/PROGRESS.md
+index 235e5d1..cd4aef2 100644
+--- a/PROGRESS.md
++++ b/PROGRESS.md
+@@ -929,6 +929,67 @@ Review: FAIL r1 (§8/D-071 fail-fast ingress sentence stale; release-after-commi
+ D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 1 fix packet, implementer ×1 + 1 fix, verifier ×1, reviewer ×2); review rounds 2.
+ Next: P2-08b [B] measurement.
+ 
++## 2026-10-29 — P2-08b durable ACK measured after one transaction (F-18) — done, review PASS r2
++Commit 6f069a4. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: red not re-observable — the logs the stray entry cited under `target/` are gone. The commit adds bench tests
++NodeBenchAckCommitsIT, NodeBenchAckCountersIT, BenchRunScriptTest, BenchRunScriptCommitDelayTest and NodeBenchMainIT cases.
++Change: NodeBenchMain records the six pg_settings that decide a durable commit, the pool size, commits per message and WAL
++syncs per message; bench/run.sh runs the ack loop at c=1/8/64 and can set commit_delay through ALTER SYSTEM, reset by an EXIT trap.
++Checks: NOT_RUN — no build, test, coverage or mutation evidence for this commit is recoverable; the logs were under `target/`.
++Measured: bench/RESULTS.md §"P2-08 — durable ACK, one transaction" survives on disk (cloud VM, 4 vCPU, 2026-10-29, before
++e2c8c53 / after 1d5d507): c=1 p99 10.58 → 8.80 ms (−17 %), FLOOR with pg_wal on tmpfs (not durable) 8.04 ms, so the 5 ms
++target is missed and storage alone cannot reach it; c=64 833 → 733 msg/s (−12 %); commit_delay gained < 10 % p99 on at least one run and stays out of compose.
++Review: FAIL r1 (an approximated −18 %, FLOOR not labelled not durable, a storage overclaim, c=64 overlap unstated, the
++commit_delay rule misstated, cleanup and the pg_test_fsync path unevidenced), PASS r2 — as recorded in the commit message.
++Docs: F-18, ARCHITECTURE §7 Sizing restated, FIX-95 (recover the load throughput), CONSIDER-6 (jqwik alternative).
++Next: P2-02L.
++
++## 2026-10-29 — P2-02L poller lease held by the node (D-083) — done, review PASS r3
++Commit b86678e. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: red not re-observable (no log survives). The commit adds runtime PollerLeasesContract, InMemoryPollerLeases(Test,
++PropertyTest), ValkeyPollerLeasesIT, LeasedConsumerTest, LeaseLog, DeploymentsPollerLeaseTest, TwoNodeSftpLeaseTest, NodeConfigTest and NodeIT cases, plus api ComponentTest and sftp SftpComponentTest cases.
++Change: api `Component.polls` (default false, sftp true); runtime `lease.PollerLeases` with an in-memory store and a Valkey
++one (atomic Lua over SET PX / PEXPIRE / compare-and-DEL); `deploy.LeasedConsumer` holds once per tick on a virtual thread,
++starts a consumer only after a confirmed hold, stops it at t0 + ttl on a failed renewal and at once on a loss, builds a
++fresh consumer on regain, releases on stop; Valkey when FLOTTILA_VALKEY_URI is set, else in-memory plus one WARNING; TTL
++PT30S and renew PT10S bounded and refused when inconsistent; the URI prints only as scheme://host[:port][/db], a hostless
++one is refused unshown; the runtime pom gains vertx-redis-client. A takeover may overlap by the file in flight: a
++duplicate, never a loss (P2-02D dedupes). The test-author moved a pair case PT10.000000001S → PT10.001S (sub-ms refused).
++Checks: NOT_RUN — not recoverable. The commit message claims the reactor -Pit at 2380/0 with the report dirs cleared and one adopted NodeConfigTest case at 70/0; no log survives, and a commit message is not an observation.
++Review: FAIL r1 (`?password=` printed; the next tick from a clock read before the start; a failed start not stopped; docs
++overlap), FAIL r2 (a password with an unencoded '/' parsed hostless and printed), PASS r3 — per the commit message.
++Docs: D-083, ARCHITECTURE §4 and §7 + changelog; FIX-96 (standby visibility), FIX-97 (rediss TLS). Next: P2-02D.
++
++## 2026-10-29 — P2-02D ingress dedupe by a consumer-supplied key (D-084) — done, review PASS r2
++Commit ecb721a. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: red not re-observable (no log survives). The commit changes PgIntakeIT, IntakeContract, MigrationsIT, DeliveryTest,
++SequentialIntakeTest, DeploymentsDedupeTest, SftpIngressDedupeIT, SftpComponentTest, ComponentTest, PollingConsumerContract(+SelfTest) and BenchMainIT.
++Change: api `Component.dedupeBy` (sftp names `sftp.fileKey`) and the Ack javadoc; V8 adds processed_ids(scope = qualified
++flow id, sha256 of the key); PgIntake inserts it in the same transaction as the body, record and item — a key already seen
++rolls the save back, never asks `abandoned`, evicts the duplicate's local body and answers Accepted with the first
++message's id, so a file delivered twice is one message and one work item. Replay and work retries never pass the intake; a
++flow without a key runs no extra statement; a wrongly typed key prop is a retryable Nack; SequentialIntake refuses a key;
++the sftp move suffix uses the accepted id.
++Test fixes by the implementer (wrong expectations, per the commit message): PgIntakeIT `Held` rolls back once (Transaction.completion() is a fresh future); SftpIngressDedupeIT round() waits for the round's answer; BenchMainIT pins schema "8".
++Checks: NOT_RUN — not recoverable, and the commit records no counts (the stray entry's verify 2415/0/0/0 and mutant tallies have no support in the commit, so they are not carried).
++Review: FAIL r1 (the first-id select's WHERE unpinned; the typed prop read unguarded), PASS r2 — per the commit message.
++Docs: D-084, ARCHITECTURE §4 and §7 + changelog, a P2-07 retention note, FIX-98. Next: the next ready row.
++
++## 2026-10-29 — P2-05 gate compose stack in deploy/compose (D-085) — done, review PASS r1
++Commit a326f1b. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: red not re-observable (no log survives). The commit adds runtime ComposeStackTest, 9 @Test cases.
++Change: deploy/compose/docker-compose.yml — postgres:17.11, valkey/valkey:8.1.11 (persistence off), chrislusf/seaweedfs:4.50
++(S3 identity written from the environment at start), apache/kafka:3.9.1 (KRaft, present but not wired), atmoz/sftp pinned
++by digest, the node (FLOTTILA_ENV=dev, archives to S3, poller leases in Valkey), the partner echo, a one-shot
++`flottila deploy` of packages/demo, and ClickHouse under the `history` profile; the admin token and the S3 secret come from
++the environment and compose refuses to start without them, so no secret is in the repo. deploy/compose/README.md, the
++QUICKSTART lines, and a CI `stack` job that brings the stack up, checks health, the deploy and the listing, and always
++tears down.
++Checks: NOT_RUN — not recoverable. The commit message records, on that VM: up 13.5 s, /health green at 13.6 s, deploy
++exit 0, a POST to :8080/in answered 200 by the echo, `down -v` clean. No log survives to confirm it today.
++Review: PASS r1; raised FIX-99 — per the commit message.
++Docs: D-085 (image pins and their licences). Next: P2-06.
++
+ ## 2026-10-29 — P2-06 demo package: invoice-async, sftp-invoice, tests for each flow (D-086) — done, review PASS
+ Deviation: F-19 (a packaged sftp endpoint could not name its server or directory). Context compacted before this task (re-verified).
+ Test first: sftp SftpComponentTest (host/port/dir options, hostKey fingerprint-or-secret), schemas DemoFlowsTest, cli TestCommandTest (6 cases + dlq witness), runtime ComposeStackTest (red: target/P2-06-red.log, -red-sftp.log, -red3.log r1 re-pin).
+@@ -1043,6 +1104,38 @@ Review: PASS r1 (non-blocking: the checked-IOException arm has no root-construct
+ D-054 data: class B (scout ×1, test-author ×2, implementer ×1, verifier ×1, reviewer ×1); review rounds 1.
+ Next: stopped by the owner after FIX-110 (credits); FIX-108 waits for the owner's go.
+ 
++## 2026-11-02 — WF-1 workflow skills adapted from mattpocock/skills (D-091) — done, review PASS r6
++Commit f8a28b9. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: none — no production code in the diff (.claude/, NOTICE, agent/, docs/DECISIONS.md only).
++Change: `.claude/skills/` gains retro, writing-for-agents (+ SKILL-MECHANICS), diagnosing-bugs and grill-handover with the
++upstream MIT licence file and a NOTICE entry; the reviewer checklist gains the tdd anti-patterns (implementation-coupled,
++tautological), the test-author its self-check, the implementer its added-tests rule and the FIX-row pointer to
++diagnosing-bugs; agent memories updated. The patch itself landed tracked in fff2aff; this commit applies it. Applied and
++committed by the architect at the owner's explicit request, an owner-sanctioned exception to §10 D (D-091, rewritten here).
++No hook: the PreToolUse command guard (force push, history rewrite, discarded work, reactor-root `mvn clean`) failed review
++three times (regex, blanking parser, then a lexer missing `#` comments, `mvn -e`, `-pl X -am`, directory and glob
++pathspecs, untested or-arms); the owner dropped it and it stays unapplied in agent/patches/guard-commands-hook.patch. The
++one recorded loss it would have prevented (P1-08 r2) is removed at its cause by FIX-111.
++Checks: NOT_RUN — no check is recoverable; the diff contains no production code, so none is owed beyond the review.
++Review: FAIL r1–r3 (the hook), FAIL r4 (retro still named a PreToolUse hook; NOTICE missed the tracked patches), FAIL r5
++(the FIX-111 grep could not come back empty), PASS r6 — per the commit message. Next: FIX-111.
++
++## 2026-11-02 — FIX-111 agent work files in agent/work/, out of every Maven target/ (D-093) — done, review PASS r2
++Commit 84b47f0. Folded in by FIX-146 (2026-11-14) from docs/PROGRESS.md, where this entry was written in error.
++Test first: none — no production code in the diff (20 files, +63/−47: .gitignore, CLAUDE.md, AGENTS.md, docs/, agent/,
++.claude/).
++Change: logs, diffs, scratch harnesses, bisect worktrees and the `.batch-in-review` marker move from the root `target/` to
++`agent/work/`, gitignored with `.gitkeep` tracked (.gitignore:12–13 at this commit), so no `mvn clean` — root, `-am` or
++from a module — can delete them; that is the P1-08 r2 loss at its cause (D-093). CLAUDE.md, AGENTS.md, WORKFLOW §1/§10,
++agent/NOTES.md, HANDOFF, the four agent definitions, the memories, diagnosing-bugs and the gated Stop hook name the new
++path; D-053 amended. The SessionStart install checks the new marker path, replaces an older gated copy and overwrites
++nothing when the backup fails. The WF-2 patch was rebased (its DECISIONS context had moved). The `.claude/` part is applied
++at the owner's explicit request (D-093).
++Checks: NOT_RUN today — no log survives. The commit message records the verifier's result: root `mvn clean` and
++`clean -pl flottila-runtime -am` both exit 0, `agent/work/` intact, the `target/` probe gone.
++Review: FAIL r1 (the installer's `;` after a failed backup; a stale ledger), PASS r2 — per the commit message.
++Next: the owner decides; a new session picks up the Stop-hook marker path.
++
+ ## 2026-11-03 — FIX-108 CPU per flow and step by JFR CPU-time sampling — done, review PASS r6 — Deviation: F-22
+ Context compacted (once, mid-task); re-verified with git status / git log -3. Test first: StepCpuTest, StepCpuPropertyTest,
+ FlowBuilderStepEventTest, CpuSamplerEventsTest, CpuSamplerIT, AdminServerCpuTest, NodeConfigTest/NodeIT/NodeBenchMainIT cases (red logs
+=== STAGED HALF: git diff --cached -- PROGRESS.md docs/PROGRESS.md
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+deleted file mode 100644
+index 9df656a..0000000
+--- a/docs/PROGRESS.md
++++ /dev/null
+@@ -1,56 +0,0 @@
+-
+-## 2026-11-02 — FIX-111 agent work files out of target/ (D-093) — done, review PASS
+-Test first: none (docs and workflow only); acceptance observed by the verifier (below).
+-Change: `agent/work/` (gitignored, `.gitkeep`) replaces `target/` for logs, diffs, harnesses, bisect worktrees and `.batch-in-review` in CLAUDE.md, AGENTS.md, WORKFLOW §1/§10, NOTES, HANDOFF, verifier/reviewer/implementer/test-author definitions, memories, diagnosing-bugs, the gated Stop hook; SessionStart install checks the new marker path and keeps the original's backup (owner-sanctioned §10 D exception).
+-Checks: root `mvn -B -ntp -q clean` exit 0 and `clean -pl flottila-runtime -am` exit 0 leave agent/work/ intact, target/ probe gone (verifier, agent/work/FIX-111-clean-am.log); done-when grep 0 hits; SessionStart install tested in a fake HOME (original → backup; old gated copy → replaced, backup kept; rerun idempotent; failing backup (dangling symlink) → exit 1, hook unchanged); check-ignore -v agent/work/x.diff → .gitignore:12, ls-files agent/work = .gitkeep.
+-Review: FAIL r1 (installer `;` could overwrite the original hook after a failed backup; ledger stale), PASS r2. WF-2 patch rebased (D-093 moved its context).
+-D-054 data: class A (verifier ×1, reviewer ×2); review rounds 2.
+-Next: owner decides; a new session picks up the Stop-hook marker path.
+-
+-## 2026-11-02 — WF-1 workflow skills from mattpocock/skills (D-091) — done, review PASS — Deviation: hook dropped
+-Test first: none (docs and agent workflow only). Owner request ("aplikuj patch WF-1"); applied and committed by the architect, an owner-sanctioned §10 D exception. Context compacted.
+-Change: .claude/skills/ (retro, writing-for-agents, diagnosing-bugs, grill-handover, MIT licence); reviewer, test-author and implementer definitions (tdd anti-patterns, FIX-row pointer); memories; NOTICE.
+-Hook: the command guard (force push, history rewrite, discarded work, reactor-root `mvn clean`) failed review r1 (regex), r2 (blanking parser) and r3 (lexer: `#` comments, `mvn -e`, `-pl X -am`, dir/glob pathspecs, untested `or` arms); owner dropped it; kept unapplied in agent/patches/guard-commands-hook.patch.
+-Found: `clean` with `-am` cleans the root `target/` too; the root cause of the P1-08 r2 loss goes to FIX-111 [A] (agent files out of target/).
+-Checks: no production code; licence header matches upstream (curl raw LICENSE, observed); `git apply --check` of the hook patch clean.
+-Review: FAIL r1–r3 (hook), FAIL r4 (retro still named a PreToolUse hook; NOTICE missed the tracked patches), FAIL r5 (FIX-111 grep could not come back empty), PASS r6.
+-D-054 data: class B (raised from A after r2); reviewer ×6; review rounds 6.
+-Next: owner decides; then FIX-111 [A].
+-
+-## 2026-10-29 — P2-08b durable ACK measurement after one transaction — done, review PASS — Deviation: F-18
+-Context compacted (once, mid-review); re-verified with git status / git log -3.
+-Test first: bench NodeBenchAckCommitsIT, BenchRunScriptTest, NodeBenchMainIT settings case (red: target/P2-08b-red.log); implementer-authored BenchRunScriptCommitDelayTest, NodeBenchAckCountersIT approved after the fact.
+-Change: NodeBenchMain records six pg_settings, poolSize, commitsPerMessage, walSyncsPerMessage; run.sh ack loop c=1/8/64, BENCH_COMMIT_DELAY via ALTER SYSTEM + EXIT-trap reset. bench/RESULTS.md "P2-08 — durable ACK, one transaction".
+-Result: c=1 p99 10.58 → 8.80 ms; FLOOR (pg_wal on tmpfs, not durable) 8.04 ms → 5 ms target missed, storage not the limit; c=64 msg/s 833 → 733 (−12 %); commit_delay < 10 % on all runs, not in compose. No ISSUE-3.
+-Docs: F-18 (major), ARCHITECTURE §7 Sizing restated + changelog; FIX-95 [C] (recover load throughput), CONSIDER-6 (jqwik alternative, owner).
+-Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS exit 0 (target/P2-08b-verify.log); BenchRunScript* 6/6 after the comment fix (target/P2-08b-r2-script.log); cleanup state target/P2-08b-cleanup.log; pg_test_fsync target/P2-08b-fsync2.log; coverage no decrease.
+-Review: FAIL r1 (−18 % approximation, FLOOR not labelled, overclaim, c=64 overlap, commit_delay rule, cleanup unevidenced, pg_test_fsync path unlogged), PASS r2.
+-D-054 data: class B (designer ×1, test-author ×1, implementer ×1 + 1 fix, verifier ×2, reviewer ×2); review rounds 2.
+-Next: P2-02L [C].
+-
+-## 2026-10-29 — P2-02L poller lease held by the node (D-083) — done, review PASS
+-Test first: runtime PollerLeasesContract (in-memory + ValkeyPollerLeasesIT on valkey:8), InMemoryPollerLeasesPropertyTest, LeasedConsumerTest, DeploymentsPollerLeaseTest, TwoNodeSftpLeaseTest, NodeIT P2-02L (Valkey / in-memory + WARNING), NodeConfigTest, api ComponentTest, SftpComponentTest (red: target/P2-02L-red*.log).
+-Change: api `Component.polls` (default false, sftp true); runtime lease.PollerLeases + InMemory/Valkey (Lua EVAL, PX); deploy.LeasedConsumer (hold per tick on a virtual thread, validity from t0, clock re-read after start, fresh consumer on regain, stop → release); Deployments wraps polling consumers; NodeConfig Leases (FLOTTILA_VALKEY_URI redacted to scheme://host[:port][/db], TTL/RENEW refusals); Node wires Valkey or in-memory. vertx-redis-client 5.1.10 (Apache-2.0/EPL).
+-Docs: D-083, §4 pollers sentence, §7 Poller leases row, changelog; BACKLOG Done-when restated (≤ ttl + renew); FIX-96 (standby visibility), FIX-97 (rediss TLS).
+-Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2380/0/0/0 with report dirs cleared (target/P2-02L-verify3.log), +1 adopted NodeConfig case after it (NodeConfigTest 70/0, target/P2-02L-r3-adopt.log); coverage no decrease; hand mutants 43 + 44 + 11 (target/P2-02L-mutants*.log), PIT api Component 1/1; lease classes 20/20 ×3.
+-Review: FAIL r1 (`?password=` printed; delay from a clock read before the start; failed start not stopped; docs overlap), FAIL r2 (hostless URI leaked the password), PASS r3.
+-D-054 data: class C (designer ×1, test-author ×1 + 6 follow-ups, implementer ×1 + 2 fixes, verifier ×2, reviewer ×3); review rounds 3.
+-Next: P2-02D [C].
+-
+-## 2026-10-29 — P2-02D ingress dedupe by a consumer-supplied key (D-084) — done, review PASS
+-Test first: PgIntakeIT (12 dedupe cases incl. two lock-held races, own scope/key, row gone), DeliveryTest (duplicate answers M1, prop as arrived, absent/empty, wrongly typed → Nack), SequentialIntakeTest.refusesADedupeKey, SftpComponentTest, DeploymentsDedupeTest, SftpIngressDedupeIT (file delivered twice = one message, one item), MigrationsIT V8, PollingConsumerContract dedupe case (red: target/P2-02D-red*.log).
+-Change: api `Component.dedupeBy` (sftp `sftp.fileKey`), Ack javadoc; core Intake.save(…, dedupeKey) → Future<String>, Delivery reads the prop guarded and answers Accepted(saved id); V8 processed_ids(scope, sha256 key_hash); PgIntake claims the key first in the tx, a duplicate rolls back, evicts its local body, answers the first id; sftp move suffix from the accepted id.
+-Docs: D-084, §4 two sentences, §7 Component block (`polls`, `dedupeBy`), changelog; P2-07 retention note; FIX-98.
+-Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2415/0/0/0, report dirs cleared (target/P2-02D-verify2.log); coverage no decrease; hand mutants 20/21 + 5/5 (target/P2-02D-mutants*.log; X4 later killed).
+-Review: FAIL r1 (FIRST_ID's WHERE unpinned; typed-prop read unguarded), PASS r2.
+-D-054 data: class C (designer ×1 (resumed at the turn limit), test-author ×1 (resumed) + 1 fix, implementer ×1 + 1 fix, reviewer ×2); review rounds 2.
+-Next: next ready row (FIX-95 [C] or a FIX row).
+-
+-## 2026-10-29 — P2-05 gate compose stack (D-085) — done, review PASS
+-Test first: runtime ComposeStackTest (9 cases; red: target/P2-05-red.log, secret case target/P2-05-red2.log).
+-Change: deploy/compose/docker-compose.yml — postgres:17.11, valkey 8.1.11 (persistence off), SeaweedFS 4.50 (S3 identity from env), apache/kafka 3.9.1 (not wired), atmoz/sftp (digest), node (dev, S3 + Valkey, token `:?` from env), echo, one-shot `flottila deploy`, clickhouse under `history`; README; CI `stack` job; D-085 with image licences.
+-Observed on this VM (target/P2-05-stack2.log): `up -d` 13.49 s, /health green 13.56 s, deploy exit 0, demo listed, POST :8080/in 200 from the echo, clickhouse healthy, `down -v` clean.
+-Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-05-verify.log); ComposeStackTest 9/0 (target/P2-05-test3.log); coverage no decrease.
+-Review: PASS r1. Raised FIX-99 (Kafka not-wired assertion, CI up seconds, HANDOVER env note).
+-D-054 data: class A (scout ×1, test-author ×1 + 1, implementer ×1 + 1 fix, verifier ×1, reviewer ×1); review rounds 1.
+-Next: P2-06 [A].
