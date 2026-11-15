@@ -76,9 +76,14 @@ final class CompileModes {
    */
   static UnaryOperator<JqEngine.Builder> trampoline() {
     UnaryOperator<JqEngine.Builder> conservative = hook(CompileMode.CONSERVATIVE);
-    Limits l = limits();
-    Limits zero = new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 0);
+    Limits zero = trampolineLimits();
     return b -> conservative.apply(b).limits(zero);
+  }
+
+  /** The trampoline run's limits: this oracle's {@link #limits()} with {@code stackBytes} 0. */
+  static Limits trampolineLimits() {
+    Limits l = limits();
+    return new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 0);
   }
 
   /** The compile mode of {@code engine}, read back through the package-private {@code JqEngine.compileMode()}. */

@@ -13,7 +13,6 @@ import io.github.subapavel.jqj.oracle.diff.Verdict;
 import io.github.subapavel.jqj.oracle.jqtest.JqTestCase;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.value.JqNull;
-import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -95,14 +94,11 @@ class CompileModesTest {
    */
   @Test
   void theTrampolineHookIsConservativeWithStackBytesZero(@TempDir Path scratch) throws ReflectiveOperationException, InterruptedException {
-    JqEngine.Builder builder = CompileModes.trampoline().apply(JqEngine.builder());
-    JqEngine engine = builder.build();
+    JqEngine engine = CompileModes.trampoline().apply(JqEngine.builder()).build();
     assertThat(CompileModes.modeOf(engine)).as("compile mode of an engine built through the trampoline hook").isEqualTo(CompileMode.CONSERVATIVE);
     // The oracle's limits, with neither the deadline nor the regex match time (F-58), and stackBytes 0.
-    Field limits = JqEngine.Builder.class.getDeclaredField("limits");
-    limits.setAccessible(true);
-    assertThat(limits.get(builder))
-        .as("the limits the trampoline hook sets")
+    assertThat(CompileModes.trampolineLimits())
+        .as("the trampoline run's limits")
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 0));
 
     DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");

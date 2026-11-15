@@ -141,7 +141,7 @@ class TrampolineTest {
     for (String family : List.of("calls", "heap")) {
       cases.addAll(caseFile(family));
     }
-    assertThat(cases).as("the cases of diff/calls.cases and diff/heap.cases").hasSizeGreaterThanOrEqualTo(36 + 9);
+    assertThat(cases).as("the cases of diff/calls.cases and diff/heap.cases").hasSizeGreaterThanOrEqualTo(36 + 12);
     cases.add(Arguments.argumentSet("deep/collect", COLLECT, DEEP));
     cases.add(Arguments.argumentSet("deep/reduce", REDUCE, DEEP));
     cases.add(Arguments.argumentSet("deep/first-or", FIRST_OR, DEEP));
@@ -166,8 +166,9 @@ class TrampolineTest {
   /**
    * The witnesses of RecursionDepthTest with {@code stackBytes} 0, a hundred times deeper: the recursion-depth budget
    * counts the call activations on the driver as on the stack (ADR-0046), one per live Call and real-closure
-   * invocation, none for an inlined call, and a call leaves the count however it ends. A budget of 10 000 takes F on
-   * 9999 (10 000 live Calls) and ends F on 10 000 before any result.
+   * invocation, none for an inlined call, and a call leaves the count when its results run out, at a stop or a break,
+   * or when an error leaves it; a termination on the trampoline ends the run with its activations still counted until
+   * the next run begins. A budget of 10 000 takes F on 9999 (10 000 live Calls) and ends F on 10 000 before any result.
    */
   static Stream<Arguments> depthWitnesses() {
     String raising = "def f: if . == 0 then error(\"x\") else (. - 1 | f) + 1 end; [range(3) | try (%d | f) catch .]";
