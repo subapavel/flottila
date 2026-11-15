@@ -571,7 +571,8 @@ class IrDepthTest {
    * one less inlines it at 513 and the IR depth Stub fires. Each result is reference jq's: 1.8.2 gives each body on null
    * ({@code def f: <body>; [f]}, -nc -f, observed 2026-11-15, .logs/114-jqref-arms.log), and the whole filter for
    * {@code -length}, {@code .[]?}, {@code {$__loc__}} and {@code . as $x | {$x}} at 513 levels, those brackets around
-   * it.
+   * it (.logs/114-jqref-arms2.log for the rows with deeper parts). The own levels of a Bind, a reduce and a foreach are
+   * never above their parts' (one less down, and every part at least a level), so only their parts' rows decide.
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("measuredLevels")
@@ -622,7 +623,21 @@ class IrDepthTest {
         Arguments.of("{$__loc__}", 7, "{\"__loc__\":{\"file\":\"<top-level>\",\"line\":1}}"),
         Arguments.of("$__loc__", 1, "{\"file\":\"<top-level>\",\"line\":1}"),
         Arguments.of("@text", 1, "\"null\""),
-        Arguments.of("null", 1, "null"));
+        Arguments.of("null", 1, "null"),
+        // Parts deep enough that their levels, not the construct's own, decide the edge.
+        Arguments.of("-(1)", 3, "-1"),
+        Arguments.of("-(-length)", 4, "0"),
+        Arguments.of("if . then 1 else [2] end", 4, "[2]"),
+        Arguments.of("label $out | [.]", 4, "[null]"),
+        Arguments.of("reduce . as $x (.; [$x])", 13, "[null]"),
+        Arguments.of("foreach . as $x (.; [$x])", 13, "[null]"),
+        Arguments.of("foreach . as $x (.; $x; [$x])", 13, "[null]"),
+        Arguments.of(". as $x | [$x]", 10, "[null]"),
+        Arguments.of(".[length?]", 10, "null"),
+        Arguments.of(".[length?:]", 10, "null"),
+        Arguments.of(".[:length?]", 10, "null"),
+        Arguments.of("last([[.]])", 6, "[[null]]"),
+        Arguments.of("{(tostring?): .}", 11, "{\"null\":null}"));
   }
 
   /** {@code def f: <body>; def p1: [×100 f ]×100; … def p4: [×100 p3 ]×100;} and p4 in {@code j} brackets. */

@@ -151,6 +151,72 @@ class ExpansionMeasureTest {
   }
 
   /**
+   * Each kind's measured nodes, exactly, at the seam (the #114 Standards review): {@code def f: <body>; f} with {@code
+   * 65 536 - measured} nodes spent before fits and is inlined; with one more spent it would pass the cap and is a PLAIN
+   * Call of f, lifted, not the backstop's Stub. So a count one more lifts at the first, and one less inlines at the
+   * second (and there the backstop fires when the lowering spends the measured nodes). The counts are those of
+   * InlineCostKindsTest#eachKindMeetsTheCapAtItsMeasuredNodes, whose edges at the most calls catch a count that is too
+   * high but not always one too low, and of IrDepthTest#eachKindMeetsTheIrDepthAtItsMeasuredLevels's rows with deeper
+   * parts: a part's nodes count once, whatever its levels. {@code ..} measures two and spends one (a call with a closure
+   * argument, both forms summed).
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("measuredNodes")
+  void eachKindFitsTheBudgetLeftAtItsMeasuredNodes(String body, int measured) {
+    String filter = "def f: " + body + "; f";
+    assertThat(Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured).names()).as("functions of %s with %d spent before", filter, CAP - measured).doesNotContain("f/0");
+    assertThat(Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured + 1).names()).as("functions of %s with %d spent before", filter, CAP - measured + 1).contains("f/0");
+  }
+
+  static Stream<Arguments> measuredNodes() {
+    return Stream.of(
+        Arguments.of("-length", 2),
+        Arguments.of("-(-length)", 3),
+        Arguments.of("if . then 1 else 2 end", 4),
+        Arguments.of("if . then 1 else [2] end", 5),
+        Arguments.of("if . then 1 end", 3),
+        Arguments.of("try length catch 0", 3),
+        Arguments.of("try length", 2),
+        Arguments.of("label $out | .", 2),
+        Arguments.of("label $out | [.]", 3),
+        Arguments.of("label $f | break $f", 2),
+        Arguments.of("reduce . as $x (.; $x)", 5),
+        Arguments.of("reduce . as $x (.; [$x])", 6),
+        Arguments.of("foreach . as $x (.; $x)", 5),
+        Arguments.of("foreach . as $x (.; $x; $x)", 6),
+        Arguments.of("foreach . as $x (.; $x; [$x])", 7),
+        Arguments.of(". as [$a, $b] | $a", 6),
+        Arguments.of(". as $x | $x", 4),
+        Arguments.of(". as $x | [$x]", 5),
+        Arguments.of("\"a\\(.)\"", 2),
+        Arguments.of(".[length]", 2),
+        Arguments.of(".[length?]", 3),
+        Arguments.of(".[length:]", 2),
+        Arguments.of(".[:length]", 2),
+        Arguments.of(".[length:length]", 3),
+        Arguments.of(".\"\\(.)\"", 3),
+        Arguments.of(".\"a\"", 1),
+        Arguments.of("length?", 2),
+        Arguments.of(".[]?", 1),
+        Arguments.of("..", 2),
+        Arguments.of("length", 1),
+        Arguments.of("last(.)", 2),
+        Arguments.of("last([[.]])", 4),
+        Arguments.of("range(length; 1)", 3),
+        Arguments.of("{(tostring): .}", 4),
+        Arguments.of("{(tostring?): .}", 5),
+        Arguments.of("{a}", 3),
+        Arguments.of("{\"a\"}", 4),
+        Arguments.of("{a: 1}", 3),
+        Arguments.of("{\"a\\(.)\": 1}", 5),
+        Arguments.of(". as $x | {$x}", 5),
+        Arguments.of("{$__loc__}", 2),
+        Arguments.of("$__loc__", 1),
+        Arguments.of("@text", 1),
+        Arguments.of("null", 1));
+  }
+
+  /**
    * The measure's products saturate rather than wrap past 2^63. {@code def f0: .; def fi: f(i-1),f(i-1); …; def g1(p):
    * if . then p|p else 0 end; def gi(p): g(i-1)(p|p); …; g23(f40)}: f40's body measures 2^41 - 1 nodes, saturated, and
    * g23's body measures 2^24 - 2 runs of its parameter (two in g1, and in each g(i) two for each of g(i-1)'s plus two
