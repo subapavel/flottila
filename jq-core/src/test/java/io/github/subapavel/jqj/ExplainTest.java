@@ -99,19 +99,27 @@ class ExplainTest {
   }
 
   /**
-   * a and b, written inside a, reach each other, so they are one group and their calls of each other are RECURSIVE; the
-   * calls of g, a group of its own, from a and b are PLAIN, and g's call of itself RECURSIVE. b calls g before a does,
-   * so a's call meets a function whose group is already found. Re-pinned by #118 (ADR-0047 #118): each call into the
-   * caller's group here is in a tail position with one-valued left contexts and no closure argument, so g's call of
-   * itself is TAIL_SELF, and a's call of b and b's call of a are TAIL_GROUP.
+   * A call into the caller's recursive group is RECURSIVE unless it is a tail call, and any other call is PLAIN. h's
+   * call of itself has {@code + 1} still to run after it, so it is in no tail position: RECURSIVE. a and b, written
+   * inside a, reach each other, so they are one group; the calls of g, a group of its own, from a and b are PLAIN. b
+   * calls g before a does, so a's call meets a function whose group is already found. Re-pinned by #118 (ADR-0047
+   * #118): the other calls into the caller's group are in tail positions with one-valued left contexts and no closure
+   * argument, so g's call of itself is TAIL_SELF, and a's call of b and b's call of a are TAIL_GROUP. Reference jq 1.8.2
+   * gives 10 and 8 for the filter on 0 (#118's implementer, 2026-11-15).
    */
   @Test
   void aCallIntoTheCallersGroupIsRecursiveAndAnyOtherPlain() {
-    String filter = "def g: if . > 9 then . else . + 1 | g end; def a: def b: g | a; if . > 0 then . - 1 | b else g end; a";
+    String filter =
+        "def h: if . > 3 then . else (. + 1 | h) + 1 end; def g: if . > 9 then . else . + 1 | g end;"
+            + " def a: def b: g | a; if . > 0 then . - 1 | b else g end; a, h";
     List<Line> lines = lines(filter);
+    String h = function(lines, "h/0");
     String g = function(lines, "g/0");
     String a = function(lines, "a/0");
     String b = function(lines, "b/0");
+
+    // The left operand of + 1: not the right of a Pipe, a Comma or an Alt, nor an If branch.
+    assertThat(node(lines, h, "Call", at(filter, "| h)", 2))).as("h in h").containsEntry("call", "RECURSIVE").containsEntry("callee", h);
 
     // An If branch (condition . > 9 at most one), the right of a Pipe whose left . + 1 is at most one.
     assertThat(node(lines, g, "Call", at(filter, "| g end", 2))).as("g in g").containsEntry("call", "TAIL_SELF").containsEntry("callee", g);

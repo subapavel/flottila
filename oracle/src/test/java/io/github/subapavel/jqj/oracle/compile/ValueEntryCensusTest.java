@@ -46,8 +46,8 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The verdict: no site of VALUE form has a target whose root is PUSH. Witness that the property is not vacuous: at
  * least {@link #WITNESS} value-form sites of each tail kind are checked, each the count observed at impl/118 18070a4
- * rounded down. The counts and every failing site go to {@link #LOG} under the repository root, before the verdict; so
- * do the push-form sites in a body whose root is VALUE (0 observed), with no verdict: such a jump would be taken in a
+ * rounded down. The counts and every failing site go to {@link #LOG} under the repository root, before the verdict. A
+ * second verdict: no push-form site lies in a body whose root is VALUE (0 observed); such a jump would be taken in a
  * value entry too, and the property above does not see it.
  */
 class ValueEntryCensusTest {
@@ -136,6 +136,9 @@ class ValueEntryCensusTest {
     soft.assertThat(pushTargets.stream().map(Site::shown).toList())
         .as("value-form jump sites whose target's root is not VALUE, a value-form jump landing in a push-form body (log %s)", LOG)
         .isEmpty();
+    soft.assertThat(sites.stream().filter(s -> s.form() == RunForm.PUSH && s.callerForm() == RunForm.VALUE).map(Site::shown).toList())
+        .as("push-form jump sites in a body whose root is VALUE, a jump taken in a value entry the verdict above does not see (log %s)", LOG)
+        .isEmpty();
     for (Map.Entry<CallKind, Integer> w : WITNESS.entrySet()) {
       soft.assertThat(byForm.get(w.getKey())[RunForm.VALUE.ordinal()])
           .as("witness: the value-form %s sites the census checks (log %s)", w.getKey(), LOG)
@@ -166,7 +169,7 @@ class ValueEntryCensusTest {
       lines.add(e.getKey() + "\tvalue " + e.getValue()[RunForm.VALUE.ordinal()] + "\tpush " + e.getValue()[RunForm.PUSH.ordinal()]);
     }
     List<Site> pushInValue = sites.stream().filter(s -> s.form() == RunForm.PUSH && s.callerForm() == RunForm.VALUE).toList();
-    lines.add("push-form sites in a body whose root is VALUE (no verdict)\t" + pushInValue.size());
+    lines.add("push-form sites in a body whose root is VALUE\t" + pushInValue.size());
     pushInValue.forEach(s -> lines.add("  " + s.shown()));
     lines.add("value-form sites whose target's root is not VALUE\t" + pushTargets.size());
     pushTargets.forEach(s -> lines.add("  " + s.shown()));

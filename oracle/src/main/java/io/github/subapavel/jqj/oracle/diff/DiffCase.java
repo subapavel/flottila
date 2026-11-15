@@ -18,7 +18,7 @@ import java.util.Map;
  * repeatable; {@code deviation <slug>} once marks a case that pins a {@code DEVIATIONS.md} row (ADR-0020), and only
  * such a case may carry jqj's column of that row: {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}, each at
  * most once. {@code limit recursion-depth <n>} once runs jqj under a recursion-depth budget of {@code n}, a positive
- * integer, in every run of the case, the differential run and each compile mode's (ADR-0047 #118); reference jq
+ * integer of at most {@link Integer#MAX_VALUE}, in every run of the case, the differential run and each compile mode's (ADR-0047 #118); reference jq
  * ignores it. Without {@code stdin} the input is empty.
  *
  * @param files file name to content, written into the working directory of each run
@@ -170,7 +170,7 @@ public record DiffCase(
     return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, jqj, block.def(), recursionDepth);
   }
 
-  /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} a positive integer. */
+  /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} a positive integer of at most {@link Integer#MAX_VALUE}. */
   private static long recursionDepth(String value) {
     String why = "'limit' needs 'recursion-depth <n>' with a positive integer n, not '" + value + "'";
     if (!value.startsWith(RECURSION_DEPTH)) throw new IllegalArgumentException(why);
@@ -180,7 +180,8 @@ public record DiffCase(
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException(why, e);
     }
-    if (n <= 0) throw new IllegalArgumentException(why);
+    // Limits takes the budget as an int, so a larger one is refused here, not when the runner builds the Limits.
+    if (n <= 0 || n > Integer.MAX_VALUE) throw new IllegalArgumentException(why);
     return n;
   }
 

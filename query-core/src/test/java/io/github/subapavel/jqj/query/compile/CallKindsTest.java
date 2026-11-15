@@ -87,7 +87,19 @@ class CallKindsTest {
         Arguments.argumentSet(
             "a many-valued condition: if (., .) then dec | k(.) else f end",
             new If(at(3), new Comma(at(3), new Identity(at(3)), new Identity(at(3))), new Pipe(at(1), new Intrinsic(at(1), DEC, List.of()), new Call(at(2), 0, List.of(new Identity(at(2))), List.of())), new ParamCall(at(4), 0), TRUTH),
-            CallKind.RECURSIVE));
+            CallKind.RECURSIVE),
+        Arguments.argumentSet("a Binds of one-valued values around dec | k(.)", binds(new Const(at(6), new N(1))), CallKind.TAIL_SELF),
+        Arguments.argumentSet("a Binds with a many-valued value around dec | k(.)", binds(new Comma(at(6), new Const(at(6), new N(1)), new Const(at(6), new N(1)))), CallKind.RECURSIVE));
+  }
+
+  /**
+   * {@code if . then (., second) as [$0, $1] | dec | k(.) else f end}: a Binds of slots 0 and 1, the identity first and
+   * {@code second} second, around the recursive call; a tail position when every value is at most one.
+   */
+  private static Node binds(Node second) {
+    Node again = new Pipe(at(1), new Intrinsic(at(1), DEC, List.of()), new Call(at(2), 0, List.of(new Identity(at(2))), List.of()));
+    Node body = new Binds(at(6), List.of(new Identity(at(6)), second), List.of(0, 1), again);
+    return new If(at(3), new Identity(at(3)), body, new ParamCall(at(4), 0), TRUTH);
   }
 
   /** The kind of each Call of {@code body}, in freeze-id order, and null for every other node. */
