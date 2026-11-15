@@ -78,10 +78,12 @@ public final class JqFilter {
    * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
    * UTF-8 bytes, then its facts as {@code name=value}. A Call shows {@code call=PLAIN} or {@code call=RECURSIVE} and
    * {@code callee=fn<place>}, a ParamCall {@code param=<j>}. Each function's lines follow a line {@code function
-   * fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}. Every line ends with an LF.
+   * fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}. The stack units (ADR-0046) follow: a Call's and
+   * a ParamCall's {@code units}, the {@code emitDepth} of each function and closure argument, and a closing line with
+   * {@code callFreeDepth}, {@code starterUnits}, {@code bytesPerUnit} and {@code reserve}. Every line ends with an LF.
    */
   public String explain() {
-    return Explain.of(program, names);
+    return Explain.of(program, names, executable.nesting());
   }
 
   /** The value of each declared variable in {@code bindings}, in the order of its parameter slot. */

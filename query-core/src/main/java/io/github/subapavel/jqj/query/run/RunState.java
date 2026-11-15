@@ -75,10 +75,16 @@ public final class RunState {
   private long depth;
 
   /**
-   * The stack bytes the last begin declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any: not a budget,
-   * and nothing here checks against it.
+   * The stack bytes the last begin declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any and after a
+   * begin that declares none: not a budget, and nothing here checks against it.
    */
   private long stackBytes = UNLIMITED;
+
+  /** The stack units the live push-form calls hold (ADR-0046 #111 amendment): each {@link #addUnits} not removed. */
+  private long units;
+
+  /** The run's unit limit {@code U_f} (ADR-0046 #111 amendment), {@code Long.MAX_VALUE} until a run sets it. */
+  private long unitLimit = UNLIMITED;
 
   /**
    * The last label token handed out since the last begin: the tokens of a run count from 1 (ADR-0039). A long, so no
@@ -181,6 +187,8 @@ public final class RunState {
     depthBudget = recursionDepth;
     depth = 0;
     this.stackBytes = stackBytes;
+    units = 0;
+    unitLimit = UNLIMITED;
     labels = 0;
     breakTo = 0;
     start = clock.getAsLong();
@@ -217,6 +225,33 @@ public final class RunState {
   /** The call activation of the last {@link #enter} not left yet ends. */
   public void leave() {
     depth--;
+  }
+
+  /**
+   * Sets the running run's unit limit {@code U_f} (ADR-0046 #111 amendment), which the run derives at its start from
+   * its declared stack; {@link #begin} sets it to {@code Long.MAX_VALUE}, which no call reaches.
+   */
+  public void limitUnits(long unitLimit) {
+    this.unitLimit = unitLimit;
+  }
+
+  /**
+   * A push-form call holds {@code units} more stack units until {@link #removeUnits} gives them back (ADR-0046 #111
+   * amendment): true when the units held now reach the unit limit, where the call starts the trampoline.
+   */
+  public boolean addUnits(long units) {
+    this.units += units;
+    return this.units >= unitLimit;
+  }
+
+  /** A push-form call ends and gives back the {@code units} it held. */
+  public void removeUnits(long units) {
+    this.units -= units;
+  }
+
+  /** The stack units the live push-form calls hold now: 0 after each {@link #begin}. */
+  public long units() {
+    return units;
   }
 
   /**

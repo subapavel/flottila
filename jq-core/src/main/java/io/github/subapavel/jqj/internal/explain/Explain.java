@@ -25,11 +25,16 @@ import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
+import io.github.subapavel.jqj.query.compile.Nesting;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -45,7 +50,11 @@ import java.util.function.Consumer;
  *       for every other call, each call from main among them; then {@code callee=fn<place>}. A ParamCall shows
  *       {@code param=<j>}.
  *   <li>Each function's lines follow its function line, {@code function fn<place> <name>/<arity> <start>..<end>
- *       closures=<n> values=<m>}.
+ *       closures=<n> values=<m> emitDepth=<d>}.
+ *   <li>The stack units (ADR-0046 #111 amendment): a Call shows {@code units=<w>}, its whole {@code w}, and a ParamCall
+ *       {@code units=<u>}, its descent and rise; a function line and the root line of each closure argument show
+ *       {@code emitDepth=<d>}, its leaf-emit depth; and a closing line {@code stack units filter callFreeDepth=<D_f>
+ *       starterUnits=<T> bytesPerUnit=<b> reserve=<bytes>} ends the text.
  * </ul>
  */
 public final class Explain {
@@ -53,24 +62,32 @@ public final class Explain {
 
   private Explain() {}
 
-  /** The text of {@code program}, whose function at place i jq names {@code names.get(i)}. */
-  public static String of(Program program, List<String> names) {
+  /**
+   * The text of {@code program}, whose function at place i jq names {@code names.get(i)}, and whose frames
+   * {@code nesting} gives (ADR-0046 #111 amendment).
+   */
+  public static String of(Program program, List<String> names, Nesting nesting) {
     List<Function> functions = program.functions();
     int[] group = groups(functions);
     StringBuilder text = new StringBuilder();
-    body(text, MAIN, -1, program.main(), group);
+    body(text, MAIN, -1, program.main(), group, nesting);
     for (int place = 0; place < functions.size(); place++) {
       Function f = functions.get(place);
       text.append("function ").append(function(place)).append(' ').append(names.get(place)).append(' ').append(span(f.source()));
-      text.append(" closures=").append(f.closures()).append(" values=").append(f.values()).append('\n');
-      body(text, function(place), place, f.body(), group);
+      text.append(" closures=").append(f.closures()).append(" values=").append(f.values());
+      text.append(" emitDepth=").append(nesting.emitDepth(place)).append('\n');
+      body(text, function(place), place, f.body(), group, nesting);
     }
+    text.append("stack units filter callFreeDepth=").append(nesting.callFreeDepth()).append(" starterUnits=").append(nesting.starterUnits());
+    text.append(" bytesPerUnit=").append(StackUnits.bytesPerUnit()).append(" reserve=").append(StackUnits.reserve()).append('\n');
     return text.toString();
   }
 
   /** The lines of the body {@code root} of function {@code place}, or of main for -1. */
-  private static void body(StringBuilder text, String name, int place, Node root, int[] group) {
+  private static void body(StringBuilder text, String name, int place, Node root, int[] group, Nesting nesting) {
     int[] id = {0};
+    // The closure arguments of the Calls met so far: a Call comes before its parts in pre-order.
+    Set<Node> closures = Collections.newSetFromMap(new IdentityHashMap<>());
     preOrder(
         root,
         node -> {
@@ -79,8 +96,13 @@ public final class Explain {
           if (node instanceof Call c) {
             boolean recursive = place >= 0 && group[c.fn()] == group[place];
             text.append(" call=").append(recursive ? "RECURSIVE" : "PLAIN").append(" callee=").append(function(c.fn()));
+            text.append(" units=").append(nesting.units(c));
+            closures.addAll(c.closures());
           } else if (node instanceof ParamCall p) {
-            text.append(" param=").append(p.param());
+            text.append(" param=").append(p.param()).append(" units=").append(nesting.units(p));
+          }
+          if (closures.contains(node)) {
+            text.append(" emitDepth=").append(nesting.emitDepth(node));
           }
           text.append('\n');
         });
