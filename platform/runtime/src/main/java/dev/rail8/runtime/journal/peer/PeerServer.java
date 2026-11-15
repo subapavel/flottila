@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +24,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
@@ -34,7 +34,7 @@ import java.util.function.ToLongFunction;
  * answered with BYTES frames of at most 1 MiB each, the record's bytes as they lie in the segment (the reader checks them), and
  * a READ naming another owner, another journal id (W3) or a record this journal cannot hold answers MISS — an answer, not a
  * protocol error: the link stays up. Each READ is served on a virtual thread of its own, at most {@code RAIL8_PEER_READS}
- * at a time per link and at most two frames of one READ written ahead of the socket (the reader's flow control holds the
+ * at a time per link, begun in the order they arrived, and at most two frames of one READ written ahead of the socket (the reader's flow control holds the
  * rest back); a dialer with more than {@value PeerConfig#READS_MAX} READs open breaks the protocol and its link closes. At most
  * {@value PeerConfig#HANDSHAKES_MAX} connections are held in their handshake (not yet proven) at a time, at most
  * {@value PeerConfig#HANDSHAKES_PER_SOURCE} of them from one source address (CORE-5a2 P4): a further one is closed at once
@@ -255,11 +255,16 @@ public final class PeerServer {
         }
     }
 
-    /** One link's READs. */
+    /**
+     * One link's READs, served at most {@code config.reads()} at once and begun in the order they arrived (FIX-183): a READ
+     * that finds the bound reached waits in the link's FIFO, with no thread; each READ in service has a virtual thread of its
+     * own, which, however it ends, starts the FIFO's head or lowers the count in service.
+     */
     private final class Serving implements PeerLink.Receiver {
         private final PeerIdentity self;
-        private final Semaphore serving = new Semaphore(config.reads(), true);
-        private final AtomicInteger open = new AtomicInteger();
+        private final AtomicInteger open = new AtomicInteger();   // from a READ's arrival to the end of its service
+        private final ArrayDeque<Runnable> waiting = new ArrayDeque<>();   // its lock guards it and inService; nothing waits under it
+        private int inService;
 
         Serving(PeerIdentity self) {
             this.self = self;
@@ -278,15 +283,41 @@ public final class PeerServer {
             if (open.incrementAndGet() > PeerConfig.READS_MAX) {
                 throw new PeerRefusedException("more than " + PeerConfig.READS_MAX + " READs open on one link");
             }
+            String name = new String(owner, StandardCharsets.UTF_8);
+            Runnable read = () -> serve(self, link, id, name, of, ref);
+            synchronized (waiting) {
+                if (inService == config.reads()) {   // its turn comes when a READ in service ends
+                    waiting.add(read);
+                    return;
+                }
+                inService++;
+            }
+            start(read);
+        }
+
+        /** Serves {@code read} on a virtual thread of its own, which then hands its place in service on. */
+        private void start(Runnable read) {
             Thread.ofVirtual().name("rail8-peer-serve").start(() -> {
-                serving.acquireUninterruptibly();
                 try {
-                    serve(self, link, id, new String(owner, StandardCharsets.UTF_8), of, ref);
-                } finally {
-                    serving.release();
+                    read.run();
+                } finally {   // a throw out of serve too: the next READ is still served
                     open.decrementAndGet();
+                    ended();
                 }
             });
+        }
+
+        /** A READ in service ended: the FIFO's head takes its place, or the count in service goes down. */
+        private void ended() {
+            Runnable next;
+            synchronized (waiting) {
+                next = waiting.poll();
+                if (next == null) {
+                    inService--;
+                    return;
+                }
+            }
+            start(next);
         }
 
         @Override public void closed(PeerLink link, IOException why) {

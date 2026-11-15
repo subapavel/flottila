@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-183 a link's READs are served in the order they arrived — done, review PASS
+
+- Fault: `ci` run 218 failed on `PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270` (the second READ served before
+  the first; 1 of 7 in CORE-5a2). `PeerServer.Serving` started a virtual thread per READ and took the link's permit inside it:
+  the semaphore is fair among threads that asked, and which of two threads asks first is the scheduler's.
+- Red first (test-author, class B): two cases, ten writes of 48 READs on one link - with a bound of 1 the answers come one READ
+  after the other in arrival order; with 2, no READ begins before all but one of the earlier ended. Red 20 of 20 each.
+- Fix (`PeerServer.java` only): one FIFO per link and a count in service under one lock; `received` stays non-blocking; a READ in
+  service has its own virtual thread whose `finally` hands the place to the head. The semaphore is gone; `open` counts as before.
+- Evidence: runtime 1580 and 3 green; twins of the new cases and of :270, 60 of 60 green; the old order put back, both cases red.
+- Review PASS (class B): no READ left waiting, the bound and `open` hold, nothing runs under the lock; the two mutants that only
+  the new cases kill were run. A thread that cannot start, and the dialer's own fair semaphore, go to row FIX-236.
+- The rest of the old row (the event-loop assertion in `PeerLink.send`, stale line references) is new row FIX-236.
+
 ## 2026-11-15 — FIX-195 the late review: FAIL, four findings fixed, PASS — done
 
 - Context compacted before this entry; the tree and the last three commits were re-read first.

@@ -271,6 +271,103 @@ class PeerProtocolTest {
         }
     }
 
+    /** READs one write carries in the order cases (FIX-183): well below {@link PeerConfig#READS_MAX}, the large record's first. */
+    static final int IN_ORDER_READS = 48;
+    /** Writes of {@value #IN_ORDER_READS} READs, one after the other answered whole, on one link: one inversion in any fails. */
+    static final int IN_ORDER_ROUNDS = 10;
+
+    /**
+     * With RAIL8_PEER_READS 1 a link's READs begin service in the order node-a received them (FIX-183): 48 READs in one
+     * socket write — the large record's first, so the 47 small ones arrive while it is served — are answered one after the
+     * other, READ n+1's first BYTES frame after READ n's last, each whole; ten such writes on one link, the next once the
+     * last is answered. One inversion anywhere fails it.
+     */
+    @Test
+    void withPeerReadsOneALinksReadsAreServedInTheOrderTheyArrived() throws Exception {
+        List<List<long[]>> rounds = servedInRounds(1);
+        for (int round = 0; round < IN_ORDER_ROUNDS; round++) {
+            List<Long> runs = new ArrayList<>();
+            for (long[] f : rounds.get(round)) if (runs.isEmpty() || runs.getLast() != f[0]) runs.add(f[0]);
+            List<Long> arrived = new ArrayList<>();
+            for (long id = 1; id <= IN_ORDER_READS; id++) arrived.add((long) round * IN_ORDER_READS + id);
+            assertEquals(arrived, runs, "write " + (round + 1) + ": the READs' answers, one READ's frames after the other, in the order the READs arrived");
+        }
+    }
+
+    /**
+     * With RAIL8_PEER_READS above 1 the order in which READs begin service is the arrival order too (FIX-183), observed
+     * without tempo: when READ j's first BYTES frame goes out, at least j - 2 of the READs that arrived before it have sent
+     * their last (with a bound of 2, at most one earlier READ is still in service). Which of two READs in service at once
+     * sends first is the scheduler's; that is not asserted.
+     */
+    @Test
+    void withPeerReadsAboveOneNoReadBeginsBeforeAllButThatManyOfTheEarlierOnesEnded() throws Exception {
+        int bound = 2;
+        List<List<long[]>> rounds = servedInRounds(bound);
+        for (int round = 0; round < IN_ORDER_ROUNDS; round++) {
+            long first = (long) round * IN_ORDER_READS + 1;
+            java.util.Set<Long> begun = new java.util.HashSet<>();
+            java.util.Set<Long> ended = new java.util.HashSet<>();
+            Map<Long, Long> left = new java.util.HashMap<>();
+            for (long id = first; id < first + IN_ORDER_READS; id++) left.put(id, id == first ? large.length() : ref.length());
+            List<String> early = new ArrayList<>();
+            for (long[] f : rounds.get(round)) {
+                long id = f[0];
+                if (begun.add(id)) {
+                    long endedBefore = ended.stream().filter(e -> e < id).count();
+                    if (endedBefore < id - first - (bound - 1)) {
+                        early.add("READ " + id + " began with " + endedBefore + " earlier READs ended " + new java.util.TreeSet<>(ended));
+                    }
+                }
+                if (left.merge(id, -f[1], Long::sum) == 0) ended.add(id);
+            }
+            assertEquals(List.of(), early, "write " + (round + 1) + ": no READ began service while more than " + (bound - 1)
+                    + " READs that arrived before it were not served whole");
+        }
+    }
+
+    /**
+     * Sends {@value #IN_ORDER_ROUNDS} times {@value #IN_ORDER_READS} READs in one socket write on one link to a server of
+     * RAIL8_PEER_READS {@code reads} — the write's first READ the large record, the others the small one; ids 1.. across the
+     * writes — the next write once every READ of the last is answered whole. Returns each write's answer frames as (READ id,
+     * record bytes), in the order they came; every answer is BYTES.
+     */
+    List<List<long[]>> servedInRounds(int reads) throws Exception {
+        PeerConfig bounded = new PeerConfig(CONFIG.bind(), 0, CONFIG.host(), CONFIG.timeout(), reads);
+        PeerServer owner = PeerServer.listen(vertx, bounded, PeerLinkTest.identity("node-a", PeerLinkTest.ENV), a, timer).await(BOUND_SECONDS, TimeUnit.SECONDS);
+        closing.add(() -> owner.close().await(BOUND_SECONDS, TimeUnit.SECONDS));
+        List<List<long[]>> rounds = new ArrayList<>();
+        try (RawPeer peer = RawPeer.dial(owner.port(), b(), "node-a")) {
+            for (int round = 0; round < IN_ORDER_ROUNDS; round++) {
+                java.io.ByteArrayOutputStream one = new java.io.ByteArrayOutputStream();
+                Map<Long, Long> left = new java.util.HashMap<>();
+                for (int i = 0; i < IN_ORDER_READS; i++) {
+                    long id = (long) round * IN_ORDER_READS + i + 1;
+                    JournalRef r = i == 0 ? large : ref;
+                    one.write(peer.sealed(RawPeer.READ, RawPeer.read(id, "node-a", JOURNAL_A, r.segment(), r.position(), r.length())));
+                    left.put(id, r.length());
+                }
+                byte[] all = one.toByteArray();
+                peer.write(all, 0, all.length);
+                List<long[]> frames = new ArrayList<>();
+                while (!left.isEmpty()) {
+                    byte[] f = peer.next();
+                    ByteBuffer p = RawPeer.payload(f);
+                    long id = p.getLong(0);
+                    assertEquals(RawPeer.BYTES, RawPeer.type(f), "node-a answers READ " + id + " with BYTES");
+                    long bytes = p.remaining() - 8;
+                    frames.add(new long[] {id, bytes});
+                    Long rest = left.get(id);
+                    assertTrue(rest != null && rest >= bytes, "READ " + id + ": a frame of " + bytes + " bytes, " + rest + " left to answer");
+                    if (rest == bytes) left.remove(id);
+                    else left.put(id, rest - bytes);
+                }
+                rounds.add(frames);
+            }
+        }
+        return rounds;
+    }
+
     /** An established link no READ waits on outlives node-a's timeouts: the READ after them is answered on it. */
     @Test
     void anIdleLinkOutlivesTheListenersTimeouts() throws Exception {

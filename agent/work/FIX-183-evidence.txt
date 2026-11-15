@@ -1,0 +1,59 @@
+FIX-183 — evidence (2026-11-15)
+
+The fault: `ci` run 218 (5d480cf3, the Postgres 18.6 job), the runtime module's unit tests, 1578 tests, 1 failure:
+PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270 "the second READ waited for the first to be served whole ==>
+expected: <33555020> but was: <0>" (agent/work/MAIN-1-ci.md). Seen before as 1 of 7 in CORE-5a2.
+Cause, read from the code and confirmed by the red: PeerServer.Serving.received started one virtual thread per READ and the
+thread took the permit of the link's fair Semaphore as its first statement. Fair among threads that have asked; which of two
+threads started back to back asks first is the scheduler's choice.
+
+Red first (test-author, class B), PeerProtocolTest :274-370, no existing line changed:
+- withPeerReadsOneALinksReadsAreServedInTheOrderTheyArrived: bound 1; ten writes of 48 READs on one link, each one socket write,
+  the large record's READ first; the answers, one READ's frames after the other, equal the arrival order.
+- withPeerReadsAboveOneNoReadBeginsBeforeAllButThatManyOfTheEarlierOnesEnded: bound 2; when the j-th READ of a write sends its
+  first frame, at least j-2 of the earlier ones have sent their last. Which of two READs in service sends first is not asserted.
+EXECUTED_FAIL  agent/work/FIX-183-red.log    one module run with throw-away @RepeatedTest(20) twins of both cases: red 20 of 20
+               each; PeerProtocolTest "Tests run: 79, Failures: 42" (:43266), runtime "Tests run: 1620, Failures: 42" (:55790);
+               bound 1 (:43268): "… expected: <[49, 50, ..., 96]> but was: <[49, ..., 59, 61, 62, 63, 60, 65, ..., 88, 64, …]>";
+               bound 2 (:43768): "READ 8 began with 5 earlier READs ended [2, 3, 4, 5, 6]". A first version with one write was
+               red 11 of 20 and 3 of 20 only; ten writes on one link made it 20 of 20
+
+The fix (implementer, class B), PeerServer.java only, class Serving: one FIFO per link (`waiting`) and a count in service,
+both under one lock; `received` adds to the FIFO when the bound is in service and otherwise starts the READ; a READ in service
+runs on its own `rail8-peer-serve` virtual thread whose finally counts `open` down and hands its place to the head of the FIFO,
+on a fresh thread - the same path for a return and for a throw. Nothing of `serve`, no thread start and no wait under the lock.
+The Semaphore is gone. Departure from the packet's design, acceptance unchanged: a fresh thread per READ instead of the finishing
+thread serving the next head.
+VERIFIED_PASS  agent/work/FIX-183-green.log     implementer: runtime 1580 (:57703) and 3 (:57722), 0 failures; BUILD SUCCESS
+               (:57853); coverage no decrease; JaCoCo PeerServer$Serving 0 of 214 instructions, 0 of 12 branches missed
+VERIFIED_PASS  agent/work/FIX-183-green-20.log  twins of the two new cases and of the old :270 case, 60 of 60 green:
+               PeerProtocolTest 99 tests, 0 failures (:42529); runtime 1640, 0 failures (:53991)
+EXECUTED_FAIL  agent/work/FIX-183-kill.log      the old PeerServer put back: runtime 1580 tests, 2 failures (:55020) - bound 2
+               at :324 "READ 3 began with 0 earlier READs ended []" (:55017), bound 1 at :293 "… 8, 10, 9, 11 …" (:55018)
+The verifier, on the tree committed (ca06cd73 plus this change):
+VERIFIED_PASS  agent/work/FIX-183-verify-run.log  runtime module `verify`, exit 0: api 107 (:117), testkit 286 (:230), core 763
+               (:40459), 304, 69, 56, 33, 52, runtime 1580 (:54269) and 3 (:54288), 0 failures, errors, skipped; PeerProtocolTest
+               39 tests (:42815); BUILD SUCCESS (:54422); "Coverage checks have not been met" 0 times; name guard clean
+EXECUTED_FAIL  agent/work/FIX-183-mutant-m2.log   `inService--` removed (:316): runtime 1580 tests, 2 errors (:56792) - both new
+               cases, "SocketTimeout Read timed out" at servedInRounds:354 after 20 s each (:56789-56790); restored, cmp clean
+EXECUTED_FAIL  agent/work/FIX-183-mutant-m3.log   `open.decrementAndGet()` removed (:304): runtime 1580 tests, 2 errors (:55618)
+               - both new cases, EOF at servedInRounds:354, the link closed at its 65th open READ (:55615-55616); restored
+
+review: PASS   class B, nothing blocking. No READ can be left waiting with nobody in service (a READ is queued only when the
+               bound is in service, and `ended()` polls under the same lock); at most `reads` are in service; `open` balances
+               (one increment per accepted READ, one decrement in each thread's finally), so the 65th check still sees every
+               READ open on the link; nothing of `serve`, no thread start and no wait under the lock; the wire order follows
+               (`PeerLink.send` seals and writes under `writes`, and READ n's last send returns before its finally); arrival
+               order is the socket's (`PeerLink.received` dispatches frame by frame on the event loop). A link that closes with
+               READs waiting drains as before: each fails at its first send; `PeerServer.close()` does not depend on `Serving`.
+               The cases are real and without tempo; the bound-2 case states honestly what it does not assert. Acceptance 3 and
+               4 need no new case: `aDialerWithMoreThan64ReadsOpenIsClosed` runs with 48 READs in the queue when the 65th is
+               refused, and closes its link with them waiting.
+               Mutants judged from the code: dropping `ended()`, `inService--`, `open.decrementAndGet()`, `==` to `>`, `add` to
+               `addFirst` - each killed by a case in the tree (`==` to `>=` is equivalent); the two that only the new cases
+               kill were run by the verifier (above).
+               Notes, not blocking: a `Thread.start` that throws (in practice OutOfMemoryError) now also keeps a place in
+               service - in `ended()` the READ is lost and the link serves on short; the dialer's `PeerReads` :118 still uses a
+               fair semaphore, outside this row. Both are in row FIX-236. The second case's name leaves "that many" undefined
+               and both cases use fully qualified java.util names: style only, left.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-183.diff.
