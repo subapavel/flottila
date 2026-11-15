@@ -85,6 +85,17 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
   - F-95: the provisional b = 96 does not cover a Collect-heavy descent; #113 owns b, and #114
     merges after #113.
   - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
+    - Red rulings (ADR-0046 #113, "Rulings on the red"); each "yes" accepts the adviser:
+      - O1: the reserve is the largest linked intercept plus the largest cold-linkage term, rounded
+        up to 4 KiB, plus 32 KiB (T alone gives about 152 KiB against #111's 128 KiB).
+      - O2: `b` is published as measured, even near 200; `U_f` at 512 KiB then falls to about
+        1 850 − D_f, so deep recursion switches earlier with the same results.
+      - O3: heap per live activation is 88–887 B, so the 4 194 304 depth default costs 0.37–3.7 GB
+        before RECURSION_DEPTH fires. The default stays the owner's decision.
+      - O4: the matrix budget is its measured time, with a 45-minute target, re-run at #114 and
+        #116.
+      - O5: trampoline classes keep loading lazily, at the price of the O1 term (about 5 % of `U_f`
+        at 512 KiB), instead of prelinking on every CLI start.
     - ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`.
       There is no margin beyond rounding and the 32 KiB; each cell's headroom is in the tsv.
     - The reserve is the measured intercept plus 32 KiB, and never below the guard pages plus 32 KiB.
