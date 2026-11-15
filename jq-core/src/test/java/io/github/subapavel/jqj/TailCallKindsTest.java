@@ -256,6 +256,45 @@ class TailCallKindsTest {
         .isEqualTo(expected);
   }
 
+  /** The fact {@code name} of {@code line}, a whole number it must carry. */
+  private static long fact(Line line, String name) {
+    assertThat(line.facts()).as("the facts of %s", line.fields()).containsKey(name);
+    return Long.parseLong(line.facts().get(name));
+  }
+
+  /** The one function line named {@code name}. */
+  private static Line functionLine(List<Line> lines, String name) {
+    List<Line> found = lines.stream().filter(l -> !l.fields().isEmpty() && l.isFunction() && l.fields().get(2).equals(name)).toList();
+    assertThat(found).as("the function line of %s", name).hasSize(1);
+    return found.getFirst();
+  }
+
+  /**
+   * ADR-0046 #111 and ADR-0047 #118: a jump keeps the units of its activation, so a call into a group with TAIL_GROUP
+   * sites is charged the group's largest leaf-emit depth. Main calls a, a jumps to b and b back to a, and b emits from
+   * under a hundred Trys, at least a hundred frames more than a's leaf-emit depth: main's call of a holds at least b's
+   * {@code emitDepth}. Witness: the conservative compile, which has no group jump, charges the same call a's own leaf-emit
+   * depth, below b's.
+   */
+  @Test
+  void groupJumpChargesDeepestEmit() {
+    String filter = "def a: def b: if . >= 3 then " + "try(".repeat(100) + "." + ")".repeat(100) + " else .+1|a end; if . >= 3 then . else .+1|b end; 0|a";
+    for (CompileMode mode : CompileMode.values()) {
+      List<Line> lines = lines(mode, filter);
+      long a = fact(functionLine(lines, "a/0"), "emitDepth");
+      long b = fact(functionLine(lines, "b/0"), "emitDepth");
+      assertThat(b - a).as("premise under %s: b's emitDepth %d against a's %d", mode, b, a).isGreaterThanOrEqualTo(100);
+      List<Line> main = lines.stream().filter(l -> isCall(l) && l.fields().getFirst().equals("main")).toList();
+      assertThat(main).as("main's Calls under %s", mode).hasSize(1);
+      long units = fact(main.getFirst(), "units");
+      if (mode == CompileMode.OPTIMISED) {
+        assertThat(units).as("the units of main's call of a, whose group jumps, against b's emitDepth %d", b).isGreaterThanOrEqualTo(b);
+      } else {
+        assertThat(units).as("witness: the units of main's call of a under %s, which has no jump, against b's emitDepth %d", mode, b).isLessThan(b);
+      }
+    }
+  }
+
   /** The step pin's filter, which reference jq gives n for. */
   private static String stepFilter(int n) {
     return "def f: if . >= " + n + " then . else .+1|f end; 0|f";
