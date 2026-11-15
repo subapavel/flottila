@@ -479,7 +479,8 @@ _Avoid_: yield, return, push (as a noun for the call)
 
 **Short literal**:
 A literal number whose token is canonical, has no exponent and is at most 15 bytes (ADR-0012). Its
-double orders it as its decimal does, and reading it ticks nothing (#97).
+double orders it as its decimal does, and reading its double ticks nothing (#97). An exact compare
+still ticks each of its tokens (ADR-0037).
 _Avoid_: small number
 
 **Sink**:
