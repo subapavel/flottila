@@ -1,5 +1,8 @@
 package io.github.subapavel.jqj.query.compile;
 
+import io.github.subapavel.jqj.query.analysis.CallGraph;
+import io.github.subapavel.jqj.query.analysis.Facts;
+import io.github.subapavel.jqj.query.analysis.Numbering;
 import io.github.subapavel.jqj.query.internal.interpret.AdvanceOp;
 import io.github.subapavel.jqj.query.internal.interpret.AltBindOp;
 import io.github.subapavel.jqj.query.internal.interpret.AltOp;
@@ -63,7 +66,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Compiles a program: verifies it, then builds the interpreter tree (ADR-0018). There is no analysis yet.
+ * Compiles a program: verifies it, freezes it, finds its facts, then builds the interpreter tree (ADR-0018, ADR-0045
+ * #112).
  *
  * <p>Each body, the main tree's or a function's, runs in a frame of its own: its slots, then a function's closure
  * cells (ADR-0045 #107). A closure argument that binds no slot runs in the frame it was written in, its defining frame,
@@ -121,12 +125,16 @@ public final class Compiler {
   /**
    * Compiles {@code program} in {@code mode}, with slots {@code 0 .. parameters - 1} of its main tree its parameter
    * slots (ADR-0038): in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
-   * There is no analysis yet, so both modes build the same tree (ADR-0030, ADR-0018: no specialisation either).
+   * The order is verify, freeze, facts, build (ADR-0045 #112): {@link CompileMode#OPTIMISED} analyses the program and
+   * {@link CompileMode#CONSERVATIVE} keeps every fact at its safe value. No backend reads a fact yet, so both modes build
+   * the same tree (ADR-0030, ADR-0018: no specialisation either).
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
   public static Executable compile(Program program, int parameters, CompileMode mode) {
     IrVerifier.Layout layout = IrVerifier.verify(program, parameters);
+    Numbering numbering = Numbering.of(program);
+    Facts facts = mode == CompileMode.OPTIMISED ? Facts.optimised(numbering, CallGraph.of(program, numbering)) : Facts.conservative(numbering);
     int[] slots = layout.slots();
     List<Function> functions = program.functions();
     LiftedFunction[] shells = new LiftedFunction[functions.size()];
@@ -140,7 +148,7 @@ public final class Compiler {
       shells[i].define(compiler.interpreter(functions.get(i).body()));
     }
     compiler.region = new Region(null, null, slots[0]);
-    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, nesting);
+    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, facts, nesting);
   }
 
   private Op interpreter(Node node) {

@@ -1,6 +1,6 @@
 # Milestone 1 ships the interpreter; the bytecode backend opens milestone 2
 
-Status: accepted (2026-11-11, owner, issue #12 "Interpreter or bytecode first, and what speed must milestone 1 show?"); amends ADR-0011 (calibration), ADR-0013 (module-path cases, linkage test) and ADR-0016 (unloading); reads founding §4, §9 and §12 layers 1–2 for milestone 1; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by F-77 (spec 5: the conservative compile detaches every `input` document at its read)
+Status: accepted (2026-11-11, owner, issue #12 "Interpreter or bytecode first, and what speed must milestone 1 show?"); amends ADR-0011 (calibration), ADR-0013 (module-path cases, linkage test) and ADR-0016 (unloading); reads founding §4, §9 and §12 layers 1–2 for milestone 1; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by F-77 (spec 5: the conservative compile detaches every `input` document at its read); the conservative compile stores no tail kind, ADR-0047 #118
 
 - **Milestone 1 ships only the interpreter backend.** It starts in spec 1 (walking skeleton) and
   is complete by spec 5. The bytecode backend is the first spec of milestone 2.
@@ -26,7 +26,7 @@ Status: accepted (2026-11-11, owner, issue #12 "Interpreter or bytecode first, a
   conservative compile sets cardinality to many everywhere, makes every Update and PathOf
   TRACKED, detaches at every hold and caps specialisation at 0. It grants no in-place licence but
   keeps the update's own owner (ADR-0022); the copy-only switch, under which no owner matches, is
-  the ownership tests' baseline. Because cardinality is many everywhere, it has no tail calls, so its deep-recursion cases run on the trampoline. "Backend
+  the ownership tests' baseline. It stores no tail kind, so it has no tail calls (ADR-0047 #118). Its many facts alone would not be enough: `repeat`'s bare Comma-right call has no left context (jq-ref: `[limit(5;1|repeat(.*2))]` → `[2,2,2,2,2]`). So its deep-recursion cases run on the trampoline. "Backend
   oracle" and `ratchet/oracle/backend.txt` stay reserved for the interpreter against bytecode.
 - **Module path:** ADR-0013's ten-or-so `jq-cli` cases run on the interpreter. The test that a
   generated class names only `java.*` and `query-core` types moves to the bytecode spec.

@@ -154,7 +154,7 @@ errors`); such text is jqj's own. The jqtest runner reads the last block from a 
 - **The handed-over test list of ADR-0008 to ADR-0011** (issue #7) belongs to the tickets that build
   those parts, as unit tests or oracle cases. Examples: `emitFalseStopsProducer`,
   `tryFlagPerActivation`, one test per budget, `stackBackstopIsTermination`,
-  `calibrationFitsHalfStack`, `walkEqualsTracked`, and the jq.test label/break cases.
+  `everyCellSwitchesBeforeTheBackstop` (renamed from `calibrationFitsHalfStack` by ADR-0046 #113), `walkEqualsTracked`, and the jq.test label/break cases.
 
 ## Ratchet
 
