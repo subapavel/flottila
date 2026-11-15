@@ -54,3 +54,47 @@ Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026
 In a path variant the pending jump also holds the input's `Path` (null when untracked), and the
 entry loop re-enters the callee's path variant. `RunState.end` clears it. Path variants never run
 the value form.
+
+## Amendment (ticket #116)
+
+Accepted by the architect under `/run-spec` #106. It comes from the designer's draft and the
+grilling-adviser's rulings C1–C4 and R1, made for the owner under the delegation of 2026-11-14.
+
+**The `eval` contract**
+- `Object eval(RunState, Object[] slots, Object in)` is abstract on `Op`. It returns the one result,
+  or `CallForm.NONE` when there is none; Java `null` is a result.
+- Up to the result, it ticks, charges and writes slots, label tokens and depth counts exactly as
+  `run` does. Then it returns.
+- Break, ParamCall, AltBind and a Many intrinsic are never eligible. Their `eval` throws
+  `IllegalStateException`.
+
+**Where the value form runs**
+- **Eligibility.** An eligible node always runs by `eval`, wherever it sits. A node is eligible
+  where its cardinality is at most AT_MOST_ONE and may-break-out is false.
+- **Who emits the value.** A push parent emits the returned value itself: `v == NONE ||
+  out.emit(v)`. So do a Call and the run entry.
+- **Facts only.** Eligibility reads only the facts. CONSERVATIVE stores MANY and may-break-out
+  true, so it never runs the value form, with no test of the mode.
+- **Heap forms never call `eval`.** A value-form Call at `units ≥ U_f` starts the trampoline. It
+  takes the first hand-back and resumes with a stop.
+
+**Tail sites (C1, amends bullet 3)**
+- In OPTIMISED, the value form comes before the tail emitter.
+- #112 gives every tail-emitter kind at most AT_MOST_ONE, and #115 makes it non-breaking. So the
+  Holder path is dead in OPTIMISED. Only path variants, which never run the value form, still reach
+  the tail emitter there.
+- Bullet 3's "replaces nothing" therefore holds only for CONSERVATIVE and path variants. In both of
+  those the tail emitter stays as it is.
+
+**`RunForm` (C4)**
+- `RunForm {PUSH, VALUE}` is a public enum in `query.compile`, read as
+  `Executable.form(int function, int id)`, with `-1` for main.
+- `explain()` prints `form=push|value`.
+- The tail emitter is a fast path of the push form, not a form of its own (ADR-0043).
+
+**Considered**
+- A default `eval` through a Holder: its extra frame per op undercounts units.
+- The tail emitter first: a Holder per run for nothing, and an exception in the uniform rule.
+- `eval` only in value positions: the form would depend on the parent.
+- Value-form unit weights now: unmeasured, and an undercount overflows the stack.
+- The name `Form`: GLOSSARY "Form" is a generator's command line.

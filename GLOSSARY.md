@@ -508,6 +508,12 @@ Running a node as `eval`, which returns its one result or none; only the optimis
 where cardinality is at most one and the node may not break out (ADR-0047).
 _Avoid_: tail emitter.
 
+**Run form**:
+Which of the two forms a node runs by, push or value. `Executable.form` reports it, and `explain()`
+prints it as `form=`. It is fixed per node from the facts. The tail emitter is part of the push form,
+not a form of its own (ADR-0047 #116).
+_Avoid_: form (a generator's command line), tail form.
+
 **Emit**:
 To hand one result to the next stage. The answer says whether to keep going.
 _Avoid_: yield, return, push (as a noun for the call)
