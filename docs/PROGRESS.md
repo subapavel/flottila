@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-2 the Rail8 layout and coordinates — done (decided D-149, opponent: sound with changes)
+
+- Class C: the designer drafted (`agent/work/BRAND-2-designer.md`), the opponent attacked it (`agent/work/BRAND-2-advisor.md`), the
+  architect decided. The owner's fixed points held: directories lose the product prefix, `core` stays `core`, Apache Iggy is the model.
+- Layout (D-149): the platform's modules under one area, `platform/{api,core,runtime,...}`; the root is `agent bench bin ci deploy docs
+  examples issues mapping platform`; today's parent pom moves to `platform/pom.xml`, the root pom becomes a thin aggregator.
+- Coordinates: `io.rail8`, artifactIds `rail8-*` (jar names must stay unique beside the mapping's), packages `io.rail8.*`.
+  `draft — review at hand-over`: no `rail8.io` domain is registered (ISSUE-7).
+- The rename is three commits — A moves, B identifiers, C persisted and wire names — done by one committed script and each verified
+  against the BASE-1 red set and the per-module test counts. Packet `agent/packets/BRAND-1.md`; inventory `agent/work/BRAND-1-scout.md`.
+- The opponent found what the draft missed: the mapping would stay `io.flottila.mapping` after BRAND-3; 131 of its 1154 commits carry no
+  sign-off, so a history import turns the DCO job red; its workflows' upload paths; a baseline `--write` would hide a coverage drop.
+- D-150: the mapping comes in with its history (a move commit, then a merge of unrelated histories); the DCO job lists `--first-parent`.
+- New row BRAND-4: a CI guard with an allow-list keeps the old name from coming back.
+- Checks: NOT_RUN mvn (documents only). EXECUTED_FAIL `python3 ci/ledger_check.py` — the 9 pre-existing shape problems (FIX-197).
+
 ## 2026-11-15 — the operations brief and the consolidation plan recorded — BASE-1 in progress
 
 - Context compacted in this session; the state was re-verified with `git status` and `git log -3` before anything was written.
