@@ -3,7 +3,7 @@ package io.github.subapavel.jqj;
 import static io.github.subapavel.jqj.Inlining.shown;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.subapavel.jqj.ExplainTest.Line;
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import java.util.ArrayDeque;
 import java.util.Arrays;

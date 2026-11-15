@@ -20,6 +20,7 @@ public final class IntrinsicManyOp extends Op {
   private final int width;
 
   public IntrinsicManyOp(Many many, Argument[] args) {
+    super(false);
     this.many = many;
     this.args = args;
     this.width = args.length + many.loopSlots();
@@ -35,6 +36,12 @@ public final class IntrinsicManyOp extends Op {
       }
     }
     return true;
+  }
+
+  /** Never called: a Many intrinsic is never eligible for the value form (ADR-0047 #116). */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    throw new IllegalStateException("A Many intrinsic has no value form");
   }
 
   @Override

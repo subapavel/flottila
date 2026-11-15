@@ -11,7 +11,8 @@ public final class OuterVarOp extends Op {
   private final int level;
   private final int cell;
 
-  public OuterVarOp(int level, int cell) {
+  public OuterVarOp(boolean valueForm, int level, int cell) {
+    super(valueForm);
     this.level = level;
     this.cell = cell;
   }
@@ -19,6 +20,11 @@ public final class OuterVarOp extends Op {
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(Frames.out(slots, level)[cell]);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return Frames.out(slots, level)[cell];
   }
 
   @Override
