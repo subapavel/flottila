@@ -1,7 +1,7 @@
 # Handoff
 
 state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Done: BRAND-1, BRAND-4, OPS-1. In flight: BRAND-3. Then MAIN-1 - BACKLOG "priority 0".
-last commit: BRAND-3 step 1 - the import merge: `mapping/` holds the mapping engine with its history (1155 commits), unchanged, not built yet.
+last commit: FIX-217 - SamplePipelineTest asserts fake time and timers, no wall-clock bound; review PASS. Before it: the BRAND-3 import merge.
 in flight: BRAND-3 step 2. `ci/name-allowlist.txt` has `mapping/** | *` until step 2 narrows it; a new file with the old name needs an entry.
 next exact action: BRAND-3 step 2 - implementer, agent/packets/BRAND-3.md "Step 2" + "Rulings after the review of step 1": rename inside
   `mapping/` with agent/tools/rail8_rename.py (base = the merge commit, full SHA), root reactor builds it; then the verifier: the mapping
@@ -9,7 +9,7 @@ next exact action: BRAND-3 step 2 - implementer, agent/packets/BRAND-3.md "Step 
 The mapping's old clone (`subapavel/flottila-mapping`, beside this checkout) is no longer needed; archiving the repository is the owner's.
 OPS-1, OWNER: answer ISSUE-8 (every line has a default); `git apply agent/patches/OPS-1-steering.patch` - never a session. After BRAND-3: scout mapping/ docs.
 Verify mode: `mvn -B -ntp clean verify -Pit -Dmaven.test.failure.ignore=true` (26 min); compare with agent/work/BASE-1-counts.txt.
-MAIN-1: CI is red on main since 2026-11-02 - FIX-217 (packet agent/packets/FIX-217.md; test-author only) stops it in testkit.
+MAIN-1: FIX-217 done - READ THE FIRST `ci` RUN AFTER ITS PUSH (does the build job get past testkit? what stops it next?) and row what it shows.
   Then FIX-212..216, 218, 219 (agent/work/MAIN-1-scout.md, LedgerIT first). FIX-195 IN THE TREE, UNREVIEWED - cite D-146, NEVER D-104.
   FIX-196 not started (its packet stands); FIX-201 audit unreviewed.
 OWNER, 3 OPEN (not for the advisor), agent/work/CONSIDER-15-designer.md section 5: scoping; N5 retention of HANDLED; N7 D-107 vs D-136/D-142.

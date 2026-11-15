@@ -9,21 +9,21 @@ import io.rail8.api.Step;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** P0-04 done-when: a sample pipeline over the api types runs in the fake Runtime in under 100 ms. */
+/**
+ * P0-04 done-when: a sample pipeline over the api types runs in the fake Runtime, which means it moves no fake
+ * time and leaves no timer pending; the former 100 ms wall-clock bound went because it measured the CI machine (FIX-217).
+ */
 class SamplePipelineTest {
 
     static final Key<Integer> LENGTH = new Key<>("length");
 
     @Test
-    void samplePipelineRunsInTheFakeRuntimeInUnder100Ms() {
-        long started = System.nanoTime();
-
+    void samplePipelineRunsInTheFakeRuntimeWithoutAdvancingTimeOrLeavingATimerPending() {
         FakeRuntime rt = FakeRuntime.create();
         Envelope in = rt.ingress("invoice", Headers.empty().with(Envelope.H_CONTENT_TYPE, "text/xml"), Buffer.buffer("<invoice id='4711'/>"));
 
@@ -44,7 +44,7 @@ class SamplePipelineTest {
         assertEquals(0, in.step());
         assertTrue(rt.blobs().contains(out.body().key()));
 
-        Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
-        assertTrue(elapsed.toMillis() < 100, "sample pipeline took " + elapsed.toMillis() + " ms");
+        assertEquals(FakeRuntime.T0, rt.clock().instant(), "the run advanced no fake time");
+        assertEquals(0, rt.timer().pending(), "the run left no timer pending");
     }
 }

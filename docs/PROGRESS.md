@@ -1,4 +1,17 @@
 
+## 2026-11-15 — FIX-217 the sample pipeline test no longer bounds wall-clock time — done, review PASS
+
+- Fault: `SamplePipelineTest` required the run to take under 100 ms of wall-clock time; GitHub's runners took 162-337 ms, so `ci` has
+  stopped in testkit since 2026-11-05 (`agent/work/MAIN-1-ci.md`). Not red here: the verdict depended on the machine.
+- Change (test-author, the one test file): the wall-clock measurement is gone, every behavioural assertion stays; instead the run advanced
+  no fake time (`clock().instant()` is `FakeRuntime.T0`) and left no timer pending (`timer().pending()` is 0). A wrong expectation.
+- The new assertions fail on two mutations of the test body (the fake clock advanced by 1 ms; a timer scheduled) - the test-author's run.
+- VERIFIED_PASS (verifier): `mvn -B -ntp -q -pl platform/testkit -am verify` exit 0, `agent/work/FIX-217-verify.log`; testkit 278 tests,
+  0 failures, 0 errors, 0 skipped - the count unchanged.
+- NOT_RUN: the `ci` workflow - the row's second half (the build job gets past testkit on the runner) is read after this push.
+- Review PASS. Its note: the assertions do not catch a step that sleeps or reads the system clock; the test claims no more than it checks.
+- Next: BRAND-3 step 2 (implementer). MAIN-1 goes on after it with FIX-215 (LedgerIT).
+
 ## 2026-11-15 — BRAND-3 step 1 the mapping engine imported with its history under `mapping/` — in progress
 
 - `git merge --allow-unrelated-histories` of the clone's `rail8-import` (cf970caf: the mapping's `main` plus one commit that moves every
