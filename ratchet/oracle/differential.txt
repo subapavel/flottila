@@ -570,6 +570,11 @@ calls/try-in-a-recursion-lets-a-downstream-error-pass	f86da19c0d21	interpreter
 calls/two-deep-calls-in-sequence	52d39b4de027	interpreter
 calls/value-param-name-is-callable	c21edd8ee5c1	interpreter
 calls/value-params-bind-around-the-call	8f4ff2afe6d4	interpreter
+cardinality/first-stops-before-the-endless-rest	52b5973b96fb	interpreter
+cardinality/limit-stops-before-the-error	9f45bc8bd6fc	interpreter
+cardinality/recursion-after-a-comma-keeps-the-pending-errors	39b501e8ef21	interpreter
+cardinality/reduce-of-a-source-with-no-result-never-runs-its-break	1d6502066531	interpreter
+cardinality/reduce-of-an-empty-init-ends-before-its-break	9fcb755aad85	interpreter
 chains/and-or-of-generators-in-jq-order	5183a0f807f9	interpreter
 chains/assignment-under-alternative-is-inner-levels	9da2fad7ecaa	interpreter
 chains/comparisons-in-and-or	fb8a9bfd11b5	interpreter

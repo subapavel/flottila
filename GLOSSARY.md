@@ -435,6 +435,11 @@ closure for its parameter. An emit to a consumer that may read counts as a read 
 Whether a filter may read its input as the elements of one array, one at a time (ELEMENTS), or
 needs it whole (WHOLE, the safe value); ADR-0054's syntactic test.
 
+**Analyses gain**:
+A filter's conservative-compile time over its optimised-compile time, measured in the same session.
+It holds no reference time, so it is no speed factor (ADR-0019 #119).
+_Avoid_: optimisation factor.
+
 **Analysis**:
 A pass over the IR that proves a property a backend can use: cardinality, path shape, root use,
 touched fields.
@@ -469,6 +474,15 @@ _Avoid_: compiler (the whole pipeline is the compiler), JIT (that is HotSpot's)
 **Compiled filter**:
 The immutable, thread-safe result of compiling a filter, whichever backend made it.
 _Avoid_: program, plan
+
+**Calibration cell**:
+One shape × tier × thread × compile mode, run in a fresh child JVM that proves its thread's size;
+`b` and the reserve are maxima over the cells (ADR-0046 #113).
+
+**Unit edge**:
+`U*`, the largest `U_f` at which a calibration cell completes; at `U*+1` it ends at the stack
+backstop (ADR-0046 #113).
+_Avoid_: max depth.
 
 **Specialisation cap**:
 How many nodes specialisation may copy in one compile, `SPECIALISE_CAP`; a group and its argument
