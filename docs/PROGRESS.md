@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-213 the replica start test waits for the pre-opened segment's file — done, review PASS
+
+- Context compacted before this entry; re-verified with `git status`, `git log -3` and HANDOFF.
+- Cause (not the disk's usable space, as the row guessed): `Journal` counts the next segment's 49-byte header from the pre-open's
+  start, before the file exists; the test compared `bytes()` with the files on disk right after the start. `ci` run 201 stopped on it.
+- Test only (`ReplicaStartTest`, +38/−1, the test-author): a `JournalFiles` wrapper counts down a latch at the directory force that
+  follows the second segment file's creation; the test waits on it, then compares. Exact equality kept; no production change.
+- Red: the old comparison with a delay injected into the pre-open, EXECUTED_FAIL `expected: <3465> but was: <3514>`; the new test
+  passes with the same delay. VERIFIED_PASS (verifier, worktree at 29379f9c + the patch): runtime module with upstream, runs 2-4
+  1563 tests 0 failures; run 1 EXECUTED_FAIL on `JournalDirForceOrderTest:98` only (FIX-168). Lines: `agent/work/FIX-213-evidence.txt`.
+- Review PASS (class A): the latch fires after the header is written and forced; a missing file fails at 30 s with its own message.
+- New rows: FIX-221 (testkit `ComponentContractSelfTest:337` flaked once in four runs), FIX-222 (the same race at
+  `ReplicaStartTest:145`, the reviewer's note). FIX-168 seen again. The runner's proof is the next `ci` run (MAIN-1).
+- Next: BRAND-3 step 3 (in the tree, uncommitted: verifier, reviewer, commit), then FIX-212.
+
 ## 2026-11-15 — BRAND-3 step 2 the mapping engine takes the Rail8 names and joins the root reactor — in progress
 
 - Context compacted before this step; re-verified with `git status`, `git log -3` and HANDOFF.

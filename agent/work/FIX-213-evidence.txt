@@ -1,0 +1,36 @@
+FIX-213 evidence (2026-11-15). Excerpts of logs that are not committed (agent/work/FIX-213-*.log, 5 MB each).
+
+## The old comparison with an injected delay in the pre-open (test-author, demonstration; the delay is not in the tree)
+org.opentest4j.AssertionFailedError: usable space + the replicas' bytes = MAX_BYTES starts the journal; its bytes are its segments and replicas on disk ==> expected: <3465> but was: <3514>
+[ERROR]   ReplicaStartTest.theStartRoomCheckCountsTheReplicas:169 usable space + the replicas' bytes = MAX_BYTES starts the journal; its bytes are its segments and replicas on disk ==> expected: <3465
+
+## The new test with the same delay: totals of the runtime module (the one failure is PeerProtocolTest:767, FIX-214/FIX-202)
+41817:	at io.rail8.runtime.journal.PeerProtocolTest.aLinkPausedByAnAbandonedConsumerIsClosedAfterATimeoutAndItsReadsFail(PeerProtocolTest.java:767)
+53055:[ERROR]   PeerProtocolTest.aLinkPausedByAnAbandonedConsumerIsClosedAfterATimeoutAndItsReadsFail:767 closed by node-b: toListener B->A read 4, forwarded 4 (335 bytes), held 0, toDialer A->B read 18, forwarded 17 (14
+53056:[ERROR] Tests run: 1563, Failures: 1, Errors: 0, Skipped: 0
+
+## Verifier, four runs of: flock /tmp/rail8-maven.lock mvn -B -ntp -f platform/pom.xml -pl :rail8-runtime -am verify (worktree at 29379f9c + the patch)
+run 1:
+43511:	at io.rail8.runtime.journal.JournalDirForceOrderTest.aLaterForceThatReturnedFirstFailsWithTheEarlierOneThatFailed(JournalDirForceOrderTest.java:98)
+53468:[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.174 s -- in io.rail8.runtime.journal.ReplicaStartTest
+55119:[ERROR]   JournalDirForceOrderTest.aLaterForceThatReturnedFirstFailsWithTheEarlierOneThatFailed:98 A's persist fails with its directory force ==> Unexpected type, expected: <java.io.IOException> but was: <io.rail8.runtime.journal.JournalFailedException>
+55121:[ERROR] Tests run: 1563, Failures: 1, Errors: 0, Skipped: 0
+55139:[INFO] BUILD FAILURE
+run 2:
+55061:[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s -- in io.rail8.runtime.journal.ReplicaStartTest
+56625:[INFO] Tests run: 1563, Failures: 0, Errors: 0, Skipped: 0
+56773:[INFO] BUILD SUCCESS
+run 3:
+53532:[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in io.rail8.runtime.journal.ReplicaStartTest
+55182:[INFO] Tests run: 1563, Failures: 0, Errors: 0, Skipped: 0
+55330:[INFO] BUILD SUCCESS
+run 4:
+53557:[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in io.rail8.runtime.journal.ReplicaStartTest
+55207:[INFO] Tests run: 1563, Failures: 0, Errors: 0, Skipped: 0
+55355:[INFO] BUILD SUCCESS
+
+## Test-author's run 3 of 4: the testkit flake that is now FIX-221 (agent/work/FIX-213-run3.log lines 16-17, 30-31)
+[ERROR] Tests run: 27, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 15.84 s <<< FAILURE! -- in io.rail8.testkit.ComponentContractSelfTest
+[ERROR] io.rail8.testkit.ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases -- Time elapsed: 0.271 s <<< FAILURE!
+[ERROR]   ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337 acknowledged before the handler answered (the envelope sent comes back) ==> expected: <[aHandlerThatThrowsFailsTheSendAndStopStillCompletes, stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender, aNackFromTheHandlerFailsTheSendWithItsReason, aSe
+[ERROR] Tests run: 278, Failures: 1, Errors: 0, Skipped: 0

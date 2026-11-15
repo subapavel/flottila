@@ -1,0 +1,65 @@
+diff --git a/platform/runtime/src/test/java/io/rail8/runtime/journal/ReplicaStartTest.java b/platform/runtime/src/test/java/io/rail8/runtime/journal/ReplicaStartTest.java
+index 8a18934a..72ddb465 100644
+--- a/platform/runtime/src/test/java/io/rail8/runtime/journal/ReplicaStartTest.java
++++ b/platform/runtime/src/test/java/io/rail8/runtime/journal/ReplicaStartTest.java
+@@ -10,7 +10,15 @@ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.Timeout;
+ import org.junit.jupiter.api.io.TempDir;
+ 
++import java.io.IOException;
++import java.nio.channels.FileChannel;
+ import java.nio.file.Files;
++import java.nio.file.OpenOption;
++import java.nio.file.StandardOpenOption;
++import java.util.Set;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
+ import java.nio.file.Path;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -152,7 +160,10 @@ class ReplicaStartTest {
+         assertTrue(String.valueOf(refused.getMessage()).contains("RAIL8_JOURNAL_MAX_BYTES"), refused.getMessage());
+ 
+         files.usable = max - held;
+-        Journal a = holder(files, max);
++        PreopenSeen seen = new PreopenSeen(files);
++        Journal a = holder(seen, max);
++        // FIX-213: the header of the next segment is counted from the pre-open's start, before its file exists; wait for the file
++        assertTrue(seen.created.await(30, TimeUnit.SECONDS), "the pre-open's file was created");
+         // the start cuts the torn 1.part after its last whole record, so the bytes after the start are those on disk then,
+         // not the sizes the room check saw before the cut (pinned just above)
+         long segments = ReplicaWorld.sizeOf(holderDir.resolve("segments"));
+@@ -161,6 +172,32 @@ class ReplicaStartTest {
+         assertTrue(a.bytes() > segments, "the replicas are counted, not only the holder's own segments: " + a.bytes() + " vs " + segments);
+     }
+ 
++    /**
++     * Delegates to {@code files}; {@link #created} opens when the second segment file of the start (the pre-open's) has its header
++     * written and the journal forces the segments directory for it (the directory is opened after the header's write).
++     */
++    static final class PreopenSeen implements JournalFiles {
++        final CountDownLatch created = new CountDownLatch(1);
++        private final JournalFiles delegate;
++        private final AtomicInteger segmentFiles = new AtomicInteger();
++
++        PreopenSeen(JournalFiles delegate) {
++            this.delegate = delegate;
++        }
++
++        @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
++            boolean segment = options.contains(StandardOpenOption.CREATE_NEW) && file.getFileName().toString().endsWith(".seg");
++            if (segment) segmentFiles.incrementAndGet();
++            FileChannel ch = delegate.open(file, options);
++            if (options.equals(Set.of(StandardOpenOption.READ)) && Files.isDirectory(file) && segmentFiles.get() == 2) created.countDown();
++            return ch;
++        }
++
++        @Override public java.nio.file.FileStore fileStore(Path dir) throws IOException {
++            return delegate.fileStore(dir);
++        }
++    }
++
+     boolean logged(Level level, String needle) {
+         SimpleFormatter f = new SimpleFormatter();
+         for (LogRecord r : logs.records()) {
