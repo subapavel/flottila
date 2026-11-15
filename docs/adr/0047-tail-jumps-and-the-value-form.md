@@ -128,6 +128,14 @@ grilling-adviser's rulings T1–T4, made for the owner under the delegation of 2
     It then returns true from `run`, NONE from `eval`, or an answer of true on the driver.
   - It enters no activation and adds no units.
   - `CallOp.enter` takes a pending jump in both forms. `CallOp.Active.resume` takes it on the driver.
+  - **Where a jump is taken** (rulings J1–J5, 2026-11-15; F-104): the jump records only itself,
+    its activation's frame and the input. The callee's frame is built at the take, not at the jump.
+    Only the entry loop running in that same frame takes the jump and builds the frame; every other
+    loop leaves it pending. The rule is the same on the stack and on the driver. A left-side call that
+    may break out is at most one and still push form, so the frame check on the stack is live code
+    (J3). In `eval` the check cannot see a foreign jump today, because eval has no sink and F-56 makes
+    a left side that runs on after its result MANY; it stays as written (J5). The same entry checks
+    `jumpFrame() == frame` in every form, so that later forms cannot take a jump by mistake.
 - **Bullet 1 on passing closures now reads:** "A closure that passes is bound at the jump with no
   defining frame. So it is an immutable reference, as cheap to carry as a value, and a chain of jumps
   keeps no earlier frame alive. Group jumps and permuted closure parameters stay jumps."
