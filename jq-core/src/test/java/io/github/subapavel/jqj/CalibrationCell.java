@@ -35,9 +35,11 @@ import java.util.function.LongUnaryOperator;
  *       control, which declares 1 GiB on the same thread: {@code check <mode> <id> <D_f> <T> <b> <reserve> <U_f>
  *       <end> <control>};
  *   <li>{@code search}: each shape's unit edge {@code U*}, the largest {@code U_f} at which it gives reference jq's
- *       result, from {@code floorDiv(S - reserve, b) - D_f} by gallop and bisection: {@code cell <mode> <id> <D_f> <T>
- *       <b> <reserve> <U*> <end at U*+1> <control>}, {@code U*} {@code -} for a flat shape (its control completes) and
- *       {@code fails} for one that does not complete at {@code U_f} 0;
+ *       result, from {@code floorDiv(S - reserve, b) - D_f} by gallop and bisection, repeated from its own result until
+ *       two consecutive passes agree (the adviser's L1): {@code cell <mode> <id> <D_f> <T> <b> <reserve> <U*> <end at
+ *       U*+1> <control> <passes>}, {@code U*} {@code -} for a flat shape (its control completes), {@code fails} for one
+ *       that does not complete at {@code U_f} 0 and {@code INVALID} when no two consecutive of {@value #PASSES} passes
+ *       agree; {@code <passes>} is each pass's {@code U*}, comma-separated;
  *   <li>{@code probe <id> <U|-> [control]}: one run at {@code stackBytesFor(U)}, the child's first ({@code -}: at
  *       {@code U_f(S)}), then the control if asked: {@code probe <mode> <id> <D_f> <T> <b> <reserve> <U> <end>
  *       <control|->}; the parent's bisection over such children gives the cold edge;
@@ -354,14 +356,28 @@ final class CalibrationCell {
     }
   }
 
-  /** The search's passes: one gallop and bisection from {@code seed}; {@code pass} gives a pass's U* from its start. */
+  /**
+   * L1's fixed point: {@code pass} gives the U* of one gallop and bisection from its start. The first pass starts at
+   * {@code seed}, each later one at the U* of the pass before, until two consecutive passes agree, a pass fails, or
+   * {@value #PASSES} passes have run. A JIT cell's edge found while the JIT still compiles moves on the next pass; an
+   * {@code -Xint} linked edge is deterministic and agrees on pass 2.
+   */
   static Passes fixedPoint(long seed, LongUnaryOperator pass) {
-    return new Passes(List.of(pass.applyAsLong(seed)));
+    List<Long> edges = new ArrayList<>();
+    long from = seed;
+    while (edges.size() < PASSES) {
+      long edge = pass.applyAsLong(from);
+      edges.add(edge);
+      if (edge < 0 || (edges.size() >= 2 && edge == edges.get(edges.size() - 2))) break;
+      from = edge;
+    }
+    return new Passes(List.copyOf(edges));
   }
 
   /**
    * The gallop and bisection of the #113 design in this child, from {@code seed} (the committed record's edge), or
-   * from {@code floorDiv(S - reserve, b) - D_f} when it is negative.
+   * from {@code floorDiv(S - reserve, b) - D_f} when it is negative, repeated to its {@link #fixedPoint} (L1). {@code
+   * U*} is {@code INVALID} when no two consecutive of {@value #PASSES} passes agree; the row's last field is the passes.
    */
   private static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
     String control = ended(shape, GIB, mode);
@@ -375,7 +391,7 @@ final class CalibrationCell {
       row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "fails", ended(shape, u.stackBytesFor(0), mode), control, passes);
       return;
     }
-    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), Long.toString(edge), ended(shape, u.stackBytesFor(edge + 1), mode), control, passes);
+    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), passes.agreed() ? Long.toString(edge) : "INVALID", ended(shape, u.stackBytesFor(edge + 1), mode), control, passes);
   }
 
   /** One gallop and bisection from {@code start}: the largest {@code U_f} at which the shape completes, or -1. */
