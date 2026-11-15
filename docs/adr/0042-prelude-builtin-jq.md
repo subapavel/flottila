@@ -53,7 +53,8 @@ Accepted 2026-11-15, architect under `/run-spec` #106; designer draft. This repl
 
 - A call into a recursive prelude group is a `Call` of a function lifted once per definition per
   compile, as ADR-0045 lifts a user one. The nodes of its body take the Source of the call that
-  first placed it, in lowering order; closure arguments keep their own Source.
+  first placed it, in lowering order; closure arguments keep their own Source. So does the lifted
+  `Function` itself, so that `explain()` prints spans of the filter's text, never of `builtin.jq`.
 - `..` lowers to recurse/0's inlined body around a Call of recurse/1's `r` with the closure `.[]?`.
   A user `recurse` still shadows it.
 - `paths`, `tostream` and `walk` stay Stubs until spec 3, because they need `path/1` and the update

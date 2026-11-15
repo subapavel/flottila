@@ -1,6 +1,6 @@
 # Recursion: weighted stack units, a resumable trampoline only in the interpreter
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12); amended by F-30 (U calibrated in spec 2 without path-mode `..`); amended by ADR-0046 and F-55 (U per filter and run; the trampoline's kinds; what the depth budget counts), F-54 (PLAIN calls' units) and ADR-0047 (tail jumps in the push interpreter)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12); amended by F-30 (U calibrated in spec 2 without path-mode `..`); amended by ADR-0046 and F-55 (U per filter and run; the trampoline's kinds; what the depth budget counts), F-54 (PLAIN calls' units) and ADR-0047 (tail jumps in the push interpreter); amended by ADR-0046 #111 (w(site) is descent, rise and the callee's leaf-emit depth; add then compare; floorDiv)
 
 Tail calls are jumps. Other recursive calls run on the Java stack until the stack units reach a
 limit U, and beyond U they run on a CPS trampoline. A memory-bounded recursion-depth budget limits
