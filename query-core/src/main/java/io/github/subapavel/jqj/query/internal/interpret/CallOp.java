@@ -51,7 +51,16 @@ public final class CallOp extends Op {
       Op body = fn.body();
       Object input = in;
       while (true) {
-        boolean more = starts ? Trampoline.run(state, body, frame, input, out) : body(state, body, frame, input, out);
+        // The body runs here, not in a helper: one Java frame per level, as #111's bytes per unit were measured with.
+        boolean more;
+        if (starts) {
+          more = Trampoline.run(state, body, frame, input, out);
+        } else if (!body.valueForm) {
+          more = body.run(state, frame, input, out);
+        } else {
+          Object v = body.eval(state, frame, input);
+          more = v == CallForm.NONE || out.emit(v);
+        }
         if (state.jumpFrame() != frame) {
           return more;
         }
@@ -65,15 +74,6 @@ public final class CallOp extends Op {
       state.removeUnits(held);
       state.leave();
     }
-  }
-
-  /** The body's results in its run form: a value-form body's value emitted here. */
-  private static boolean body(RunState state, Op body, Object[] frame, Object in, Sink out) {
-    if (!body.valueForm) {
-      return body.run(state, frame, in, out);
-    }
-    Object v = body.eval(state, frame, in);
-    return v == CallForm.NONE || out.emit(v);
   }
 
   /**
