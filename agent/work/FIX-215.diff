@@ -1,0 +1,82 @@
+diff --git a/bench/src/test/java/io/rail8/bench/LedgerIT.java b/bench/src/test/java/io/rail8/bench/LedgerIT.java
+index facae462..04b285c6 100644
+--- a/bench/src/test/java/io/rail8/bench/LedgerIT.java
++++ b/bench/src/test/java/io/rail8/bench/LedgerIT.java
+@@ -129,7 +129,33 @@ class LedgerIT {
+                 + " where " + finalRow("f") + " and s.created_at < ?::timestamptz and f.created_at > ?::timestamptz and f.id = any(?)",
+                 killedAt.toString(), killedAt.toString(), ackedIds);
+         assertTrue(finishedByNode2 >= 1, "an id saved and ACKed before the kill got its final-step row after it, from node 2: " + json.encode());
+-        assertTrue(finishedByNode2 <= unfinished, "only what was unfinished at the kill is finished after it: " + finishedByNode2 + " vs " + unfinished);
++        // a run commits its final-step row first and deletes its work row afterwards: killed between the two, the takeover runs it
++        // again from the ingress, its rows kept beside the first attempt's (D-135, D-140) — finished after the kill though not
++        // unfinished at it. Inequalities: a commit of the dead node that Postgres completes after the snapshot may put one id on
++        // both sides.
++        long rerun = count(c.db, "select count(distinct b.id) from messages b join messages a on a.id = b.id where " + finalRow("b")
++                + " and " + finalRow("a") + " and b.created_at < ?::timestamptz and a.created_at > ?::timestamptz and b.id = any(?)",
++                killedAt.toString(), killedAt.toString(), ackedIds);
++        int workAtKill = json.getInteger("workAtKill");
++        String numbers = "finishedByNode2 " + finishedByNode2 + ", unfinished " + unfinished + ", workAtKill " + workAtKill + ", rerun " + rerun;
++        System.out.println("LedgerIT takeover: " + numbers);
++        List<String> notFinished = ids(c.db, "select s.id from messages s where s.step = 0 and s.created_at < ?::timestamptz and s.id = any(?)"
++                + " and not exists (select 1 from messages b where b.id = s.id and " + finalRow("b") + " and b.created_at < ?::timestamptz)"
++                + " and not exists (select 1 from messages f where f.id = s.id and " + finalRow("f") + " and f.created_at > ?::timestamptz)"
++                + " order by s.id", killedAt.toString(), ackedIds, killedAt.toString(), killedAt.toString());
++        assertTrue(unfinished <= finishedByNode2, "every ACKed id unfinished at the kill is finished after it: " + numbers
++                + "; saved before the kill, no final-step row before it nor after it: " + notFinished);
++        List<String> finished = ids(c.db, "select distinct f.id from messages f join messages s on s.id = f.id and s.step = 0 where "
++                + finalRow("f") + " and s.created_at < ?::timestamptz and f.created_at > ?::timestamptz and f.id = any(?) order by f.id",
++                killedAt.toString(), killedAt.toString(), ackedIds);
++        assertTrue(finishedByNode2 <= workAtKill, "node 2 finishes only what still had a work row at the kill: " + numbers
++                + "; finished after the kill: " + finished);
++        List<String> firstFinishes = ids(c.db, "select distinct f.id from messages f join messages s on s.id = f.id and s.step = 0 where "
++                + finalRow("f") + " and s.created_at < ?::timestamptz and f.created_at > ?::timestamptz and f.id = any(?) and not exists"
++                + " (select 1 from messages b where b.id = f.id and " + finalRow("b") + " and b.created_at < ?::timestamptz) order by f.id",
++                killedAt.toString(), killedAt.toString(), ackedIds, killedAt.toString());
++        assertTrue(finishedByNode2 - unfinished <= rerun, "each id finished after the kill beyond the unfinished ones is a re-run that"
++                + " already had its final-step row: " + numbers + "; finished after the kill without a final-step row before it: " + firstFinishes);
+         // node 2 ran the package it restored: the deployment record is node 1's, written before the kill, not replaced by a PUT
+         long deployedBeforeKill = count(c.db, "select count(*) from deployments where package = 'bench' and deployed_at < ?::timestamptz", killedAt.toString());
+         assertEquals(1, deployedBeforeKill, "node 2 restored the bench package from its record, nothing re-deployed it");
+@@ -269,18 +295,34 @@ class LedgerIT {
+     /** The first column of {@code query}'s one row; a {@code List} parameter binds as a text array, anything else as text. */
+     static long count(String db, String query, Object... params) throws SQLException {
+         try (Connection c = connect(db); PreparedStatement s = c.prepareStatement(query)) {
+-            for (int i = 0; i < params.length; i++) {
+-                if (params[i] instanceof List<?> list) {
+-                    Array array = c.createArrayOf("text", list.toArray());
+-                    s.setArray(i + 1, array);
+-                } else {
+-                    s.setString(i + 1, String.valueOf(params[i]));
+-                }
+-            }
++            bind(c, s, params);
+             try (ResultSet r = s.executeQuery()) {
+                 assertTrue(r.next(), query);
+                 return r.getLong(1);
+             }
+         }
+     }
++
++    /** The first column of {@code query}'s first 20 rows, named for a failure message; parameters bind as in {@link #count}. */
++    static List<String> ids(String db, String query, Object... params) throws SQLException {
++        List<String> ids = new ArrayList<>();
++        try (Connection c = connect(db); PreparedStatement s = c.prepareStatement(query + " limit 20")) {
++            bind(c, s, params);
++            try (ResultSet r = s.executeQuery()) {
++                while (r.next()) ids.add(r.getString(1));
++            }
++        }
++        return ids;
++    }
++
++    static void bind(Connection c, PreparedStatement s, Object... params) throws SQLException {
++        for (int i = 0; i < params.length; i++) {
++            if (params[i] instanceof List<?> list) {
++                Array array = c.createArrayOf("text", list.toArray());
++                s.setArray(i + 1, array);
++            } else {
++                s.setString(i + 1, String.valueOf(params[i]));
++            }
++        }
++    }
+ }

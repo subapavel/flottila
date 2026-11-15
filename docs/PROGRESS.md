@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-215 the takeover check allows a re-run and bounds it — done, review PASS; closes FIX-184
+
+- Red first: `LedgerIT.aKilledNodeLosesNoAckedMessage` as it was — EXECUTED_FAIL "only what was unfinished at the kill is finished
+  after it: 62 vs 61" (agent/work/FIX-215-red-2.log); the fault of BASE-1 run 3 (66 vs 60) and of FIX-184.
+- Cause: a test fault. A run commits its final-step row (the trail's close) before its work row is deleted, in a separate store
+  call; a node killed between the two leaves the item queued and the takeover runs it again — at-least-once (D-135, D-140).
+- Change (test-author, test only): the one line becomes (a) every unfinished id is finished after the kill, (b) node 2 finishes
+  only what had a work row at the kill, (c) what it finishes beyond the unfinished ids is bounded by the re-runs counted from the
+  stored rows; each prints the four numbers and up to 20 ids. The no-loss assertions are unchanged. No production change.
+- Evidence: VERIFIED_PASS 10 runs of the class in a row — author 5 (FIX-215-green-1..5.log), verifier 5 (FIX-215-verify-1..5.log);
+  a re-run in 3 of the 10 (1, 6 and 2 ids). Maven exits 1 in each: the bench module's coverage floor, one IT run alone.
+- Review PASS (class B). FIX-184 closed with its acceptance amended: a re-run of an id whose work row outlived its final-step row
+  is no red; (c) is the check for the kill-boundary race it suspected.
+- Measured, not a fault: a kill re-ran up to six of some sixty in-flight messages — the at-least-once window. Row CONSIDER-24.
+
 ## 2026-11-15 — FIX-212 the rerun case expects the six rows the design records — done, review PASS
 
 - Red first: `StepBodiesIT.aRerunOfAStampingStepKeeps…` as it was — EXECUTED_FAIL "not within 20 s: fixture: 5 rows of sb-rerun"

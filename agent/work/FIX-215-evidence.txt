@@ -1,0 +1,28 @@
+FIX-215 — evidence (2026-11-15); closes FIX-184
+
+Before the edit (the old check at LedgerIT:132):
+VERIFIED_PASS  agent/work/FIX-215-red-1.log   workAtKill 50, unfinished 50
+EXECUTED_FAIL  agent/work/FIX-215-red-2.log   "only what was unfinished at the kill is finished after it: 62 vs 61"
+               (report: agent/work/FIX-215-red-2-failsafe.txt; workAtKill 64, unfinished 61)
+
+After the edit, the class alone, "Tests run: 2, Failures: 0, Errors: 0, Skipped: 0" in every run:
+                                               finishedByNode2  unfinished  workAtKill  rerun
+VERIFIED_PASS  agent/work/FIX-215-green-1.log        66            66          66        0
+VERIFIED_PASS  agent/work/FIX-215-green-2.log        63            63          64        0
+VERIFIED_PASS  agent/work/FIX-215-green-3.log        55            55          55        0
+VERIFIED_PASS  agent/work/FIX-215-green-4.log        59            58          59        1
+VERIFIED_PASS  agent/work/FIX-215-green-5.log        58            58          58        0
+VERIFIED_PASS  agent/work/FIX-215-verify-1.log       62            62          62        0
+VERIFIED_PASS  agent/work/FIX-215-verify-2.log       60            54          60        6
+VERIFIED_PASS  agent/work/FIX-215-verify-3.log       63            63          63        0
+VERIFIED_PASS  agent/work/FIX-215-verify-4.log       60            60          62        0
+VERIFIED_PASS  agent/work/FIX-215-verify-5.log       62            60          64        2
+Ten of ten in a row (author 5, verifier 5); a re-run in three of them.
+
+Maven exits 1 in every run of one IT alone: "jacoco-maven-plugin:0.8.15:check (check-floors) on project rail8-bench:
+Coverage checks have not been met" — the module's floor needs all its tests. The failsafe report decides.
+review: PASS   class B. The cause holds in the code (FlowWorker waits for the trail's close, then settles in a separate
+               store call; the re-run records under a new attempt, D-140; a takeover is an attempt, D-135). A loss made up
+               by a re-run would pass (a)-(c) and is caught by the case's own no-loss assertions (missing() empty,
+               acked == final rows). Not run: a broken product or harness against the new checks.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-215.diff.
