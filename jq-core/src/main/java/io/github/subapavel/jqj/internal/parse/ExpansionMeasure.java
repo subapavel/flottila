@@ -314,7 +314,15 @@ final class ExpansionMeasure {
         }
       }
       case Ast.Call c -> parts.addAll(c.args());
-      default -> {}
+      // The leaves: no part. No default, so a new kind with parts cannot be walked as a leaf.
+      case Ast.Dot _ -> {}
+      case Ast.Recurse _ -> {}
+      case Ast.Num _ -> {}
+      case Ast.Format _ -> {}
+      case Ast.Var _ -> {}
+      case Ast.LastRead _ -> {}
+      case Ast.Loc _ -> {}
+      case Ast.Break _ -> {}
     }
     return parts;
   }
@@ -388,6 +396,11 @@ final class ExpansionMeasure {
           target = s.target();
         }
         case Ast.Optional o -> target = o.target();
+        // The chain's term: any kind but the six steps above (Pipe, Comma, Def, Bind, Label, Binary, Neg, Try,
+        // Reduce, Foreach, If, Dot, Recurse, Num, Str, Format, Paren, ArrayCons, ObjectCons, Var, LastRead, Loc, Call,
+        // Break). It is added as a part, so parts() and combine() measure it by its own exhaustive arms, never as a
+        // leaf here. A default, since an arm per term kind would add arms for kinds the parser never puts under a step
+        // (Pipe, Comma and Binary come in a Paren).
         default -> {
           boolean own = node instanceof Ast.Dot && (innermost instanceof Ast.Index || innermost instanceof Ast.Each || innermost instanceof Ast.Slice);
           if (!own && parts != null) {
@@ -488,8 +501,14 @@ final class ExpansionMeasure {
         acc.own(1L + n + shorthands, k + 2);
         children(acc, parts, done, k);
       }
-      // A leaf: a dot, a literal, a variable, a format, $__loc__ or a break.
-      default -> acc.own(1, 1);
+      // The leaves, a node and a level each. No default, so a new kind cannot be measured as a leaf unseen.
+      case Ast.Dot _ -> acc.own(1, 1);
+      case Ast.Num _ -> acc.own(1, 1);
+      case Ast.Format _ -> acc.own(1, 1);
+      case Ast.Var _ -> acc.own(1, 1);
+      case Ast.LastRead _ -> acc.own(1, 1);
+      case Ast.Loc _ -> acc.own(1, 1);
+      case Ast.Break _ -> acc.own(1, 1);
     }
     return acc.form();
   }

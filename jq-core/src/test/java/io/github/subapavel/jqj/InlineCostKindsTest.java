@@ -57,4 +57,71 @@ class InlineCostKindsTest {
     assertThat(results(calls(body, most + 1))).as("results of %d calls of def f: %s on null", most + 1, body).isEqualTo(oneMore);
     assertThat(lifted(calls(body, most + 1))).as("lifted functions of %d calls of def f: %s", most + 1, body).containsExactly("f/0");
   }
+
+  /**
+   * The node-cap edge of each kind the expansion measure counts (ADR-0040 "Amendment (ticket #114)", the #114 Standards
+   * review): a call of f is inlined only while the nodes spent so far plus f's measured nodes fit the cap, so with
+   * {@code spent} nodes lowered at each call the most calls inlined are {@code (65 536 - measured) / spent + 1}, and one
+   * more is a PLAIN Call of f, lifted once, not a Stub. The measured nodes are the measure's arms: a node of the
+   * construct's own and its parts' (a negation, an if, a try, a label, an interpolated string, a native call with its
+   * arguments, a computed key's object); a Bind, a reduce and a foreach one more per pattern node; an object one per
+   * pair and one more per shorthand key, {@code {a}} or {@code {"a"}} but not {@code {$x}} or {@code {$__loc__}}; a chain
+   * one a step, its computed keys, bounds and interpolated names counted, its leading dot not; a variable, {@code
+   * $__loc__} and a format one. Each equals the nodes spent but {@code ..}'s: it is the prelude's {@code recurse(.[]?)},
+   * a call with a closure argument, whose measure sums the lifted and the inlined form, so it counts the closure's node
+   * twice while the lowering spends one (the architect's ruling on nodes, #114). A wrong count moves the edge: one node
+   * more lifts f within the most calls, one less inlines the call past the cap and the backstop's Stub fires (F-90).
+   * Each body's result on null is reference jq's (1.8.2, {@code def f: <body>; [f]} with -nc -f, observed 2026-11-15,
+   * .logs/114-jqref-arms.log); an empty result is no result. The longer chains are past jq-ref's bytecode limit, as in
+   * {@link #theMostCallsOfABodyThatFitAreInlinedAndOneMoreLiftsIt}, so the counts are the jqj column of DEVIATIONS "Long
+   * comma chains".
+   */
+  @ParameterizedTest(name = "{0}")
+  @CsvSource(
+      delimiterString = "=>",
+      quoteCharacter = '\'',
+      textBlock =
+          """
+          -length                       => 2 => 2 => -0
+          if . then 1 else 2 end        => 4 => 4 => 2
+          if . then 1 end               => 3 => 3 => null
+          try length catch 0            => 3 => 3 => 0
+          try length                    => 2 => 2 => 0
+          label $out | .                => 2 => 2 => null
+          label $f | break $f           => 2 => 2 =>
+          reduce . as $x (.; $x)        => 5 => 5 => null
+          foreach . as $x (.; $x)       => 5 => 5 => null
+          foreach . as $x (.; $x; $x)   => 6 => 6 => null
+          . as [$a, $b] | $a            => 6 => 6 => null
+          . as $x | $x                  => 4 => 4 => null
+          "a\\(.)"                      => 2 => 2 => "anull"
+          .[length]                     => 2 => 2 => null
+          .[length:]                    => 2 => 2 => null
+          .[:length]                    => 2 => 2 => null
+          .[length:length]              => 3 => 3 => null
+          ."\\(.)"                      => 3 => 3 => null
+          ."a"                          => 1 => 1 => null
+          length?                       => 2 => 2 => 0
+          .[]?                          => 1 => 1 =>
+          ..                            => 2 => 1 => null
+          last(.)                       => 2 => 2 => null
+          range(length; 1)              => 3 => 3 => 0
+          {(tostring): .}               => 4 => 4 => {"null":null}
+          {a}                           => 3 => 3 => {"a":null}
+          {"a"}                         => 4 => 4 => {"a":null}
+          {a: 1}                        => 3 => 3 => {"a":1}
+          {"a\\(.)": 1}                 => 5 => 5 => {"anull":1}
+          . as $x | {$x}                => 5 => 5 => {"x":null}
+          {$__loc__}                    => 2 => 2 => {"__loc__":{"file":"<top-level>","line":1}}
+          $__loc__                      => 1 => 1 => {"file":"<top-level>","line":1}
+          @text                         => 1 => 1 => "null"
+          """)
+  void eachKindMeetsTheCapAtItsMeasuredNodes(String body, int measured, int spent, String result) {
+    int most = (CAP - measured) / spent + 1;
+    List<String> fits = lifted(calls(body, most));
+    assertThat(fits).as("lifted functions of %d calls of def f: %s (%d nodes measured, %d spent)", most, body, measured, spent).doesNotContain("f/0");
+    assertThat(results(calls(body, most))).as("results of %d calls of def f: %s on null", most, body).isEqualTo(result == null ? List.of() : Collections.nCopies(most, result));
+    assertThat(lifted(calls(body, most + 1))).as("lifted functions of %d calls of def f: %s", most + 1, body).contains("f/0");
+    assertThat(results(calls(body, most + 1))).as("results of %d calls of def f: %s on null", most + 1, body).isEqualTo(result == null ? List.of() : Collections.nCopies(most + 1, result));
+  }
 }

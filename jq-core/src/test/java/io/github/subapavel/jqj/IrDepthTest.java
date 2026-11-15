@@ -26,8 +26,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * ADR-0040 "IR depth" (F-44): past {@code Resolver.MAX_IR_DEPTH} = 512 levels of built IR the filter is a Stub, as the
- * 512th nested expansion is. A level is one node of the IR on the way from its root to a leaf, the leaf counted: {@code
+ * ADR-0040 "IR depth" (F-44): a call whose expansion would pass {@code Resolver.MAX_IR_DEPTH} = 512 levels of built IR,
+ * or would be the 512th nested expansion, is a PLAIN Call of its lifted definition, so the filter runs (ADR-0040
+ * "Amendment (ticket #114)"); any other construct past the bound, such as a chain of computed keys, makes the filter a
+ * Stub. A level is one node of the IR on the way from its root to a leaf, the leaf counted: {@code
  * [[.]]} has three. The depth is the built IR's wherever the Resolver builds it (ADR-0040 "What counts"): nested
  * Collects through definitions, each of {@link #PER} brackets around the previous one's call, while the parser's 512
  * nesting levels (DEVIATIONS "Parse depth") bound each body alone; the Bind of each value parameter around the body of
@@ -89,7 +91,7 @@ class IrDepthTest {
    * stack claim of every test here.
    */
   @Test
-  void onA512KiBThreadInAFreshJvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshJvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges();
   }
 
@@ -99,7 +101,7 @@ class IrDepthTest {
    * of 512 KiB about 500 levels down, before the bound's Stub (#86, 5 of 5 runs before the lowering's frames were made small).
    */
   @Test
-  void onA512KiBThreadInAFreshC1OnlyJvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshC1OnlyJvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges("-Xbatch", "-XX:TieredStopAtLevel=1");
   }
 
@@ -109,7 +111,7 @@ class IrDepthTest {
    * under either tier).
    */
   @Test
-  void onA512KiBThreadInAFreshProfilingC1Jvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshProfilingC1JvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges("-Xbatch", "-XX:TieredStopAtLevel=3");
   }
 
@@ -454,7 +456,7 @@ class IrDepthTest {
   }
 
   /**
-   * The child JVM of {@link #onA512KiBThreadInAFreshJvm512LevelsRunAndDeeperFiltersAreStubs}: on a 512 KiB thread
+   * The child JVM of {@link #onA512KiBThreadInAFreshJvmDeepCallsRunAndComputedIndexesStayAStub}: on a 512 KiB thread
    * each, it runs 512 levels on null, then compiles and runs 513 levels, 30 001 levels, 500 value parameters and 10 000
    * computed indexes, in that order, and prints a line for each: {@code ran}, {@code a Stub} or what was thrown. Since
    * #114 the first three lift their calls past the bound; only the walk of the built IR stops the last, a chain.
@@ -552,6 +554,96 @@ class IrDepthTest {
       Throwable thrown = on(STACK, () -> answer.set(engine.compile(filter).run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
       System.out.println("embedded run: " + (thrown instanceof JqTermination t ? String.valueOf(t.budget()) : thrown == null ? "ended, " + answer.get() : thrown));
     }
+  }
+
+  /**
+   * The depth edge of each kind the expansion measure counts (ADR-0040 "Amendment (ticket #114)", the #114 Standards
+   * review): {@link #atDepth} puts {@code def f: <body>} under four definitions of 100 brackets each and {@code j}
+   * brackets of the main filter, so a call of p4 there would reach {@code j + 400 + reach} levels, reach being f's
+   * measured levels. At 512 every call is inlined; at 513 p4's would pass {@code MAX_IR_DEPTH}, so it is a PLAIN Call of
+   * the lifted p4, not the IR depth Stub, and the filter gives the same result one bracket deeper. The measured levels
+   * are the measure's arms: a leaf, a variable, {@code $__loc__} or a format one; a native call without arguments two,
+   * with them five or its arguments three down; a negation three, its operand one down; an if, a try or a label three,
+   * their parts two down; an interpolated string {@code min(parts, 64) + 3}, its interpolations one less down; a Bind,
+   * reduce or foreach {@code min(2·patterns + 2, 64)} plus 5, 8 or 8, their parts one less down; an object {@code
+   * 3·min(pairs, 64) + 4}, its keys and values two less down; a chain of steps {@code 3·steps + 3}, its keys and bounds
+   * two less down; {@code ..} its prelude call's seven. A wrong count moves the edge: one level more lifts p4 at 512,
+   * one less inlines it at 513 and the IR depth Stub fires. Each result is reference jq's: 1.8.2 gives each body on null
+   * ({@code def f: <body>; [f]}, -nc -f, observed 2026-11-15, .logs/114-jqref-arms.log), and the whole filter for
+   * {@code -length}, {@code .[]?}, {@code {$__loc__}} and {@code . as $x | {$x}} at 513 levels, those brackets around
+   * it.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("measuredLevels")
+  void eachKindMeetsTheIrDepthAtItsMeasuredLevels(String body, int reach, String result) throws InterruptedException {
+    int j = 512 - 400 - reach;
+    String inner = result == null ? "" : result;
+    String fits = atDepth(body, j);
+    assertThat(ownFunctionsOnA16MiBThread(fits)).as("lifted functions of %s at 512 measured levels", body).isEmpty();
+    assertThat(resultsOnA16MiBThread(fits)).as("results of %s at 512 measured levels", body).containsExactly("[".repeat(400 + j) + inner + "]".repeat(400 + j));
+    String passes = atDepth(body, j + 1);
+    assertThat(ownFunctionsOnA16MiBThread(passes)).as("lifted functions of %s at 513 measured levels", body).containsExactly("p4/0");
+    assertThat(resultsOnA16MiBThread(passes)).as("results of %s at 513 measured levels", body).containsExactly("[".repeat(401 + j) + inner + "]".repeat(401 + j));
+  }
+
+  static Stream<Arguments> measuredLevels() {
+    return Stream.of(
+        Arguments.of("-length", 3, "-0"),
+        Arguments.of("if . then 1 else 2 end", 3, "2"),
+        Arguments.of("if . then 1 end", 3, "null"),
+        Arguments.of("try length catch 0", 4, "0"),
+        Arguments.of("try length", 4, "0"),
+        Arguments.of("label $out | .", 3, "null"),
+        Arguments.of("label $f | break $f", 3, null),
+        Arguments.of("reduce . as $x (.; $x)", 12, "null"),
+        Arguments.of("foreach . as $x (.; $x)", 12, "null"),
+        Arguments.of("foreach . as $x (.; $x; $x)", 12, "null"),
+        Arguments.of(". as [$a, $b] | $a", 13, "null"),
+        Arguments.of(". as $x | $x", 9, "null"),
+        Arguments.of("\"a\\(.)\"", 5, "\"anull\""),
+        Arguments.of(".[length]", 6, "null"),
+        Arguments.of(".[length:]", 6, "null"),
+        Arguments.of(".[:length]", 6, "null"),
+        Arguments.of(".[length:length]", 6, "null"),
+        Arguments.of(".\"\\(.)\"", 8, "null"),
+        Arguments.of(".\"a\"", 6, "null"),
+        Arguments.of("length?", 6, "0"),
+        Arguments.of(".[]?", 6, null),
+        Arguments.of("..", 7, "null"),
+        Arguments.of("length", 2, "0"),
+        Arguments.of("last(.)", 5, "null"),
+        Arguments.of("range(length; 1)", 5, "0"),
+        Arguments.of("{(tostring): .}", 7, "{\"null\":null}"),
+        Arguments.of("{a}", 7, "{\"a\":null}"),
+        Arguments.of("{\"a\"}", 9, "{\"a\":null}"),
+        Arguments.of("{a: 1}", 7, "{\"a\":1}"),
+        Arguments.of("{\"a\\(.)\": 1}", 10, "{\"anull\":1}"),
+        Arguments.of(". as $x | {$x}", 15, "{\"x\":null}"),
+        Arguments.of("{$__loc__}", 7, "{\"__loc__\":{\"file\":\"<top-level>\",\"line\":1}}"),
+        Arguments.of("$__loc__", 1, "{\"file\":\"<top-level>\",\"line\":1}"),
+        Arguments.of("@text", 1, "\"null\""),
+        Arguments.of("null", 1, "null"));
+  }
+
+  /** {@code def f: <body>; def p1: [×100 f ]×100; … def p4: [×100 p3 ]×100;} and p4 in {@code j} brackets. */
+  private static String atDepth(String body, int j) {
+    StringBuilder text = new StringBuilder("def f: ").append(body).append("; ");
+    String inner = "f";
+    for (int i = 1; i <= 4; i++) {
+      text.append("def p").append(i).append(": ").append("[".repeat(PER)).append(inner).append("]".repeat(PER)).append("; ");
+      inner = "p" + i;
+    }
+    return text.append("[".repeat(j)).append("p4").append("]".repeat(j)).toString();
+  }
+
+  /** The functions of f and the p definitions {@code filter}'s program has, compiled on a 16 MiB thread: the lifted ones. */
+  private static List<String> ownFunctionsOnA16MiBThread(String filter) throws InterruptedException {
+    AtomicReference<List<String>> got = new AtomicReference<>();
+    Throwable thrown = on(LARGE, () -> got.set(Inlining.lifted(filter)));
+    if (thrown != null) {
+      throw new AssertionError("compiling " + shown(filter) + " on a 16 MiB thread threw", thrown);
+    }
+    return got.get().stream().filter(name -> List.of("f/0", "p1/0", "p2/0", "p3/0", "p4/0").contains(name)).toList();
   }
 
   /** {@code def f0: .; def f1: f0,f0; …; def fn: f(n-1),f(n-1); fn}, Inlining's doubling chain and its call. */
