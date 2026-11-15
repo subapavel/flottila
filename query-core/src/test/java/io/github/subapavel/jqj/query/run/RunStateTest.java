@@ -3,6 +3,7 @@ package io.github.subapavel.jqj.query.run;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.github.subapavel.jqj.query.internal.interpret.LiftedFunction;
 import io.github.subapavel.jqj.query.run.Termination.Budget;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -420,6 +421,44 @@ class RunStateTest {
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
     assertThat(state.units()).as("units after the next begin").isZero();
     assertThat(state.addUnits(Long.MAX_VALUE / 2)).as("half of Long.MAX_VALUE units after a begin, which sets no limit").isFalse();
+  }
+
+  /**
+   * ADR-0047 and its #118 amendment: the pending jump, the callee, its frame and its input that a JumpOp sets and the
+   * function's entry loop takes, is cleared by {@code end}, so no value stays pinned between runs (ADR-0034), and by
+   * {@code begin}, so a run never starts with a jump another left. {@code clearJump} is how the entry loop takes it.
+   * Witness: between {@code jump} and each clear, the run state holds exactly what was set.
+   */
+  @Test
+  void pendingJumpClearedAtEnd() {
+    RunState state = new RunState();
+    LiftedFunction fn = new LiftedFunction(1, 0);
+    Object[] frame = {"slot 0"};
+    Object in = "the input";
+
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    state.jump(fn, frame, in);
+    assertThat(state.jumpTarget()).as("witness: the target of the jump set in a run").isSameAs(fn);
+    assertThat(state.jumpFrame()).as("witness: the frame of the jump set in a run").isSameAs(frame);
+    assertThat(state.jumpInput()).as("witness: the input of the jump set in a run").isSameAs(in);
+    state.end();
+    assertThat(state.jumpTarget()).as("the target after end").isNull();
+    assertThat(state.jumpFrame()).as("the frame after end").isNull();
+    assertThat(state.jumpInput()).as("the input after end").isNull();
+
+    state.jump(fn, frame, in);
+    assertThat(state.jumpTarget()).as("witness: the target of a jump left outside a run").isSameAs(fn);
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.jumpTarget()).as("the target after the next begin").isNull();
+    assertThat(state.jumpFrame()).as("the frame after the next begin").isNull();
+    assertThat(state.jumpInput()).as("the input after the next begin").isNull();
+
+    state.jump(fn, frame, in);
+    assertThat(state.jumpInput()).as("witness: the input of a second jump in the run").isSameAs(in);
+    state.clearJump();
+    assertThat(state.jumpTarget()).as("the target after clearJump").isNull();
+    assertThat(state.jumpFrame()).as("the frame after clearJump").isNull();
+    assertThat(state.jumpInput()).as("the input after clearJump").isNull();
   }
 
   /** ADR-0030 and the design approval of #59: the budgets' messages. */
