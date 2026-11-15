@@ -61,7 +61,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Seam (named in the #112 hand-back): {@code Executable.facts()} returning {@code query.analysis.Facts}, {@code
  * Facts.cardinality(int function, int id)} with -1 for main and a function's place otherwise, and {@code
- * Numbering.of(Program).id(Node)}, a node's freeze id in its body.
+ * Numbering.id(Node)}, a node's freeze id in its body, of the frozen program ({@code Executable.frozen()}, #117).
  */
 class CardinalityBoundsTest {
 
@@ -131,13 +131,17 @@ class CardinalityBoundsTest {
       count("seeds");
       assertThat(plain.steps()).as("steps of the plain run of %s on %s", filter, stdin).isLessThanOrEqualTo(BASELINE_CAP);
 
-      Facts facts = Compiler.compile(program, 0, CompileMode.OPTIMISED).facts();
-      Numbering numbering = Numbering.of(program);
+      // The optimised compile's facts number the program it froze, the specialised one (#117): its nodes are watched,
+      // the originals and the copies, against the plain run of the program as resolved.
+      Executable optimised = Compiler.compile(program, 0, CompileMode.OPTIMISED);
+      Facts facts = optimised.facts();
+      Program frozen = optimised.frozen().program();
+      Numbering numbering = optimised.frozen().numbering();
       List<String> violations = new ArrayList<>();
-      check(program, -1, program.main(), facts, numbering, input, plain.outcome(), violations);
-      List<Function> functions = program.functions();
+      check(frozen, -1, frozen.main(), facts, numbering, input, plain.outcome(), violations);
+      List<Function> functions = frozen.functions();
       for (int place = 0; place < functions.size(); place++) {
-        check(program, place, functions.get(place).body(), facts, numbering, input, plain.outcome(), violations);
+        check(frozen, place, functions.get(place).body(), facts, numbering, input, plain.outcome(), violations);
       }
       assertThat(violations).as("cardinality bounds of %s on %s", filter, stdin).isEmpty();
     }
@@ -205,8 +209,8 @@ class CardinalityBoundsTest {
         if (a.raisedAfterResult) {
           violations.add(where + ": raised after its result");
         }
-        if (a.next >= 0 && a.end >= 0 && a.end - a.next != 1) {
-          violations.add(where + ": END came " + (a.end - a.next) + " steps after its result's emit returned, not 1");
+        if (a.next >= 0 && a.end >= 0 && a.end - a.next - a.nestedEnds != 1) {
+          violations.add(where + ": END came " + (a.end - a.next - a.nestedEnds) + " steps after its result's emit returned, besides " + a.nestedEnds + " of nested activations, not 1");
         }
       }
       default -> {
@@ -275,6 +279,38 @@ class CardinalityBoundsTest {
     BoundProbe.Activation label = watchOnce("label $l|break $l", 0);
     assertThat(label.results).as("results of the Label").isZero();
     assertThat(label.end).as("END of the Label").isNotNegative();
+
+    // A recursive body (#117): its result comes from the innermost of five activations, null to 4. After the one
+    // result's emit returned each inner activation's Comma stepped to its END, a step of the probe's, before the outer's.
+    List<BoundProbe.Activation> nested = watchBody("def f: if . > 3 then . else . + 1 | f end; f", 0);
+    assertThat(nested).as("activations of f's body on null").hasSize(5);
+    for (int k = 0; k < nested.size(); k++) {
+      BoundProbe.Activation a = nested.get(k);
+      assertThat(a.results).as("results of activation %d", k).isEqualTo(1);
+      assertThat(a.nestedEnds).as("nested activations ended after activation %d's result", k).isEqualTo(4 - k);
+      assertThat(a.end - a.next).as("steps from activation %d's result to its END", k).isEqualTo(5 - k);
+    }
+
+    // A recursive body that enters itself after its first result: those activations are n's own steps, not nested ends.
+    List<BoundProbe.Activation> after = watchBody("def f: if . > 1 then . else ., (. + 1 | f) end; f", 0);
+    assertThat(after).as("activations of the MANY body on null").hasSize(3);
+    for (int k = 0; k < after.size(); k++) {
+      assertThat(after.get(k).nestedEnds).as("nested ends counted for activation %d, entered after its result", k).isZero();
+    }
+  }
+
+  /** Watches the body of function {@code place} of {@code filter}, run on null, against the plain run: its activations. */
+  private static List<BoundProbe.Activation> watchBody(String filter, int place) {
+    Program program = Resolver.resolve(Parser.parse(filter));
+    Workspace workspace = JqEngine.builder().build().newWorkspace();
+    try (JsonDoc doc = workspace.read(MemorySegment.ofArray("null".getBytes(StandardCharsets.UTF_8)))) {
+      Object input = doc.root();
+      BoundProbe.Ran plain = BoundProbe.run(Compiler.compile(program, 0, CompileMode.CONSERVATIVE), input, B);
+      BoundProbe probe = new BoundProbe();
+      BoundProbe.Ran ran = BoundProbe.run(Compiler.compile(probe.wrapped(program, place, program.functions().get(place).body()), 0, CompileMode.CONSERVATIVE), input, B);
+      assertThat(ran.outcome()).as("the watched run of fn%d's body of %s", place, filter).isEqualTo(plain.outcome());
+      return probe.activations;
+    }
   }
 
   /**

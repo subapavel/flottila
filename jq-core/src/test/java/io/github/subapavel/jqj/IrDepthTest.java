@@ -832,7 +832,10 @@ class IrDepthTest {
     return text.append("[".repeat(j)).append(inner).append("]".repeat(j)).toString();
   }
 
-  /** The functions of {@code filter}'s program, compiled on a 16 MiB thread (Inlining#lifted). */
+  /**
+   * The lifted functions of {@code filter}'s program, compiled on a 16 MiB thread ({@link Inlining#lifted}): the
+   * specialised copies ({@code copyOf=}) are skipped.
+   */
   private static List<String> functionsOnA16MiBThread(String filter) throws InterruptedException {
     AtomicReference<List<String>> got = new AtomicReference<>();
     Throwable thrown = on(LARGE, () -> got.set(Inlining.lifted(filter)));

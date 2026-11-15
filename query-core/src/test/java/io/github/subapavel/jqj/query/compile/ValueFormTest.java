@@ -596,6 +596,16 @@ class ValueFormTest {
     return new Program(root, List.of(functions));
   }
 
+  /**
+   * {@code def f(g): if . == "yes" then base else "yes" | f(argument) end}, the body of f, fn0 of one closure parameter:
+   * on main's input {@code "in"} it calls itself once, then gives {@code base}. Its inner call passes {@code argument},
+   * which is no bare ParamCall of g, so g is not invariant and specialisation makes no copy of f (ADR-0045 "Amendment
+   * (ticket #117)"): main's Call runs f with its real closure, as #116's shape needs (#117 re-pin ruling V1).
+   */
+  private static Node recursing(Node base, Node argument) {
+    return new If(AT, new Identity(AT), base, new Pipe(AT, c(YES), new Call(AT, 0, List.of(argument), List.of())), TRUTH);
+  }
+
   /** A shape: its name, its program, a node and its expected run form, a part of it and its form, and its results. */
   private static Arguments shape(String name, Supplier<Program> program, int body, int id, RunForm form, int partBody, int part, RunForm partForm, String results) {
     return Arguments.argumentSet(name, program, body, id, form, partBody, part, partForm, results);
@@ -604,7 +614,11 @@ class ValueFormTest {
   /**
    * The shapes where a node and one of its parts run in different forms, each pinned by freeze id: a value-form node
    * over a push part that gives many results, which the facts let through only where what follows gives none, and a
-   * push node over a value-form part, whose value or no result it takes.
+   * push node over a value-form part, whose value or no result it takes. The five shapes whose function takes a closure
+   * run {@code recursing}, so specialisation makes no copy and main's Call keeps its real closure (#117 re-pin ruling
+   * V1); SpecialiserTest pins what a copy makes of #116's first forms of them. The binding closure's Var reads main's
+   * slot one frame out (ADR-0045 #107), the value form of an outer-variable read; in a copy that read would be a
+   * trailing value of the copy's own frame (ADR-0045 #117 S4), so only a real closure keeps it.
    */
   static Stream<Arguments> shapes() {
     return Stream.of(
@@ -636,7 +650,7 @@ class ValueFormTest {
         shape("a push Try on a value-form handler", () -> main(new Try(AT, new Comma(AT, raise(), c(5)), c(2))), -1, 0, RunForm.PUSH, -1, 4, RunForm.VALUE, "[2]"),
         shape(
             "a push Call, its closure breaking out, on a value-form body",
-            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, c(5))),
+            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, recursing(c(5), new Identity(AT)))),
             -1,
             2,
             RunForm.PUSH,
@@ -646,7 +660,7 @@ class ValueFormTest {
             "[5, 7]"),
         shape(
             "a push Call, its closure breaking out, on a value-form body of no result",
-            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, nothing())),
+            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, recursing(nothing(), new Identity(AT)))),
             -1,
             2,
             RunForm.PUSH,
@@ -761,7 +775,7 @@ class ValueFormTest {
             "[]"),
         shape(
             "a ParamCall on a value-form closure",
-            () -> main(new Call(AT, 0, List.of(c(5)), List.of()), new Function(AT, 1, 0, new ParamCall(AT, 0))),
+            () -> main(new Call(AT, 0, List.of(c(5)), List.of()), new Function(AT, 1, 0, recursing(new ParamCall(AT, 0), new Pipe(AT, new ParamCall(AT, 0), new Identity(AT))))),
             -1,
             0,
             RunForm.PUSH,
@@ -771,7 +785,7 @@ class ValueFormTest {
             "[5]"),
         shape(
             "a ParamCall on a value-form closure of no result",
-            () -> main(new Call(AT, 0, List.of(nothing()), List.of()), new Function(AT, 1, 0, new ParamCall(AT, 0))),
+            () -> main(new Call(AT, 0, List.of(nothing()), List.of()), new Function(AT, 1, 0, recursing(new ParamCall(AT, 0), new Pipe(AT, new ParamCall(AT, 0), new Identity(AT))))),
             -1,
             0,
             RunForm.PUSH,
@@ -779,6 +793,23 @@ class ValueFormTest {
             1,
             RunForm.VALUE,
             "[]"),
+        // "a" as $0 | "z" as $1 | f(. as $2 | $0): node 4 is main's Call, node 7 the closure's Var of main's slot 0, next
+        // to main's "z" and the closure's own "yes". The reference binary 1.8.2 on "in": "a" as $a | "z" as $z |
+        // def f(g): if . == "yes" then g else "yes" | f(g | .) end; f(. as $b | $a) gives "a"; with $z in place of $a
+        // "z", with $b "yes".
+        shape(
+            "a ParamCall on a binding closure whose value-form Var reads the caller's slot",
+            () ->
+                main(
+                    new Bind(AT, c("a"), 0, new Bind(AT, c("z"), 1, new Call(AT, 0, List.of(new Bind(AT, new Identity(AT), 2, new Var(AT, 0))), List.of()))),
+                    new Function(AT, 1, 0, recursing(new ParamCall(AT, 0), new Pipe(AT, new ParamCall(AT, 0), new Identity(AT))))),
+            -1,
+            4,
+            RunForm.PUSH,
+            -1,
+            7,
+            RunForm.VALUE,
+            "[a]"),
         shape(
             "a push Comma on a value-form Fn2",
             () -> main(new Comma(AT, new Intrinsic(AT, new Operation("first", (Fn2) (state, in, a, b) -> a), List.of(c(1), c(2))), c(3))),
@@ -804,12 +835,15 @@ class ValueFormTest {
   /**
    * Each shape runs in the optimised compile as in the conservative one (ADR-0047 #116, the eval contract): the same
    * results, answer, error, steps and bytes built, run to its end and with its sink stopping at the first result. The
-   * pins first check that the node and its part run in the forms the shape names.
+   * pins first check that the optimised compile made no copy (ADR-0045 #117), so the freeze ids are the shape's own,
+   * and that the node and its part run in the forms the shape names.
    */
   @ParameterizedTest(name = "{argumentSetName}")
   @MethodSource("shapes")
   void eachShapeRunsAsItsPushForm(Supplier<Program> program, int body, int id, RunForm form, int partBody, int part, RunForm partForm, String results) {
-    Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
+    Program compiled = program.get();
+    Executable optimised = Compiler.compile(compiled, 0, CompileMode.OPTIMISED);
+    assertThat(optimised.frozen().program()).as("premise: the program the optimised compile runs, no copy made").isEqualTo(compiled);
     assertThat(optimised.form(body, id)).as("the run form of node %d of body %d", id, body).isEqualTo(form);
     assertThat(optimised.form(partBody, part)).as("the run form of its part, node %d of body %d", part, partBody).isEqualTo(partForm);
 

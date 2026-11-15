@@ -85,14 +85,16 @@ final class Inlining {
   }
 
   /**
-   * The {@code name/arity} of each function of {@code filter}'s program, in place order: the third field of each {@code
-   * function} line of {@link JqFilter#explain()} (#108). For a filter that calls no prelude definition and no recursive
-   * group these are its lifted functions (GLOSSARY "Lifted function"), and none means every call was inlined.
+   * The {@code name/arity} of each lifted function of {@code filter}'s program (GLOSSARY "Lifted function"), in place
+   * order: the third field of each {@code function} line of {@link JqFilter#explain()} (#108) that has no {@code
+   * copyOf=fn<o>}. A specialised copy's line carries it (ADR-0045 #117) and is skipped: a copy is made after lifting from
+   * a lifted function and is no lifted function of its own. For a filter that calls no prelude definition and no
+   * recursive group, none means every call was inlined.
    */
   static List<String> lifted(String filter) {
     List<String> names = new ArrayList<>();
     for (String line : ENGINE.compile(filter).explain().split("\n")) {
-      if (line.startsWith("function ")) {
+      if (line.startsWith("function ") && !line.contains(" copyOf=")) {
         names.add(line.split(" ")[2]);
       }
     }

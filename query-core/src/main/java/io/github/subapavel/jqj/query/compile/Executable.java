@@ -30,21 +30,33 @@ public final class Executable {
   /** The program's frames, {@code D_f} among them (ADR-0046 #111 amendment). */
   private final Nesting nesting;
 
+  /** The frozen program this runs (ADR-0045 #117). */
+  private final Frozen frozen;
+
   /** Whether the main tree's root runs by its value form (ADR-0047 #116), so that the run entry emits its value. */
   private final boolean value;
 
-  Executable(Op root, int slots, int parameters, Facts facts, Nesting nesting) {
+  Executable(Op root, int slots, int parameters, Facts facts, Nesting nesting, Frozen frozen) {
     this.root = root;
     this.slots = slots;
     this.parameters = parameters;
     this.facts = facts;
     this.nesting = nesting;
+    this.frozen = frozen;
     this.value = form(-1, 0) == RunForm.VALUE;
   }
 
-  /** The facts of the compiled program, by body and freeze id ({@code query.analysis.Numbering}). */
+  /** The facts of the frozen program, by body and freeze id ({@link Frozen#numbering()}). */
   public Facts facts() {
     return facts;
+  }
+
+  /**
+   * The program this runs, as freeze left it: the specialised program in the optimised compile, its numbering, groups
+   * and origins, and the specialisation counts (ADR-0045 #117).
+   */
+  public Frozen frozen() {
+    return frozen;
   }
 
   /**

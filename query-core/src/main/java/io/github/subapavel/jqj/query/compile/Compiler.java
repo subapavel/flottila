@@ -66,8 +66,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Compiles a program: verifies it, freezes it, finds its facts, then builds the interpreter tree (ADR-0018, ADR-0045
- * #112).
+ * Compiles a program: verifies it, specialises it in the optimised compile and verifies it again, freezes it, finds its
+ * facts, then builds the interpreter tree (ADR-0018, ADR-0045 #112 and #117).
  *
  * <p>Each body, the main tree's or a function's, runs in a frame of its own: its slots, then a function's closure
  * cells (ADR-0045 #107). A closure argument that binds no slot runs in the frame it was written in, its defining frame,
@@ -136,24 +136,39 @@ public final class Compiler {
   /**
    * Compiles {@code program} in {@code mode}, with slots {@code 0 .. parameters - 1} of its main tree its parameter
    * slots (ADR-0038): in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
-   * The order is verify, freeze, facts, build (ADR-0045 #112): {@link CompileMode#OPTIMISED} analyses the program and
-   * {@link CompileMode#CONSERVATIVE} keeps every fact at its safe value. The interpreter reads one thing from the facts,
-   * each node's run form (ADR-0047 #116): so both modes build the same tree, value form only where the optimised facts
-   * allow it (ADR-0030, ADR-0018: no specialisation either).
+   * {@link #compile(Program, int, CompileMode, int)} under {@link Specialiser#SPECIALISE_CAP}.
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
   public static Executable compile(Program program, int parameters, CompileMode mode) {
-    IrVerifier.Layout layout = IrVerifier.verify(program, parameters);
-    Numbering numbering = Numbering.of(program);
-    Facts facts = mode == CompileMode.OPTIMISED ? Facts.optimised(numbering, CallGraph.of(program, numbering)) : Facts.conservative(numbering);
+    return compile(program, parameters, mode, Specialiser.SPECIALISE_CAP);
+  }
+
+  /**
+   * {@link #compile(Program, int, CompileMode)} with the specialisation cap {@code cap}. The order is verify, specialise,
+   * verify, freeze, facts, build (ADR-0045 #112 and #117): {@link CompileMode#OPTIMISED} specialises the program under
+   * {@code cap}, verifies the result again and analyses it; {@link CompileMode#CONSERVATIVE} makes no copy and keeps
+   * every fact at its safe value (ADR-0018). The interpreter reads one thing from the facts, each node's run form
+   * (ADR-0047 #116), over the frozen program's numbering, so a copy's nodes take their own: value form only where the
+   * optimised facts allow it (ADR-0030). The executable runs the frozen program and carries it ({@link Frozen}).
+   *
+   * @throws IllegalStateException when the program breaks a rule of the IR
+   */
+  static Executable compile(Program program, int parameters, CompileMode mode, int cap) {
+    IrVerifier.Layout verified = IrVerifier.verify(program, parameters);
+    Specialiser.Result pass = mode == CompileMode.OPTIMISED ? Specialiser.specialise(program, parameters, verified, cap) : Specialiser.none(program, verified);
+    IrVerifier.Layout layout = pass.layout();
+    Program frozen = pass.program();
+    Numbering numbering = Numbering.of(frozen);
+    CallGraph graph = CallGraph.of(frozen, numbering);
+    Facts facts = mode == CompileMode.OPTIMISED ? Facts.optimised(numbering, graph) : Facts.conservative(numbering);
     int[] slots = layout.slots();
-    List<Function> functions = program.functions();
+    List<Function> functions = frozen.functions();
     LiftedFunction[] shells = new LiftedFunction[functions.size()];
     for (int i = 0; i < shells.length; i++) {
       shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
     }
-    Nesting nesting = Nesting.of(program);
+    Nesting nesting = Nesting.of(frozen);
     Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts);
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1]);
@@ -162,7 +177,8 @@ public final class Compiler {
     }
     compiler.region = new Region(null, null, slots[0]);
     compiler.body = -1;
-    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, facts, nesting);
+    Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
+    return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, nesting, record);
   }
 
   /** The op of {@code node}, built in its run form (ADR-0047 #116). */

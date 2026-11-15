@@ -129,15 +129,19 @@ class InlineCostKindsTest {
    * {@code ..} at the node-cap edge: it is the prelude's {@code recurse(.[]?)}, a call with a closure argument, whose
    * measure sums the lifted and the inlined form, so it counts the closure's node twice (two) while the lowering spends
    * one (the architect's ruling on nodes, #114). So 65 535 calls of {@code def f: ..} are inlined and 65 536 are not,
-   * and the longer chain has more functions. The test pins no name and no count (F-106): f's body reaches the prelude's
-   * {@code recurse/0} and {@code recurse/1}, and with the cap the compile's, greedy top-down lifts f and then them,
+   * and the longer chain has more functions. At 65 535 calls there is one answer, every call of f inlined and only the
+   * prelude's recursive {@code r/0} lifted, so that list is pinned. For the longer chain the test pins no name and no
+   * count (F-106): f's body reaches the prelude's {@code recurse/0} and {@code recurse/1}, and with the cap the
+   * compile's, greedy top-down lifts f and then them,
    * lowered with one node left, where another order may lift fewer; every order lifts at least one. Reference jq 1.8.2
    * gives null for {@code ..} on null (.logs/114-jqref-arms.log).
    */
   @Test
   void aRecurseCallMeetsTheCapAtItsMeasuredNodes() {
     int most = (CAP - 2) + 1;
-    int fits = lifted(calls("..", most)).size();
+    List<String> inlined = lifted(calls("..", most));
+    assertThat(inlined).as("lifted functions of %d calls of def f: .., each call of f inlined", most).containsExactly("r/0");
+    int fits = inlined.size();
     assertThat(results(calls("..", most))).as("results of %d calls of def f: .. on null", most).isEqualTo(Collections.nCopies(most, "null"));
     assertThat(lifted(calls("..", most + 1))).as("functions of %d calls of def f: .., %d with %d calls", most + 1, fits, most).hasSizeGreaterThan(fits);
     assertThat(results(calls("..", most + 1))).as("results of %d calls of def f: .. on null", most + 1).isEqualTo(Collections.nCopies(most + 1, "null"));

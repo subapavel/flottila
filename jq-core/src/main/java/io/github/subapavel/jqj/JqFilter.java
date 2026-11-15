@@ -4,7 +4,6 @@ import io.github.subapavel.jqj.internal.explain.Explain;
 import io.github.subapavel.jqj.internal.parse.Resolver;
 import io.github.subapavel.jqj.internal.value.Detach;
 import io.github.subapavel.jqj.query.compile.Executable;
-import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Termination;
@@ -25,15 +24,11 @@ public final class JqFilter {
   /** The declared host variables, sorted: each name's place is its parameter slot (ADR-0038). */
   private final List<String> variables;
 
-  /** The program the executable was compiled from, which {@link #explain()} prints. */
-  private final Program program;
-
-  /** The name of each function of {@link #program}, by its place. */
+  /** The name of each function of the program the executable was compiled from, by its place. */
   private final List<String> names;
 
   JqFilter(Executable executable, Resolver.Resolved resolved, Limits limits, List<String> variables) {
     this.executable = executable;
-    this.program = resolved.program();
     this.names = resolved.names();
     this.limits = limits;
     this.variables = variables;
@@ -74,20 +69,24 @@ public final class JqFilter {
 
   /**
    * The IR this filter runs and its facts (ADR-0016, ADR-0018), the text {@code jqj --explain} prints: unstable and
-   * outside semver. Main, then each function of the program, one line per node: its function ({@code main} or
+   * outside semver. Main, then each function of the frozen program, the specialised one in the optimised compile
+   * (ADR-0045 #117), one line per node: its function ({@code main} or
    * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
    * UTF-8 bytes, then its facts as {@code name=value}. A Call shows {@code call=PLAIN} or {@code call=RECURSIVE} and
    * {@code callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
    * card=<NONE|ONE|AT_MOST_ONE|MANY>}, MANY everywhere in the conservative compile, then whether it may break out,
    * {@code breaks=<true|false>}, true everywhere in the conservative compile, then its run form, {@code
-   * form=<push|value>}, value only where its cardinality is at most one and it may not break out. Each function's lines follow a line
-   * {@code function fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}. The stack units (ADR-0046)
-   * follow: a Call's and a ParamCall's {@code units}, the {@code emitDepth} of each function and closure argument, and
-   * a closing line with {@code callFreeDepth}, {@code starterUnits}, {@code bytesPerUnit} and {@code reserve}. Every
-   * line ends with an LF.
+   * form=<push|value>}, value only where its cardinality is at most one and it may not break out. Each function's
+   * lines follow a line {@code function fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}, and a copy's
+   * with {@code
+   * copyOf=fn<o>}, the original it copies, whose name it has. The stack units (ADR-0046) follow: a Call's and a
+   * ParamCall's {@code units}, the {@code emitDepth} of each function and closure argument, and a closing line with
+   * {@code callFreeDepth}, {@code starterUnits}, {@code bytesPerUnit} and {@code reserve}, then {@code specialised=<n>},
+   * the nodes the copies hold, and {@code refused=<k>}, the keys that did not fit the specialisation cap. Every line
+   * ends with an LF.
    */
   public String explain() {
-    return Explain.of(program, names, executable);
+    return Explain.of(executable, names);
   }
 
   /** The value of each declared variable in {@code bindings}, in the order of its parameter slot. */

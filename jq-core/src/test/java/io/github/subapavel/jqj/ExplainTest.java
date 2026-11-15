@@ -51,6 +51,13 @@ class ExplainTest {
     return found.getFirst().fields().get(1);
   }
 
+  /** The function column of the one function line named {@code name} that is no copy: it shows no {@code copyOf=}. */
+  private static String original(List<Line> lines, String name) {
+    List<Line> found = lines.stream().filter(l -> l.isFunction() && l.fields().get(2).equals(name) && !l.facts().containsKey("copyOf")).toList();
+    assertThat(found).as("the original function %s in %s", name, lines).hasSize(1);
+    return found.getFirst().fields().get(1);
+  }
+
   /** The span {@code s..s+1} of the one-byte call at {@code offset} into the first {@code context} in {@code filter}. */
   private static String at(String filter, String context, int offset) {
     int s = filter.indexOf(context);
@@ -147,7 +154,8 @@ class ExplainTest {
   @Test
   void aParamCallShowsItsParameter() {
     List<Line> lines = lines("def r(f; $n): if . > $n then . else f | r(f; $n) end; 0 | r(. + 1; 3)");
-    String r = function(lines, "r/2");
+    // #117: the optimised compile adds a copy of r/2 for main's closed argument; the original keeps both ParamCalls.
+    String r = original(lines, "r/2");
 
     List<Line> calls = nodes(lines, r).stream().filter(l -> l.fields().get(2).equals("ParamCall")).toList();
     assertThat(calls).as("ParamCalls in r").hasSize(2).allSatisfy(l -> assertThat(l.facts()).containsEntry("param", "0"));

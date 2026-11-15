@@ -82,9 +82,9 @@ class TrampolineTest {
    * How {@code filter} on the document {@code json} ended under {@code engine}, run on a new thread of
    * {@code threadBytes}: its result texts, then {@code ran out}, {@code stopped}, {@code error} and the error value's
    * JSON, or {@code termination} and its cause and budget; with {@code steps}, then the Workspace's steps after the
-   * run, the read's included.
+   * run, the read's included. SpecialiseExplainTest (#117) runs its cases through it too.
    */
-  private static String ended(JqEngine engine, String filter, String json, long threadBytes, boolean steps) {
+  static String ended(JqEngine engine, String filter, String json, long threadBytes, boolean steps) {
     AtomicReference<String> outcome = new AtomicReference<>();
     onStack(
         threadBytes,
