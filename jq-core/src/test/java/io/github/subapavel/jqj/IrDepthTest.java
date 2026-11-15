@@ -571,14 +571,15 @@ class IrDepthTest {
    * <p>The rows by arm and threshold (ExpansionMeasure's own levels and the shift of its parts):
    *
    * <ul>
-   *   <li>leaves, one level: Dot {@code .}, Num {@code 1}, Constant {@code null}, Loc, Format {@code @text}; a Var, a
+   *   <li>leaves, one level: Dot {@code .}, Num {@code 1}, Constant {@code null}, Loc, Format {@code @text}, each alone
+   *       and in brackets (alone, f's call is at least its lifted form's one level, which hides a leaf's count); a Var, a
    *       Break and builtin.jq's {@code $$$$v} (LastRead) as an unused closure argument, where only the leaf's level
    *       decides (a Bind or a label above them would hide it), and an unbuilt native ({@code explode}) the same way;
    *   <li>Paren and Def pass their part's form on: {@code (length)}, and every row with a {@code def};
    *   <li>Comma, one level and its terms log2(terms) down: 2 terms, and 4 and 5 terms (2^k and 2^k+1, k = 2); its own
    *       level never decides, as every term is a level;
    *   <li>Pipe and ArrayCons, one level and their parts one down: {@code length | length}, {@code length | [[.]]},
-   *       {@code [length]}; an empty array, which has no part, is the row where the own level decides;
+   *       {@code [length]}; an empty array, which has no part, is where the own level decides ({@code [[]]});
    *   <li>Binary, four levels and its operands three down: {@code length + length}; the own levels never decide;
    *   <li>Neg, three and its operand one down: {@code -(1)} (own), {@code -(-length)} (shift);
    *   <li>If, Try and Label, three and their parts two down: the rows with {@code [2]}, {@code try length} and {@code
@@ -595,7 +596,11 @@ class IrDepthTest {
    *       in brackets and a computed key in a chain (shift), shorthand, string, interpolated, variable and {@code
    *       $__loc__} keys, 64 and 65 pairs, the two sides of the cap at :500 (three definitions of brackets, as the
    *       object takes 196 levels);
-   *   <li>Recurse: {@code ..}, a call of the prelude's {@code recurse};
+   *   <li>Recurse: {@code ..}, a call of the prelude's {@code recurse}. A wrong measure here (ExpansionMeasure.java:438)
+   *       changes only which call is lifted: {@code ..} lowers to the one call of {@code recurse/0}, whose own fit is
+   *       checked with its own measure where it is lowered, so an enclosing call taken as fitting leaves {@code
+   *       recurse/0} to be lifted instead, one function either way, and no assertion the pin rule allows (F-106) can
+   *       see it, so PIT's survivor there is equivalent; the row is the arm's row, its results and the added function;
    *   <li>Native, two levels, or five and its arguments three down: {@code length}, {@code last(.)} (own), {@code
    *       last([[.]])} (shift), {@code range(length; 1)};
    *   <li>a call of a definition: the inlined form ({@code def g: [[.]]; g}, a closure run inside the inlined body),
@@ -633,6 +638,12 @@ class IrDepthTest {
         Arguments.of("null", 1, "null"),
         Arguments.of("$__loc__", 1, "{\"file\":\"<top-level>\",\"line\":1}"),
         Arguments.of("@text", 1, "\"null\""),
+        // A leaf as f's whole body is hidden by the lifted form's level; in brackets its level decides.
+        Arguments.of("[null]", 2, "[null]"),
+        Arguments.of("[1]", 2, "[1]"),
+        Arguments.of("[$__loc__]", 2, "[{\"file\":\"<top-level>\",\"line\":1}]"),
+        Arguments.of("[@text]", 2, "[\"null\"]"),
+        Arguments.of("[[]]", 2, "[[]]"),
         Arguments.of(". as $x | def g(h): .; g($x)", 10, "null"),
         Arguments.of("label $f | def g(h): .; g(break $f)", 4, "null"),
         Arguments.of(". as $v | def g(h): .; g($$$$v)", 10, "null"),
