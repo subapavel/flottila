@@ -6,9 +6,10 @@ verifier output; newest section first.
 
 ## #113: the calibration matrix, `b` 192 and reserve 286 720 (ADR-0046 #113, K1–K8, L1–L4), 2026-11-15
 
-- Machine: the implementer's container, 4 vCPU, Temurin 25.0.5 at `/opt/temurin-25` (the record's
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Temurin 25.0.5 at `/opt/temurin-25` (the record's
   `jdk` row: Oracle Corporation 25.0.5.0.3+1-LTS-2, `cpus` 4), the only Maven on the host during
-  the committed run. Guard pages 98 304 B (the record's `guard` row).
+  the committed run. Guard pages 98 304 B (the record's `guard` row). The record has no `machine`
+  row: the harness writes `time-ms`, `jdk` and `cpus` only (a carry for #199's re-run).
 - Command, each run: `./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix -Dchecks.skip=true
   -Djacoco.skip=true -Dtest=CalibrationTest#matrixCellsSwitchBeforeTheBackstop`, detached. The 234
   cells: 13 shapes × `-Xint`, C1 (`-Xbatch -XX:TieredStopAtLevel=1`) and warm × platform 512 KiB,
@@ -48,9 +49,35 @@ verifier output; newest section first.
   512 KiB's 12 671, a slope of 33 B per unit at 256 to 512 KiB, so the 220 832 intercept comes from
   the slope, and the next run takes its intercept from its lowest pair (L2, #199).
 - In-process and untagged checks at `dd089ac` (`.logs/113-fixpoint-green.log`): `CalibrationTest`
-  13 tests, 21.85 s, including the 10 000-deep native check `nativesCoverTheDeepestEmit`;
-  `CalibrationRecordTest` 3. The tagged `edgeIsExact` and `heapPerActivationIsRecorded` run in the
-  spec gate and nightly (NOT_RUN here).
+  13 tests, 21.85 s; `CalibrationRecordTest` 3.
+- The 10 000-deep native check (D4), `nativesCoverTheDeepestEmit`: VERIFIED_PASS
+  (`.logs/113-fixpoint-green.log` at `dd089ac`; again in the ticket gate, `.logs/113-gate-surefire.xml`).
+  On DEEP, each native's first use in its own `-Xint` child on a 512 KiB main thread with 512 KiB
+  declared, both modes: `tojson|length` 19998, `[.,.]|sort|length` 2, `def d: [.[]?|d]|sort;
+  d|tojson|length` 19998, reference jq's values (diff/deep.rec deep/native-*).
+- Tagged, at `24e8f1c` (`./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix
+  -Dtest=CalibrationTest#edgeIsExact+heapPerActivationIsRecorded`, `.logs/113-tagged.log`,
+  `.logs/113-tagged-surefire.xml`): `edgeIsExact` VERIFIED_PASS, 574.6 s (the `-Xint` 512 KiB cold
+  edge of each shape and mode gives the reference result at U* and ends STACK, or STACK after a
+  prefix, at U*+1, each the first run of a fresh child); `heapPerActivationIsRecorded`
+  VERIFIED_PASS, 25.1 s.
+- Heap bytes per live call activation (`.logs/113-calibration-heap.tsv`): one child, platform
+  512 KiB, each held generator of `CalibrationCell.HELD` run to n = 100 000 and 2n = 200 000 live
+  activations (both give n twice, as jq-ref), the used heap read at the first emit after two
+  `System.gc()`; bytes = Δused / Δn. The child's `maxMemory` is 3 586 129 920 B.
+
+  | held filter | mode | stackBytes 0 | stackBytes 512 KiB | 4 194 304 × bytes (512 KiB) |
+  |---|---|---|---|---|
+  | F-held-try16 | OPTIMISED | 888 | 887 | 3 720 347 648 |
+  | F-held-try16 | CONSERVATIVE | 887 | 887 | 3 720 347 648 |
+  | C-held | OPTIMISED | 88 | 88 | 369 098 752 |
+  | C-held | CONSERVATIVE | 87 | 87 | 364 904 448 |
+  | F-held | OPTIMISED | 120 | 120 | 503 316 480 |
+  | F-held | CONSERVATIVE | 115 | 119 | 499 122 176 |
+
+  F-held-try16 at `Limits`' default depth of 4 194 304 would need more heap than this child's
+  `maxMemory`; the default stays open for the owner. The harness records only the slope, not the
+  used heap at n and 2n.
 
 ## #111: provisional bytes per unit `b` and reserve (ADR-0046 #111 amendment), 2026-11-15
 

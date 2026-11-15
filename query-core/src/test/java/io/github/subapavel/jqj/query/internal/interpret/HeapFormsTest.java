@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.compile.Executable;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import io.github.subapavel.jqj.query.ir.Alt;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Break;
@@ -81,6 +82,7 @@ class HeapFormsTest {
   }
 
   private static void assertSameAsPushForm(Executable program, String expected, String what) {
+    assertThat(PUSH).as("the push run's declared stack against the reserve: at or under it, the push run starts on the trampoline too").isGreaterThan(StackUnits.reserve());
     String pushed = ran(program, PUSH);
     assertThat(pushed).as("push form of %s", what).startsWith(expected);
     assertThat(ran(program, 0)).as("%s on the trampoline", what).isEqualTo(pushed);

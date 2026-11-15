@@ -60,7 +60,7 @@
             <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
             <param>io.github.subapavel.jqj.OperatorChainTest</param>
-            <!-- The child-JVM classes of #113 (ADR-0046 #113, F-101): a child never runs a mutant. 27.1 s in surefire;
+            <!-- The child-JVM classes of #113 (ADR-0046 #113, F-101): a child never runs a mutant. 21.85 s in surefire;
                  killer of 0 of 3 543 mutants when the only tests. -->
             <param>io.github.subapavel.jqj.CalibrationTest</param>
             <!-- 9.2 s in surefire; killer of 299 of 3 543 mutants when the only tests, all in-process through
