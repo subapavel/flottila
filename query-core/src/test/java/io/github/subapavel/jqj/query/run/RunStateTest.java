@@ -356,6 +356,22 @@ class RunStateTest {
     assertThat(state.ints(1 << 20)).as("scratch for 2^20 after a longer ask").isSameAs(kept);
   }
 
+  /**
+   * The recursion-depth count starts afresh at each begin (ADR-0045 #107): a run that ended with an activation still
+   * entered, as a termination leaves it, does not count it against the next run. Under a budget of 1 the next run's
+   * first enter is taken and its second is over.
+   */
+  @Test
+  void eachBeginCountsTheActivationsAfresh() {
+    RunState state = new RunState();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    state.enter();
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    state.enter();
+    assertBudget(state::enter, Budget.RECURSION_DEPTH, "a second enter under a recursion depth of 1");
+  }
+
   /** Asserts that {@code call} ends the run with {@code Termination(BUDGET, budget)} and the budget's message. */
   private static void assertBudget(ThrowingCallable call, Budget budget, String what) {
     Termination t = assertThatExceptionOfType(Termination.class).as("%s", what).isThrownBy(call).actual();
@@ -369,5 +385,6 @@ class RunStateTest {
       Map.of(
           Budget.STEPS, "Step budget exceeded",
           Budget.DEADLINE, "Deadline exceeded",
+          Budget.RECURSION_DEPTH, "Recursion-depth budget exceeded",
           Budget.BYTES_WRITTEN, "Bytes-written budget exceeded");
 }

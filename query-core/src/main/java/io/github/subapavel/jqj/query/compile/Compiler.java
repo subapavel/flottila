@@ -144,7 +144,7 @@ public final class Compiler {
       case Const c -> new ConstOp(c.value());
       case Pipe p -> new PipeOp(interpreter(p.left()), interpreter(p.right()));
       case Comma c -> new CommaOp(interpreter(c.left()), interpreter(c.right()));
-      case Bind b -> new BindOp(interpreter(b.value()), local(b.slot()), interpreter(b.body()));
+      case Bind b -> new BindOp(interpreter(b.value()), frameCell(b.slot()), interpreter(b.body()));
       case Binds b -> binds(b);
       case Var v -> variable(v);
       case Intrinsic i -> intrinsic(i);
@@ -153,14 +153,14 @@ public final class Compiler {
       case Alt a -> new AltOp(interpreter(a.left()), interpreter(a.right()), a.truth());
       case AltBind a -> altBind(a);
       case Try t -> new TryOp(interpreter(t.body()), interpreter(t.handler()));
-      case Label l -> new LabelOp(local(l.slot()), interpreter(l.body()));
+      case Label l -> new LabelOp(frameCell(l.slot()), interpreter(l.body()));
       case Break b -> {
         At at = at(b.slot());
         yield new BreakOp(at.level(), at.cell());
       }
-      case Reduce r -> new ReduceOp(interpreter(r.init()), local(r.slot()), interpreter(r.each()));
-      case Foreach f -> new ForeachOp(interpreter(f.init()), local(f.slot()), interpreter(f.each()));
-      case Advance a -> new AdvanceOp(local(a.slot()), interpreter(a.update()));
+      case Reduce r -> new ReduceOp(interpreter(r.init()), frameCell(r.slot()), interpreter(r.each()));
+      case Foreach f -> new ForeachOp(interpreter(f.init()), frameCell(f.slot()), interpreter(f.each()));
+      case Advance a -> new AdvanceOp(frameCell(a.slot()), interpreter(a.update()));
       case Call c -> call(c);
       case ParamCall p -> {
         At at = parameter(p.param());
@@ -170,7 +170,7 @@ public final class Compiler {
   }
 
   /** The cell of {@code slot}, which a node of the running frame binds (the verifier keeps a loop's Advance in it). */
-  private int local(int slot) {
+  private int frameCell(int slot) {
     return region.cells() == null ? slot : region.cells().get(slot);
   }
 
@@ -257,7 +257,7 @@ public final class Compiler {
       ops[k] = interpreter(values.get(k));
       tails[k] = tail(values.get(k));
     }
-    return new BindsOp(ops, tails, locals(b.slots()), interpreter(b.body()));
+    return new BindsOp(ops, tails, frameCells(b.slots()), interpreter(b.body()));
   }
 
   /**
@@ -301,14 +301,14 @@ public final class Compiler {
         }
       }
     }
-    return new AltBindOp(interpreter(a.value()), local(a.slot()), matches, from, locals(a.slots()), interpreter(a.body()));
+    return new AltBindOp(interpreter(a.value()), frameCell(a.slot()), matches, from, frameCells(a.slots()), interpreter(a.body()));
   }
 
   /** The cells of {@code slots}, each bound by a node of the running frame. */
-  private int[] locals(List<Integer> slots) {
+  private int[] frameCells(List<Integer> slots) {
     int[] cells = new int[slots.size()];
     for (int i = 0; i < cells.length; i++) {
-      cells[i] = local(slots.get(i));
+      cells[i] = frameCell(slots.get(i));
     }
     return cells;
   }
