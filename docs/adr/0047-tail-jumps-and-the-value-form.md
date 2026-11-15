@@ -85,6 +85,11 @@ grilling-adviser's rulings C1–C4 and R1, made for the owner under the delegati
   the tail emitter there.
 - Bullet 3's "replaces nothing" therefore holds only for CONSERVATIVE and path variants. In both of
   those the tail emitter stays as it is.
+- `TailDepthTest`'s Label control (ADR-0039) holds in CONSERVATIVE only. In OPTIMISED the same run
+  fits a 512 KiB thread, because a Label that no outer Break names is value-eligible. The OPTIMISED
+  control is a fence that breaks to an outer label (`Label(k, If(no, Break(outer), cond))`), which
+  may break out and so overflows in both modes. This re-pins behaviour this amendment changes, with
+  a stricter OPTIMISED assertion; it is not a weakening (grilling-adviser, 2026-11-15).
 
 **`RunForm` (C4)**
 - `RunForm {PUSH, VALUE}` is a public enum in `query.compile`, read as

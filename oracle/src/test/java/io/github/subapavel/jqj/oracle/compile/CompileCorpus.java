@@ -3,6 +3,7 @@ package io.github.subapavel.jqj.oracle.compile;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import io.github.subapavel.jqj.JqEngine;
+import io.github.subapavel.jqj.oracle.RunnerThread;
 import io.github.subapavel.jqj.oracle.diff.Corpus;
 import io.github.subapavel.jqj.oracle.diff.DiffCase;
 import io.github.subapavel.jqj.oracle.diff.DiffCorpus;
@@ -58,11 +59,11 @@ final class CompileCorpus {
     List<Case> all = new ArrayList<>();
     for (JqTestCase c : JqTestCorpus.cases()) {
       int hash = c.id().indexOf('#') + 1;
-      all.add(new Case(c.id(), c.id().substring(hash, hash + 12), hook -> CompileModes.api(c, hook)));
+      all.add(new Case(c.id(), c.id().substring(hash, hash + 12), hook -> RunnerThread.call(() -> CompileModes.api(c, hook))));
     }
     for (DiffCorpus.Entry e : Corpus.cases()) {
       DiffCase c = e.c();
-      all.add(new Case(c.id(), c.def(), hook -> CompileModes.cli(c, scratch, hook)));
+      all.add(new Case(c.id(), c.def(), hook -> RunnerThread.call(() -> CompileModes.cli(c, scratch, hook))));
     }
     all.sort(Comparator.comparing(Case::id));
     return all;

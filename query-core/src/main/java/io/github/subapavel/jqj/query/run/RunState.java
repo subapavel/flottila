@@ -75,10 +75,16 @@ public final class RunState {
   private long depth;
 
   /**
-   * The stack bytes the last begin declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any: not a budget,
-   * and nothing here checks against it.
+   * The stack bytes the last begin declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any and after a
+   * begin that declares none: not a budget, and nothing here checks against it.
    */
   private long stackBytes = UNLIMITED;
+
+  /** The stack units the live push-form calls hold (ADR-0046 #111 amendment): each {@link #addUnits} not removed. */
+  private long units;
+
+  /** The run's unit limit {@code U_f} (ADR-0046 #111 amendment), {@code Long.MAX_VALUE} until a run sets it. */
+  private long unitLimit = UNLIMITED;
 
   /**
    * The last label token handed out since the last begin: the tokens of a run count from 1 (ADR-0039). A long, so no
@@ -141,8 +147,10 @@ public final class RunState {
   }
 
   /**
-   * {@link #begin(long, long, long, long, long, long)} with the declared stack {@code Long.MAX_VALUE}, so main runs on
-   * the Java stack.
+   * {@link #begin(long, long, long, long, long, long)} declaring no stack, {@code Long.MAX_VALUE}: the run's unit limit
+   * is out of any call's reach, so main and every call run in push form, and only the StackOverflowError backstop ends
+   * a run that exhausts its thread (ADR-0046 #111). An in-suite test declares a stack on a thread four times as large
+   * (ADR-0046 "Where the stack is tested").
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
@@ -155,7 +163,9 @@ public final class RunState {
    * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
    * the bytes built (ADR-0035), the bytes written and the recursion depth, the live call activations (ADR-0045 #107);
    * then the stack bytes the run declares (ADR-0030 #109 amendment), which {@link #stackBytes()} reads and which are no
-   * budget: at 0 main and every body run on the trampoline (ADR-0046). A primed read's ticks count against it, the
+   * budget: the run derives its unit limit from them, and at 0, zero bytes, never unlimited, main and every body run on
+   * the trampoline (ADR-0046 and its #111 amendment); the stack units count from zero. A primed read's ticks count
+   * against it, the
    * writer's outside a run do not; without a primed read it starts from no tick. The bytes built and written and the
    * live activations count from zero, the label tokens from 1, and no break is marked (ADR-0008).
    *
@@ -181,6 +191,8 @@ public final class RunState {
     depthBudget = recursionDepth;
     depth = 0;
     this.stackBytes = stackBytes;
+    units = 0;
+    unitLimit = UNLIMITED;
     labels = 0;
     breakTo = 0;
     start = clock.getAsLong();
@@ -217,6 +229,33 @@ public final class RunState {
   /** The call activation of the last {@link #enter} not left yet ends. */
   public void leave() {
     depth--;
+  }
+
+  /**
+   * Sets the running run's unit limit {@code U_f} (ADR-0046 #111 amendment), which the run derives at its start from
+   * its declared stack; {@link #begin} sets it to {@code Long.MAX_VALUE}, which no call reaches.
+   */
+  public void limitUnits(long unitLimit) {
+    this.unitLimit = unitLimit;
+  }
+
+  /**
+   * A push-form call holds {@code units} more stack units until {@link #removeUnits} gives them back (ADR-0046 #111
+   * amendment): true when the units held now reach the unit limit, where the call starts the trampoline.
+   */
+  public boolean addUnits(long units) {
+    this.units += units;
+    return this.units >= unitLimit;
+  }
+
+  /** A push-form call ends and gives back the {@code units} it held. */
+  public void removeUnits(long units) {
+    this.units -= units;
+  }
+
+  /** The stack units the live push-form calls hold now: 0 after each {@link #begin}. */
+  public long units() {
+    return units;
   }
 
   /**

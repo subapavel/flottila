@@ -59,6 +59,10 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     A value-form call's activation and units end when its `eval` returns, so in OPTIMISED the
     recursion-depth verdict can depend on `stackBytes` (C2). Compile mode becomes a calibration
     dimension (R1). Records: ADR-0047 and ADR-0046 "Amendment (ticket #116)".
+    - The never-weaken rule: `TailDepthTest`'s Label control expected an overflow in both modes.
+      In OPTIMISED it now expects the run to fit, and a new control (a fence that breaks to an
+      outer label) expects the overflow in both modes. The adviser reads this as a re-pin of
+      behaviour the ADR changes, not a weakening; a "no" restores the old pin and reopens C1.
   - #117 (specialisation), with records to follow:
     - S1: the lifted functions of PLAIN calls get copies too (GLOSSARY, F-54).
     - S2: copies are ordered by the Source of the placing call, then by discovery (ADR-0045).

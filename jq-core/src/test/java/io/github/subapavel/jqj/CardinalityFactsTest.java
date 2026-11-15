@@ -127,8 +127,8 @@ class CardinalityFactsTest {
   @ParameterizedTest(name = "{argumentSetName}")
   @MethodSource("conservative")
   void conservativeCardIsMany(String filter) {
-    List<Line> conservative = lines(JqEngine.builder().compileMode(CompileMode.CONSERVATIVE).build(), filter).stream().filter(l -> !l.isFunction()).toList();
-    List<Line> optimised = lines(JqEngine.builder().build(), filter).stream().filter(l -> !l.isFunction()).toList();
+    List<Line> conservative = lines(JqEngine.builder().compileMode(CompileMode.CONSERVATIVE).build(), filter).stream().filter(Line::isNode).toList();
+    List<Line> optimised = lines(JqEngine.builder().build(), filter).stream().filter(Line::isNode).toList();
 
     assertThat(conservative).as("node lines of %s under CONSERVATIVE", filter).isNotEmpty().allSatisfy(l -> assertThat(l.facts()).as("facts of %s", l.fields()).containsEntry("card", "MANY"));
     assertThat(conservative).extracting(Line::fields).as("node lines of %s under both modes", filter).isEqualTo(optimised.stream().map(Line::fields).toList());
