@@ -4,20 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-api</artifactId>
+  <artifactId>rail8-api</artifactId>
   <packaging>jar</packaging>
-  <name>Flottila :: api</name>
+  <name>Rail8 :: api</name>
   <description>Public types every extension sees: Envelope, Body, Step, Stage, Component SPI, BlobStore, Runtime. JDK plus Vert.x Future/Buffer/streams only.</description>
 
   <properties>
-    <flottila.coverage.line>0.90</flottila.coverage.line>
-    <flottila.coverage.branch>0.90</flottila.coverage.branch>
+    <rail8.coverage.line>0.90</rail8.coverage.line>
+    <rail8.coverage.branch>0.90</rail8.coverage.branch>
   </properties>
 
   <build>

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Deploys a package directory to a Flottila node (docs/QUICKSTART.md): zips the directory with package.yaml at the archive
-# root and PUTs it to ${FLOTTILA_ADMIN:-http://localhost:8081}/admin/packages/<name>. Prints the node's answer; exits 0 on a
+# Deploys a package directory to a Rail8 node (docs/QUICKSTART.md): zips the directory with package.yaml at the archive
+# root and PUTs it to ${RAIL8_ADMIN:-http://localhost:8081}/admin/packages/<name>. Prints the node's answer; exits 0 on a
 # 2xx answer, 1 on any other, 2 on a usage error (curl's own code when the node cannot be reached).
-# <name> defaults to the directory's name and must equal the name in package.yaml. FLOTTILA_ADMIN_TOKEN, when set, is sent as
+# <name> defaults to the directory's name and must equal the name in package.yaml. RAIL8_ADMIN_TOKEN, when set, is sent as
 # the bearer token (from a file in a private temp directory, never on curl's command line). Needs curl, and zip (else the JDK's jar).
 #
 #   deploy/quickstart/deploy.sh examples/demo
@@ -19,7 +19,7 @@ if [ ! -f "$dir/package.yaml" ]; then
 fi
 dir=$(cd "$dir" && pwd)
 name=${2:-$(basename "$dir")}
-admin=${FLOTTILA_ADMIN:-http://localhost:8081}
+admin=${RAIL8_ADMIN:-http://localhost:8081}
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -29,8 +29,8 @@ else
     jar --create --no-manifest --file "$work/package.zip" -C "$dir" .
 fi
 
-if [ -n "${FLOTTILA_ADMIN_TOKEN:-}" ]; then
-    printf 'Authorization: Bearer %s\n' "$FLOTTILA_ADMIN_TOKEN" > "$work/headers"
+if [ -n "${RAIL8_ADMIN_TOKEN:-}" ]; then
+    printf 'Authorization: Bearer %s\n' "$RAIL8_ADMIN_TOKEN" > "$work/headers"
 else
     : > "$work/headers"
 fi

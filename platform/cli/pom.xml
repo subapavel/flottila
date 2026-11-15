@@ -4,28 +4,28 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-cli</artifactId>
+  <artifactId>rail8-cli</artifactId>
   <packaging>jar</packaging>
-  <name>Flottila :: cli</name>
-  <description>flottila validate | test | deploy: the outermost module, nothing depends on it (D-079).</description>
+  <name>Rail8 :: cli</name>
+  <description>rail8 validate | test | deploy: the outermost module, nothing depends on it (D-079).</description>
 
   <build>
     <plugins>
       <plugin>
-        <!-- the runnable cli (D-079): `java -jar target/flottila-cli-<v>.jar` (bin/flottila) runs Cli; the manifest names it and a
-             lib/ class path, which copy-dependencies below fills, as flottila-runtime's jar does; no shading -->
+        <!-- the runnable cli (D-079): `java -jar target/rail8-cli-<v>.jar` (bin/rail8) runs Cli; the manifest names it and a
+             lib/ class path, which copy-dependencies below fills, as rail8-runtime's jar does; no shading -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
           <archive>
             <manifest>
-              <mainClass>io.flottila.cli.Cli</mainClass>
+              <mainClass>io.rail8.cli.Cli</mainClass>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
               <useUniqueVersions>false</useUniqueVersions>
@@ -55,26 +55,26 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-api</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-testkit</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-testkit</artifactId>
     </dependency>
     <!-- cli is the outermost module (F-16, D-079): the node's Deployments and what Main.shipped() wires (components, steps) -->
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-runtime</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-runtime</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-schemas</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-schemas</artifactId>
     </dependency>
     <!-- the mock component, for the flow-test runner (P2-03b); a node never loads it (runtime does not depend on it) -->
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-mock</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-mock</artifactId>
     </dependency>
     <!-- DeployCommandIT: a node in this JVM on a Testcontainers Postgres (-Pit) -->
     <dependency>

@@ -136,7 +136,7 @@ runtime `DeliveryModesTest` (http level), `DeliveryModesIT` (Postgres), http `Ht
 `api.BodyKind`, `StepFactory.bodyKind()`, `Expressions.bodyKind()` / `parts()`; `FlowBuilder`
 refuses a WHOLE step over the tree limit without a split before it and builds `split` (`xpath`)
 over the language's `parts` — children at the parent's step + 1 with their own ids, parts as
-`BlobKey.attachment(parentId, step + 1, "split-<i>")`; `flottila-step-validate`
+`BlobKey.attachment(parentId, step + 1, "split-<i>")`; `rail8-step-validate`
 `XsdValidate().steps()` → `xsd` (`schema`), `XsdValidationException(messageId, step)`; the demo
 flow's first step is `xsd` over `flows/invoice.xsd` and runtime tests register
 `Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream())`.
@@ -238,12 +238,12 @@ consider `Meter` on `Runtime`.
 
 ## Pipeline (P1-03, D-043)
 
-Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
+Step SPI in `rail8-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
 `core.flow.FlowBuilder(runtime, factories, languages, endpoints).build(def, baseDir)` with
 built-ins to/route/filter/extractKey/validate; `core.pattern` Retry/Route/Filter/Split;
-`flottila-step-xslt` `SaxonXml` (`steps()`, `languages()`) on Saxon-HE 12.4; testkit
+`rail8-step-xslt` `SaxonXml` (`steps()`, `languages()`) on Saxon-HE 12.4; testkit
 `RecordingComponent(scheme)` is the mock binding (`sentTo`, `replyWith`, `failNext`),
-`FakeTimer.nextDelay()` drives backoffs. End-to-end reference: flottila-runtime
+`FakeTimer.nextDelay()` drives backoffs. End-to-end reference: rail8-runtime
 `flow/InvoiceSyncFlowTest` (demo package through Documents/Schemas → FlowDefinition → FlowBuilder
 → FakeRuntime). Left for later: producer `close` (P1-06), deploy-time `configSchema` check, the
 xslt cache keys the main file's content only — an `xsl:include` change alone is not recompiled
@@ -288,14 +288,14 @@ VM after a restart: `sudo pg_ctlcluster 16 main start`, `sudo dockerd &`. Reacto
 by dependencies): api → testkit → core → schemas → steps → runtime (test-depends on schemas,
 step-xslt, step-validate and component-http) → components → cli → archtest → bench. Every task
 commit: `mvn -B -ntp verify -Pit`, then `python3 ci/coverage_check.py --write`. Scoped PIT:
-`mvn -pl :flottila-api,:flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage`
+`mvn -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage`
 (floor 80 %). New code must be covered to the module's level (FIX-3) — the band bit once.
 In the cloud session the services die with the tool call that started them unless detached:
 `sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &` and
 `sudo -n setsid pg_ctlcluster 16 main start`. A container restart kills both and every background agent; the working tree survives.
 `mvn install -DskipTests -Pit` still ran the ITs (2026-11-15, agent/work/BRAND-1-A-fix-install.log) — never assume `-Pit` is quiet.
 Waiting for Maven to end from inside `bash -c`: `pgrep -f '[p]lexus.classworlds'` — the unbracketed pattern matches its own command line
-and the loop never ends. JFR (FIX-108, D-094): the repository is java.io.tmpdir; a read-only root needs `-XX:FlightRecorderOptions:repository=<dir>`; `RecordedEvent.getThread()` can be null under load; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests) — hand-mutate it. `-pl :flottila-runtime` needs `-am` (no installed
+and the loop never ends. JFR (FIX-108, D-094): the repository is java.io.tmpdir; a read-only root needs `-XX:FlightRecorderOptions:repository=<dir>`; `RecordedEvent.getThread()` can be null under load; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests) — hand-mutate it. `-pl :rail8-runtime` needs `-am` (no installed
 snapshots). Mutant runs (a reviewer's "would this test fail if…"): after `sed -i` on a source,
 restore it with `cp` or `touch` it — `mv backup file` keeps the backup's older mtime, Maven's
 incremental compile then keeps the mutated class in `target/classes` and the next "clean" run
@@ -326,7 +326,7 @@ The kept `@Order` (fresh database → misconfiguration → classpath) is the one
 
 ### dockerd can die mid-session, and the symptom looks like 106 code failures (2026-11-15)
 
-A `clean verify -Pit` reported 128 run / 106 errors in `flottila-runtime`, every one
+A `clean verify -Pit` reported 128 run / 106 errors in `rail8-runtime`, every one
 `Could not find a valid Docker environment` / `Cannot connect to the Docker daemon at
 unix:///var/run/docker.sock`. Nothing was wrong with the code: an earlier `-Pit` on the same
 commit had run runtime's 1563 tests with 2 failures. The daemon had simply exited — the socket
@@ -360,7 +360,7 @@ the path either way and `-I` is what keeps a planted module out:
 ## Reference package, fixtures, tags
 
 examples/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
-invoice.xsd, fixtures/); validated by flottila-schemas tests. Add a negative fixture under
+invoice.xsd, fixtures/); validated by rail8-schemas tests. Add a negative fixture under
 platform/schemas/src/test/resources/invalid/<kind>/ for every new schema rule. ArchUnit rules in
 platform/archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 done (D-074: complete/fast path/hold fenced by the attempts token) in the Fixes section.
 

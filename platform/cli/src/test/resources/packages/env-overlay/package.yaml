@@ -1,4 +1,4 @@
-# Flottila package: the namespace and authorization unit (ARCHITECTURE §7). Validated by package.schema.json.
+# Rail8 package: the namespace and authorization unit (ARCHITECTURE §7). Validated by package.schema.json.
 schemaVersion: 1
 kind: package
 name: demo

@@ -1,4 +1,4 @@
-# Flottila
+# Rail8
 
 Open-source enterprise integration platform where **monitoring is the product**: every message,
 every step and every payload is captured, searchable and replayable — and the runtime also
@@ -24,9 +24,9 @@ Where to look:
 
 Build at the current state: JDK 25 and Maven 3.9, `mvn -B -ntp verify` for the unit tests and
 `mvn -B -ntp verify -Pit` to include the Testcontainers tests (Docker required). Modules:
-`flottila-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
+`rail8-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
 `-archtest`. The milestone-1 prototype survives as tag `proto-m1` and in the history of the files
 that moved; the demo flow it ran lives in `examples/demo/` until P0-12 converts it.
 
-"Flottila" is a working name. Contributions are accepted under the Developer Certificate of
+Rail8 (R8 for short) is the product's name. Contributions are accepted under the Developer Certificate of
 Origin: sign your commits (`git commit -s`).

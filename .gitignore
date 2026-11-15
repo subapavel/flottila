@@ -2,7 +2,7 @@ target/
 .idea/
 *.iml
 *.body
-flottila-*.body
+rail8-*.body
 *.log
 bench/out/
 .claude/settings.local.json

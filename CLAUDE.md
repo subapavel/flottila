@@ -1,4 +1,4 @@
-# Flottila — rules for Claude
+# Rail8 — rules for Claude
 
 Read before any work: this file, `AGENTS.md`, `agent/HANDOFF.md` and the task's row in
 `agent/BACKLOG.md`. `docs/WORKFLOW.md` §1 is the loop. `docs/ARCHITECTURE.md` (binding design) is
@@ -59,8 +59,8 @@ build; this file holds the rules that keep the code and the way of working align
 - A test asserts observable behaviour. Mocks only at the SPI or store boundary, never of the class
   under test. No `@Disabled`, no skipped cases, no swallowed exceptions, no `assertTrue(true)`, no
   sleep-based timing — a fake clock drives backoff, leases and deadlines.
-- Coverage floors (JaCoCo, line and branch): `flottila-api` and `flottila-core` 90 %;
-  `flottila-runtime`, components and steps 75 % with the Testcontainers tests counted. No decrease
+- Coverage floors (JaCoCo, line and branch): `rail8-api` and `rail8-core` 90 %;
+  `rail8-runtime`, components and steps 75 % with the Testcontainers tests counted. No decrease
   on any push. Mutation score (PIT) on `api` and `core` ≥ 80 %. Floors are phase-gate conditions.
 - Property tests (jqwik) for the batcher, admission and WorkQueue ordering.
 - A blocked platform thread in a test is a failure.

@@ -1,4 +1,4 @@
-# P2-03a fixture: the tree `flottila validate` prints — a root artifact, a folder.yaml with both fields, one with a description
+# P2-03a fixture: the tree `rail8 validate` prints — a root artifact, a folder.yaml with both fields, one with a description
 # only, a nested folder without one.
 schemaVersion: 1
 kind: package

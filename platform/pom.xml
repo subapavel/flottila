@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.flottila</groupId>
-  <artifactId>flottila</artifactId>
+  <groupId>io.rail8</groupId>
+  <artifactId>rail8-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>Flottila</name>
+  <name>Rail8</name>
   <description>Open-source enterprise integration platform where monitoring is the product.</description>
   <url>https://github.com/subapavel/flottila</url>
   <licenses>
@@ -19,7 +19,7 @@
     </license>
   </licenses>
 
-  <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by flottila-archtest): api <- core <- runtime;
+  <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by rail8-archtest): api <- core <- runtime;
        components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit. -->
   <modules>
     <module>api</module>
@@ -63,11 +63,11 @@
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
 
     <!-- coverage floors (CLAUDE.md): api/core 90 %, everything else 75 %, line and branch.
-         Modules override flottila.coverage.* -->
-    <flottila.coverage.line>0.75</flottila.coverage.line>
-    <flottila.coverage.branch>0.75</flottila.coverage.branch>
+         Modules override rail8.coverage.* -->
+    <rail8.coverage.line>0.75</rail8.coverage.line>
+    <rail8.coverage.branch>0.75</rail8.coverage.branch>
     <!-- PIT mutation floor for api and core (phase-gate condition) -->
-    <flottila.mutation.threshold>80</flottila.mutation.threshold>
+    <rail8.mutation.threshold>80</rail8.mutation.threshold>
 
     <!-- surefire: JaCoCo's prepare-agent prepends its -javaagent to this property -->
     <argLine></argLine>
@@ -77,68 +77,68 @@
     <dependencies>
       <!-- reactor modules -->
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-api</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-core</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-runtime</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-runtime</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-component-http</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-component-http</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-component-mock</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-component-mock</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-component-sftp</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-component-sftp</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-step-xslt</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-step-xslt</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-step-validate</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-step-validate</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-testkit</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-testkit</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-cli</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-cli</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-sim</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-sim</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-schemas</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-schemas</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.flottila</groupId>
-        <artifactId>flottila-bench</artifactId>
+        <groupId>io.rail8</groupId>
+        <artifactId>rail8-bench</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -320,12 +320,12 @@
                       <limit>
                         <counter>LINE</counter>
                         <value>COVEREDRATIO</value>
-                        <minimum>${flottila.coverage.line}</minimum>
+                        <minimum>${rail8.coverage.line}</minimum>
                       </limit>
                       <limit>
                         <counter>BRANCH</counter>
                         <value>COVEREDRATIO</value>
-                        <minimum>${flottila.coverage.branch}</minimum>
+                        <minimum>${rail8.coverage.branch}</minimum>
                       </limit>
                     </limits>
                   </rule>
@@ -335,7 +335,7 @@
           </executions>
         </plugin>
         <plugin>
-          <!-- not bound to a phase: `mvn -pl :flottila-api,:flottila-core org.pitest:pitest-maven:mutationCoverage`
+          <!-- not bound to a phase: `mvn -pl :rail8-api,:rail8-core org.pitest:pitest-maven:mutationCoverage`
                (nightly `mutation` CI job, scoped runs per task for the reviewer) -->
           <groupId>org.pitest</groupId>
           <artifactId>pitest-maven</artifactId>
@@ -348,9 +348,9 @@
             </dependency>
           </dependencies>
           <configuration>
-            <targetClasses><param>io.flottila.*</param></targetClasses>
-            <targetTests><param>io.flottila.*</param></targetTests>
-            <mutationThreshold>${flottila.mutation.threshold}</mutationThreshold>
+            <targetClasses><param>io.rail8.*</param></targetClasses>
+            <targetTests><param>io.rail8.*</param></targetTests>
+            <mutationThreshold>${rail8.mutation.threshold}</mutationThreshold>
             <outputFormats><param>XML</param><param>HTML</param></outputFormats>
             <timestampedReports>false</timestampedReports>
             <threads>4</threads>

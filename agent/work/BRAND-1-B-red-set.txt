@@ -1,0 +1,2 @@
+io.rail8.runtime.flow.StepBodiesIT.aRerunOfAStampingStepKeepsEachAttemptsRowAndAReplayAfterARestartReadsAttemptTwosBytes | log line 58158
+org.opentest4j.AssertionFailedError: not within 20 s: fixture: 5 rows of sb-rerun

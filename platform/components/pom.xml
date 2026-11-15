@@ -4,15 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-components</artifactId>
+  <artifactId>rail8-components</artifactId>
   <packaging>pom</packaging>
-  <name>Flottila :: components</name>
+  <name>Rail8 :: components</name>
   <description>One module per scheme; each depends on api only and ships with its mock.</description>
 
   <modules>

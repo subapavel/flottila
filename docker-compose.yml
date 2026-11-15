@@ -1,6 +1,6 @@
-# The local quickstart (docs/QUICKSTART.md): Postgres, one Flottila node and the demo's partner echo. Build the runtime on the
-# host first: mvn -B -ntp -q package -DskipTests -pl :flottila-runtime -am. The node migrates the schema itself (Flyway).
-# Postgres is also published on loopback (127.0.0.1:5432, or FLOTTILA_PG_HOST_PORT) for psql and local tools. The database and
+# The local quickstart (docs/QUICKSTART.md): Postgres, one Rail8 node and the demo's partner echo. Build the runtime on the
+# host first: mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am. The node migrates the schema itself (Flyway).
+# Postgres is also published on loopback (127.0.0.1:5432, or RAIL8_PG_HOST_PORT) for psql and local tools. The database and
 # the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
 services:
   postgres:
@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: flottila
       POSTGRES_PASSWORD: flottila
     ports:
-      - "127.0.0.1:${FLOTTILA_PG_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${RAIL8_PG_HOST_PORT:-5432}:5432"
     volumes:
       # the 18 image keeps PGDATA at /var/lib/postgresql/18/docker and refuses a mount at .../data; a 16/17 volume is not reused
       - flottila-pg:/var/lib/postgresql
@@ -43,26 +43,26 @@ services:
     build:
       context: .
       dockerfile: deploy/quickstart/Dockerfile
-    image: flottila-quickstart:local
+    image: rail8-quickstart:local
     environment:
-      FLOTTILA_ENV: dev
-      FLOTTILA_NODE_ID: quickstart
+      RAIL8_ENV: dev
+      RAIL8_NODE_ID: quickstart
       # the body journal's master key, generated once into <data dir>/journal/MASTER beside the data it protects: a dev stack of
-      # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes FLOTTILA_JOURNAL_KEY_FILE
-      FLOTTILA_JOURNAL_KEY_GENERATE: "true"
-      FLOTTILA_PG_HOST: postgres
-      FLOTTILA_PG_PASSWORD: flottila
+      # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes RAIL8_JOURNAL_KEY_FILE
+      RAIL8_JOURNAL_KEY_GENERATE: "true"
+      RAIL8_PG_HOST: postgres
+      RAIL8_PG_PASSWORD: flottila
       # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
-      # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and FLOTTILA_PG_SSL_ROOT_CERT
-      FLOTTILA_PG_SSL_MODE: disable
-      FLOTTILA_ADMIN_HOST: 0.0.0.0
+      # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and RAIL8_PG_SSL_ROOT_CERT
+      RAIL8_PG_SSL_MODE: disable
+      RAIL8_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
-      FLOTTILA_ADMIN_TOKEN: ${FLOTTILA_ADMIN_TOKEN:-}
+      RAIL8_ADMIN_TOKEN: ${RAIL8_ADMIN_TOKEN:-}
       # the demo's sftp-inbox names its password and host key as secret:// references, so the node needs both to deploy the demo. This
       # stack has no SFTP server: placeholders (a well-formed fake fingerprint); that endpoint cannot connect, the sync flow is unaffected
       # (the working SFTP flow is in deploy/compose)
-      FLOTTILA_SECRET_SFTP_PASSWORD: placeholder
-      FLOTTILA_SECRET_SFTP_HOST_KEY: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      RAIL8_SECRET_SFTP_PASSWORD: placeholder
+      RAIL8_SECRET_SFTP_HOST_KEY: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     depends_on:
       netns:
         condition: service_healthy

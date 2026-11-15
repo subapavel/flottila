@@ -4,67 +4,67 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-archtest</artifactId>
+  <artifactId>rail8-archtest</artifactId>
   <packaging>jar</packaging>
-  <name>Flottila :: archtest</name>
+  <name>Rail8 :: archtest</name>
   <description>ArchUnit rules over every module: dependency direction, allowed Vert.x surface in api/core, no cycles.</description>
 
   <dependencies>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-api</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-api</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-core</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-runtime</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-runtime</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-http</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-http</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-mock</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-mock</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-step-xslt</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-step-xslt</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-step-validate</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-step-validate</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-testkit</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-cli</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-cli</artifactId>
       <scope>test</scope>
     </dependency>
     <!-- the simulation harness (F-36, D-143): its src/main is checked by SIM_DEPENDS_ON_API_CORE_TESTKIT and NOTHING_DEPENDS_ON_SIM -->
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-sim</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-sim</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

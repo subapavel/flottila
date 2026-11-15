@@ -8,9 +8,9 @@ of the milestone-1 state. Files that stay are moved with `git mv` into their new
 history survives; files that are replaced are deleted in the commit that lands their replacement.
 During Phase 0 the old single-module tree lived on as module `flottila-m1` so the build stayed green
 until the last kept file had moved; task P0-09 removed the module on 2026-10-18. Where things went:
-Headers/Props/Key/Keys/Views → `flottila-api` (git mv, P0-05); Envelope/Body/Part rewritten in
-api (D-024); the batcher → `flottila-core` + `flottila-runtime` (P0-06); the WorkQueue claim SQL →
-`flottila-runtime` (P0-07); `db/init.sql` → `deploy/postgres/V1__m1_schema.sql` (P0-08);
+Headers/Props/Key/Keys/Views → `rail8-api` (git mv, P0-05); Envelope/Body/Part rewritten in
+api (D-024); the batcher → `rail8-core` + `rail8-runtime` (P0-06); the WorkQueue claim SQL →
+`rail8-runtime` (P0-07); `db/init.sql` → `deploy/postgres/V1__m1_schema.sql` (P0-08);
 `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` → `examples/demo/` (P0-09,
 converted in P0-12); `bench/bench.py` stays for P0-10 (it drives an HTTP ingress that does not exist yet; P0-10
 decides whether it is rewritten or history-only); the root `docker-compose.yml` stays until
@@ -32,14 +32,14 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 
 | File(s) at `proto-m1` | New home (ARCHITECTURE §12) | Notes |
 | --- | --- | --- |
-| `core/Envelope`, `Headers`, `Props`, `Key`, `Keys`, `Part`, `Views` | `flottila-api` | ARCHITECTURE §5 is this design. Package rename only. |
-| `core/Hashing` | `flottila-api` | xxh3-64 via zero-allocation-hashing, SHA-256 fallback. |
-| `runtime/BatchingWriter` + `BatchingWriterTest` | logic in `flottila-core`, Postgres implementation in `flottila-runtime` | Adaptive flush, N commits in flight, per-batch completion, bounded admission with overflow → rejection. Port `Uni` → Vert.x 5 `Future`; keep every test case; add the jqwik property test. |
-| `runtime/WorkQueue` claim SQL + `WorkQueueTest` | `flottila-runtime` | `UPDATE … WHERE seq IN (SELECT … FOR UPDATE SKIP LOCKED)` taking the oldest row per partition key without an active lease; lease-expiry redelivery; two-worker ordering test. Add the same-key fast path (§7). |
+| `core/Envelope`, `Headers`, `Props`, `Key`, `Keys`, `Part`, `Views` | `rail8-api` | ARCHITECTURE §5 is this design. Package rename only. |
+| `core/Hashing` | `rail8-api` | xxh3-64 via zero-allocation-hashing, SHA-256 fallback. |
+| `runtime/BatchingWriter` + `BatchingWriterTest` | logic in `rail8-core`, Postgres implementation in `rail8-runtime` | Adaptive flush, N commits in flight, per-batch completion, bounded admission with overflow → rejection. Port `Uni` → Vert.x 5 `Future`; keep every test case; add the jqwik property test. |
+| `runtime/WorkQueue` claim SQL + `WorkQueueTest` | `rail8-runtime` | `UPDATE … WHERE seq IN (SELECT … FOR UPDATE SKIP LOCKED)` taking the oldest row per partition key without an active lease; lease-expiry redelivery; two-worker ordering test. Add the same-key fast path (§7). |
 | `db/init.sql` | `deploy/postgres/` as migration V1 | `messages`, `payloads(hash PK)`, `message_keys`, `work`, `dlq(body_ref, no FK)`. Later migrations add `versions`, `processed_ids`, `aggregates`, `routing_table`, `partner_directory`, `flows`, `wallet`, `audit`. |
-| `runtime/Flow` replay numbering | `flottila-core` | Stage k consumes step k, produces step k+1; stage 0 = ingress identity; replay from k = run stages k..n with `REPLAY_OF`. Kept verbatim. |
-| `runtime/Dlq*` semantics | `flottila-runtime` | Park by reference; a park never fails on write ordering; overload rejections and at-most-once drops never park. |
-| `Component.Consumer.durableIngress` semantics | `flottila-api` consumer contract | The durable save before an irreversible ACK belongs to the consumer, with a save timeout → NACK. Reimplemented on `Function<Envelope, Future<Ack>>`. |
+| `runtime/Flow` replay numbering | `rail8-core` | Stage k consumes step k, produces step k+1; stage 0 = ingress identity; replay from k = run stages k..n with `REPLAY_OF`. Kept verbatim. |
+| `runtime/Dlq*` semantics | `rail8-runtime` | Park by reference; a park never fails on write ordering; overload rejections and at-most-once drops never park. |
+| `Component.Consumer.durableIngress` semantics | `rail8-api` consumer contract | The durable save before an irreversible ACK belongs to the consumer, with a save timeout → NACK. Reimplemented on `Function<Envelope, Future<Ack>>`. |
 | `bench/bench.py`, `bench/RESULTS.md` | `bench/` | Baseline; rerun natively (cloud VM) in P0-10 and recorded as the Phase 0 baseline. |
 | `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` | `examples/demo/` | First golden flow. P0-12 converted `invoice.json` into `examples/demo/flows/invoice-sync.yaml` (+ `endpoints/*.yaml`, `invoice-sync.test.yaml`, `package.yaml`) and deleted the JSON; the XSL and the fixture stay. |
 | `docker-compose.yml` | `deploy/compose/` (P2-05) | Grows from Postgres-only to the full stack. |
@@ -58,8 +58,8 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 | Monitoring path | local event bus → `MonitorVerticle` | worker → bounded batch queue → Kafka → ClickHouse; Postgres last-N-hours by the same batcher | The event bus drops silently at 1,000 buffered. |
 | Queues | Postgres only | Postgres default per flow, Kafka per flow for volume / fan-out / replay; XI EOIO always Postgres | Agreed Oct 17, 2026 (§7). |
 | Runtime record | `Runtime(vertx, components, messages, monitoring, cpuPool, blockingPool, xml)` | adds BlobStore, Clock, id generator, caches, wallet, services registry; still build-time only | §6, §11. |
-| Modules | one jar, packages `core / runtime / components / demo` | `flottila-api`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-sap`, `-testkit`, `-cli`, `-control`, `-schemas`; ArchUnit enforces direction | §12. |
-| Flow config | ad-hoc JSON (`invoice.json`) | JSON Schema (Phase 0, done in P0-12: `flottila-schemas`, D-040); packages with `package.yaml` / `package.lock`; `*.test.yaml` beside each flow | §9, §11. |
+| Modules | one jar, packages `core / runtime / components / demo` | `rail8-api`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-sap`, `-testkit`, `-cli`, `-control`, `-schemas`; ArchUnit enforces direction | §12. |
+| Flow config | ad-hoc JSON (`invoice.json`) | JSON Schema (Phase 0, done in P0-12: `rail8-schemas`, D-040); packages with `package.yaml` / `package.lock`; `*.test.yaml` beside each flow | §9, §11. |
 | Components | `HttpComponent` only, no mock | every component with its mock, both passing the contract suite | §11. |
 | Tests | 9 tests against the compose Postgres | testkit with fake Runtime, contract suites, flow tests from YAML, Testcontainers, golden tests | §11. |
 | Admin API | hand-written routes in `demo/Main.java` | runtime admin API (Phase 1); control plane last | docs/GATE.md. |

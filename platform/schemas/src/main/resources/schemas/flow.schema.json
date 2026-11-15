@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:flottila:schema:flow:1",
-  "title": "Flottila flow file, schemaVersion 1 (draft — review at hand-over, P0-12)",
+  "title": "Rail8 flow file, schemaVersion 1 (draft — review at hand-over, P0-12)",
   "description": "One flow: where messages come from, how they are delivered and recorded, the finite limits every flow has, and the ordered steps. Component- and step-specific keys are passed through to the component's or step's own configSchema at deploy time.",
   "type": "object",
   "required": ["schemaVersion", "kind", "id", "version", "from", "delivery", "limits", "steps"],
@@ -31,7 +31,7 @@
         "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka names the optional Kafka add-on (O-1), not in this build: refused at deploy (D-075)." },
         "retries": {
           "type": "object",
-          "description": "at-least-once only (refused at load on sync and at-most-once): the schedule of a failed message's retries (CORE-14a, D-135 draft). A failed run waits interval × multiplier^(k−1), capped at maxInterval, before retry k — a work item with a not-before time, never a sleeping thread — and after count + 1 runs the message is parked at step 1. Omitted = the node's FLOTTILA_RETRIES_COUNT / FLOTTILA_RETRIES_INTERVAL (3 × 5m). The durations are checked at load: interval 1s..24h, maxInterval interval..24h.",
+          "description": "at-least-once only (refused at load on sync and at-most-once): the schedule of a failed message's retries (CORE-14a, D-135 draft). A failed run waits interval × multiplier^(k−1), capped at maxInterval, before retry k — a work item with a not-before time, never a sleeping thread — and after count + 1 runs the message is parked at step 1. Omitted = the node's RAIL8_RETRIES_COUNT / RAIL8_RETRIES_INTERVAL (3 × 5m). The durations are checked at load: interval 1s..24h, maxInterval interval..24h.",
           "required": ["count", "interval"],
           "additionalProperties": false,
           "properties": {

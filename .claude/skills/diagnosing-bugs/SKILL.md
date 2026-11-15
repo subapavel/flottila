@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnosis loop for a FIX row, a hard bug or a performance regression in Flottila.
+description: Diagnosis loop for a FIX row, a hard bug or a performance regression in Rail8.
 disable-model-invocation: true
 ---
 
@@ -28,7 +28,7 @@ Ways to build one, roughly in this order:
 1. A failing JUnit test at the seam that reaches the bug (unit, contract suite, `-Pit`
    Testcontainers), run as `mvn -B -ntp -q -pl <module> -Dtest=<Class>#<method> … >
    agent/work/<task>-loop.log 2>&1`.
-2. The CLI (`flottila validate|test`) on a fixture package, diffing output against a known-good one.
+2. The CLI (`rail8 validate|test`) on a fixture package, diffing output against a known-good one.
 3. An HTTP request against a node of the compose stack (NOTES "Build and VM").
 4. Replay of a captured message: the trail already holds every body and step — replay it.
 5. A throwaway harness in `agent/work/` (one component, mocks, a single call).

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Flottila — Claude Code Cloud environment setup script (v2, 2026-10-18).
+# Rail8 — Claude Code Cloud environment setup script (v2, 2026-10-18).
 # Runs as root on the Ubuntu 24.04 VM before Claude Code starts. Must finish in ~5 minutes to
 # be snapshotted, so it does one thing only: install JDK 25 beside the pre-installed JDK 21.
 # Docker images, apt extras and Maven dependencies are fetched by the agent on first use.
 # Self-contained (no repository paths), idempotent, reports every step.
 # Paste this file's contents into the environment's "Setup script" field.
 set -uo pipefail
-log() { echo "[flottila-setup] $*"; }
+log() { echo "[rail8-setup] $*"; }
 JDK=/opt/temurin-25   # path is referenced by the JAVA_HOME environment variable; keep it even if the fallback vendor lands here
 
 if [ -x "$JDK/bin/java" ]; then

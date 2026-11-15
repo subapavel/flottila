@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flottila load client: POST a file to /in, N total requests over C keep-alive connections.
+"""Rail8 load client: POST a file to /in, N total requests over C keep-alive connections.
 
 Usage: python bench.py [--n 20000] [--c 64] [--file ../sample-invoice.xml]
                        [--host localhost] [--port 8080] [--path /in] [--timeout 120]

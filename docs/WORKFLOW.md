@@ -2,7 +2,7 @@
 
 Agreed in Part A on 2026-10-17. Adapted from the xml-engine-rs working method (bounded tasks,
 evidence states, handoff, roles), trimmed to what one public repo with one owner needs. This file
-is binding for every session working on Flottila; `CLAUDE.md` summarises it.
+is binding for every session working on Rail8; `CLAUDE.md` summarises it.
 
 ## 1. The loop
 
@@ -64,7 +64,7 @@ IDLE_NO_READY_TASK | GATE_MET`. A reopened session does not clear `STOPPED_USER`
 ```
 ## P1-04 · 2026-10-21 · <commit hash>
 Test first: MessageStoreTest.snapshotPerStepIsQueryableByKey
-Changed: flottila-runtime (PgMessageStore, schema V3), flottila-core (RecordingLevel)
+Changed: rail8-runtime (PgMessageStore, schema V3), rail8-core (RecordingLevel)
 Checks: mvn verify VERIFIED_PASS · ArchUnit VERIFIED_PASS · coverage core 93/91 runtime 78/76 VERIFIED_PASS · PIT touched classes 84 % VERIFIED_PASS · integration (Testcontainers) VERIFIED_PASS
 Measured: snapshot write p99 0.9 ms at 5k msg/s (cloud VM, 4 vCPU) — bench/RESULTS.md §P1-04
 Review: PASS
@@ -84,7 +84,7 @@ Next: P1-05
   colliding D-, F-, FIX- and CONSIDER- ids on the side that came later), verify, push again. The
   first action of every session is `git fetch origin main` and a check that `HEAD` contains it.
 - Conventional Commits: `feat(core): …`, `fix(runtime): …`, `test(api): …`, `chore(ci): …`,
-  `bench: …`, `docs: …`, `refactor(…)`. Scope = module without the `flottila-` prefix.
+  `bench: …`, `docs: …`, `refactor(…)`. Scope = module without the `rail8-` prefix.
 - Body: what and why, then the evidence line (the `Checks:` line of the PROGRESS entry).
 - Trailers, in this order: `Task: P1-04`, `Co-authored-by: Claude <noreply@anthropic.com>`,
   `Signed-off-by: <owner name> <owner email>` (DCO; the author identity is the owner's, set through
@@ -134,7 +134,7 @@ Before the hand-over gate nothing is irreversible in the strict sense; "irrevers
 | Class | Examples | Action |
 | --- | --- | --- |
 | reversible | library versions, internal shapes, test layout, step order inside a phase, thresholds inside the ranges ARCHITECTURE §14 proposes | decide, one line in `docs/DECISIONS.md`, continue |
-| expensive to reverse | public types in `flottila-api`, Postgres schema, the JSON Schemas, admin API routes, Compose topology | design it, stamp `schemaVersion` / `@since`, mark `draft — review at hand-over`, list it in HANDOVER.md, continue |
+| expensive to reverse | public types in `rail8-api`, Postgres schema, the JSON Schemas, admin API routes, Compose topology | design it, stamp `schemaVersion` / `@since`, mark `draft — review at hand-over`, list it in HANDOVER.md, continue |
 | owner-only | money, credentials, external accounts; a dependency under AGPL/GPL/BSL/SSPL; a §13 gate missed after two honest attempts; rewriting or deleting git history | `issues/ISSUE-<n>.md`, row `blocked`, next ready task |
 
 ## 7. Findings — when practice contradicts ARCHITECTURE.md
@@ -189,7 +189,7 @@ carried an owner message. The rules below remove most of them.
   `rm -f agent/work/.batch-in-review && git commit …`.
 - **C. Gated Stop hook.** `.claude/hooks/stop-hook-git-check.gated.sh` fronts the environment's
   `~/.claude/stop-hook-git-check.sh`: silent while the marker exists, silent on a `claude/*` branch
-  with a dirty tree (the normal mid-batch state there; Flottila works on `main`, so that gate is
+  with a dirty tree (the normal mid-batch state there; Rail8 works on `main`, so that gate is
   inert here), at most one reminder per 30 minutes, then the original hook runs so its signing and
   unpushed-commit checks still apply.
 - **D. Installed at session start, not by the Setup script.** The environment manager rewrites

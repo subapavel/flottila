@@ -11,7 +11,7 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
    `GET /health` is green within 60 s. ClickHouse is in the same file under profile `history`
    (present, not wired — see "Postponed"); Kafka, an optional add-on, under profile `kafka` (CORE-9).
 2. **Deploy from git.** `examples/demo` in the repo (flows, XSLT, XSD, fixtures, `*.test.yaml`,
-   `package.yaml`) is deployed at stack start by `flottila deploy`; `flottila validate` passes on
+   `package.yaml`) is deployed at stack start by `rail8 deploy`; `rail8 validate` passes on
    it. Every message records the package version it ran with.
 3. **Flow A, sync** — `invoice-sync`: HTTP → validate (XSD) → extractKey → route → XSLT → HTTP
    partner → 200 carrying the partner's reply.
@@ -27,7 +27,7 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
 7. **Replay and DLQ.** `POST /admin/messages/{id}/replay?from=3` runs steps 3..n as a new message
    marked `REPLAY_OF`. Partner down → retries per flow policy → DLQ row at `GET /admin/dlq`;
    `POST /admin/dlq/{id}/retry` delivers once the partner is back.
-8. **Tests.** `flottila test examples/demo` runs the `*.test.yaml` cases next to each flow — happy
+8. **Tests.** `rail8 test examples/demo` runs the `*.test.yaml` cases next to each flow — happy
    path, partner 503 → DLQ, SFTP fixture files — in-process in seconds; CI runs the same command.
 9. **Evidence.** `bench/RESULTS.md` holds, measured on native Linux: kill -9 ledger 2000/2000
    (sent = final-step rows, DLQ 0, work 0); sync request/reply platform overhead < 2 ms p50;
@@ -45,7 +45,7 @@ the tests; every deviation from `docs/ARCHITECTURE.md` with its finding id; deci
 
 - Control plane and UI — testing happens through the runtime admin API. The control plane is among
   the last steps of the whole plan (owner's decision, 2026-10-17).
-- The git-watching deployment — `flottila deploy` from the CLI against the repo checkout is
+- The git-watching deployment — `rail8 deploy` from the CLI against the repo checkout is
   "deployed from git" for now.
 - ClickHouse — container present under a profile, nothing feeds it. History and search come from
   Postgres (last-N-hours). Wired in Phase 3.

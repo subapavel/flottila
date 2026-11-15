@@ -1,7 +1,7 @@
 # The build context of deploy/quickstart/Dockerfile is the repository root: send only what the image copies.
 *
 !platform/runtime/target/lib/
-!platform/runtime/target/flottila-runtime-*.jar
-platform/runtime/target/flottila-runtime-*-sources.jar
-platform/runtime/target/flottila-runtime-*-tests.jar
-platform/runtime/target/flottila-runtime-*-javadoc.jar
+!platform/runtime/target/rail8-runtime-*.jar
+platform/runtime/target/rail8-runtime-*-sources.jar
+platform/runtime/target/rail8-runtime-*-tests.jar
+platform/runtime/target/rail8-runtime-*-javadoc.jar

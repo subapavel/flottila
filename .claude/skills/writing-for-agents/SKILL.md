@@ -3,9 +3,9 @@ name: writing-for-agents
 description: Writing documents agents read. Use when editing CLAUDE.md, AGENTS.md, docs/WORKFLOW.md, a .claude/agents definition, or a skill.
 ---
 
-<!-- Adapted from mattpocock/skills (MIT, see ../LICENSE-mattpocock-skills); Flottila section added. -->
+<!-- Adapted from mattpocock/skills (MIT, see ../LICENSE-mattpocock-skills); Rail8 section added. -->
 
-## Flottila targets
+## Rail8 targets
 
 Apply this reference to every steering file in this repo, and keep its limits:
 

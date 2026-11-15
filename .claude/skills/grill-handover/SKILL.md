@@ -7,7 +7,7 @@ disable-model-invocation: true
 <!-- Built from mattpocock/skills `grilling` and `to-questionnaire` (MIT, see
      ../LICENSE-mattpocock-skills). Owner-attended only: never during autonomous execution. -->
 
-The owner has opened a review of what Flottila left for them: drafts marked `draft — review at
+The owner has opened a review of what Rail8 left for them: drafts marked `draft — review at
 hand-over`, findings, owner-only issues and `CONSIDER-*` rows. Reach a shared decision on each,
 **relentlessly**, until nothing is silently assumed.
 

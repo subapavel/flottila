@@ -4,15 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-runtime</artifactId>
+  <artifactId>rail8-runtime</artifactId>
   <packaging>jar</packaging>
-  <name>Flottila :: runtime</name>
+  <name>Rail8 :: runtime</name>
   <description>Vert.x bootstrap, endpoint verticles, Postgres stores, the body journal, Valkey poller leases, the S3 deployment archive store, admin API.</description>
 
   <build>
@@ -29,14 +29,14 @@
     </resources>
     <plugins>
       <plugin>
-        <!-- the runnable distribution (P2-05a): `java -jar target/flottila-runtime-<v>.jar` starts a node; the manifest names Main
+        <!-- the runnable distribution (P2-05a): `java -jar target/rail8-runtime-<v>.jar` starts a node; the manifest names Main
              and a lib/ class path, which copy-dependencies below fills; no shading. -SNAPSHOT names, as copy-dependencies writes them. -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
           <archive>
             <manifest>
-              <mainClass>io.flottila.runtime.Main</mainClass>
+              <mainClass>io.rail8.runtime.Main</mainClass>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
               <useUniqueVersions>false</useUniqueVersions>
@@ -124,8 +124,8 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-core</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-core</artifactId>
     </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
@@ -153,8 +153,8 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-testkit</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -164,8 +164,8 @@
     </dependency>
     <dependency>
       <!-- EmbeddedSftp for the two-node lease test (P2-02L) -->
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-sftp</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-sftp</artifactId>
       <version>${project.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
@@ -174,24 +174,24 @@
          (archtest), wires the shipped http component, the xslt steps with the xpath language and the xsd step.
          Components and steps depend on api only, so this is no reactor cycle. -->
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-schemas</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-schemas</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-step-xslt</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-step-xslt</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-step-validate</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-step-validate</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-http</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-http</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-component-sftp</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-component-sftp</artifactId>
     </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->

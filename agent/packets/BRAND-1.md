@@ -111,6 +111,21 @@ Rules for A:
   even where that leaves `flottila` inside a renamed class. The script's `identifiers` map must
   exclude them by file and literal, and its final report after B must show only those.
 
+### Rulings on B (architect, 2026-11-15, on the implementer's eight questions)
+
+1. Thread, timer and temp-file name prefixes are identifiers: renamed in B. The JFR recording name is read by tools outside the JVM: C.
+2. A schema's `title` and descriptions are text: B. Its `$id` URN is a persisted name: C.
+3. Test-only names that widen a wire literal (a fixture's bucket, database or header) wait for C with the literal they mirror.
+4. Never rewritten, in any commit: the tag and module name `flottila-m1`, `flottila-proto`, `subapavel/flottila` and
+   `subapavel/flottila-mapping`, a bare `flottila-mapping` (the other repository's name), `/home/user/flottila`, `~/flottila`, the cloud
+   environment's name, and the BRAND-* rows of the backlog. They go on BRAND-4's allow-list, each with its reason.
+5. "Rail8 is a working name" is false after the rename (D-145): the architect rewords `README.md`, ARCHITECTURE Amendments item 5 and §14.
+6. About two dozen small files change so much of their text that git does not pair them across B (`agent/work/BRAND-1-B-unfollowed.txt`).
+   Accepted; the commit body says so.
+7. Compose service names, network aliases and the container user are names that other files and running systems refer to: C, with the
+   volumes, the bucket, the database and the role. (This narrows the "Commit B" list above, which named them.)
+8. `ci/test_coverage_check.py` holds module names as fixtures of the guard's own test; they are renamed in C together with the guard's keys.
+
 ## Commit C — persisted and wire names
 
 One entry in the wire map per literal on the scout's list, each renamed `flottila` -> `rail8`

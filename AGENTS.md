@@ -1,4 +1,4 @@
-# Flottila — agents, ownership, evidence
+# Rail8 — agents, ownership, evidence
 
 Every agent and tool working in this repository (Claude Code, its subagents, Codex, any other)
 follows `CLAUDE.md`; this file adds who does what and what counts as evidence. The full protocol is
@@ -9,7 +9,7 @@ same role.
 
 | Role | Model | Effort | Tools | Owns |
 | --- | --- | --- | --- | --- |
-| architect (the main session) | claude-opus-5-5 | medium (session setting, `.claude/settings.json` `modelSettings`) | all | task selection, acceptance specs and task packets, approval of the red tests, design decisions, findings, the shape of public types in `flottila-api` and of the JSON Schemas (designed in the packet, written by the implementer), BACKLOG / HANDOFF / PROGRESS, commits |
+| architect (the main session) | claude-opus-5-5 | medium (session setting, `.claude/settings.json` `modelSettings`) | all | task selection, acceptance specs and task packets, approval of the red tests, design decisions, findings, the shape of public types in `rail8-api` and of the JSON Schemas (designed in the packet, written by the implementer), BACKLOG / HANDOFF / PROGRESS, commits |
 | test-author (`.claude/agents/test-author.md`) | claude-opus-5-5 | high (per call by the task class, below) | read, search, edit, write, bash | the red tests of one task, observed red |
 | implementer (`.claude/agents/implementer.md`) | claude-opus-5-5 | high (per call by the task class, below) | read, search, edit, write, bash | one bounded task at a time, inside its allowed paths |
 | designer (`.claude/agents/designer.md`) | claude-opus-5-5 | xhigh | read, search | design drafts for class-C rows: the shape of public types and JSON Schemas, findings and ARCHITECTURE changes, expensive-to-reverse decisions, the spec rewrite after a second review FAIL; read-only, hands back a draft the architect approves |
@@ -32,7 +32,7 @@ defaults; a resumed agent keeps the settings it was started with.
 | --- | --- | --- | --- | --- | --- |
 | A — mechanical | docs, CI scripts, fixtures, mock behaviours, compose files, ledger-only changes | `sonnet`, medium | `sonnet`, medium | `opus`, medium | — |
 | B — standard | a component with its mock, a step, contract-suite cases, a FIX row on existing code, the admin API, the CLI | `opus`, high | `opus`, high | `opus`, high | — |
-| C — hard paths | the batcher, admission, `RequestScope`, `BlobStore` tiers, the WorkQueue claim path, leases and cancel, public types in `flottila-api`, JSON Schemas, concurrency, a security boundary | `opus`, xhigh | `opus`, xhigh | `opus`, xhigh | before the spec, xhigh |
+| C — hard paths | the batcher, admission, `RequestScope`, `BlobStore` tiers, the WorkQueue claim path, leases and cancel, public types in `rail8-api`, JSON Schemas, concurrency, a security boundary | `opus`, xhigh | `opus`, xhigh | `opus`, xhigh | before the spec, xhigh |
 | G — gate | P1-GATE, GATE | — | — | — | — (the gate-reviewer runs, Fable 5.2 high) |
 
 A one-line fix the reviewer names resumes the same writer; its closure check runs the reviewer at

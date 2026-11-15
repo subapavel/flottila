@@ -4,29 +4,29 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-testkit</artifactId>
+  <artifactId>rail8-testkit</artifactId>
   <packaging>jar</packaging>
 
   <properties>
     <!-- PIT ≥ 80 % is a floor for api and core (CLAUDE.md); the testkit is fakes and contract suites — test code shipped as
          main. Its threshold is a ratchet at the measured value (73 % at P1-02, when BlobStoreContract joined): it may rise,
          never fall silently (D-042). -->
-    <flottila.mutation.threshold>70</flottila.mutation.threshold>
+    <rail8.mutation.threshold>70</rail8.mutation.threshold>
   </properties>
-  <name>Flottila :: testkit</name>
+  <name>Rail8 :: testkit</name>
   <description>Fake Runtime, fake clock and timer, in-memory BlobStore, contract suites, blocked-platform-thread detector. Depends on api only.</description>
 
   <dependencies>
     <!-- api only (D-031): core's own tests use the testkit, so the testkit cannot depend on core -->
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-api</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>

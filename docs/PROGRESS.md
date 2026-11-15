@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-1 B the identifiers become Rail8 — done, review PASS; Deviation: F-37
+
+- Commit B of three (D-149): groupId `io.rail8`, artifacts `rail8-*`, the package root `io.rail8`, build properties `rail8.*`, environment
+  keys `RAIL8_*`, the CLI `bin/rail8` with its `rail8: ` prefix, thread and temp-file prefixes, the product's name in text.
+- By `agent/tools/rail8_rename.py identifiers`: 29 `git mv`, 1042 files, 8609 lines; one hand edit by the implementer (a memory note) and
+  four by the architect (README and ARCHITECTURE no longer call Rail8 a working name; changelog 3.24). A second run changes nothing.
+- Left for C on purpose: 321 lines of persisted and wire names in 100 files (`agent/work/BRAND-1-B-report.txt`) and 69 fixture lines of
+  `ci/test_coverage_check.py`. The architect's eight rulings on what is B and what is C are in `agent/packets/BRAND-1.md`.
+- Whole reactor in BASE-1's mode, `~/.m2/repository/io/flottila` moved away first so an unrenamed coordinate could not resolve
+  (`agent/work/BRAND-1-B-verify.log`): 4580 tests, none skipped, every module's count equal to BASE-1; ArchUnit 48. EXECUTED_FAIL 1:
+  StepBodiesIT (FIX-212, red set). VERIFIED_PASS: `coverage_check.py --check-baseline`, the guards' tests, `deploy/postgres` untouched.
+- Review PASS: no wire name renamed early, tests are renames only, the ArchUnit rules change only their package root.
+- Found on the way: `ci` has been red on `main` since 2026-11-02 — first an unsigned commit, since 11-05 a 100 ms wall-clock bound in
+  testkit's SamplePipelineTest that the runners miss (`agent/work/MAIN-1-ci.md`). New row FIX-217 under MAIN-1.
+- Next: C (wire names, golden values recomputed outside the code), then BRAND-4. The mapping's inventory: `agent/work/BRAND-3-scout.md`.
+
 ## 2026-11-15 — BRAND-1 A the directories move under platform/ — done, review PASS (r3); Deviation: F-37
 
 - Context compacted twice in this task; the state was re-read from the tree, `git status` and `git log -3` each time.

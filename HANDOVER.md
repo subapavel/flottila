@@ -12,26 +12,26 @@ measure a virtual thread" since the owner answered ISSUE-3 with option 2 (2026-1
 
 ```sh
 cd deploy/compose
-export FLOTTILA_ADMIN_TOKEN=$(openssl rand -hex 16)    # required
-export FLOTTILA_S3_SECRET_KEY=$(openssl rand -hex 16)  # required
+export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required
+export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required
 docker compose up -d --build                           # returns once the node is healthy
 docker compose ps -a                                    # every service healthy, deploy and sftp-keys exited (0)
 curl localhost:8081/health
-curl -H "Authorization: Bearer $FLOTTILA_ADMIN_TOKEN" localhost:8081/admin/packages      # demo 0.1.0
+curl -H "Authorization: Bearer $RAIL8_ADMIN_TOKEN" localhost:8081/admin/packages      # demo 0.1.0
 docker compose --profile history up -d clickhouse      # optional, nothing feeds it yet
 docker compose --profile history --profile kafka down -v   # stop, remove every volume
 ```
 
 Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
-`deploy` (one-shot `flottila deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
+`deploy` (one-shot `rail8 deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:
 `deploy/compose/README.md`.
 
 ## 2. Run the flows by hand
 
 ```sh
-A="Authorization: Bearer $FLOTTILA_ADMIN_TOKEN"
+A="Authorization: Bearer $RAIL8_ADMIN_TOKEN"
 INV=../../examples/demo/fixtures/sample-invoice.xml
 
 # Flow A sync (invoice-sync): 200 with the partner's reply
@@ -58,8 +58,8 @@ curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                   
 ## 3. Run the tests
 
 ```sh
-bin/flottila validate examples/demo        # exit 0
-bin/flottila test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
+bin/rail8 validate examples/demo        # exit 0
+bin/rail8 test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
 mvn -B -ntp verify -Pit                    # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
 python3 ci/coverage_check.py               # the no-decrease check against ci/coverage-baseline.json
 bench/run.sh                               # the bench harness (native Postgres); numbers go to bench/RESULTS.md
@@ -70,13 +70,13 @@ bench/run.sh                               # the bench harness (native Postgres)
 | # | check | evidence | result |
 |---|---|---|---|
 | 1 | stack, /health within 60 s | target/GATE2-stack.log "## up": 11 services healthy or exited (0); CI `stack` job 123931660052 waits on /health with a 60 s bound (green) | met |
-| 2 | deploy from git, validate, version per message | `bin/flottila validate examples/demo` exit 0 (target/GATE3-stack.log:1-7); deploy exit 0, /admin/packages demo 0.1.0 (sha256 archive), timeline `versions` `demo@0.1.0` (GATE2-stack.log:156,183,194) | met |
+| 2 | deploy from git, validate, version per message | `bin/rail8 validate examples/demo` exit 0 (target/GATE3-stack.log:1-7); deploy exit 0, /admin/packages demo 0.1.0 (sha256 archive), timeline `versions` `demo@0.1.0` (GATE2-stack.log:156,183,194) | met |
 | 3 | invoice-sync | 200 with the PartnerInvoice body, timeline steps 0–5 OK | met |
 | 4 | invoice-async | 202, final step `partner` OK, work 0 | met |
 | 5 | sftp-invoice + kill | one file: inbox empty in ~6 s, sftp-invoice steps 0–4 OK, echo received it (GATE3-stack.log:49-65). Kill: 5 rounds × 50 files, node killed mid-round: 50/50 distinct ingress per round, DLQ 0, work 0, inbox empty, echo never restarted; outbound resends seen only as echo totals (at-least-once). No kill landed in the save-to-delete window (no dedupe line in run 2; run 1 on 5505b0f logged one); that window rests on SftpIngressDedupeIT (GATE2-stack.log:257-363) | met |
 | 6 | timeline, body per step, search by key | `?key=invoiceId:4711` finds the message; timeline steps 0–5 with wallNanos; `/steps/3/body` and `/steps/5/body` 200 with the payload as it was after each step (GATE3-stack.log:17-48). `cpuNanos` null on every step, as the check now reads (F-21, ISSUE-3 option 2) | met |
 | 7 | replay from 3, DLQ, retry | replay COMPLETE, replayOf set (GATE2-stack.log:198); DLQ row at step 5 `partner` after 1.11 s (GATE2:367) / ~3 s (GATE3:66-81) (FIX-107); retry COMPLETE, the echo logs the delivery, DLQ empty after (GATE3-stack.log:66-81) | met |
-| 8 | `flottila test examples/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
+| 8 | `rail8 test examples/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
 | 9 | evidence | bench/RESULTS.md GATE section: ledger 2000×3, sync overhead, durable ACK, 50 MB, CI coverage + PIT | met (ACK p99 recorded, target missed: F-18) |
 
 GATE run 1 (on 5505b0f, target/GATE-stack.log) found three defects, fixed before this run: the echo lost its network namespace
@@ -105,7 +105,7 @@ D-055 – D-063 (worker lease and attempts, stop/cancel, admin API, durable bodi
 durable DLQ bodies, redeploy), D-066, D-067 (durable step bodies, admin write routes), D-070 (deployment record and archive
 store), D-074 – D-076 (WorkQueue fencing, Postgres WorkQueue, sftp consumer), D-078 – D-084 (package folders, CLI, test runner,
 `secret://` from env, one-transaction ACK, poller leases, ingress dedupe), D-085 (gate compose stack), D-086 – D-088 (demo package and sftp options, package dependencies, retention), D-089
-(off-node package dependencies: `flottila lock`, `--deps`), D-090 (the compose network-namespace holder), D-134 (Kafka under compose profile `kafka`, off by default), D-135 (scheduled retries, then park), D-136 (`/retry` keeps the id, `/replay` a new copy), D-139 (the journal's peer link between nodes: keys, wire format, key rotation; F-35). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
+(off-node package dependencies: `rail8 lock`, `--deps`), D-090 (the compose network-namespace holder), D-134 (Kafka under compose profile `kafka`, off by default), D-135 (scheduled retries, then park), D-136 (`/retry` keeps the id, `/replay` a new copy), D-139 (the journal's peer link between nodes: keys, wire format, key rotation; F-35). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
 licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and the CONSIDER-1..3, 5..8 rows in agent/BACKLOG.md.
 
 ## 7. Open issues
@@ -116,7 +116,7 @@ licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and th
 
 ## 8. Next three tasks
 
-P2-02b2 (`flottila lock`, off-node validate/test of a package with dependencies, D-089) is done.
+P2-02b2 (`rail8 lock`, off-node validate/test of a package with dependencies, D-089) is done.
 
 FIX-110 (off-node validate holds a package's dependencies for one validation, nothing deployed or started, any `--env`)
 is done as well.

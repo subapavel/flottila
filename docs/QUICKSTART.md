@@ -1,4 +1,4 @@
-# Quickstart: send a message through Flottila on your machine
+# Quickstart: send a message through Rail8 on your machine
 
 One node, its Postgres and a partner echo in Docker; the demo package (`examples/demo`) deployed to the node; an invoice
 sent in and read back through the admin API. Commands run from the repository root.
@@ -8,14 +8,14 @@ sent in and read back through the admin API. Commands run from the repository ro
 ## 1. Build and start
 
 ```sh
-mvn -B -ntp -q package -DskipTests -pl :flottila-runtime -am   # the jar and its target/lib, which the image copies
-export FLOTTILA_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
+mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
+export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
 docker compose up -d --build
 until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, not just postgres, is up
 ```
 
 The node migrates the database itself (Flyway) and serves `/health` on `localhost:8081`. Compose also publishes Postgres on
-the host's loopback, port 5432; if that port is taken, prefix the `up` with `FLOTTILA_PG_HOST_PORT=55432`. Without a token
+the host's loopback, port 5432; if that port is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token
 the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs flottila`).
 
 **Upgrading from an earlier checkout:** Postgres runs `postgres:18.6` (D-129), whose volume is mounted at `/var/lib/postgresql`.
@@ -34,7 +34,7 @@ deploy/quickstart/deploy.sh examples/demo
 
 It zips the directory (`package.yaml` at the root), PUTs it to `/admin/packages/demo` with the token and prints the node's
 answer — `{"package":"demo","version":"0.1.0",…,"flows":["demo/invoice-sync","demo/invoice-async","demo/sftp-invoice"],"added":[…],…}` — or exits
-non-zero on a refusal. `FLOTTILA_ADMIN` (default `http://localhost:8081`) points it at another node.
+non-zero on a refusal. `RAIL8_ADMIN` (default `http://localhost:8081`) points it at another node.
 
 The demo holds two more flows, `demo/invoice-async` (the same invoice at least once, on `localhost:8082/invoice/async` — not
 published by this stack) and `demo/sftp-invoice` (a file dropped in an SFTP inbox). This stack has no SFTP server, so its node
@@ -54,7 +54,7 @@ the partner's answer is the reply — the echo returns what it got, the invoice 
 ## 4. Read it back
 
 ```sh
-auth="Authorization: Bearer $FLOTTILA_ADMIN_TOKEN"
+auth="Authorization: Bearer $RAIL8_ADMIN_TOKEN"
 curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # {"items":["<id>"],"next":null}, or
                                                                        # "items":[] for a moment after the reply
 curl -H "$auth" localhost:8081/admin/messages/<id>                    # the timeline

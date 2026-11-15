@@ -1,0 +1,4 @@
+BRAND-1 commit B - edits made by hand (everything else is agent/tools/rail8_rename.py identifiers; the tool itself is B-tool.patch)
+.claude/agent-memory/implementer/MEMORY.md:79: `rail8-bench` -> `:rail8-bench` - the artifactId form of -pl that commit A uses everywhere (the line was stale after A: a bare module name is a directory).
+Not found: `!flottila-archtest` (asked for MEMORY.md:79) is in neither the scratch nor the main tree; MEMORY.md:27 already read `'!:flottila-bench'` and is now `'!:rail8-bench'` by the tool.
+Reproduce: on A + A-fix, `git apply B-tool.patch`, `python3 agent/tools/rail8_rename.py identifiers`, `git apply B-hand.patch` -> tree b9e394fe8b00880ca2e36c1421d69c496b55307d (= the scratch HEAD).

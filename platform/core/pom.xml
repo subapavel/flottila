@@ -4,20 +4,20 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila</groupId>
-    <artifactId>flottila</artifactId>
+    <groupId>io.rail8</groupId>
+    <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>flottila-core</artifactId>
+  <artifactId>rail8-core</artifactId>
   <packaging>jar</packaging>
-  <name>Flottila :: core</name>
+  <name>Rail8 :: core</name>
   <description>Pipeline builder, patterns, RequestScope, admission, persistence batcher, store interfaces with in-memory implementations.</description>
 
   <properties>
-    <flottila.coverage.line>0.90</flottila.coverage.line>
-    <flottila.coverage.branch>0.90</flottila.coverage.branch>
+    <rail8.coverage.line>0.90</rail8.coverage.line>
+    <rail8.coverage.branch>0.90</rail8.coverage.branch>
   </properties>
 
   <build>
@@ -31,8 +31,8 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-api</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-api</artifactId>
     </dependency>
     <dependency>
       <groupId>net.jqwik</groupId>
@@ -40,8 +40,8 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.flottila</groupId>
-      <artifactId>flottila-testkit</artifactId>
+      <groupId>io.rail8</groupId>
+      <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

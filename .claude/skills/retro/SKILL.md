@@ -1,12 +1,12 @@
 ---
 name: retro
-description: Retrospective on a Flottila session — ranked improvements to the agents' environment.
+description: Retrospective on a Rail8 session — ranked improvements to the agents' environment.
 disable-model-invocation: true
 ---
 
 <!-- Adapted from mattpocock/skills `retro` (MIT, see ../LICENSE-mattpocock-skills). -->
 
-The owner has asked for a **retrospective**: improvements to the environment the Flottila agents
+The owner has asked for a **retrospective**: improvements to the environment the Rail8 agents
 work in (steering files, agent definitions, checks, hooks, tooling), so the next campaign runs
 cheaper and fails less. You propose; the owner decides. Nothing here edits the code under review.
 
@@ -32,7 +32,7 @@ cheaper and fails less. You propose; the owner decides. Nothing here edits the c
      reviewer memory *and* the author self-check in the same change (§10 E); a recurrence after
      that is a finding about the self-check wording.
    - **Automated checks**: a mistake a deterministic check could have caught. Read the existing
-     guardrail first — `flottila-archtest` (ArchUnit), `ci/` scripts, the CI workflow, the
+     guardrail first — `rail8-archtest` (ArchUnit), `ci/` scripts, the CI workflow, the
      SessionStart and Stop hooks (`.claude/settings.json`, `.claude/hooks/`) — so an existing check that is unwired or silently broken is the
      finding, not a reinvention. A **mechanical** rule (banned API, import shape, file location,
      dependency direction) gets a check, not a sentence; an ArchUnit change is an architecture
