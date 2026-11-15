@@ -27,9 +27,14 @@ class InlineDepthTest {
     return f.append('f').append(n).toString();
   }
 
+  /**
+   * The fitting side of the nested-expansion count: 511 nested expansions are all inlined, so no function is lifted.
+   * The pin rule allows naming the empty list (F-106): with every call inlined, no lifting order gives another.
+   */
   @Test
   void expansionsNested511DeepCompile() {
     assertThat(results(callChain(511))).as("results of a 511-deep call chain on null").isEqualTo(List.of("null"));
+    assertThat(lifted(callChain(511))).as("lifted functions of a 511-deep call chain").isEmpty();
   }
 
   /**

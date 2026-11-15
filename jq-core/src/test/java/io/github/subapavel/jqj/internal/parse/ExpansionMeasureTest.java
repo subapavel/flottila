@@ -139,7 +139,7 @@ class ExpansionMeasureTest {
    * the bottom it would be 513 levels (the main filter's Pipe and Collect, a Pipe for each of the 500 definitions, w's
    * ten Comma levels and a leaf), so some call must be a PLAIN Call (ADR-0040 #114 amendment) and the filter runs. It
    * kills the mutant that measures the comma as one level (it inlines the whole chain, and the IR depth Stub fires).
-   * jq-ref 1.8.2 gives 1024 (observed 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
+   * Reference jq 1.8.2 gives 1024 (observed 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
    */
   @Test
   void aWideCommaAtTheDepthEdgeLiftsACall() {
@@ -268,7 +268,8 @@ class ExpansionMeasureTest {
    * value argument again: the inlined form alone ({@code def g: [[.]]; g}, three), an unused closure ({@code
    * g([[[.]]])}, its four and the body's one), a closure the body runs once ({@code g(.)}: two) and inside brackets
    * ({@code [[h]]} on {@code [.]}: the closure twice and the brackets, six), and a value argument ({@code g([[.]])}: its
-   * three twice and the body's one).
+   * three twice and the body's one), and one the body calls by name ({@code def g($a): a}: ExpansionMeasure.java:110,
+   * {@code binder.called}, so its argument is also a closure of the Call: its three four times, twelve).
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("callsOfOneDefinition")
@@ -283,7 +284,8 @@ class ExpansionMeasureTest {
         Arguments.of("def g(h): .; g([[[.]]])", 5, "g/1"),
         Arguments.of("def g(h): h; g(.)", 2, "g/1"),
         Arguments.of("def g(h): [[h]]; g([.])", 6, "g/1"),
-        Arguments.of("def g($a): .; g([[.]])", 7, "g/1"));
+        Arguments.of("def g($a): .; g([[.]])", 7, "g/1"),
+        Arguments.of("def g($a): a; g([[.]])", 12, "g/1"));
   }
 
   /**
@@ -350,40 +352,47 @@ class ExpansionMeasureTest {
    * product wraps: the measure is negative, g23 is inlined and the backstop fires. Reference jq 1.8.2 gives 0 (observed
    * 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
    *
-   * <p>PIT's two survivors in the guard at ExpansionMeasure.java:205. The boundary mutant ({@code >=}) changes a product
-   * only where {@code a = SATURATED / b}, to SATURATED from {@code a·b}, which is then above SATURATED - b and at least
-   * 2^39, past the cap and the depth bound, and a measure only grows: equivalent. The mutant that multiplies ({@code a >
-   * SATURATED * b}) is not shown equivalent, but no filter found kills it: under it every product of one lowering
-   * ({@code times} 1) saturates at once a factor in [2^23, 2^24) or whose low 24 bits are 0 or at least 2^23, so the
-   * doubling chains saturate as they are built (a g24 over {@code (f38, .)}, 2^25 - 2 runs of 2^39 + 1 nodes, still
-   * lifts every definition, .logs/114-edge205-probe3.log), and a wrapped product needs two factors past 2^24 whose low
-   * 24 bits stay in [1, 2^23) at every definition on the way.
+   * <p>The second row puts the wrap in the guard at ExpansionMeasure.java:210: {@code …; def f22: f21,f21; def g1(p): …;
+   * def gi(p): g(i-1)(p|p); …; g38(f22, f22, f22)}. The argument measures 3·2^23 - 1 nodes, and g38's body runs it 2^39 -
+   * 2 times, a count built by products with 2 (the {@code p|p} of each g), never by a product of one lowering. The
+   * guard compares 2^39 - 2 with 2^40 / (3·2^23 - 1) = 43690, so the product saturates; with the guard multiplied
+   * instead, 2^40·(3·2^23 - 1) wraps to above 2^62, the guard is false and the product wraps below 0: g38 is inlined
+   * and the backstop's Stub fires. Its text has 227 nodes (f0's one, three in each of the 22 f bodies, six in g1's,
+   * four in each of the 37 other g bodies, six in the main filter). Reference jq 1.8.2 gives 0 (.logs/114-jqref-edges4.log,
+   * the filter text). The boundary mutant at :210 ({@code >=}) changes a product only where {@code a = SATURATED / b},
+   * to SATURATED from {@code a·b}, which is then above SATURATED - b and at least 2^39, past the cap and the depth
+   * bound, and a measure only grows: it is equivalent.
    */
-  @Test
-  void aMeasurePastTwoToTheSixtyThreeSaturates() {
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("saturating")
+  void aMeasurePastTwoToTheSixtyThreeSaturates(String main, int fs, int gs, int nodes) {
     StringBuilder text = new StringBuilder("def f0: .; ");
-    for (int i = 1; i <= 40; i++) {
+    for (int i = 1; i <= fs; i++) {
       text.append("def f").append(i).append(": f").append(i - 1).append(",f").append(i - 1).append("; ");
     }
     text.append("def g1(p): if . then p|p else 0 end; ");
-    for (int i = 2; i <= 23; i++) {
+    for (int i = 2; i <= gs; i++) {
       text.append("def g").append(i).append("(p): g").append(i - 1).append("(p|p); ");
     }
-    String filter = text.append("g23(f40)").toString();
+    String filter = text.append(main).toString();
     Program program = Resolver.resolved(Parser.parse(filter), List.of(), CAP).program();
-    assertThat(program.main()).as("main tree of g23(f40) with the whole cap spent before").isInstanceOf(Call.class);
+    assertThat(program.main()).as("main tree of %s with the whole cap spent before", main).isInstanceOf(Call.class);
     int built = withoutCalls(program.main());
     for (Function f : program.functions()) {
       built += withoutCalls(f.body());
     }
-    assertThat(built).as("nodes other than Calls of g23(f40) with the whole cap spent before").isLessThanOrEqualTo(217);
-    assertThat(ResolverTest.results(filter)).as("results of g23(f40)").containsExactly("0");
+    assertThat(built).as("nodes other than Calls of %s with the whole cap spent before", main).isLessThanOrEqualTo(nodes);
+    assertThat(ResolverTest.results(filter)).as("results of %s", main).containsExactly("0");
+  }
+
+  static Stream<Arguments> saturating() {
+    return Stream.of(Arguments.of("g23(f40)", 40, 23, 217), Arguments.of("g38(f22, f22, f22)", 22, 38, 227));
   }
 
   /**
    * The measure is computed over the live definitions only ({@link Binder#calleeFirst()}): jq drops a definition the
    * main filter does not reach, so a call in it that binds nowhere is no error, and the Binder leaves it unbound.
-   * jq-ref 1.8.2 gives 1 for {@code def dead: nosuch; 1} and 2 for {@code def dead: nosuch(1; 2); def live: 2; live}
+   * Reference jq 1.8.2 gives 1 for {@code def dead: nosuch; 1} and 2 for {@code def dead: nosuch(1; 2); def live: 2; live}
    * (observed 2026-11-15, -nc, .logs/114-mut-jqref-dead.log). It kills the mutant that puts dead definitions in
    * calleeFirst(): the measure walks the dead body and finds no binding for {@code nosuch}.
    */
@@ -412,7 +421,7 @@ class ExpansionMeasureTest {
    * a chain to a501 would be 501 + 3 + 4 + 5 = 513. Some call must be a PLAIN Call and the filter runs. It kills the
    * mutants that leave the Binds out of the inlined form's reach, for the body (first row) or for a closure it runs
    * (second row), where the lifted form's reach is below either: the chain is inlined and the IR depth Stub fires.
-   * jq-ref 1.8.2 gives {@code [[[null]]]} and {@code [[[[[[[[null]]]]]]]]} (observed 2026-11-15, -nc -f,
+   * Reference jq 1.8.2 gives {@code [[[null]]]} and {@code [[[[[[[[null]]]]]]]]} (observed 2026-11-15, -nc -f,
    * .logs/114-mut-jqref.log).
    */
   @ParameterizedTest(name = "{0}")
@@ -430,7 +439,7 @@ class ExpansionMeasureTest {
    * r(1; [[[[[.]]]]]); def ai: . | a(i-1); …; a505}: inlined to the bottom it would be 505 + 2 + 6 = 513 levels (a Pipe
    * for each definition, the two Binds, and the second argument's five Collects and its leaf), so a definition of the
    * chain must be a PLAIN Call too and the filter runs. It kills the mutant that puts every value argument of the lifted
-   * form one level down: the chain is inlined and the IR depth Stub fires. jq-ref 1.8.2 gives {@code [[[[[null]]]]]}
+   * form one level down: the chain is inlined and the IR depth Stub fires. Reference jq 1.8.2 gives {@code [[[[[null]]]]]}
    * (observed 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
    */
   @Test

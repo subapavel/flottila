@@ -586,36 +586,48 @@ class IrDepthTest {
    *       [.]} (shift); the own levels never decide (a part is a level, two down);
    *   <li>Bind, reduce and foreach, {@code min(2·patterns + 2, 64)} plus 5, 8 and 8, their parts one less down: a part
    *       in brackets (shift); two pattern nodes; 31 and 32 pattern nodes, the two sides of the 64 cap at
-   *       ExpansionMeasure.java:465, :471 and :477. Their own levels never decide, so PIT's {@code k + 5} and {@code k +
-   *       8} mutants at :466, :472 and :478 are equivalent;
+   *       ExpansionMeasure.java:470, :476 and :482; an object pattern's computed key ({@code . as {("a"): $v} | $v},
+   *       :362), one of the parts. Their own levels never decide, so PIT's {@code k + 5} and {@code k + 8} mutants at
+   *       :471, :477 and :483 are equivalent;
    *   <li>steps, {@code 3·steps + 3} and their keys and bounds two less down: {@code ."a"} (own), Field, StringField,
    *       Index, Slice (from, to, both), Each, Optional, and a key in brackets or a second step (shift);
    *   <li>Str, {@code min(parts, 64) + 3} and its interpolations one less down: {@code "a"} (own), {@code "a\([.])"}
-   *       (shift), 64 and 65 interpolations, the two sides of the cap at :488;
+   *       (shift), 64 and 65 interpolations, the two sides of the cap at :493;
    *   <li>ObjectCons, {@code 3·min(pairs, 64) + 4} and its keys and values two less down: {@code {a: 1}} (own), a value
    *       in brackets and a computed key in a chain (shift), shorthand, string, interpolated, variable and {@code
-   *       $__loc__} keys, 64 and 65 pairs, the two sides of the cap at :500 (three definitions of brackets, as the
+   *       $__loc__} keys, 64 and 65 pairs, the two sides of the cap at :505 (three definitions of brackets, as the
    *       object takes 196 levels);
-   *   <li>Recurse: {@code ..}, a call of the prelude's {@code recurse}. A wrong measure here (ExpansionMeasure.java:438)
+   *   <li>Recurse: {@code ..}, a call of the prelude's {@code recurse}. A wrong measure here (ExpansionMeasure.java:443)
    *       changes only which call is lifted: {@code ..} lowers to the one call of {@code recurse/0}, whose own fit is
    *       checked with its own measure where it is lowered, so an enclosing call taken as fitting leaves {@code
    *       recurse/0} to be lifted instead, one function either way, and no assertion the pin rule allows (F-106) can
    *       see it, so the hand mutant there (the call's measure taken as a parameter's call) is equivalent; PIT's one mutant
-   *       at :438 is killed; the row is the arm's row, its results and the added function;
+   *       at :443 is killed; the row is the arm's row, its results and the added function. The call dispatch masks the
+   *       same way for a prelude definition (:554): every prelude call is lowered where its own fit is checked, so the
+   *       same hand mutant there survives every row and is equivalent; for a definition in the text (:551) it is killed
+   *       by the call rows below (.logs/114-edges4.log);
    *   <li>Native, two levels, or five and its arguments three down: {@code length}, {@code last(.)} (own), {@code
    *       last([[.]])} (shift), {@code range(length; 1)};
    *   <li>a call of a definition: the inlined form ({@code def g: [[.]]; g}, a closure run inside the inlined body),
    *       the lifted form's closure argument a level down ({@code g(.)} and {@code g([[[.]]])} of an unused or a run
    *       closure), a value argument its Binds down, a captured closure, a recursive call (the lifted form alone, a
-   *       level), and 64 and 65 value parameters, the two sides of BIND_RUN at :95, :103 and :135, for a definition and
+   *       level), and 64 and 65 value parameters, the two sides of BIND_RUN at :99, :108 and :140, for a definition and
    *       a recursive one: 64 put the k-th argument k Binds down and the body 64 down, 65 make one Binds. The inlined
-   *       form puts each value argument where the lifted form put it (:103 then :135, levels the larger), so PIT's
-   *       boundary and increment mutants at :135, which only lower that level, are equivalent;
-   *   <li>a closure argument run in a lifted function's body, measured by {@code evaluated} (:152), its own test
-   *       below. In a lifted body a parameter is a call of no nodes, so PIT's survivor at :149 (its nodes not added)
+   *       form puts each value argument where the lifted form put it (:108 then :140, levels the larger), so PIT's
+   *       boundary and increment mutants at :140, which only lower that level, are equivalent;
+   *   <li>the lifted form's Call holds a Var for each value parameter and value capture, a level below it (:103):
+   *       {@code r($a)} of a recursive {@code r} (Bind, Call, Var: 3), a value capture under a Bind ({@code . as $x |
+   *       …}, 10) and under a value parameter's Binds in brackets ({@code def g($x): … [[r]]; g(.)}, 5, where the
+   *       capture alone decides);
+   *   <li>a value parameter called by name ({@code def g($a): a; g([[.]])}, 5): its argument is a closure of the Call
+   *       too (:110, {@code binder.called}), two levels down;
+   *   <li>a closure argument run in a lifted function's body, measured by {@code evaluated} (:157), its own test
+   *       below. In a lifted body a parameter is a call of no nodes, so PIT's survivor at :154 (its nodes not added)
    *       is equivalent, and in an inlined body the enclosing call's measure already counts them; the two negated
-   *       conditionals at :143 are equivalent, as a form's uses and its levels above have the same parameters;
-   *   <li>MAX_IR_DEPTH, last fitting and first passing: every row, at 512 and 513.
+   *       conditionals at :148 are equivalent, as a form's uses and its levels above have the same parameters;
+   *   <li>MAX_IR_DEPTH, last fitting and first passing: every row, at 512 and 513;
+   *   <li>the nested-expansion count (Resolver's EXPANSIONS): 511 nested expansions inline every call and lift
+   *       nothing, the 512th is a PLAIN Call and lifts one function (InlineDepthTest).
    * </ul>
    *
    * <p>Each result is reference jq's: 1.8.2 gives each body on null ({@code def f: <body>; [f]}, -nc -f, observed
@@ -745,15 +757,28 @@ class IrDepthTest {
         Arguments.of(withValueParameters("def v(%s): [[.]]; v(%s)", 64, "."), 67, "[[null]]"),
         Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 64, "[[.]]"), 67, "null"),
         Arguments.of(withValueParameters("def v(%s): [[.]]; v(%s)", 65, "."), 4, "[[null]]"),
-        Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 65, "[[.]]"), 4, "null"));
+        Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 65, "[[.]]"), 4, "null"),
+        // A Call's Vars, one for each value parameter and value capture, a level below it.
+        Arguments.of("def r($a): if false then r($a) else . end; r(.)", 3, "null"),
+        Arguments.of(". as $x | def r: if false then r else $x end; r", 10, "null"),
+        Arguments.of("def g($x): def r: if false then r else $x end; [[r]]; g(.)", 5, "[[null]]"),
+        // A value parameter called by name: its argument is a closure of the Call too.
+        Arguments.of("def g($a): a; g([[.]])", 5, "[[null]]"),
+        // An object pattern's computed key, its Bind's parts' shift down.
+        Arguments.of(". as {(\"a\"): $v} | $v", 14, "null"));
   }
 
   /**
    * In a lifted function's body a closure argument that runs the function's own closure parameter ({@code [h]} in
-   * {@code r}) is measured with that parameter taken as a call, a level of its own (ExpansionMeasure.java:152): {@code
+   * {@code r}) is measured with that parameter taken as a call, a level of its own (ExpansionMeasure.java:157): {@code
    * k([h])} in 108 brackets inside four {@code w}, 100 brackets each, fits the IR depth in {@code r}'s body; in 109 one
-   * more function is lifted. {@code r} is recursive, so only the count difference is pinned (F-106). Reference jq 1.8.2
-   * gives 509 and 510 brackets around null (.logs/114-jqref-edges.log, the filter texts).
+   * more function is lifted. {@code r} is recursive, so only the count difference is pinned (F-106). The count is the
+   * same under the greedy top-down choice and as late as possible: at 109 the body is one level past the bound; greedy
+   * lifts the outermost {@code w} that does not fit, as late as possible the innermost, and either lift takes that
+   * {@code w}'s 100 brackets into its own body, which starts at depth 0, while its closure argument stays in {@code r}'s
+   * body; lifting {@code k} would not help, as its Call is a level more than its inlined {@code [h]}. So one lift is
+   * needed and one is enough. Reference jq 1.8.2 gives 509 and 510 brackets around null (.logs/114-jqref-edges.log,
+   * the filter texts).
    */
   @Test
   void aClosureArgumentRunningALiftedFunctionsParameterMeetsTheIrDepthAtItsMeasuredLevels() throws InterruptedException {

@@ -17,7 +17,7 @@ import java.util.function.Function;
  * <p>It is computed once per compile, callee-first, by a loop over {@link Binder#calleeFirst()}, and each text is
  * walked by a loop with a stack of its own, never by recursion. At each call site of a definition outside a recursive
  * group it takes the larger of the inlined form (the body, its parameters bound to the arguments' forms, and each value
- * parameter's argument lowered once for its Bind) and the lifted form (a Call plus each closure argument lowered once,
+ * parameter's argument lowered once for its Bind) and the lifted form (a Call, its Vars, each closure argument lowered once,
  * since {@code invoke} lowers a closure for every filter parameter, used or not): for nodes the sum of the two, which is
  * exact for a call with no closure argument and an upper bound otherwise; for levels the larger. A call into a
  * recursive group has the lifted form only. A fold counts as unfolded.
@@ -92,10 +92,15 @@ final class ExpansionMeasure {
         binds++;
       }
     }
+    boolean vars = binds > 0;
+    for (Binder.Capture c : binder.captures(def)) {
+      vars |= c.value();
+    }
     int around = binds > Resolver.BIND_RUN ? 1 : binds;
     Acc acc = new Acc();
-    // The lifted form: the value parameters' Binds, the Call, and its closures inside it.
-    acc.own(0, around + 1L);
+    // The lifted form: the value parameters' Binds, the Call, a Var below it for each value parameter and value
+    // capture (Resolver#invoke), and its closures inside it.
+    acc.own(0, around + (vars ? 2L : 1L));
     int value = 0;
     for (int i = 0; i < params.size(); i++) {
       Ast.Param p = params.get(i);
