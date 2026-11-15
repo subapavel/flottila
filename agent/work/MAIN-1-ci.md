@@ -122,3 +122,21 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
 - `ci` run 215 (id 43724011146, 38db0c13, FIX-219): every job `success`, read 15:08Z (job list): Postgres floor 17.11
   (Verify 14:22Z-14:47Z), Postgres main 18.6 (Verify and every later step), DCO, stack; bench and mutation skipped as
   on every push. Two green `ci` runs in a row (214, 215). Runs of 31a4724f (FIX-229) and e4ee8e81 (FIX-226): not read.
+- `ci` runs 216 (id 43726990454, 31a4724f, FIX-229) and 217 (id 43728153106, e4ee8e81, FIX-226): `success`, read 16:25Z
+  (run list only). Four green `ci` runs in a row (214-217).
+- `ci` run 218 (id 43731335969, 5d480cf3, FIX-225): `failure`, read 16:25Z. DCO success; Postgres floor 17.11 `success`
+  (Verify 23 min). Postgres main 18.6 (job 132864206463): Verify FAILED after 3 min in the runtime module's unit tests,
+  `Tests run: 1578, Failures: 1`: `PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270 the second READ waited
+  for the first to be served whole ==> expected: <33555020> but was: <0>`. Not FIX-225's change (its tests are the journal's
+  disk comparisons). A known product fault: row FIX-183 (pending since CORE-5a2, 1 of 7 there) - `PeerServer` takes the
+  READS permit inside the virtual thread it starts per READ, so a later READ can be served first. Its first sighting on a
+  runner.
+- `ci` run 219 (id 43731738534, c13a39da, FIX-227): `failure`, read 16:25Z. Postgres floor 17.11 (job 132865474378): the
+  runtime module's unit tests passed; its ITs `Tests run: 709, Failures: 1`:
+  `NodePoolWaitIT.aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce:600->startDeployed:178 fixture: the package deploys:
+  {"error":"the deploy record was not written: Connection pool reached max wait queue size of 1"} ==> expected: <200> but
+  was: <503>` - the fixture's own deploy, right after `Node.start`, was refused by the queue bound the case configures
+  (`RAIL8_PG_POOL_QUEUE` 1). New here: no row and no earlier sighting (row FIX-234). The other job's conclusion: not read.
+- `ci` run 220 (id 43733870692, de39cc99, FIX-231): in progress at 16:25Z; its conclusion not read.
+- Count of green `ci` runs in a row: 0 (218 and 219 failed). MAIN-1 needs FIX-183's serving order and FIX-234 before its
+  three whole-reactor runs mean anything.

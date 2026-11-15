@@ -157,6 +157,17 @@ class PeerReadHeapTest {
     }
 
     static final long PAUSE_AT = 4 * MIB;            // a read's pause mark (PeerReads, S5's 8 MiB window halved)
+    /**
+     * What node-b's process may take of the owner's further bytes (counted from the first the owner wrote after both buffers
+     * filled) while the link is paused, whichever reads hold it: Vert.x goes on reading into its own queue after a socket
+     * pauses — settled at 2044-2047 KiB, two frames, in every probed run of FIX-224 (1792 KiB seen before). A link that
+     * resumed takes the second record's whole 28 MiB rest into a buffer already full, so {@code PAUSE_AT} (4 MiB, the second
+     * buffer's own mark) separates the two. The bound is absolute: the sample at the end of the first wait is not a settled
+     * state — the count went on rising after it in five of twelve probed runs (by 63 to 1284 KiB), each time to about two
+     * frames, and the gauge ({@link #readByB}) itself reads its counters one after another, not as one snapshot — so only an
+     * absolute bound is safe.
+     */
+    static final long PAUSED_TAKES_MAX = PAUSE_AT;
     static final long FIRST = (8L << 20) + 1;
     static final long SECOND = (32L << 20) + 3;
     static final int HEAD = RecordFormat.MAX_HEADER;   // what node-b's journal reads of a large record before open returns
@@ -260,10 +271,10 @@ class PeerReadHeapTest {
                 int aPort = owner.localPort();
                 long full = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
                 // both buffers are full: node-b's process takes no more than what its socket's pause leaves in flight (Vert.x
-                // goes on reading into its own queue for a while: 1792 KiB observed under the correct code), never the record's rest
+                // goes on reading into its own queue for a while: see PAUSED_TAKES_MAX for what was observed), never the record's rest
                 while (true) {
                     long took = readByB(owner, written.get());
-                    assertTrue(took <= PAUSE_AT, "node-b went on reading the link with both reads' buffers full: it read " + (took >> 10)
+                    assertTrue(took <= PAUSED_TAKES_MAX, "node-b went on reading the link with both reads' buffers full: it read " + (took >> 10)
                             + " KiB of the owner's further bytes (the link never paused)");
                     if (notReading(vertxB, bPort, aPort, written::get)) break;
                     if (System.nanoTime() - full > 0) throw new AssertionError("node-b never stopped reading with both buffers full; written " + written.get());
@@ -277,14 +288,14 @@ class PeerReadHeapTest {
 
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
                 while (true) {
-                    long more = readByB(owner, written.get()) - before;
-                    assertTrue(more <= MIB, "the link resumed while the second read's buffer was full: node-b read " + (more >> 10)
-                            + " KiB more of the owner's bytes after the first read gave its hold back");
+                    long took = readByB(owner, written.get());
+                    assertTrue(took <= PAUSED_TAKES_MAX, "the link resumed while the second read's buffer was full: node-b read " + (took >> 10)
+                            + " KiB of the owner's further bytes in all, " + ((took - before) >> 10) + " KiB of them after the first read gave its hold back");
                     if (notReading(vertxB, bPort, aPort, written::get)) break;
                     if (System.nanoTime() - deadline > 0) throw new AssertionError("node-b went on reading its socket after the first read gave its hold back");
                     Thread.onSpinWait();
                 }
-                assertTrue(readByB(owner, written.get()) - before <= MIB, "node-b's process read nothing more while the second read's buffer was full");
+                assertTrue(readByB(owner, written.get()) <= PAUSED_TAKES_MAX, "node-b's process read nothing more while the second read's buffer was full");
 
                 drain2.countDown();
                 long wrote;   // the writer's BYTES frames are 37 bytes each beyond their record bytes: len, type, seq, READ id, tag

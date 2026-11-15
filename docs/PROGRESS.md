@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-224 the bound on bytes taken while the link is paused is absolute — done, review PASS
+
+- Fault (once, in FIX-214's red run): `PeerReadHeapTest.aReadThatGaveItsHoldBackLeavesTheLinkPausedWhileAnotherReadsBufferIsFull`
+  :281, "node-b read 1407 KiB more … after the first read gave its hold back" against a fixed megabyte with no recorded reason.
+- Cause shown by a probe (test-author, class A; never committed): the link stays paused at the give-back - `PeerLink.unhold`
+  returns while another read holds it, and no bytes reached either read in any of 12 traced runs. The megabyte was relative to
+  a sample that is no settled state: in 5 of the 12 runs the count rose after it with no give-back at all, once by 1284 KiB.
+- Change, test only: both waits bound the absolute count at `PAUSED_TAKES_MAX = PAUSE_AT` (4 MiB, the second buffer's own
+  mark), its reason in one Javadoc. A corrected expectation, not a weaker test: a link that resumes reads on - with the guard
+  taken out of `unhold` the case fails at its own assertion at 7104 KiB.
+- Evidence: VERIFIED_PASS runtime 1578 and 3 (author; verifier on the tree committed). Review: round 1 FAIL (the bound copied
+  the number instead of following `PAUSE_AT`), round 2 FAIL (a Javadoc sentence, the architect's wording, overstated the
+  probe), round 3 PASS. The body of commit de39cc99 has one line of 74 characters.
+
 ## 2026-11-15 — FIX-231 the teardown drains what writes through the relay before it closes it — done, review PASS
 
 - Fault (once, the whole-reactor run of FIX-229): `PgIntakeHandoffGroupLogIT.aHandOffThatThrowsInACommittedGroupStillAnswersEvery

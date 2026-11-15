@@ -1,0 +1,50 @@
+FIX-224 — evidence (2026-11-15)
+
+The fault: PeerReadHeapTest.aReadThatGaveItsHoldBackLeavesTheLinkPausedWhileAnotherReadsBufferIsFull:281, once, in the red
+run of FIX-214 (agent/work/FIX-214-red.log :54079-54093), the heap-bounded execution: "the link resumed while the second
+read's buffer was full: node-b read 1407 KiB more of the owner's bytes after the first read gave its hold back". The case
+allowed a fixed megabyte more than `before`, the count sampled when its first wait ended.
+
+Step 1, the cause shown (a throw-away probe, agent/work/FIX-224-probe.diff, reverted; trace agent/work/FIX-224-probe-trace.txt,
+logs agent/work/FIX-224-probe-{1,2}.log): reading (a) — the link stays paused.
+- Product: PeerLink.unhold (PeerLink.java :173-184) counts the holder down and its loop task returns at `if (full > 0)
+  return;` (:179) before socket.resume(); a read that is holding never holds again (PeerReads.java :271).
+- Trace, 12 usable runs: each has "unhold-task full=1 SKIP" and no delivery of bytes to either read between "hold full=2"
+  and "unhold-task full=0 RESUME". No sign of a link that resumes for a moment.
+- The numbers: `before` was 759-2047 KiB and the count ended at a constant 2044-2047 KiB, two frames, in every run. In 5
+  of the 12 it rose after the sample with no give-back at all (by 63, 383, 639, 703 and 1284 KiB — the last past the old
+  megabyte, the :281 failure reproduced); in the other 7 `before` was already at two frames. The sample at the end of the
+  first wait is no settled state: notReading passes after three loop round-trips, Vert.x goes on reading into its own queue
+  after a pause, and the gauge reads its counters one after another.
+- The probe's repeated case ran out of its 48 MiB heap after 12 runs: an artifact of the repeat loop, not kept.
+
+Step 2, the change (the test only): the second wait and the closing assertion bound the absolute count of the owner's
+further bytes node-b took, at PAUSED_TAKES_MAX = PAUSE_AT (4 MiB — the second buffer's own pause mark, the bound the first
+wait already used for the same paused state), with the reason and the derivation in one Javadoc. The first wait's value,
+the notReading check, the 30 s deadline and every other assertion are unchanged. No sleep, no new wall-clock bound.
+EXECUTED_FAIL  agent/work/FIX-224-kill.log   the guard `if (full > 0) return;` taken out of PeerLink.unhold (temporary,
+               agent/work/FIX-224-kill.diff, reverted): the heap-bounded execution 3 tests, 1 failure — the case at its own
+               assertion (:290), "node-b read 7104 KiB of the owner's further bytes in all, 5056 KiB of them after the first
+               read gave its hold back" (:55203, :55214); no heap error
+VERIFIED_PASS  agent/work/FIX-224-run-1.log  author, the tree before the review's fix: 1578 (:54551) and 3 (:54570), 0 failures
+The verifier, on the final tree (de39cc99 plus this change):
+VERIFIED_PASS  agent/work/FIX-224-verify-run.log  runtime module `verify`, exit 0: api 107 (:117), testkit 286 (:230), core 763
+               (:42135), 304, 69, 56, 33, 52, runtime 1578 (:55826) and 3 (:55845), 0 failures, errors, skipped; PeerReadHeapTest
+               2 tests (:55839); BUILD SUCCESS (:55975); "Coverage checks have not been met" 0 times
+VERIFIED_PASS  name guard: clean, 5941 tracked files; `git diff --stat -- platform/runtime/src/main` empty; the tree held the
+               test and the test-author's memory file only, before and after
+
+review: PASS   class A, round 3. Round 1 FAIL: the new constant copied the number (`4 * MIB // = PAUSE_AT below`) instead of
+               following PAUSE_AT, and the first wait went through the copy; it is now declared after PAUSE_AT as
+               `PAUSED_TAKES_MAX = PAUSE_AT`. Round 2 FAIL: a Javadoc sentence from the architect's fix packet said the
+               count rose "in every probed run"; it rose in five of twelve, and the Javadoc says so now.
+               Accepted in round 1: reading (a) is shown, not assumed; the change corrects a
+               wrong expectation and does not weaken the test — what the old check could catch and the new cannot is a link
+               that resumes and pauses again within about 2-3 MiB, and no product path does that (a link that resumes reads
+               on: 7104 KiB at the first sample of the kill); a tighter absolute bound would depend on how far Netty and
+               Vert.x read ahead; a wait for a settled count would be a sleep under another name. The kill is the right
+               mutant and fails at this assertion.
+Row FIX-228 (four peer flow-control cases pinned to one CPU): plausibly the same heuristic — notReading passed in probe run
+12 while the writer went on from 7.9 MB to 11.9 MB; on one CPU it can pass falsely or never. NOT_RUN: to show it, log on
+every iteration of stalledAhead under `taskset -c 0` which of its conditions fails. Recorded in the row.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-224.diff.
