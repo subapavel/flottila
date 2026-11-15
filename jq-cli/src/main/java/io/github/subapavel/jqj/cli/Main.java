@@ -43,7 +43,8 @@ import java.util.function.UnaryOperator;
  * error ends the run with jq's line {@code jq: error (at <name>:N): <text>}, or {@code jq: error (at <name>:N) (not a
  * string): <value>} for a value that is no string (#68), and exit code 5; a termination with {@code jq: error:
  * <message>} and exit code 5 (#197). Without {@code -c} the output is pretty, jq's
- * default indent 2 (#37).
+ * default indent 2 (#37). {@code --explain}, a jqj-only flag (#108, ADR-0016), prints the compiled filter's
+ * {@code explain()} text instead of running it, reads no input and exits 0.
  */
 public final class Main {
 
@@ -128,6 +129,7 @@ public final class Main {
    */
   private static int run(Invocation invocation, UnaryOperator<JqEngine.Builder> engine, boolean endsTerminations) {
     boolean compact = false;
+    boolean explain = false;
     boolean optionsDone = false;
     String filter = null;
     String file = null;
@@ -146,6 +148,8 @@ public final class Main {
         String name = arg.substring(2);
         if (name.equals("compact-output")) {
           compact = true;
+        } else if (name.equals("explain")) {
+          explain = true;
         } else if (!name.equals("monochrome-output")) {
           return refuse(invocation, arg, LONG_NOT_BUILT.contains(name));
         }
@@ -168,6 +172,16 @@ public final class Main {
       compiled = built.compile(filter == null ? "." : filter);
     } catch (JqCompileException e) {
       return report(invocation, COMPILE, e.getMessage());
+    }
+    if (explain) {
+      // ADR-0016: a jqj-only flag (DEVIATIONS "--explain"); the input is never read.
+      try {
+        invocation.out().write(compiled.explain().getBytes(UTF_8));
+        invocation.out().flush();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+      return 0;
     }
     Workspace workspace = built.newWorkspace();
     try {
