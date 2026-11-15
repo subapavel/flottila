@@ -159,7 +159,7 @@ class ValueFormTest {
 
   /**
    * {@code def f: if . == 0 then base else (. - 1 | f) as $x | $x + 1 end; n | f}: a value-form recursion, as
-   * value-form/a-value-form-recursion-3000-deep (jq-ref 1.8.2: 3000 on 3000, recorded).
+   * value-form/a-value-form-recursion-3000-deep (the reference binary 1.8.2: 3000 on 3000, recorded).
    */
   private static Program valueRecursion(int n, Supplier<Node> base) {
     Node body = ifZero(base.get(), new Bind(AT, new Pipe(AT, dec(), f(0)), 0, incOf(0)));
@@ -167,7 +167,7 @@ class ValueFormTest {
   }
 
   /**
-   * {@code def f: if . == 0 then base else (. - 1 | f) | (0 | f) end; n | f}, the design's activation case: jq-ref 1.8.2
+   * {@code def f: if . == 0 then base else (. - 1 | f) | (0 | f) end; n | f}, the design's activation case: the reference binary 1.8.2
    * gives 0 for n = 3 and n = 2000 (.logs/116-jqref.log).
    */
   private static Program activations(int n, Supplier<Node> base) {
@@ -453,7 +453,7 @@ class ValueFormTest {
 
   /**
    * A value-form Call at the unit limit starts the trampoline, and the heap forms never call eval (ADR-0047 #116): the
-   * 3 000-level value-form recursion of value-form/a-value-form-recursion-3000-deep (jq-ref 1.8.2: 3000), declaring
+   * 3 000-level value-form recursion of value-form/a-value-form-recursion-3000-deep (the reference binary 1.8.2: 3000), declaring
    * {@code stackBytes} 0 so that every call is past the limit, gives the same results and steps in OPTIMISED as in
    * CONSERVATIVE, and as the push form on a large thread, on a thread its push form does not fit. Its base's probe runs
    * as deep at 3 000 levels as at 3: no level's eval stays on the Java stack.
@@ -498,7 +498,7 @@ class ValueFormTest {
 
   /**
    * A value-form Call's activation ends when its eval returns (ADR-0046 #116, C2). In {@code def f: if . == 0 then 0
-   * else (. - 1 | f) | (0 | f) end; n | f} (jq-ref 1.8.2: 0 for n = 3 and n = 2000) the push form runs {@code 0 | f}
+   * else (. - 1 | f) | (0 | f) end; n | f} (the reference binary 1.8.2: 0 for n = 3 and n = 2000) the push form runs {@code 0 | f}
    * inside the emit of {@code . - 1 | f}, so each level's left call is still live while its right call runs: 2n + 1
    * live activations at the deepest, main's Call included. The value form runs the right call after the left one
    * returned: n + 1, the left chain. Each count is pinned at its edge by the recursion-depth budget: the run gives 0 at
@@ -531,7 +531,7 @@ class ValueFormTest {
 
   /**
    * A value-form Call at a small forced unit limit starts the trampoline (ADR-0047 #116, ADR-0046 #111): at {@code U_f}
-   * 4 the 3 000-level value-form recursion of value-form/a-value-form-recursion-3000-deep (jq-ref 1.8.2: 3000) gives
+   * 4 the 3 000-level value-form recursion of value-form/a-value-form-recursion-3000-deep (the reference binary 1.8.2: 3000) gives
    * the push form's results and steps in both modes, and so does the same recursion with a base that gives no result,
    * whose starter's trampoline hands nothing back. Each runs on a thread of four times its declared stack (ADR-0046
    * "Where the stack is tested"). The base's probe runs as deep at 3 000 levels as at 30, so every call past the limit
