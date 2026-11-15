@@ -5,7 +5,13 @@ the header's cell count (BACKLOG: exactly; DECISIONS: at most, legacy rows witho
 tolerated). Counting pipes is not the check: a stray separator paid for by a missing closing pipe has the
 header's pipe count and the wrong cell count, and GitHub drops the cell it cannot place. An unterminated
 trailing fragment counts as a cell. Reports every bad row (file, line, expected, actual), exits non-zero.
-This guard catches shape, never content.
+
+It also catches one content collision the shape rule cannot see (FIX-209): within one ledger file no id may
+be the id cell of more than one row. Two sessions in parallel each read the same highest id and each take
+the next one; the merge is the first moment one file holds both rows. A row allocates an id only when it
+sits inside a table and is neither that table's header nor a separator, and the id it allocates is its first
+cell -- never an id named in a Depends-on cell, a title or prose. Ids are compared whole, as text: D-020 and
+D-020a are different ids. Every occurrence line of a duplicated id is reported.
 
 Usage:
   python3 ci/ledger_check.py              # from the repository root
@@ -73,22 +79,57 @@ def check_text(name: str, text: str, allow_fewer: bool) -> list[str]:
     return problems
 
 
+def id_cells(text: str) -> dict[str, list[int]]:
+    """Id cell -> the 1-based lines of every row that allocates it. A row allocates an id when it sits inside
+    a table (a header over a separator opened it) and is neither that header nor a separator; its id is the
+    first cell, stripped. The whole cell text is the id, so no prefix or substring ever matches."""
+    occurrences: dict[str, list[int]] = {}
+    lines = text.split("\n")
+    in_table = False
+    for i, line in enumerate(lines):
+        if not is_row(line):
+            in_table = False
+            continue
+        if not in_table:
+            # A header only opens a table when a separator follows; the header itself allocates nothing.
+            in_table = i + 1 < len(lines) and is_separator(lines[i + 1])
+            continue
+        if is_separator(line):
+            continue
+        cells = split_row(line)[0]
+        ident = cells[0].strip() if cells else ""
+        if ident:
+            occurrences.setdefault(ident, []).append(i + 1)
+    return occurrences
+
+
+def check_duplicate_ids(name: str, text: str) -> list[str]:
+    return [f"{name}: id {ident} on {len(lns)} rows: lines {', '.join(str(n) for n in lns)}"
+            for ident, lns in id_cells(text).items() if len(lns) > 1]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=".", help="repository root (default: .)")
     args = ap.parse_args(argv)
     root = Path(args.root)
     problems: list[str] = []
+    duplicates: list[str] = []
     for rel, allow_fewer in LEDGERS:
         path = root / rel
         if not path.is_file():
             problems.append(f"{rel.as_posix()}: ledger file not found at {path}")
             continue
-        problems += check_text(rel.as_posix(), path.read_text(encoding="utf-8"), allow_fewer)
+        text = path.read_text(encoding="utf-8")
+        problems += check_text(rel.as_posix(), text, allow_fewer)
+        duplicates += check_duplicate_ids(rel.as_posix(), text)
     for p in problems:
         print(f"LEDGER SHAPE: {p}", file=sys.stderr)
-    print("ledgers: well-formed" if not problems else f"ledgers: {len(problems)} problem(s)")
-    return 1 if problems else 0
+    for d in duplicates:
+        print(f"LEDGER DUPLICATE ID: {d}", file=sys.stderr)
+    total = len(problems) + len(duplicates)
+    print("ledgers: well-formed" if not total else f"ledgers: {total} problem(s)")
+    return 1 if total else 0
 
 
 if __name__ == "__main__":

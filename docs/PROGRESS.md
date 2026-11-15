@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-209 the ledger guard reports duplicate ids — done, review PASS (r2)
+- Test first: 5 red cases in ci/test_ledger_check.py (agent/work/FIX-209-red.log, 26 tests, 5 failures), each failing for its own reason.
+- Why: three id collisions in one night (D-101/D-102, D-144, CONSIDER-11). An allocation race between parallel sessions, not staleness -
+  both read the same highest id correctly. The merge is the first moment a machine can see it and the last cheap moment to renumber.
+- Rule: an allocation is the first cell of a line inside a table that is neither the header nor the separator, compared whole and stripped.
+  So D-020 and D-020a never collide, a depends-on cell is not an allocation, and the repeated `| Id |` header of six tables is not one.
+- The reds found a live collision: CONSIDER-11 on two different rows. Renumbered to CONSIDER-18 in the FIX-201 commit, 4 references repointed.
+- Review r1 FAIL, three unpinned behaviours, all tests not code: file scope vs table scope (every fixture had both rows in one table, which is
+  exactly the case the row exists for), the header negative too weak at two tables, and the summary count line asserted nowhere. r2 PASS.
+- Each pin proven non-vacuous: the mutant applied to a byte copy, the failure observed, the restore proven with cmp.
+- Checks: VERIFIED_PASS python3 -m unittest ci.test_ledger_check, 29 tests, OK, exit 0 (agent/work/FIX-209-green-r2.log).
+  EXECUTED_FAIL python3 -I ci/ledger_check.py exit 1 - the 9 pre-existing shape problems (FIX-197), byte-identical in text and order, and
+  no duplicate id. Nothing runs this guard in CI yet; that is FIX-199.
+- Note for anyone running the suite: `python3 -I -m unittest ci.X` cannot import the ci package; -I strips the cwd from sys.path.
+
 ## 2026-11-14 — merge origin/main into the work branch, pushed to main (owner) — done
 - Owner: 119 commits lived only on claude/brave-hopper-5vwaju; new sessions start from main and saw none of it. Owner chose "merge and push to main".
 - main brought dc6a683 flottila-sim (P2-10a), the P2-10b WIP patch, CONSIDER-10/11 (owner 2026-11-10). Colliding ids renumbered on main's side:
