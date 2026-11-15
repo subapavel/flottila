@@ -52,7 +52,8 @@ pending jump carrying closures (records round, 3) and a public `stackBytes` 0 (r
 9. **Value form in OPTIMISED** where cardinality ≤ 1 (M1) and may-break-out is false. CONSERVATIVE
    never calls `eval` and keeps the Holder path, so the compile-mode oracle stays an independent
    second opinion. The tail emitter stays in both modes as the kind-only floor (ADR-0043's "may
-   subsume" closed).
+   subsume" closed). In OPTIMISED the value form comes first, so there the tail emitter serves only
+   path variants (ADR-0047 #116, C1).
 10. **No IR fold pass.** jq folds only while parsing (`--debug-dump-disasm`: `1+2` is `LOADK 3`,
     `def f: 1; f+2` keeps `CALL_JQ f:0`), which 2a built. Spec 6 may add one on a measured win.
 11. **`explain()` in 2b**, right after the Call ticket; each analysis ticket adds its column and its
@@ -122,9 +123,13 @@ until spec 3; 2b lifts only their recursion Stub. Deep cases use user recursion 
 
 Points the designer raised while drafting ADR-0045 to 0047 and F-54 to F-58, ruled by the adviser:
 
-1. The 512th nested expansion is a PLAIN `Call` too, like the inline cap and `MAX_IR_DEPTH`;
-   nesting and depth restart at 0 in a worklist function. jq-ref: `def f1: .+1; def f2: f1; …;
-   f600` on null → `1`; `def g1(f): f; def gi(f): g(i-1)(f|.+1); …; 0|g600(.)` → `599`.
+1. The 512th nested expansion is a PLAIN `Call` too, like a call whose expansion would pass the
+   inline cap or `MAX_IR_DEPTH`. Nesting and depth restart at 0 in a worklist function. On jq-ref:
+   - `def f1: .+1; def f2: f1; …; f600` on null → `1`. This is the nesting trigger's witness.
+   - `def g1(f): f; def gi(f): g(i-1)(f|.+1); …; 0|g600(.)` → `599`. This is the depth trigger's
+     witness, since depth counts closures.
+
+   Corrected by #114 (K1).
 2. A call counts nothing only when no node is left at run time (inlined, or a `ParamCall`
    specialisation replaced); every surviving `Call` counts while live.
 3. The pending jump carries closures: (fn, input, value arguments, closure arguments); ADR-0006's
