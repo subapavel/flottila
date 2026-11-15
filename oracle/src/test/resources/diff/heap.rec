@@ -1,0 +1,64 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case heap/downstream-error-reenters-the-alt-bind
+def 6e3cecd49946
+rc 0
+stdout [[1]]\n
+stderr
+end
+
+case heap/downstream-break-stops-the-forms
+def 929371c9ac0b
+rc 0
+stdout [1]\n
+stderr
+end
+
+case heap/alt-in-a-recursion
+def 2e86028da1a0
+rc 0
+stdout 7\n
+stderr
+end
+
+case heap/alt-chain
+def c5c9661eec7b
+rc 0
+stdout 1\n
+stderr
+end
+
+case heap/collect-in-a-recursion
+def e5fd03e07840
+rc 0
+stdout [[[],[]],[]]\n
+stderr
+end
+
+case heap/foreach-in-a-recursion
+def 27b1a51a3b41
+rc 0
+stdout ["z","z","z","z"]\n
+stderr
+end
+
+case heap/try-in-a-recursion-catches
+def 9acbdd0c406f
+rc 0
+stdout ["c:e"]\n
+stderr
+end
+
+case heap/reduce-update-two-results
+def 5d2f34e24a10
+rc 0
+stdout 2\n
+stderr
+end
+
+case heap/label-per-activation
+def 02e51e7bdc68
+rc 0
+stdout [0,1,2,3]\n
+stderr
+end

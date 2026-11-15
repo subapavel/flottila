@@ -1,0 +1,15 @@
+# The required cases of #109 "S2b.4 Heap forms of all 20 kinds and the trampoline oracle run" (ADR-0020, ADR-0046 and
+# its #109 amendment, F-58): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped. The compile-mode oracle's trampoline lines come
+# from the after-merge regen (F-58), not from this file.
+
+# differential: every case of diff/heap.cases.
+heap/downstream-error-reenters-the-alt-bind
+heap/downstream-break-stops-the-forms
+heap/alt-in-a-recursion
+heap/alt-chain
+heap/collect-in-a-recursion
+heap/foreach-in-a-recursion
+heap/try-in-a-recursion-catches
+heap/reduce-update-two-results
+heap/label-per-activation
