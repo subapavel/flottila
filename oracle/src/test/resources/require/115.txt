@@ -1,0 +1,11 @@
+# The required cases of #115 "S2b.10 May-break-out" (ADR-0020, ADR-0007 and its #115 amendment): give this file to
+# the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and
+# blank lines skipped.
+
+# differential guard: a Break to a captured label out of a recursion (required at #107, ratcheted).
+calls/break-out-of-a-recursion
+
+# differential: X1 and X2 of the #115 design, recorded on jq-ref 1.8.2. Guards here; they matter in S2b.11, whose
+# value form must keep a node that may break out off it.
+calls/break-through-a-mutual-recursion
+calls/break-through-another-group

@@ -59,6 +59,10 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     A value-form call's activation and units end when its `eval` returns, so in OPTIMISED the
     recursion-depth verdict can depend on `stackBytes` (C2). Compile mode becomes a calibration
     dimension (R1). Records: ADR-0047 and ADR-0046 "Amendment (ticket #116)".
+    - The never-weaken rule: `TailDepthTest`'s Label control expected an overflow in both modes.
+      In OPTIMISED it now expects the run to fit, and a new control (a fence that breaks to an
+      outer label) expects the overflow in both modes. The adviser reads this as a re-pin of
+      behaviour the ADR changes, not a weakening; a "no" restores the old pin and reopens C1.
   - #117 (specialisation), with records to follow:
     - S1: the lifted functions of PLAIN calls get copies too (GLOSSARY, F-54).
     - S2: copies are ordered by the Source of the placing call, then by discovery (ADR-0045).
@@ -70,6 +74,27 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     - T1: ADR-0018:29 is reworded; CONSERVATIVE stores no tail kind.
     - T2: ADR-0047 is amended; written closures are bound without a frame at jump sites.
     - The embedded recursion-depth default stays open.
+  - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
+    - ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`.
+      There is no margin beyond rounding and the 32 KiB; each cell's headroom is in the tsv.
+    - The reserve is the measured intercept plus 32 KiB, and never below the guard pages plus 32 KiB.
+    - Gate step 1 already takes twice F-28's target. Its profile finding is F-92, and the
+      calibration column stays in the ticket gate.
+    - The child-JVM test classes leave PIT's test set under a finding. The adviser ruled this is not
+      a PIT-scope change; a "no" reopens it.
+    - The calibration has 12 shapes, F-30's `..` among them.
+    - A second nightly job runs, as a check only (ADR-0014's nightly sentence).
+    - The 4 194 304 depth default stays open. If the heap numbers arrive after Monday morning, it is
+      the owner's to decide.
+  - #119 (recursion diagnostics), from the adviser's rulings C1–C6 and O1–O4:
+    - ADR-0020 amendment (#119): one bench class reaches the compile-mode switch by reflection,
+      class path only, read back in `@Setup`.
+    - ADR-0019 amendment (#119): `walk` and `[paths]` rows are owed by spec 3; jq-ref times stand
+      beside the 2b diagnostic rows with no ratio.
+    - The ticket stays class B. Its 13 `bench/<name>.1k` ids freeze with the filters at the measured
+      caps.
+    - For information: the conservative B/op rows at 10⁶ are heap-per-level evidence for the open
+      4 194 304 depth default.
 
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 

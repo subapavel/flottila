@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj.oracle.json;
 
 import io.github.subapavel.jqj.cli.Main;
+import io.github.subapavel.jqj.oracle.diff.Corpus;
 import io.github.subapavel.jqj.oracle.diff.Deviations;
 import io.github.subapavel.jqj.oracle.diff.DiffCorpus;
 import io.github.subapavel.jqj.oracle.diff.DiffReport;
@@ -82,6 +83,6 @@ final class JsonCorpus {
 
   /** The runner of the differential oracle over the command line's entry, with the repository's deviations. */
   static DiffRunner runner(Path scratch) {
-    return new DiffRunner(Main::run, scratch, Deviations.slugs(root().resolve("DEVIATIONS.md")));
+    return new DiffRunner(Corpus.onRunnerThread(Main::run), scratch, Deviations.slugs(root().resolve("DEVIATIONS.md")));
   }
 }

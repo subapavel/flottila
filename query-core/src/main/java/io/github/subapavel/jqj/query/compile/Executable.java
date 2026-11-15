@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.compile;
 
+import io.github.subapavel.jqj.query.analysis.Facts;
 import io.github.subapavel.jqj.query.internal.interpret.Op;
 import io.github.subapavel.jqj.query.internal.interpret.Trampoline;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -8,7 +9,8 @@ import io.github.subapavel.jqj.query.run.Termination;
 
 /**
  * A compiled program (GLOSSARY "Executable"): immutable, and it keeps nothing from one run to the next. Each run gets its
- * own frames (ADR-0034, ADR-0045 #107), so two runs on two threads share nothing.
+ * own frames (ADR-0034, ADR-0045 #107), so two runs on two threads share nothing. Its facts travel with it (ADR-0045
+ * #112).
  */
 public final class Executable {
   private static final Object[] NO_PARAMETERS = {};
@@ -21,10 +23,23 @@ public final class Executable {
   /** The number of parameter slots, slots {@code 0 .. parameters - 1} (ADR-0038). */
   private final int parameters;
 
-  Executable(Op root, int slots, int parameters) {
+  /** The facts of the program this was compiled from, by its freeze ids. */
+  private final Facts facts;
+
+  /** The program's frames, {@code D_f} among them (ADR-0046 #111 amendment). */
+  private final Nesting nesting;
+
+  Executable(Op root, int slots, int parameters, Facts facts, Nesting nesting) {
     this.root = root;
     this.slots = slots;
     this.parameters = parameters;
+    this.facts = facts;
+    this.nesting = nesting;
+  }
+
+  /** The facts of the compiled program, by body and freeze id ({@code query.analysis.Numbering}). */
+  public Facts facts() {
+    return facts;
   }
 
   /**
@@ -39,10 +54,11 @@ public final class Executable {
   /**
    * Pushes the results for {@code in} into {@code out} (ADR-0008), in the run {@code state} belongs to (ADR-0030), with
    * {@code parameters} in the parameter slots, one value per slot in their order (ADR-0038): true when they ran out,
-   * false when out stopped. A run whose {@link RunState#stackBytes()} are 0 runs main and every body on the trampoline,
-   * this frame its starter (ADR-0046 and its #109 amendment); any other run, in push form on the Java stack. A run that
-   * exhausts its thread's stack ends with {@link Termination#stack()}: the only place that catches a StackOverflowError
-   * (ADR-0045 #107), a backstop.
+   * false when out stopped. The run derives its unit limit {@code U_f} from {@link RunState#stackBytes()} at its start
+   * (ADR-0046 and its #111 amendment, {@link StackUnits}): at {@code U_f} 0 or below, which a declared stack of 0
+   * gives, this frame is the starter and main and every body run on the trampoline; otherwise main runs in push form
+   * and a call whose units reach {@code U_f} starts the trampoline. A run that exhausts its thread's stack ends with
+   * {@link Termination#stack()}: the only place that catches a StackOverflowError (ADR-0045 #107), a backstop.
    *
    * @throws IllegalArgumentException when {@code parameters} has not one value per parameter slot; nothing runs
    * @throws Termination of cause STACK when the stack ran out
@@ -53,13 +69,20 @@ public final class Executable {
     }
     Object[] run = new Object[slots];
     System.arraycopy(parameters, 0, run, 0, parameters.length);
+    long unitLimit = StackUnits.unitLimit(state.stackBytes(), nesting.callFreeDepth());
+    state.limitUnits(unitLimit);
     try {
-      if (state.stackBytes() == 0) {
+      if (unitLimit <= 0) {
         return Trampoline.run(state, root, run, in, out);
       }
       return root.run(state, run, in, out);
     } catch (StackOverflowError _) {
       throw Termination.stack();
     }
+  }
+
+  /** The program's frames: each call's units, each body's leaf-emit depth, {@code D_f} and {@code T} (ADR-0046 #111). */
+  public Nesting nesting() {
+    return nesting;
   }
 }

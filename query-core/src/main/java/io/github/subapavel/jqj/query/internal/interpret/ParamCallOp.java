@@ -13,19 +13,39 @@ public final class ParamCallOp extends Op {
   private final int level;
   private final int cell;
 
-  public ParamCallOp(int level, int cell) {
+  /** The stack units of the site, its descent and rise; the closure it runs adds its leaf-emit depth (ADR-0046 #111). */
+  private final long units;
+
+  /** {@code T}, the units a starter holds over the call's. */
+  private final long starter;
+
+  public ParamCallOp(int level, int cell, long units, long starter) {
     this.level = level;
     this.cell = cell;
+    this.units = units;
+    this.starter = starter;
   }
 
+  /**
+   * The push form: after the step and the activation, the call holds the site's units and the closure's leaf-emit
+   * depth, and when the units held reach the run's unit limit it holds {@code T} more and starts the trampoline as a
+   * starter, which runs the closure's body (ADR-0046 #111 amendment); otherwise the closure runs here.
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Closure closure = (Closure) Frames.out(slots, level)[cell];
     state.tick();
     state.enter();
+    long held = units + closure.emitDepth();
+    boolean starts = state.addUnits(held);
+    if (starts) {
+      state.addUnits(starter);
+      held += starter;
+    }
     try {
-      return closure.run(state, in, out);
+      return starts ? closure.drive(state, in, out) : closure.run(state, in, out);
     } finally {
+      state.removeUnits(held);
       state.leave();
     }
   }

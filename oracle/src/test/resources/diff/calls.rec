@@ -251,3 +251,17 @@ rc 0
 stdout []\n
 stderr
 end
+
+case calls/break-through-a-mutual-recursion
+def 832c4a875e73
+rc 0
+stdout []\n
+stderr
+end
+
+case calls/break-through-another-group
+def ef0a9d52de93
+rc 0
+stdout []\n
+stderr
+end

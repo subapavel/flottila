@@ -36,13 +36,17 @@
 
   <build>
     <plugins>
-      <!-- The command line's in-process entry is not exported API (ADR-0020); only the oracle compiles against it. -->
+      <!-- The command line's in-process entry is not exported API (ADR-0020); only the oracle compiles against it.
+           CardinalityBoundsTest (#112) builds a filter's Program with jq-core's parser and resolver, so it can watch
+           each node in query-core's IR; the tests run on the class path. -->
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
           <compilerArgs combine.children="append">
             <arg>--add-exports</arg>
             <arg>io.github.subapavel.jqj.cli/io.github.subapavel.jqj.cli=io.github.subapavel.jqj.oracle</arg>
+            <arg>--add-exports</arg>
+            <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.parse=io.github.subapavel.jqj.oracle</arg>
           </compilerArgs>
         </configuration>
       </plugin>

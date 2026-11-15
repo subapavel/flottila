@@ -180,3 +180,83 @@ R1, made for the owner under the delegation of 2026-11-14.
 - Compile mode becomes a dimension of the calibration cells (#113).
 - Whichever of #113 and #116 merges second re-runs the matrix.
 - #116's fresh-JVM `-Xint` 512 KiB cases run OPTIMISED on value-form recursion.
+
+## Amendment (ticket #113)
+
+Accepted by the architect under `/run-spec` #106, from the designer's draft and the
+grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner under the delegation of
+2026-11-14.
+
+**Cells**
+- A calibration cell is one shape × tier × thread × compile mode, run in a fresh child JVM. The
+  child has no agent, no `-Xmx` and no ulimit (F-91).
+- There are 12 shapes:
+  - Spike A's T, E, M and N, on a 10 000-element array;
+  - a wide body W and a closure chain C;
+  - the nested drivers;
+  - F-30's `[..]|length` on DEEP;
+  - #111's collect, reduce, first-or and hold.
+- There are three tiers: `-Xint`, C1 only, and warm.
+- There are three threads: a 512 KiB and a 1 MiB platform thread, and a virtual thread whose carrier
+  is sized by the child's `-Xss512k`. javap shows the carrier is a `ForkJoinWorkerThread` with stack
+  size 0, so it takes `-Xss`.
+- There are two modes: CONSERVATIVE and OPTIMISED.
+- A re-run only adds cells.
+
+**What a cell measures**
+- A cell measures its unit edge `U*`: the largest `U_f` at which the shape gives reference jq's
+  result. At `U* + 1` the cell ends STACK. A JIT cell's `U*` is the smallest over at least 3 fresh
+  children, and the spread is recorded (D3).
+- Each cell proves its thread's size. A cell whose size is not proven is INVALID, not a pass. glibc
+  can hand a new thread the cached stack of a larger thread that has ended (observed, D2).
+- `b_cell` is the slope between the 512 KiB and 1 MiB cells: the bytes per unit. A virtual cell uses
+  its platform pair's slope.
+- `b` is the largest `b_cell`, rounded up to 8 B.
+- The reserve is the largest `S − b_cell·(U* + D_f)`, rounded up to 4 KiB, plus 32 KiB for the
+  natives. It is never below the guard pages plus 32 KiB, and `reserveCoversTheGuardPages` keeps
+  that floor. There is no `T` term, because line 131's bound has none (D1).
+- There is no margin beyond rounding and the 32 KiB. Each cell's headroom is in the record.
+
+**The record**
+- The committed record is a tsv that the matrix run writes, never edited by hand, and that
+  `bench/RESULTS.md` cites. The verifier rewrites it at the spec gate.
+- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over every row of the
+  record, whichever tier holds the maximum. It reads the record in-process.
+- A fresh run asserts in one direction only: each cell completes, and fresh values are at most the
+  constants (K7).
+
+**Where the columns run**
+- The ticket gate runs the `-Xint` 512 KiB column, both modes, once per shape at the committed
+  constants, as a check.
+- The spec gate runs the `calibration-matrix` tag and profile.
+- Nightly runs the same tag as a check only. It uploads its tsv and commits nothing (ADR-0014).
+
+**ADR-0020's test name**
+- ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`. "Half" was
+  never defined (K1).
+
+**The red**
+- The red is c2, `everyCellSwitchesBeforeTheBackstop` at #111's constants over the full matrix,
+  logged per cell. Then comes c3, `constantsAreTheMatrixMaxima`, which first fails on the missing
+  record.
+- If the maxima equal #111's constants, the record is the green. No constant is perturbed to get a
+  red (K9).
+
+**The 10 000-deep native check (D4)**
+- It asserts reference jq's values, with each native's first use in the child at the deepest emit:
+  - `tojson|length` → `19998`;
+  - `[.,.]|sort|length` → `2`;
+  - `def d: [.[]?|d]|sort; d|tojson|length` → `19998`.
+- Detach, the Printer and MergeSort are iterative, so a STACK there raises the natives part of the
+  reserve. It is not a finding (K5).
+
+**PIT**
+- The child-JVM test classes leave PIT's test set, under a finding with seconds and first-kill counts
+  (F-84). This is not a PIT-scope change (K10).
+
+**Considered**
+- Measuring overflow depth in levels.
+- One `b` for every size, which folds the fixed overhead into `b`.
+- "Half" as a 2× margin, which would halve `U_f`.
+- Fresh equality with the constants, which is flaky across JIT runs.
+- Moving the ticket column to the spec gate.

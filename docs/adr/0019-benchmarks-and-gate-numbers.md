@@ -142,3 +142,18 @@ a measured win only).
 - Added row: `inputs | .a` over 10 000 documents of 1 KB, measured in 5a (detach at read) and again
   in 5b (the hold analysis). It is the "detach of inputs" row above.
 - No host-streaming cell joins the gate scenarios.
+
+## Amendment (ticket #119)
+
+Accepted by the architect under `/run-spec` #106, on the grilling-adviser's rulings C4 and O1
+(owner's delegation to 2026-11-16; on the owner-review list).
+
+- The recursion diagnostics of spec 2b record `limit` and `..`. The `walk` and `[paths]` rows need
+  spec 3's path mode (`.[] |= f`, `path(recurse)`), so spec 3 owes them, with G5 (S3a.11). The #119
+  record names them as NOT_RUN.
+- jq-ref's per-document time (K = 1) stands beside the diagnostic rows of the recursion and cap
+  tables, as in the #85 section. There is no ratio column, so it is still no speed factor. A
+  diagnostic where jq-ref is quadratic (the unspecialised E shape: 31 s at 4×10⁴, no answer in
+  120 s at 8×10⁴) gets no reference time at 10⁶.
+- The diagnostic cells at 10⁶ are in no gate. They run in one exclusive session, last, with the load
+  average recorded.

@@ -1,5 +1,8 @@
 package io.github.subapavel.jqj.query.compile;
 
+import io.github.subapavel.jqj.query.analysis.CallGraph;
+import io.github.subapavel.jqj.query.analysis.Facts;
+import io.github.subapavel.jqj.query.analysis.Numbering;
 import io.github.subapavel.jqj.query.internal.interpret.AdvanceOp;
 import io.github.subapavel.jqj.query.internal.interpret.AltBindOp;
 import io.github.subapavel.jqj.query.internal.interpret.AltOp;
@@ -63,7 +66,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Compiles a program: verifies it, then builds the interpreter tree (ADR-0018). There is no analysis yet.
+ * Compiles a program: verifies it, freezes it, finds its facts, then builds the interpreter tree (ADR-0018, ADR-0045
+ * #112).
  *
  * <p>Each body, the main tree's or a function's, runs in a frame of its own: its slots, then a function's closure
  * cells (ADR-0045 #107). A closure argument that binds no slot runs in the frame it was written in, its defining frame,
@@ -89,9 +93,13 @@ public final class Compiler {
   /** Where a slot or closure parameter is: {@code level} links out from the running frame, at {@code cell}. */
   private record At(int level, int cell) {}
 
-  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures) {
+  /** The program's frames: each call's units and each closure argument's leaf-emit depth (ADR-0046 #111). */
+  private final Nesting nesting;
+
+  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting) {
     this.shells = shells;
     this.closures = closures;
+    this.nesting = nesting;
   }
 
   /**
@@ -117,25 +125,30 @@ public final class Compiler {
   /**
    * Compiles {@code program} in {@code mode}, with slots {@code 0 .. parameters - 1} of its main tree its parameter
    * slots (ADR-0038): in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
-   * There is no analysis yet, so both modes build the same tree (ADR-0030, ADR-0018: no specialisation either).
+   * The order is verify, freeze, facts, build (ADR-0045 #112): {@link CompileMode#OPTIMISED} analyses the program and
+   * {@link CompileMode#CONSERVATIVE} keeps every fact at its safe value. No backend reads a fact yet, so both modes build
+   * the same tree (ADR-0030, ADR-0018: no specialisation either).
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
   public static Executable compile(Program program, int parameters, CompileMode mode) {
     IrVerifier.Layout layout = IrVerifier.verify(program, parameters);
+    Numbering numbering = Numbering.of(program);
+    Facts facts = mode == CompileMode.OPTIMISED ? Facts.optimised(numbering, CallGraph.of(program, numbering)) : Facts.conservative(numbering);
     int[] slots = layout.slots();
     List<Function> functions = program.functions();
     LiftedFunction[] shells = new LiftedFunction[functions.size()];
     for (int i = 0; i < shells.length; i++) {
       shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
     }
-    Compiler compiler = new Compiler(shells, layout.closures());
+    Nesting nesting = Nesting.of(program);
+    Compiler compiler = new Compiler(shells, layout.closures(), nesting);
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1]);
       shells[i].define(compiler.interpreter(functions.get(i).body()));
     }
     compiler.region = new Region(null, null, slots[0]);
-    return new Executable(compiler.interpreter(program.main()), slots[0], parameters);
+    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, facts, nesting);
   }
 
   private Op interpreter(Node node) {
@@ -164,7 +177,7 @@ public final class Compiler {
       case Call c -> call(c);
       case ParamCall p -> {
         At at = parameter(p.param());
-        yield new ParamCallOp(at.level(), at.cell());
+        yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
       }
     };
   }
@@ -221,7 +234,7 @@ public final class Compiler {
     for (int j = 0; j < closures.length; j++) {
       closures[j] = closure(written.get(j));
     }
-    return new CallOp(shells[c.fn()], closures, values);
+    return new CallOp(shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
   }
 
   /**
@@ -234,8 +247,9 @@ public final class Compiler {
       return ClosureArgument.passed(at.level(), at.cell());
     }
     List<Integer> own = closures.get(body);
+    long emitDepth = nesting.emitDepth(body);
     if (own.isEmpty()) {
-      return ClosureArgument.written(interpreter(body), 0);
+      return ClosureArgument.written(interpreter(body), 0, emitDepth);
     }
     Map<Integer, Integer> cells = new HashMap<>();
     for (int slot : own) {
@@ -245,7 +259,7 @@ public final class Compiler {
     region = new Region(outer, cells, 0);
     Op op = interpreter(body);
     region = outer;
-    return ClosureArgument.written(op, cells.size() + 1);
+    return ClosureArgument.written(op, cells.size() + 1, emitDepth);
   }
 
   /** The Binds {@code b}, its values built in a loop, so the build does not go deeper with their number. */
@@ -266,7 +280,7 @@ public final class Compiler {
    * gives one result at most and holds no Break, so it never breaks out (ADR-0008). Every other kind, a Break and a
    * Call among them, is none.
    */
-  private static boolean tail(Node node) {
+  static boolean tail(Node node) {
     return switch (node) {
       case Identity _ -> true;
       case Const _ -> true;

@@ -537,6 +537,8 @@ binds/pattern-of-70-keys-first-key-outermost	e57c537830a8	interpreter
 calls/break-in-closure-targets-callers-activation	d682bdfaed74	interpreter
 calls/break-leaving-deep-calls	77f13b5d17cc	interpreter
 calls/break-out-of-a-recursion	ede40b07dc72	interpreter
+calls/break-through-a-mutual-recursion	832c4a875e73	interpreter
+calls/break-through-another-group	ef0a9d52de93	interpreter
 calls/break-to-a-captured-label	531b345299f5	interpreter
 calls/captured-label-per-activation	5e1b401e8368	interpreter
 calls/captured-label-through-a-closure-param	ee841ac36712	interpreter
@@ -570,6 +572,11 @@ calls/try-in-a-recursion-lets-a-downstream-error-pass	f86da19c0d21	interpreter
 calls/two-deep-calls-in-sequence	52d39b4de027	interpreter
 calls/value-param-name-is-callable	c21edd8ee5c1	interpreter
 calls/value-params-bind-around-the-call	8f4ff2afe6d4	interpreter
+cardinality/first-stops-before-the-endless-rest	52b5973b96fb	interpreter
+cardinality/limit-stops-before-the-error	9f45bc8bd6fc	interpreter
+cardinality/recursion-after-a-comma-keeps-the-pending-errors	39b501e8ef21	interpreter
+cardinality/reduce-of-a-source-with-no-result-never-runs-its-break	1d6502066531	interpreter
+cardinality/reduce-of-an-empty-init-ends-before-its-break	9fcb755aad85	interpreter
 chains/and-or-of-generators-in-jq-order	5183a0f807f9	interpreter
 chains/assignment-under-alternative-is-inner-levels	9da2fad7ecaa	interpreter
 chains/comparisons-in-and-or	fb8a9bfd11b5	interpreter
