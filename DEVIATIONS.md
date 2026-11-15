@@ -292,11 +292,15 @@ and rc 3, as without the flag.
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
 | `depth/comma-10922` (`deviation long-comma-chains`) | `1,1,…,1`, 10 922 commas, on `null` | rc 3, `jq: error: function compiled to 65536 bytes which is too long` | the 10 923 ones, rc 0 |
+| jq-core `InlineCapTest`, `InlineCostKindsTest` | `def f: .; f,f,…`, 65 537 calls, on `null` | rc 3, `jq: error: function compiled to 524294 bytes which is too long` | 65 537 nulls, rc 0 |
 
 jq-ref compiles 10 921 commas (`depth/comma-10921`, matched) and rejects one more with its own bytecode limit: a
 function's code must fit 65 536 bytes. jqj compiles to an IR and an interpreter tree with no such limit, and a long
 chain is bounded at run time by the step budget instead (one tick per right branch, F-32; jq-core
-CommaChainTest pins chains of 10⁴ and 10⁵).
+CommaChainTest pins chains of 10⁴ and 10⁵). A chain of calls whose expansions would pass the inline cap makes the call
+that would pass it a PLAIN Call (ADR-0040 "Amendment (ticket #114)"), so it runs too; jq-ref 1.8.2 rejects the
+`InlineCostKindsTest` chains one call past the most that are inlined with the same limit (observed 2026-11-15, -nc -f):
+524294 bytes for the one-node bodies, 174766 for the three-node ones and 104862 for the five-node ones.
 
 ## Long path chains (F-42, F-44, issue #70)
 
@@ -320,10 +324,12 @@ test thread, and the ticks of the fused and balanced chains. ResolverTest pins t
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
 | jq-core `LongDefRunTest` | `def f0: 0; …; def f9992: 9992; [f0, f9992]`, 9 993 definitions, on `null` | rc 3, `jq: error: memory exhausted at <top-level>, line 1, column 167660` | `[0,9992]`, rc 0 |
+| `over-cap/flat-4097` (`deviation live-definitions`), jq-core `InlineDepthTest` | `def f1: .+1; def f2: f1; …; f4097`, on `null` | rc 3, `jq: error: too many function parameters or local function definitions (max 4095)` | `1`, rc 0 |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) prints `[0,9991]` for 9 992 such definitions and
 rejects one more, rc 3. jqj compiles past that count: `LongDefRunTest` pins 9 993 and 10⁵ definitions compiling
-and running on a 512 KiB stack.
+and running on a 512 KiB stack. jq-ref counts only live definitions, because it drops unreferenced ones. jqj has no
+limit: past 511 nested expansions, a call is PLAIN (ADR-0040 "Amendment (ticket #114)").
 
 ## Long operator runs (ADR-0043, issue #94)
 
@@ -334,6 +340,8 @@ and running on a 512 KiB stack.
 | jq-core `OperatorChainTest` | `.a and .a and …`, 20 000 terms, on `null` | rc 3, `jq: error: function compiled to 399985 bytes which is too long` | `false`, rc 0 |
 | jq-core `OperatorChainTest` | `.a or .a or …`, 20 000 terms, on `null` | rc 3, the same message | `false`, rc 0 |
 | jq-core `OperatorChainTest` | `.a == .a and .a == .a and …`, 20 000 terms, on `null` | rc 3, `jq: error: function compiled to 599985 bytes which is too long` | `true`, rc 0 |
+| jq-core `OperatorChainTest` | `def f: length + length + …`, 40 000 terms; `f`, on `null` | no result within `timeout 10` | `0`, rc 0 |
+| jq-core `OperatorChainTest` | `def f: [(length+length+length), …]`, 15 000 chains, then 13 000; `f`, on `null` | rc 3, `jq: error: function compiled to 405012 bytes which is too long`, and 351012 bytes for 13 000 | the array of 15 000 zeros, rc 0, f lifted; 13 000 compile with f inlined |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-nc -f`) runs 6 554 terms of `.a+` (6 553 after
 `{"a":1} |`, as `IrDepthTest` writes them), 3 277 of `.a and` or `.a or`, 2 185 of `.a == .a and` and 2 185 of `.a //`, and

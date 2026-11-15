@@ -240,6 +240,12 @@ final class Binder {
   /** Whether each id is in a cyclic strongly connected component of the call graph (ADR-0040 "Recursion"). */
   private boolean[] recursive;
 
+  /** Whether the main filter reaches each id (GLOSSARY "Live definition"), once every live prelude body is walked. */
+  private boolean[] live;
+
+  /** The live definitions, each after every definition it calls outside its own recursive group ({@link #cycles}). */
+  private final List<Ast.FuncDef> calleeFirst = new ArrayList<>();
+
   /** The signature of the prelude definition whose body the walk is in, or null in the filter's own text. */
   private String prelude;
 
@@ -281,6 +287,7 @@ final class Binder {
     while (binder.walkLive(live)) {
       live = binder.live();
     }
+    binder.live = live;
     binder.recursive = binder.cycles();
     return binder;
   }
@@ -354,6 +361,15 @@ final class Binder {
   /** Whether {@code def} is in a recursive group: a cyclic strongly connected component of the call graph. */
   boolean recursive(Ast.FuncDef def) {
     return recursive[ids.get(def)];
+  }
+
+  /**
+   * The live definitions, callees first: each comes after every definition its own text calls, closure arguments
+   * included, unless both are in one recursive group (Tarjan's order of the strongly connected components). The
+   * expansion measure is computed in this order (ADR-0040 "Amendment (ticket #114)").
+   */
+  List<Ast.FuncDef> calleeFirst() {
+    return calleeFirst;
   }
 
   /** Whether a call binds to {@code param} by its name: a filter parameter run, or a value parameter's filter. */
@@ -1007,7 +1023,9 @@ final class Binder {
 
   /**
    * Which ids are in a cyclic strongly connected component of the call graph: Tarjan's algorithm, by a loop, since a
-   * run of definitions can chain thousands of calls. A definition that calls itself is one.
+   * run of definitions can chain thousands of calls. A definition that calls itself is one. Each component is complete
+   * after every component it reaches, so the live definitions are added to {@link #calleeFirst} as their components
+   * complete.
    */
   private boolean[] cycles() {
     int n = defs.size();
@@ -1054,15 +1072,24 @@ final class Binder {
           int w = stack.pop();
           onStack[w] = false;
           boolean group = w != v;
+          completed(w);
           while (w != v) {
             cyclic[w] = true;
             w = stack.pop();
             onStack[w] = false;
+            completed(w);
           }
           cyclic[v] |= group;
         }
       }
     }
     return cyclic;
+  }
+
+  /** Adds the definition of id {@code id} to {@link #calleeFirst} when it is live; the main filter is no definition. */
+  private void completed(int id) {
+    if (id != MAIN && live[id]) {
+      calleeFirst.add(defs.get(id));
+    }
   }
 }
