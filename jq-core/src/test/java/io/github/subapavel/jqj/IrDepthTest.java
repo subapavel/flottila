@@ -637,7 +637,36 @@ class IrDepthTest {
         Arguments.of(".[length?:]", 10, "null"),
         Arguments.of(".[:length?]", 10, "null"),
         Arguments.of("last([[.]])", 6, "[[null]]"),
-        Arguments.of("{(tostring?): .}", 11, "{\"null\":null}"));
+        Arguments.of("{(tostring?): .}", 11, "{\"null\":null}"),
+        // A comma of two terms a level; two steps; two pattern nodes.
+        Arguments.of("length, length", 3, "0,0"),
+        Arguments.of(".a.b", 9, "null"),
+        Arguments.of(".a[length?]", 13, "null"),
+        Arguments.of("reduce . as [$a] (.; [$a])", 15, "[null]"),
+        Arguments.of("foreach . as [$a] (.; [$a])", 15, "[null]"),
+        // A call of a definition (ExpansionMeasure.call): a recursive one is its lifted form alone, a Call a level; a
+        // closure argument of the lifted form is a level below the Call; a closure captured by an inner definition
+        // too; 64 value parameters are 64 nested Binds, each argument its own number of Binds down, and the inlined
+        // body below all of them (jq-ref: .logs/114-jqref-arms3.log, .logs/114-jqref-arms64.log).
+        Arguments.of("def r: if . then r else 0 end; r", 1, "0"),
+        Arguments.of("def g(h): h; g(.)", 2, "null"),
+        Arguments.of("def g(h): def k: h; [[k]]; g(.)", 4, "[[null]]"),
+        Arguments.of(sixtyFour("def v(%s): [[.]]; v(%s)", "."), 67, "[[null]]"),
+        Arguments.of(sixtyFour("def r(%s): if false then r(%s) else . end; r(%s)", "[[.]]"), 67, "null"));
+  }
+
+  /**
+   * {@code template} with 64 value parameters {@code $a1; …; $a64}, then (for a recursive one) its call of itself with
+   * them, then a call with 63 arguments {@code .} and {@code last}.
+   */
+  private static String sixtyFour(String template, String last) {
+    StringJoiner params = new StringJoiner("; ");
+    StringJoiner args = new StringJoiner("; ");
+    for (int i = 1; i <= 64; i++) {
+      params.add("$a" + i);
+      args.add(i == 64 ? last : ".");
+    }
+    return template.split("%s", -1).length == 3 ? template.formatted(params, args) : template.formatted(params, params, args);
   }
 
   /** {@code def f: <body>; def p1: [×100 f ]×100; … def p4: [×100 p3 ]×100;} and p4 in {@code j} brackets. */

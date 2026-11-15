@@ -3,7 +3,10 @@ package io.github.subapavel.jqj.internal.parse;
 import static io.github.subapavel.jqj.internal.parse.ResolverTest.calls;
 import static io.github.subapavel.jqj.internal.parse.ResolverTest.parts;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.github.subapavel.jqj.JqCompileException;
+import io.github.subapavel.jqj.internal.Stub;
 import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Function;
@@ -213,7 +216,40 @@ class ExpansionMeasureTest {
         Arguments.of("{$__loc__}", 2),
         Arguments.of("$__loc__", 1),
         Arguments.of("@text", 1),
-        Arguments.of("null", 1));
+        Arguments.of("null", 1),
+        Arguments.of("length, length", 3),
+        Arguments.of("length | length", 3),
+        Arguments.of("length + length", 3),
+        Arguments.of(".a[length?]", 4),
+        Arguments.of("reduce . as [$a] (.; [$a])", 7),
+        Arguments.of(". as {(\"a\"): $v} | $v", 6),
+        // The lifted form lowers a closure argument once, used or not (D1), and a value argument once for its Bind;
+        // the inlined form lowers the body and the value argument again.
+        Arguments.of("def g(h): .; g([[[.]]])", 5),
+        Arguments.of("def g($a): .; g([[.]])", 7));
+  }
+
+  /**
+   * A leaf that is a Stub when lowered still counts a node: {@code def g(h): .; g(<leaf>)} measures g's body, the
+   * closure in the lifted form (D1) and the leaf's one node, five for {@code 1 as $v | $$$$v} (a Bind, its pattern,
+   * {@code 1} and builtin.jq's {@code $$$$v}, which the Resolver stubs) and two for {@code explode} (an unbuilt native
+   * of the NativeTable, spec 4). With the measured nodes left the call is inlined and the unused closure never lowered,
+   * so the filter resolves; with one fewer left the call is a PLAIN Call, whose closure is lowered, and the Stub fires.
+   * A leaf measured at no node would be inlined there too, and resolve. jq-ref 1.8.2 gives null for both (observed
+   * 2026-11-15, {@code def f: <body>; [f]} with -nc -f, .logs/114-jqref-arms3.log).
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("stubLeaves")
+  void aStubLeafInAnUnusedClosureCountsANode(String filter, int measured) {
+    assertThat(Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured).names()).as("functions of %s with %d spent before", filter, CAP - measured).doesNotContain("g/1");
+    assertThatExceptionOfType(JqCompileException.class)
+        .as("resolving %s with %d spent before", filter, CAP - measured + 1)
+        .isThrownBy(() -> Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured + 1))
+        .withMessageStartingWith(Stub.PREFIX);
+  }
+
+  static Stream<Arguments> stubLeaves() {
+    return Stream.of(Arguments.of("def g(h): .; g(1 as $v | $$$$v)", 5), Arguments.of("def g(h): .; g(explode)", 2));
   }
 
   /**
