@@ -274,6 +274,19 @@ observed; jqj intended:
 The build string holds build-time facts only: a runtime Java version would make one filter print
 differently per JVM.
 
+## `--explain` is a jqj-only flag (ADR-0016, #108)
+
+| case | flag | jq 1.8.2 | jqj |
+| --- | --- | --- | --- |
+| none yet | `--explain <filter>` | `jq: Unknown option --explain` and jq's two usage lines, rc 2 | the filter's `JqFilter.explain()` text, no input read, rc 0 |
+
+Reason: the flag shows how jqj compiled a filter, which jq has no equivalent of (ADR-0016, ADR-0018).
+jq's column was observed on jq-ref 1.8.2 (2026-11-15, with and without input). jq-cli's
+`MainExplainTest` pins jqj's column against the API's text. No oracle case pins the row: its
+`jqj-stdout` would hold the whole `explain()` text, which is unstable and which no test pins
+(spec 2b, "What a good test checks"). A filter that does not compile ends with jq's compile error
+and rc 3, as without the flag.
+
 ## Long comma chains (ADR-0034, issue #63)
 
 | case | filter | jq 1.8.2 | jqj |

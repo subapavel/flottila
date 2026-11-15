@@ -1,7 +1,10 @@
 package io.github.subapavel.jqj;
 
+import io.github.subapavel.jqj.internal.explain.Explain;
+import io.github.subapavel.jqj.internal.parse.Resolver;
 import io.github.subapavel.jqj.internal.value.Detach;
 import io.github.subapavel.jqj.query.compile.Executable;
+import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Termination;
@@ -22,8 +25,16 @@ public final class JqFilter {
   /** The declared host variables, sorted: each name's place is its parameter slot (ADR-0038). */
   private final List<String> variables;
 
-  JqFilter(Executable executable, Limits limits, List<String> variables) {
+  /** The program the executable was compiled from, which {@link #explain()} prints. */
+  private final Program program;
+
+  /** The name of each function of {@link #program}, by its place. */
+  private final List<String> names;
+
+  JqFilter(Executable executable, Resolver.Resolved resolved, Limits limits, List<String> variables) {
     this.executable = executable;
+    this.program = resolved.program();
+    this.names = resolved.names();
     this.limits = limits;
     this.variables = variables;
   }
@@ -59,6 +70,18 @@ public final class JqFilter {
     } catch (Termination t) {
       throw terminated(t);
     }
+  }
+
+  /**
+   * The IR this filter runs and its facts (ADR-0016, ADR-0018), the text {@code jqj --explain} prints: unstable and
+   * outside semver. Main, then each function of the program, one line per node: its function ({@code main} or
+   * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
+   * UTF-8 bytes, then its facts as {@code name=value}. A Call shows {@code call=PLAIN} or {@code call=RECURSIVE} and
+   * {@code callee=fn<place>}, a ParamCall {@code param=<j>}. Each function's lines follow a line {@code function
+   * fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}. Every line ends with an LF.
+   */
+  public String explain() {
+    return Explain.of(program, names);
   }
 
   /** The value of each declared variable in {@code bindings}, in the order of its parameter slot. */
