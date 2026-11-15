@@ -97,3 +97,10 @@ rc 0
 stdout [[[2,9],9],9]\n
 stderr
 end
+
+case tail/breaking-left-call-leaves-the-callers-jump
+def b825ce1c02ae
+rc 0
+stdout [5]\n
+stderr
+end

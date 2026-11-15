@@ -14,11 +14,13 @@ tail/group-five-million
 tail/alt-right-five-million
 tail/bind-body-five-million
 
-# differential: the shallow cases of tail.cases, calls that are no tail calls and repeat's jump.
+# differential: the shallow cases of tail.cases, calls that are no tail calls, repeat's jump and J4's breaking left
+# call.
 tail/many-valued-bind-is-no-tail-position
 tail/repeat-reruns-its-closure-on-its-input
 tail/free-break-in-a-closure-is-no-tail-call
 tail/call-inside-a-closure-is-no-tail-call
+tail/breaking-left-call-leaves-the-callers-jump
 
 # differential: F-56's three reference jq probes (diff/cardinality.cases, #112), which ADR-0047 makes cases of the
 # tail-call ticket: a jump that dropped a pending result or error would break them.
