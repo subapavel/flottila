@@ -71,6 +71,8 @@ before the call is lowered.
   linear form of nodes and a max-plus form of levels over the filter parameters in scope. At each
   call site it takes the larger of the inlined form and the lifted form: a Call plus each closure
   argument lowered once, because `invoke` lowers a closure for every filter parameter, used or not.
+  The lifted form's levels include the Call's Vars, one level below it, when the definition has a
+  value parameter or a value capture (F-107).
   For nodes, the sum of the two forms stands for the larger. A fold counts as unfolded.
 - The choice is greedy and top-down: the outermost call that does not fit is lifted (Q1). It may
   lift more functions than needed. Where another choice could lift fewer, tests pin results and the
