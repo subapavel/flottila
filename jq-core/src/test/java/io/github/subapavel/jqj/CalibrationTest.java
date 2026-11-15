@@ -45,12 +45,16 @@ import org.junit.jupiter.params.provider.MethodSource;
  * tag (the spec gate and nightly) runs every cell: 3 tiers × 3 threads × 2 modes × the 13 {@link
  * CalibrationCell#SHAPES}. The constants are measured in {@code -Xint} and C1, proven in warm (the adviser's K1): a
  * warm search runs while the JIT compiles, so its edge is not the thread's. An {@code -Xint} cell's {@code U*} is its
- * cold edge, each probe the first run of its own fresh child, with the linked edge, after two linking runs, beside it;
- * a C1 cell's is the smallest of 3 warmed children. A warm cell is a check: in each of {@value #WARM_CHILDREN} fresh
- * children of the default tier, the shape with the thread's own size declared gives reference jq's result in each of
- * {@value #WARM_RUNS} consecutive runs, from the child's first. The matrix writes {@code target/calibration.tsv}, the
- * record {@link CalibrationRecordTest} reads once it is committed, and appends each child's rows to {@code
- * target/calibration-progress.log} as it ends.
+ * cold edge, one bisection over fresh children, each probe the first run of its own, with the linked edge, after two
+ * linking runs, beside it; a C1 cell's is the smallest of 3 warmed children. A child's search, C1's and the linked one,
+ * repeats from its own result until two consecutive passes agree on {@code U*}, and a cell with a child that has no
+ * such fixed point after {@value CalibrationCell#PASSES} passes is INVALID (the adviser's L1). At {@code U* + 1} a cell
+ * ends STACK after a prefix of its reference results (L3, {@link #stackAfterAPrefix}). A warm cell is a check: in each
+ * of {@value #WARM_CHILDREN} fresh children of the default tier, the shape with the thread's own size declared gives
+ * reference jq's result in each of {@value #WARM_RUNS} consecutive runs, from the child's first. The matrix writes
+ * {@code target/calibration.tsv}, the record {@link CalibrationRecordTest} reads once it is committed, and appends to
+ * {@code target/calibration-progress.log} a line when a child or a cold search starts, and each child's rows as it
+ * ends, every line led by its ISO-8601 UTC instant.
  *
  * <p>Each cell proves its thread's size (D2, F-93): the plain recursion count of its thread, against the count of a
  * 1 MiB thread of its tier, must be 1.5 to 3.5 times smaller (#111's measure-b.sh: {@code -Xint} 4 772 frames at
@@ -501,9 +505,10 @@ class CalibrationTest {
   /**
    * c2 over the full matrix (the {@code calibration-matrix} tag), at the committed constants, measured in {@code -Xint}
    * and C1, proven in warm (K1). Every cell is proven. An {@code -Xint} or C1 cell's {@code U_f} at the thread's size is
-   * at most its edge, the cold one for {@code -Xint}, where the edge + 1 ends STACK; a flat cell, whose control
-   * completes, has no edge. The cold and linked slopes of each {@code -Xint} pair agree within {@value #SLOPES_AGREE}
-   * B. A C1 cell's {@code U*} is the smallest of 3 fresh warmed children and the spread is recorded (D3). A warm cell
+   * at most its edge, the cold one for {@code -Xint}, where the edge + 1 ends STACK after a prefix of the reference
+   * results ({@link #provenVerdict}, L3); a flat cell, whose control completes, has no edge. The cold and linked slopes
+   * of each {@code -Xint} pair agree within {@value #SLOPES_AGREE} B. A C1 cell's {@code U*} is the smallest of 3 fresh
+   * warmed children, each child's search at its fixed point (L1), and the spread is recorded (D3). A warm cell
    * holds when each of its {@value #WARM_CHILDREN} children gives reference jq's result in each of its {@value
    * #WARM_RUNS} runs at the thread's size ({@link #warmVerdict}); one STACK fails the test, naming the cell, the child
    * and the run. {@code -Xint} and C1 children run 4 at a time, warm children one at a time after them; each search
@@ -653,7 +658,8 @@ class CalibrationTest {
   /**
    * The edge is exact (the {@code calibration-matrix} tag): on {@code -Xint}, a 512 KiB main thread, in each mode, the
    * cold edge {@code U*} of a bisection over fresh children gives reference jq's result as the first run of another
-   * fresh child, and {@code U* + 1} ends STACK as the first run of a third.
+   * fresh child, and {@code U* + 1} ends STACK after a prefix of the reference results as the first run of a third
+   * ({@link #exactEdgeWant}, L3).
    */
   @Test
   @Tag("calibration-matrix")
@@ -730,6 +736,7 @@ class CalibrationTest {
   /** The cold edge of a cell: gallop and bisection over fresh children, each probe the first run of its child. */
   private Cold cold(Tier tier, CellThread thread, CompileMode mode, Shape shape, long seed) throws Exception {
     List<Long> proofs = new ArrayList<>();
+    progress(key(tier, thread, mode) + " " + shape.id() + " cold started");
     String out = child(tier.flags(), thread, "probe", mode.name(), shape.id(), seed >= 0 ? Long.toString(seed) : "-", "control").call();
     proofs.add(proofOf(out));
     String[] first = rows(out, "probe").get(shape.id());
@@ -803,9 +810,10 @@ class CalibrationTest {
     return () -> ChildJvm.run(dir, seconds, flags, CalibrationCell.class, args.toArray(String[]::new));
   }
 
-  /** {@code child}, its output appended to the progress log when it ends. */
+  /** {@code child}, a line in the progress log when it starts and its output appended when it ends. */
   private Callable<String> logged(String cell, Callable<String> child) {
     return () -> {
+      progress(cell + " started");
       String out = child.call();
       progress(cell + "\n" + out.strip());
       return out;
@@ -818,9 +826,14 @@ class CalibrationTest {
     Files.writeString(target.resolve("calibration-progress.log"), stamped(Instant.now(), text), UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
   }
 
-  /** The progress log's lines for {@code text}, written at {@code at}. */
+  /**
+   * The progress log's lines for {@code text}, written at {@code at}: each line starts with the ISO-8601 UTC instant and
+   * a tab, so the time per child and per tier can be measured.
+   */
   static String stamped(Instant at, String text) {
-    return text + "\n";
+    StringBuilder out = new StringBuilder();
+    for (String line : text.split("\n")) out.append(at).append('\t').append(line).append('\n');
+    return out.toString();
   }
 
   private static List<String> flags(Tier tier, CellThread thread) {
@@ -928,11 +941,15 @@ class CalibrationTest {
   /**
    * The verdict of an {@code -Xint} or C1 cell with rows from enough children, every child proven: {@code rows} are its
    * {@code cell} rows (the linked search's for {@code -Xint}, one per C1 child), {@code cold} an {@code -Xint} cell's
-   * cold edge, null for C1. {@code switches} when {@code U_f} at {@code threadBytes} is at most the edge and the edge + 1
-   * ends as {@link #stackAfterAPrefix} allows; {@code flat} when the control completes and the shape is not {@link
-   * #NEVER_FLAT}.
+   * cold edge, null for C1. INVALID, naming the child and its passes, when a child's search has no fixed point (L1);
+   * {@code switches} when {@code U_f} at {@code threadBytes} is at most the edge and the edge + 1 ends as {@link
+   * #stackAfterAPrefix} allows (L3); {@code flat} when the control completes and the shape is not {@link #NEVER_FLAT}.
    */
   static String provenVerdict(Tier tier, long threadBytes, Shape shape, List<String[]> rows, Cold cold) {
+    for (int c = 0; c < rows.size(); c++) {
+      // L1: a search without a fixed point; the -Xint linked search shares the path.
+      if (rows.get(c)[7].equals("INVALID")) return "INVALID child " + (c + 1) + ": U* has no fixed point in passes " + rows.get(c)[10];
+    }
     long linked = edge(rows);
     long coldEdge = cold == null ? -1 : cold.edge();
     String[] first = rows.getFirst();
@@ -949,15 +966,25 @@ class CalibrationTest {
     return "switches";
   }
 
-  /** Whether {@code end}, a cell's end at {@code U* + 1}, is the backstop. */
+  /**
+   * L3: whether {@code end}, a cell's end at {@code U* + 1}, is the backstop after a prefix of the shape's reference
+   * results, in order, empty or full: the emits that reached the sink before the overflow (K7). A shape has one
+   * reference result, so for first-or that is {@code [], termination STACK} or {@code [7], termination STACK}.
+   */
   static boolean stackAfterAPrefix(Shape shape, String end) {
-    return end.equals(STACK);
+    return List.of(List.<String>of(), List.of(shape.result())).stream().anyMatch(prefix -> end.equals(prefix + ", termination STACK"));
   }
 
-  /** {@link #edgeIsExact}'s expectation for the line it got for {@code shape} in {@code mode}. */
+  /**
+   * {@link #edgeIsExact}'s expectation for the line it got for {@code shape} in {@code mode}: {@code U*} gives the
+   * reference result and {@code U* + 1} ends as {@link #stackAfterAPrefix} allows, {@link #STACK} where it does not; a
+   * flat shape's line, unless it is {@link #NEVER_FLAT}.
+   */
   static String exactEdgeWant(CompileMode mode, Shape shape, String line) {
+    if (line.endsWith(": flat") && !NEVER_FLAT.contains(shape.id())) return line;
     String at = line.contains(" at U* ") ? line.substring(0, line.indexOf(':')) : mode + " " + shape.id();
-    return line.endsWith(": flat") && !NEVER_FLAT.contains(shape.id()) ? line : at + ": " + shape.completed() + " | " + STACK;
+    String next = line.contains(" | ") ? line.substring(line.lastIndexOf(" | ") + 3) : "";
+    return at + ": " + shape.completed() + " | " + (stackAfterAPrefix(shape, next) ? next : STACK);
   }
 
   /** The rows of {@code prefix} a child printed, by their shape id (field 2). */
