@@ -794,8 +794,9 @@ class ValueFormTest {
             RunForm.VALUE,
             "[]"),
         // "a" as $0 | "z" as $1 | f(. as $2 | $0): node 4 is main's Call, node 7 the closure's Var of main's slot 0, next
-        // to main's "z" and the closure's own "yes". jq-ref 1.8.2 on "in": "a" as $a | "z" as $z | def f(g): if . ==
-        // "yes" then g else "yes" | f(g | .) end; f(. as $b | $a) gives "a"; with $z in place of $a "z", with $b "yes".
+        // to main's "z" and the closure's own "yes". The reference binary 1.8.2 on "in": "a" as $a | "z" as $z |
+        // def f(g): if . == "yes" then g else "yes" | f(g | .) end; f(. as $b | $a) gives "a"; with $z in place of $a
+        // "z", with $b "yes".
         shape(
             "a ParamCall on a binding closure whose value-form Var reads the caller's slot",
             () ->
