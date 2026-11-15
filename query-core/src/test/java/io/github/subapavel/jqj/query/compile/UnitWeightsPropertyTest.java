@@ -60,9 +60,13 @@ import org.junit.jupiter.params.provider.MethodSource;
  * If, and leaves and consumers of Identity, Const, Var and intrinsics (the probe, a Many, raising and empty ones):
  * the 20 kinds. #111's deep shapes are among them: a Collect per level (deep/collect), a Reduce step per level
  * (deep/reduce), a Label and an Alt per level (deep/first-or), and a consumer that runs a function emitting from under
- * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under both compile modes (ADR-0046 #116, R1), and each
- * run must end as the run with the default stack does, with the same probe count, and hold no units after; the
- * optimised reference run ends as the conservative one does.
+ * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under three compiles: the conservative one, the
+ * optimised one under a specialisation cap of 0 and the optimised one under {@code SPECIALISE_CAP} (ADR-0046 #116, R1;
+ * ADR-0045 #117; #117 re-pin ruling W4). Each run must end as the run with the default stack does, with the same probe
+ * count, and hold no units after. The optimised reference run under cap 0, which builds no copy, ends as the
+ * conservative one does, steps included; the one under {@code SPECIALISE_CAP} has the conservative one's results, error
+ * and probe count and at most its steps, since a copy's replaced ParamCall does not tick, and the same steps where the
+ * compile built no copy.
  *
  * <p>The same seeds also build value-eligible recursion (ADR-0046 #116, R1): with no closure parameter and a single
  * probe as the leaf, a body whose wrappers are all at most one is value form in the optimised compile, and its calls run
@@ -157,11 +161,38 @@ class UnitWeightsPropertyTest {
     assertThat(value).as("seeds whose function 0 is value form, of %d", seeds().count()).isGreaterThanOrEqualTo(seeds().count() / 4);
   }
 
-  /** {@link #check} in each compile mode; the optimised reference run ends as the conservative one does. */
+  /**
+   * Witness that the third compile of {@link #modes} is not the second: in at least 10 of the seeds the optimised compile
+   * under {@link Specialiser#SPECIALISE_CAP} builds a copy (#117 re-pin ruling W4).
+   */
+  @Test
+  void someSeedsBuildACopy() {
+    long copied = seeds().filter(seed -> Compiler.compile(new Gen(seed, false).program(), 0, CompileMode.OPTIMISED).frozen().specialised() > 0).count();
+    assertThat(copied).as("seeds whose optimised compile builds a copy, of %d", seeds().count()).isGreaterThanOrEqualTo(10);
+  }
+
+  /**
+   * {@link #check} in three compiles (#117 re-pin ruling W4). The conservative one. The optimised one under a
+   * specialisation cap of 0, which builds no copy (ADR-0045 #117): its reference run ends as the conservative one does,
+   * steps included, since the value form charges the push form's steps (ADR-0047 #116). And the optimised one under
+   * {@link Specialiser#SPECIALISE_CAP}, whose copies run an argument in place of the ParamCall it replaces, without that
+   * ParamCall's tick (SpecialiserPropertyTest's rule): its reference run has the conservative one's results, error and
+   * probe count, and at most its steps, exactly its steps when the compile built no copy.
+   */
   private static void modes(long seed, Supplier<Program> program) {
-    Ended conservative = check(seed, program.get(), CompileMode.CONSERVATIVE);
-    Ended optimised = check(seed, program.get(), CompileMode.OPTIMISED);
-    assertThat(optimised.outcome()).as("seed %d: the optimised reference run against the conservative one", seed).isEqualTo(conservative.outcome());
+    Ended conservative = check(seed, Compiler.compile(program.get(), 0, CompileMode.CONSERVATIVE), "CONSERVATIVE");
+    Ended unspecialised = check(seed, Compiler.compile(program.get(), 0, CompileMode.OPTIMISED, 0), "OPTIMISED under cap 0");
+    assertThat(unspecialised.outcome()).as("seed %d: the optimised reference run under cap 0 against the conservative one", seed).isEqualTo(conservative.outcome());
+
+    Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
+    Ended specialised = check(seed, optimised, "OPTIMISED");
+    assertThat(specialised.results()).as("seed %d: the results of the optimised reference run against the conservative one's", seed).isEqualTo(conservative.results());
+    assertThat(String.valueOf(specialised.thrown())).as("seed %d: what the optimised reference run threw against the conservative one", seed).isEqualTo(String.valueOf(conservative.thrown()));
+    assertThat(specialised.frames().size()).as("seed %d: the probes of the optimised reference run against the conservative one's", seed).isEqualTo(conservative.frames().size());
+    assertThat(specialised.steps()).as("seed %d: the steps of the optimised reference run against the conservative one's", seed).isLessThanOrEqualTo(conservative.steps());
+    if (optimised.frozen().specialised() == 0) {
+      assertThat(specialised.steps()).as("seed %d: the steps of the optimised reference run, no copy built, against the conservative one's", seed).isEqualTo(conservative.steps());
+    }
   }
 
   /** Runs {@code work} on a thread of {@link #THREAD} bytes and rethrows what it threw. */
@@ -185,9 +216,8 @@ class UnitWeightsPropertyTest {
     if (failure.get() instanceof RuntimeException runtime) throw runtime;
   }
 
-  /** The property for {@code program} compiled in {@code mode}; the reference run, at the default stack. */
-  private static Ended check(long seed, Program program, CompileMode mode) {
-    Executable e = Compiler.compile(program, 0, mode);
+  /** The property for the compile {@code e}, named {@code mode} in the messages; the reference run, at the default stack. */
+  private static Ended check(long seed, Executable e, String mode) {
     Ended reference = runProbed(e, DEFAULT_STACK);
     assertThat(reference.frames()).as("seed %d, %s: the probes of the reference run", seed, mode).isNotEmpty();
     long callFree = StackUnits.callFreeDepth(e);
