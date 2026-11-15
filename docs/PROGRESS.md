@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-212 the rerun case expects the six rows the design records — done, review PASS
+
+- Red first: `StepBodiesIT.aRerunOfAStampingStepKeeps…` as it was — EXECUTED_FAIL "not within 20 s: fixture: 5 rows of sb-rerun"
+  (agent/work/FIX-212-red.log); the same line fails both build jobs of `ci` run 203. Rows observed: six (FIX-212-rows.txt).
+- Cause: a miscount in the expectation written under FIX-175, not a race. Attempt 1's crash-first row, outcome failed, is recorded
+  too (Recorder, D-111; each attempt keeps its rows, D-140). `poll()` returns after the trail's close has committed every row, so a
+  wait for exactly five could never be met — the packet's "holds for an instant" was wrong; the reviewer corrected it.
+- Change (test-author, test only): one read after the writer's flush; the list of step/attempt/outcome equals the six rows;
+  `until` takes a message supplier. No production change.
+- Evidence: VERIFIED_PASS 5 runs by the author (FIX-212-it-1..5.log), 2 by the verifier (FIX-212-verify-1/2.log), 8 tests each.
+- Review PASS (class A). The row's second clause — no test decides on machine tempo without a recorded reason — is row FIX-223.
+- Also read: `ci` run 203 (FIX-213 holds on the runner; only FIX-212 red) and `mapping-ci` run 1, four jobs green (MAP-6, part);
+  packet agent/packets/FIX-222.md added.
+
 ## 2026-11-15 — ISSUE-7 answered by the owner: the namespace is `dev.rail8` — recorded, BRAND-5 added
 
 - The owner, in the session: "rail8.dev, not io". D-154: `dev.rail8` replaces `io.rail8` — package root, Maven groupId, the mapping's

@@ -1,0 +1,53 @@
+diff --git a/platform/runtime/src/test/java/io/rail8/runtime/flow/StepBodiesIT.java b/platform/runtime/src/test/java/io/rail8/runtime/flow/StepBodiesIT.java
+index 6d4a8df3..88545a23 100644
+--- a/platform/runtime/src/test/java/io/rail8/runtime/flow/StepBodiesIT.java
++++ b/platform/runtime/src/test/java/io/rail8/runtime/flow/StepBodiesIT.java
+@@ -321,7 +321,16 @@ class StepBodiesIT {
+ 
+     /** Spins until message {@code id} has {@code n} rows as another session sees them (a row write is never what a case is red for). */
+     static void rowsOf(String id, int n) {
+-        until(() -> count("messages where id = '" + id + "'") == n, "fixture: " + n + " rows of " + id);
++        until(() -> count("messages where id = '" + id + "'") == n, () -> "fixture: " + n + " rows of " + id + ", found " + stepRows(id));
++    }
++
++    /** Message {@code id}'s rows as another session sees them, one {@code step_name/attempt/outcome} each, by attempt, then step. */
++    static List<String> stepRows(String id) {
++        List<String> rows = new java.util.ArrayList<>();
++        for (Row r : admin.preparedQuery("select step_name, attempt, outcome from messages where id = $1 order by attempt, step").execute(Tuple.of(id)).await()) {
++            rows.add(r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
++        }
++        return rows;
+     }
+ 
+     /** {@code bodies} rows: none for a new message (CORE-4c2: the table is read only, pre-V12). */
+@@ -368,9 +377,14 @@ class StepBodiesIT {
+ 
+     /** Spins (yielding, never sleeping) until {@code condition} holds; fails after 20 s naming what never happened. */
+     static void until(BooleanSupplier condition, String what) {
++        until(condition, () -> what);
++    }
++
++    /** As {@link #until(BooleanSupplier, String)}; {@code what} is read at the failure, so it can name the state found then. */
++    static void until(BooleanSupplier condition, java.util.function.Supplier<String> what) {
+         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+         while (!condition.getAsBoolean()) {
+-            if (System.nanoTime() > deadline) fail("not within 20 s: " + what);
++            if (System.nanoTime() > deadline) fail("not within 20 s: " + what.get());
+             Thread.onSpinWait();
+             Thread.yield();
+         }
+@@ -438,8 +452,12 @@ class StepBodiesIT {
+         assertEquals(2, stamped.size(), "fixture: stamp ran twice");
+         assertNotEquals(stamped.get(0), stamped.get(1), "fixture: the rerun stamped other bytes");
+         BlobKey first = BlobKey.body(id, 1);
+-        // FIX-175 (P2, P5) changed this expectation: each attempt keeps its own stamp row, and a replay takes the latest attempt's
+-        rowsOf(id, 5);   // ingress, stamp of attempts 1 and 2, crash-first and three (attempt 2's)
++        // FIX-175 (P2, P5) changed this expectation: each attempt keeps its own stamp row, and a replay takes the latest attempt's.
++        // FIX-212: the rows are six, not five — attempt 1's crash-first row too, outcome failed (a step that throws is recorded, D-140);
++        // both trails closed before their polls returned, the flush is the writer's own signal that nothing is left queued: one read.
++        a.messages.flush().await();
++        assertEquals(List.of("ingress/1/ok", "stamp/1/ok", "crash-first/1/failed", "stamp/2/ok", "crash-first/2/ok", "three/2/ok"), stepRows(id),
++                "attempt 1: ingress, stamp, crash-first (failed); attempt 2: stamp, crash-first, three — as (step/attempt/outcome)");
+         BlobKey second = new BlobKey(id, 1, "body~2");
+         assertEquals(stamped.get(1), written.get(second), "fixture: the rerun wrote under its attempt's key");
+         assertEquals(List.of(id + "/1/body", id + "/1/body~2"), stampRowKeys(id), "attempt 1's stamp row under the plain key, attempt 2's under its own");

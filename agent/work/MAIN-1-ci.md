@@ -50,3 +50,23 @@ root aggregator's `mapping` is not built by this workflow, as intended. Both bui
 - job PG 18.6 (132755722764), 17 min: `StepBodiesIT…:442->rowsOf:324->until:373 not within 20 s: fixture: 5 rows of sb-rerun`
   (FIX-212), 709 ITs run in the runtime module.
 Nothing after the runtime module has been observed on a runner since 2026-11-05.
+
+## `ci` run 203 (id 43699072882, head 02ef7bf8, push to main, 2026-11-15) — read 2026-11-15
+
+- DCO job: success.
+- Both build jobs (Postgres main 18.6, job 132765949771; Postgres floor 17.11, job 132765949788) fail in the Verify step, in
+  `Rail8 :: runtime`, with the same single failure of 709 integration tests:
+  `StepBodiesIT.aRerunOfAStampingStepKeepsEachAttemptsRowAndAReplayAfterARestartReadsAttemptTwosBytes:442->rowsOf:324->until:373
+  not within 20 s: fixture: 5 rows of sb-rerun` (FIX-212). Red on both jobs of one commit: a wrong expectation, not timing.
+- FIX-213's proof on the runner: the runtime module's unit tests (surefire) passed on both jobs — `ReplicaStartTest` did not fail;
+  the failsafe phase was reached and the coverage floors of `rail8-runtime` were met ("All coverage checks have been met").
+- Not run on the runner because the reactor stopped at runtime: component mock, cli, sim, archtest, bench; the jobs `mutation`,
+  `stack`, `bench` were skipped. Times: 15:35 and 16:59 min.
+
+## `mapping-ci` run 1 (id 43700177973, head 6779670a, push to main, 2026-11-15) — the first run from the root (MAP-6)
+
+- `mapping · ui`: success (npm ci, licences, generated types, typecheck, lint, test, test:browser, e2e, build) — 2.5 min.
+- `mapping · backend`: success (script tests, "Build, test, floors, licences, bans" 4 min, `contract/` up to date, the LF check) — 7 min.
+- `mapping · windows`: success ("Whole reactor compiles; Spotless, enforcer, licences") — 2.5 min.
+- `mapping · stack`: success (jar with the UI inside, Playwright, the `@stack` suite against the jar) — 1.5 min.
+- `mapping-bench` and `mapping-nightly` have no run yet (dispatch and cron); MAP-6 stays open for those two.

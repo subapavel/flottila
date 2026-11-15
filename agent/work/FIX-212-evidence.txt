@@ -1,0 +1,12 @@
+FIX-212 — evidence (2026-11-15)
+
+EXECUTED_FAIL  agent/work/FIX-212-red.log:246   the case as it was: "not within 20 s: fixture: 5 rows of sb-rerun"
+               the same line in both build jobs of `ci` run 203 (agent/work/MAIN-1-ci.md)
+OBSERVED       agent/work/FIX-212-rows.txt      six rows: ingress/1/ok, stamp/1/ok, crash-first/1/failed, stamp/2/ok,
+               crash-first/2/ok, three/2/ok (log: agent/work/FIX-212-obs.log:246)
+VERIFIED_PASS  agent/work/FIX-212-it-1.log .. FIX-212-it-5.log   test-author, the class alone after the edit, 8 tests
+VERIFIED_PASS  agent/work/FIX-212-verify-1.log, FIX-212-verify-2.log   verifier, exit 0, "Tests run: 8, Failures: 0,
+               Errors: 0, Skipped: 0", BUILD SUCCESS; no blocked-thread line in either log (grep -ci blocked: 0)
+review: PASS   class A; the wait is final (FlowWorker.poll joins the trail's close; Trail.close waits for the commits),
+               the list equality fails a right count over the wrong rows, the six rows are the design's (D-111, D-140).
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-212.diff.

@@ -1,0 +1,9 @@
+select step_name, attempt, outcome from messages where id = 'sb-rerun' order by attempt, step
+(observed in the failure message of StepBodiesIT, run FIX-212-obs.log; 20 s after attempt 2 completed)
+
+ingress/1/ok
+stamp/1/ok
+crash-first/1/failed
+stamp/2/ok
+crash-first/2/ok
+three/2/ok
