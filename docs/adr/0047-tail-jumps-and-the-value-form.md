@@ -98,3 +98,43 @@ grilling-adviser's rulings C1–C4 and R1, made for the owner under the delegati
 - `eval` only in value positions: the form would depend on the parent.
 - Value-form unit weights now: unmeasured, and an undercount overflows the stack.
 - The name `Form`: GLOSSARY "Form" is a generator's command line.
+
+## Amendment (ticket #118)
+
+Accepted by the architect under `/run-spec` #106. It comes from the designer's draft and the
+grilling-adviser's rulings T1–T4, made for the owner under the delegation of 2026-11-14.
+
+- **Tail positions.** Only a function body has them. From its root they pass to:
+  - the right of a Pipe whose left side is at most one;
+  - the right of a Comma or an Alt;
+  - the branches of an If whose condition is at most one;
+  - the body of a Bind or Binds whose every value is at most one.
+
+  Required: `def f: if . > 3 then . else ((.+1),(.+10)) as $x | $x | f end; [0|f]` →
+  `[4,13,12,11,10]` (jq-ref).
+- **Call kind.**
+  - It is a fact by freeze id in `query.analysis`: PLAIN, RECURSIVE, TAIL_SELF or TAIL_GROUP. It is
+    read as `Executable.callKind(function, id)` and printed as `call=`.
+  - A free slot, a free Break or a ParamCall in a closure argument makes the call fail condition 4.
+    An exception: a bare ParamCall passed on, and #117's trailing values and closures, still pass.
+  - CONSERVATIVE stores no tail kind (ADR-0018).
+- **The jump.**
+  - It builds the callee's frame, which holds the value and closure arguments, and ticks one step.
+    It then returns true from `run`, NONE from `eval`, or an answer of true on the driver.
+  - It enters no activation and adds no units.
+  - `CallOp.enter` takes a pending jump in both forms. `CallOp.Active.resume` takes it on the driver.
+- **Bullet 1 on passing closures now reads:** "A closure that passes is bound at the jump with no
+  defining frame. So it is an immutable reference, as cheap to carry as a value, and a chain of jumps
+  keeps no earlier frame alive. Group jumps and permuted closure parameters stay jumps."
+  - Frame-free binding at every call, and frame reuse for TAIL_SELF, wait for spec 6 and a measured
+    win.
+- **Oracle.**
+  - A differential case with the key `limit recursion-depth n` runs every compile mode under `n`.
+  - Its conservative and trampoline runs pass only as `Termination(BUDGET, RECURSION_DEPTH)`, so the
+    conservative kind is pinned.
+  - Reference jq ignores the key.
+- **Considered:**
+  - separate argument arrays on the pending jump: a second copy per jump;
+  - the caller's frame as the defining frame: O(n) heap along a chain of jumps;
+  - tail kinds from CONSERVATIVE's many facts: `repeat` would jump there;
+  - a CallOp flag instead of a JumpOp: a branch on every call.
