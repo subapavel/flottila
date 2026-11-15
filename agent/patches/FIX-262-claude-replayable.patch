@@ -1,0 +1,12 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -9,7 +9,7 @@
+ ## What this is
+ 
+ Open-source enterprise integration platform where **monitoring is the product**: every message,
+-every step and every payload is captured, searchable and replayable. Java 25, Vert.x 5.1,
++every step and every payload is captured and searchable. Java 25, Vert.x 5.1,
+ PostgreSQL, ClickHouse, Valkey, S3 (Kafka only as an add-on component, D-134). Apache 2.0. `docs/ARCHITECTURE.md` says what to
+ build; this file holds the rules that keep the code and the way of working aligned with it.
+ 

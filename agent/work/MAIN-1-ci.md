@@ -178,6 +178,19 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   skipped. The count of green runs in a row ends at 4 (225-228). Extract of the job log: `agent/work/FIX-260-ci-run-229.txt`.
   Row FIX-260. MAIN-1 was closed on runs 225-228 before this run ended; the close is not undone, the new sighting has its row.
 
+- `ci` runs 230 to 233, read 2026-11-15 23:10Z. 230 (1c57bfaf): `success`, read earlier from the run's conclusion. 231
+  (id 43767779292, 25484e4f, the owner's commit of the OPS-1 steering patch): `success` (22:10Z-22:36Z). 232 (id
+  43768135967, 167c72de, the owner's answers - documents): `success` (22:14Z-22:40Z). 233 (id 43769989439, 616ee25b,
+  FIX-235 on top of FIX-260): `success`, read job by job - DCO green; both build jobs green (Verify 22:34Z-22:58Z on 18.6
+  with the launcher steps, the guard, the coverage steps; 22:34Z-22:54Z on 17.11); the stack job green (22:59Z-23:00Z);
+  mutation and bench skipped, as on every push. 231 and 232 were read from the runs' conclusions only.
+  Count of green `ci` runs in a row: 4 (230-233). FIX-260's sighting (run 229, the 18.6 job) did not come back in them.
+- `site` run 1 (id 43771131451, baa089c9, BRAND-6): **failure**, as expected and stated in BRAND-6's commit - the build
+  job's self-test, build and check steps are green, `actions/configure-pages@v6` fails (Pages is not switched on: the
+  owner's step), the upload step and the deploy job are skipped. Read 23:10Z from the job list; the step's log not read.
+- `ci` run 234 (id 43771131363, baa089c9, BRAND-6): `success`, read 23:40Z from the run's conclusion (22:46Z-23:12Z); its
+  jobs were not read one by one. Count of green `ci` runs in a row: 5 (230-234).
+
 ## Whole-reactor runs on this machine (MAIN-1's first condition)
 
 The row says "green on `main` three times in a row". The architect's reading, written here so that MAIN-1's reviewer can

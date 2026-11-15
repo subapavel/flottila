@@ -1,0 +1,55 @@
+FIX-262 - evidence (2026-11-15). Documents only; nothing under platform/, bench/ or mapping/ changed.
+
+1. Inputs (committed with the task)
+   agent/work/FIX-262-scout.md     the scout's list of every place that implements, documents or tests replay
+   agent/work/FIX-262-designer.md  the designer's draft (class C)
+   agent/work/FIX-262-advisor.md   the architecture advisor's pass: SOUND WITH CHANGES, ten required
+   agent/packets/FIX-262.md        how each of the ten was taken, and the architect's decisions
+
+2. docs/ARCHITECTURE.md, 3.27 -> 3.28
+   Every edit is an exact replacement that had to match once in its line, or the script stopped (the script is not
+   committed; the diff is agent/work/FIX-262.diff, the changed words alone agent/work/FIX-262-arch-words.txt).
+   VERIFIED_PASS - the script's own count after the edits: past the changelog the word "replay" is left on five lines,
+     368, 373, 720  Kafka's log ("replay from the log") - another meaning
+     613            the simulation's failing seed "prints its replay command" - another meaning
+     730            the open point, reworded: 'first written as a "dry replay of a whole message"'
+   Lines up to 126 are the changelog's history rows and the new row 3.28; they are not rewritten.
+   Read in the code for the claims the new text makes:
+     Retention.java:31-45      a message with a DLQ row, and a body a DLQ row names, are never removed
+     AdminServer.java:399-413  the step-body route `/admin/messages/:id/steps/:n/body`; the two replay routes (still there)
+   Not read by the architect, taken from the advisor's hand-back: AdminServer.java:772-802 (the retry takes no actor),
+   PgWorkQueue.java:290-301 (the restart writes no audit row). The reviewer checked against the code: both routes mint
+   a new id (AdminServer:736, :755), Replay:154-159, Retention:31-45, FlowWorker:641-646, the route-level 503.
+
+3. Ledgers
+   python3 ci/ledger_check.py   EXECUTED_FAIL as before the task: 9 problems, all older rows - BACKLOG lines 274, 286,
+                                310, 380 and DECISIONS lines 49, 53, 62, 66, 89; none is a row this task wrote or touched.
+   python3 ci/name_guard.py     VERIFIED_PASS - clean.
+   python3 -m unittest ci.test_name_guard   VERIFIED_PASS - OK.
+
+4. The patch for the owner
+   agent/patches/FIX-262-claude-replayable.patch - one line of the root CLAUDE.md.
+   VERIFIED_PASS - `git apply --check` on this tree; and in a scratch repository holding the root CLAUDE.md it applies
+   after agent/patches/BRAND-3-steering.patch (the other patch that waits for the owner). Not applied by any session.
+
+5. Not run
+   NOT_RUN - Maven, the reactor, the coverage check: no file a build reads changed.
+   NOT_RUN - anything against a started node: the two routes are still in the code until FIX-263.
+
+6. GitHub's `ci`, read while this task was written (agent/work/MAIN-1-ci.md)
+   runs 230 to 233 green (233 is FIX-235 on FIX-260, read job by job); `site` run 1 red at configure-pages, as BRAND-6
+   said it would be until the owner switches Pages on; `ci` run 234 (BRAND-6's head) green, read from its conclusion.
+
+7. Review (class C)
+   Round 1 FAIL, five findings, all fixed (agent/packets/FIX-262.md, "Review round 1"): F-55 measured the operator's
+   gap by the wrong thing; the core gate's condition 6 was changed without asking the owner; FIX-268 was not a gate
+   row and the GATE row had no note; FIX-269 held an item CONSIDER-13 decides and was class A; no row closed the code
+   with a grep for the word. Round 2 PASS; its three wording remarks are taken.
+   The reviewer has no shell: the ledger check's output after the fixes is agent/work/FIX-262-ledger.txt (the nine
+   older problems, none of this task's rows).
+
+8. What is committed
+   The three inputs, the packet, this file, the ledger output and the changed-words file. Not committed: the whole diff
+   the reviewer was given (agent/work/FIX-262.diff, 256 KB) - it is this commit's own diff of the documents.
+   Also committed, for the task in flight: CONSIDER-24's packet and the two scout readings it rests on, so that the
+   handoff's pointers exist on main.

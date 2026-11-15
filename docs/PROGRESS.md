@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-262 replay leaves the architecture (F-55, 3.28) — done, review PASS [C]; Deviation: F-55
+
+- Context compacted before this entry: HANDOFF, `git status`, `git log -3` (baa089c9) and the fetch re-read before any change.
+- D-156 (the owner: no replay) is in `docs/ARCHITECTURE.md` 3.28 by finding F-55: one id for the life of a message; the operator's
+  operations on a failed one are retry and cancel under that id; no copy under a new id. Documents only, no build.
+- Class C: the scout's list, the designer's draft, the architecture advisor as opponent - sound with ten changes, all taken
+  (agent/packets/FIX-262.md): `Delivery.admission()` stays; "refused, removed by retention" cannot occur and is gone; recording
+  is for monitoring except the at-least-once ingress row; nothing records who retried a message - said, and nothing promised.
+- Cancel does not exist in the code: the text names it pending (FIX-267). F-55 states the operator's gap until then exactly.
+- Rows: FIX-263 routes, 264 core and sim, 265 api, 266 documents and gate check 7, 267 [C] cancel and the record of a retry,
+  268 the gate check measured again, 269 leftovers. FIX-138b and P2-20 withdrawn; thirteen open rows carry a note.
+- ISSUE-10: seven questions only the owner can answer, each with a default. A one-line patch for the root CLAUDE.md waits.
+- ARCHITECTURE is ahead of the code until FIX-265 - accepted, and said in the changelog row.
+- `ci` runs 230-234 green (233 is FIX-235 on FIX-260, 234 BRAND-6); `site` run 1 red at configure-pages until Pages is on.
+- In flight: CONSIDER-24 (re-delivery at a node's death): the cause is read from the code; the staged-death cases are being written.
+
 ## 2026-11-15 — BRAND-6 the website at rail8.dev — done, review PASS [B]; the owner switches it on
 
 - The owner asked for a website for `rail8.dev` on GitHub Pages and chose its headline (the same text as the repository's
