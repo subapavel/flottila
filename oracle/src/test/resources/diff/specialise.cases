@@ -1,0 +1,71 @@
+# Differential cases (ADR-0020) of #117 "Specialisation" (ADR-0045 "Amendment (ticket #117)", ADR-0006, GLOSSARY
+# "Specialisation", "Outside call", "Invariant parameter"): a lifted function's group gets a copy for each outside
+# argument tuple of its invariant parameters, so the closures of until, while, recurse(f) and repeat disappear. Every
+# case is required at #117 (oracle/src/test/resources/require/117.txt). The 5 000 000-step cases of the design are
+# #118's. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# specialise.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# Closed arguments: each prelude loop's closures are closed, so its copy holds no ParamCall.
+
+case specialise/until-closed
+arg -c
+filter 0|until(.>=3; .+1)
+stdin null\n
+end
+
+case specialise/while-closed
+arg -c
+filter [0|while(.<3; .+1)]
+stdin null\n
+end
+
+case specialise/recurse-closed
+arg -c
+filter [limit(3; 0|recurse(.+1))]
+stdin null\n
+end
+
+case specialise/repeat-closed
+arg -c
+filter [limit(3; 0|repeat(.+1))]
+stdin null\n
+end
+
+# Over INLINE_CAP: the f0-f15 ladder passes the inline cap, so recurse/1 is a lifted function called PLAIN; it is
+# specialised all the same, under its own cap.
+
+case specialise/over-inline-cap-recurse
+arg -c
+filter def f0: .; def f1: f0|f0; def f2: f1|f1; def f3: f2|f2; def f4: f3|f3; def f5: f4|f4; def f6: f5|f5; def f7: f6|f6; def f8: f7|f7; def f9: f8|f8; def f10: f9|f9; def f11: f10|f10; def f12: f11|f11; def f13: f12|f12; def f14: f13|f13; def f15: f14|f14; f15|f14|f13|f12|f11|f10|f9|f8|f7|f6|f5|f4|f3|f2|f1|f0|f0|f0 | last(limit(30000; 0|recurse(.+1)))
+stdin null\n
+end
+
+# Free references (S4): a slot the argument reads but does not bind becomes a trailing value of the copy.
+
+case specialise/range-3-free-slots-30000
+arg -c
+filter last(range(0;30000;1))
+stdin null\n
+end
+
+case specialise/until-free-slot-30000
+arg -c
+filter 30000 as $n|0|until(.>=$n; .+1)
+stdin null\n
+end
+
+# A free Break passes its label's token as a trailing value.
+
+case specialise/free-break
+arg -c
+filter [label $f | 0 | recurse(if . >= 3 then break $f else .+1 end)]
+stdin null\n
+end
+
+# Literal arguments (S3): constants compare by identity, so the two equal-looking calls get a copy each.
+
+case specialise/literal-arguments
+arg -c
+filter [limit(2;0|recurse(.+1))],[limit(2;0|recurse(.+1))]
+stdin null\n
+end

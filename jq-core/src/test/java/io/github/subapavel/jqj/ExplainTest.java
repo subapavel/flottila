@@ -26,8 +26,11 @@ class ExplainTest {
 
   private final JqEngine engine = JqEngine.builder().build();
 
-  /** One line of the text: its fields before the first {@code name=value} one, and its facts by name. */
-  private record Line(List<String> fields, Map<String, String> facts) {
+  /**
+   * One line of the text: its fields before the first {@code name=value} one, and its facts by name. SpecialiseExplainTest
+   * (#117) reads the text through it too.
+   */
+  record Line(List<String> fields, Map<String, String> facts) {
     static Line of(String line) {
       List<String> fields = new ArrayList<>();
       Map<String, String> facts = new LinkedHashMap<>();
