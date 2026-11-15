@@ -84,6 +84,21 @@ final class Inlining {
     return outcome;
   }
 
+  /**
+   * The {@code name/arity} of each function of {@code filter}'s program, in place order: the third field of each {@code
+   * function} line of {@link JqFilter#explain()} (#108). For a filter that calls no prelude definition and no recursive
+   * group these are its lifted functions (GLOSSARY "Lifted function"), and none means every call was inlined.
+   */
+  static List<String> lifted(String filter) {
+    List<String> names = new ArrayList<>();
+    for (String line : ENGINE.compile(filter).explain().split("\n")) {
+      if (line.startsWith("function ")) {
+        names.add(line.split(" ")[2]);
+      }
+    }
+    return names;
+  }
+
   /** Asserts that compiling {@code filter} ends with a Stub. */
   static void assertStub(String filter) {
     JqCompileException e =

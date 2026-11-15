@@ -1,0 +1,13 @@
+# The required cases of #114 "PLAIN calls over the inline cap and past the IR depth" (ADR-0040 "Amendment (ticket
+# #114)", F-54, ADR-0020): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# differential: every case of over-cap.cases.
+over-cap/flat-600
+over-cap/param-600
+over-cap/param-unused-600
+over-cap/doubling-22
+over-cap/depth-30001
+over-cap/closure-doubling-20
+# deviation live-definitions (DEVIATIONS.md "Long definition runs")
+over-cap/flat-4097

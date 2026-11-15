@@ -7,6 +7,8 @@ import static io.github.subapavel.jqj.Inlining.shown;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.value.JqNull;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -55,9 +57,30 @@ class IrDepthTest {
   /** 300 indexes by a computed key, each bound around the chain before it: past the bound alone. */
   private static final String DEEP = "." + "[.a]".repeat(300);
 
-  /** What {@link Child} prints for its edges, in its order. */
+  /**
+   * jq-ref 1.8.2's result for {@code nested(513)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, 1 029
+   * bytes): 512 nested arrays, as DEVIATIONS "IR depth" gave it.
+   */
+  private static final String NESTED_513 = "[".repeat(512) + "null" + "]".repeat(512);
+
+  /**
+   * jq-ref 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
+   * 20 022 bytes, 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets and an LF, sha256 7abcf37e…, the bytes
+   * of DeepBuiltArrayTest's oracle; {@code JqValue.toJson} is that text without its LF (F-54, diff/over-cap.rec {@code
+   * over-cap/depth-30001}).
+   */
+  private static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
+
+  /** jq-ref 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
+  private static final String VALUE_PARAMETERS_500 = "[".repeat(500) + "null" + "]".repeat(500);
+
+  /**
+   * What {@link Child} prints for its edges, in its order. The three call rows were a Stub until #114, when a call
+   * whose expansion would pass the bound became a PLAIN Call (ADR-0040 #114 amendment, F-54); the computed indexes,
+   * a chain and no call, stay the bound's Stub.
+   */
   private static final String EDGES =
-      "512 levels: " + NESTED_512 + "\n" + "513 levels: a Stub\n" + "30001 levels: a Stub\n" + "500 value parameters: a Stub\n" + "10000 computed indexes: a Stub\n";
+      "512 levels: " + NESTED_512 + "\n" + "513 levels: ran\n" + "30001 levels: ran\n" + "500 value parameters: ran\n" + "10000 computed indexes: a Stub\n";
 
   @TempDir Path dir;
 
@@ -129,27 +152,41 @@ class IrDepthTest {
   @Test
   void aFilterOf512LevelsRuns() throws InterruptedException {
     assertThat(resultsOnA16MiBThread(nested(512))).as("results of 512 levels on null").isEqualTo(List.of(NESTED_512));
+    AtomicReference<List<String>> lifted = new AtomicReference<>();
+    Throwable thrown = on(LARGE, () -> lifted.set(Inlining.lifted(nested(512))));
+    assertThat(thrown).as("what compiling 512 levels threw on a 16 MiB thread").isNull();
+    assertThat(lifted.get()).as("lifted functions of 512 levels: every call fits the bound").isEmpty();
   }
 
-  /** The bound's Stub; its 512 KiB stack claim is pinned by the child JVM's test. */
+  /**
+   * One level past the bound: the call whose expansion would pass it is a PLAIN Call (ADR-0040 #114 amendment), so the
+   * filter runs and gives {@link #NESTED_513}; it was the bound's Stub until #114. Its 512 KiB stack claim is pinned by
+   * the child JVM's test.
+   */
   @Test
-  void aFilterOf513LevelsIsAStub() throws InterruptedException {
-    assertStubOnA16MiBThread(nested(513));
+  void aFilterOf513LevelsRuns() throws InterruptedException {
+    assertThat(resultsOnA16MiBThread(nested(513))).as("results of 513 levels on null").isEqualTo(List.of(NESTED_513));
   }
 
-  /** 300 definitions of 100 brackets; the bound's Stub, its 512 KiB stack claim pinned by the child JVM's test. */
+  /**
+   * 300 definitions of 100 brackets: each call past the bound is a PLAIN Call to a function whose depth restarts at 0,
+   * so the filter runs and gives {@link #NESTED_30001}; it was the bound's Stub until #114. Its 512 KiB stack claim is
+   * pinned by the child JVM's test.
+   */
   @Test
-  void aFilterOf30001LevelsIsAStub() throws InterruptedException {
-    assertStubOnA16MiBThread(nested(30_001));
+  void aFilterOf30001LevelsRuns() throws InterruptedException {
+    assertThat(resultsOnA16MiBThread(nested(30_001))).as("results of 30001 levels on null").isEqualTo(List.of(NESTED_30001));
   }
 
   /**
    * 500 nested expansions of one value parameter each around 501 levels: each Bind of {@code $a} is a level of its own
-   * (F-44, the #70 review at b0b5095). Its 512 KiB stack claim is pinned by the child JVM's test.
+   * (F-44, the #70 review at b0b5095), so the expansion that would pass the bound is a PLAIN Call, and the filter runs
+   * and gives {@link #VALUE_PARAMETERS_500}; it was the bound's Stub until #114. Its 512 KiB stack claim is pinned by
+   * the child JVM's test.
    */
   @Test
-  void nestedValueParameterExpansionsAreAStub() throws InterruptedException {
-    assertStubOnA16MiBThread(valueParameters(500));
+  void nestedValueParameterExpansionsRun() throws InterruptedException {
+    assertThat(resultsOnA16MiBThread(valueParameters(500))).as("results of 500 nested value parameters on null").isEqualTo(List.of(VALUE_PARAMETERS_500));
   }
 
   /** Each {@code [.a:]} binds its bound around the chain before it (F-44, the #70 review at b0b5095). */
@@ -418,9 +455,9 @@ class IrDepthTest {
 
   /**
    * The child JVM of {@link #onA512KiBThreadInAFreshJvm512LevelsRunAndDeeperFiltersAreStubs}: on a 512 KiB thread
-   * each, it runs 512 levels on null and compiles 513 levels, 30 001 levels, 500 value parameters and 10 000 computed
-   * indexes, in that order, and prints a line for each. The lowering's count stops the first three Stubs; only the walk
-   * of the built IR stops the last.
+   * each, it runs 512 levels on null, then compiles and runs 513 levels, 30 001 levels, 500 value parameters and 10 000
+   * computed indexes, in that order, and prints a line for each: {@code ran}, {@code a Stub} or what was thrown. Since
+   * #114 the first three lift their calls past the bound; only the walk of the built IR stops the last, a chain.
    */
   static final class Child {
     private Child() {}
@@ -429,17 +466,94 @@ class IrDepthTest {
       AtomicReference<List<String>> got = new AtomicReference<>();
       Throwable thrown = on(STACK, () -> got.set(results(nested(512))));
       System.out.println("512 levels: " + (thrown == null ? String.join(", ", got.get()) : thrown));
-      stub("513 levels", nested(513));
-      stub("30001 levels", nested(30_001));
-      stub("500 value parameters", valueParameters(500));
-      stub("10000 computed indexes", "." + "[.a]".repeat(10_000));
+      run("513 levels", nested(513));
+      run("30001 levels", nested(30_001));
+      run("500 value parameters", valueParameters(500));
+      run("10000 computed indexes", "." + "[.a]".repeat(10_000));
     }
 
-    private static void stub(String name, String filter) throws InterruptedException {
-      Throwable stub = on(STACK, () -> Inlining.ENGINE.compile(filter));
-      boolean isStub = stub instanceof JqCompileException && stub.getMessage().startsWith(MARK);
-      System.out.println(name + ": " + (isStub ? "a Stub" : stub == null ? "compiled" : stub));
+    private static void run(String name, String filter) throws InterruptedException {
+      Throwable thrown = on(STACK, () -> results(filter));
+      boolean isStub = thrown instanceof JqCompileException && thrown.getMessage().startsWith(MARK);
+      System.out.println(name + ": " + (isStub ? "a Stub" : thrown == null ? "ran" : thrown));
     }
+  }
+
+  /** The definitions of {@link #aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm}. */
+  private static final int DOUBLING = 4_000;
+
+  /**
+   * The bound on each compile of the 4 000-definition doubling chain in {@link DoublingChild}, in ms: about 10× the
+   * time the red measured (the design of #114), when the compile of the same filter in the same child JVM ran to the
+   * inline cap's Stub: {@value} ms against 183 ms (optimised, the first compile in the JVM) and 38 ms (conservative)
+   * measured by the red of #114 (.logs/114-red.log of the test-author's run).
+   */
+  private static final long COMPILE_BOUND_MS = 2_000;
+
+  /**
+   * Q4 of #114: {@code def f0: .; def f1: f0,f0; …; def f4000: f3999,f3999; f4000} would lower 2^4001 - 1 nodes inlined.
+   * In a fresh JVM with no agent, on a 512 KiB thread, it compiles in the optimised and the conservative mode, each
+   * within {@link #COMPILE_BOUND_MS}, since its calls past the cap are PLAIN and no call is expanded twice (ADR-0040 #114
+   * amendment), and then its run under {@link Limits#embedded()} ends with {@code JqTermination(BUDGET, STEPS)}: each
+   * PLAIN call ticks one step (F-54). The compile times are printed into this test's output. Until #114 each compile
+   * was the cap's Stub.
+   */
+  @Test
+  void aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm() throws IOException, InterruptedException {
+    Path times = dir.resolve("times");
+    String printed = runChild(DoublingChild.class, List.of(), times.toString());
+    String measured = Files.exists(times) ? Files.readString(times, UTF_8) : "";
+    System.out.println("IrDepthTest: compile of the " + DOUBLING + "-definition doubling chain, ms: " + measured.strip());
+    assertThat(printed).as("what the child JVM printed").isEqualTo("optimised: compiled\nconservative: compiled\nembedded run: STEPS\n");
+    for (String line : measured.strip().split("\n")) {
+      String[] parts = line.split(" ");
+      assertThat(Long.parseLong(parts[1])).as("ms of the %s compile of the doubling chain", parts[0]).isLessThanOrEqualTo(COMPILE_BOUND_MS);
+    }
+  }
+
+  /**
+   * The child JVM of {@link #aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm}: on a 512 KiB
+   * thread each, it compiles the chain with an engine of {@link Limits#embedded()} in each mode, prints {@code <mode>:
+   * compiled}, {@code a Stub} or what was thrown, and writes {@code <mode> <ms>} lines to the file {@code args[0]}; then it
+   * runs the optimised filter on null and prints {@code embedded run: <budget>}, the budget that ended it, or what else
+   * happened.
+   */
+  static final class DoublingChild {
+    private DoublingChild() {}
+
+    public static void main(String[] args) throws InterruptedException, IOException {
+      String filter = doublingChain(DOUBLING);
+      StringBuilder times = new StringBuilder();
+      AtomicReference<JqFilter> optimised = new AtomicReference<>();
+      for (CompileMode mode : List.of(CompileMode.OPTIMISED, CompileMode.CONSERVATIVE)) {
+        JqEngine engine = JqEngine.builder().limits(Limits.embedded()).compileMode(mode).build();
+        AtomicReference<JqFilter> compiled = new AtomicReference<>();
+        long start = System.nanoTime();
+        Throwable thrown = on(STACK, () -> compiled.set(engine.compile(filter)));
+        long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        String name = mode == CompileMode.OPTIMISED ? "optimised" : "conservative";
+        times.append(name).append(' ').append(ms).append('\n');
+        boolean isStub = thrown instanceof JqCompileException && thrown.getMessage().startsWith(MARK);
+        System.out.println(name + ": " + (isStub ? "a Stub" : thrown == null ? "compiled" : thrown));
+        if (mode == CompileMode.OPTIMISED) {
+          optimised.set(compiled.get());
+        }
+      }
+      Files.writeString(Path.of(args[0]), times.toString(), UTF_8);
+      if (optimised.get() == null) {
+        System.out.println("embedded run: not compiled");
+        return;
+      }
+      JqEngine engine = JqEngine.builder().limits(Limits.embedded()).compileMode(CompileMode.OPTIMISED).build();
+      AtomicReference<Boolean> answer = new AtomicReference<>();
+      Throwable thrown = on(STACK, () -> answer.set(optimised.get().run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
+      System.out.println("embedded run: " + (thrown instanceof JqTermination t ? String.valueOf(t.budget()) : thrown == null ? "ended, " + answer.get() : thrown));
+    }
+  }
+
+  /** {@code def f0: .; def f1: f0,f0; …; def fn: f(n-1),f(n-1); fn}, Inlining's doubling chain and its call. */
+  private static String doublingChain(int n) {
+    return Inlining.doubling(n) + "f" + n;
   }
 
   /**

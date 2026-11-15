@@ -358,6 +358,18 @@ public final class Resolver {
   }
 
   /**
+   * SEAM STUB of #114, written by the test-author so that ExpansionMeasureTest compiles; the implementer owns it and
+   * replaces this body. {@link #resolved(ParsedFilter, List)} with {@code spentBefore} nodes of the compile's inline cap
+   * spent before the lowering starts, so the expansions have {@link #INLINE_CAP} - {@code spentBefore} left (the
+   * #114 design's seam {@code Resolver.resolved(filter, params, spentBefore)}).
+   *
+   * @throws JqCompileException a Stub until #114 builds the expansion measure
+   */
+  static Resolved resolved(ParsedFilter filter, List<String> parameters, int spentBefore) {
+    throw Stub.unbuilt("the inline cap spent before the lowering, the seam of #114");
+  }
+
+  /**
    * The function of {@code f}: its body lowered in its environment where it is written, its own parameters in scope,
    * then its captures as {@link #captured}, on slots of its own from 0, inside no expansion and at no level (ADR-0045
    * #107 "Parameters"), at the site it was placed at (ADR-0042 amendment for #110).
