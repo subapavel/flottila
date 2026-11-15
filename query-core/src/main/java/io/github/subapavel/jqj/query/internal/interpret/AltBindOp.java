@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
@@ -25,6 +26,7 @@ public final class AltBindOp extends Op {
   private final Op body;
 
   public AltBindOp(Op value, int slot, Op[] matches, Argument[][] from, int[] groups, Op body) {
+    super(false);
     this.value = value;
     this.slot = slot;
     this.matches = matches;
@@ -33,8 +35,17 @@ public final class AltBindOp extends Op {
     this.body = body;
   }
 
+  /** Each part in its run form: a value-form part's value runs what comes after it once it returned (ADR-0047 #116). */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
+    if (value.valueForm) {
+      Object v = value.eval(state, slots, in);
+      if (v == CallForm.NONE) {
+        return true;
+      }
+      slots[slot] = v;
+      return alternatives(state, slots, in, out);
+    }
     return value.run(
         state,
         slots,
@@ -62,14 +73,22 @@ public final class AltBindOp extends Op {
   /** Alternative {@code k}: at each result of its match, the group slots from its own slots, then the body. */
   private boolean alternative(int k, RunState state, Object[] slots, Object in, Sink out) {
     Argument[] own = from[k];
-    return matches[k].run(
-        state,
-        slots,
-        in,
-        m -> {
-          groups(own, slots, in);
-          return body.run(state, slots, in, out);
-        });
+    Sink rest =
+        body.valueForm
+            ? m -> {
+              groups(own, slots, in);
+              Object w = body.eval(state, slots, in);
+              return w == CallForm.NONE || out.emit(w);
+            }
+            : m -> {
+              groups(own, slots, in);
+              return body.run(state, slots, in, out);
+            };
+    if (!matches[k].valueForm) {
+      return matches[k].run(state, slots, in, rest);
+    }
+    Object m = matches[k].eval(state, slots, in);
+    return m == CallForm.NONE || rest.emit(m);
   }
 
   /** Each group slot from the alternative's own entry in {@code own}. */
@@ -77,6 +96,12 @@ public final class AltBindOp extends Op {
     for (int g = 0; g < groups.length; g++) {
       slots[groups[g]] = own[g].read(slots, in);
     }
+  }
+
+  /** Never called: an AltBind is never eligible for the value form (ADR-0047 #116). */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    throw new IllegalStateException("An AltBind has no value form");
   }
 
   /**

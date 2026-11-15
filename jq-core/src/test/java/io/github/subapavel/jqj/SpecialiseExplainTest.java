@@ -1,9 +1,10 @@
 package io.github.subapavel.jqj;
 
+import static io.github.subapavel.jqj.ExplainLines.at;
 import static io.github.subapavel.jqj.Inlining.shown;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.subapavel.jqj.ExplainTest.Line;
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -31,7 +32,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Every expected result is reference jq 1.8.2's, recorded in {@code diff/specialise.rec} (the 5 000 000-step results
  * are #118's). The deep runs use the design's limits: {@code recursionDepth} {@value #DEPTH}, which a copy's 30 000
- * levels fit and real closures, one more live activation per level and per closure, do not; each run is on a thread of
+ * levels fit and real closures, one more live activation per level and per closure, do not (the pipe ladder has a
+ * budget of its own, {@link #PIPE_LADDER_DEPTH}); each run is on a thread of
  * the oracle runners' size (F-88, ADR-0046 #111), {@link #RUNNER_STACK} bytes, with {@link Limits#cli()}'s declared
  * stack.
  */
@@ -48,21 +50,36 @@ class SpecialiseExplainTest {
   /** Reference jq 1.8.2 (specialise/literal-arguments): {@code [0,1]} twice. */
   static final String LITERAL_ARGUMENTS = "[limit(2;0|recurse(.+1))],[limit(2;0|recurse(.+1))]";
 
+  /** Reference jq 1.8.2 ({@code jq-ref -nc}, .logs/117-repin-jqref.log): {@code 5}. */
+  static final String INVARIANT_RECURSION = "def r(f): if . > 3 then f else f | r(f) end; 0 | r(. + 1)";
+
   /**
    * The design's ladder past INLINE_CAP: {@code def f0: .; def f1: f0|f0; … def f15: f14|f14; f15|f14|…|f1|f0|f0|f0 |
    * last(limit(30000; 0|recurse(.+1)))}; reference jq 1.8.2 gives {@code 29999} (specialise/over-inline-cap-recurse).
    */
-  static final String OVER_CAP = overCap();
+  static final String OVER_CAP = ladder('|', "", "");
 
-  private static String overCap() {
+  /**
+   * The same ladder of commas, collected: {@code def f0: .; def f1: f0,f0; … def f15: f14,f14; [f15,f14,…,f1,f0,f0,f0]
+   * | last(limit(30000; 0|recurse(.+1)))}; reference jq 1.8.2 gives {@code 29999}
+   * (specialise/over-inline-cap-comma-recurse).
+   */
+  static final String COMMA_LADDER = ladder(',', "[", "]");
+
+  /** The pipe ladder's recursion-depth budget: between its edges, 95 522 in OPTIMISED and 125 522 in CONSERVATIVE. */
+  static final int PIPE_LADDER_DEPTH = 110_000;
+
+  /** {@code f1} to {@code f15}, each two of the one below joined by {@code op}, then the ladder's chain in {@code open} and {@code close}. */
+  private static String ladder(char op, String open, String close) {
     StringBuilder f = new StringBuilder("def f0: .; ");
     for (int i = 1; i <= 15; i++) {
-      f.append("def f").append(i).append(": f").append(i - 1).append("|f").append(i - 1).append("; ");
+      f.append("def f").append(i).append(": f").append(i - 1).append(op).append('f').append(i - 1).append("; ");
     }
+    f.append(open);
     for (int i = 15; i >= 1; i--) {
-      f.append('f').append(i).append('|');
+      f.append('f').append(i).append(op);
     }
-    return f.append("f0|f0|f0 | last(limit(30000; 0|recurse(.+1)))").toString();
+    return f.append("f0").append(op).append("f0").append(op).append("f0").append(close).append(" | last(limit(30000; 0|recurse(.+1)))").toString();
   }
 
   /**
@@ -87,6 +104,11 @@ class SpecialiseExplainTest {
   /** How {@code filter} on null ends in {@code mode} on the runner thread: its result texts, then how it ended. */
   private static String ended(CompileMode mode, String filter) {
     return TrampolineTest.ended(engine(mode), filter, "null", RUNNER_STACK, false);
+  }
+
+  /** {@link #ended(CompileMode, String)} under the recursion-depth budget {@code depth}. */
+  private static String ended(CompileMode mode, String filter, int depth) {
+    return TrampolineTest.ended(RunBudgets.recursionDepth(depth, mode), filter, "null", RUNNER_STACK, false);
   }
 
   private static List<Line> lines(CompileMode mode, String filter) {
@@ -242,14 +264,32 @@ class SpecialiseExplainTest {
     assertThat(copies(lines(CompileMode.OPTIMISED, filter))).as("witness: copies of %s under OPTIMISED", filter).isNotEmpty();
   }
 
+  static Stream<Arguments> ladders() {
+    return Stream.of(
+        Arguments.argumentSet("the comma ladder at recursionDepth 40 000", COMMA_LADDER, DEPTH),
+        Arguments.argumentSet("the pipe ladder at recursionDepth 110 000", OVER_CAP, PIPE_LADDER_DEPTH));
+  }
+
   /**
-   * Over INLINE_CAP (ADR-0045's reason for a cap of its own): the ladder lifts recurse/1, which main's text calls PLAIN,
-   * and the optimised compile still copies it, so its 30 000 levels hold one activation each and fit the depth budget.
-   * The conservative compile keeps the real closure, one more activation per level, and ends at the budget.
+   * Over INLINE_CAP (ADR-0045's reason for a cap of its own): each ladder lifts recurse/1, which main's text calls
+   * PLAIN, and the optimised compile still copies it, so each of its 30 000 levels holds one activation, and the
+   * conservative compile's real closure one more. Each ladder gives reference jq's {@code 29999} in OPTIMISED and ends
+   * at the budget in CONSERVATIVE, so each needs the copy (#117 re-pin rulings W1, W2).
+   *
+   * <ul>
+   *   <li>The comma ladder's calls have ended when recurse runs, its results collected first, so the copy fits {@link
+   *       #DEPTH} and the real closure does not.
+   *   <li>The pipe ladder runs every call on the driver, its {@code callFreeDepth} above the runner's unit limit, and on
+   *       the driver a call stays live while its consumer runs (ADR-0046 #109 and "Amendment (ticket #116)", C2). So its
+   *       PLAIN calls stay live under recurse's levels: it ends at recursionDepth 95 522 in OPTIMISED and 125 522 in
+   *       CONSERVATIVE, each ending at the budget one below (.logs/117-repin2-edges.log at fede05d), and is pinned at
+   *       {@link #PIPE_LADDER_DEPTH}, between them.
+   * </ul>
    */
-  @Test
-  void overInlineCapStillSpecialisesRecurse() {
-    List<Line> plain = lines(CompileMode.CONSERVATIVE, OVER_CAP);
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("ladders")
+  void overInlineCapStillSpecialisesRecurse(String filter, int depth) {
+    List<Line> plain = lines(CompileMode.CONSERVATIVE, filter);
     List<String> recurse = plain.stream().filter(l -> isFunction(l) && l.fields().get(2).equals("recurse/1")).map(l -> l.fields().get(1)).toList();
     assertThat(recurse).as("premise: the function lines of recurse/1 under CONSERVATIVE").hasSize(1);
     assertThat(plain.stream().filter(l -> isNode(l) && recurse.getFirst().equals(l.facts().get("callee"))).toList())
@@ -257,12 +297,12 @@ class SpecialiseExplainTest {
         .isNotEmpty()
         .allSatisfy(l -> assertThat(l.facts()).as("the Call %s", l.fields()).containsEntry("call", "PLAIN"));
 
-    List<Line> lines = lines(CompileMode.OPTIMISED, OVER_CAP);
+    assertThat(ended(CompileMode.OPTIMISED, filter, depth)).as("OPTIMISED run of the ladder with recursionDepth %d", depth).isEqualTo("[29999], ran out");
+    assertThat(ended(CompileMode.CONSERVATIVE, filter, depth)).as("CONSERVATIVE run of the ladder with recursionDepth %d", depth).isEqualTo("[], termination BUDGET RECURSION_DEPTH");
+
+    List<Line> lines = lines(CompileMode.OPTIMISED, filter);
     String original = lines.stream().filter(l -> isFunction(l) && l.fields().get(2).equals("recurse/1") && !l.facts().containsKey("copyOf")).map(l -> l.fields().get(1)).findFirst().orElseThrow();
     assertThat(copies(lines)).extracting(l -> l.facts().get("copyOf")).as("the copyOf= of the copies under OPTIMISED").contains(original);
-
-    assertThat(ended(CompileMode.OPTIMISED, OVER_CAP)).as("OPTIMISED run of the ladder with recursionDepth %d", DEPTH).isEqualTo("[29999], ran out");
-    assertThat(ended(CompileMode.CONSERVATIVE, OVER_CAP)).as("CONSERVATIVE run of the ladder with recursionDepth %d", DEPTH).isEqualTo("[], termination BUDGET RECURSION_DEPTH");
   }
 
   /**
@@ -358,5 +398,44 @@ class SpecialiseExplainTest {
     assertThat(callees).as("the callees of main's Calls").hasSize(2).doesNotHaveDuplicates();
     assertThat(callees.stream().map(c -> function(lines, c).facts().get("copyOf")).distinct().toList()).as("the originals of the two copies").hasSize(1);
     assertSpentEveryCopy(lines, LITERAL_ARGUMENTS);
+  }
+
+  /**
+   * A copy of a recursion is value form where its original is push (#117 re-pin ruling V4; ADR-0047 "Amendment (ticket
+   * #116)", ADR-0045 "Amendment (ticket #117)"): r's f is invariant, so main's Call runs a copy of r/1 for {@code . + 1},
+   * which holds no ParamCall. The original r/1 stays, though no call reaches it, and runs its closure, so its root If is
+   * push form; the copy's root If and main's Call are value form. The two columns are read from r/1's function lines,
+   * the copy's by its {@code copyOf=}, and each root by its column and freeze id 0, its kind checked first. Witness:
+   * under CONSERVATIVE main's Call runs the original and is push form. The result is reference jq's in both modes.
+   */
+  @Test
+  void aCopyOfARecursionIsValueFormWhereItsOriginalIsPush() {
+    for (CompileMode mode : CompileMode.values()) {
+      assertThat(ended(mode, INVARIANT_RECURSION)).as("%s run of %s", mode, INVARIANT_RECURSION).isEqualTo("[5], ran out");
+    }
+
+    List<Line> lines = lines(CompileMode.OPTIMISED, INVARIANT_RECURSION);
+    List<Line> r = lines.stream().filter(l -> isFunction(l) && l.fields().get(2).equals("r/1")).toList();
+    List<String> originals = r.stream().filter(l -> !l.facts().containsKey("copyOf")).map(l -> l.fields().get(1)).toList();
+    assertThat(originals).as("the columns of r/1's function lines without copyOf=").hasSize(1);
+    String original = originals.getFirst();
+    List<Line> copies = r.stream().filter(l -> l.facts().containsKey("copyOf")).toList();
+    assertThat(copies).as("r/1's function lines with copyOf=").hasSize(1);
+    assertThat(copies.getFirst().facts()).as("the function line of r/1's copy").containsEntry("copyOf", original);
+    String copy = copies.getFirst().fields().get(1);
+
+    Line originalRoot = at(lines, original, 0);
+    assertThat(originalRoot.fields().get(2)).as("kind of node 0 of the original %s", original).isEqualTo("If");
+    assertThat(originalRoot.facts()).as("facts of the root of the original %s", original).containsEntry("form", "push");
+    Line copyRoot = at(lines, copy, 0);
+    assertThat(copyRoot.fields().get(2)).as("kind of node 0 of the copy %s", copy).isEqualTo("If");
+    assertThat(copyRoot.facts()).as("facts of the root of the copy %s", copy).containsEntry("form", "value");
+    List<Line> main = calls(lines, "main");
+    assertThat(main).as("main's Calls").hasSize(1);
+    assertThat(main.getFirst().facts()).as("facts of main's Call").containsEntry("callee", copy).containsEntry("form", "value");
+
+    List<Line> conservative = calls(lines(CompileMode.CONSERVATIVE, INVARIANT_RECURSION), "main");
+    assertThat(conservative).as("main's Calls under CONSERVATIVE").hasSize(1);
+    assertThat(conservative.getFirst().facts()).as("witness: facts of main's Call under CONSERVATIVE").containsEntry("callee", original).containsEntry("form", "push");
   }
 }

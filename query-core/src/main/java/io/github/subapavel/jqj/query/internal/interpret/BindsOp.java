@@ -1,19 +1,24 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
 /**
- * {@code v1 as $s1 | … | vn as $sn | body} (ADR-0043), run as the chain of nested {@link BindOp}s it means. A tail
- * value runs into a {@link Holder}, sets its slot and the loop goes on to the next value; with no result the Binds
- * runs out there. Any other value runs the rest, the later values and the body, inside its emit, as a BindOp does. So
- * the stack grows by one recursion per generator value, not per value. Each value and the body run on the Binds' own
- * input; no step of its own. Its heap form keeps no state: each value's sink starts what comes after it.
+ * {@code v1 as $s1 | … | vn as $sn | body} (ADR-0043), run as the chain of nested {@link BindOp}s it means. A value-form
+ * value (ADR-0047 #116) returns its value, which sets its slot, and the loop goes on to the next value; with no result
+ * the Binds runs out there. In the conservative compile a tail value runs into a {@link Holder} the same way. Any other
+ * value runs the rest, the later values and the body, inside its emit, as a BindOp does. So the stack grows by one
+ * recursion per generator value, not per value. Each value and the body run on the Binds' own input; no step of its
+ * own. Its heap form keeps no state: each value's sink starts what comes after it.
  */
 public final class BindsOp extends Op {
   private final Op[] values;
 
-  /** Whether each value is a tail emitter: one result at most, and it never breaks out (ADR-0043). */
+  /**
+   * Whether each value is a tail emitter: one result at most, and it never breaks out (ADR-0043). A value-form value
+   * runs by its value form first (ADR-0047 #116), so only the conservative compile reads this.
+   */
   private final boolean[] tails;
 
   /** The slot each value sets. */
@@ -21,7 +26,8 @@ public final class BindsOp extends Op {
 
   private final Op body;
 
-  public BindsOp(Op[] values, boolean[] tails, int[] targets, Op body) {
+  public BindsOp(boolean valueForm, Op[] values, boolean[] tails, int[] targets, Op body) {
+    super(valueForm);
     this.values = values;
     this.tails = tails;
     this.targets = targets;
@@ -40,6 +46,14 @@ public final class BindsOp extends Op {
   private boolean from(int first, RunState state, Object[] slots, Object in, Sink out, Holder holder) {
     for (int k = first; k < values.length; k++) {
       int slot = targets[k];
+      if (values[k].valueForm) {
+        Object v = values[k].eval(state, slots, in);
+        if (v == CallForm.NONE) {
+          return true;
+        }
+        slots[slot] = v;
+        continue;
+      }
       if (!tails[k]) {
         int next = k + 1;
         return values[k].run(
@@ -58,7 +72,46 @@ public final class BindsOp extends Op {
       }
       slots[slot] = holder.take();
     }
-    return body.run(state, slots, in, out);
+    if (!body.valueForm) {
+      return body.run(state, slots, in, out);
+    }
+    Object w = body.eval(state, slots, in);
+    return w == CallForm.NONE || out.emit(w);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return evalFrom(0, state, slots, in);
+  }
+
+  /**
+   * The value form of the values from {@code first} on, then the body's value. A push value of a value-form Binds is
+   * many, so what comes after it gives no result (ADR-0007 #112): each of its results sets its slot and runs the rest,
+   * for its ticks and writes, and the Binds gives none.
+   */
+  private Object evalFrom(int first, RunState state, Object[] slots, Object in) {
+    for (int k = first; k < values.length; k++) {
+      int slot = targets[k];
+      if (!values[k].valueForm) {
+        int next = k + 1;
+        values[k].run(
+            state,
+            slots,
+            in,
+            v -> {
+              slots[slot] = v;
+              evalFrom(next, state, slots, in);
+              return true;
+            });
+        return CallForm.NONE;
+      }
+      Object v = values[k].eval(state, slots, in);
+      if (v == CallForm.NONE) {
+        return v;
+      }
+      slots[slot] = v;
+    }
+    return body.eval(state, slots, in);
   }
 
   /**

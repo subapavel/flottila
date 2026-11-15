@@ -40,6 +40,15 @@ filter def f0: .; def f1: f0|f0; def f2: f1|f1; def f3: f2|f2; def f4: f3|f3; de
 stdin null\n
 end
 
+# The same ladder of commas, collected before the recurse runs (#117 re-pin ruling W2): no ladder call is live while
+# recurse/1's copy runs its 30 000 levels.
+
+case specialise/over-inline-cap-comma-recurse
+arg -c
+filter def f0: .; def f1: f0,f0; def f2: f1,f1; def f3: f2,f2; def f4: f3,f3; def f5: f4,f4; def f6: f5,f5; def f7: f6,f6; def f8: f7,f7; def f9: f8,f8; def f10: f9,f9; def f11: f10,f10; def f12: f11,f11; def f13: f12,f12; def f14: f13,f13; def f15: f14,f14; [f15,f14,f13,f12,f11,f10,f9,f8,f7,f6,f5,f4,f3,f2,f1,f0,f0,f0] | last(limit(30000; 0|recurse(.+1)))
+stdin null\n
+end
+
 # Free references (S4): a slot the argument reads but does not bind becomes a trailing value of the copy.
 
 case specialise/range-3-free-slots-30000

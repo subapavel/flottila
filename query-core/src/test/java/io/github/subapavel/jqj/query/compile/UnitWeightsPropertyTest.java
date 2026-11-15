@@ -40,7 +40,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.LongStream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -58,8 +60,17 @@ import org.junit.jupiter.params.provider.MethodSource;
  * If, and leaves and consumers of Identity, Const, Var and intrinsics (the probe, a Many, raising and empty ones):
  * the 20 kinds. #111's deep shapes are among them: a Collect per level (deep/collect), a Reduce step per level
  * (deep/reduce), a Label and an Alt per level (deep/first-or), and a consumer that runs a function emitting from under
- * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under the conservative compile (#116 adds OPTIMISED), and
- * each run must end as the run with the default stack does, with the same probe count, and hold no units after.
+ * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under three compiles: the conservative one, the
+ * optimised one under a specialisation cap of 0 and the optimised one under {@code SPECIALISE_CAP} (ADR-0046 #116, R1;
+ * ADR-0045 #117; #117 re-pin ruling W4). Each run must end as the run with the default stack does, with the same probe
+ * count, and hold no units after. The optimised reference run under cap 0, which builds no copy, ends as the
+ * conservative one does, steps included; the one under {@code SPECIALISE_CAP} has the conservative one's results, error
+ * and probe count and at most its steps, since a copy's replaced ParamCall does not tick, and the same steps where the
+ * compile built no copy.
+ *
+ * <p>The same seeds also build value-eligible recursion (ADR-0046 #116, R1): with no closure parameter and a single
+ * probe as the leaf, a body whose wrappers are all at most one is value form in the optimised compile, and its calls run
+ * by {@code eval}, which holds the push form's units (ADR-0047 #116).
  *
  * <p>U_f, D_f and T are read through {@link StackUnits} ({@code compile/StackUnits}, #111).
  */
@@ -102,7 +113,13 @@ class UnitWeightsPropertyTest {
         });
   }
 
-  /** How one run ended: its results, what it threw, its steps, and the frames at each probe. */
+  /**
+   * How one run ended: its results, what it threw, its steps, and the frames at each probe. Outcomes and results are
+   * compared by {@code equals} and printed by {@code String.valueOf} in the failure's description: a run's results can
+   * nest a list per level, and AssertJ's representation formats a nested list on one line and then on several at every
+   * level, so its message for a failure on them takes time exponential in the depth and hangs the fork (F-99; #117's
+   * thread dump of a failing seed holds 68 nested {@code smartFormat} frames).
+   */
   record Ended(List<Object> results, Object thrown, long steps, long units, List<Integer> frames) {
     /** The run without its frames, which differ between stacks. */
     List<Object> outcome() {
@@ -130,11 +147,70 @@ class UnitWeightsPropertyTest {
   @ParameterizedTest(name = "seed {0}")
   @MethodSource("seeds")
   void framesStayUnderTheLimit(long seed) {
-    Program program = new Gen(seed).program();
+    onBigThread(seed, () -> modes(seed, () -> new Gen(seed, false).program()));
+  }
+
+  /** {@link #framesStayUnderTheLimit} over the value-eligible programs of the same seeds. */
+  @ParameterizedTest(name = "seed {0}")
+  @MethodSource("seeds")
+  void framesStayUnderTheLimitInValueFormRecursion(long seed) {
+    onBigThread(seed, () -> modes(seed, () -> new Gen(seed, true).program()));
+  }
+
+  /**
+   * Witness that the value-eligible programs are not vacuous: in at least a quarter of the seeds the optimised compile
+   * runs function 0's body by its value form.
+   */
+  @Test
+  void theValueSeedsRecurseByTheValueForm() {
+    long value = seeds().filter(seed -> Compiler.compile(new Gen(seed, true).program(), 0, CompileMode.OPTIMISED).form(0, 0) == RunForm.VALUE).count();
+    assertThat(value).as("seeds whose function 0 is value form, of %d", seeds().count()).isGreaterThanOrEqualTo(seeds().count() / 4);
+  }
+
+  /**
+   * Witness that the third compile of {@link #modes} is not the second: in at least 10 of the seeds the optimised compile
+   * under {@link Specialiser#SPECIALISE_CAP} builds a copy (#117 re-pin ruling W4).
+   */
+  @Test
+  void someSeedsBuildACopy() {
+    long copied = seeds().filter(seed -> Compiler.compile(new Gen(seed, false).program(), 0, CompileMode.OPTIMISED).frozen().specialised() > 0).count();
+    assertThat(copied).as("seeds whose optimised compile builds a copy, of %d", seeds().count()).isGreaterThanOrEqualTo(10);
+  }
+
+  /**
+   * {@link #check} in three compiles (#117 re-pin ruling W4). The conservative one. The optimised one under a
+   * specialisation cap of 0, which builds no copy (ADR-0045 #117): its reference run ends as the conservative one does,
+   * steps included, since the value form charges the push form's steps (ADR-0047 #116). And the optimised one under
+   * {@link Specialiser#SPECIALISE_CAP}, whose copies run an argument in place of the ParamCall it replaces, without that
+   * ParamCall's tick (SpecialiserPropertyTest's rule): its reference run has the conservative one's results, error and
+   * probe count, and at most its steps, exactly its steps when the compile built no copy.
+   */
+  private static void modes(long seed, Supplier<Program> program) {
+    Ended conservative = check(seed, Compiler.compile(program.get(), 0, CompileMode.CONSERVATIVE), "CONSERVATIVE");
+    Ended unspecialised = check(seed, Compiler.compile(program.get(), 0, CompileMode.OPTIMISED, 0), "OPTIMISED under cap 0");
+    assertThat(unspecialised.outcome().equals(conservative.outcome()))
+        .as("seed %d: the optimised reference run under cap 0, %s, equals the conservative one, %s", seed, unspecialised.outcome(), conservative.outcome())
+        .isTrue();
+
+    Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
+    Ended specialised = check(seed, optimised, "OPTIMISED");
+    assertThat(specialised.results().equals(conservative.results()))
+        .as("seed %d: the results of the optimised reference run, %s, equal the conservative one's, %s", seed, specialised.results(), conservative.results())
+        .isTrue();
+    assertThat(String.valueOf(specialised.thrown())).as("seed %d: what the optimised reference run threw against the conservative one", seed).isEqualTo(String.valueOf(conservative.thrown()));
+    assertThat(specialised.frames().size()).as("seed %d: the probes of the optimised reference run against the conservative one's", seed).isEqualTo(conservative.frames().size());
+    assertThat(specialised.steps()).as("seed %d: the steps of the optimised reference run against the conservative one's", seed).isLessThanOrEqualTo(conservative.steps());
+    if (optimised.frozen().specialised() == 0) {
+      assertThat(specialised.steps()).as("seed %d: the steps of the optimised reference run, no copy built, against the conservative one's", seed).isEqualTo(conservative.steps());
+    }
+  }
+
+  /** Runs {@code work} on a thread of {@link #THREAD} bytes and rethrows what it threw. */
+  private static void onBigThread(long seed, Runnable work) {
     AtomicReference<Throwable> failure = new AtomicReference<>();
     Thread thread = new Thread(null, () -> {
       try {
-        check(seed, program);
+        work.run();
       } catch (Throwable t) {
         failure.set(t);
       }
@@ -150,24 +226,27 @@ class UnitWeightsPropertyTest {
     if (failure.get() instanceof RuntimeException runtime) throw runtime;
   }
 
-  private static void check(long seed, Program program) {
-    Executable e = Compiler.compile(program, 0, CompileMode.CONSERVATIVE);
+  /** The property for the compile {@code e}, named {@code mode} in the messages; the reference run, at the default stack. */
+  private static Ended check(long seed, Executable e, String mode) {
     Ended reference = runProbed(e, DEFAULT_STACK);
-    assertThat(reference.frames()).as("seed %d: the probes of the reference run", seed).isNotEmpty();
+    assertThat(reference.frames()).as("seed %d, %s: the probes of the reference run", seed, mode).isNotEmpty();
     long callFree = StackUnits.callFreeDepth(e);
     long starter = StackUnits.starterUnits(e);
     for (long limit : LIMITS) {
       long stackBytes = StackUnits.reserve() + StackUnits.bytesPerUnit() * (limit + callFree);
-      assertThat(StackUnits.unitLimit(e, stackBytes)).as("seed %d: U_f of stackBytes %d", seed, stackBytes).isEqualTo(limit);
+      assertThat(StackUnits.unitLimit(e, stackBytes)).as("seed %d, %s: U_f of stackBytes %d", seed, mode, stackBytes).isEqualTo(limit);
       Ended run = runProbed(e, stackBytes);
       long bound = limit - 1 + callFree;
       assertThat(run.frames())
-          .as("seed %d, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, limit, callFree, starter, bound)
+          .as("seed %d, %s, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, mode, limit, callFree, starter, bound)
           .allSatisfy(frames -> assertThat((long) frames).isLessThan(bound));
-      assertThat(run.outcome()).as("seed %d, U_f %d: the run against the default stack's", seed, limit).isEqualTo(reference.outcome());
-      assertThat(run.units()).as("seed %d, U_f %d: units after the run", seed, limit).isZero();
+      assertThat(run.outcome().equals(reference.outcome()))
+          .as("seed %d, %s, U_f %d: the run, %s, equals the default stack's, %s", seed, mode, limit, run.outcome(), reference.outcome())
+          .isTrue();
+      assertThat(run.units()).as("seed %d, %s, U_f %d: units after the run", seed, mode, limit).isZero();
     }
-    assertThat(reference.units()).as("seed %d: units after the reference run", seed).isZero();
+    assertThat(reference.units()).as("seed %d, %s: units after the reference run", seed, mode).isZero();
+    return reference;
   }
 
   /** The random program of one seed. Slots are unique across the program. */
@@ -177,11 +256,22 @@ class UnitWeightsPropertyTest {
     private final int[] closures;
     private final int depth;
 
-    Gen(long seed) {
+    /** Whether the program is value-eligible: no closure parameter, and the leaf a single probe. */
+    private final boolean value;
+
+    /**
+     * The generator of {@code seed}; with {@code value}, of its value-eligible program, from the same draws with every
+     * closure parameter dropped.
+     */
+    Gen(long seed, boolean value) {
       random = new SplittableRandom(seed);
       closures = new int[1 + random.nextInt(3)];
-      for (int i = 0; i < closures.length; i++) closures[i] = random.nextInt(2);
+      for (int i = 0; i < closures.length; i++) {
+        int drawn = random.nextInt(2);
+        closures[i] = value ? 0 : drawn;
+      }
       depth = 20 + random.nextInt(181);
+      this.value = value;
     }
 
     private int below(int n) {
@@ -204,8 +294,8 @@ class UnitWeightsPropertyTest {
       boolean param = closures[f] == 1;
       Node site = new Pipe(AT, fn0("dec", (state, in) -> ((Integer) in) - 1), call(below(closures.length), param));
       for (int k = 1 + below(3); k > 0; k--) site = wrap(site, param);
-      // The deepest leaf probes first, so every run probes at its deepest point.
-      Node deepest = new Comma(AT, probe(), leaf(2, List.of(), param));
+      // The deepest leaf probes first, so every run probes at its deepest point; a value-eligible one only probes.
+      Node deepest = value ? probe() : new Comma(AT, probe(), leaf(2, List.of(), param));
       return new If(AT, fn0("positive", (state, in) -> ((Integer) in) > 0 ? "yes" : NO), site, deepest, TRUTH);
     }
 

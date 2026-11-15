@@ -96,10 +96,21 @@ public final class Compiler {
   /** The program's frames: each call's units and each closure argument's leaf-emit depth (ADR-0046 #111). */
   private final Nesting nesting;
 
-  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting) {
+  /** The freeze ids of the program's nodes, by which {@link #facts} are kept. */
+  private final Numbering numbering;
+
+  /** The facts each node's run form is read from (ADR-0047 #116). */
+  private final Facts facts;
+
+  /** The body the node being built is in: -1 for the main tree, a function's place otherwise. */
+  private int body;
+
+  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts) {
     this.shells = shells;
     this.closures = closures;
     this.nesting = nesting;
+    this.numbering = numbering;
+    this.facts = facts;
   }
 
   /**
@@ -137,7 +148,9 @@ public final class Compiler {
    * {@link #compile(Program, int, CompileMode)} with the specialisation cap {@code cap}. The order is verify, specialise,
    * verify, freeze, facts, build (ADR-0045 #112 and #117): {@link CompileMode#OPTIMISED} specialises the program under
    * {@code cap}, verifies the result again and analyses it; {@link CompileMode#CONSERVATIVE} makes no copy and keeps
-   * every fact at its safe value (ADR-0018). The executable runs the frozen program and carries it ({@link Frozen}).
+   * every fact at its safe value (ADR-0018). The interpreter reads one thing from the facts, each node's run form
+   * (ADR-0047 #116), over the frozen program's numbering, so a copy's nodes take their own: value form only where the
+   * optimised facts allow it (ADR-0030). The executable runs the frozen program and carries it ({@link Frozen}).
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
@@ -156,40 +169,44 @@ public final class Compiler {
       shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
     }
     Nesting nesting = Nesting.of(frozen);
-    Compiler compiler = new Compiler(shells, layout.closures(), nesting);
+    Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts);
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1]);
+      compiler.body = i;
       shells[i].define(compiler.interpreter(functions.get(i).body()));
     }
     compiler.region = new Region(null, null, slots[0]);
+    compiler.body = -1;
     Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
     return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, nesting, record);
   }
 
+  /** The op of {@code node}, built in its run form (ADR-0047 #116). */
   private Op interpreter(Node node) {
+    boolean value = RunForm.of(facts, body, numbering.id(node)) == RunForm.VALUE;
     return switch (node) {
-      case Identity _ -> new IdentityOp();
-      case Const c -> new ConstOp(c.value());
-      case Pipe p -> new PipeOp(interpreter(p.left()), interpreter(p.right()));
-      case Comma c -> new CommaOp(interpreter(c.left()), interpreter(c.right()));
-      case Bind b -> new BindOp(interpreter(b.value()), frameCell(b.slot()), interpreter(b.body()));
-      case Binds b -> binds(b);
-      case Var v -> variable(v);
-      case Intrinsic i -> intrinsic(i);
-      case Collect c -> new CollectOp(interpreter(c.body()), c.collector());
-      case If i -> new IfOp(interpreter(i.cond()), tail(i.cond()), interpreter(i.then()), interpreter(i.otherwise()), i.truth());
-      case Alt a -> new AltOp(interpreter(a.left()), interpreter(a.right()), a.truth());
+      case Identity _ -> new IdentityOp(value);
+      case Const c -> new ConstOp(value, c.value());
+      case Pipe p -> new PipeOp(value, interpreter(p.left()), interpreter(p.right()));
+      case Comma c -> new CommaOp(value, interpreter(c.left()), interpreter(c.right()));
+      case Bind b -> new BindOp(value, interpreter(b.value()), frameCell(b.slot()), interpreter(b.body()));
+      case Binds b -> binds(value, b);
+      case Var v -> variable(value, v);
+      case Intrinsic i -> intrinsic(value, i);
+      case Collect c -> new CollectOp(value, interpreter(c.body()), c.collector());
+      case If i -> new IfOp(value, interpreter(i.cond()), tail(i.cond()), interpreter(i.then()), interpreter(i.otherwise()), i.truth());
+      case Alt a -> new AltOp(value, interpreter(a.left()), interpreter(a.right()), a.truth());
       case AltBind a -> altBind(a);
-      case Try t -> new TryOp(interpreter(t.body()), interpreter(t.handler()));
-      case Label l -> new LabelOp(frameCell(l.slot()), interpreter(l.body()));
+      case Try t -> new TryOp(value, interpreter(t.body()), interpreter(t.handler()));
+      case Label l -> new LabelOp(value, frameCell(l.slot()), interpreter(l.body()));
       case Break b -> {
         At at = at(b.slot());
         yield new BreakOp(at.level(), at.cell());
       }
-      case Reduce r -> new ReduceOp(interpreter(r.init()), frameCell(r.slot()), interpreter(r.each()));
-      case Foreach f -> new ForeachOp(interpreter(f.init()), frameCell(f.slot()), interpreter(f.each()));
-      case Advance a -> new AdvanceOp(frameCell(a.slot()), interpreter(a.update()));
-      case Call c -> call(c);
+      case Reduce r -> new ReduceOp(value, interpreter(r.init()), frameCell(r.slot()), interpreter(r.each()));
+      case Foreach f -> new ForeachOp(value, interpreter(f.init()), frameCell(f.slot()), interpreter(f.each()));
+      case Advance a -> new AdvanceOp(value, frameCell(a.slot()), interpreter(a.update()));
+      case Call c -> call(value, c);
       case ParamCall p -> {
         At at = parameter(p.param());
         yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
@@ -228,17 +245,17 @@ public final class Compiler {
     return new At(level, r.base() + param);
   }
 
-  /** A Var: its slot in the running frame, or in a frame further out. */
-  private Op variable(Var v) {
+  /** A Var in the run form {@code value}: its slot in the running frame, or in a frame further out. */
+  private Op variable(boolean value, Var v) {
     At at = at(v.slot());
-    return at.level() == 0 ? new VarOp(at.cell()) : new OuterVarOp(at.level(), at.cell());
+    return at.level() == 0 ? new VarOp(value, at.cell()) : new OuterVarOp(value, at.level(), at.cell());
   }
 
   /**
-   * The Call {@code c} of its function's shell: its values read here, and each closure written here or, a bare
-   * ParamCall, the caller's closure passed on.
+   * The Call {@code c} of its function's shell, in the run form {@code value}: its values read here, and each closure
+   * written here or, a bare ParamCall, the caller's closure passed on.
    */
-  private Op call(Call c) {
+  private Op call(boolean value, Call c) {
     List<Node> nodes = c.values();
     Argument[] values = new Argument[nodes.size()];
     for (int k = 0; k < values.length; k++) {
@@ -249,7 +266,7 @@ public final class Compiler {
     for (int j = 0; j < closures.length; j++) {
       closures[j] = closure(written.get(j));
     }
-    return new CallOp(shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
+    return new CallOp(value, shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
   }
 
   /**
@@ -277,8 +294,11 @@ public final class Compiler {
     return ClosureArgument.written(op, cells.size() + 1, emitDepth);
   }
 
-  /** The Binds {@code b}, its values built in a loop, so the build does not go deeper with their number. */
-  private Op binds(Binds b) {
+  /**
+   * The Binds {@code b} in the run form {@code value}, its values built in a loop, so the build does not go deeper with
+   * their number.
+   */
+  private Op binds(boolean value, Binds b) {
     List<Node> values = b.values();
     Op[] ops = new Op[values.size()];
     boolean[] tails = new boolean[ops.length];
@@ -286,7 +306,7 @@ public final class Compiler {
       ops[k] = interpreter(values.get(k));
       tails[k] = tail(values.get(k));
     }
-    return new BindsOp(ops, tails, frameCells(b.slots()), interpreter(b.body()));
+    return new BindsOp(value, ops, tails, frameCells(b.slots()), interpreter(b.body()));
   }
 
   /**
@@ -342,18 +362,21 @@ public final class Compiler {
     return cells;
   }
 
-  /** The call of {@code i} in its form, with the arity and the atomic arguments the verifier checked. */
-  private Op intrinsic(Intrinsic i) {
+  /**
+   * The call of {@code i} in its call form and the run form {@code value}, with the arity and the atomic arguments the
+   * verifier checked; a Many is never value form.
+   */
+  private Op intrinsic(boolean value, Intrinsic i) {
     List<Node> nodes = i.args();
     Argument[] args = new Argument[nodes.size()];
     for (int k = 0; k < args.length; k++) {
       args[k] = argument(nodes.get(k));
     }
     return switch (i.op().form()) {
-      case Fn0 fn -> new IntrinsicOp(fn);
-      case Fn1 fn -> new Intrinsic1Op(fn, args[0]);
-      case Fn2 fn -> new Intrinsic2Op(fn, args[0], args[1]);
-      case FnN fn -> new IntrinsicNOp(fn, args);
+      case Fn0 fn -> new IntrinsicOp(value, fn);
+      case Fn1 fn -> new Intrinsic1Op(value, fn, args[0]);
+      case Fn2 fn -> new Intrinsic2Op(value, fn, args[0], args[1]);
+      case FnN fn -> new IntrinsicNOp(value, fn, args);
       case Many many -> new IntrinsicManyOp(many, args);
     };
   }

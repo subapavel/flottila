@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.query.compile.RandomParts.Outcome;
 import io.github.subapavel.jqj.query.compile.Specialising.N;
 import io.github.subapavel.jqj.query.ir.Bind;
+import io.github.subapavel.jqj.query.ir.Break;
 import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
@@ -22,6 +23,7 @@ import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
+import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.ir.ParamCall;
@@ -30,9 +32,13 @@ import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Var;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * The specialisation pass at the compile seam (#117, ADR-0045 "Amendment (ticket #117)", ADR-0006, GLOSSARY
@@ -293,5 +299,78 @@ class SpecialiserTest {
     Frozen shared = Compiler.compile(literals(same, same), 0, CompileMode.OPTIMISED).frozen();
     assertThat(shared.program().functions()).as("r and one copy, for one constant object").hasSize(2);
     assertThat(callsOfR(shared)).extracting(Call::fn).as("the callees of the two calls of one constant").containsExactly(1, 1);
+  }
+
+  /** f(g) of body {@code body}, one closure parameter and no value: PLAIN, fn0. */
+  private static Function ofOneClosure(Node body) {
+    return new Function(at(0), 1, 0, body);
+  }
+
+  /** {@code label $l | f(break $l), 7}, the Label's slot 0, f's body {@code body}. */
+  private static Program breakingClosure(Node body) {
+    Node call = new Call(at(12), 0, List.of(new Break(at(14), 0)), List.of());
+    return new Program(new Label(at(10), 0, new Comma(at(11), call, new Const(at(16), new N(7)))), List.of(ofOneClosure(body)));
+  }
+
+  /** {@code f(argument)}, f's body {@code g}: its closure run once. */
+  private static Program runsTheClosure(Node argument) {
+    return new Program(new Call(at(10), 0, List.of(argument), List.of()), List.of(ofOneClosure(new ParamCall(at(1), 0))));
+  }
+
+  /**
+   * #116's four push Calls, each as ValueFormTest's shapes 9, 10, 26 and 27 were before #117 (65088d3), on the numbers
+   * here: its program, its results there, and the runs of the ParamCall its argument replaces.
+   */
+  static Stream<Arguments> pushCalls() {
+    return Stream.of(
+        Arguments.argumentSet("shape 9: label $l | f(break $l), 7, f's body 5", (Supplier<Program>) () -> breakingClosure(new Const(at(1), new N(5))), List.of(new N(5), new N(7)), 0L),
+        Arguments.argumentSet("shape 10: label $l | f(break $l), 7, f's body of no result", (Supplier<Program>) () -> breakingClosure(new Intrinsic(at(1), EMPTY, List.of())), List.of(new N(7)), 0L),
+        Arguments.argumentSet("shape 26: f(5), f's body its closure", (Supplier<Program>) () -> runsTheClosure(new Const(at(11), new N(5))), List.of(new N(5)), 1L),
+        Arguments.argumentSet("shape 27: f(empty), f's body its closure", (Supplier<Program>) () -> runsTheClosure(new Intrinsic(at(11), EMPTY, List.of())), List.of(), 1L));
+  }
+
+  /**
+   * A copy makes #116's push Calls value form (#117 re-pin ruling V4; ADR-0045 "Amendment (ticket #117)", ADR-0047
+   * "Amendment (ticket #116)"). In each program f's closure parameter is invariant, since no Call inside f's group passes
+   * it anything, so the optimised compile copies f for main's argument and main's Call runs the copy with no closure.
+   * The copy holds no ParamCall and no Break, so its root and main's Call are value form. The run gives the conservative
+   * compile's results, answer and error, and steps by SpecialiserPropertyTest's rule: the conservative run's less one
+   * for each run of the ParamCall the argument replaced, none where f's body never runs g. Witness: under a cap of 0 the
+   * key is refused and main's Call keeps its real closure and is push form, as #116 pinned it.
+   */
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("pushCalls")
+  void aCopyMakesAPushCallValueForm(Supplier<Program> program, List<Object> results, long replaced) {
+    Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
+    Frozen frozen = optimised.frozen();
+    List<Node> main = frozen.numbering().nodes(-1);
+    List<Integer> calls = new ArrayList<>();
+    for (int id = 0; id < main.size(); id++) {
+      if (main.get(id) instanceof Call) {
+        calls.add(id);
+      }
+    }
+    assertThat(calls).as("the freeze ids of main's Calls").hasSize(1);
+    int id = calls.getFirst();
+    Call call = (Call) main.get(id);
+    assertThat(frozen.program().functions()).as("f and its copy").hasSize(2);
+    assertThat(call.fn()).as("the callee of main's Call: the copy at place 1").isEqualTo(1);
+    assertThat(frozen.origin()[1]).as("the original of the copy at place 1").isZero();
+    assertThat(call.closures()).as("the closures of main's Call").isEmpty();
+    assertThat(optimised.form(-1, id)).as("the run form of main's Call, node %d of main", id).isEqualTo(RunForm.VALUE);
+    assertThat(optimised.form(1, 0)).as("the run form of the copy's root, node 0 of place 1").isEqualTo(RunForm.VALUE);
+
+    Outcome c = run(Compiler.compile(program.get(), 0, CompileMode.CONSERVATIVE), IN);
+    Outcome o = run(optimised, IN);
+    assertThat(c.thrown()).as("CONSERVATIVE ends without an error or a termination").isNull();
+    assertThat(c.results()).as("results under CONSERVATIVE").isEqualTo(results);
+    assertThat(o.results()).as("results under OPTIMISED against CONSERVATIVE").isEqualTo(c.results());
+    assertThat(o.thrown()).as("what the run under OPTIMISED threw").isEqualTo(c.thrown());
+    assertThat(o.answer()).as("the answer under OPTIMISED").isEqualTo(c.answer());
+    assertThat(c.steps() - o.steps()).as("CONSERVATIVE's %d steps less OPTIMISED's %d, against %d runs of the replaced ParamCall", c.steps(), o.steps(), replaced).isEqualTo(replaced);
+
+    Executable refused = compile(program.get(), CompileMode.OPTIMISED, 0);
+    assertThat(refused.frozen().refused()).as("witness: keys refused under a cap of 0").isEqualTo(1);
+    assertThat(refused.form(-1, id)).as("witness: the run form of main's Call under a cap of 0, its real closure kept").isEqualTo(RunForm.PUSH);
   }
 }

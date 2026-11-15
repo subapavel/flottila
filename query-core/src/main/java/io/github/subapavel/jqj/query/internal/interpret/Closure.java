@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
@@ -22,9 +23,16 @@ final class Closure {
     this.emitDepth = emitDepth;
   }
 
-  /** Pushes the body's results for {@code in} into {@code out}: true when they ran out, false when out stopped. */
+  /**
+   * Pushes the body's results for {@code in} into {@code out}: true when they ran out, false when out stopped. A
+   * value-form body (ADR-0047 #116) returns its value, emitted here.
+   */
   boolean run(RunState state, Object in, Sink out) {
-    return body.run(state, frame(), in, out);
+    if (!body.valueForm) {
+      return body.run(state, frame(), in, out);
+    }
+    Object v = body.eval(state, frame(), in);
+    return v == CallForm.NONE || out.emit(v);
   }
 
   /** {@link #run} with this frame as the starter: the body runs on a new trampoline (ADR-0046 #111 amendment). */
