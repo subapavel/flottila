@@ -11,6 +11,8 @@ import io.github.subapavel.jqj.internal.parse.Parser;
 import io.github.subapavel.jqj.internal.parse.Resolver;
 import io.github.subapavel.jqj.query.analysis.Numbering;
 import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.query.compile.Compiler;
+import io.github.subapavel.jqj.query.compile.Frozen;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Const;
@@ -264,9 +266,11 @@ class ValueFormTest {
 
   /**
    * In OPTIMISED the value form comes before the tail emitter (ADR-0047 #116, C1): every node that is a tail emitter by
-   * its kind, in main and in each function of each filter of the corpus, shows {@code form=value}. The nodes are read
-   * from the program jq-core resolves, by their freeze ids, and each line's kind is checked against the node's. Witness:
-   * the checked nodes hold every tail-emitter kind, and at least a hundred of them.
+   * its kind, in main and in each function of each filter of the corpus, a specialisation copy among them (ADR-0045
+   * #117), shows {@code form=value}. The nodes are read from the frozen program of the optimised compile of the program
+   * jq-core resolves ({@code Executable.frozen()}), by its freeze ids, so a copy's nodes are checked as its original's
+   * are, and each line's kind is checked against the node's (#117 re-pin ruling V3). Witness: the checked nodes hold
+   * every tail-emitter kind, and at least a hundred of them.
    */
   @Test
   void everyTailEmitterIsValueForm() {
@@ -274,8 +278,9 @@ class ValueFormTest {
     Set<String> kinds = new TreeSet<>();
     int checked = 0;
     for (String filter : CORPUS) {
-      Program program = Resolver.resolve(Parser.parse(filter));
-      Numbering numbering = Numbering.of(program);
+      Frozen frozen = Compiler.compile(Resolver.resolve(Parser.parse(filter)), 0, CompileMode.OPTIMISED).frozen();
+      Program program = frozen.program();
+      Numbering numbering = frozen.numbering();
       List<Line> lines = lines(OPTIMISED, filter);
       for (int place = -1; place < program.functions().size(); place++) {
         String body = place < 0 ? "main" : "fn" + place;

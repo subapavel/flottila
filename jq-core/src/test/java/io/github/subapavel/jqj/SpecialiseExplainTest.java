@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj;
 
+import static io.github.subapavel.jqj.ExplainLines.at;
 import static io.github.subapavel.jqj.Inlining.shown;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +48,9 @@ class SpecialiseExplainTest {
 
   /** Reference jq 1.8.2 (specialise/literal-arguments): {@code [0,1]} twice. */
   static final String LITERAL_ARGUMENTS = "[limit(2;0|recurse(.+1))],[limit(2;0|recurse(.+1))]";
+
+  /** Reference jq 1.8.2 ({@code jq-ref -nc}, .logs/117-repin-jqref.log): {@code 5}. */
+  static final String INVARIANT_RECURSION = "def r(f): if . > 3 then f else f | r(f) end; 0 | r(. + 1)";
 
   /**
    * The design's ladder past INLINE_CAP: {@code def f0: .; def f1: f0|f0; … def f15: f14|f14; f15|f14|…|f1|f0|f0|f0 |
@@ -356,5 +360,44 @@ class SpecialiseExplainTest {
     assertThat(callees).as("the callees of main's Calls").hasSize(2).doesNotHaveDuplicates();
     assertThat(callees.stream().map(c -> function(lines, c).facts().get("copyOf")).distinct().toList()).as("the originals of the two copies").hasSize(1);
     assertSpentEveryCopy(lines, LITERAL_ARGUMENTS);
+  }
+
+  /**
+   * A copy of a recursion is value form where its original is push (#117 re-pin ruling V4; ADR-0047 "Amendment (ticket
+   * #116)", ADR-0045 "Amendment (ticket #117)"): r's f is invariant, so main's Call runs a copy of r/1 for {@code . + 1},
+   * which holds no ParamCall. The original r/1 stays, though no call reaches it, and runs its closure, so its root If is
+   * push form; the copy's root If and main's Call are value form. The two columns are read from r/1's function lines,
+   * the copy's by its {@code copyOf=}, and each root by its column and freeze id 0, its kind checked first. Witness:
+   * under CONSERVATIVE main's Call runs the original and is push form. The result is reference jq's in both modes.
+   */
+  @Test
+  void aCopyOfARecursionIsValueFormWhereItsOriginalIsPush() {
+    for (CompileMode mode : CompileMode.values()) {
+      assertThat(ended(mode, INVARIANT_RECURSION)).as("%s run of %s", mode, INVARIANT_RECURSION).isEqualTo("[5], ran out");
+    }
+
+    List<Line> lines = lines(CompileMode.OPTIMISED, INVARIANT_RECURSION);
+    List<Line> r = lines.stream().filter(l -> isFunction(l) && l.fields().get(2).equals("r/1")).toList();
+    List<String> originals = r.stream().filter(l -> !l.facts().containsKey("copyOf")).map(l -> l.fields().get(1)).toList();
+    assertThat(originals).as("the columns of r/1's function lines without copyOf=").hasSize(1);
+    String original = originals.getFirst();
+    List<Line> copies = r.stream().filter(l -> l.facts().containsKey("copyOf")).toList();
+    assertThat(copies).as("r/1's function lines with copyOf=").hasSize(1);
+    assertThat(copies.getFirst().facts()).as("the function line of r/1's copy").containsEntry("copyOf", original);
+    String copy = copies.getFirst().fields().get(1);
+
+    Line originalRoot = at(lines, original, 0);
+    assertThat(originalRoot.fields().get(2)).as("kind of node 0 of the original %s", original).isEqualTo("If");
+    assertThat(originalRoot.facts()).as("facts of the root of the original %s", original).containsEntry("form", "push");
+    Line copyRoot = at(lines, copy, 0);
+    assertThat(copyRoot.fields().get(2)).as("kind of node 0 of the copy %s", copy).isEqualTo("If");
+    assertThat(copyRoot.facts()).as("facts of the root of the copy %s", copy).containsEntry("form", "value");
+    List<Line> main = calls(lines, "main");
+    assertThat(main).as("main's Calls").hasSize(1);
+    assertThat(main.getFirst().facts()).as("facts of main's Call").containsEntry("callee", copy).containsEntry("form", "value");
+
+    List<Line> conservative = calls(lines(CompileMode.CONSERVATIVE, INVARIANT_RECURSION), "main");
+    assertThat(conservative).as("main's Calls under CONSERVATIVE").hasSize(1);
+    assertThat(conservative.getFirst().facts()).as("witness: facts of main's Call under CONSERVATIVE").containsEntry("callee", original).containsEntry("form", "push");
   }
 }
