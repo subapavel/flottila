@@ -1,0 +1,194 @@
+FFFFFFFFFFFFFFFF
+======================================================================
+FAIL: test_a_clean_run_prints_one_line_with_the_number_of_files_scanned (ci.test_name_guard.NameGuardTest.test_a_clean_run_prints_one_line_with_the_number_of_files_scanned)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 262, in test_a_clean_run_prints_one_line_with_the_number_of_files_scanned
+    self.assertClean(*self.repo.run(self), files=7)
+                      ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_file_that_is_not_utf8_is_scanned_as_bytes_and_reported_by_path_alone (ci.test_name_guard.NameGuardTest.test_a_file_that_is_not_utf8_is_scanned_as_bytes_and_reported_by_path_alone)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 162, in test_a_file_that_is_not_utf8_is_scanned_as_bytes_and_reported_by_path_alone
+    self.assertFindings(*self.repo.run(self), count=1)
+                         ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_finding_carries_at_most_160_characters_of_its_line (ci.test_name_guard.NameGuardTest.test_a_finding_carries_at_most_160_characters_of_its_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 131, in test_a_finding_carries_at_most_160_characters_of_its_line
+    findings = self.assertFindings(*self.repo.run(self), count=1)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_literal_entry_allows_only_that_literal_in_the_files_its_glob_matches (ci.test_name_guard.NameGuardTest.test_a_literal_entry_allows_only_that_literal_in_the_files_its_glob_matches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 205, in test_a_literal_entry_allows_only_that_literal_in_the_files_its_glob_matches
+    findings = self.assertFindings(*self.repo.run(self), count=2)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_malformed_allow_list_entry_exits_2_and_names_its_line (ci.test_name_guard.NameGuardTest.test_a_malformed_allow_list_entry_exits_2_and_names_its_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 225, in test_a_malformed_allow_list_entry_exits_2_and_names_its_line
+    self.assertClean(*self.repo.run(self), files=2)
+                      ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_single_star_does_not_cross_a_directory (ci.test_name_guard.NameGuardTest.test_a_single_star_does_not_cross_a_directory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 194, in test_a_single_star_does_not_cross_a_directory
+    findings = self.assertFindings(*self.repo.run(self), count=2)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_star_entry_allows_every_occurrence_in_matched_files_path_included (ci.test_name_guard.NameGuardTest.test_a_star_entry_allows_every_occurrence_in_matched_files_path_included)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 184, in test_a_star_entry_allows_every_occurrence_in_matched_files_path_included
+    self.assertFindings(*self.repo.run(self), count=3)
+                         ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_a_tracked_path_holding_the_name_is_a_finding_even_with_clean_content (ci.test_name_guard.NameGuardTest.test_a_tracked_path_holding_the_name_is_a_finding_even_with_clean_content)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 143, in test_a_tracked_path_holding_the_name_is_a_finding_even_with_clean_content
+    self.assertClean(*self.repo.run(self), files=2)
+                      ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_an_allowed_literal_does_not_allow_a_different_name_sharing_its_prefix (ci.test_name_guard.NameGuardTest.test_an_allowed_literal_does_not_allow_a_different_name_sharing_its_prefix)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 213, in test_an_allowed_literal_does_not_allow_a_different_name_sharing_its_prefix
+    findings = self.assertFindings(*self.repo.run(self), count=1)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding (ci.test_name_guard.NameGuardTest.test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding) [a glob matching no file]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 250, in test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding
+    findings = self.assertFindings(*self.repo.run(self), count=1)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding (ci.test_name_guard.NameGuardTest.test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding) [a glob matching only clean files]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 250, in test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding
+    findings = self.assertFindings(*self.repo.run(self), count=1)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding (ci.test_name_guard.NameGuardTest.test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding) [a literal absent from the tree]
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 250, in test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding
+    findings = self.assertFindings(*self.repo.run(self), count=1)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding (ci.test_name_guard.NameGuardTest.test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 255, in test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding
+    self.assertClean(*self.repo.run(self), files=3)
+                      ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_the_name_in_any_letter_case_is_a_finding_naming_file_and_line (ci.test_name_guard.NameGuardTest.test_the_name_in_any_letter_case_is_a_finding_naming_file_and_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 121, in test_the_name_in_any_letter_case_is_a_finding_naming_file_and_line
+    findings = self.assertFindings(*self.repo.run(self), count=5)
+                                    ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_the_real_tree_with_the_real_allow_list_is_clean (ci.test_name_guard.NameGuardTest.test_the_real_tree_with_the_real_allow_list_is_clean)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 271, in test_the_real_tree_with_the_real_allow_list_is_clean
+    self.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+======================================================================
+FAIL: test_untracked_and_ignored_files_holding_the_name_are_not_findings (ci.test_name_guard.NameGuardTest.test_untracked_and_ignored_files_holding_the_name_are_not_findings)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/user/flottila/ci/test_name_guard.py", line 101, in test_untracked_and_ignored_files_holding_the_name_are_not_findings
+    self.assertClean(*self.repo.run(self), files=2)
+                      ~~~~~~~~~~~~~^^^^^^
+  File "/home/user/flottila/ci/test_name_guard.py", line 64, in run
+    test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : /home/user/flottila/ci/name_guard.py does not exist
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.188s
+
+FAILED (failures=16)

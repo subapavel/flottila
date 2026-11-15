@@ -1,0 +1,76 @@
+# Allow-list of ci/name_guard.py (BRAND-4, D-148, D-149): where the product's old name may still stand.
+# One entry per line: <path glob> | <literal or *> | <reason>. `**` crosses directories, `*` does not; a
+# literal is matched exactly as written. An entry that allows nothing in the tree is a finding: remove it
+# when its reason goes away. Prefer a literal to `*` and a path to a glob.
+
+# History keeps the old name, whole files (D-148).
+docs/PROGRESS.md | * | history: the progress log of the tasks done under the old name (D-148)
+docs/DECISIONS.md | * | history: decisions are not rewritten (D-148)
+docs/archive/** | * | history: archived documents (D-148)
+docs/findings/** | * | history: findings are records of what was found (D-148)
+docs/review/** | * | history: review reports of past commits (D-148)
+agent/packets/** | * | history: task packets as they were handed out (D-148)
+agent/archive/** | * | history: archived agent material (D-148)
+agent/work/** | * | history: tracked work files, diffs and reports of past tasks (D-148)
+agent/review/** | * | history: reviewer verdicts of past tasks (D-148)
+agent/patches/** | * | history: patches as they were taken (D-148)
+agent/wip/** | * | history: parked work-in-progress patches (D-148)
+issues/** | * | history: issue records (D-148)
+bench/RESULTS.md | * | history: a recorded number keeps the commit and configuration it was taken with (D-148)
+agent/BACKLOG.md | * | history: the done rows; the rename tool translates the open ones (D-148)
+
+# The changelog of docs/ARCHITECTURE.md is history (D-148): the literals its rows hold, not the whole file.
+docs/ARCHITECTURE.md | -Dflottila.it.postgres | changelog row: the integration-test property as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_BLOB_DURABLE_MAX | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_CPU_SAMPLING | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_* | changelog row: an environment key family as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_CONCURRENCY | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_ACCEPT_LOSS | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_COPIES | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_KEEP_MAX_AGE | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PEER_* | changelog row: an environment key family as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PEER_READS | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_DURABILITY | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_HOST | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_INTAKE | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_QUEUE | changelog rows: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_SIZE | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_WAIT | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_MODE | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_ROOT_CERT | changelog row: an environment key as it was then named
+docs/ARCHITECTURE.md | FLOTTILA_TARGET_MAX_CALLS | changelog row: an environment key family as it was then named
+docs/ARCHITECTURE.md | X-Flottila-Actor | changelog row: an HTTP header as it was then named
+docs/ARCHITECTURE.md | flottila test | changelog row: a CLI command as it was then named
+docs/ARCHITECTURE.md | flottila lock | changelog row: a CLI command as it was then named
+docs/ARCHITECTURE.md | 'flottila' | changelog row: a logical-message prefix as it was then named
+docs/ARCHITECTURE.md | flottila-<role>@<nodeId> | changelog row: the Postgres application_name as it was then named
+docs/ARCHITECTURE.md | flottila-api | changelog row: a module as it was then named
+docs/ARCHITECTURE.md | flottila-cli | changelog rows: a module as it was then named
+docs/ARCHITECTURE.md | flottila-schemas | changelog row: a module as it was then named
+docs/ARCHITECTURE.md | flottila-sim | changelog row: a module as it was then named
+docs/ARCHITECTURE.md | flottila-testkit | changelog row: a module as it was then named
+docs/ARCHITECTURE.md | flottila_work | changelog row: a LISTEN/NOTIFY channel as it was then named
+docs/ARCHITECTURE.md | io.flottila.Step | changelog row: a JFR event name as it was then named
+
+# Applied migrations are byte-identical forever (Flyway checksums); the name stands in their comments only.
+deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's checksum on every deployed database
+
+# The repository's address and its checkout path, in any file, until the owner renames the repository.
+** | github.com/subapavel/flottila | the repository's address until the owner renames it
+** | subapavel/flottila | the repository's name until the owner renames it
+** | subapavel/flottila-mapping | the mapping repository's name until the owner renames it
+** | /home/user/flottila | the checkout path, which follows the repository's name
+agent/cloud/README.md | `flottila` | the owner's cloud environment carries the old name until the owner renames it
+docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as it was called when the owner wrote the brief (D-147)
+
+# The prototype's names, where a live file names the prototype.
+ci/coverage_check.py | flottila-m1 | a comment names the prototype module P0-09 removed
+docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
+docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
+platform/archtest/src/test/java/io/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
+
+# The rename's own files hold the name as their subject or test data.
+agent/tools/rail8_rename.py | * | the rename tool: the old name is what it translates
+ci/name_guard.py | * | the guard: the old name is what it looks for
+ci/test_name_guard.py | * | the guard's tests: the old name is their test data
+ci/name-allowlist.txt | * | this file: its literals hold the old name

@@ -1,4 +1,19 @@
 
+## 2026-11-15 — BRAND-4 the old name does not come back: a CI guard — done, review PASS (r2)
+
+- Test first: `ci/test_name_guard.py` (19 methods; red observed with no guard, `agent/work/BRAND-4-red.log`) — tracked files only, any
+  letter case, a path that holds the name, a file that is not UTF-8, `**` against `*`, literal entries with longest-literal crediting, a
+  malformed entry (exit 2), an unused entry as a finding, the clean run's file count, the real tree with the real allow-list.
+- Change: `ci/name_guard.py` (stdlib, exit 0/1/2), `ci/name-allowlist.txt` (60 entries: 19 whole files or globs — history, the applied
+  migrations, the rename's own files — and 41 literals, 31 of them tokens of ARCHITECTURE's changelog rows), one step in `ci.yml`'s build job.
+- Rulings (packet): the form of a finding; an occurrence is credited to the longest literal; the owner's cloud environment name and the
+  brief's mention of the mapping repository are allowed by literal, not renamed.
+- VERIFIED_PASS, observed by the architect with the files staged: `python3 ci/name_guard.py` — clean, 1541 tracked files; `python3 -m
+  unittest ci.test_name_guard` — 19 tests. A planted occurrence in a scratch clone: exit 1, a content and a path finding. Hand mutants
+  killed; the shortest-literal one only by the test added after it was found. NOT_RUN: the workflow step itself (it runs on the push).
+- Review r1 FAIL (four behaviours without a test; a tracked symbolic link followed to its target), fixed red-first; r2 PASS.
+- Next: BRAND-3 — the DCO job lists first-parent, D-151 and the packet in the tree, then the import merge. OPS-1's fix round is running.
+
 ## 2026-11-15 — BRAND-1 C the persisted and wire names become Rail8 — done, review PASS (r4); Deviation: F-37
 
 - Context compacted before this entry; state re-verified with `git status` and `git log -3`. Commit C of three (D-149), the rename's last.

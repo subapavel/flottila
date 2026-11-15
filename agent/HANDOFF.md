@@ -1,9 +1,9 @@
 # Handoff
 
-state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Order: BRAND-1 (done), BRAND-4, BRAND-3, MAIN-1, OPS-1 - BACKLOG "priority 0".
-last commit: BRAND-1 C - persisted and wire names are Rail8, no alias, no migration (D-148 amended); counts = BASE-1; review PASS (r4).
-in flight: nothing written. Next task BRAND-4 (name guard), Python only, no Maven: agent/packets/BRAND-4.md.
-next exact action: test-author on BRAND-4 (red observed), implementer, verifier, reviewer, commit. Then BRAND-3 per agent/packets/BRAND-3.md.
+state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Order: BRAND-1, BRAND-4 (done), BRAND-3, MAIN-1, OPS-1 - BACKLOG "priority 0".
+last commit: BRAND-4 - `ci/name_guard.py` + allow-list + its test, a step in ci.yml; clean on the tree; review PASS (r2).
+in flight: BRAND-3, nothing of it committed. A new file that holds the old name needs an entry in ci/name-allowlist.txt (the guard is in CI).
+next exact action: BRAND-3 step 1 - commit the DCO `--first-parent` change with D-151 and agent/packets/BRAND-3.md, then the import merge.
 OPS-1 IS DRAFTED, UNCOMMITTED: agent/work/OPS-1.diff (base c017e9c; `git apply -3`), agent/work/OPS-1-decided.md, OPS-1-coverage.md. To do: fix
   round, reviewer, D-152, rows OPS-12 + FIX-220, F-38, ISSUE-8. Its CLAUDE.md and .claude/agents changes stay a patch for the owner, never applied.
 Verify mode: `mvn -B -ntp clean verify -Pit -Dmaven.test.failure.ignore=true` (26 min); compare with agent/work/BASE-1-counts.txt.

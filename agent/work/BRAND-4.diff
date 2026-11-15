@@ -1,0 +1,720 @@
+ .github/workflows/ci.yml |   6 +
+ agent/packets/BRAND-4.md |  43 ++++++
+ ci/name-allowlist.txt    |  76 ++++++++++
+ ci/name_guard.py         | 187 ++++++++++++++++++++++++
+ ci/test_name_guard.py    | 365 +++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 677 insertions(+)
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e747fe9..e001228 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -77,6 +77,12 @@ jobs:
+       - name: Coverage gate self-test
+         if: matrix.image-args == ''
+         run: python3 -m unittest ci.test_coverage_check
++      - name: The old product name does not come back (BRAND-4, D-148/D-149; guard self-test, then the guard)
++        if: matrix.image-args == ''
++        run: |
++          set -euo pipefail
++          python3 -m unittest ci.test_name_guard
++          python3 ci/name_guard.py
+       - name: Coverage no-decrease against the previous main commit
+         if: matrix.image-args == ''
+         env:
+diff --git a/agent/packets/BRAND-4.md b/agent/packets/BRAND-4.md
+index 540132c..5c388e6 100644
+--- a/agent/packets/BRAND-4.md
++++ b/agent/packets/BRAND-4.md
+@@ -71,3 +71,46 @@ Allowed: `ci/name_guard.py`, `ci/test_name_guard.py`, `ci/name-allowlist.txt`,
+ The red observed (the test-author: which tests fail and why, with the log path under
+ `agent/work/`); the implementer: the tests green, the guard's output on the tree, the allow-list's
+ entry count, and every finding it did not allow-list.
++
++## Rulings on the test-author's seven questions (architect, 2026-11-15)
++
++The red tests are approved as written (`ci/test_name_guard.py`, 13 methods, red observed: `agent/work/BRAND-4-red.log`).
++
++1. The allow-list is `ci/name-allowlist.txt` under the root of the repository the guard runs in (the git top level of the working
++   directory), read from disk whether it is tracked or not.
++2. A malformed entry is named by the allow-list's path and its physical line number: `ci/name-allowlist.txt:<n>: …`.
++3. An unused entry is named the same way — path, line number — followed by the entry's text.
++4. A finding in a line is `path:line: text` (the text cut at 160 characters). A finding in a path and a finding in a file that is not
++   UTF-8 start with the path and carry no line number; after the path they say which of the two it is.
++5. One finding per line however often the name occurs in it; one finding per file that is not UTF-8; a file whose path and content both
++   hold the name gives the path finding and the line findings, each on its own.
++6. An occurrence is credited to the longest literal that covers it among the entries whose glob matches the file; an entry credited with
++   nothing in the whole run is unused. So the real allow-list holds a shorter literal only where it occurs on its own.
++7. The name is found in any letter case; an allow-list literal is matched exactly as written.
++
++## Rulings on the implementer's questions (architect, 2026-11-15)
++
++1. `agent/cloud/README.md` names the owner's cloud environment, which still carries the old name until the owner renames it (an owner
++   action, like the repository): a literal entry for the backticked name, scoped to that file.
++2. `docs/OPERATIONS-BRIEF.md` names the mapping engine's repository as it was called when the brief was written (the owner's text, D-147):
++   a literal entry `flottila-mapping`, scoped to that file. The brief is not edited.
++3. The real-tree test can only pass with the guard's own files tracked: the architect stages them before the verifier's run.
++4. Confirmed as built: a `*` entry takes the credit before any literal in the files it matches; a literal also covers an occurrence in
++   a path and in the bytes of a file that is not UTF-8; an empty literal cell is malformed (exit 2); the address literals are allowed in
++   any file, the prototype names only in their own files.
++5. Longest-literal crediting (ruling 6 above) and the empty literal cell get a test each: a guard that credits the shortest literal
++   passed every unit test — the test-author adds the two.
++
++## After review r1 (FAIL, four points; architect, 2026-11-15)
++
++1. Ruling 5 of the first list had no test (one finding per line; one per file that is not UTF-8; a path finding beside the line
++   findings): the test-author adds it.
++2. Two confirmed behaviours had no test — a `*` entry takes the credit before a literal over the same file; a literal covers a path and
++   the bytes of a file that is not UTF-8: the test-author adds them.
++3. The kind of a path finding and of a not-UTF-8 finding is asserted by its wording, not only by the missing line number.
++4. A tracked symbolic link: the guard scans the link's own text (what git stores, `os.readlink`), never the target it points to — a
++   red test first, then the guard. The tree holds no tracked symbolic link today.
++5. An allow-list that is not UTF-8 is a malformed allow-list: exit 2, not a crash — a red test first, then the guard.
++Accepted as limits, not changed: a literal is not word-bounded (the repository address also covers a longer name that starts with it);
++an entry `** | *` would exempt the whole tree and nothing refuses it — the allow-list is a reviewed file; the working tree is read, not
++the index (CI's tree is the commit); UTF-16 text, deflated archive entries and a name split across lines are not seen.
+diff --git a/ci/name-allowlist.txt b/ci/name-allowlist.txt
+new file mode 100644
+index 0000000..5360c41
+--- /dev/null
++++ b/ci/name-allowlist.txt
+@@ -0,0 +1,76 @@
++# Allow-list of ci/name_guard.py (BRAND-4, D-148, D-149): where the product's old name may still stand.
++# One entry per line: <path glob> | <literal or *> | <reason>. `**` crosses directories, `*` does not; a
++# literal is matched exactly as written. An entry that allows nothing in the tree is a finding: remove it
++# when its reason goes away. Prefer a literal to `*` and a path to a glob.
++
++# History keeps the old name, whole files (D-148).
++docs/PROGRESS.md | * | history: the progress log of the tasks done under the old name (D-148)
++docs/DECISIONS.md | * | history: decisions are not rewritten (D-148)
++docs/archive/** | * | history: archived documents (D-148)
++docs/findings/** | * | history: findings are records of what was found (D-148)
++docs/review/** | * | history: review reports of past commits (D-148)
++agent/packets/** | * | history: task packets as they were handed out (D-148)
++agent/archive/** | * | history: archived agent material (D-148)
++agent/work/** | * | history: tracked work files, diffs and reports of past tasks (D-148)
++agent/review/** | * | history: reviewer verdicts of past tasks (D-148)
++agent/patches/** | * | history: patches as they were taken (D-148)
++agent/wip/** | * | history: parked work-in-progress patches (D-148)
++issues/** | * | history: issue records (D-148)
++bench/RESULTS.md | * | history: a recorded number keeps the commit and configuration it was taken with (D-148)
++agent/BACKLOG.md | * | history: the done rows; the rename tool translates the open ones (D-148)
++
++# The changelog of docs/ARCHITECTURE.md is history (D-148): the literals its rows hold, not the whole file.
++docs/ARCHITECTURE.md | -Dflottila.it.postgres | changelog row: the integration-test property as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_BLOB_DURABLE_MAX | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_CPU_SAMPLING | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_* | changelog row: an environment key family as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_CONCURRENCY | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_ACCEPT_LOSS | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_COPIES | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_KEEP_MAX_AGE | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PEER_* | changelog row: an environment key family as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PEER_READS | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_DURABILITY | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_HOST | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_INTAKE | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_QUEUE | changelog rows: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_SIZE | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_WAIT | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_MODE | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_ROOT_CERT | changelog row: an environment key as it was then named
++docs/ARCHITECTURE.md | FLOTTILA_TARGET_MAX_CALLS | changelog row: an environment key family as it was then named
++docs/ARCHITECTURE.md | X-Flottila-Actor | changelog row: an HTTP header as it was then named
++docs/ARCHITECTURE.md | flottila test | changelog row: a CLI command as it was then named
++docs/ARCHITECTURE.md | flottila lock | changelog row: a CLI command as it was then named
++docs/ARCHITECTURE.md | 'flottila' | changelog row: a logical-message prefix as it was then named
++docs/ARCHITECTURE.md | flottila-<role>@<nodeId> | changelog row: the Postgres application_name as it was then named
++docs/ARCHITECTURE.md | flottila-api | changelog row: a module as it was then named
++docs/ARCHITECTURE.md | flottila-cli | changelog rows: a module as it was then named
++docs/ARCHITECTURE.md | flottila-schemas | changelog row: a module as it was then named
++docs/ARCHITECTURE.md | flottila-sim | changelog row: a module as it was then named
++docs/ARCHITECTURE.md | flottila-testkit | changelog row: a module as it was then named
++docs/ARCHITECTURE.md | flottila_work | changelog row: a LISTEN/NOTIFY channel as it was then named
++docs/ARCHITECTURE.md | io.flottila.Step | changelog row: a JFR event name as it was then named
++
++# Applied migrations are byte-identical forever (Flyway checksums); the name stands in their comments only.
++deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's checksum on every deployed database
++
++# The repository's address and its checkout path, in any file, until the owner renames the repository.
++** | github.com/subapavel/flottila | the repository's address until the owner renames it
++** | subapavel/flottila | the repository's name until the owner renames it
++** | subapavel/flottila-mapping | the mapping repository's name until the owner renames it
++** | /home/user/flottila | the checkout path, which follows the repository's name
++agent/cloud/README.md | `flottila` | the owner's cloud environment carries the old name until the owner renames it
++docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as it was called when the owner wrote the brief (D-147)
++
++# The prototype's names, where a live file names the prototype.
++ci/coverage_check.py | flottila-m1 | a comment names the prototype module P0-09 removed
++docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
++docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
++platform/archtest/src/test/java/io/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
++
++# The rename's own files hold the name as their subject or test data.
++agent/tools/rail8_rename.py | * | the rename tool: the old name is what it translates
++ci/name_guard.py | * | the guard: the old name is what it looks for
++ci/test_name_guard.py | * | the guard's tests: the old name is their test data
++ci/name-allowlist.txt | * | this file: its literals hold the old name
+diff --git a/ci/name_guard.py b/ci/name_guard.py
+new file mode 100644
+index 0000000..da597f7
+--- /dev/null
++++ b/ci/name_guard.py
+@@ -0,0 +1,187 @@
++#!/usr/bin/env python3
++"""Old-name guard (BRAND-4, D-148, D-149): the product's old name, `flottila`, does not come back.
++
++Scans every file git tracks (`git ls-files -z` at the top level of the working directory; untracked and
++ignored files are never read) for the name in any letter case, in the file's path and in its content.
++Every occurrence must be allowed by an entry of ci/name-allowlist.txt, read from disk at the same top level
++whether it is tracked or not. One entry per line, `#` comments and blank lines ignored:
++
++  <path glob> | <literal or *> | <reason>
++
++The glob is matched against the whole tracked path: `**` matches any run of characters, `/` included, `*`
++any run without `/`; every other character stands for itself. `*` as the second cell allows every
++occurrence in the matched files, their paths included; a literal allows only the occurrences it covers,
++matched exactly as written (letter case included), in a line, in the path, or in the bytes of a file that
++is not UTF-8. An occurrence is credited to one entry: a matching `*` entry first (the first in the list),
++else the longest covering literal (the first in the list on a tie). An entry credited with nothing in the
++whole run is itself a finding, so the list shrinks when an entry's reason goes away.
++
++Findings, one per line: `path:line: text` (one per line of a file however often the name occurs in it, at
++most WIDTH characters of the line around the first occurrence not allowed); `path: the path holds the name`;
++`path: not UTF-8, the content holds the name` (one per such file); `ci/name-allowlist.txt:<n>: unused
++allow-list entry: <entry>`. The last line counts them. Exit 0 clean (one line with the number of files
++scanned), 1 findings, 2 a malformed allow-list entry (named by its line) or a usage error.
++
++Usage:
++  python3 ci/name_guard.py   # from anywhere inside the repository; CI runs it from the root
++"""
++from __future__ import annotations
++
++import argparse
++import os
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++NAME = re.compile("flottila", re.IGNORECASE | re.ASCII)
++NAME_BYTES = re.compile(b"flottila", re.IGNORECASE)
++ALLOWLIST = "ci/name-allowlist.txt"
++STAR = "*"
++WIDTH = 160
++LEAD = 40  # characters kept before the first finding when a long line is cut to WIDTH
++
++
++class Entry:
++    """One allow-list line; `literal` is None for a `*` entry."""
++
++    def __init__(self, line: int, text: str, glob: str, literal: str | None):
++        self.line = line
++        self.text = text
++        self.pattern = glob_pattern(glob)
++        self.literal = literal
++        self.used = False
++
++
++def glob_pattern(glob: str) -> re.Pattern[str]:
++    parts = re.split(r"(\*\*|\*)", glob)
++    return re.compile("".join(".*" if p == "**" else "[^/]*" if p == "*" else re.escape(p) for p in parts),
++                      re.DOTALL)
++
++
++def parse_allowlist(text: str) -> tuple[list[Entry], list[str]]:
++    """The entries and one problem per malformed line (`ci/name-allowlist.txt:<n>: ...`)."""
++    entries: list[Entry] = []
++    problems: list[str] = []
++    for n, raw in enumerate(text.split("\n"), start=1):
++        line = raw.strip()
++        if not line or line.startswith("#"):
++            continue
++        cells = [c.strip() for c in line.split("|", 2)]
++        why = ("fewer than three cells" if len(cells) < 3 else "an empty glob" if not cells[0]
++               else "an empty literal" if not cells[1] else "no reason" if not cells[2] else None)
++        if why:
++            problems.append(f"{ALLOWLIST}:{n}: malformed allow-list entry ({why}): {line}")
++        else:
++            entries.append(Entry(n, line, cells[0], None if cells[1] == STAR else cells[1]))
++    return entries, problems
++
++
++def first_not_allowed(text: str, star: Entry | None, literals: list[Entry]) -> int:
++    """Credits every occurrence of the name in `text` to its entry (`literals` longest first); the position of
++    the first occurrence no entry allows, or -1."""
++    first = -1
++    for m in NAME.finditer(text):
++        if star is not None:
++            star.used = True
++            continue
++        # a literal covers the occurrence when one of its matches starts at or before it and ends at or after it
++        owner = next((e for e in literals
++                      if text.find(e.literal, max(0, m.end() - len(e.literal)), m.start() + len(e.literal)) >= 0),
++                     None)
++        if owner is not None:
++            owner.used = True
++        elif first < 0:
++            first = m.start()
++    return first
++
++
++def excerpt(line: str, at: int) -> str:
++    if len(line) <= WIDTH:
++        return line
++    start = min(max(0, at - LEAD), len(line) - WIDTH)
++    return line[start:start + WIDTH]
++
++
++def scan(path: str, data: bytes, entries: list[Entry]) -> list[str]:
++    """The findings of one tracked file; `entries` are those whose glob matches its path."""
++    findings: list[str] = []
++    star = next((e for e in entries if e.literal is None), None)
++    literals = sorted((e for e in entries if e.literal is not None), key=lambda e: -len(e.literal))
++    if first_not_allowed(path, star, literals) >= 0:
++        findings.append(f"{path}: the path holds the name")
++    if not NAME_BYTES.search(data):
++        return findings
++    try:
++        text = data.decode("utf-8")
++    except UnicodeDecodeError:
++        # latin-1 maps every byte to one character, so the name's bytes stay the name and literals still apply
++        if first_not_allowed(data.decode("latin-1"), star, literals) >= 0:
++            findings.append(f"{path}: not UTF-8, the content holds the name")
++        return findings
++    for n, line in enumerate(text.split("\n"), start=1):
++        line = line.rstrip("\r")
++        at = first_not_allowed(line, star, literals)
++        if at >= 0:
++            findings.append(f"{path}:{n}: {excerpt(line, at)}")
++    return findings
++
++
++def git(cwd: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
++    return subprocess.run(["git", *args], cwd=cwd, capture_output=True)
++
++
++def main(argv: list[str] | None = None) -> int:
++    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    ap.parse_args(argv)
++    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
++    top = git(Path.cwd(), "rev-parse", "--show-toplevel")
++    if top.returncode != 0:
++        print(f"NAME GUARD: not inside a git working tree: {top.stderr.decode(errors='replace').strip()}",
++              file=sys.stderr)
++        return 2
++    root = Path(top.stdout.decode("utf-8", errors="surrogateescape").strip())
++    allowlist = root / ALLOWLIST
++    if not allowlist.is_file():
++        print(f"NAME GUARD: {ALLOWLIST}: allow-list not found at {allowlist}", file=sys.stderr)
++        return 2
++    raw = allowlist.read_bytes()
++    try:
++        text = raw.decode("utf-8")
++    except UnicodeDecodeError as e:
++        line = raw.count(b"\n", 0, e.start) + 1
++        print(f"{ALLOWLIST}:{line}: malformed allow-list: not UTF-8 ({e.reason})", file=sys.stderr)
++        return 2
++    entries, problems = parse_allowlist(text)
++    if problems:
++        for p in problems:
++            print(p, file=sys.stderr)
++        print(f"name guard: {len(problems)} malformed allow-list entr{'y' if len(problems) == 1 else 'ies'}",
++              file=sys.stderr)
++        return 2
++    listed = git(root, "ls-files", "-z")
++    if listed.returncode != 0:
++        print(f"NAME GUARD: git ls-files failed: {listed.stderr.decode(errors='replace').strip()}", file=sys.stderr)
++        return 2
++    # an unmerged path is listed once per stage
++    paths = list(dict.fromkeys(p for p in listed.stdout.decode("utf-8", errors="surrogateescape").split("\0") if p))
++    findings: list[str] = []
++    for path in paths:
++        full = root / path
++        # git stores a symbolic link as its text: scan that, never the target. A tracked path deleted from the
++        # working tree, or a submodule, has no content to read; its path still counts.
++        data = (os.fsencode(os.readlink(full)) if full.is_symlink()
++                else full.read_bytes() if full.is_file() else b"")
++        findings += scan(path, data, [e for e in entries if e.pattern.fullmatch(path)])
++    findings += [f"{ALLOWLIST}:{e.line}: unused allow-list entry: {e.text}" for e in entries if not e.used]
++    for f in findings:
++        print(f)
++    if findings:
++        print(f"name guard: {len(findings)} finding(s)")
++        return 1
++    print(f"name guard: clean, {len(paths)} tracked files scanned")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/ci/test_name_guard.py b/ci/test_name_guard.py
+new file mode 100644
+index 0000000..45edd55
+--- /dev/null
++++ b/ci/test_name_guard.py
+@@ -0,0 +1,365 @@
++"""Tests for ci/name_guard.py — the old product name does not come back (BRAND-4, D-148, D-149).
++
++Run: python3 -m unittest ci.test_name_guard  (from the repository root; also run by the CI build job)
++
++Every case builds its own small git repository in a temporary directory, copies the guard to
++`ci/name_guard.py` there and runs it as a program from that root (`python3 ci/name_guard.py`), the
++way CI runs it. The copied guard and the case's `ci/name-allowlist.txt` stay untracked in the
++temporary repository. The last case runs the guard on this repository with the real allow-list.
++
++This file holds the old name as test data: the real allow-list covers it whole
++(`ci/test_name_guard.py | * | <reason>`, packet BRAND-4 "The rename's own files").
++"""
++import os
++import re
++import shutil
++import subprocess
++import sys
++import tempfile
++import unittest
++import zipfile
++from pathlib import Path
++
++REPO = Path(__file__).resolve().parent.parent
++GUARD = REPO / "ci" / "name_guard.py"
++TIMEOUT = 120
++
++
++def number_in(n: int, text: str) -> bool:
++    """`n` appears in `text` as a whole number (not as a digit of a longer one)."""
++    return re.search(rf"(?<!\d){n}(?!\d)", text) is not None
++
++
++class Repo:
++    """A temporary git repository; files are tracked unless `track=False`."""
++
++    def __init__(self, root: Path):
++        self.root = root
++        self.env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(root),
++                    "GIT_CONFIG_NOSYSTEM": "1", "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
++        self.git("init", "-q")
++        self.allow("# no entries")
++
++    def git(self, *args: str) -> str:
++        return subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, text=True,
++                              env=self.env, timeout=TIMEOUT).stdout
++
++    def write(self, path: str, content, *, track: bool = True) -> None:
++        p = self.root / path
++        p.parent.mkdir(parents=True, exist_ok=True)
++        if isinstance(content, bytes):
++            p.write_bytes(content)
++        else:
++            p.write_text(content, encoding="utf-8")
++        if track:
++            self.git("add", "-f", "--", path)
++
++    def allow(self, *lines: str) -> None:
++        p = self.root / "ci" / "name-allowlist.txt"
++        p.parent.mkdir(parents=True, exist_ok=True)
++        p.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
++
++    def run(self, test: unittest.TestCase):
++        """Runs the guard from the repository root; returns (exit code, non-empty output lines, whole output)."""
++        test.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
++        shutil.copyfile(GUARD, self.root / "ci" / "name_guard.py")
++        done = subprocess.run([sys.executable, "ci/name_guard.py"], cwd=self.root, stdout=subprocess.PIPE,
++                              stderr=subprocess.STDOUT, env=self.env, timeout=TIMEOUT)
++        out = done.stdout.decode("utf-8", errors="replace")
++        test.assertNotIn("Traceback", out, "the guard crashed:\n" + out)
++        return done.returncode, [line for line in out.splitlines() if line.strip()], out
++
++
++class NameGuardTest(unittest.TestCase):
++
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory()
++        self.repo = Repo(Path(self.tmp.name))
++
++    def tearDown(self):
++        self.tmp.cleanup()
++
++    def assertFindings(self, code, lines, out, count: int):
++        """Exit 1, one line per finding, the count on the last line; returns the finding lines."""
++        self.assertEqual(1, code, out)
++        self.assertEqual(count + 1, len(lines), "one line per finding and a count line:\n" + out)
++        self.assertTrue(number_in(count, lines[-1]), f"the last line carries the count {count}:\n" + out)
++        return lines[:-1]
++
++    def assertClean(self, code, lines, out, files: int):
++        self.assertEqual(0, code, out)
++        self.assertEqual(1, len(lines), "a clean run prints one line:\n" + out)
++        self.assertTrue(number_in(files, lines[0]), f"the line carries the {files} files scanned:\n" + out)
++
++    # 1 -------------------------------------------------------------------------------------------
++
++    def test_untracked_and_ignored_files_holding_the_name_are_not_findings(self):
++        self.repo.write(".gitignore", "build/\n")
++        self.repo.write("README.md", "# Rail8\n")
++        self.repo.write("notes.txt", "a line\nflottila was here\n", track=False)
++        self.repo.write("build/out.txt", "flottila build output\n", track=False)
++        self.assertClean(*self.repo.run(self), files=2)
++
++        self.repo.git("add", "--", "notes.txt")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertEqual(["notes.txt:2: flottila was here"], findings, "the same file, once tracked, is a finding")
++
++        self.repo.git("add", "-f", "--", "build/out.txt")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"notes.txt:2: flottila was here", "build/out.txt:1: flottila build output"}, set(findings),
++                         "an ignored file, once tracked, is a finding")
++
++    # 2 -------------------------------------------------------------------------------------------
++
++    def test_the_name_in_any_letter_case_is_a_finding_naming_file_and_line(self):
++        self.repo.write("a.txt", "one\ntwo\nname = flottila\n")
++        self.repo.write("B.java", "class B {\n// Flottila node\n}\n")
++        self.repo.write("env.sh", "export FLOTTILA_NODE_ID=n1\n")
++        self.repo.write("src/C.java", "package x;\n\n\n\nimport io.flottila.api.Envelope;\n")
++        self.repo.write("mixed.md", "x\ny\nz\nw\nv\nu\nthe fLoTtIlA way\n")
++        self.repo.write("clean.md", "Rail8 only\n")
++        findings = self.assertFindings(*self.repo.run(self), count=5)
++        self.assertEqual({"a.txt:3: name = flottila",
++                          "B.java:2: // Flottila node",
++                          "env.sh:1: export FLOTTILA_NODE_ID=n1",
++                          "src/C.java:5: import io.flottila.api.Envelope;",
++                          "mixed.md:7: the fLoTtIlA way"}, set(findings))
++
++    def test_a_finding_carries_at_most_160_characters_of_its_line(self):
++        line = "flottila " + "x" * 300
++        self.repo.write("long.txt", "first\n" + line + "\n")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        prefix = "long.txt:2: "
++        self.assertTrue(findings[0].startswith(prefix), findings[0])
++        text = findings[0][len(prefix):]
++        self.assertTrue(0 < len(text) <= 160, f"{len(text)} characters of the line printed")
++        self.assertIn(text, line)
++
++    # 3 -------------------------------------------------------------------------------------------
++
++    def test_a_tracked_path_holding_the_name_is_a_finding_even_with_clean_content(self):
++        self.repo.write("bin/rail8", "#!/bin/sh\necho hi\n")
++        self.repo.write("src/io/rail8/A.java", "class A {}\n")
++        self.assertClean(*self.repo.run(self), files=2)
++
++        self.repo.git("mv", "bin/rail8", "bin/flottila")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertIn("bin/flottila", findings[0])
++        self.assertIsNone(re.search(r"bin/flottila:\d+:", findings[0]), "the content is clean: no line number")
++        self.assertTrue(findings[0].startswith("bin/flottila: "), findings[0])
++        self.assertIn("the path holds the name", findings[0], "the finding says it is the path (ruling 4)")
++        self.assertNotIn("UTF-8", findings[0], "a path finding is not worded as a not-UTF-8 finding")
++
++        (self.repo.root / "src/io/flottila").mkdir(parents=True)
++        self.repo.git("mv", "src/io/rail8/A.java", "src/io/flottila/A.java")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual(1, sum("bin/flottila" in f for f in findings), findings)
++        self.assertEqual(1, sum("src/io/flottila/A.java" in f for f in findings), findings)
++
++    # 4 -------------------------------------------------------------------------------------------
++
++    def test_a_file_that_is_not_utf8_is_scanned_as_bytes_and_reported_by_path_alone(self):
++        png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xfe\x80\n\xc3\x28tEXtflottila\x00\xff\n"
++        self.repo.write("img/logo.png", png)
++        self.repo.write("img/clean.png", b"\x89PNG\r\n\x1a\n\xff\xfe\x80\xc3\x28\x00rail8\x00")
++        self.assertFindings(*self.repo.run(self), count=1)
++
++        jar = self.repo.root / "lib" / "x.jar"
++        jar.parent.mkdir(parents=True)
++        with zipfile.ZipFile(jar, "w", compression=zipfile.ZIP_STORED) as z:     # stored: the name once, in the entry's bytes
++            z.writestr("A.class", b"\xca\xfe\xba\xbe\xff\xfe\x80\x07Lio/flottila/api/Envelope;\x00\xff")
++        self.repo.git("add", "--", "lib/x.jar")
++        code, lines, out = self.repo.run(self)
++        findings = self.assertFindings(code, lines, out, count=2)
++        for path in ("img/logo.png", "lib/x.jar"):
++            mine = [f for f in findings if path in f]
++            self.assertEqual(1, len(mine), f"{path} reported once:\n{out}")
++            self.assertIsNone(re.search(re.escape(path) + r":\d+", mine[0]), f"{path} reported without a line number")
++            self.assertTrue(mine[0].startswith(path + ": "), mine[0])
++            self.assertIn("not UTF-8", mine[0], "the finding says it is a file that is not UTF-8 (ruling 4)")
++            self.assertNotIn("the path holds the name", mine[0], "a not-UTF-8 finding is not worded as a path finding")
++        self.assertNotIn("img/clean.png", out, "a binary file without the name is not a finding")
++
++    # 5 -------------------------------------------------------------------------------------------
++
++    def test_a_star_entry_allows_every_occurrence_in_matched_files_path_included(self):
++        self.repo.write("docs/archive/a/b.md", "x\nflottila history\n")
++        self.repo.write("docs/archive/a/b/c.md", "FLOTTILA deeper\n")
++        self.repo.write("docs/archive/flottila/d.md", "the path holds the name, this line does not\n")
++        self.repo.write("README.md", "Rail8\n")
++        self.assertFindings(*self.repo.run(self), count=3)
++
++        self.repo.allow("# history", "docs/archive/** | * | history keeps the old name (D-148)")
++        self.assertClean(*self.repo.run(self), files=4)
++
++    def test_a_single_star_does_not_cross_a_directory(self):
++        self.repo.write("deploy/postgres/V1.sql", "-- flottila schema\n")
++        self.repo.write("deploy/postgres/x/V1.sql", "select 1;\n-- flottila nested\n")
++        self.repo.write("deploy/postgres/V9/old.sql", "-- flottila under a V directory\n")  # V*.sql would match if * crossed /
++        self.repo.allow("deploy/postgres/V*.sql | * | applied migrations are byte-identical forever")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"deploy/postgres/x/V1.sql:2: -- flottila nested",
++                          "deploy/postgres/V9/old.sql:1: -- flottila under a V directory"}, set(findings))
++
++    # 6 -------------------------------------------------------------------------------------------
++
++    def test_a_literal_entry_allows_only_that_literal_in_the_files_its_glob_matches(self):
++        self.repo.write("notes.md", "intro\nsee github.com/subapavel/flottila and flottila-core\n")
++        self.repo.write("readme.md", "clone github.com/subapavel/flottila\n")
++        self.repo.write("src/A.java", "// github.com/subapavel/flottila\n")
++        self.repo.allow("*.md | github.com/subapavel/flottila | the repository's address until the owner renames it")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"notes.md:2: see github.com/subapavel/flottila and flottila-core",
++                          "src/A.java:1: // github.com/subapavel/flottila"}, set(findings),
++                         "the URL alone (readme.md) is allowed; flottila-core and a file outside the glob are not")
++
++    def test_an_allowed_literal_does_not_allow_a_different_name_sharing_its_prefix(self):
++        self.repo.write("x.md", "one\nuses flottila-mapping here\nthree\nuses flottila-mapper here\n")
++        self.repo.allow("*.md | flottila-mapping | the mapping repository's name")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertEqual(["x.md:4: uses flottila-mapper here"], findings)
++
++    def test_an_occurrence_is_credited_to_the_longest_covering_literal_only(self):
++        # ruling 6: the shorter literal is listed first, so neither "first in the list" nor "every covering literal" passes
++        short = "** | subapavel/flottila | the repository's name until the owner renames it"
++        longer = "** | subapavel/flottila-mapping | the mapping repository's name until the owner renames it"
++        self.repo.allow("# addresses", short, longer)
++        self.repo.write("README.md", "intro\nsee github.com/subapavel/flottila-mapping for the engine\n")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        only = findings[0]   # exactly one finding (assertFindings): nothing else is reported
++        self.assertTrue(only.startswith("ci/name-allowlist.txt:2: ") and "unused allow-list entry" in only
++                        and only.endswith(short),
++                        "only the longer literal occurs: the shorter entry (line 2) is credited with nothing: " + only)
++
++        self.repo.write("docs/x.md", "clone subapavel/flottila\n")
++        self.assertClean(*self.repo.run(self), files=2)
++
++    def test_one_finding_per_line_one_per_non_utf8_file_and_a_path_finding_beside_the_line_findings(self):
++        # ruling 5 of the first list
++        self.repo.write("twice.txt", "first\nflottila and FLOTTILA on one line\n")
++        self.repo.write("blob.bin", b"\xff\xfeflottila\x00\x80FLOTTILA\xff")
++        self.repo.write("tools/flottila.md", "flottila here\nclean\n")
++        findings = self.assertFindings(*self.repo.run(self), count=4)
++        self.assertEqual(1, sum(f.startswith("twice.txt") for f in findings), "one finding per line:\n" + "\n".join(findings))
++        self.assertIn("twice.txt:2: flottila and FLOTTILA on one line", findings)
++        self.assertEqual(1, sum(f.startswith("blob.bin") for f in findings),
++                         "one finding per file that is not UTF-8:\n" + "\n".join(findings))
++        mine = sorted(f for f in findings if f.startswith("tools/flottila.md"))
++        self.assertEqual(2, len(mine), "the path finding and the line finding, each on its own:\n" + "\n".join(findings))
++        self.assertIn("tools/flottila.md:1: flottila here", mine)
++        self.assertTrue(any(f.startswith("tools/flottila.md: ") and "the path holds the name" in f for f in mine), mine)
++
++    def test_a_star_entry_takes_the_credit_before_a_literal_over_the_same_file(self):
++        star = "docs/archive/** | * | history keeps the old name (D-148)"
++        literal = "** | subapavel/flottila | the repository's name until the owner renames it"
++        self.repo.allow("# star before literal", star, literal)
++        self.repo.write("docs/archive/a.md", "see github.com/subapavel/flottila\n")
++        self.repo.write("README.md", "Rail8\n")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertTrue(findings[0].startswith("ci/name-allowlist.txt:3: ") and "unused allow-list entry" in findings[0]
++                        and findings[0].endswith(literal),
++                        "the * entry took the credit: the literal entry (line 3) is unused: " + findings[0])
++
++        self.repo.write("README.md", "Rail8, cloned from subapavel/flottila\n")
++        self.assertClean(*self.repo.run(self), files=2)
++
++    def test_a_literal_covers_a_path_and_the_bytes_of_a_non_utf8_file(self):
++        self.repo.write("tools/flottila-m1/run.sh", "echo clean\n")
++        self.repo.write("img/p.bin", b"\xff\xfe built by flottila-proto \x80\xff")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"tools/flottila-m1/run.sh", "img/p.bin"}, {f.split(": ")[0] for f in findings}, findings)
++
++        self.repo.allow("tools/** | flottila-m1 | the prototype's name",
++                        "img/*.bin | flottila-proto | the prototype's other name")
++        self.assertClean(*self.repo.run(self), files=2)   # clean: no finding, so neither entry is unused
++
++    def test_a_tracked_symbolic_link_is_scanned_by_its_link_text_never_its_target(self):
++        # ruling 4 of "After review r1": what git stores for a link is its text (os.readlink)
++        self.repo.write("notes.txt", "flottila notes\n", track=False)
++        (self.repo.root / "docs").mkdir()
++        os.symlink("../notes.txt", self.repo.root / "docs" / "current.md")       # clean text, untracked target holds the name
++        (self.repo.root / "bin").mkdir()
++        os.symlink("../lib/flottila-run.sh", self.repo.root / "bin" / "run")     # the text holds the name, target missing
++        self.repo.git("add", "--", "docs/current.md", "bin/run")
++        self.repo.write("README.md", "Rail8\n")
++        code, lines, out = self.repo.run(self)
++        findings = self.assertFindings(code, lines, out, count=1)
++        self.assertTrue(findings[0].startswith("bin/run"), "the link whose text holds the name is a finding:\n" + out)
++        self.assertNotIn("docs/current.md", out, "a link is never followed to its target")
++
++    def test_an_allow_list_that_is_not_utf8_exits_2_and_names_the_allow_list(self):
++        self.repo.write("docs/archive/a.md", "flottila history\n")
++        (self.repo.root / "ci" / "name-allowlist.txt").write_bytes(
++            b"# list\ndocs/archive/** | * | history\ndocs/** | caf\xff | a byte that is not UTF-8\n")
++        code, lines, out = self.repo.run(self)          # run() asserts no traceback
++        self.assertEqual(2, code, out)
++        self.assertIn("ci/name-allowlist.txt", out)
++
++    # 7 -------------------------------------------------------------------------------------------
++
++    def test_a_malformed_allow_list_entry_exits_2_and_names_its_line(self):
++        self.repo.write("docs/archive/a.md", "flottila history\n")
++        self.repo.write("deploy/V1.sql", "-- flottila\n")
++        head = ["# allow-list for the test", "", "docs/archive/** | * | history",
++                "# the line under test follows", "", ""]       # the line under test is line 7
++
++        self.repo.allow(*head, "deploy/V*.sql | * | applied migrations")
++        self.assertClean(*self.repo.run(self), files=2)
++
++        for bad in ("deploy/V*.sql | * |",               # no reason
++                    "deploy/V*.sql | * |    ",           # a blank reason
++                    " | * | applied migrations",         # empty glob
++                    "deploy/V*.sql |  | applied migrations",   # empty literal cell (ruling 2, implementer ruling 4)
++                    "deploy/V*.sql | *",                 # two cells
++                    "deploy/V*.sql"):                    # one cell
++            with self.subTest(line=bad):
++                self.repo.allow(*head, bad)
++                code, lines, out = self.repo.run(self)
++                self.assertEqual(2, code, out)
++                self.assertTrue(any(line.startswith("ci/name-allowlist.txt:7: ") for line in lines),
++                                "the allow-list line is named by path and line number (ruling 2):\n" + out)
++
++    # 8 -------------------------------------------------------------------------------------------
++
++    def test_an_entry_that_allows_nothing_is_an_unused_allow_list_entry_finding(self):
++        self.repo.write("README.md", "prototype flottila-m1\n")
++        self.repo.write("src/A.java", "class A {}\n")
++        used = "*.md | flottila-m1 | the prototype's name"
++        cases = {"a glob matching no file": "docs/gone/** | * | removed history",
++                 "a glob matching only clean files": "src/*.java | * | old sources",
++                 "a literal absent from the tree": "*.md | flottila-proto | the prototype's other name"}
++        for what, entry in cases.items():
++            with self.subTest(what):
++                self.repo.allow(used, entry)
++                findings = self.assertFindings(*self.repo.run(self), count=1)
++                self.assertIn("unused allow-list entry", findings[0])
++                self.assertTrue(findings[0].startswith("ci/name-allowlist.txt:2: ") and findings[0].endswith(entry),
++                                "named by path and line number, then the entry's text (ruling 3): " + findings[0])
++
++        self.repo.write("docs/gone/a.md", "flottila history\n")
++        self.repo.allow(used, cases["a glob matching no file"])
++        self.assertClean(*self.repo.run(self), files=3)
++
++    # 9 -------------------------------------------------------------------------------------------
++
++    def test_a_clean_run_prints_one_line_with_the_number_of_files_scanned(self):
++        for i in range(7):
++            self.repo.write(f"d{i}/f{i}.txt", f"Rail8 file {i}\n")
++        self.assertClean(*self.repo.run(self), files=7)
++
++        self.repo.write("docs/archive/old.md", "flottila history\n")
++        self.repo.allow("docs/archive/** | * | history keeps the old name (D-148)")
++        self.assertClean(*self.repo.run(self), files=8)
++
++    # 10 ------------------------------------------------------------------------------------------
++
++    def test_the_real_tree_with_the_real_allow_list_is_clean(self):
++        self.assertTrue(GUARD.is_file(), f"{GUARD} does not exist")
++        done = subprocess.run([sys.executable, "ci/name_guard.py"], cwd=REPO, stdout=subprocess.PIPE,
++                              stderr=subprocess.STDOUT, timeout=TIMEOUT)
++        out = done.stdout.decode("utf-8", errors="replace")
++        self.assertEqual(0, done.returncode, out[-4000:])
++
++
++if __name__ == "__main__":
++    unittest.main()

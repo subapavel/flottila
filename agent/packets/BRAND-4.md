@@ -71,3 +71,46 @@ Allowed: `ci/name_guard.py`, `ci/test_name_guard.py`, `ci/name-allowlist.txt`,
 The red observed (the test-author: which tests fail and why, with the log path under
 `agent/work/`); the implementer: the tests green, the guard's output on the tree, the allow-list's
 entry count, and every finding it did not allow-list.
+
+## Rulings on the test-author's seven questions (architect, 2026-11-15)
+
+The red tests are approved as written (`ci/test_name_guard.py`, 13 methods, red observed: `agent/work/BRAND-4-red.log`).
+
+1. The allow-list is `ci/name-allowlist.txt` under the root of the repository the guard runs in (the git top level of the working
+   directory), read from disk whether it is tracked or not.
+2. A malformed entry is named by the allow-list's path and its physical line number: `ci/name-allowlist.txt:<n>: …`.
+3. An unused entry is named the same way — path, line number — followed by the entry's text.
+4. A finding in a line is `path:line: text` (the text cut at 160 characters). A finding in a path and a finding in a file that is not
+   UTF-8 start with the path and carry no line number; after the path they say which of the two it is.
+5. One finding per line however often the name occurs in it; one finding per file that is not UTF-8; a file whose path and content both
+   hold the name gives the path finding and the line findings, each on its own.
+6. An occurrence is credited to the longest literal that covers it among the entries whose glob matches the file; an entry credited with
+   nothing in the whole run is unused. So the real allow-list holds a shorter literal only where it occurs on its own.
+7. The name is found in any letter case; an allow-list literal is matched exactly as written.
+
+## Rulings on the implementer's questions (architect, 2026-11-15)
+
+1. `agent/cloud/README.md` names the owner's cloud environment, which still carries the old name until the owner renames it (an owner
+   action, like the repository): a literal entry for the backticked name, scoped to that file.
+2. `docs/OPERATIONS-BRIEF.md` names the mapping engine's repository as it was called when the brief was written (the owner's text, D-147):
+   a literal entry `flottila-mapping`, scoped to that file. The brief is not edited.
+3. The real-tree test can only pass with the guard's own files tracked: the architect stages them before the verifier's run.
+4. Confirmed as built: a `*` entry takes the credit before any literal in the files it matches; a literal also covers an occurrence in
+   a path and in the bytes of a file that is not UTF-8; an empty literal cell is malformed (exit 2); the address literals are allowed in
+   any file, the prototype names only in their own files.
+5. Longest-literal crediting (ruling 6 above) and the empty literal cell get a test each: a guard that credits the shortest literal
+   passed every unit test — the test-author adds the two.
+
+## After review r1 (FAIL, four points; architect, 2026-11-15)
+
+1. Ruling 5 of the first list had no test (one finding per line; one per file that is not UTF-8; a path finding beside the line
+   findings): the test-author adds it.
+2. Two confirmed behaviours had no test — a `*` entry takes the credit before a literal over the same file; a literal covers a path and
+   the bytes of a file that is not UTF-8: the test-author adds them.
+3. The kind of a path finding and of a not-UTF-8 finding is asserted by its wording, not only by the missing line number.
+4. A tracked symbolic link: the guard scans the link's own text (what git stores, `os.readlink`), never the target it points to — a
+   red test first, then the guard. The tree holds no tracked symbolic link today.
+5. An allow-list that is not UTF-8 is a malformed allow-list: exit 2, not a crash — a red test first, then the guard.
+Accepted as limits, not changed: a literal is not word-bounded (the repository address also covers a longer name that starts with it);
+an entry `** | *` would exempt the whole tree and nothing refuses it — the allow-list is a reviewed file; the working tree is read, not
+the index (CI's tree is the commit); UTF-16 text, deflated archive entries and a name split across lines are not seen.
