@@ -1,11 +1,9 @@
 package io.github.subapavel.jqj.internal.parse;
 
-import static io.github.subapavel.jqj.internal.parse.ParseAssertions.MARK;
+import static io.github.subapavel.jqj.internal.parse.ParseAssertions.shape;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-import io.github.subapavel.jqj.JqCompileException;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.ir.Bind;
@@ -42,6 +40,17 @@ class LiftedFunctionsTest {
     Function r = p.functions().getFirst();
     assertThat(r.closures()).as("closures of r").isEqualTo(1);
     assertThat(r.values()).as("values of r").isEqualTo(3);
+    // $0 is $x, $1 is $y, $2 the bound 5: the values are $a's, then $y's, then $x's; the closure is f's.
+    assertThat(stripped(shape(p.main()))).as("main").isEqualTo("(1 as $0 | (2 as $1 | (0 | (5 as $2 | (call 0 [.] ($2; $1; $0))))))");
+    // r's slots: $v0 is $a, $v1 is $y, $v2 is $x; f is closure 0, passed on as its ParamCall.
+    assertThat(stripped(shape(r)))
+        .as("body of r")
+        .isEqualTo("(if _greater(.; 2) then [(($v1, $v2), (param 0, $v0))] else (_plus(.; 1) | ($v0 as $0 | (call 0 [param 0] ($0; $v1; $v2)))))");
+  }
+
+  /** {@link ParseAssertions#shape} without its Sources. */
+  private static String stripped(String shape) {
+    return shape.replaceAll("\\[\\d+,\\d+\\)", "");
   }
 
   /** A label the definition is written inside is a value capture, its token: the body's break names its slot. */
@@ -99,17 +108,14 @@ class LiftedFunctionsTest {
   }
 
   /**
-   * A function's body is a definition's body, inside an expansion (ADR-0040 "Inline cap"): its nodes spend the cap,
-   * so a body of more than {@code Resolver.INLINE_CAP} nodes is a Stub, while the same nodes in the main filter, inside
-   * no expansion, spend nothing.
+   * Nesting and depth restart at 0 in each function (#106 "Functions in the IR", ADR-0040 "Inline cap", F-54): a
+   * function's body is inside no expansion, so its own nodes spend no inline cap, as the same nodes in the main filter
+   * spend none. A body of more than {@code Resolver.INLINE_CAP} nodes compiles; an expansion inside it would spend.
    */
   @Test
-  void aFunctionBodySpendsTheInlineCap() {
+  void aFunctionBodyRestartsTheInlineCap() {
     String nodes = "." + ",.".repeat(Resolver.INLINE_CAP);
     assertThatCode(() -> Resolver.resolve(Parser.parse("if . then 1 else " + nodes + " end"))).as("the nodes in the main filter").doesNotThrowAnyException();
-    assertThatExceptionOfType(JqCompileException.class)
-        .as("the nodes in a recursive body")
-        .isThrownBy(() -> Resolver.resolve(Parser.parse("def r: if . then r else " + nodes + " end; r")))
-        .withMessageStartingWith(MARK + "a filter that inlines more than " + Resolver.INLINE_CAP + " nodes");
+    assertThatCode(() -> Resolver.resolve(Parser.parse("def r: if . then r else " + nodes + " end; r"))).as("the nodes in a recursive body").doesNotThrowAnyException();
   }
 }

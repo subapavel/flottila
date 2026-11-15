@@ -1,6 +1,6 @@
 # The parser builds an AST; the resolver lowers it to IR
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #62; designer draft); amends ADR-0031 (when Stubs are raised); clarifies ADR-0005 (its rejected "jq-level node family"); amended by ADR-0036 (parser-action errors, #64)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #62; designer draft); amends ADR-0031 (when Stubs are raised); clarifies ADR-0005 (its rejected "jq-level node family"); amended by ADR-0036 (parser-action errors, #64); the parse record is `ParsedFilter` and `Program` is query-core's (#107)
 
 ## Context
 
@@ -43,3 +43,8 @@ the IR has no kinds yet for most constructs.
   closed family and both backends.
 - Stubs at parse time: a syntax error after an unbuilt construct would score as a Stub.
 - Bison emulation (expecting lists, silent recovery): ADR-0020 rejects it.
+
+## Amendment (ticket #107)
+
+- `Parser.parse` returns a `ParsedFilter`. The name `Program` now belongs to query-core's IR
+  `Program(main, List<Function>)` (ADR-0045).

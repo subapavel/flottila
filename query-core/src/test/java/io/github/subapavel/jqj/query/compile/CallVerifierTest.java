@@ -219,6 +219,17 @@ class CallVerifierTest {
     assertThatIllegalStateException().as("compile of a token passed outside its Label").isThrownBy(() -> compile(program(outside, function(0, 1, new Break(AT, 0)))));
   }
 
+  /**
+   * A main parameter slot is no label token (ADR-0045 #107: only a function's value parameter is): main's Break of its
+   * parameter slot 0 is rejected, as main has no Label of that slot.
+   */
+  @Test
+  void rejectsABreakOfAMainParameterSlot() {
+    assertThatIllegalStateException()
+        .as("compile of a main of one parameter slot that breaks to it")
+        .isThrownBy(() -> Compiler.compile(program(new Break(AT, 0)), 1, CompileMode.OPTIMISED));
+  }
+
   @Test
   void rejectsAParamCallInMain() {
     Object a = new Object();

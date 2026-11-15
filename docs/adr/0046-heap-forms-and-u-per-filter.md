@@ -38,7 +38,8 @@ of the recursion-depth budget?
   published in `bench/RESULTS.md` and the `Limits` javadoc. `stackBytes` is not a budget, so 0
   means zero bytes, never unlimited.
 - **Where the stack is tested**: in-suite tests run on a thread of at least 4× the declared
-  `stackBytes`. The 512 KiB edges run only in fresh child JVMs (F-44, F-49). The calibration's full
+  `stackBytes`, except a backstop witness, which declares more `stackBytes` than its thread has so
+  that the real stack runs out first (StackBackstopTest, #107). The 512 KiB edges run only in fresh child JVMs (F-44, F-49). The calibration's full
   matrix runs at the spec gate and nightly; its `-Xint` 512 KiB column runs in the ticket gate.
 - **The recursion-depth budget counts** one per live PLAIN or RECURSIVE `Call` and one per
   real-closure `ParamCall` (a call activation), on the stack and on the driver together. A tail
