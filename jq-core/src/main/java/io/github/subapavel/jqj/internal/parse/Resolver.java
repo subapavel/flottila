@@ -115,9 +115,9 @@ import java.util.function.Supplier;
  * value capture each a value slot, the first at 0; a filter parameter, a value parameter a call names, and a closure
  * capture each a closure, which a call of it in the body runs as a ParamCall. A call into a recursive group of the
  * prelude, or of a definition nested in a prelude body, is a Stub until #110. One compile spends at most {@link #INLINE_CAP} nodes inside
- * expansions and function bodies, and nests at most {@link #EXPANSIONS} - 1 expansions; past either the filter is a
- * Stub (GLOSSARY "Inline cap"), and so is a filter with a body of more than {@link #MAX_IR_DEPTH} levels of IR (F-44).
- * A Stub is thrown at once.
+ * expansions, and nests at most {@link #EXPANSIONS} - 1 of them; past either the filter is a Stub (GLOSSARY "Inline
+ * cap"), and so is a filter with a body of more than {@link #MAX_IR_DEPTH} levels of IR (F-44). Nesting and depth
+ * restart at 0 in each function (#106 "Functions in the IR"). A Stub is thrown at once.
  *
  * <p>A prelude definition's body is written in no environment of the filter's, and every node lowered from it takes
  * the Source of the filter's call that reached the prelude, while a closure argument of the filter keeps its own
@@ -357,8 +357,8 @@ public final class Resolver {
 
   /**
    * The function of {@code f}: its body lowered in its environment where it is written, its own parameters in scope,
-   * then its captures as {@link #captured}, on slots of its own from 0, as deep inside an expansion as a body is
-   * (ADR-0045 #107 "Parameters").
+   * then its captures as {@link #captured}, on slots of its own from 0, inside no expansion and at no level (ADR-0045
+   * #107 "Parameters").
    */
   private Function function(Lifted f) {
     slots = 0;
@@ -377,9 +377,9 @@ public final class Resolver {
     }
     int values = slots;
     env = inner;
-    // A lowering that ends restores the site and the levels, so both are the main filter's start again: no site, no
-    // level. The body is a definition's, inside one expansion, where the inline cap counts (ADR-0040).
-    depth = 1;
+    // Nesting and depth restart at 0 in each function (#106 "Functions in the IR", ADR-0040, F-54). A lowering that
+    // ends restores the site, the levels and the expansions it is inside, so all three are the main filter's start
+    // again: no site, no level, no expansion.
     Node body = lower(f.def().body());
     within(body, MAX_IR_DEPTH);
     return new Function(f.def().source(), closures, values, body);

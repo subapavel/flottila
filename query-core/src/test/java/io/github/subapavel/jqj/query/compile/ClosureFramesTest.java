@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * A closure argument's frame (ADR-0045 #107 "Frames"): one that binds a slot runs in a frame of its own whose cell 0
  * links the frame it was written in, so a bare Var of a caller's slot in it reads that slot one frame out, beside the
- * closure's own slot, at each invocation.
+ * closure's own slot, at each of its call activations.
  */
 class ClosureFramesTest {
   private static final Source AT = new Source(0, 1);

@@ -17,6 +17,7 @@ import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Foreach;
+import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
@@ -102,6 +103,15 @@ final class ParseAssertions {
    */
   static String shape(Node node) {
     return shape(node, Map.of(), new int[1]);
+  }
+
+  /** The body of {@code function} as {@link #shape(Node)} prints a tree, its value parameter j named {@code $vj}. */
+  static String shape(Function function) {
+    Map<Integer, String> parameters = new HashMap<>();
+    for (int j = 0; j < function.values(); j++) {
+      parameters.put(j, "$v" + j);
+    }
+    return shape(function.body(), parameters, new int[1]);
   }
 
   /** {@code scope} maps each slot a Bind around {@code node} holds to its name; {@code met} counts the Binds met. */
