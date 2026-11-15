@@ -170,9 +170,9 @@ public record DiffCase(
     return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, jqj, block.def(), recursionDepth);
   }
 
-  /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} a positive integer of at most {@link Integer#MAX_VALUE}. */
+  /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} an integer in 1..{@link Integer#MAX_VALUE}. */
   private static long recursionDepth(String value) {
-    String why = "'limit' needs 'recursion-depth <n>' with a positive integer n, not '" + value + "'";
+    String why = "'limit' needs 'recursion-depth <n>' with an integer n in 1.." + Integer.MAX_VALUE + ", not '" + value + "'";
     if (!value.startsWith(RECURSION_DEPTH)) throw new IllegalArgumentException(why);
     long n;
     try {

@@ -153,7 +153,7 @@ class CaseFormatTest {
         Arguments.argumentSet("jqj-rc not an integer", bytes("case t/x\ndeviation a\njqj-rc five\nend\n"), "'jqj-rc' needs an integer"),
         Arguments.argumentSet("an unknown jqj key", bytes("case t/x\ndeviation a\njqj-exit 5\nend\n"), "unknown key 'jqj-exit'"),
         Arguments.argumentSet("limit twice", bytes("case t/x\nlimit recursion-depth 16\nlimit recursion-depth 8\nend\n"), "t.cases:3: case t/x: 'limit' given twice"),
-        Arguments.argumentSet("a limit of another budget", bytes("case t/x\nlimit steps 16\nend\n"), "'limit' needs 'recursion-depth <n>' with a positive integer n, not 'steps 16'"),
+        Arguments.argumentSet("a limit of another budget", bytes("case t/x\nlimit steps 16\nend\n"), "'limit' needs 'recursion-depth <n>' with an integer n in 1..2147483647, not 'steps 16'"),
         Arguments.argumentSet("a limit that is no integer", bytes("case t/x\nlimit recursion-depth x\nend\n"), "not 'recursion-depth x'"),
         Arguments.argumentSet("a limit of zero", bytes("case t/x\nlimit recursion-depth 0\nend\n"), "not 'recursion-depth 0'"),
         // Limits takes the budget as an int: a larger one is the case's error here, not the runner's at run time.

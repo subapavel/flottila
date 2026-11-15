@@ -30,11 +30,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The value entry's jumps over the census (#118 design comment, "valueEntryTargetsAreValue: a property over the
- * census"; ADR-0047 "Amendment (ticket #118)", "The jump": {@code CallOp.enter} takes a pending jump in both forms;
- * ADR-0047 "Amendment (ticket #116)", "RunForm"). {@code CallOp.enter} is the one body entry, {@code out} null for
- * {@code eval}, and runs each body in its root's form (design comment). A value-form entry returns one value and has
- * no sink, so a jump taken in it must re-enter a body whose root runs in the value form: a jump whose site runs in the
- * value form never lands in a push-form body.
+ * census"; ADR-0047 "Amendment (ticket #118)", "Where a jump is taken": the entry loops of {@code CallOp.run}, {@code
+ * CallOp.eval} and {@code CallOp.Active.resume} take a pending jump, split so since 180b412; ADR-0047 "Amendment
+ * (ticket #116)", "RunForm"). Each loop runs the next body in its own form. The value-form loop, {@code eval}, returns
+ * one value and has no sink, so a jump taken in it must re-enter a body whose root runs in the value form: a jump whose
+ * site runs in the value form never lands in a push-form body.
  *
  * <p>The filters are SpecialiseCensusTest's census, read through its own methods: each jqtest case's program, each
  * differential case's {@code filter} key and each builtin.jq definition called as {@code name(.; …)}, resolved as {@code
@@ -48,7 +48,8 @@ import org.junit.jupiter.api.Test;
  * least {@link #WITNESS} value-form sites of each tail kind are checked, each the count observed at impl/118 18070a4
  * rounded down. The counts and every failing site go to {@link #LOG} under the repository root, before the verdict. A
  * second verdict: no push-form site lies in a body whose root is VALUE (0 observed); such a jump would be taken in a
- * value entry too, and the property above does not see it.
+ * value entry too, and the property above does not see it. Its witness: at least {@link #PUSH_WITNESS} push-form sites
+ * are checked.
  */
 class ValueEntryCensusTest {
 
@@ -63,6 +64,14 @@ class ValueEntryCensusTest {
    * the counts; lowering a witness needs the new observed count in the commit.
    */
   static final Map<CallKind, Integer> WITNESS = Map.of(CallKind.TAIL_SELF, 190, CallKind.TAIL_GROUP, 4);
+
+  /**
+   * The push-form jump sites the second verdict must check at least, so that it is not vacuous: 201 observed at impl/118
+   * 18070a4 and 205 at 1a9b028 (TAIL_SELF 203, TAIL_GROUP 2), rounded down to two significant figures. A mutant that
+   * gives every caller a VALUE root makes the verdict list all 205 (#118's implementer, .logs/118-census-mutant.log). Lowering it needs the new
+   * observed count in the commit.
+   */
+  static final int PUSH_WITNESS = 200;
 
   /**
    * One jump site of a compiled census filter: the Call {@code id} of the body {@code function} (-1 for main), its kind,
@@ -139,6 +148,9 @@ class ValueEntryCensusTest {
     soft.assertThat(sites.stream().filter(s -> s.form() == RunForm.PUSH && s.callerForm() == RunForm.VALUE).map(Site::shown).toList())
         .as("push-form jump sites in a body whose root is VALUE, a jump taken in a value entry the verdict above does not see (log %s)", LOG)
         .isEmpty();
+    soft.assertThat(sites.stream().filter(s -> s.form() == RunForm.PUSH).count())
+        .as("witness: the push-form sites the verdict above checks (log %s)", LOG)
+        .isGreaterThanOrEqualTo(PUSH_WITNESS);
     for (Map.Entry<CallKind, Integer> w : WITNESS.entrySet()) {
       soft.assertThat(byForm.get(w.getKey())[RunForm.VALUE.ordinal()])
           .as("witness: the value-form %s sites the census checks (log %s)", w.getKey(), LOG)
