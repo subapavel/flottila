@@ -147,6 +147,17 @@ grilling-adviser's rulings S1–S5, made for the owner under the delegation of 2
 - `explain()` prints from that record. A copy's line reads `copyOf=fn<o>`, and the closing line reads
   `specialised=<spent> refused=<keys>`.
 
+**Re-pins after #116 (grilling-adviser V1–V5, W1–W4, 2026-11-15)**
+- #116's PUSH shapes that called a non-recursive function with a closed closure now get a copy, so
+  they run VALUE. The shapes became recursions with a non-invariant argument, and the old programs
+  moved to `SpecialiserTest`, which pins the copy as VALUE. `everyTailEmitterIsValueForm` reads the
+  frozen program, copies included.
+- The over-cap run pin uses a comma ladder. The pipe ladder runs wholly on the driver at `U_f ≤ 0`
+  and holds its PLAIN activations (F-100, #198).
+- Cross-mode step equality holds at cap 0. With copies, steps are at most CONSERVATIVE's.
+- These re-pin behaviour this amendment changes, and no assertion was dropped; they are not a
+  weakening.
+
 **Considered**
 - Closed arguments only: `range/3` would keep real closures, against ADR-0006.
 - Refusing a key with a free Break: an extra rule, where #107 already passes tokens.
