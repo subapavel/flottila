@@ -93,9 +93,9 @@ The main filter, a live definition's body, or a closure argument of a jq-defined
 _Avoid_: scope (that is lexical).
 
 **Inline cap**:
-How many nodes one compile may lower from definition bodies and closures; past it, past the IR depth
-bound or at the 512th nested expansion, a call is a PLAIN call to a function lowered once (ADR-0040,
-F-54).
+How many nodes one compile may lower from definition bodies and closures. A call whose expansion
+would pass it or the IR depth bound, or would be the 512th nested expansion, is a PLAIN call to a
+function lowered once (ADR-0040 #114, F-54).
 
 **Value parameter**:
 A `$name` parameter: it wraps the body in `name as $name | …` and binds per result, and `name` stays a filter parameter (ADR-0040).
@@ -385,9 +385,19 @@ cell 0 (ADR-0045).
 _Avoid_: environment, parent scope
 
 **Lifted function**:
-A definition of a recursive group, lowered once per compile into the Program's function list and
-run by a Call, a prelude definition's included (ADR-0045, ADR-0042).
+A definition lowered once per compile into the Program's function list and run by a Call. It is one
+of:
+- a definition of a recursive group, a prelude definition's included;
+- a definition whose call would pass the inline cap or the IR depth bound;
+- a definition whose call would be the 512th nested expansion.
+
+Every later call of it is a Call (ADR-0045, ADR-0042, ADR-0040 #114).
 _Avoid_: compiled def
+
+**Expansion measure**:
+The nodes and levels an expansion would lower, closures and nested expansions included, known
+before it is lowered. It decides between inlining and a call (ADR-0040 #114).
+_Avoid_: inline cost
 
 **Holder**:
 The sink a tail emitter runs into. It keeps the one result and answers it with a stop, so the tail
