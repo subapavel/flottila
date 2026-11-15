@@ -1,9 +1,9 @@
 # Handoff
 
 state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Order: BASE-1, BRAND-2, BRAND-1, BRAND-3, MAIN-1, OPS-1 - BACKLOG section "priority 0".
-last commit: BRAND-2 decided - D-149 (layout, coordinates, three commits A/B/C), D-150 (mapping import with history), ISSUE-7. No src change.
-in flight: BASE-1 run 3 (whole reactor, failures ignored to reach every module). Runs 1-2: StepBodiesIT; PeerProtocolTest+ReplicaStartTest flaky.
-next exact action: record BASE-1 run 3 (agent/work/BASE-1-verify-all.log, BASE-1-red-set.txt); then BRAND-1 commit A by agent/packets/BRAND-1.md.
+last commit: BASE-1 done - 4580 tests, red set moves between runs: StepBodiesIT, ReplicaStartTest, PeerProtocolTest, bench LedgerIT (FIX-212..215).
+in flight: BRAND-1 commit A (moves) at the implementer; script agent/tools/rail8_rename.py; nothing of A is committed. Finding F-37 is written, uncommitted.
+next exact action: verify A in run-3 mode against agent/work/BASE-1-red-set.txt and BASE-1-counts.txt, edit ARCHITECTURE 12 (F-37), review, commit; then B, C.
 The brief wins over docs/ARCHITECTURE.md until OPS-1 rewrites it. Its [inferred] items are confirmed with the owner before anything is built on them.
 FIX-195 IS IN THE TREE BUT UNREVIEWED (BatchingWriter, D-146 policy). Its review belongs to MAIN-1. Cite D-146, NEVER D-104/D-144/D-145.
 FIX-196: its only work is agent/work/FIX-196-partial-lane3.diff; agent/packets/FIX-196.md stands. FIX-212: StepBodiesIT spin-waits 20 s, main's own.

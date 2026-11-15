@@ -1,4 +1,19 @@
 
+## 2026-11-15 — BASE-1 the baseline of main before the rename — done: 4580 tests, a red set that moves
+
+- Why: nothing had been built since FIX-195 landed, and the rename needs a baseline to be compared against.
+- Three runs of `clean verify -Pit` on a6b1201, one Maven at a time, Docker and Postgres up throughout, no test skipped.
+  Run 1 (plain): EXECUTED_FAIL, stops in runtime — `StepBodiesIT.aRerunOfAStampingStep…` ("not within 20 s: fixture: 5 rows", FIX-212).
+  Run 2 (`-fae`): EXECUTED_FAIL in runtime's unit tests — `PeerProtocolTest.aLinkPausedByAnAbandonedConsumer…` and
+  `ReplicaStartTest.theStartRoomCheckCountsTheReplicas`; both passed in run 1.
+  Run 3 (whole reactor, going on past failures so every module runs): EXECUTED_FAIL, 17 modules built, 4580 tests, 3 failures —
+  StepBodiesIT again, ReplicaStartTest again with the same numbers, and bench `LedgerIT.aKilledNodeLosesNoAckedMessage` ("66 vs 60").
+- So main is not green and its red set differs from run to run: four tests, rows FIX-212..FIX-215 under MAIN-1. LedgerIT is a no-loss
+  check and is looked at first.
+- cli, archtest (48 tests) and bench ran for the first time on this tree in run 3; ArchUnit passed; no coverage or enforcer error.
+- Evidence: `agent/work/BASE-1-verify.log`, `-fae.log`, `-all.log`; the red set `BASE-1-red-set.txt`; per-module counts
+  `BASE-1-counts.txt`. The rename is verified in run 3's mode against these two files.
+
 ## 2026-11-15 — BRAND-2 the Rail8 layout and coordinates — done (decided D-149, opponent: sound with changes)
 
 - Class C: the designer drafted (`agent/work/BRAND-2-designer.md`), the opponent attacked it (`agent/work/BRAND-2-advisor.md`), the

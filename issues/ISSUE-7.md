@@ -15,6 +15,11 @@ from memory, not looked up — check the current Central rules before acting on 
 domain costs money and needs the owner's account; choosing a different namespace changes the name
 every user of the API will import.
 
+The two repositories also disagree on the domain. This repository's BRAND-1 row says `io.rail8`;
+the mapping engine's hand-off (its `agent/HANDOFF.md`, next action 3) says "The Rail8 rename (R8,
+rail8.dev)", which would make the namespace `dev.rail8`. D-145 lists `rail8.ai`, `rail8.io`,
+`rail8.dev` and `rail8.app` as unregistered on 2026-11-13 and `rail8.com` as taken.
+
 ## What was tried
 Nothing was registered and nothing was published. The rename (BRAND-1, D-149) uses `io.rail8` as the
 row says, marked `draft — review at hand-over`.
