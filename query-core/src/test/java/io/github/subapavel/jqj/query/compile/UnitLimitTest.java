@@ -125,7 +125,7 @@ class UnitLimitTest {
   /**
    * Starters in a rise (ADR-0046 #111 invariant): at {@code U_f} 1 each of ten Calls in {@code f | f | ... | f | frames}
    * is a starter, and each stays live, its trampoline's frame under the next call, while its result runs the rest. A
-   * call counted as 1 + T keeps those frames within {@code U_f - 1 + D_f} (ADR-0046, the invariant: no {@code T} term).
+   * call counted as 1 + T keeps those frames below {@code U_f - 1 + D_f} (ADR-0046, the invariant: no {@code T} term).
    */
   @Test
   void startersInARiseStayUnderTheLimit() {
@@ -140,7 +140,7 @@ class UnitLimitTest {
     Executable e = Compiler.compile(new Program(rest, List.of(new Function(AT, 0, 0, new Identity(AT)))), 0, CompileMode.CONSERVATIVE);
     ran(e, 1);
     long bound = 1 - 1 + StackUnits.callFreeDepth(e);
-    assertThat(seen).as("the frames at the end of the chain against %d", bound).hasSize(1).allSatisfy(f -> assertThat((long) f).isLessThanOrEqualTo(bound));
+    assertThat(seen).as("the frames at the end of the chain against %d", bound).hasSize(1).allSatisfy(f -> assertThat((long) f).isLessThan(bound));
   }
 
   /** The interpreter's frames on this thread, lambda and proxy frames included, this test's own left out. */

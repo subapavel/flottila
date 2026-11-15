@@ -47,7 +47,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * Seeded property of the stack units (#111, ADR-0046 #111 amendment; docs/agents/environment.md, one case per seed):
  * every live push-form frame is charged to a live call's units or lies in the innermost body, so at any point of a run
- * the interpreter's Java frames stay within {@code U_f - 1 + D_f} units (ADR-0046, the invariant: no {@code T} term). A probe intrinsic counts them with a
+ * the interpreter's Java frames stay below {@code U_f - 1 + D_f} units (ADR-0046, the invariant: no {@code T} term). A probe intrinsic counts them with a
  * {@link StackWalker} that shows hidden frames (lambda and proxy frames are units too): every frame of
  * {@code io.github.subapavel.jqj.query.} between the run's call of {@link Executable#run} and the probe, the probe's own
  * frames, a native's, excluded.
@@ -163,7 +163,7 @@ class UnitWeightsPropertyTest {
       long bound = limit - 1 + callFree;
       assertThat(run.frames())
           .as("seed %d, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, limit, callFree, starter, bound)
-          .allSatisfy(frames -> assertThat((long) frames).isLessThanOrEqualTo(bound));
+          .allSatisfy(frames -> assertThat((long) frames).isLessThan(bound));
       assertThat(run.outcome()).as("seed %d, U_f %d: the run against the default stack's", seed, limit).isEqualTo(reference.outcome());
       assertThat(run.units()).as("seed %d, U_f %d: units after the run", seed, limit).isZero();
     }
