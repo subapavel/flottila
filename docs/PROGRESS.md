@@ -1,4 +1,19 @@
 
+## 2026-11-15 — the operations brief and the consolidation plan recorded — BASE-1 in progress
+
+- Context compacted in this session; the state was re-verified with `git status` and `git log -3` before anything was written.
+- The owner closed a two-day brainstorm on the log, monitoring, permissions and alerts: "write it down, nothing more is discussed".
+  The result is `docs/OPERATIONS-BRIEF.md` (D-147). It supersedes the CONSIDER-13 message-log draft; Vector (CONSIDER-11) is rejected.
+- The owner's plan, in this order (D-148): rename to Rail8; clean the monorepo after Apache Iggy (module directories lose the prefix);
+  bring flottila-mapping into the repository; get main running and fix its faults; work the brief into ARCHITECTURE and every document.
+- BACKLOG: section "Consolidation on main — priority 0" (BASE-1, BRAND-2, BRAND-3, MAIN-1, OPS-1; BRAND-1 set ready); section
+  "Operations brief" (OPS-2..OPS-11); the parked brainstorms as CONSIDER-19..23 (custom code, masking, operating modes, dry replay,
+  counted summaries); CORE-8 and CORE-10 amended: they carry records, and a full queue waits and alerts, it never drops.
+- BASE-1, the first full `clean verify -Pit` since FIX-195 landed, is running; its result gets its own entry.
+- Checks: NOT_RUN mvn (documents only). EXECUTED_FAIL `python3 ci/ledger_check.py` — 9 problems, the pre-existing shape problems
+  (FIX-197), none on a row of this commit.
+- Two journals exist: this file (newest first, the live one) and the root `PROGRESS.md` (append-only, ends 2026-11-03). OPS-1 unifies.
+
 ## 2026-11-15 — FIX-195 landed unreviewed, FIX-196 parked — state recorded on the owner's instruction
 
 - The owner stopped the test work ("žádné testy, kašli na to, pořádek si uděláme na main") and asked only that the state be written down.

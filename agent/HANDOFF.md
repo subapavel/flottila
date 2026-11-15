@@ -1,21 +1,19 @@
 # Handoff
 
-state: MAIN AND THE BRANCH AGREE. Owner 2026-11-15, twice: everything goes to main even against the rules, then "zadne testy, kasli na
-  to, poradek si udelame na main". So this tree holds work that did NOT pass the normal gate - read the next two lines before trusting it.
-FIX-195 IS IN THE TREE BUT UNREVIEWED: BatchingWriter's D-146 policy, three widened catch sites, contained cancels, and the refused-cancel
-  episode throttle with ONE FLAG PER SITE. The implementer reported the module green and 7/7 mutants killed; the architect ran no build of
-  its own and no reviewer saw it. BACKLOG says `landed, unreviewed`. Cite D-146, NEVER D-104/D-144/D-145 (different decisions on main).
-FIX-196: agent/work/FIX-196-partial-lane3.diff holds its only work; agent/packets/FIX-196.md is complete and still stands.
-next exact action: settle what "poradek na main" means - at minimum a full `clean verify -Pit` (none has run since FIX-195 landed) and a
-  reviewer pass on FIX-195 and on the FIX-201 audit. FIX-196 NOT STARTED past one partial test file, parked at the diff named above.
-push gate 2026-11-15, BEFORE FIX-195 landed: 3213 tests, one failure - StepBodiesIT, which spin-waits 20 s and lost at 20.10 s. The branch
-  touched no runtime src, so it is main's own; owner: fix on main, do not measure further. FIX-212. The bench coverage drop is stale data.
-durability, done: agent/work/*.md and *.diff force-added past the ignore rule; scratchpad design extracts in agent/archive/branch-design/;
-  FIX-195's two intermediate states on remote branch wip/fix195-snapshot (f546913, 65403e1). Both lanes (lane2 fix195, lane3) are CLEAN.
-FIX-201 AUDIT DONE: 19 code/test commits 9 CARRIED 10 LOST, 16 doc-only 9 audited 1 CARRIED 8 LOST; rows FIX-203..FIX-208, FIX-210..212;
-  FIX-204 is 0adcbed, NOT FIX-136. Ledger guard: its 9 shape problems are PRE-EXISTING (FIX-197) and it is NOT wired into CI.
-OWNER, 3 OPEN (live, NOT for the advisor), all in agent/work/CONSIDER-15-designer.md section 5: scoping (phases vs all-at-once vs option
-  C); N5 retention of HANDLED; N7 D-107 vs D-136/D-142.
-TRAPS, all four in agent/NOTES.md "Build and VM": `-Dtest=` on flottila-runtime hits the heap-bounded -Xmx48m fork and OOMs, run the whole
-  module; `python3 -I -m unittest ci.X` cannot import ci; two Maven reactors time out StepBodiesIT/ReplicaStartTest; dockerd dies silently.
-open issues: ISSUE-1 (Context7 quota); ISSUE-6 (commits unsigned; the key here is a 0-byte file - recommend leaving it); ISSUE-2..5 answered.
+state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Order: BASE-1, BRAND-2, BRAND-1, BRAND-3, MAIN-1, OPS-1 - BACKLOG section "priority 0".
+last commit: documents only - docs/OPERATIONS-BRIEF.md (D-147), the plan (D-148), rows OPS-1..11 and CONSIDER-19..23. No src change.
+in flight: BASE-1, full `clean verify -Pit` on the a6b1201 tree; logs agent/work/BASE-1-verify.log and -fae.log. Result NOT read yet.
+next exact action: read the BASE-1 handback, write its PROGRESS entry (reactor summary, red set), set BASE-1 done; then BRAND-2 (designer, D-149).
+The brief wins over docs/ARCHITECTURE.md until OPS-1 rewrites it. Its [inferred] items are confirmed with the owner before anything is built on them.
+FIX-195 IS IN THE TREE BUT UNREVIEWED (BatchingWriter, D-146 policy). Its review belongs to MAIN-1. Cite D-146, NEVER D-104/D-144/D-145.
+FIX-196: its only work is agent/work/FIX-196-partial-lane3.diff; agent/packets/FIX-196.md stands. FIX-212: StepBodiesIT spin-waits 20 s, main's own.
+FIX-201 audit is done but unreviewed (MAIN-1). Ledger guard: 9 shape problems are PRE-EXISTING (FIX-197); it is not wired into CI (FIX-199).
+Rename rules (D-148): old env keys and CLI name are dropped, not aliased; applied Flyway migrations untouched; history files keep the old name.
+Mapping: subapavel/flottila-mapping, HEAD 1818a43 - Maven `engine` + `service`, npm `ui`. BRAND-3 imports it with history, after the rename.
+OWNER, 3 OPEN (not for the advisor), agent/work/CONSIDER-15-designer.md section 5: scoping; N5 retention of HANDLED; N7 D-107 vs D-136/D-142.
+OWNER ACTIONS after BRAND-1, never a session's: rename the GitHub repository; domains.
+TRAPS (agent/NOTES.md "Build and VM"): `-Dtest=` on flottila-runtime OOMs - run the whole module; never two Maven reactors at once;
+  dockerd dies silently - start it with `sudo -n setsid nohup dockerd`; `python3 -I -m unittest ci.X` cannot import ci.
+Journals: docs/PROGRESS.md (newest first) is the live one; the root PROGRESS.md ends 2026-11-03. OPS-1 makes them one.
+open issues: ISSUE-1 (Context7 quota); ISSUE-6 (commits unsigned - recommend leaving it); ISSUE-2..5 answered.
+next free ids: D-149, FIX-213, CONSIDER-24, F-37, ISSUE-7.
