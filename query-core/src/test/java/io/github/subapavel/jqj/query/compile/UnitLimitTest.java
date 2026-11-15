@@ -87,9 +87,11 @@ class UnitLimitTest {
     Executable e = Compiler.compile(program, 0, CompileMode.CONSERVATIVE);
     long w = e.nesting().units(program.main());
     long t = StackUnits.starterUnits(e);
+    // T: the most frames the driver holds above a starter's own frames (StackUnits.STARTER).
+    assertThat(t).as("T, the starter units").isEqualTo(5);
     // The run entry's two frames and the Call's own under it, T and no rise over it, and f's intrinsic, one frame.
     assertThat(e.nesting().emitDepth(0)).as("f's leaf-emit depth").isEqualTo(1);
-    assertThat(w).as("main's call of f").isEqualTo(Nesting.ENTRY + 1 + t + 1);
+    assertThat(w).as("main's call of f").isEqualTo(2 + 1 + 5 + 1);
     assertThat(ran(e, w + 1)).as("U_f w + 1: the call stays in push form").containsExactly(w, "after 0");
     assertThat(ran(e, w)).as("U_f w: the call is a starter").containsExactly(w + t, "after 0");
     assertThat(ran(e, 1)).as("U_f 1: the call is a starter").containsExactly(w + t, "after 0");
@@ -123,7 +125,7 @@ class UnitLimitTest {
   /**
    * Starters in a rise (ADR-0046 #111 invariant): at {@code U_f} 1 each of ten Calls in {@code f | f | ... | f | frames}
    * is a starter, and each stays live, its trampoline's frame under the next call, while its result runs the rest. A
-   * call counted as 1 + T keeps those frames within {@code U_f - 1 + D_f + T}.
+   * call counted as 1 + T keeps those frames within {@code U_f - 1 + D_f} (ADR-0046, the invariant: no {@code T} term).
    */
   @Test
   void startersInARiseStayUnderTheLimit() {
@@ -137,7 +139,7 @@ class UnitLimitTest {
     }
     Executable e = Compiler.compile(new Program(rest, List.of(new Function(AT, 0, 0, new Identity(AT)))), 0, CompileMode.CONSERVATIVE);
     ran(e, 1);
-    long bound = 1 - 1 + StackUnits.callFreeDepth(e) + StackUnits.starterUnits(e);
+    long bound = 1 - 1 + StackUnits.callFreeDepth(e);
     assertThat(seen).as("the frames at the end of the chain against %d", bound).hasSize(1).allSatisfy(f -> assertThat((long) f).isLessThanOrEqualTo(bound));
   }
 

@@ -47,7 +47,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * Seeded property of the stack units (#111, ADR-0046 #111 amendment; docs/agents/environment.md, one case per seed):
  * every live push-form frame is charged to a live call's units or lies in the innermost body, so at any point of a run
- * the interpreter's Java frames stay within {@code U_f - 1 + D_f + T} units. A probe intrinsic counts them with a
+ * the interpreter's Java frames stay within {@code U_f - 1 + D_f} units (ADR-0046, the invariant: no {@code T} term). A probe intrinsic counts them with a
  * {@link StackWalker} that shows hidden frames (lambda and proxy frames are units too): every frame of
  * {@code io.github.subapavel.jqj.query.} between the run's call of {@link Executable#run} and the probe, the probe's own
  * frames, a native's, excluded.
@@ -61,8 +61,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under the conservative compile (#116 adds OPTIMISED), and
  * each run must end as the run with the default stack does, with the same probe count, and hold no units after.
  *
- * <p>U_f, D_f and T are read through the query-core seam {@link StackUnits}, which #111's design names as
- * {@code compile/StackUnits}; it is a marked seam stub until the implementer builds it.
+ * <p>U_f, D_f and T are read through {@link StackUnits} ({@code compile/StackUnits}, #111).
  */
 class UnitWeightsPropertyTest {
   /** The unit limits the design's R3 names. */
@@ -71,7 +70,10 @@ class UnitWeightsPropertyTest {
   /** The command line's declared stack (ADR-0017): the reference run's. */
   private static final long DEFAULT_STACK = 512 * 1024;
 
-  /** The thread of every run: the reference run must hold its deepest recursion in push form. */
+  /**
+   * The thread of every run, 128 times the reference run's declared stack: that run, too, switches to the trampoline at
+   * its own {@code U_f}, and this thread holds its frames up to it with room to spare.
+   */
   private static final long THREAD = 64L << 20;
 
   private static final StackWalker WALKER = StackWalker.getInstance(Set.of(StackWalker.Option.SHOW_HIDDEN_FRAMES));
@@ -158,7 +160,7 @@ class UnitWeightsPropertyTest {
       long stackBytes = StackUnits.reserve() + StackUnits.bytesPerUnit() * (limit + callFree);
       assertThat(StackUnits.unitLimit(e, stackBytes)).as("seed %d: U_f of stackBytes %d", seed, stackBytes).isEqualTo(limit);
       Ended run = runProbed(e, stackBytes);
-      long bound = limit - 1 + callFree + starter;
+      long bound = limit - 1 + callFree;
       assertThat(run.frames())
           .as("seed %d, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, limit, callFree, starter, bound)
           .allSatisfy(frames -> assertThat((long) frames).isLessThanOrEqualTo(bound));

@@ -376,7 +376,8 @@ public final class Nesting {
       case Label l -> List.of(new Place(l.body(), base + 1, rise));
       case Reduce r -> List.of(new Place(r.init(), base + 1, SINK + rise), new Place(r.each(), base + 1 + of(r.init()).emit() + SINK, 0));
       case Advance a -> List.of(new Place(a.update(), base + 1, SINK + rise));
-      default -> List.of();
+      // Leaves: no part to place. An Intrinsic's arguments are atomic and hold no frame.
+      case Identity _, Const _, Var _, Intrinsic _, Break _ -> List.of();
     };
   }
 
