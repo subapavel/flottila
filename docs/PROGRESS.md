@@ -1,4 +1,13 @@
 
+## 2026-11-15 — ISSUE-7 answered by the owner: the namespace is `dev.rail8` — recorded, BRAND-5 added
+
+- The owner, in the session: "rail8.dev, not io". D-154: `dev.rail8` replaces `io.rail8` — package root, Maven groupId, the mapping's
+  module names — in both areas; the draft mark of D-149 and D-151 on the coordinates ends. Registering the domain stays the owner's.
+- Row BRAND-5 [B] does it with the rename tool, after the two test fixes in flight (FIX-212, FIX-215). Measured: 1417 tracked files
+  carry `io.rail8` (platform and bench 977, mapping 414, elsewhere 26); 1334 files lie under `io/rail8/` directories.
+- Correction to the message of commit 6779670a: the reviewed diff of BRAND-3 step 3 is `agent/work/BRAND-3-s3-full.diff`.
+- Context compacted before this entry; `git status` and `git log -3` re-read. Documents only; no task closed, no review.
+
 ## 2026-11-15 — BRAND-3 step 3 one CI, one set of rules, one notice for the mapping engine — done, review PASS
 
 - Deviation: F-54 (major) — ARCHITECTURE 3.26, section 12 says whose rules bind which area (D-153, a draft for the owner's review).

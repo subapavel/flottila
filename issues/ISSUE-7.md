@@ -32,3 +32,7 @@ available: `io.github.subapavel.rail8` (provable through the GitHub account), or
 already holds.
 
 ## Owner's answer
+2026-11-15, in the session: "rail8.dev, not io". The namespace is `dev.rail8` — the Maven groupId,
+the Java package root and the mapping's module names (D-154); row BRAND-5 renames `io.rail8` in both
+areas. Still the owner's, before the first public artifact: registering the domain `rail8.dev`. No
+session registers a domain or publishes anything.
