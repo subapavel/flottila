@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongUnaryOperator;
 
 /**
  * The calibration's shapes and its child JVM (ADR-0046 and its #111, #113 and #116 amendments, F-55, F-30, F-93,
@@ -335,6 +336,29 @@ final class CalibrationCell {
     }
   }
 
+  /** The most passes of a search before its cell is INVALID (the adviser's L1). */
+  static final int PASSES = 4;
+
+  /** The U* of each pass of a search, in order; -1 for a pass whose shape does not complete at {@code U_f} 0. */
+  record Passes(List<Long> edges) {
+    /** Whether the last two passes agree on {@code U*}: the search reached its fixed point (L1). */
+    boolean agreed() {
+      int n = edges.size();
+      return n >= 2 && edges.get(n - 1) >= 0 && edges.get(n - 1).equals(edges.get(n - 2));
+    }
+
+    /** The passes as a search row prints them: each pass's {@code U*}, comma-separated, {@code fails} for -1. */
+    @Override
+    public String toString() {
+      return String.join(",", edges.stream().map(e -> e < 0 ? "fails" : Long.toString(e)).toList());
+    }
+  }
+
+  /** The search's passes: one gallop and bisection from {@code seed}; {@code pass} gives a pass's U* from its start. */
+  static Passes fixedPoint(long seed, LongUnaryOperator pass) {
+    return new Passes(List.of(pass.applyAsLong(seed)));
+  }
+
   /**
    * The gallop and bisection of the #113 design in this child, from {@code seed} (the committed record's edge), or
    * from {@code floorDiv(S - reserve, b) - D_f} when it is negative.
@@ -342,18 +366,27 @@ final class CalibrationCell {
   private static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
     String control = ended(shape, GIB, mode);
     if (!control.equals(STACK)) {
-      row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "-", "-", control);
+      row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "-", "-", control, "-");
       return;
     }
-    long start = seed >= 0 ? seed : Math.max(0, u.unitLimitAt(thread));
+    Passes passes = fixedPoint(seed >= 0 ? seed : Math.max(0, u.unitLimitAt(thread)), start -> pass(shape, mode, u, start));
+    long edge = passes.edges().getLast();
+    if (edge < 0) {
+      row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "fails", ended(shape, u.stackBytesFor(0), mode), control, passes);
+      return;
+    }
+    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), Long.toString(edge), ended(shape, u.stackBytesFor(edge + 1), mode), control, passes);
+  }
+
+  /** One gallop and bisection from {@code start}: the largest {@code U_f} at which the shape completes, or -1. */
+  private static long pass(Shape shape, CompileMode mode, Units u, long start) {
     long lo;
     long hi;
-    String first = ended(shape, u.stackBytesFor(start), mode);
-    if (first.equals(shape.completed())) {
+    if (completes(shape, mode, u, start)) {
       lo = start;
       long step = 1;
       hi = lo + step;
-      while (hi < SEARCH_LIMIT && ended(shape, u.stackBytesFor(hi), mode).equals(shape.completed())) {
+      while (hi < SEARCH_LIMIT && completes(shape, mode, u, hi)) {
         lo = hi;
         step *= 2;
         hi = lo + step;
@@ -362,25 +395,27 @@ final class CalibrationCell {
       hi = start;
       long step = 1;
       lo = Math.max(0, hi - step);
-      while (lo > 0 && !ended(shape, u.stackBytesFor(lo), mode).equals(shape.completed())) {
+      while (lo > 0 && !completes(shape, mode, u, lo)) {
         hi = lo;
         step *= 2;
         lo = Math.max(0, hi - step);
       }
-      if (lo == 0 && !ended(shape, u.stackBytesFor(0), mode).equals(shape.completed())) {
-        row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "fails", ended(shape, u.stackBytesFor(0), mode), control);
-        return;
-      }
+      if (lo == 0 && !completes(shape, mode, u, 0)) return -1;
     }
     while (hi - lo > 1) {
       long mid = lo + (hi - lo) / 2;
-      if (ended(shape, u.stackBytesFor(mid), mode).equals(shape.completed())) {
+      if (completes(shape, mode, u, mid)) {
         lo = mid;
       } else {
         hi = mid;
       }
     }
-    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), lo, ended(shape, u.stackBytesFor(lo + 1), mode), control);
+    return lo;
+  }
+
+  /** Whether {@code shape} at {@code unitLimit} gives reference jq's result in this child. */
+  private static boolean completes(Shape shape, CompileMode mode, Units u, long unitLimit) {
+    return ended(shape, u.stackBytesFor(unitLimit), mode).equals(shape.completed());
   }
 
   /**
