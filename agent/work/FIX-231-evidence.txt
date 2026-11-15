@@ -1,0 +1,63 @@
+FIX-231 — evidence (2026-11-15)
+
+The fault: PgIntakeHandoffGroupLogIT.aHandOffThatThrowsInACommittedGroupStillAnswersEveryMember (inherited from
+PgIntakeHandoffGroupIT) errored once, in the whole-reactor run of FIX-229 (agent/work/FIX-229-reactor.log :66697, :66699):
+"PoolRefused the Postgres pool refused a connection: … Connection refused: /127.0.0.1:40299".
+
+The reading (scout): the port is the case's own PgWire relay; its listener stops accepting in PgWire.close() only (:690), and
+nothing in the body closes it — so the refusal needs the teardown. The old teardown: wire.close(); worker.stop() (no await);
+hold.releaseAll(); a.close() → JournalWorld.close → PgMessageStore.close → writer.flush().await() — the only wait on the
+relayed pool on the test thread after the relay was closed.
+
+The cause, shown (test-author; the staged order at the end of the case, the old teardown):
+EXECUTED_FAIL  agent/work/FIX-231-red.log  the two IT classes alone: Tests run: 5, Failures: 0, Errors: 2 — the case in both
+               classes, "PoolRefused the Postgres pool refused a connection: … Connection refused" (:1813-1816), with the
+               sighting's three log lines: "failed to run" m-1 (:841), "the snapshot of step 1 (hold) was not recorded
+               (PoolRefusedException …)" (:923), "the hand-off of message m-2 (work item 3) failed to settle: … Connection
+               refused" (:1045) — FIX-229-reactor.log :66358, :66440, :66562.
+The stage: both connections of the relayed pool (size 2) are made busy on a query held at the relay; the Hold step is then
+released; the body waits, bounded, until the store's flush is pending. Before the stage a flush completes (asserted). The
+running item's step-1 snapshot write and its settle start only after the Hold step is released — in the old teardown that
+release came after the relay was closed. The statement that threw is named by elimination (the reported stack has async
+frames only): the stop and the release wait for nothing, the opened handle writes through the direct pool, and only the
+store's close waits on the relay; its flush joins the pending write and rethrows its failure.
+It is the fixture's fault: the case's claim — both ids answered, both rows leased, exactly one entry — is asserted before the
+pending write, and the product does what it should with the refusals (a WARNING; the body stays durable without a row; the
+settle's failure is logged and the item left to its lease, FlowWorker :450-451). Why it was rare: in the green runs the late
+write lands after the writer was closed and is dropped with "writer closed", which nobody waits for.
+
+The fix (PgIntakeHandoffGroupIT only; the Log subclass untouched; nothing under src/main): the teardown first drains —
+releases every frame the case held, stops the worker, releases the Hold step (for m-1 and m-2 also ahead of their entry: a
+slot may enter after the body ended), waits bounded for the worker's close and for the store's flush and asserts both — and
+only then closes the relay, the world, the pool and the database. Every step runs; the first failure is thrown with the
+later ones suppressed on it; a wait not met fails with what it waited for. The staged order stays at the end of the case.
+VERIFIED_PASS  agent/work/FIX-231-it-{1,2,3}.log  author, the two IT classes alone three times: Tests run: 5, Failures: 0,
+               Errors: 0 each; no "was not recorded" or "failed to settle" line in any
+The verifier, on c13a39da plus this change:
+VERIFIED_PASS  agent/work/FIX-231-verify-it-1.log  the two IT classes alone, exit 0, BUILD SUCCESS (:1312): Tests run: 5,
+               Failures: 0, Errors: 0, Skipped: 0 (:1278); PgIntakeHandoffGroupIT 2 tests, PgIntakeHandoffGroupLogIT 3; no
+               line "was not recorded" or "failed to settle"
+VERIFIED_PASS  agent/work/FIX-231-verify-it-2.log  the same again, exit 0, BUILD SUCCESS (:1204): Tests run: 5, Failures: 0,
+               Errors: 0, Skipped: 0 (:1170); 2 and 3 tests; no such line
+VERIFIED_PASS  python3 ci/name_guard.py            exit 0, "name guard: clean, 5940 tracked files scanned"
+NOT_RUN        the whole reactor with this change; the three green whole-reactor runs are MAIN-1's.
+
+The survey (teardowns that close a PgWire before the world that writes through it): the same order, latent — no worker or
+writer use, or the save awaited — in PgIntakeAnnounceGroupIT :112, PgIntakeGroupIT :122, PgIntakeGroupEdgeIT :104 and
+PgIntakeJournalIT.levelNoneSavesRecordAndWorkItemOnly. Related: PgIntakeHandoffIT closes the world before the wire but does
+not wait for the stop and the Hold release, so a released run's writes come after the store's close ("writer closed" and
+ClosedConnection settles, FIX-229-reactor.log :64121-64392). Not the same: InDoubtSettleIT, SegmentSweepIT,
+PgIntakeRoundTripIT, PgWorkSignalsIT (users closed first), the work-queue and membership ITs (the queue or the connections
+closed before the wire), ReferenceEnqueueIT and PgIntakeIT (no store on the wire's pool). Row FIX-233.
+
+review: PASS   class B. The cause is the fixture's and the naming of the throwing statement by elimination is sound. The
+               stage is deterministic: the write cannot start before the Hold release, which comes after both frames were
+               reached; nothing else writes through the store in that window. Holding two busy queries instead of the
+               snapshot statement itself departs from the packet and is accepted: it gives the refusal that was seen,
+               where a held statement would give a closed-connection error. The teardown cannot hang — every wait of the
+               drain is bounded and the unbounded closes run after the relay released every hold and closed its sockets —
+               and hides nothing. Releasing m-1 and m-2 ahead of entry is right: without it a slot entering after the
+               release waits the Hold step's own 60 s. Unpinned and accepted for a teardown: the explicit flush (redundant
+               while the worker's close waits for the trail), the suppression order; the ahead-of-entry release is killed
+               only by a race. Note: the class's @Timeout does not cover @AfterEach in JUnit 5.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-231.diff.

@@ -82,6 +82,7 @@ class PgIntakeHandoffGroupIT {
     PgIntakeHandoffIT.Hold hold;
     FlowWorker worker;
     PgIntakeHandoffIT.Claims claims;
+    final List<PgWire.Held> frames = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     /** {@code inner}, but the first schedule of the armed delay after {@link #refuseNext} throws {@link #REFUSAL} at the call. */
     static final class RefusingTimer implements Timer {
@@ -135,14 +136,67 @@ class PgIntakeHandoffGroupIT {
         PgIntakeHandoffIT.until(() -> claims.calls.get() == 1 && claims.answered.get() == 1, () -> "the worker's one start claim answered (A6)");
     }
 
+    /**
+     * FIX-231: what writes through the relay settles before the relay closes — a write the body left waiting would otherwise ask
+     * the closed relay for a connection and the world's close would throw the refusal. Each step runs; the first failure is thrown,
+     * the later ones suppressed on it.
+     */
     @AfterEach
     void close() throws Exception {
-        wire.close();   // first: a held reply never hangs the pool's close
+        Throwable first = step(null, this::drain);
+        first = step(first, () -> wire.close());   // after the drain; a frame still held after a failed drain is let go here
+        first = step(first, () -> { if (a != null) a.close(); });   // drained: nothing left to flush; else what waits fails now
+        first = step(first, () -> relayed.close().await());   // after the relay: a held reply never hangs the pool's close
+        first = step(first, () -> db.close());
+        if (first instanceof Exception e) throw e;
+        if (first instanceof Error e) throw e;
+    }
+
+    /**
+     * Every frame the case held goes on, the Hold step's runs too — of {@code m-1} and {@code m-2} also those not entered yet (a
+     * slot runs after the answers; a case may end before); then the worker stops and its items settle in the queue, and the
+     * snapshot writes they left are committed — each wait bounded, failing with what it waited for.
+     */
+    private void drain() {
+        frames.forEach(PgWire.Held::releaseQuietly);
         if (worker != null) worker.stop();
-        if (hold != null) hold.releaseAll();
-        if (a != null) a.close();
-        relayed.close().await();
-        db.close();
+        if (hold != null) {
+            hold.releaseAll();
+            for (String id : List.of("m-1", "m-2")) hold.release(id);
+        }
+        if (worker != null) {
+            Future<Void> closed = bounded(worker.close(), () -> "teardown: the worker's items settled in the queue (unsettled "
+                    + worker.unsettled() + "; events " + (hold == null ? "-" : hold.events) + ")");
+            assertTrue(closed.succeeded(), "teardown: the worker closed: " + closed.cause());
+        }
+        if (a != null) {
+            Future<Void> flushed = bounded(a.messages.flush(), () -> "teardown: every snapshot write the case left committed");
+            assertTrue(flushed.succeeded(), "teardown: every snapshot write the case left committed: " + flushed.cause());
+        }
+    }
+
+    /** {@code f} once complete, either way; not within {@link JournalWorld#BOUND_SECONDS}: fails naming {@code what} it waited for. */
+    static <T> Future<T> bounded(Future<T> f, java.util.function.Supplier<String> what) {
+        try {
+            f.otherwiseEmpty().await(JournalWorld.BOUND_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException pending) {
+            throw new AssertionError("not within " + JournalWorld.BOUND_SECONDS + " s: " + what.get(), pending);
+        }
+        return f;
+    }
+
+    interface Step { void run() throws Exception; }
+
+    /** Runs {@code step}; returns the first failure so far, a later one suppressed on it. */
+    private static Throwable step(Throwable first, Step step) {
+        try {
+            step.run();
+            return first;
+        } catch (Exception | Error failed) {
+            if (first == null) return failed;
+            first.addSuppressed(failed);
+            return first;
+        }
     }
 
     /** {@code id}'s save of flow {@code flow}, no key, its input kept, called on a virtual thread; returns once the call returned. */
@@ -155,8 +209,14 @@ class PgIntakeHandoffGroupIT {
     /** A save of flow {@code elsewhere} alone in the intake's one commit slot, held at its COMMIT: saves called now form one group. */
     record Plug(PgWire.Held commit, Future<String> saved) {}
 
+    /** {@code frame}, kept: the teardown lets every frame a case held go on before it waits for the world's writes. */
+    PgWire.Held held(PgWire.Held frame) {
+        frames.add(frame);
+        return frame;
+    }
+
     Plug plug() throws Exception {
-        PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
+        PgWire.Held commit = held(wire.holdNext(PgWire.query("COMMIT")));
         Future<String> saved = call("m-plug", ELSEWHERE);
         commit.awaitReached();
         return new Plug(commit, saved);
@@ -211,7 +271,8 @@ class PgIntakeHandoffGroupIT {
 
     /**
      * A committed group whose first slot's run throws — its renewal refused by the timer — still answers every member's save with
-     * its id, and the other member's slot runs its item.
+     * its id, and the other member's slot runs its item. The body ends with that item's last writes waiting for the relayed pool
+     * (FIX-231): the teardown lets them land before it closes the relay.
      */
     @Test
     void aHandOffThatThrowsInACommittedGroupStillAnswersEveryMember() throws Exception {
@@ -231,5 +292,18 @@ class PgIntakeHandoffGroupIT {
         assertEquals(NODE, lockedBy("m-2"));
         PgIntakeHandoffIT.until(() -> hold.entries("m-1").size() + hold.entries("m-2").size() == 1,
                 () -> "exactly one entry: the slot whose run was not refused runs its item, the refused slot's never ran; events " + hold.events);
+
+        // FIX-231, the staged order: the body ends while the running item's last writes (its step's snapshot, its settle) still
+        // wait for the relayed pool, both its connections busy on a frame held at the relay; the teardown owns what follows.
+        String ran = hold.entries("m-1").isEmpty() ? "m-2" : "m-1";
+        assertTrue(settled(a.messages.flush()).succeeded(), "fixture: no snapshot write pending before the stage");
+        for (String busy : List.of("select 'fixture: busy 1'", "select 'fixture: busy 2'")) {
+            PgWire.Held frame = held(wire.holdNext(PgWire.query(busy)));
+            relayed.query(busy).execute();   // its answer is the teardown's: released, it succeeds; cut, it fails
+            frame.awaitReached();
+        }
+        hold.release(ran);
+        PgIntakeHandoffIT.until(() -> !a.messages.flush().isComplete(),
+                () -> "fixture: a snapshot write of " + ran + " waits for a connection of the relayed pool; events " + hold.events);
     }
 }

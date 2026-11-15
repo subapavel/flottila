@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-231 the teardown drains what writes through the relay before it closes it — done, review PASS
+
+- Fault (once, the whole-reactor run of FIX-229): `PgIntakeHandoffGroupLogIT.aHandOffThatThrowsInACommittedGroupStillAnswersEvery
+  Member` errored with `PoolRefused … Connection refused` on the port of the case's own `PgWire` relay.
+- Cause shown (scout's reading, then a staged order; test-author, class B): the fixture's, not the product's. The teardown closed
+  the relay, then released the Hold step and closed the world; the running item's snapshot write and settle then asked the closed
+  relay for a connection, and the store's close (`writer.flush().await()`) threw the refusal on the test thread. The case's claim
+  is complete in the body; the product logs the refusals and leaves the item to its lease.
+- Red: the body ends with both connections of the relayed pool busy on held frames and the Hold step released - old teardown, the
+  case errors in both classes with the sighting's three log lines. Fix, tests only: the teardown releases the held frames, stops
+  the worker, releases the Hold step, waits bounded for the worker's close and the store's flush, and only then closes the relay;
+  every step runs, the first failure is thrown, nothing is swallowed. The staged order stays at the end of the case.
+- Evidence: VERIFIED_PASS the two IT classes alone, 5 tests, three times by the author and twice by the verifier. Review PASS.
+  Survey: the same order, latent, in four more IT classes, and an unawaited stop in `PgIntakeHandoffIT`: row FIX-233.
+
 ## 2026-11-15 — FIX-227 the second dir-force case holds its own persist's force — done, review PASS
 
 - Fault (FIX-168's survey; never seen failing): `JournalCloseAndDirForceTest.aDirForceAfterAFailedOneFailsItsPersistToo` armed
