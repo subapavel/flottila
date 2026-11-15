@@ -1,0 +1,95 @@
+FIX-235 - nothing the writer was given throws through BatchingWriter: the evidence (2026-11-15)
+
+Tree: efb9d4ae plus this task's change under platform/core (6 files; agent/work/FIX-235.diff, 1100 lines).
+
+1. Design (class C)
+   Designer's draft: agent/work/FIX-235-designer.md. Architecture advisor as its opponent: sound with changes.
+   The architect's seven decisions and the disposition of each of the advisor's points: agent/packets/FIX-235.md.
+   Measured for decision 6 (javap on vertx-core 5.1.10): FailedFuture's constructor and FutureImpl.tryFail put a
+   NoStackTraceThrowable in place of a null cause; PromiseImpl extends FutureImpl; the default onComplete(Handler)
+   hands the handler the future itself.
+   Read for decision 7: the branch commit the owner approved with the policy (agent/work/FIX-201/e835f43-...diff) logged
+   the refusals only; its Javadoc of save says "Never throws; every failure is the returned future's cause".
+
+2. Red (test-author, opus xhigh): EXECUTED_FAIL, agent/work/FIX-235-red.log
+   The package's BatchingWriter* classes against the code as it stood: 77 tests run, 21 failures, 0 errors.
+   Red, each on its own assertion or on the escape the packet names:
+   - the null-answering sink: idle writer; one batch of a drain of two; from a completion listener; on the window and
+     on a flush (2 cases); a waiter entering through such a drain (red too - the packet thought it might be green);
+   - the weight function's throw: IllegalStateException, InternalError, a sneaked IOException, each through save and
+     saveWaiting (6 cases); a negative weight through save and saveWaiting (2 cases);
+   - a sneaked checked exception at each site: the sink, a waiter's deadline schedule, the window schedule, a handle's
+     cancel on a flush and when a waiter enters (5 cases);
+   - a sink's future that fails without a cause (a java.lang.reflect.Proxy of Future);
+   - the property everyItemSettlesAndNoSlotLeaksWhateverTheSinkAnswers (shrunk: [SUCCEEDS, NULL], one slot leaked).
+   Green as expected: aNullItemIsThrownAtTheCallerAndQueuesNothing (it pins decision 4).
+   One existing case replaced: BatchingWriterWeightTest.aNegativeWeightIsRefusedAndNothingQueued pinned the throw of a
+   negative weight - a wrong expectation after decision 3. Three fixtures (RefusingCancelTimer, RefusingWindowTimer,
+   GatedSink) now throw through a generic rethrow; for unchecked throwables nothing changes.
+
+3. Green (implementer, opus xhigh): VERIFIED_PASS, agent/work/FIX-235-green.log
+   The core module: 784 tests (763 + 21), 0 failures, 0 errors, 0 skipped. No test changed by the implementer.
+   Changed: BatchingWriter.java (the five catches are Throwable; the null answer becomes a failed future in commit; the
+   weight is asked inside a try outside the lock; a negative weight is a failed future; afterCommit decides on the
+   result's succeeded()), its Javadoc, and one Javadoc sentence of BatchSink.write. No new method, no new log line.
+   Coverage (agent/work/FIX-235-coverage.log): no decrease; BatchingWriter 142 of 142 lines, 66 of 66 branches.
+   Sixteen hand mutants, all killed (each catch narrowed back; the null guard; the message's two parts; the negative
+   guard four ways; success decided on cause() instead of succeeded()) - the implementer's report: no log of those
+   runs was kept, so they stand as its word. The observed measure is section 4.
+
+4. Scoped PIT (verifier): VERIFIED_PASS, agent/work/FIX-235-pit.log, agent/work/FIX-235-pit-mutations.xml
+   79 mutants generated, 78 killed, 0 without coverage, 0 timed out; line coverage 142/142.
+   The survivor: BatchingWriter.java:143, "replaced long return with 0" in the count-only constructor's weight
+   `item -> 1L` - the equivalent mutant FIX-195 recorded (PROGRESS: "the byte bound equals the count bound").
+
+5. Review round 1 (class C, opus xhigh): FAIL, on what the documents claimed - not on the code's behaviour
+   (a) `written.onComplete(...)` in `commit` sits outside every try: a sink's Future whose `onComplete` throws, or
+       calls its listener twice, is neither contained nor was it listed as outside the guarantee, while the Javadoc
+       and the amendment said "everything thrown by the code the writer was given".
+   (b) The amendment's "No fault takes neither way" is false for a timer that answers a null window handle, and its
+       "Left outside" left out what the Javadoc lists.
+   Decided (the architect; packet, "Review round 1"): (a) stays outside the guarantee and is written down - containing
+   it needs a once-guard per batch, safe across threads, on the path CORE-GATE measures, for a Future that breaks its
+   own contract; the designer had rejected the cheaper form. The amendment is narrowed and its list completed.
+   The review's other remarks, taken: the two no-log assertions that decision 7 lacked; what an inline answer is, said
+   in the Javadoc; the hand mutants named as the implementer's word (section 3); the caller's change at
+   PgIntake.java:360 named in the commit body; "the one throw" bounded by row FIX-245.
+
+   Fix round, tests (test-author, opus xhigh): VERIFIED_PASS, agent/work/FIX-235-fix1-tests.log
+   Two assertions - the writer logs nothing for a negative weight (BatchingWriterWeightTest, both modes) and for a
+   sink's future that fails without a cause (BatchingWriterErrorContainmentTest). 77 tests of the eight
+   BatchingWriter*Test classes, 0 failures. Each assertion red under its own hand mutant, a log line added at the
+   site and removed again (agent/work/FIX-235-fix1-mutants.log): "expected: <[]> but was: <[MUTANT-FIX235-1 negative
+   weight -42]>", "expected: <[]> but was: <[MUTANT-FIX235-2 a batch failed: null]>". BatchingWriter.java identical
+   before and after (cmp).
+
+   Fix round, Javadoc (implementer, opus xhigh): VERIFIED_PASS, agent/work/FIX-235-fix1-green.log
+   Six Javadoc edits in BatchingWriter.java, no statement changed: with comments stripped the file is byte-identical
+   before and after (cmp). The clause on a misbehaving Future was checked against the code and says more than the
+   packet's sentence: the throw also leaves the later batches of that drain counted in flight and never handed over,
+   and an earlier batch's items pending; a second call of the listener lowers the in-flight count a second time.
+   "A future already completed" is an inline answer only when its listener runs at once: a Vert.x future bound to a
+   context the dispatching thread is not on runs it later (javap, vertx-core 5.1.10, FutureBase.emitResult).
+   The core module: 784 tests, 0 failures, 0 errors, 0 skipped. Coverage: no decrease, core line 99.7 %, branch
+   99.4 % (agent/work/FIX-235-fix1-coverage.log). The task's diff: agent/work/FIX-235.diff (1136 lines).
+   Scoped PIT was not run again: the fix round changed comments in the class and two assertions in its tests.
+
+   Review round 2 (class C, opus xhigh): FAIL, on the amendment's text alone - no code, no test
+   The clause on a timer's null handle was false for a waiter's null deadline, which is counted and logged as a refused
+   cancel when its waiter enters; and the "Left outside" list lacked the Javadoc's clause on an error of the JVM raised
+   in the writer's own frames. Both are now as the reviewer wrote them (the packet, "The ledger").
+   Review round 3: PASS.
+
+6. The whole reactor (verifier): one run over this change and FIX-260's together
+   Tree: 1c57bfaf plus both changes; the commits' heads differ from it in documents and rule files only (the two
+   commits of the owner's answers and the owner's steering patch touch no source, no test and no build file).
+   VERIFIED_PASS, all modules 0 failures (core 784), coverage no decrease.
+   Logs: agent/work/FIX-235-260-reactor.log, agent/work/FIX-235-260-coverage.log (not committed: megabytes);
+   the totals per module: agent/work/FIX-235-260-totals.txt.
+
+7. What is committed
+   With the task: this file, agent/work/FIX-235.diff, FIX-235-designer.md, FIX-235-red-extract.txt (the tree line,
+   the failing cases and the totals of the red log), FIX-235-coverage.log, FIX-235-fix1-coverage.log,
+   FIX-235-fix1-mutants.log, FIX-235-pit-mutations.xml.
+   Not committed, for their size (0.6 to 4 MB each): FIX-235-red.log, FIX-235-green.log, FIX-235-pit.log,
+   FIX-235-fix1-tests.log, FIX-235-fix1-green.log. Their totals are quoted above as they were read.

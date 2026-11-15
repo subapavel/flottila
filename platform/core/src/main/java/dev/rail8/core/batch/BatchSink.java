@@ -14,6 +14,9 @@ import java.util.List;
 @FunctionalInterface
 public interface BatchSink<T> {
 
-    /** Commits the whole batch or fails it as a whole. */
+    /**
+     * Commits the whole batch or fails it as a whole. It answers a {@code Future}, never {@code null}; a null answer fails the
+     * batch.
+     */
     Future<Void> write(List<T> batch);
 }

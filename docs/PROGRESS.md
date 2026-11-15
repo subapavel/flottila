@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-235 nothing the writer was given throws through BatchingWriter — done, review PASS [C]
+
+- D-146 says no public method of the writer completes by throwing; FIX-195's late review found four throws that still did.
+- Decided (class C: designer's draft, the advisor as its opponent, seven decisions in agent/packets/FIX-235.md): a sink that answers
+  null fails its batch with an NPE that names it; a throw of the weight function and a negative weight fail that save; the five
+  catches are Throwable; a commit succeeded only when its result says so; a null item stays thrown; no log for a fault that fails an item.
+- Red first: 21 failing cases, then core 784 green; the class 142/142 lines, 66/66 branches; scoped PIT 78 of 79, the survivor
+  FIX-195's equivalent mutant. One case replaced (it pinned the negative weight's throw). A caller changes: a negative weight now
+  reaches PgIntake's failure handling instead of leaving `save` as a throw.
+- Left outside and listed (Javadoc, D-146): a sink's Future whose `onComplete` throws or calls its listener twice; a timer's null
+  handle; the nesting of inline answers (FIX-257); weight overflow (FIX-258); a throwing log handler (FIX-245).
+- Review: FAIL twice on what the documents claimed beyond the code, PASS in round 3. D-146's amendment is `draft - review at
+  hand-over`. Scoped PIT not run again after the fix round (comments and two assertions).
+- Whole reactor, the one run over this change and FIX-260's together: VERIFIED_PASS, all modules 0 failures (core 784), coverage no decrease.
+- New rows: FIX-257 [C], FIX-258 [A], FIX-259 [A] (callers that drop the cause of a failed save).
+
 ## 2026-11-15 — FIX-260 the pool-wait fixture starts its node again when the start is refused — done, review PASS [B]
 
 - `ci` run 229 (efb9d4ae, Postgres 18.6) failed once: NodePoolWaitIT, `VertxException: Timeout waiting for connection`. The class

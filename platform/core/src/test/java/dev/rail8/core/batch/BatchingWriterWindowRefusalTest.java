@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -43,8 +44,9 @@ class BatchingWriterWindowRefusalTest {
     final FakeSink sink = new FakeSink();
 
     /**
-     * A FakeTimer that, while {@code refuse} is set, throws {@link #refusal} (one instance, a RuntimeException or an Error)
-     * on every schedule of the window delay. A task that throws on the timer's thread is recorded in {@code escaped} as a Vert.x timer would report it to
+     * A FakeTimer that, while {@code refuse} is set, throws {@link #refusal} (one instance, a RuntimeException, an Error or —
+     * FIX-235 decision 5 — a checked exception thrown without being declared) on every schedule of the window delay. A task
+     * that throws on the timer's thread is recorded in {@code escaped} as a Vert.x timer would report it to
      * its context, not thrown at the test that advanced the clock; every case asserts {@code escaped} empty at its end.
      */
     static final class RefusingWindowTimer implements Timer {
@@ -63,8 +65,7 @@ class BatchingWriterWindowRefusalTest {
         @Override public Cancellable schedule(Duration delay, Runnable task) {
             if (refuse && delay.equals(window)) {
                 refused.incrementAndGet();
-                if (refusal instanceof Error e) throw e;
-                throw (RuntimeException) refusal;
+                BatchingWriterErrorContainmentTest.sneak(refusal);   // throws the refusal itself, a checked one too
             }
             return inner.schedule(delay, () -> {
                 try {
@@ -283,6 +284,32 @@ class BatchingWriterWindowRefusalTest {
         timer.refuse = false;
         Future<Void> flush = w.flush();
         assertTrue(flush.succeeded(), "nothing is left in flight after an Error refusal: " + flush);
+        assertUsableAfterwards(w);
+    }
+
+    /**
+     * FIX-235 decision 5, beside {@link #anErrorFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable}: a checked exception
+     * thrown without being declared is a refusal like the others — no item fails, the refusal is counted.
+     */
+    @Test
+    void aSneakedCheckedExceptionFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable() {
+        timer.refusal = new IOException("timer cannot schedule");
+        Map<String, Future<Void>> futures = new LinkedHashMap<>();
+        BatchingWriter<String> w = aRefusedWindowOnTheDrainAfterA(futures);
+
+        assertEquals(List.of(List.of("a"), List.of("b", "c")), sink.batches,
+                "a checked exception from the window schedule commits the taken batch, as a RuntimeException does: " + sink.batches);
+        for (String item : List.of("b", "c")) {
+            Future<Void> f = futures.get(item);
+            assertFalse(f.failed(), item + " was taken when the window threw a checked exception: it is committed, not failed: " + f.cause());
+        }
+        assertEquals(timer.refused.get(), w.windowsRefused(), "every refusal the timer threw is counted, a checked one too");
+        completeEveryOpenCommit();
+        assertEverySettled(futures);
+
+        timer.refuse = false;
+        Future<Void> flush = w.flush();
+        assertTrue(flush.succeeded(), "nothing is left in flight after a checked refusal: " + flush);
         assertUsableAfterwards(w);
     }
 }

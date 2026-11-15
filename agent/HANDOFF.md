@@ -1,11 +1,11 @@
 # Handoff
 
 state: D-148's plan is complete. The owner's answers of 2026-11-15 are on main (D-156 to D-159). The repository is renamed
-  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: FIX-260.
-WIP: FIX-235 [C]: review PASS (round 3), uncommitted in this tree, commits next (packet, evidence: agent/work/FIX-235-*). Rows
-  FIX-257..259 reserved for it (texts in agent/packets/FIX-235.md). The reactor ran once over both fixes. BRAND-6 [B] (the website,
-  agent/packets/BRAND-6.md): red tests approved, implementer in worktree scratchpad/wsite; then reviewer, commit, the owner's steps.
-next exact action: commit FIX-235, read `ci`. Then BRAND-6, FIX-262 [C] (replay out, D-156), CONSIDER-24 (the re-run window's
+  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: FIX-235.
+WIP: BRAND-6 [B] (the website, agent/packets/BRAND-6.md): red tests approved, implementer in worktree scratchpad/wsite; then the
+  reviewer, the commit, and the owner's steps (Pages on, DNS, the custom domain). FIX-235 and FIX-260 are committed; D-146's
+  amendment is `draft - review at hand-over`. `ci` of FIX-235's head: to be read (run 229 was red on what FIX-260 answers).
+next exact action: read `ci`; BRAND-6 to its commit. Then FIX-262 [C] (replay out, D-156), CONSIDER-24 (the re-run window's
   cause), MAP-9 [C] (test rules: measure, propose), MAP-1 first step, BRAND-7 [A], FIX-236, 237, 228, 230, 232, 233, 223 (list), 205,
   196, 255, 256, 257-259, 261, then the audit's rows FIX-238 to 253. Whole reactor green before each commit (26 min).
 MAPPING: D-153 stands until MAP-1's design is accepted - root Design rules do not bind mapping/; Tests, Working rules, Context

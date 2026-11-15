@@ -1,0 +1,34 @@
+Extract of agent/work/FIX-235-red.log (736 kB, not committed): the tree line, every failing case, the totals.
+Made with: head -1; grep -a '<<< FAILURE!\|<<< ERROR!'; grep -a '^\[\(ERROR\|WARNING\|INFO\)\] Tests run:.*BatchingWriter\|^\[ERROR\] Tests run: [0-9]*, Failures'
+
+efb9d4ae39d68a753e46a13e479187a671db112f
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.220 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterPropertyTest
+[ERROR] dev.rail8.core.batch.BatchingWriterPropertyTest.everyItemSettlesAndNoSlotLeaksWhateverTheSinkAnswers -- Time elapsed: 0.630 s <<< FAILURE!
+[ERROR] Tests run: 2, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.067 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterWeightTest
+[ERROR] dev.rail8.core.batch.BatchingWriterWeightTest.aNegativeWeightFailsThatSaveAndQueuesNothing(Mode)[1] -- Time elapsed: 0.010 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterWeightTest.aNegativeWeightFailsThatSaveAndQueuesNothing(Mode)[2] -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.022 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterWindowRefusalTest
+[ERROR] dev.rail8.core.batch.BatchingWriterWindowRefusalTest.aSneakedCheckedExceptionFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Tests run: 24, Failures: 17, Errors: 0, Skipped: 0, Time elapsed: 0.099 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterErrorContainmentTest
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aCancelRefusedByTheTimerNeverEscapesAPublicMethod(Throwable)[3] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aWaiterEntersThroughADrainWhoseBatchTheSinkAnswersNullFor -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSneakedCheckedExceptionFromTheSinkFailsOnlyItsBatchAndReleasesItsSlot -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkThatAnswersNullFailsOnlyItsBatchWithACauseThatNamesIt -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aCancelRefusedWhenAWaiterEntersLeavesNoItemUnsettled(Throwable)[3] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkThatAnswersNullFromACompletionListenerCompletesTheEarlierBatchAndStrandsNothing -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkThatAnswersNullForOneBatchOfADrainStillHandsTheOthersToTheSink -- Time elapsed: 0.004 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSneakedCheckedExceptionFromAWaiterDeadlineScheduleFailsOnlyThatSaveWithoutThrowing -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkFutureThatFailsWithoutACauseStillFailsItsBatch -- Time elapsed: 0.018 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkThatAnswersNullOnTheWindowOrAFlushFailsOnlyThatBatch(Dispatch)[1] -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aSinkThatAnswersNullOnTheWindowOrAFlushFailsOnlyThatBatch(Dispatch)[2] -- Time elapsed: 0.003 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[1] -- Time elapsed: 0.004 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[2] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[3] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[4] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[5] -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] dev.rail8.core.batch.BatchingWriterErrorContainmentTest.aThrowingWeightFailsThatSaveWithItsOwnCauseAndQueuesNothing(Throwable, Entry)[6] -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Tests run: 5, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 1.220 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterPropertyTest
+[ERROR] Tests run: 2, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.067 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterWeightTest
+[ERROR] Tests run: 8, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.022 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterWindowRefusalTest
+[ERROR] Tests run: 24, Failures: 17, Errors: 0, Skipped: 0, Time elapsed: 0.099 s <<< FAILURE! -- in dev.rail8.core.batch.BatchingWriterErrorContainmentTest
+[ERROR] Tests run: 77, Failures: 21, Errors: 0, Skipped: 0

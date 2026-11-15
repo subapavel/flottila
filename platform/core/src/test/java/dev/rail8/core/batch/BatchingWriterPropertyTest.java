@@ -4,6 +4,7 @@ import dev.rail8.api.Timer;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
@@ -14,14 +15,17 @@ import net.jqwik.api.constraints.Size;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.RejectedExecutionException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -405,6 +409,130 @@ class BatchingWriterPropertyTest {
             }
         }
         assertEquals(List.of(), escaped, "no window task threw on the timer's thread");
+    }
+
+    // --- FIX-235 (D-146 amended): whatever the sink answers
+
+    /** How the sink answers one batch: a commit that later succeeds or fails, a throw at the hand-off, or no future at all. */
+    enum Answer { SUCCEEDS, FAILS, THROWS, NULL }
+
+    /** A move of the answers property: a save, a waiting save, the oldest open commit completed as its batch's answer says, a window's tick. */
+    enum Step { SAVE, SAVE_WAITING, COMPLETE, TICK }
+
+    @Provide
+    Arbitrary<List<Answer>> answers() {
+        return Arbitraries.of(Answer.class).list().ofMinSize(1).ofMaxSize(20);
+    }
+
+    @Provide
+    Arbitrary<List<Step>> steps() {
+        return Arbitraries.of(Step.class).list().ofMinSize(1).ofMaxSize(60);
+    }
+
+    /**
+     * Answers batch k (in hand-off order) as {@code script[k % size]} says; records each batch and its answer. A SUCCEEDS or FAILS
+     * batch stays open until {@link #completeOldest} completes it so; THROWS throws at the hand-off, NULL answers null.
+     */
+    static final class AnsweringSink implements BatchSink<String> {
+        record Open(Promise<Void> commit, Answer answer) {}
+
+        final List<Answer> script;
+        final List<List<String>> batches = new ArrayList<>();
+        final List<Answer> answered = new ArrayList<>();
+        final ArrayDeque<Open> open = new ArrayDeque<>();
+
+        AnsweringSink(List<Answer> script) { this.script = script; }
+
+        @Override public Future<Void> write(List<String> batch) {
+            Answer a = script.get(batches.size() % script.size());
+            batches.add(List.copyOf(batch));
+            answered.add(a);
+            switch (a) {
+                case THROWS -> throw new IllegalStateException("the sink throws for batch #" + (batches.size() - 1));
+                case NULL -> { return null; }
+                default -> {
+                    Promise<Void> p = Promise.promise();
+                    open.add(new Open(p, a));
+                    return p.future();
+                }
+            }
+        }
+
+        void completeOldest() {
+            Open o = open.poll();
+            if (o == null) return;
+            if (o.answer() == Answer.SUCCEEDS) o.commit().complete();
+            else o.commit().fail(new RuntimeException("failed batch"));
+        }
+    }
+
+    /**
+     * D-146 as FIX-235 amends it: each batch at random succeeds, fails, throws or gets a null answer, under any mix of saves,
+     * waiting saves, completions and window ticks. No public method throws; every future completes; in-flight, backlog and
+     * waiting end at 0; each item reached the sink at most once, and every item that did not was refused for room
+     * (Overloaded); of the items handed on, the failed ones are exactly those of the faulty batches.
+     */
+    @Property(tries = 300)
+    void everyItemSettlesAndNoSlotLeaksWhateverTheSinkAnswers(@ForAll("steps") List<Step> steps,
+                                                              @ForAll("answers") List<Answer> answers,
+                                                              @ForAll @IntRange(min = 1, max = 4) int batchSize,
+                                                              @ForAll @IntRange(min = 1, max = 3) int concurrency,
+                                                              @ForAll @IntRange(min = 1, max = 3) int backlogBatches,
+                                                              @ForAll @IntRange(min = 0, max = 5) int windowMs,
+                                                              @ForAll @IntRange(min = 1, max = 8) int maxWaitMs) {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        FakeTimer timer = new FakeTimer(clock);
+        AnsweringSink sink = new AnsweringSink(answers);
+        int maxBacklog = batchSize * backlogBatches;
+        BatchingWriter<String> w = new BatchingWriter<>(sink, timer,
+                new BatchingWriter.Options(batchSize, Duration.ofMillis(windowMs), concurrency, maxBacklog, Duration.ofMillis(maxWaitMs)));
+        Duration tick = Duration.ofMillis(Math.max(windowMs, 1));
+
+        Map<String, Future<Void>> futures = new LinkedHashMap<>();
+        int n = 0;
+        for (Step s : steps) {
+            switch (s) {
+                case SAVE -> {
+                    String item = "s" + (n++);
+                    futures.put(item, assertDoesNotThrow(() -> w.save(item), "save threw for " + item + "; the sink answered " + sink.answered));
+                }
+                case SAVE_WAITING -> {
+                    String item = "w" + (n++);
+                    futures.put(item, assertDoesNotThrow(() -> w.saveWaiting(item), "saveWaiting threw for " + item + "; the sink answered " + sink.answered));
+                }
+                case COMPLETE -> assertDoesNotThrow(sink::completeOldest, "a commit's completion threw; the sink answered " + sink.answered);
+                case TICK -> assertDoesNotThrow(() -> clock.advance(tick), "the window's task threw at the clock's caller; the sink answered " + sink.answered);
+            }
+            assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
+            assertTrue(sink.open.size() <= concurrency, "the sink sees " + sink.open.size() + " open commits > " + concurrency);
+            assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
+        }
+        // drain: let the clock run and complete what is open until nothing waits, queues or flies
+        for (int guard = 0; guard < 10_000 && (w.backlog() > 0 || !sink.open.isEmpty() || w.waiting() > 0); guard++) {
+            assertDoesNotThrow(() -> clock.advance(Duration.ofMillis(1)), "the window's task threw at the clock's caller; the sink answered " + sink.answered);
+            assertDoesNotThrow(sink::completeOldest, "a commit's completion threw; the sink answered " + sink.answered);
+        }
+        assertEquals(0, w.inFlight(), "no slot leaks, whatever the sink answered: " + sink.answered);
+        assertEquals(0, w.backlog(), "nothing stays queued; the sink answered " + sink.answered);
+        assertEquals(0, w.waiting(), "nobody stays waiting; the sink answered " + sink.answered);
+
+        List<String> sunk = sink.batches.stream().flatMap(List::stream).toList();
+        assertEquals(sunk.size(), new HashSet<>(sunk).size(), "no item reached the sink twice: " + sunk);
+        Set<String> faulty = new HashSet<>();
+        for (int i = 0; i < sink.batches.size(); i++) {
+            if (sink.answered.get(i) != Answer.SUCCEEDS) faulty.addAll(sink.batches.get(i));
+        }
+        futures.forEach((item, f) -> {
+            assertTrue(f.isComplete(), item + " never completed; the sink saw " + sink.batches + " answered " + sink.answered);
+            if (sunk.contains(item)) {
+                assertFalse(f.failed() && f.cause() instanceof OverloadedException, item + " was handed to the sink yet failed for room");
+                assertEquals(!faulty.contains(item), f.succeeded(),
+                        item + " carries its own batch's outcome (faulty " + faulty + "): " + f.cause());
+            } else {
+                assertTrue(f.failed() && f.cause() instanceof OverloadedException,
+                        item + " never reached the sink, so it was refused for room: " + f.cause());
+            }
+        });
     }
 
     /** The accepted items not yet handed to the sink, in arrival order. */
