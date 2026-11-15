@@ -208,7 +208,8 @@ final class BoundProbe {
       case Advance a -> a.slot();
       case Var v -> v.slot();
       case Break b -> b.slot();
-      default -> -1;
+      // The kinds that name no slot; a ParamCall names a closure parameter, which is no slot.
+      case Identity _, Const _, Pipe _, Comma _, Intrinsic _, Collect _, If _, Alt _, Try _, Call _, ParamCall _ -> -1;
     };
   }
 

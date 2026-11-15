@@ -20,3 +20,17 @@ rc 5
 stdout 4\n
 stderr jq: error (at <stdin>:1): x\n
 end
+
+case cardinality/reduce-of-an-empty-init-ends-before-its-break
+def 9fcb755aad85
+rc 0
+stdout 1\n
+stderr
+end
+
+case cardinality/reduce-over-no-item-never-runs-its-break
+def 7bec553e9bb5
+rc 0
+stdout [0]\n
+stderr
+end

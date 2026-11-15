@@ -29,6 +29,11 @@ import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
+import io.github.subapavel.jqj.query.run.CallForm;
+import io.github.subapavel.jqj.query.run.Fn0;
+import io.github.subapavel.jqj.query.run.Fn1;
+import io.github.subapavel.jqj.query.run.Fn2;
+import io.github.subapavel.jqj.query.run.FnN;
 import io.github.subapavel.jqj.query.run.Many;
 import java.util.Arrays;
 import java.util.List;
@@ -110,7 +115,7 @@ final class CardinalityAnalysis {
       case Identity _ -> ONE;
       case Const _ -> ONE;
       case Var _ -> ONE;
-      case Intrinsic i -> i.op().form() instanceof Many ? MANY : AT_MOST_ONE;
+      case Intrinsic i -> form(i.op().form());
       case Break _ -> NEVER;
       case AltBind _ -> MANY;
       case ParamCall _ -> MANY;
@@ -133,6 +138,18 @@ final class CardinalityAnalysis {
       case Alt a -> alt(card[id(a.left())], card[id(a.right())]);
       case Try t -> tryCatch(card[id(t.body())], card[id(t.handler())]);
       case Label l -> join(card[id(l.body())], NONE);
+    };
+  }
+
+  /** An Intrinsic's value by its call form (ADR-0045): AT_MOST_ONE for each one-result form, MANY for Many. */
+  private static Cardinality form(CallForm form) {
+    // One arm per form, as for the node kinds above.
+    return switch (form) {
+      case Fn0 _ -> AT_MOST_ONE;
+      case Fn1 _ -> AT_MOST_ONE;
+      case Fn2 _ -> AT_MOST_ONE;
+      case FnN _ -> AT_MOST_ONE;
+      case Many _ -> MANY;
     };
   }
 

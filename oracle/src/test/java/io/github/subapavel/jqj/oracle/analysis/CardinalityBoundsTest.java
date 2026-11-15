@@ -35,7 +35,6 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -56,8 +55,9 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Not watched, and counted: a node where only an atomic node may stand (an Intrinsic's argument, a Call's value) and
  * a link of an AltBind alternative's Bind chain above the leaf that reads the chain's slots, which the IR verifier
- * refuses; and a bare ParamCall a Call passes on or an Advance when the verifier refuses its probe (the design names
- * both; at 9faa3bf it accepts them, and they are watched). Any other refusal is a failure of the probe.
+ * refuses, each refusal checked, so a probe it accepts there is a violation; and a bare ParamCall a Call passes on or
+ * an Advance when the verifier refuses its probe (the design names both; at 9faa3bf it accepts them, and they are
+ * watched and counted as such). Any other refusal is a failure of the probe. Every core-v1 seed must compile.
  *
  * <p>Seam (named in the #112 hand-back): {@code Executable.facts()} returning {@code query.analysis.Facts}, {@code
  * Facts.cardinality(int function, int id)} with -1 for main and a function's place otherwise, and {@code
@@ -74,14 +74,17 @@ class CardinalityBoundsTest {
    */
   static final long BASELINE_CAP = 10_000;
 
-  /** Why a node may not be watched: always for one the verifier refuses by its place, else only if it refuses. */
+  /**
+   * Why a node may not be watched: the verifier must refuse a probe at an ATOMIC or MATCH place, and may refuse one at
+   * the other two.
+   */
   enum Skip {
     ATOMIC(true),
     MATCH(true),
     PASSED_PARAM_CALL(false),
     ADVANCE(false);
 
-    /** Whether the verifier refuses every probe at such a place. */
+    /** Whether the verifier refuses every probe at such a place; a probe it accepts there is a violation. */
     final boolean refused;
 
     Skip(boolean refused) {
@@ -117,9 +120,8 @@ class CardinalityBoundsTest {
     try {
       program = Resolver.resolve(Parser.parse(filter));
     } catch (JqCompileException e) {
-      count("seeds jqj does not compile");
-      Assumptions.abort("jqj does not compile " + filter + ": " + e.getMessage());
-      return;
+      // Every core-v1 seed compiles; one that does not is a failure, never a skipped case (CODING_STANDARDS, Tests).
+      throw new AssertionError("jqj does not compile core-v1 seed " + seed + ": " + filter, e);
     }
     Workspace workspace = JqEngine.builder().build().newWorkspace();
     try (JsonDoc doc = workspace.read(MemorySegment.ofArray(g.stdin()))) {
@@ -152,10 +154,6 @@ class CardinalityBoundsTest {
         violations.add(where + ": a fact keeps NEVER as NONE");
       }
       Skip skip = skips.get(n);
-      if (skip != null && skip.refused) {
-        count("skipped " + skip);
-        continue;
-      }
       BoundProbe probe = new BoundProbe();
       Executable watched;
       try {
@@ -167,6 +165,13 @@ class CardinalityBoundsTest {
           violations.add(where + ": the verifier refused the probe: " + e.getMessage());
         }
         continue;
+      }
+      if (skip != null && skip.refused) {
+        violations.add(where + ": the verifier accepted the probe at a place this test skips as " + skip);
+        continue;
+      }
+      if (skip != null) {
+        count("watched " + skip);
       }
       count("watched " + card);
       BoundProbe.Ran ran = BoundProbe.run(watched, input, B);

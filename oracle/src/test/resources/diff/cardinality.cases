@@ -1,7 +1,8 @@
 # Differential cases (ADR-0020) of #112 "S2b.9 Cardinality, ending at its result" (ADR-0007 and its #112 amendment,
 # F-56): "one" and "at most one" also promise that nothing runs after the result, so a node that may run on after it
-# is "many". These are F-56's three jq-ref probes; a backend that took any of them for a value form or a tail jump would
-# drop the rest. Every case is required at #112 (oracle/src/test/resources/require/112.txt). Format:
+# is "many". The first three are F-56's jq-ref probes; a backend that took any of them for a value form or a tail jump
+# would drop the rest. The last two pin the Reduce rule (#112 review). Every case is required at #112
+# (oracle/src/test/resources/require/112.txt). Format:
 # oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in cardinality.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
@@ -21,10 +22,28 @@ filter first((1, (repeat(1)|empty)) as $x | $x)
 stdin null\n
 end
 
-# A recursive call after a comma: each pending error x is raised after the result 4 (rc 5); a tail jump would drop it.
+# A recursive call after a comma: after the result 4 the innermost pending error x is raised, and it ends the run with
+# one error (rc 5); a tail jump would drop it.
 
 case cardinality/recursion-after-a-comma-keeps-the-pending-errors
 arg -c
 filter def f: if .>3 then . else ((.+1), error("x")) | f end; 0|f
+stdin null\n
+end
+
+# A Reduce whose each never ends normally, after an init with no result: the Reduce ends normally with none, so the
+# Comma's right side runs. Taking such a Reduce for NEVER, whatever its init, would drop the 1.
+
+case cardinality/reduce-of-an-empty-init-ends-before-its-break
+arg -c
+filter label $l | (reduce 1 as $x (empty; break $l)), 1
+stdin null\n
+end
+
+# A Reduce over no item never runs its update, so its break never comes: it gives its init.
+
+case cardinality/reduce-over-no-item-never-runs-its-break
+arg -c
+filter label $l | [reduce empty as $x (0; break $l)]
 stdin null\n
 end

@@ -33,7 +33,11 @@ import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Fn0;
+import io.github.subapavel.jqj.query.run.Fn1;
+import io.github.subapavel.jqj.query.run.Fn2;
+import io.github.subapavel.jqj.query.run.FnN;
 import io.github.subapavel.jqj.query.run.Many;
 import io.github.subapavel.jqj.query.run.RunState;
 import java.util.List;
@@ -56,6 +60,11 @@ class CardinalityAnalysisTest {
   /** An operation of a one-result call form. */
   private static Intrinsic fn0() {
     return new Intrinsic(AT, new Operation("one", (Fn0) (state, in) -> in), List.of());
+  }
+
+  /** An operation of the one-result call form {@code form}, with {@code args}. */
+  private static Intrinsic intrinsic(CallForm form, Node... args) {
+    return new Intrinsic(AT, new Operation("form", form), List.of(args));
   }
 
   /** An operation of the Many call form. */
@@ -139,14 +148,35 @@ class CardinalityAnalysisTest {
         Arguments.argumentSet("Identity is ONE", (Supplier<Node>) () -> id(), ONE),
         Arguments.argumentSet("Const is ONE", (Supplier<Node>) () -> c(), ONE),
         Arguments.argumentSet("Var is ONE, and so the Bind of a Const", (Supplier<Node>) () -> new Bind(AT, c(), 0, new Var(AT, 0)), ONE),
-        Arguments.argumentSet("an Intrinsic of a one-result form is AT_MOST_ONE", (Supplier<Node>) () -> fn0(), AT_MOST_ONE),
+        Arguments.argumentSet("an Intrinsic of the Fn0 form is AT_MOST_ONE", (Supplier<Node>) () -> fn0(), AT_MOST_ONE),
+        Arguments.argumentSet("an Intrinsic of the Fn1 form is AT_MOST_ONE", (Supplier<Node>) () -> intrinsic((Fn1) (state, in, a) -> a, c()), AT_MOST_ONE),
+        Arguments.argumentSet("an Intrinsic of the Fn2 form is AT_MOST_ONE", (Supplier<Node>) () -> intrinsic((Fn2) (state, in, a, b) -> a, c(), c()), AT_MOST_ONE),
+        Arguments.argumentSet("an Intrinsic of the FnN form is AT_MOST_ONE", (Supplier<Node>) () -> intrinsic((FnN) (state, in, args) -> in, c(), c(), c()), AT_MOST_ONE),
         Arguments.argumentSet("an Intrinsic of the Many form is MANY", (Supplier<Node>) () -> many(), MANY),
         Arguments.argumentSet("a Break is NEVER", (Supplier<Node>) () -> label(0, comma(brk(0), c())), NONE),
         Arguments.argumentSet(
             "an AltBind is MANY", (Supplier<Node>) () -> new AltBind(AT, c(), 0, List.of(new Alternative(id(), List.of())), List.of(), id()), MANY),
         Arguments.argumentSet("a Pipe is seq(left, right)", (Supplier<Node>) () -> pipe(c(), fn0()), AT_MOST_ONE),
         Arguments.argumentSet("a Pipe after a NEVER right side", (Supplier<Node>) () -> label(0, comma(pipe(c(), brk(0)), c())), NONE),
+        // The order rows: seq(MANY, NEVER) is NONE, but either side alone or seq(NEVER, MANY) is not.
+        Arguments.argumentSet("a Pipe of a MANY left side and a NEVER right side is NONE", (Supplier<Node>) () -> label(0, comma(pipe(many(), brk(0)), c())), AT_MOST_ONE),
         Arguments.argumentSet("a Bind is seq(value, body)", (Supplier<Node>) () -> new Bind(AT, many(), 0, c()), MANY),
+        Arguments.argumentSet(
+            "a Bind of a MANY value and a NEVER body is NONE", (Supplier<Node>) () -> label(1, comma(new Bind(AT, many(), 0, brk(1)), c())), AT_MOST_ONE),
+        Arguments.argumentSet(
+            "a Binds of a MANY value and a NEVER body is NONE",
+            (Supplier<Node>) () -> label(2, comma(new Binds(AT, List.of(many(), c()), List.of(0, 1), brk(2)), c())),
+            AT_MOST_ONE),
+        Arguments.argumentSet(
+            "an If of a MANY cond and NEVER branches is NONE", (Supplier<Node>) () -> label(0, comma(new If(AT, many(), brk(0), brk(0), v -> true), c())), AT_MOST_ONE),
+        Arguments.argumentSet(
+            "a Foreach of a MANY init and a NEVER each is NONE",
+            (Supplier<Node>) () -> label(1, comma(new Foreach(AT, many(), 0, pipe(c(), new Advance(AT, 0, brk(1)))), c())),
+            AT_MOST_ONE),
+        Arguments.argumentSet(
+            "a Reduce of a MANY init and a NEVER each is NONE",
+            (Supplier<Node>) () -> label(1, comma(new Reduce(AT, many(), 0, pipe(c(), new Advance(AT, 0, brk(1)))), c())),
+            AT_MOST_ONE),
         Arguments.argumentSet("a Binds of ONE values and body is ONE", (Supplier<Node>) () -> new Binds(AT, List.of(c(), c()), List.of(0, 1), id()), ONE),
         Arguments.argumentSet("a Binds is seq over its values, then its body", (Supplier<Node>) () -> new Binds(AT, List.of(c(), fn0()), List.of(0, 1), c()), AT_MOST_ONE),
         Arguments.argumentSet(
@@ -171,7 +201,8 @@ class CardinalityAnalysisTest {
             AT_MOST_ONE),
         Arguments.argumentSet("a Comma after a result is MANY", (Supplier<Node>) () -> comma(c(), c()), MANY),
         Arguments.argumentSet("a Comma after a NONE left side is its right side's", (Supplier<Node>) () -> comma(label(0, brk(0)), c()), ONE),
-        Arguments.argumentSet("an Alt after a ONE left side is join(ONE, right)", (Supplier<Node>) () -> new Alt(AT, fn0(), c(), v -> true), ONE),
+        Arguments.argumentSet("an Alt after an AT_MOST_ONE left side is join(ONE, right)", (Supplier<Node>) () -> new Alt(AT, fn0(), c(), v -> true), ONE),
+        Arguments.argumentSet("an Alt after a ONE left side is join(ONE, right)", (Supplier<Node>) () -> new Alt(AT, c(), fn0(), v -> true), AT_MOST_ONE),
         Arguments.argumentSet("a Try of an AT_MOST_ONE body is join(body, handler)", (Supplier<Node>) () -> new Try(AT, fn0(), c()), AT_MOST_ONE),
         Arguments.argumentSet("a Try of a MANY body is MANY", (Supplier<Node>) () -> new Try(AT, many(), c()), MANY),
         Arguments.argumentSet("a Label is join(body, NONE)", (Supplier<Node>) () -> label(0, c()), AT_MOST_ONE));

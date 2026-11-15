@@ -23,7 +23,7 @@ import java.util.List;
  *   <li>A Call shows {@code call=RECURSIVE} when the caller is a function and the callee is in its recursive group
  *       (GLOSSARY "Recursive group"), and {@code call=PLAIN} for every other call, each call from main among them; then
  *       {@code callee=fn<place>}. A ParamCall shows {@code param=<j>}.
- *   <li>Every node line ends with its cardinality, {@code card=<NONE|ONE|AT_MOST_ONE|MANY>} (ADR-0007 #112).
+ *   <li>Every node line shows its cardinality, {@code card=<NONE|ONE|AT_MOST_ONE|MANY>} (ADR-0007 #112).
  *   <li>Each function's lines follow its function line, {@code function fn<place> <name>/<arity> <start>..<end>
  *       closures=<n> values=<m>}.
  * </ul>
