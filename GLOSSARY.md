@@ -477,7 +477,14 @@ _Avoid_: program, plan
 
 **Calibration cell**:
 One shape × tier × thread × compile mode, run in a fresh child JVM that proves its thread's size;
-`b` and the reserve are maxima over the `-Xint` and C1 cells; warm cells prove the result (ADR-0046 #113, K1).
+`b` is the largest adjacent-pair slope, and the reserve the largest lowest-pair intercept plus the
+largest cold term, over the `-Xint` and C1 cells; warm cells prove the result (ADR-0046 #113, #199,
+K1).
+
+**Lowest pair**:
+The 256 KiB and 512 KiB platform cells of one tier, mode and shape. Its slope and cells give the
+intercepts, so a slope that falls with depth cannot inflate the reserve (ADR-0046 #199).
+_Avoid_: base pair, first chord.
 
 **Unit edge**:
 `U*`, the largest `U_f` at which a calibration cell completes; at `U*+1` it ends at the stack
