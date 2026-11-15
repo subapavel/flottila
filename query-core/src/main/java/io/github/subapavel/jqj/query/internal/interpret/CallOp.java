@@ -81,7 +81,10 @@ public final class CallOp extends Op {
    * first result the trampoline hands back, which the starter answers with a stop. The callee of a value-form call is
    * value form, at most one and never breaking out, so that stop loses nothing and a true from the trampoline is no
    * result. The activation and the units end when this returns (ADR-0046 #116), before the caller runs the value on. A
-   * jump is taken as in {@link #run}: the jump's own value is NONE, and the next body gives the call's.
+   * jump is taken as in {@link #run}: the jump's own value is NONE, and the next body gives the call's. Eval has no
+   * sink, so nothing downstream runs under a value-form call. A left side that runs on after its result is MANY
+   * (F-56), so no tail position follows it. The frame check here therefore never sees a jump pending from another
+   * activation today; it stays as written (ADR-0047 #118, ruling J5).
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
