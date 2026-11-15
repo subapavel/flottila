@@ -12,6 +12,7 @@ import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
+import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
@@ -21,6 +22,7 @@ import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
@@ -45,9 +47,9 @@ final class ParseAssertions {
 
   private ParseAssertions() {}
 
-  /** The IR of {@code text}: its AST, resolved. */
+  /** The IR of {@code text}: its AST, resolved, the main tree of its program. */
   static Node ir(String text) {
-    return Resolver.resolve(Parser.parse(text));
+    return Resolver.resolve(Parser.parse(text)).main();
   }
 
   /** {@code text} parses, and its resolution is a Stub: a construct the parser accepts and the resolver does not lower. */
@@ -91,7 +93,9 @@ final class ParseAssertions {
    * (#68) {@code (try body catch handler)}, a Label {@code (label $i | body)}, its slot named as a Bind's is, and a
    * Break {@code break $i} and {@code [s,e)}, naming its Label; a Reduce (#69) {@code (reduce $i = init | each)} and a
    * Foreach {@code (foreach $i = init | each)}, the state slot named as a Bind's is, and an Advance {@code (advance $i |
-   * update)}, naming its loop's state slot. An argument is printed without its Source; a Pipe, Comma, Bind, Binds, If, Alt,
+   * update)}, naming its loop's state slot; a Call (#107) {@code (call fn [closure, ...] (value; ...))} and {@code
+   * [s,e)}, its values printed as an Intrinsic's arguments are, and a ParamCall {@code param j} and {@code [s,e)}, a
+   * value parameter of a function body {@code $?}. An argument is printed without its Source; a Pipe, Comma, Bind, Binds, If, Alt,
    * AltBind, Try, Label, Reduce, Foreach or Advance's own Source is left out (no design fixes it). A Var with no
    * enclosing Bind of its slot, a Break with no enclosing Label of its slot, an Advance with no enclosing loop of its
    * slot, and a from slot no Bind of the match holds, is {@code $?}.
@@ -162,6 +166,12 @@ final class ParseAssertions {
       case Reduce r -> loop("reduce", r.init(), r.slot(), r.each(), scope, met);
       case Foreach f -> loop("foreach", f.init(), f.slot(), f.each(), scope, met);
       case Advance a -> "(advance " + scope.getOrDefault(a.slot(), "$?") + " | " + shape(a.update(), scope, met) + ")";
+      case Call c -> {
+        StringJoiner closures = new StringJoiner(", ", "[", "]");
+        c.closures().forEach(closure -> closures.add(shape(closure, scope, met)));
+        yield "(call " + c.fn() + " " + closures + " " + arguments(c.values(), scope, met) + ")" + chars(c.source());
+      }
+      case ParamCall p -> "param " + p.param() + chars(p.source());
     };
   }
 

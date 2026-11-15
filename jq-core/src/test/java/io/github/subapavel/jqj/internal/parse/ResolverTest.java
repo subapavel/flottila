@@ -18,6 +18,7 @@ import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
+import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
@@ -27,6 +28,7 @@ import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
@@ -860,6 +862,12 @@ class ResolverTest {
           case Reduce r -> List.of(r.init(), r.each());
           case Foreach f -> List.of(f.init(), f.each());
           case Advance a -> List.of(a.update());
+          case ParamCall _ -> List.of();
+          case Call c -> {
+            List<Node> all = new ArrayList<>(c.closures());
+            all.addAll(c.values());
+            yield all;
+          }
         };
     int deepest = 0;
     for (Node part : parts) {

@@ -229,7 +229,7 @@ class ParserEdgesTest {
     }
     // Each top-level definition of jq's file starts its line; the nested ones are indented.
     List<String> names = Pattern.compile("^def ([A-Za-z_0-9]+)", Pattern.MULTILINE).matcher(text).results().map(m -> m.group(1)).toList();
-    Program program = Parser.parse(text);
+    ParsedFilter program = Parser.parse(text);
     assertThat(program.module()).as("module of builtin.jq").isNull();
     assertThat(program.imports()).as("imports of builtin.jq").isEmpty();
     assertThat(program.main()).as("top-level filter of builtin.jq").isNull();

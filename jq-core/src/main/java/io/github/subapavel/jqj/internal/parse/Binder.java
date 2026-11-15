@@ -8,6 +8,7 @@ import io.github.subapavel.jqj.value.JqValue;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -81,6 +82,35 @@ final class Binder {
 
   /** What a variable jq defines itself binds to: it is not built yet, so the Resolver stubs it. */
   record Predefined(String name) {}
+
+  /**
+   * A capture of a definition (GLOSSARY "Capture", ADR-0045 #107): a declaration outside it that its text or its callees
+   * reach, passed as a value (a variable, a value parameter read as {@code $name}, a label's token), as a closure (a
+   * filter parameter, or a value parameter called by its name), or as both.
+   */
+  record Capture(Object declaration, boolean value, boolean closure) {}
+
+  /** A read of a declaration as a value, in {@link #reads} and the captures' kinds. */
+  private static final int VALUE = 1;
+
+  /** A read of a declaration as a closure, in {@link #reads} and the captures' kinds. */
+  private static final int CLOSURE = 2;
+
+  /** Declarations, by identity, each with its kinds ({@link #VALUE}, {@link #CLOSURE}), in the order first added. */
+  private static final class Kinds {
+    final List<Object> order = new ArrayList<>();
+    final Map<Object, Integer> kinds = new IdentityHashMap<>();
+
+    /** Adds {@code kind} to the kinds of {@code declaration}; whether they changed. */
+    boolean add(Object declaration, int kind) {
+      int before = kinds.getOrDefault(declaration, 0);
+      if (before == 0) {
+        order.add(declaration);
+      }
+      kinds.put(declaration, before | kind);
+      return (before | kind) != before;
+    }
+  }
 
   /**
    * The built entries of the {@link NativeTable}: ADR-0040's, ADR-0041's {@code range/2}, #72's language natives and
@@ -180,6 +210,21 @@ final class Binder {
   /** The call graph: for each id, the ids of the definitions its own text calls, its closure arguments included. */
   private final List<List<Integer>> edges = new ArrayList<>();
 
+  /** For each id, the id whose own text holds its definition; {@link #MAIN} for a top-level prelude definition's. */
+  private final List<Integer> parents = new ArrayList<>();
+
+  /** The id whose own text declares each declaration: a variable's, a group's, a label's or a parameter's. */
+  private final Map<Object, Integer> declared = new IdentityHashMap<>();
+
+  /** For each id, the declarations its own text reads, each with its kinds ({@link #VALUE}, {@link #CLOSURE}), in walk order. */
+  private final List<Kinds> reads = new ArrayList<>();
+
+  /** The parameters some call binds to by name: a filter parameter run, or a value parameter's filter. */
+  private final Set<Ast.Param> called = Collections.newSetFromMap(new IdentityHashMap<>());
+
+  /** For each id, its captures with their kinds, in Binder order; computed at the first {@link #captures} call. */
+  private List<Kinds> captured;
+
   /** The definitions and parameters in scope, by {@code name/arity}, the innermost last. */
   private Map<String, ArrayDeque<Callee>> functions = new HashMap<>();
 
@@ -205,6 +250,8 @@ final class Binder {
     this.text = text;
     defs.add(null);
     edges.add(new ArrayList<>());
+    parents.add(MAIN);
+    reads.add(new Kinds());
   }
 
   /**
@@ -217,6 +264,7 @@ final class Binder {
     for (String name : parameters) {
       Object host = new Object();
       binder.hosts.add(host);
+      binder.declared.put(host, MAIN);
       binder.variables = new Scope(name, host, binder.variables);
     }
     binder.walk(main);
@@ -275,6 +323,7 @@ final class Binder {
     push(prelude, new Library(def));
     for (Ast.Param p : def.params()) {
       push(p.name() + "/0", new Parameter(p));
+      declared.put(p, id);
       if (p.value()) {
         variables = new Scope(p.name(), p, variables);
       }
@@ -305,6 +354,76 @@ final class Binder {
   /** Whether {@code def} is in a recursive group: a cyclic strongly connected component of the call graph. */
   boolean recursive(Ast.FuncDef def) {
     return recursive[ids.get(def)];
+  }
+
+  /** Whether a call binds to {@code param} by its name: a filter parameter run, or a value parameter's filter. */
+  boolean called(Ast.Param param) {
+    return called.contains(param);
+  }
+
+  /**
+   * The captures of {@code def} (GLOSSARY "Capture", ADR-0045 #107), in Binder order: the declarations outside it that
+   * its own text reads, in the order the walk met them, then those its callees capture that are outside it too, each
+   * callee in the order of its calls. A fixpoint over the call graph, computed once for every definition at the first
+   * call, since a recursive group's members reach each other's.
+   */
+  List<Capture> captures(Ast.FuncDef def) {
+    if (captured == null) {
+      captured = fixpoint();
+    }
+    Kinds kinds = captured.get(ids.get(def));
+    List<Capture> captures = new ArrayList<>(kinds.order.size());
+    for (Object declaration : kinds.order) {
+      int kind = kinds.kinds.get(declaration);
+      captures.add(new Capture(declaration, (kind & VALUE) != 0, (kind & CLOSURE) != 0));
+    }
+    return captures;
+  }
+
+  /**
+   * Each definition's captures with their kinds: first its own reads of declarations outside it, then, until nothing
+   * changes, its callees' captures outside it. A definition that calls itself merges its own captures, which changes
+   * nothing. The main filter's stay empty: nothing calls it.
+   */
+  private List<Kinds> fixpoint() {
+    List<Kinds> all = new ArrayList<>(defs.size());
+    all.add(new Kinds());
+    for (int id = 1; id < defs.size(); id++) {
+      Kinds own = new Kinds();
+      Kinds read = reads.get(id);
+      for (Object declaration : read.order) {
+        if (!inside(declaration, id)) {
+          own.add(declaration, read.kinds.get(declaration));
+        }
+      }
+      all.add(own);
+    }
+    boolean changed = true;
+    while (changed) {
+      changed = false;
+      for (int id = 1; id < defs.size(); id++) {
+        Kinds own = all.get(id);
+        for (int callee : edges.get(id)) {
+          Kinds theirs = all.get(callee);
+          for (Object declaration : theirs.order) {
+            if (!inside(declaration, id) && own.add(declaration, theirs.kinds.get(declaration))) {
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+    return all;
+  }
+
+  /** Whether {@code declaration} is declared in the text of definition {@code id}: its own or a nested definition's. */
+  private boolean inside(Object declaration, int id) {
+    for (int at = declared.get(declaration); at != MAIN; at = parents.get(at)) {
+      if (at == id) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Adds to {@code out} the errors {@code l} reports: none for a dead definition, its own, or else its inner levels'. */
@@ -568,6 +687,9 @@ final class Binder {
     for (Scope s = variables; s != null; s = s.outer()) {
       if (s.name().equals(name)) {
         bindings.put(reference, s.binding());
+        if (s.binding() != UNSTORED) {
+          read(s.binding(), VALUE);
+        }
         return;
       }
     }
@@ -582,6 +704,7 @@ final class Binder {
   private void label(Ast.Label l) {
     Scope outer = labels;
     labels = new Scope(l.name(), l, outer);
+    declared.put(l, owner);
     walk(l.body());
     labels = outer;
   }
@@ -594,6 +717,7 @@ final class Binder {
     for (Scope s = labels; s != null; s = s.outer()) {
       if (s.name().equals(b.name())) {
         bindings.put(b, s.binding());
+        read(s.binding(), VALUE);
         return;
       }
     }
@@ -618,6 +742,9 @@ final class Binder {
       edges.get(owner).add(ids.get(d.def()));
     } else if (callee instanceof Library l) {
       edges.get(owner).add(ids.get(l.def()));
+    } else if (callee instanceof Parameter p) {
+      read(p.param(), CLOSURE);
+      called.add(p.param());
     }
     if (cFunction(callee)) {
       List<List<Level>> operands = new ArrayList<>();
@@ -664,17 +791,24 @@ final class Binder {
       return null;
     }
     if (!ids.containsKey(def)) {
-      register(def);
+      register(def, MAIN);
       unwalked.add(def);
     }
     return new Library(def);
   }
 
-  /** A new id for {@code def}, with no call yet in the call graph. */
-  private void register(Ast.FuncDef def) {
+  /** A new id for {@code def}, defined in the own text of {@code parent}, with no call or read yet. */
+  private void register(Ast.FuncDef def, int parent) {
     ids.put(def, defs.size());
     defs.add(def);
     edges.add(new ArrayList<>());
+    parents.add(parent);
+    reads.add(new Kinds());
+  }
+
+  /** A read of {@code declaration} as {@code kind} in the own text the walk is in. */
+  private void read(Object declaration, int kind) {
+    reads.get(owner).add(declaration, kind);
   }
 
   /** {@code arg} walked as an inner compile level of the current one, the next of its inner levels (ADR-0040). */
@@ -711,7 +845,7 @@ final class Binder {
    */
   private String define(Ast.FuncDef def) {
     int id = defs.size();
-    register(def);
+    register(def, owner);
     Level outer = level;
     level = new Level(id);
     outer.inner.add(level);
@@ -722,6 +856,7 @@ final class Binder {
     push(signature, new Defined(def));
     for (Ast.Param p : def.params()) {
       push(p.name() + "/0", new Parameter(p));
+      declared.put(p, id);
       if (p.value()) {
         variables = new Scope(p.name(), p, variables);
       }
@@ -770,6 +905,7 @@ final class Binder {
       Map<String, Object> declarations = new LinkedHashMap<>();
       for (String name : names) {
         Object group = new Object();
+        declared.put(group, owner);
         declarations.put(name, group);
         variables = new Scope(name, group, variables);
       }
@@ -829,6 +965,7 @@ final class Binder {
   }
 
   private void store(String name, Object declaration, Map<String, Object> first) {
+    declared.put(declaration, owner);
     if (first == null) {
       variables = new Scope(name, declaration, variables);
     } else {

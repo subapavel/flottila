@@ -35,8 +35,8 @@ public final class JqFilter {
    * (ADR-0030). A name in {@code bindings} that the compile did not declare is ignored.
    *
    * @throws JqFilterException with jq's error value, detached from every document, when the filter raises an error
-   * @throws JqTermination with exit code 5 when the steps, the deadline, the bytes built or written run out, or the thread
-   *     is interrupted
+   * @throws JqTermination with exit code 5 when the steps, the deadline, the recursion depth, the bytes built or written
+   *     run out, the thread is interrupted, or the thread's stack runs out (cause STACK, "Stack exhausted")
    * @throws IllegalArgumentException when {@code bindings} leave a declared variable unbound; nothing runs
    * @throws IllegalStateException when {@code workspace} is running another evaluation, which goes on unchanged
    */
@@ -45,7 +45,7 @@ public final class JqFilter {
     RunState state = workspace.state;
     try {
       // Outside the inner try: a refused run never ends the one running, and a run ended here began none.
-      state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten());
+      state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten(), limits.recursionDepth());
       try {
         // query-core hands values over as Object; every value this filter pushes or raises is a jq value.
         return executable.run(state, parameters, input, v -> sink.emit((JqValue) v));
@@ -73,11 +73,15 @@ public final class JqFilter {
     return values;
   }
 
-  /** The termination a host sees for query-core's (ADR-0016): the same cause and budget, the budget's message. */
+  /**
+   * The termination a host sees for query-core's (ADR-0016): the same cause and budget, the budget's message, and the
+   * stack's "Stack exhausted" (ADR-0045 #107).
+   */
   private static JqTermination terminated(Termination t) {
     return switch (t.cause()) {
       case BUDGET -> new JqTermination(JqTermination.Cause.BUDGET, TERMINATED, JqNull.NULL, budget(t.budget()), t.getMessage());
       case CANCELLED -> new JqTermination(JqTermination.Cause.CANCELLED, TERMINATED, JqNull.NULL, null);
+      case STACK -> new JqTermination(JqTermination.Cause.STACK, TERMINATED, JqNull.NULL, null, t.getMessage());
     };
   }
 
@@ -85,6 +89,7 @@ public final class JqFilter {
     return switch (budget) {
       case STEPS -> JqTermination.Budget.STEPS;
       case DEADLINE -> JqTermination.Budget.DEADLINE;
+      case RECURSION_DEPTH -> JqTermination.Budget.RECURSION_DEPTH;
       case BYTES_BUILT -> JqTermination.Budget.BYTES_BUILT;
       case BYTES_WRITTEN -> JqTermination.Budget.BYTES_WRITTEN;
     };

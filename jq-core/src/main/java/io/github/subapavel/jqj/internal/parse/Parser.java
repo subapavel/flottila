@@ -39,7 +39,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * Parses a filter into its {@link Program} (ADR-0032): recursive descent over jq 1.8.2's grammar ({@code parser.y}),
+ * Parses a filter into its {@link ParsedFilter} (ADR-0032): recursive descent over jq 1.8.2's grammar ({@code parser.y}),
  * precedence climbing over {@link BinOp} for its {@code Expr}. The levels, loosest first:
  *
  * <pre>
@@ -164,9 +164,9 @@ public final class Parser {
    *
    * @throws JqCompileException with every lexical, syntax and recovery error block of the text, in jq's order
    */
-  public static Program parse(String filter) {
+  public static ParsedFilter parse(String filter) {
     Parser parser = new Parser(filter);
-    Program program = parser.program();
+    ParsedFilter program = parser.program();
     if (!parser.blocks.isEmpty()) {
       throw parser.errors();
     }
@@ -174,7 +174,7 @@ public final class Parser {
   }
 
   /** jq's TopLevel: an optional module directive, imports, then a query or definitions alone. */
-  private Program program() {
+  private ParsedFilter program() {
     Ast module = null;
     if (isKeyword("module")) {
       advance();
@@ -200,7 +200,7 @@ public final class Parser {
       }
       defs.clear();
     }
-    return new Program(module, List.copyOf(imports), List.copyOf(defs), main, folds, text);
+    return new ParsedFilter(module, List.copyOf(imports), List.copyOf(defs), main, folds, text);
   }
 
   /** {@code import path as name metadata? ;}, {@code import path as $name metadata? ;} or {@code include path metadata? ;}. */
