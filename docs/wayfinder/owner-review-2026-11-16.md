@@ -70,6 +70,18 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     - T1: ADR-0018:29 is reworded; CONSERVATIVE stores no tail kind.
     - T2: ADR-0047 is amended; written closures are bound without a frame at jump sites.
     - The embedded recursion-depth default stays open.
+  - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
+    - ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`.
+      There is no margin beyond rounding and the 32 KiB; each cell's headroom is in the tsv.
+    - The reserve is the measured intercept plus 32 KiB, and never below the guard pages plus 32 KiB.
+    - Gate step 1 already takes twice F-28's target. Its profile finding is F-92, and the
+      calibration column stays in the ticket gate.
+    - The child-JVM test classes leave PIT's test set under a finding. The adviser ruled this is not
+      a PIT-scope change; a "no" reopens it.
+    - The calibration has 12 shapes, F-30's `..` among them.
+    - A second nightly job runs, as a check only (ADR-0014's nightly sentence).
+    - The 4 194 304 depth default stays open. If the heap numbers arrive after Monday morning, it is
+      the owner's to decide.
 
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 

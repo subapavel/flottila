@@ -470,6 +470,15 @@ _Avoid_: compiler (the whole pipeline is the compiler), JIT (that is HotSpot's)
 The immutable, thread-safe result of compiling a filter, whichever backend made it.
 _Avoid_: program, plan
 
+**Calibration cell**:
+One shape × tier × thread × compile mode, run in a fresh child JVM that proves its thread's size;
+`b` and the reserve are maxima over the cells (ADR-0046 #113).
+
+**Unit edge**:
+`U*`, the largest `U_f` at which a calibration cell completes; at `U*+1` it ends at the stack
+backstop (ADR-0046 #113).
+_Avoid_: max depth.
+
 **Specialisation cap**:
 How many nodes specialisation may copy in one compile, `SPECIALISE_CAP`; a group and its argument
 tuple are copied whole or not at all (ADR-0045).
