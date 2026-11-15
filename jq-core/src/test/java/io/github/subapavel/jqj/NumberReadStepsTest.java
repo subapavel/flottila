@@ -78,6 +78,11 @@ class NumberReadStepsTest {
           .[0] * 1 => 1025    => 4    => 1
           .[0] % 2 => 1024    => 3    => 1
           .[0] % 2 => 1025    => 4    => 1
+          # the right operand of - and of a numeric * (#97 review round 2: each a site of its own)
+          1 - .[0] => 1024    => 3    => 0
+          1 - .[0] => 1025    => 4    => 0
+          1 * .[0] => 1024    => 3    => 1
+          1 * .[0] => 1025    => 4    => 1
           """)
   void anArithmeticOperandTicksOncePerStartedKiBOfItsToken(String filter, int n, long steps, String result) {
     assertSteps(filter, document(n), steps, result);
@@ -110,6 +115,9 @@ class NumberReadStepsTest {
           .[0] < (1 + 0) => 1024    => 3    => false
           .[0] < (1 + 0) => 1025    => 4    => false
           .[0] < (1 + 0) => 1048576 => 2049 => false
+          # the view as the right side, the double path's second read, which Equality shares (#97 review round 2)
+          (1 + 0) < .[0] => 1024    => 3    => false
+          (1 + 0) < .[0] => 1025    => 4    => false
           """)
   void anOrderOnTheDoublePathTicksOnlyTheViewsToken(String filter, int n, long steps, String result) {
     assertSteps(filter, document(n), steps, result);
@@ -221,6 +229,34 @@ class NumberReadStepsTest {
           .[0] | length => 1025 => 4 => +
           """)
   void negationAndLengthTickOncePerStartedKiBOfTheToken(String filter, int n, long steps, char sign) {
+    assertSteps(filter, document(n), steps, sign == '-' ? "-" + token(n) : token(n));
+  }
+
+  /**
+   * A copy of a literal number the run built ticks as a view's does (ADR-0008 amendment for #97: "a token copied by
+   * {@code -x} or {@code length}"; only a short literal and the cached double's read are exempt; #97 review round 2).
+   * The second {@code -} of {@code -(-.[0])} and the {@code length} of {@code -.[0]} copy the literal {@code -.[0]}
+   * built, whose token is the view's with a minus, n + 1 bytes: 1 KiB at n = 1 023 and 2 at n = 1 024 and 1 025, on top
+   * of today's read and first copy (3, 3, 4). {@code tostring} keeps the token whole on jq-ref ({@code .[0] | tostring
+   * | length} gives n), so {@code tonumber} builds a literal of n bytes, whose copy by {@code -.} ticks 1 at n = 1 024 and
+   * 2 at n = 1 025 on top of today's read, {@code tostring}'s and {@code tonumber}'s ticks (4, 6). jq-ref prints the
+   * token ({@code +}) for the first two and the token with a minus ({@code -}) for the third.
+   */
+  @ParameterizedTest(name = "{0} at n = {1}: {2} steps")
+  @CsvSource(
+      delimiterString = "=>",
+      textBlock =
+          """
+          -(-.[0])                        => 1023 => 4 => +
+          -(-.[0])                        => 1024 => 5 => +
+          -(-.[0])                        => 1025 => 6 => +
+          -.[0] | length                  => 1023 => 4 => +
+          -.[0] | length                  => 1024 => 5 => +
+          -.[0] | length                  => 1025 => 6 => +
+          .[0] | tostring | tonumber | -. => 1024 => 5 => -
+          .[0] | tostring | tonumber | -. => 1025 => 8 => -
+          """)
+  void aCopyOfARunBuiltNonShortLiteralTicksOncePerStartedKiBOfItsToken(String filter, int n, long steps, char sign) {
     assertSteps(filter, document(n), steps, sign == '-' ? "-" + token(n) : token(n));
   }
 
