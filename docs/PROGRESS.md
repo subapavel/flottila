@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-234 the pool-wait fixture sends a deploy the pool refused again — done, review PASS
+
+- Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
+- Fault: `ci` run 219 failed in `NodePoolWaitIT`'s fixture, `startDeployed:178`: the deploy right after `Node.start` answered 503,
+  "the deploy record was not written: Connection pool reached max wait queue size of 1". Not the product's: the designed answer.
+- A cause, staged (test-author, class B): the case's work pool is one connection and one place to wait; the retention's first
+  batch, begun by `Node.start` and not awaited, holds the connection; the deploy's own worker claim takes the place; the
+  deploy's record is the third and is refused. Staged with `messages` locked by the test before the node starts.
+- Change, test only: the fixture sends the deploy again while the answer is that refusal (503 BUSY, D-133), bounded by the
+  class's bound; any other answer fails at once with its body. No signal says the start-up work on that pool has ended.
+- A refused deploy leaves no record, nothing listed, no listener and no `work` row; its archive and its stopped worker's
+  start claim stay - new row FIX-237 asks what that claim does when `work` holds rows of the flow.
+- Evidence: the class 12 of 12; three mutants of the fixture killed (verifier). Nothing under src/main changes.
+- Review: round 1 FAIL (the row, what a refused deploy leaves, the predicate untested, the red's shape); round 2 PASS.
+
 ## 2026-11-15 — FIX-183 a link's READs are served in the order they arrived — done, review PASS
 
 - Fault: `ci` run 218 failed on `PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270` (the second READ served before

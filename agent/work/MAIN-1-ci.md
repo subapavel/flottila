@@ -137,6 +137,15 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   {"error":"the deploy record was not written: Connection pool reached max wait queue size of 1"} ==> expected: <200> but
   was: <503>` - the fixture's own deploy, right after `Node.start`, was refused by the queue bound the case configures
   (`RAIL8_PG_POOL_QUEUE` 1). New here: no row and no earlier sighting (row FIX-234). The other job's conclusion: not read.
-- `ci` run 220 (id 43733870692, de39cc99, FIX-231): in progress at 16:25Z; its conclusion not read.
-- Count of green `ci` runs in a row: 0 (218 and 219 failed). MAIN-1 needs FIX-183's serving order and FIX-234 before its
-  three whole-reactor runs mean anything.
+- `ci` run 220 (id 43733870692, de39cc99, FIX-231): `failure`, read 17:14Z. Postgres floor 17.11 (job 132872062358): every
+  module through archtest green (runtime 13:54 min, units and ITs); the bench module's ITs `Tests run: 42, Failures: 0,
+  Errors: 1`: `NodeBenchOpenRecordingLevelIT.anAckOpenLoopWithRecordingLevelNoneSettlesAndSaysSo » IllegalState the node
+  refused the bench package: 500 {"error":"flow 'bench/bench' did not start: Address already in use"}`. Not FIX-231's
+  change. The port the harness probed as free (`NodeBenchMain.freePort()`: bind 0, close, hand the number on) was taken
+  before the node bound it. The same fault class as row FIX-149 (`NodeIT` :1425, pending since P2-15b); its first
+  sighting on a runner and in the bench module.
+- `ci` run 221 (id 43735022796, 32ca85cd, FIX-224): `success`, read 17:14Z (run list only; 16:21Z-16:47Z).
+- `ci` runs 222 (id 43737776252, ca06cd73, FIX-195's late review) and 223 (id 43739440685, 6cd8f2ed, FIX-183): in
+  progress at 17:14Z; conclusions not read.
+- Count of green `ci` runs in a row: 1 (221; 218, 219 and 220 failed, each on a different fault: FIX-183 - fixed in
+  6cd8f2ed, FIX-234, FIX-149).

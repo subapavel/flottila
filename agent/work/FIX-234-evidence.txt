@@ -1,0 +1,78 @@
+FIX-234 — evidence (2026-11-15)
+
+The fault: `ci` run 219 (c13a39da, the Postgres 17.11 job), the runtime module's integration tests, 709 tests, 1 failure:
+NodePoolWaitIT.aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce:600->startDeployed:178 "fixture: the package deploys:
+{"error":"the deploy record was not written: Connection pool reached max wait queue size of 1"} ==> expected: <200> but was: <503>"
+(agent/work/MAIN-1-ci.md). Seen once.
+
+The reading (scout, from the code): RAIL8_PG_POOL_SIZE 2 is one intake and one work connection; RAIL8_PG_POOL_QUEUE 1 bounds
+both pools' queues; the deploy record is written through the work pool and a pool refusal answers 503, kind BUSY (FIX-172b,
+D-133); Node.start does not await the retention's first run, and a deploy does not await its worker's first claim. With the
+default queue (1024) no deploy is refused this way: the fixture's fault, not the product's.
+
+A cause, staged (test-author, class B) - a case kept in the class:
+NodePoolWaitIT.aFirstDeployRefusedByTheNodesStartUpWorkOnTheWorkPoolLeavesNoRecordFlowOrListenerAndIsSentAgainUntilAccepted
+(:741-804). The test migrates the case's database, locks `messages` in access exclusive mode from its own session, then starts
+the node with the sighting's settings and waits until the work session sits on that lock.
+- Holder, observed in pg_stat_activity: the retention's first batch ("… delete from messages …") in its transaction on the
+  work pool's one connection.
+- Waiter, shown indirectly: the first deploy's worker claim at its start (FlowWorker.start, before the record's save) - it logs
+  no refusal, so it took the queue's one place; the next deploy's start claim is refused with the pool's message.
+- Third, refused at once: the deploy record's save.
+It is a cause that gives the sighting's text, not proven to be the runner's: the reverse order (the deploy's claim holds the
+connection, the retention's batch waits) gives the same text and the staged case cannot tell them apart. The fix does not
+depend on which held.
+EXECUTED_FAIL  agent/work/FIX-234-red.log  the staged order through `startDeployed` as it stood (an earlier shape of the case,
+               at :658): 1 test, 1 failure (:769); "…:658->startDeployed:179 fixture: the package deploys: {"error":"the deploy
+               record was not written: Connection pool reached max wait queue size of 1"} ==> expected: <200> but was: <503>"
+               (:788) - the sighting's text. The case as committed is shown red by mutant M1 below.
+
+The change (the test class only): `startDeployed` = `startNode` + `deploy`; `deploy` sends the PUT again only while
+`refusedByThePool(answer)` - a 503 whose error starts "the deploy record was not written: " - within NodeIT.until's bound;
+when the bound passes it fails naming the number of answers and the last status and body; any other answer ends the loop and
+fails on the 200 assertion with its body. `InvoiceAsyncIT.deploy` and its other callers are untouched, so every other IT
+still fails on a node that refuses its first deploy.
+Why sending again is right for a fixture: 503 BUSY is the product's designed answer to a refused record write and a fixture
+is a client; nothing observable says the node's start-up work on that pool has ended (the only trace is the retention's INFO
+line, which says nothing of the deploy's own claim); the loop ends on the answer, and the bound is the class's own.
+What a refused deploy leaves, asserted between the refusal and the release: 0 rows in `deployments`, 0 rows in `work`, empty
+`/admin/packages` and `/admin/flows`, a refused connect on the flow's port. What it does leave: its archive (put before the
+save, keyed by its sha256 - a second send puts the same object) and its stopped worker's start claim, in flight in the
+queue's one place until the pool frees it (Deployments :405-408, FlowWorker :248, :336-338, :414) - with no row of the flow
+in `work` it claims nothing. What that claim does when `work` holds rows of the flow is the product's question: row FIX-237.
+After the release: at least two answers, the last 200, one deployment row, the flow listed.
+`refusedByThePool` is pinned without a node by onlyA503NamingThePoolsRefusalOfTheDeployRecordIsSentAgain (:823): true for
+the sighting's 503 and for a 503 "… not written: Timeout"; false for a 503 with another error, a 500 with the text (kind
+FAILED), a 503 whose body is not JSON, a 200.
+VERIFIED_PASS  agent/work/FIX-234-green-{1,2,3}.log  author, before the review: the class alone, 11 tests, 0 failures, three
+               times (:1284, :1144, :1176); agent/work/FIX-234-verify-{1,2}.log  verifier, the same tree, twice (:1391, :1176)
+VERIFIED_PASS  agent/work/FIX-234-green-4.log  author, after the review's fix: 12 tests, 0 failures (:1280, :1284)
+The verifier, on the tree committed (6cd8f2ed plus this change):
+VERIFIED_PASS  agent/work/FIX-234-verify-3.log  the class alone, -Pit: NodePoolWaitIT 12 tests, 0 failures, 0 errors (:1172,
+               totals :1176); BUILD SUCCESS (:1210)
+Mutants of the fixture, one at a time, each restored and proven restored with cmp:
+EXECUTED_FAIL  agent/work/FIX-234-m1.log  M1, the loop replaced by one send: killed - the staged case errors at :799 with the
+               sighting's text, "… the deploy record was not written: Connection pool reached max wait queue size of 1 …
+               expected: <200> but was: <503>" (:1304); 12 tests, 1 error (:1306)
+EXECUTED_FAIL  agent/work/FIX-234-m2.log  M2, `!= 503` turned into `== 200` (every answer but 200 sent again): killed by the
+               predicate's case at :828, "a 500 with that text (kind FAILED) is not ==> expected: <false> but was: <true>" (:1297)
+EXECUTED_FAIL  agent/work/FIX-234-m3.log  M3, the error text not checked: killed by the predicate's case at :827, "a 503 with
+               another error is not ==> expected: <false> but was: <true>" (:1265)
+VERIFIED_PASS  python3 ci/name_guard.py: clean, 5947 tracked files; `git diff --stat -- platform/runtime/src/main` is empty;
+               the tree held this class, the test-author's memory file and agent/work/MAIN-1-ci.md, nothing else
+
+review: PASS (class B, round 2). Round 1: FAIL, four findings - the row still forbade the retry; the case said a refused
+deploy "leaves nothing" although it leaves its archive and its stopped worker's start claim, which the case's own second
+refusal depends on; only half of the predicate was tested; the red log was of an earlier shape of the case. The decision
+itself - a fixture, as a client, sends a 503 BUSY again - was judged first and upheld: not tempo, the loop ends on the answer.
+Round 2: each finding's sentence is true. The acceptance cell as rewritten is true of the change. The two Javadocs name both
+leftovers and the reason a second send is sound; the name claims only what the case asserts; the `work` count checks that
+reason. The predicate's case is real (M2 and M3 killed; a non-JSON body turned into an exception would fail at :829); the
+`Answer` record stands in for the JDK's HttpResponse, it is no mock of the class under test. The committed staged case
+depends on the resend (M1). No existing case is touched; InvoiceAsyncIT is unchanged.
+Notes, not blocking: "does not meet" (:208-210, :772-773) is loose - the second send's start claim does meet the leftover
+claim, harmlessly; the case's Javadoc states the interaction correctly. The mutant logs do not carry the cmp lines of the
+restores; the verifier reported them and the architect ran cmp once more before the commit.
+Unpinned, accepted for a fixture: the text of the bound's failure. The retry sends whole deploys back to back while it is
+refused; under a lasting fault that is many attempts and a large log within the bound.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-234.diff.

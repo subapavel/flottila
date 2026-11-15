@@ -3,6 +3,7 @@ package dev.rail8.runtime;
 import dev.rail8.components.http.HttpComponent;
 import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.runtime.admin.AdminServer;
+import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -12,6 +13,8 @@ import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.json.DecodeException;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -28,6 +31,11 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -59,6 +67,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -168,6 +177,13 @@ class NodePoolWaitIT {
 
     /** A node over {@code env} with invoice-async deployed on {@code inPort}, its partners a server no unparsable body reaches. */
     Node startDeployed(HttpClient client, int inPort, Map<String, String> env) throws Exception {
+        Node node = startNode(env);
+        deploy(client, node, asyncPackage(inPort), new CopyOnWriteArrayList<>());
+        return node;
+    }
+
+    /** A node over {@code env}, nothing deployed; its partner (the first of {@link #servers}) a server no unparsable body reaches. */
+    Node startNode(Map<String, String> env) throws Exception {
         SaxonXml xml = new SaxonXml();
         NodeConfig config = NodeConfig.from(env);
         Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
@@ -175,8 +191,62 @@ class NodePoolWaitIT {
         nodes.add(node);
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.response().setStatusCode(500).end("not expected")).listen(0, "127.0.0.1").await();
         servers.add(partner);
-        InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
         return node;
+    }
+
+    /** The invoice-async package listening on {@code inPort}, sending to the partner {@link #startNode} started. */
+    byte[] asyncPackage(int inPort) throws IOException {
+        return NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + servers.getFirst().actualPort()));
+    }
+
+    /** The text of a deploy whose record the pool refused (Deployments, FIX-172b: kind BUSY, 503). */
+    static final String UNRECORDED = "the deploy record was not written: ";
+
+    /**
+     * A 503 whose error is the pool's refusal of the deploy record: retryable (D-133). Sending it again is sound: the refusal
+     * leaves no record, nothing listed and no listener; what it does leave — the archive, put before the save and keyed by its
+     * sha256 (a second send puts the same object), and its stopped worker's start claim, in flight until the pool frees it —
+     * a second send does not meet (the claim finds no row of the flow in {@code work}: none was accepted).
+     */
+    static boolean refusedByThePool(HttpResponse<String> answer) {
+        if (answer.statusCode() != 503) return false;
+        try {
+            return new JsonObject(answer.body()).getString("error", "").startsWith(UNRECORDED);
+        } catch (DecodeException notJson) {
+            return false;   // not the pool's refusal: the fixture fails at once, naming the body
+        }
+    }
+
+    /**
+     * FIX-234: the package {@code zip} deployed as {@code demo}, sent again while the answer is the pool's refusal of its record —
+     * the node's start-up work on the work pool (the retention's first run) is not awaited by {@code Node.start}, and under a
+     * small pool or queue a first deploy can meet it — within {@link NodeIT#until}'s bound. Any other answer than 200 fails at
+     * once with its body; the bound fails naming the last answer. Every answer is added to {@code answers}.
+     */
+    static void deploy(HttpClient client, Node node, byte[] zip, List<HttpResponse<String>> answers) {
+        try {
+            NodeIT.until(() -> !refusedByThePool(put(client, node, zip, answers)), "fixture: the package deploys once the pool takes its record");
+        } catch (AssertionError bound) {
+            HttpResponse<String> last = answers.getLast();
+            throw new AssertionError("fixture: the package deploys: still refused by the pool when the bound passed, " + answers.size()
+                    + " answers; the last: " + last.statusCode() + " " + last.body(), bound);
+        }
+        HttpResponse<String> put = answers.getLast();
+        assertEquals(200, put.statusCode(), "fixture: the package deploys: " + put.body());
+        assertEquals(new JsonArray().add("demo/invoice-async"), new JsonObject(put.body()).getJsonArray("flows"), "fixture: " + put.body());
+    }
+
+    static HttpResponse<String> put(HttpClient client, Node node, byte[] zip, List<HttpResponse<String>> answers) {
+        try {
+            HttpResponse<String> answer = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            answers.add(answer);
+            return answer;
+        } catch (IOException failed) {
+            throw new UncheckedIOException("fixture: the deploy request failed", failed);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("fixture: interrupted while deploying", interrupted);
+        }
     }
 
     long count(String sql, Object... params) {
@@ -633,5 +703,130 @@ class NodePoolWaitIT {
             assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id(waited)), "its ingress row is committed at the 202");
             assertEquals(0, count("select count(*) from messages where headers->>'x-request-id' = $1", refusedId), "nothing of the refused save");
         }
+    }
+
+    // ---- FIX-234: the fixture's deploy meets the node's own start-up work on the work pool -------------------------------------
+
+    /** The case database's JDBC URL: the tables a test locks before its node starts are migrated through it. */
+    String jdbcUrl() {
+        return "jdbc:postgresql://" + pg.getHost() + ":" + pg.getMappedPort(5432) + "/" + database;
+    }
+
+    /** The statements of the sessions named {@code applicationName} waiting on a lock. */
+    String waitingStatements(String applicationName) {
+        return observer.preparedQuery("select coalesce(string_agg(query, ' | '), '') from pg_stat_activity where datname = $1 and application_name = $2"
+                + " and wait_event_type = 'Lock'").execute(Tuple.of(database, applicationName)).await().iterator().next().getString(0);
+    }
+
+    /** The {@code items} of an admin listing ({@code /admin/packages}, {@code /admin/flows}), asserted answered 200. */
+    static JsonArray items(HttpClient client, Node node, String path) throws Exception {
+        HttpResponse<String> listed = NodeIT.send(client, "GET", node.adminPort(), path, new byte[0], "application/json");
+        assertEquals(200, listed.statusCode(), path + " answers from the node's memory: " + listed.body());
+        return new JsonObject(listed.body()).getJsonArray("items");
+    }
+
+    /**
+     * FIX-234 (the CI sighting of {@link #aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce}, staged): {@code RAIL8_PG_POOL_SIZE}
+     * 2 (one work connection), {@code RAIL8_PG_POOL_QUEUE} 1, PT1M, and {@code messages} locked in access exclusive mode by the
+     * test before the node starts. The retention's first batch — begun by {@code Node.start}, not awaited — holds the work pool's
+     * one connection, its statement over {@code messages} waiting on the lock; the first deploy's worker claims at its start
+     * (not refused: it takes the queue's one place) and the deploy's record, the third user, is refused at once: 503 with the
+     * sighting's text. That refused first deploy leaves no record row, no listed package or flow and no listener on its port; it
+     * does leave its archive (put before the save, keyed by its sha256: a second send puts the same object) and its stopped
+     * worker's start claim, in flight in the queue's one place until the pool frees it — with no row of the flow in {@code work}
+     * that claim claims nothing, so a second send is sound. The fixture's deploy, sent while the hold lasts, is refused too (its
+     * worker's start claim refused by the queue that leftover claim fills) and sent again; once the lock goes it is accepted and
+     * recorded.
+     */
+    @Test
+    void aFirstDeployRefusedByTheNodesStartUpWorkOnTheWorkPoolLeavesNoRecordFlowOrListenerAndIsSentAgainUntilAccepted() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            List<String> startClaimsRefused = new CopyOnWriteArrayList<>();
+            Handler capture = new Handler() {
+                @Override public void publish(LogRecord r) {
+                    if (r.getLevel() == Level.WARNING && r.getMessage() != null && r.getMessage().contains("the poll at the start failed")) startClaimsRefused.add(r.getMessage());
+                }
+                @Override public void flush() { }
+                @Override public void close() { }
+            };
+            capture.setLevel(Level.ALL);
+            workerLog.addHandler(capture);
+            handlers.add(capture);
+
+            Migrations.migrate(jdbcUrl(), pg.getUsername(), pg.getPassword());   // the tables exist before the node: the test's lock takes one
+            PgConnection locker = lock("messages");
+            Node node = startNode(env("RAIL8_PG_POOL_SIZE", "2", "RAIL8_PG_POOL_WAIT", "PT1M", "RAIL8_PG_POOL_QUEUE", "1"));
+            NodeIT.until(() -> waitingOnALock(WORK) == 1, "fixture: the retention's first batch holds the work pool's one connection, waiting on the locked messages");
+            String holder = waitingStatements(WORK);
+            assertTrue(holder.contains("delete from messages"), "the holder is the retention's messages batch: " + holder);
+            byte[] zip = asyncPackage(inPort);
+
+            HttpResponse<String> first = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            assertEquals(503, first.statusCode(), "the first deploy meets the node's start-up work on the work pool: " + first.body());
+            assertEquals(new JsonObject().put("error", UNRECORDED + "Connection pool reached max wait queue size of 1"), new JsonObject(first.body()),
+                    "the sighting's refusal: the record is the third user of a pool of one connection and one place to wait");
+            assertEquals(List.of(), startClaimsRefused, "the first deploy's worker claim was not refused: it waits in the queue's one place");
+            assertEquals(1, waitingOnALock(WORK), "the refusal came while the retention's batch still held the connection");
+
+            // what the refused first deploy leaves a second one does not meet: no record, nothing listed, no listener, no work row for
+            // its leftover start claim to take (its archive stays, keyed by its sha256: the second send puts the same object)
+            assertEquals(0, count("select count(*) from deployments"), "no deployment row");
+            assertEquals(0, count("select count(*) from work"), "no work row: the stopped worker's start claim, still in flight, claims nothing");
+            assertEquals(new JsonArray(), items(client, node, "/admin/packages"), "no package listed");
+            assertEquals(new JsonArray(), items(client, node, "/admin/flows"), "no flow listed");
+            assertThrows(ConnectException.class, () -> {
+                try (Socket probe = new Socket()) {
+                    probe.connect(new InetSocketAddress("127.0.0.1", inPort), 2_000);
+                }
+            }, "no listener left on the refused flow's port " + inPort);
+
+            List<HttpResponse<String>> answers = new CopyOnWriteArrayList<>();
+            CompletableFuture<Void> deployed = new CompletableFuture<>();
+            Thread.ofVirtual().name("fixture-deploy").start(() -> {
+                try {
+                    deploy(client, node, zip, answers);
+                    deployed.complete(null);
+                } catch (Throwable failed) {
+                    deployed.completeExceptionally(failed);
+                }
+            });
+            NodeIT.until(() -> !answers.isEmpty() && !startClaimsRefused.isEmpty(), "the fixture's deploy answered once and its worker's start claim refused while the hold lasts");
+            assertTrue(refusedByThePool(answers.getFirst()), "the fixture's first send is refused alike: " + answers.getFirst().statusCode() + " " + answers.getFirst().body());
+            assertEquals(1, waitingOnALock(WORK), "still held by the retention's batch");
+
+            locker.query("rollback").execute().await();
+            deployed.get(30, TimeUnit.SECONDS);
+            assertTrue(answers.size() >= 2, "sent again after the refusal: " + answers.size());
+            assertEquals(200, answers.getLast().statusCode(), "accepted once the pool is free: " + answers.getLast().body());
+            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "and recorded once");
+            assertEquals(List.of("demo/invoice-async"), items(client, node, "/admin/flows").stream().map(f -> ((JsonObject) f).getString("id")).toList(), "its flow runs");
+        }
+    }
+
+    /** An admin answer of {@code status} and {@code body}, for {@link #refusedByThePool} alone: no request was sent. */
+    record Answer(int statusCode, String body) implements HttpResponse<String> {
+        @Override public HttpRequest request() { return HttpRequest.newBuilder(URI.create("http://127.0.0.1/admin/packages/demo")).build(); }
+        @Override public java.util.Optional<HttpResponse<String>> previousResponse() { return java.util.Optional.empty(); }
+        @Override public java.net.http.HttpHeaders headers() { return java.net.http.HttpHeaders.of(Map.of(), (k, v) -> true); }
+        @Override public java.util.Optional<javax.net.ssl.SSLSession> sslSession() { return java.util.Optional.empty(); }
+        @Override public URI uri() { return request().uri(); }
+        @Override public HttpClient.Version version() { return HttpClient.Version.HTTP_1_1; }
+    }
+
+    /**
+     * FIX-234 A2 (no node): the fixture's deploy sends again only on the pool's refusal of the record — a 503 whose error starts
+     * with "the deploy record was not written: " (kind BUSY). A 503 with another error, a 500 with that text (kind FAILED), a 503
+     * whose body is no JSON and a 200 are not it: the fixture fails on them at once.
+     */
+    @Test
+    void onlyA503NamingThePoolsRefusalOfTheDeployRecordIsSentAgain() {
+        assertTrue(refusedByThePool(new Answer(503, "{\"error\":\"the deploy record was not written: Connection pool reached max wait queue size of 1\"}")),
+                "the sighting's answer is the pool's refusal");
+        assertTrue(refusedByThePool(new Answer(503, "{\"error\":\"the deploy record was not written: Timeout\"}")), "a wait that elapsed is the pool's refusal too");
+        assertFalse(refusedByThePool(new Answer(503, "{\"error\":\"the node is stopping\"}")), "a 503 with another error is not");
+        assertFalse(refusedByThePool(new Answer(500, "{\"error\":\"the deploy record was not written: disk full\"}")), "a 500 with that text (kind FAILED) is not");
+        assertFalse(refusedByThePool(new Answer(503, "the deploy record was not written: busy")), "a 503 whose body is no JSON is not");
+        assertFalse(refusedByThePool(new Answer(200, "{\"name\":\"demo\",\"flows\":[\"demo/invoice-async\"]}")), "a 200 is not");
     }
 }
