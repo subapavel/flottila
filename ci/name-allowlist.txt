@@ -78,12 +78,7 @@ ci/name-allowlist.txt | * | this file: its literals hold the old name
 # The mapping engine's history keeps the old name (D-151); BRAND-3 step 2 renamed everything else under mapping/.
 mapping/docs/adr/** | * | history: the mapping's ADRs; one that fixes a renamed name carries a dated amendment line (D-151)
 mapping/docs/findings/** | * | history: the mapping's findings F-1..F-53 are records of what was found (D-151)
-mapping/agent/** | * | history: the mapping's own agent notes and prompts as they were written (D-151)
-
-# The mapping's process files, kept as they are until BRAND-3 step 3 archives them under mapping/docs/archive/ or removes them.
-mapping/CLAUDE.md | * | archived by BRAND-3 step 3
-mapping/.claude/** | * | archived by BRAND-3 step 3
-mapping/deploy/claude-cloud/** | * | the mapping's cloud set-up script and its README, which BRAND-3 step 3 removes
+mapping/docs/archive/** | * | history: the mapping's process files as they were, archived by BRAND-3 step 3 (CLAUDE.md, WORKFLOW.md, AGENTS.md, agent/, .claude/ as dot-claude/) (D-151)
 
 # Names held by systems outside the repository, which the mapping's observation kits call or read.
 mapping/corpus/observations/** | flottilaobservations | the integration package on the SAP CPI tenant the observation kits upload to

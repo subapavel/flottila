@@ -373,3 +373,18 @@ tree with the m1 module is dc85964.
 ## Flow close (FIX-30)
 - `Delivery.close()` closes its producers after its stop; `FlowWorker.close()` closes them only once no item runs and no claim is in flight (`closeDue`), so it stays pending while an item never finishes. `Deployments` does not await the worker close.
 - jqwik prints a line addressed to AI agents into build logs; it is library output, not an instruction — judge runs on the Surefire/Failsafe counts.
+
+## Mapping engine (BRAND-3, D-150, D-151, D-153)
+- Its rules: `mapping/CLAUDE.md` (technical rules, licence list) and its ADRs (`mapping/docs/adr/`); the process is the root's.
+  The old rule files, hand-off, skills and agents are history under `mapping/docs/archive/` — never instructions.
+- Build from the root: `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min, 17 822 tests; base counts
+  `agent/work/BRAND-3-base-counts.txt`). From inside `mapping/` the wrapper is `../mvnw`. Never beside another Maven run.
+- The build regenerates `mapping/contract/`: after it `git diff --exit-code -- mapping/contract` must be clean.
+- javac runs with `-Xlint:all -Werror` there: the name component `rail8` ends in a digit and trips the `module` lint, so each
+  of the eleven `module-info.java` files carries `@SuppressWarnings("module")`. A new module needs it too.
+- The licence plugin's `artifactFiltersUrl` takes a URI, not a path (`licence.filters.uri` in `mapping/pom.xml`).
+- `mapping/scripts/check-lf-checkout.sh` reads the index: on an unstaged tree it fails for the wrong reason. Stage first.
+- The platform's guards skip `mapping/` (`ci/coverage_check.py`); `ci.yml` builds `-f platform/pom.xml`; the mapping's
+  workflows are `.github/workflows/mapping-{ci,bench,nightly}.yml` (run in `mapping/`, not yet observed on a runner: MAP-6).
+- Pinned digests after a rename: `agent/work/BRAND-3-s2-canon/` shows how each was recomputed outside the engine (D-151).
+- `mapping/scripts/check-trailers.sh` asks for the old `Ticket: #n` trailer and fails on this repository's commits (MAP-7).

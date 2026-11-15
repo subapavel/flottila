@@ -1,14 +1,32 @@
-name: ci
+name: mapping-ci
 
-# ADR-0017. Required on main: backend, windows, ui, stack (windows: owner ruling 2026-11-02, #48).
-# Pushes to ticket branches (t/**) run it too, so a ticket's CI can be observed before the spec PR.
+# The mapping engine's CI (mapping/, ADR-0017), ported from its repository by BRAND-3 (D-150): every step runs in
+# mapping/ with the repository's wrapper (../mvnw). The old repository required backend, windows, ui and stack on
+# main (windows: owner ruling 2026-11-02, #48); the required checks of this repository are the owner's to set. It
+# runs only when the mapping, the root pom, the wrapper, the root .gitattributes or this file changes; the platform's
+# ci.yml builds -f platform/pom.xml, and its dco job checks the sign-off of every push (the mapping's trailers job is
+# gone).
 on:
   pull_request:
+    paths:
+      - 'mapping/**'
+      - 'pom.xml'
+      - '.mvn/**'
+      - 'mvnw*'
+      - '.gitattributes'
+      - '.github/workflows/mapping-ci.yml'
   push:
-    branches: [main, 't/**']
+    branches: [main]
+    paths:
+      - 'mapping/**'
+      - 'pom.xml'
+      - '.mvn/**'
+      - 'mvnw*'
+      - '.gitattributes'
+      - '.github/workflows/mapping-ci.yml'
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: mapping-ci-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -19,45 +37,12 @@ env:
   MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
 
 jobs:
-  # #67: Ticket, Co-authored-by and exactly one Signed-off-by on every non-merge commit and every merger-written merge
-  # commit of the range. GitHub's own PR merge commit is skipped by the script; commits already on main are out of range.
-  trailers:
-    if: github.ref != 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Script tests
-        run: |
-          scripts/test/trailers-test.sh
-          scripts/test/trailers-root-test.sh
-          scripts/test/clean-worktrees-test.sh
-          scripts/test/pit-summary-test.sh
-          scripts/test/gate-spec-default-test.sh
-          scripts/test/gate-log-test.sh
-          scripts/test/push-retry-test.sh
-          scripts/test/handover-test.sh
-      - name: Commit trailers
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          if [ "$EVENT" = pull_request ]; then
-            range="$BASE_SHA..$HEAD_SHA"
-          elif [ "$BEFORE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            # new branch or forced push: everything not on origin/main
-            range="origin/main..$AFTER"
-          else
-            range="$BEFORE..$AFTER"
-          fi
-          scripts/check-trailers.sh "$range"
-
   backend:
+    name: mapping · backend
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -65,6 +50,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
       - name: Maven mirror
         run: |
           mkdir -p ~/.m2
@@ -89,8 +75,20 @@ jobs:
           scripts/test/ratchet-moved-test.sh
           scripts/test/ratchet-bench-test.sh
           scripts/test/gate-spec-bench-test.sh
+      # From the dropped trailers job (BRAND-3): the script tests that need no JDK, every one the old CI ran. The
+      # old-process scripts (check-trailers.sh, clean-worktrees.sh, push-retry.sh) are adapted or archived by MAP-7.
+      - name: Script tests that need no JDK (gate scripts, old-process scripts, HANDOVER.md)
+        run: |
+          scripts/test/trailers-test.sh
+          scripts/test/trailers-root-test.sh
+          scripts/test/clean-worktrees-test.sh
+          scripts/test/pit-summary-test.sh
+          scripts/test/gate-spec-default-test.sh
+          scripts/test/gate-log-test.sh
+          scripts/test/push-retry-test.sh
+          scripts/test/handover-test.sh
       - name: Build, test, floors, licences, bans
-        run: ./mvnw -B -Pbench verify
+        run: ../mvnw -B -Pbench verify
       - name: contract/ is up to date
         run: git diff --exit-code contract/
       - name: Every file checks out byte-identical on Windows (#49)
@@ -98,7 +96,11 @@ jobs:
 
   # The owner builds on Windows (#42): drive letters and backslashes in paths. Ticket-gate row 2.
   windows:
+    name: mapping · windows
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mapping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -106,6 +108,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
       - name: Maven mirror
         shell: bash
         run: |
@@ -122,20 +125,21 @@ jobs:
           </settings>
           EOF
       - name: Whole reactor compiles; Spotless, enforcer, licences
-        run: ./mvnw.cmd -B -q -DskipTests verify
+        run: ../mvnw.cmd -B -q -DskipTests verify
 
   ui:
+    name: mapping · ui
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: ui
+        working-directory: mapping/ui
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: mapping/ui/package-lock.json
       - run: npm ci
       - name: Licences (CLAUDE.md list, exceptions in ui/scripts/licence-exceptions.json)
         run: npm run licences
@@ -154,12 +158,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
-          path: ui/dist
+          path: mapping/ui/dist
           if-no-files-found: error
 
   stack:
+    name: mapping · stack
     needs: [backend, ui]
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -167,11 +175,12 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: ui/package-lock.json
+          cache-dependency-path: mapping/ui/package-lock.json
       - name: Maven mirror
         run: |
           mkdir -p ~/.m2
@@ -189,14 +198,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ui-dist
-          path: ui/dist
+          path: mapping/ui/dist
       - name: Jar with the UI inside
-        run: ./mvnw -B -Pui -pl service -am package -DskipTests
+        run: ../mvnw -B -Pui -pl service -am package -DskipTests
       - name: Playwright
-        working-directory: ui
+        working-directory: mapping/ui
         run: |
           npm ci
           npx playwright install --with-deps chromium
       - name: '@stack suite against the jar'
-        working-directory: ui
+        working-directory: mapping/ui
         run: npm run e2e:stack

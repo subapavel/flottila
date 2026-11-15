@@ -1,0 +1,54 @@
+BRAND-3 step 3, the verifier's run on the staged tree (2026-11-15): ./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify
+Excerpts of agent/work/BRAND-3-s3-verify-mapping.log (not committed).
+
+## Per-module totals (Surefire summaries), in reactor order; base: agent/work/BRAND-3-base-counts.txt
+[INFO] Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 412, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 211, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 717, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 563, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 53, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 409, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 2910, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1257, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+
+## Sum
+tests 17822, failures 0, errors 0, skipped 0
+
+## The mapping's own gates ran in this build
+enforcer:enforce executions: 43
+license:add-third-party (check-licences) executions: 16
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-parent ---
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-parent ---
+
+## Reactor summary
+[INFO] Rail8 Mapping ...................................... SUCCESS [  2.060 s]
+[INFO] Rail8 Mapping engine ............................... SUCCESS [  0.044 s]
+[INFO] Rail8 Mapping xdm .................................. SUCCESS [ 11.693 s]
+[INFO] Rail8 Mapping structure ............................ SUCCESS [  2.930 s]
+[INFO] Rail8 Mapping structure-import ..................... SUCCESS [  5.230 s]
+[INFO] Rail8 Mapping ir ................................... SUCCESS [  2.683 s]
+[INFO] Rail8 Mapping serializer ........................... SUCCESS [  1.880 s]
+[INFO] Rail8 Mapping udf-api .............................. SUCCESS [  0.063 s]
+[INFO] Rail8 Mapping udf .................................. SUCCESS [  0.073 s]
+[INFO] Rail8 Mapping runtime .............................. SUCCESS [  6.925 s]
+[INFO] Rail8 Mapping mapping .............................. SUCCESS [ 10.463 s]
+[INFO] Rail8 Mapping xslt-export .......................... SUCCESS [  3.561 s]
+[INFO] Rail8 Mapping api .................................. SUCCESS [  8.996 s]
+[INFO] Rail8 Mapping oracle ............................... SUCCESS [ 41.023 s]
+[INFO] Rail8 Mapping service .............................. SUCCESS [ 55.447 s]
+[INFO] Rail8 Mapping bench (JMH) .......................... SUCCESS [  6.023 s]
+[INFO] BUILD SUCCESS
+[INFO] Total time:  02:40 min
+
+## Other checks on the same staged tree (verifier's hand-back)
+git diff --exit-code -- mapping/contract: exit 0; no unstaged change after the build
+mapping/scripts/test/*-test.sh: 14 ran, 14 exited 0
+mapping/scripts/check-lf-checkout.sh: exit 0
+ci/name_guard.py: clean, 5883 tracked files; ci.test_name_guard + ci.test_coverage_check: 46 tests OK
+mvn -q validate at the root: exit 0; mvn -q -f platform/pom.xml validate: exit 0
+the four workflow files parse (PyYAML); git apply --check of both owner patches: exit 0
+git show HEAD:mapping/LICENSE | cmp - LICENSE: exit 0 (the architect)

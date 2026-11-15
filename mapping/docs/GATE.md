@@ -3,7 +3,7 @@
 Final, 2026-10-31 (Phase 0 map #1, grilling #19). Drafted 2026-10-30; the Phase 0 tickets set each
 check. The gate-reviewer (`/gate`) verifies every check on one commit of `main`; each check names
 the command and the evidence it needs. A change to a check after this point is a finding
-(`docs/WORKFLOW.md` §7).
+(the root `docs/WORKFLOW.md` §7).
 
 ## Checks
 
@@ -94,7 +94,7 @@ separate export spec.
 
 | # | Spec | Scope | Proves |
 | --- | --- | --- | --- |
-| 1 | Walking skeleton | The build skeleton ticket first (ADR-0017 and the carry-overs on #19: modules with `module-info`, `engine/oracle`, `scripts/ratchet.java`, JaCoCo, PIT in `nightly.yml`, phrased-name reporter, Vitest thresholds, empty `ratchet/`, CI, gate scripts, branch protection; it measures the ticket-gate budget and the Playwright Chromium build). Then the thinnest path through every layer: one flat XSD as source and target, one field-to-field link without a function box (`formatVersion` 1), IR with `TargetSlots`, interpreter, serializer, `engine/api`, exporter for a direct copy; `POST /api/structures`, get/put mapping (no 409), `POST /api/mappings/{id}/test` (no trace); committed `openapi.json` and generated types; dev host, structure overview with both trees, one drag-and-drop link through a store command, save, test panel; one `decided` corpus case and one differential case in the ratchet; one `@stack` scenario. It opens the observation requests of ADR-0004, ADR-0006, ADR-0008 and #2 §7 as `ready-for-human` issues. | 8; first slices of 1, 2, 3, 5 |
+| 1 | Walking skeleton | The build skeleton ticket first (ADR-0017 and the carry-overs on #19: modules with `module-info`, `engine/oracle`, `scripts/ratchet.java`, JaCoCo, PIT in `mapping-nightly.yml`, phrased-name reporter, Vitest thresholds, empty `ratchet/`, CI, gate scripts, branch protection; it measures the ticket-gate budget and the Playwright Chromium build). Then the thinnest path through every layer: one flat XSD as source and target, one field-to-field link without a function box (`formatVersion` 1), IR with `TargetSlots`, interpreter, serializer, `engine/api`, exporter for a direct copy; `POST /api/structures`, get/put mapping (no 409), `POST /api/mappings/{id}/test` (no trace); committed `openapi.json` and generated types; dev host, structure overview with both trees, one drag-and-drop link through a store command, save, test panel; one `decided` corpus case and one differential case in the ratchet; one `@stack` scenario. It opens the observation requests of ADR-0004, ADR-0006, ADR-0008 and #2 §7 as `ready-for-human` issues. | 8; first slices of 1, 2, 3, 5 |
 | 2 | Queues, contexts and node functions | The nested XSD subset (anonymous complex types, any depth, `minOccurs`/`maxOccurs`, `elementFormDefault`; F-14). Queue block, `Lift`, full `TargetSlots` occurrence rules with SUPPRESS and `po:MINOCCURS`, the trace and display queue in the test response, every PO 7.5 node function with export and corpus. | 3 (API), 4 (node functions), 5 |
 | 3 | Standard functions | Statistics, arithmetic (ADR-0005), text, boolean, `Constant`, `CopyValue`, `FixValues`, `FormatNum` and date over one F&O core (ADR-0003), the function catalogue with `portable` and `fidelity`. | 4, 5 |
 | 4 | Structures in full | Full XSD (choice and effective occurrence, imports, refusals with `{file, line, column}`), WSDL 1.1/2.0, JSON Schema 2020-12 as source (JSON target a compile error), schema bundle and fingerprint, refresh and orphaned references. | 1 |

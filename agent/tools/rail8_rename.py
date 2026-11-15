@@ -496,16 +496,12 @@ EXCLUDED: list[str] = [
     "deploy/postgres/V*.sql",           # applied migrations stay byte-identical
     "agent/tools/rail8_rename.py",      # this script
     # the mapping's history (BRAND-3, D-151): its ADRs (an ADR that fixes a renamed name gets one amendment line, by
-    # hand), findings, bench results, agent files and archive
+    # hand), findings, bench results and archive; BRAND-3 step 3 archived its process files there (its CLAUDE.md,
+    # AGENTS.md, agent/, .claude/ as dot-claude/) and removed deploy/claude-cloud/
     "mapping/docs/adr/**",
     "mapping/docs/findings/**",
     "mapping/bench/RESULTS.md",
-    "mapping/agent/**",
     "mapping/docs/archive/**",
-    # the mapping's process files, archived or removed by BRAND-3 step 3 as they are
-    "mapping/CLAUDE.md",
-    "mapping/.claude/**",
-    "mapping/deploy/claude-cloud/**",
 ]
 # In agent/BACKLOG.md every table row whose status cell (the fourth) starts with `done` is history, and so is every
 # BRAND-* row (it names the old name as the thing it renames; the architect words it).

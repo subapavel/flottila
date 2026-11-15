@@ -1,0 +1,16 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -6,6 +6,12 @@
+ `docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
+ packet refers to them. Everything in the repo is in English.
+ 
++Under `mapping/` (the mapping engine, imported with its history: D-150, D-151) the Design rules
++below do not apply until its embedding is designed (MAP-1, D-153). `mapping/CLAUDE.md` holds the
++engine's technical rules and its licence list, which adds MIT-0, EDL 1.0, ISC and 0BSD for
++`mapping/` only; its exceptions per artifact are ISSUE-9 item 2 and are not ruled here. Tests,
++Working rules and Context hygiene bind both areas (D-153 names the lines that are the platform's).
++
+ ## What this is
+ 
+ Open-source enterprise integration platform where **monitoring is the product**: every message,

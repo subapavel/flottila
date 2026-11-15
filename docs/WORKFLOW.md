@@ -20,8 +20,10 @@ is binding for every session working on Rail8; `CLAUDE.md` summarises it.
    Red first: the failing test exists, observed red, before the code. Then the task packet.
 4. Implement through the implementer (model and effort by the row's class). The coordinator never
    implements. One writer at a time.
-5. Verify through the verifier: `mvn -B -ntp verify -Pit` green (D-030; the CI path), ArchUnit green, coverage not
-   decreased, scoped PIT on the touched classes. The verifier reports exit codes and the failing
+5. Verify through the verifier: `mvn -B -ntp -f platform/pom.xml verify -Pit` green (D-030; the CI
+   path), ArchUnit green, coverage not decreased, scoped PIT on the touched classes. A task under
+   `mapping/` is verified by the mapping's own build, `./mvnw -B -ntp -f mapping/pom.xml verify`
+   (D-153). The verifier reports exit codes and the failing
    section; the coordinator reads the log tail itself and records each check with its evidence
    state.
 6. Review by the reviewer agent (Opus 5.5, effort by the row's class), the diff handed over as

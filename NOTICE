@@ -13,3 +13,8 @@ The agent workflow files under .claude/skills/ and agent/patches/ (pocock-skills
 guard-commands-hook.patch) are adapted from mattpocock/skills
 (https://github.com/mattpocock/skills), licensed under the MIT License (see .claude/skills/LICENSE-mattpocock-skills):
   Copyright (c) 2026 Matt Pocock
+
+The mapping engine (mapping/, imported from github.com/subapavel/flottila-mapping on 2026-11-15, D-150):
+- Agent skills in mapping/docs/archive/dot-claude/skills/ listed in mapping/docs/archive/dot-claude/skills/UPSTREAM.md,
+  from https://github.com/mattpocock/skills, Copyright (c) 2026 Matt Pocock, MIT License
+  (full text in mapping/docs/archive/dot-claude/skills/LICENSE-mattpocock-skills).

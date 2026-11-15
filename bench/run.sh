@@ -76,7 +76,7 @@ if (( needs_pg )) && ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -v ON_ERROR_STOP=1 -c "create database $BENCH_DB"
 fi
 
-mvn -B -ntp -q -pl :rail8-bench -am -DskipTests package
+mvn -B -ntp -q -f platform/pom.xml -pl :rail8-bench -am -DskipTests package
 jar="$(ls bench/target/rail8-bench-*.jar | grep -v -E 'sources|javadoc' | head -1)"
 cp="$jar:bench/target/lib/*"
 mkdir -p bench/out

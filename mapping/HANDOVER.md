@@ -171,7 +171,7 @@ java -jar bench/jmh/target/benchmarks.jar -f 3 -wi 3 -i 5 -w 1s -r 1s -prof gc
 The numbers of spec 6 are in `bench/RESULTS.md`: "Spec 6 first measurement (#189)" and "Orders
 allocation (#194)". A run off the VM is informative only.
 
-The `bench` workflow (`.github/workflows/bench.yml`) is a manual smoke test at `-f 1`. It is never
+The `mapping-bench` workflow (the root `.github/workflows/mapping-bench.yml`) is a manual smoke test at `-f 1`. It is never
 a gate.
 
 Check this file with its script test:

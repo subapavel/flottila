@@ -60,7 +60,7 @@ curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                   
 ```sh
 bin/rail8 validate examples/demo        # exit 0
 bin/rail8 test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
-mvn -B -ntp verify -Pit                    # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
+mvn -B -ntp -f platform/pom.xml verify -Pit   # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
 python3 ci/coverage_check.py               # the no-decrease check against ci/coverage-baseline.json
 bench/run.sh                               # the bench harness (native Postgres); numbers go to bench/RESULTS.md
 ```

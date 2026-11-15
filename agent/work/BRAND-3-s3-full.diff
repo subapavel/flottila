@@ -1,0 +1,2649 @@
+ 130 files changed, 745 insertions(+), 779 deletions(-)
+
+ HANDOVER.md                                                                                          |   2 +-
+ NOTICE                                                                                               |   5 ++
+ README.md                                                                                            |  18 +++++--
+ agent/BACKLOG.md                                                                                     |  21 +++++++-
+ agent/NOTES.md                                                                                       |  15 ++++++
+ agent/patches/BRAND-3-steering.patch                                                                 |  16 ++++++
+ agent/tools/rail8_rename.py                                                                          |   8 +--
+ agent/work/BRAND-3-ISSUE-9-draft.md                                                                  |  70 --------------------------
+ agent/work/BRAND-3-s3-advisor.md                                                                     |  51 +++++++++++++++++++
+ agent/work/BRAND-3-steering.patch.draft                                                              |  14 ------
+ bench/run.sh                                                                                         |   2 +-
+ bin/rail8                                                                                            |   4 +-
+ ci/name-allowlist.txt                                                                                |   7 +--
+ deploy/compose/README.md                                                                             |   2 +-
+ deploy/compose/docker-compose.yml                                                                    |   2 +-
+ deploy/quickstart/Dockerfile                                                                         |   2 +-
+ docker-compose.yml                                                                                   |   2 +-
+ docs/ARCHITECTURE.md                                                                                 |   7 ++-
+ docs/DECISIONS.md                                                                                    |   1 +
+ docs/QUICKSTART.md                                                                                   |   2 +-
+ docs/WORKFLOW.md                                                                                     |   6 ++-
+ docs/findings/F-54.md                                                                                |  48 ++++++++++++++++++
+ issues/ISSUE-9.md                                                                                    | 109 ++++++++++++++++++++++++++++++++++++++++
+ mapping/.gitignore                                                                                   |   2 -
+ mapping/.mcp.json                                                                                    |  11 ----
+ mapping/CLAUDE.md                                                                                    |  64 ++++++++----------------
+ mapping/HANDOVER.md                                                                                  |   2 +-
+ mapping/LICENSE                                                                                      | 201 -------------------------------------------------------------------------
+ mapping/NOTICE                                                                                       |  10 ----
+ mapping/README.md                                                                                    |  11 ++--
+ mapping/corpus/README.md                                                                             |   2 +-
+ mapping/deploy/claude-cloud/README.md                                                                |  42 ----------------
+ mapping/deploy/claude-cloud/setup.sh                                                                 | 119 --------------------------------------------
+ mapping/docs/GATE.md                                                                                 |   4 +-
+ mapping/docs/WORKFLOW.md                                                                             | 182 ++++++++-----------------------------------------------------------
+ mapping/docs/agents/domain.md                                                                        |   4 +-
+ mapping/docs/agents/environment.md                                                                   |   4 +-
+ mapping/pom.xml                                                                                      |   2 +-
+ mapping/scripts/check-trailers.sh                                                                    |   2 +-
+ mapping/scripts/test/gate-log-test.sh                                                                |   2 +-
+ 130 files changed, 745 insertions(+), 779 deletions(-)
+
+## renames (git diff --cached -M --name-status, R only)
+R079	mapping/.github/workflows/bench.yml	.github/workflows/mapping-bench.yml
+R069	mapping/.github/workflows/ci.yml	.github/workflows/mapping-ci.yml
+R081	mapping/.github/workflows/nightly.yml	.github/workflows/mapping-nightly.yml
+R100	mapping/AGENTS.md	mapping/docs/archive/AGENTS.md
+R100	mapping/agent/HANDOFF.md	mapping/docs/archive/agent/HANDOFF.md
+R100	mapping/agent/NOTES.md	mapping/docs/archive/agent/NOTES.md
+R100	mapping/agent/prompts/codex-observation-run.md	mapping/docs/archive/agent/prompts/codex-observation-run.md
+R100	mapping/.claude/agent-memory/designer/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/designer/MEMORY.md
+R100	mapping/.claude/agent-memory/implementer/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/implementer/MEMORY.md
+R100	mapping/.claude/agent-memory/merger/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/merger/MEMORY.md
+R100	mapping/.claude/agent-memory/reviewer-spec/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/reviewer-spec/MEMORY.md
+R100	mapping/.claude/agent-memory/reviewer-standards/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/reviewer-standards/MEMORY.md
+R100	mapping/.claude/agent-memory/test-author/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/test-author/MEMORY.md
+R100	mapping/.claude/agent-memory/verifier/MEMORY.md	mapping/docs/archive/dot-claude/agent-memory/verifier/MEMORY.md
+R100	mapping/.claude/agents/designer.md	mapping/docs/archive/dot-claude/agents/designer.md
+R100	mapping/.claude/agents/gate-reviewer.md	mapping/docs/archive/dot-claude/agents/gate-reviewer.md
+R100	mapping/.claude/agents/grilling-adviser.md	mapping/docs/archive/dot-claude/agents/grilling-adviser.md
+R100	mapping/.claude/agents/implementer.md	mapping/docs/archive/dot-claude/agents/implementer.md
+R100	mapping/.claude/agents/merger.md	mapping/docs/archive/dot-claude/agents/merger.md
+R100	mapping/.claude/agents/reviewer-spec.md	mapping/docs/archive/dot-claude/agents/reviewer-spec.md
+R100	mapping/.claude/agents/reviewer-standards.md	mapping/docs/archive/dot-claude/agents/reviewer-standards.md
+R100	mapping/.claude/agents/scout.md	mapping/docs/archive/dot-claude/agents/scout.md
+R100	mapping/.claude/agents/test-author.md	mapping/docs/archive/dot-claude/agents/test-author.md
+R100	mapping/.claude/agents/verifier.md	mapping/docs/archive/dot-claude/agents/verifier.md
+R100	mapping/.claude/hooks/stop-hook-git-check.gated.sh	mapping/docs/archive/dot-claude/hooks/stop-hook-git-check.gated.sh
+R100	mapping/.claude/settings.json	mapping/docs/archive/dot-claude/settings.json
+R100	mapping/.claude/skills/LICENSE-mattpocock-skills	mapping/docs/archive/dot-claude/skills/LICENSE-mattpocock-skills
+R100	mapping/.claude/skills/UPSTREAM.md	mapping/docs/archive/dot-claude/skills/UPSTREAM.md
+R100	mapping/.claude/skills/code-review/SKILL.md	mapping/docs/archive/dot-claude/skills/code-review/SKILL.md
+R100	mapping/.claude/skills/code-review/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/code-review/agents/openai.yaml
+R100	mapping/.claude/skills/codebase-design/DEEPENING.md	mapping/docs/archive/dot-claude/skills/codebase-design/DEEPENING.md
+R100	mapping/.claude/skills/codebase-design/DESIGN-IT-TWICE.md	mapping/docs/archive/dot-claude/skills/codebase-design/DESIGN-IT-TWICE.md
+R100	mapping/.claude/skills/codebase-design/SKILL.md	mapping/docs/archive/dot-claude/skills/codebase-design/SKILL.md
+R100	mapping/.claude/skills/codebase-design/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/codebase-design/agents/openai.yaml
+R100	mapping/.claude/skills/diagnosing-bugs/SKILL.md	mapping/docs/archive/dot-claude/skills/diagnosing-bugs/SKILL.md
+R100	mapping/.claude/skills/diagnosing-bugs/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/diagnosing-bugs/agents/openai.yaml
+R100	mapping/.claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh	mapping/docs/archive/dot-claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh
+R100	mapping/.claude/skills/domain-modeling/ADR-FORMAT.md	mapping/docs/archive/dot-claude/skills/domain-modeling/ADR-FORMAT.md
+R100	mapping/.claude/skills/domain-modeling/GLOSSARY-FORMAT.md	mapping/docs/archive/dot-claude/skills/domain-modeling/GLOSSARY-FORMAT.md
+R100	mapping/.claude/skills/domain-modeling/SKILL.md	mapping/docs/archive/dot-claude/skills/domain-modeling/SKILL.md
+R100	mapping/.claude/skills/domain-modeling/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/domain-modeling/agents/openai.yaml
+R100	mapping/.claude/skills/gate/SKILL.md	mapping/docs/archive/dot-claude/skills/gate/SKILL.md
+R100	mapping/.claude/skills/grill-me/SKILL.md	mapping/docs/archive/dot-claude/skills/grill-me/SKILL.md
+R100	mapping/.claude/skills/grill-me/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/grill-me/agents/openai.yaml
+R100	mapping/.claude/skills/grill-with-docs/SKILL.md	mapping/docs/archive/dot-claude/skills/grill-with-docs/SKILL.md
+R100	mapping/.claude/skills/grill-with-docs/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/grill-with-docs/agents/openai.yaml
+R100	mapping/.claude/skills/grilling/SKILL.md	mapping/docs/archive/dot-claude/skills/grilling/SKILL.md
+R100	mapping/.claude/skills/grilling/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/grilling/agents/openai.yaml
+R100	mapping/.claude/skills/handoff/SKILL.md	mapping/docs/archive/dot-claude/skills/handoff/SKILL.md
+R100	mapping/.claude/skills/handoff/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/handoff/agents/openai.yaml
+R100	mapping/.claude/skills/improve-codebase-architecture/HTML-REPORT.md	mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/HTML-REPORT.md
+R100	mapping/.claude/skills/improve-codebase-architecture/SKILL.md	mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/SKILL.md
+R100	mapping/.claude/skills/improve-codebase-architecture/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/agents/openai.yaml
+R100	mapping/.claude/skills/pr/CREDITS.md	mapping/docs/archive/dot-claude/skills/pr/CREDITS.md
+R100	mapping/.claude/skills/pr/SKILL.md	mapping/docs/archive/dot-claude/skills/pr/SKILL.md
+R100	mapping/.claude/skills/pr/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/pr/agents/openai.yaml
+R100	mapping/.claude/skills/prototype/LOGIC.md	mapping/docs/archive/dot-claude/skills/prototype/LOGIC.md
+R100	mapping/.claude/skills/prototype/SKILL.md	mapping/docs/archive/dot-claude/skills/prototype/SKILL.md
+R100	mapping/.claude/skills/prototype/UI.md	mapping/docs/archive/dot-claude/skills/prototype/UI.md
+R100	mapping/.claude/skills/prototype/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/prototype/agents/openai.yaml
+R100	mapping/.claude/skills/research/SKILL.md	mapping/docs/archive/dot-claude/skills/research/SKILL.md
+R100	mapping/.claude/skills/research/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/research/agents/openai.yaml
+R100	mapping/.claude/skills/retro/SKILL.md	mapping/docs/archive/dot-claude/skills/retro/SKILL.md
+R100	mapping/.claude/skills/retro/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/retro/agents/openai.yaml
+R100	mapping/.claude/skills/run-spec/SKILL.md	mapping/docs/archive/dot-claude/skills/run-spec/SKILL.md
+R100	mapping/.claude/skills/tdd/SKILL.md	mapping/docs/archive/dot-claude/skills/tdd/SKILL.md
+R100	mapping/.claude/skills/tdd/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/tdd/agents/openai.yaml
+R100	mapping/.claude/skills/tdd/mocking.md	mapping/docs/archive/dot-claude/skills/tdd/mocking.md
+R100	mapping/.claude/skills/tdd/tests.md	mapping/docs/archive/dot-claude/skills/tdd/tests.md
+R100	mapping/.claude/skills/to-questionnaire/SKILL.md	mapping/docs/archive/dot-claude/skills/to-questionnaire/SKILL.md
+R100	mapping/.claude/skills/to-questionnaire/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/to-questionnaire/agents/openai.yaml
+R100	mapping/.claude/skills/to-spec/SKILL.md	mapping/docs/archive/dot-claude/skills/to-spec/SKILL.md
+R100	mapping/.claude/skills/to-spec/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/to-spec/agents/openai.yaml
+R100	mapping/.claude/skills/to-tickets/SKILL.md	mapping/docs/archive/dot-claude/skills/to-tickets/SKILL.md
+R100	mapping/.claude/skills/to-tickets/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/to-tickets/agents/openai.yaml
+R100	mapping/.claude/skills/triage/AGENT-BRIEF.md	mapping/docs/archive/dot-claude/skills/triage/AGENT-BRIEF.md
+R100	mapping/.claude/skills/triage/OUT-OF-SCOPE.md	mapping/docs/archive/dot-claude/skills/triage/OUT-OF-SCOPE.md
+R100	mapping/.claude/skills/triage/SKILL.md	mapping/docs/archive/dot-claude/skills/triage/SKILL.md
+R100	mapping/.claude/skills/triage/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/triage/agents/openai.yaml
+R100	mapping/.claude/skills/wait-what/SKILL.md	mapping/docs/archive/dot-claude/skills/wait-what/SKILL.md
+R100	mapping/.claude/skills/wait-what/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/wait-what/agents/openai.yaml
+R100	mapping/.claude/skills/wayfinder/SKILL.md	mapping/docs/archive/dot-claude/skills/wayfinder/SKILL.md
+R100	mapping/.claude/skills/wayfinder/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/wayfinder/agents/openai.yaml
+R100	mapping/.claude/skills/writing-for-agents/SKILL-MECHANICS.md	mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL-MECHANICS.md
+R100	mapping/.claude/skills/writing-for-agents/SKILL.md	mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL.md
+R100	mapping/.claude/skills/writing-for-agents/agents/openai.yaml	mapping/docs/archive/dot-claude/skills/writing-for-agents/agents/openai.yaml
+R100	mapping/docs/agents/issue-tracker.md	mapping/docs/archive/issue-tracker.md
+R100	mapping/docs/agents/triage-labels.md	mapping/docs/archive/triage-labels.md
+
+diff --git a/mapping/.github/workflows/bench.yml b/.github/workflows/mapping-bench.yml
+similarity index 79%
+rename from mapping/.github/workflows/bench.yml
+rename to .github/workflows/mapping-bench.yml
+index 15653e42..3af28d42 100644
+--- a/mapping/.github/workflows/bench.yml
++++ b/.github/workflows/mapping-bench.yml
+@@ -1,7 +1,8 @@
+-name: bench
++name: mapping-bench
+ 
+ # JMH on a shared runner, for information only (ADR-0017, ADR-0021). Never a gate: shared runners are too
+ # noisy for a regression threshold. A manual smoke test at -f 1; spec-gate step 5 runs the benchmarks at -f 3.
++# Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
+ on:
+   workflow_dispatch:
+ 
+@@ -13,7 +14,11 @@ env:
+ 
+ jobs:
+   jmh:
++    name: mapping · jmh
+     runs-on: ubuntu-24.04
++    defaults:
++      run:
++        working-directory: mapping
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-java@v6
+@@ -21,6 +26,7 @@ jobs:
+           distribution: temurin
+           java-version: '25'
+           cache: maven
++          cache-dependency-path: 'mapping/**/pom.xml'
+       - name: Maven mirror
+         run: |
+           mkdir -p ~/.m2
+@@ -36,7 +42,7 @@ jobs:
+           </settings>
+           EOF
+       - name: Build the benchmarks
+-        run: ./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
++        run: ../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
+       - name: Run JMH
+         run: |
+           if [ -f bench/jmh/target/benchmarks.jar ]; then
+@@ -49,5 +55,5 @@ jobs:
+         if: always()
+         with:
+           name: jmh
+-          path: .logs/bench-ci-jmh.json
++          path: mapping/.logs/bench-ci-jmh.json
+           if-no-files-found: ignore
+diff --git a/mapping/.github/workflows/ci.yml b/.github/workflows/mapping-ci.yml
+similarity index 69%
+rename from mapping/.github/workflows/ci.yml
+rename to .github/workflows/mapping-ci.yml
+index 6ae6e7a9..23234177 100644
+--- a/mapping/.github/workflows/ci.yml
++++ b/.github/workflows/mapping-ci.yml
+@@ -1,14 +1,32 @@
+-name: ci
++name: mapping-ci
+ 
+-# ADR-0017. Required on main: backend, windows, ui, stack (windows: owner ruling 2026-11-02, #48).
+-# Pushes to ticket branches (t/**) run it too, so a ticket's CI can be observed before the spec PR.
++# The mapping engine's CI (mapping/, ADR-0017), ported from its repository by BRAND-3 (D-150): every step runs in
++# mapping/ with the repository's wrapper (../mvnw). The old repository required backend, windows, ui and stack on
++# main (windows: owner ruling 2026-11-02, #48); the required checks of this repository are the owner's to set. It
++# runs only when the mapping, the root pom, the wrapper, the root .gitattributes or this file changes; the platform's
++# ci.yml builds -f platform/pom.xml, and its dco job checks the sign-off of every push (the mapping's trailers job is
++# gone).
+ on:
+   pull_request:
++    paths:
++      - 'mapping/**'
++      - 'pom.xml'
++      - '.mvn/**'
++      - 'mvnw*'
++      - '.gitattributes'
++      - '.github/workflows/mapping-ci.yml'
+   push:
+-    branches: [main, 't/**']
++    branches: [main]
++    paths:
++      - 'mapping/**'
++      - 'pom.xml'
++      - '.mvn/**'
++      - 'mvnw*'
++      - '.gitattributes'
++      - '.github/workflows/mapping-ci.yml'
+ 
+ concurrency:
+-  group: ci-${{ github.ref }}
++  group: mapping-ci-${{ github.ref }}
+   cancel-in-progress: true
+ 
+ permissions:
+@@ -19,45 +37,12 @@ env:
+   MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+ 
+ jobs:
+-  # #67: Ticket, Co-authored-by and exactly one Signed-off-by on every non-merge commit and every merger-written merge
+-  # commit of the range. GitHub's own PR merge commit is skipped by the script; commits already on main are out of range.
+-  trailers:
+-    if: github.ref != 'refs/heads/main'
+-    runs-on: ubuntu-24.04
+-    steps:
+-      - uses: actions/checkout@v7
+-        with:
+-          fetch-depth: 0
+-      - name: Script tests
+-        run: |
+-          scripts/test/trailers-test.sh
+-          scripts/test/trailers-root-test.sh
+-          scripts/test/clean-worktrees-test.sh
+-          scripts/test/pit-summary-test.sh
+-          scripts/test/gate-spec-default-test.sh
+-          scripts/test/gate-log-test.sh
+-          scripts/test/push-retry-test.sh
+-          scripts/test/handover-test.sh
+-      - name: Commit trailers
+-        env:
+-          EVENT: ${{ github.event_name }}
+-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+-          BEFORE: ${{ github.event.before }}
+-          AFTER: ${{ github.sha }}
+-        run: |
+-          if [ "$EVENT" = pull_request ]; then
+-            range="$BASE_SHA..$HEAD_SHA"
+-          elif [ "$BEFORE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+-            # new branch or forced push: everything not on origin/main
+-            range="origin/main..$AFTER"
+-          else
+-            range="$BEFORE..$AFTER"
+-          fi
+-          scripts/check-trailers.sh "$range"
+-
+   backend:
++    name: mapping · backend
+     runs-on: ubuntu-24.04
++    defaults:
++      run:
++        working-directory: mapping
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-java@v6
+@@ -65,6 +50,7 @@ jobs:
+           distribution: temurin
+           java-version: '25'
+           cache: maven
++          cache-dependency-path: 'mapping/**/pom.xml'
+       - name: Maven mirror
+         run: |
+           mkdir -p ~/.m2
+@@ -89,8 +75,20 @@ jobs:
+           scripts/test/ratchet-moved-test.sh
+           scripts/test/ratchet-bench-test.sh
+           scripts/test/gate-spec-bench-test.sh
++      # From the dropped trailers job (BRAND-3): the script tests that need no JDK, every one the old CI ran. The
++      # old-process scripts (check-trailers.sh, clean-worktrees.sh, push-retry.sh) are adapted or archived by MAP-7.
++      - name: Script tests that need no JDK (gate scripts, old-process scripts, HANDOVER.md)
++        run: |
++          scripts/test/trailers-test.sh
++          scripts/test/trailers-root-test.sh
++          scripts/test/clean-worktrees-test.sh
++          scripts/test/pit-summary-test.sh
++          scripts/test/gate-spec-default-test.sh
++          scripts/test/gate-log-test.sh
++          scripts/test/push-retry-test.sh
++          scripts/test/handover-test.sh
+       - name: Build, test, floors, licences, bans
+-        run: ./mvnw -B -Pbench verify
++        run: ../mvnw -B -Pbench verify
+       - name: contract/ is up to date
+         run: git diff --exit-code contract/
+       - name: Every file checks out byte-identical on Windows (#49)
+@@ -98,7 +96,11 @@ jobs:
+ 
+   # The owner builds on Windows (#42): drive letters and backslashes in paths. Ticket-gate row 2.
+   windows:
++    name: mapping · windows
+     runs-on: windows-latest
++    defaults:
++      run:
++        working-directory: mapping
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-java@v6
+@@ -106,6 +108,7 @@ jobs:
+           distribution: temurin
+           java-version: '25'
+           cache: maven
++          cache-dependency-path: 'mapping/**/pom.xml'
+       - name: Maven mirror
+         shell: bash
+         run: |
+@@ -122,20 +125,21 @@ jobs:
+           </settings>
+           EOF
+       - name: Whole reactor compiles; Spotless, enforcer, licences
+-        run: ./mvnw.cmd -B -q -DskipTests verify
++        run: ../mvnw.cmd -B -q -DskipTests verify
+ 
+   ui:
++    name: mapping · ui
+     runs-on: ubuntu-24.04
+     defaults:
+       run:
+-        working-directory: ui
++        working-directory: mapping/ui
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-node@v7
+         with:
+           node-version: '22'
+           cache: npm
+-          cache-dependency-path: ui/package-lock.json
++          cache-dependency-path: mapping/ui/package-lock.json
+       - run: npm ci
+       - name: Licences (CLAUDE.md list, exceptions in ui/scripts/licence-exceptions.json)
+         run: npm run licences
+@@ -154,12 +158,16 @@ jobs:
+       - uses: actions/upload-artifact@v4
+         with:
+           name: ui-dist
+-          path: ui/dist
++          path: mapping/ui/dist
+           if-no-files-found: error
+ 
+   stack:
++    name: mapping · stack
+     needs: [backend, ui]
+     runs-on: ubuntu-24.04
++    defaults:
++      run:
++        working-directory: mapping
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-java@v6
+@@ -167,11 +175,12 @@ jobs:
+           distribution: temurin
+           java-version: '25'
+           cache: maven
++          cache-dependency-path: 'mapping/**/pom.xml'
+       - uses: actions/setup-node@v7
+         with:
+           node-version: '22'
+           cache: npm
+-          cache-dependency-path: ui/package-lock.json
++          cache-dependency-path: mapping/ui/package-lock.json
+       - name: Maven mirror
+         run: |
+           mkdir -p ~/.m2
+@@ -189,14 +198,14 @@ jobs:
+       - uses: actions/download-artifact@v4
+         with:
+           name: ui-dist
+-          path: ui/dist
++          path: mapping/ui/dist
+       - name: Jar with the UI inside
+-        run: ./mvnw -B -Pui -pl service -am package -DskipTests
++        run: ../mvnw -B -Pui -pl service -am package -DskipTests
+       - name: Playwright
+-        working-directory: ui
++        working-directory: mapping/ui
+         run: |
+           npm ci
+           npx playwright install --with-deps chromium
+       - name: '@stack suite against the jar'
+-        working-directory: ui
++        working-directory: mapping/ui
+         run: npm run e2e:stack
+diff --git a/mapping/.github/workflows/nightly.yml b/.github/workflows/mapping-nightly.yml
+similarity index 81%
+rename from mapping/.github/workflows/nightly.yml
+rename to .github/workflows/mapping-nightly.yml
+index 5b67ccd9..e3445bfa 100644
+--- a/mapping/.github/workflows/nightly.yml
++++ b/.github/workflows/mapping-nightly.yml
+@@ -1,7 +1,8 @@
+-name: nightly
++name: mapping-nightly
+ 
+ # PIT on main over the nine class-C modules, failing below 80 % (ADR-0019). It commits nothing:
+ # the mutation ratchet is written by the spec gate (step 1b), not here.
++# Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
+ on:
+   schedule:
+     - cron: '17 2 * * *'
+@@ -15,7 +16,11 @@ env:
+ 
+ jobs:
+   mutation:
++    name: mapping · mutation
+     runs-on: ubuntu-24.04
++    defaults:
++      run:
++        working-directory: mapping
+     steps:
+       - uses: actions/checkout@v7
+       - uses: actions/setup-java@v6
+@@ -23,6 +28,7 @@ jobs:
+           distribution: temurin
+           java-version: '25'
+           cache: maven
++          cache-dependency-path: 'mapping/**/pom.xml'
+       - name: Maven mirror
+         run: |
+           mkdir -p ~/.m2
+@@ -41,12 +47,12 @@ jobs:
+       # Modules without production code set failWhenNoMutations=false until their first ticket removes it.
+       - name: PIT
+         run: >
+-          ./mvnw -B
++          ../mvnw -B
+           -pl engine/xdm,engine/ir,engine/runtime,engine/serializer,engine/mapping,engine/xslt-export,engine/api,engine/udf-api,engine/udf
+           -am test-compile org.pitest:pitest-maven:mutationCoverage
+       - uses: actions/upload-artifact@v4
+         if: always()
+         with:
+           name: pit-reports
+-          path: engine/*/target/pit-reports
++          path: mapping/engine/*/target/pit-reports
+           if-no-files-found: ignore
+diff --git a/HANDOVER.md b/HANDOVER.md
+index 8029d89b..00ce03fc 100644
+--- a/HANDOVER.md
++++ b/HANDOVER.md
+@@ -60,7 +60,7 @@ curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay
+ ```sh
+ bin/rail8 validate examples/demo        # exit 0
+ bin/rail8 test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
+-mvn -B -ntp verify -Pit                    # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
++mvn -B -ntp -f platform/pom.xml verify -Pit   # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
+ python3 ci/coverage_check.py               # the no-decrease check against ci/coverage-baseline.json
+ bench/run.sh                               # the bench harness (native Postgres); numbers go to bench/RESULTS.md
+ ```
+diff --git a/NOTICE b/NOTICE
+index 81484c38..f72bb20d 100644
+--- a/NOTICE
++++ b/NOTICE
+@@ -13,3 +13,8 @@ The agent workflow files under .claude/skills/ and agent/patches/ (pocock-skills
+ guard-commands-hook.patch) are adapted from mattpocock/skills
+ (https://github.com/mattpocock/skills), licensed under the MIT License (see .claude/skills/LICENSE-mattpocock-skills):
+   Copyright (c) 2026 Matt Pocock
++
++The mapping engine (mapping/, imported from github.com/subapavel/flottila-mapping on 2026-11-15, D-150):
++- Agent skills in mapping/docs/archive/dot-claude/skills/ listed in mapping/docs/archive/dot-claude/skills/UPSTREAM.md,
++  from https://github.com/mattpocock/skills, Copyright (c) 2026 Matt Pocock, MIT License
++  (full text in mapping/docs/archive/dot-claude/skills/LICENSE-mattpocock-skills).
+diff --git a/README.md b/README.md
+index 76a8a73b..df2ebd95 100644
+--- a/README.md
++++ b/README.md
+@@ -22,11 +22,19 @@ Where to look:
+ - `docs/DECISIONS.md`, `docs/findings/`, `issues/` — what was decided, what deviated, what is open
+ - `agent/cloud/` — the cloud environment the autonomous session runs in
+ 
+-Build at the current state: JDK 25 and Maven 3.9, `mvn -B -ntp verify` for the unit tests and
+-`mvn -B -ntp verify -Pit` to include the Testcontainers tests (Docker required). Modules:
+-`rail8-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
+-`-archtest`. The milestone-1 prototype survives as tag `proto-m1` and in the history of the files
+-that moved; the demo flow it ran lives in `examples/demo/` until P0-12 converts it.
++Build at the current state, JDK 25. The repository holds two areas, each built on its own
++(`docs/ARCHITECTURE.md` §12):
++
++- the platform, `platform/` and `bench/` — Maven 3.9: `mvn -B -ntp -f platform/pom.xml verify` for
++  the unit tests, with `-Pit` to include the Testcontainers tests (Docker required). Modules:
++  `rail8-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
++  `-sim`, `-archtest`, `-bench`.
++- the mapping engine, `mapping/` — imported with its history, with its own parent pom, rules and
++  decisions (`mapping/README.md`, `mapping/CLAUDE.md`, `mapping/docs/adr/`):
++  `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify`.
++
++The milestone-1 prototype survives as tag `proto-m1` and in the history of the files that moved;
++the demo flow it ran lives in `examples/demo/` until P0-12 converts it.
+ 
+ Rail8 (R8 for short) is the product's name. Contributions are accepted under the Developer Certificate of
+ Origin: sign your commits (`git commit -s`).
+diff --git a/agent/BACKLOG.md b/agent/BACKLOG.md
+index 5fe3dd23..b6333fab 100644
+--- a/agent/BACKLOG.md
++++ b/agent/BACKLOG.md
+@@ -35,6 +35,23 @@ The rename row BRAND-1 belongs to this section and runs after BRAND-2; it stays
+ | FIX-222 | [A] `ReplicaStartTest.aStartCountsTheReplicasAndChecksEachPartAgainstItsHeader:145` compares `bytes()` with the files on disk right after the start — the race FIX-213 removed from its sibling: the pre-opened segment's header is counted before its file exists. The file reads before that line usually hide it | FIX-213 | pending | the test waits on the same signal (the `PreopenSeen` wrapper) before it compares, equality exact; the old comparison is shown to fail with a delay in the pre-open | FIX-213's review, note 1 |
+ | OPS-1 | [C] ARCHITECTURE and every living document rewritten to `docs/OPERATIONS-BRIEF.md` and made consistent after the merge: one PROGRESS journal (root `PROGRESS.md` ends 2026-11-03, `docs/PROGRESS.md` is newest-first), the renumbered ids, the tenant level (now teams), Prometheus/Alertmanager (now inside the platform), the agent masking guardrail (now the user's rights), the developer portal (a separate door); a changelog entry per section | BRAND-1 | done 2026-11-15 (review PASS (part 1 r2, part 2 r2); D-152, F-38, ISSUE-8; ARCHITECTURE 3.25) | no living document contradicts either brief; one journal; the ARCHITECTURE changelog names each changed section | D-147 |
+ 
++## Mapping engine — after the consolidation (D-150, D-151, D-153; `mapping/`)
++
++The engine's open work, moved here from the old repository's issue tracker and hand-off (BRAND-3). `#N` is an issue or a pull request
++of that repository; `F-n` up to F-53 is `mapping/docs/findings/F-n.md`. Facts: `agent/work/BRAND-3-scout-2.md` B, D. Every MAP packet
++names D-153 (whose rules bind `mapping/`; the standstill until MAP-1) and `mapping/CLAUDE.md`.
++
++| Id | Title | Depends on | Status | Done when | Evidence |
++| --- | --- | --- | --- | --- | --- |
++| MAP-1 | [C] The embedding — how a flow runs a mapping: a step over the engine's facade, the host's `ReferenceResolver`, where a mapping is stored and deployed, what of the engine's dependency closure may enter the platform's class path (licences, ISSUE-9), sizes (the engine reads a document whole; the platform refuses no message for its size), and what the operations brief asks (who may edit and deploy a mapping, the audit, the studio's sign-in). First step: the engine modules' dependency closure (`mapping/engine/**`, without the service) checked against the root licence list. The owner's brainstorm first | BRAND-3, ISSUE-9 | pending (owner brainstorm) | a finding and the ARCHITECTURE change (§6 steps, §12); the embedding API as an ADR of the mapping (its ADR-0016 defers it); no code before both | D-153, F-54; the mapping's ADR-0014, ADR-0016 |
++| MAP-2 | [B] The mapping's open findings are each closed, rowed or kept deferred with a reason: F-51 (its fix was #221 — a red case first), F-38 (#220, deferred past milestone 1), F-13, F-16, F-18, F-27, F-28, F-30, F-31, F-32 (open or deferred per `mapping/HANDOVER.md`; their files carry no status line) | BRAND-3 | pending | every finding file under `mapping/docs/findings/` has a status line; F-51 fixed by a red test first, the mapping's suite at its counts | `mapping/HANDOVER.md`; scout 2 D |
++| MAP-3 | [A] The old repository's open issues are read and each becomes a row or is closed with a reason: #222 (an observation request, deferred), #191 (optional), #129 (ADR wording, the owner's), #165, #167, #168, #169, #171 (they wait for the data model), the cleanup ticket | BRAND-3 | pending | one line per open issue with its row or reason in `agent/work/MAP-3-issues.md`; after it the owner can archive the old repository | `mapping/docs/GATE.md`, `mapping/HANDOVER.md` |
++| MAP-4 | [A] Two loose ends of the mapping's last hand-off: F-53 point 4 (the re-pin of ADR-0026) and F-40's bench result that was never committed | BRAND-3 | pending | the pin recomputed as the finding says, or the point closed with its reason; the bench number in `mapping/bench/RESULTS.md` or dropped with a line there | `mapping/docs/archive/agent/HANDOFF.md` |
++| MAP-5 | [C] The mapping's next specs in its own order — JSON output (ADR-0008), the bytecode tier (ADR-0021), formatVersion 2 and the PO importer (ADR-0010), then the XSLT front end — and the layers shared with the jq engine (limits and the host SPI, the class-file tier, the JSON tokenizer, where XPath 3.1 lives). Each began with a grilling of the owner in the old process | MAP-1 | pending (owner brainstorm) | each spec starts from a packet under the root's process, after the owner's session on it | `mapping/docs/GATE.md`, `mapping/HANDOVER.md` |
++| MAP-6 | [A] The ported workflows are observed on a runner: `mapping-ci.yml` (backend, windows, ui, stack), `mapping-bench.yml`, `mapping-nightly.yml` cannot run in a session | BRAND-3 | pending | the first run of each is read and recorded; a red job is a FIX row with its log line | BRAND-3 step 3 |
++| MAP-7 | [A] The mapping's old-process scripts under the root's process: `mapping/scripts/check-trailers.sh` requires the old trailer `Ticket: #n` and fails on commits that carry `Task:`, step 2c of `gate-ticket.sh` calls it, and `clean-worktrees.sh` and `push-retry.sh` serve only the archived skills and agents. Each is adapted to the root's process or archived with its test, by name — no test is dropped without a ruling. With them, the comments that still call `mapping/` the repository root: `scripts/check-lf-checkout.sh:4-5` (it changes to `mapping/`; its `--renormalize .` covers `mapping/` only), `licence-filters.txt:3` ("root pom.xml" is `mapping/pom.xml`) | BRAND-3 | pending | every script under `mapping/scripts/` is used by a living document or workflow, and every script test passes on a commit made under the root's process | BRAND-3 step 3's hand-back; `mapping/docs/WORKFLOW.md` §6 row 2c |
++| MAP-8 | [A] The separation of D-153 is a failing check: a pom under `platform/` or `bench/` that names an `io.rail8.mapping` artifact, and a file under `deploy/`, `examples/` or `bin/` that starts or copies something built from `mapping/`, fail the platform's build-hygiene test (or an enforcer rule in `platform/pom.xml`). Red first: the check is shown to fail on a fixture that breaks the rule | BRAND-3 | pending | the check fails on each kind of breach and passes on the tree; MAP-1 removes or narrows it by a finding, never a session | D-153, F-54; the opponent's point W5 (`agent/work/BRAND-3-s3-advisor.md`) |
++
+ ## Operations brief — after the consolidation (owner 2026-11-15, `docs/OPERATIONS-BRIEF.md`, D-147)
+ 
+ OPS-2 is designed before CORE-8 and CORE-10 are built, so that they carry records and not only trail rows. The rows are areas, not yet broken down; the designer breaks each down.
+@@ -43,9 +60,9 @@ OPS-2 is designed before CORE-8 and CORE-10 are built, so that they carry record
+ | --- | --- | --- | --- | --- | --- |
+ | OPS-2 | [C] The record stream: one record shape for steps, author lines, errors, attempts, actions and channel events; owners message / interface / connection / code; the ClickHouse table and its ordering key; start and end merged in one write batch; the write path through the journal and the mover, waiting and alerting when full, never dropping; supersedes `agent/packets/CONSIDER-13-design-draft.md` | OPS-1 | pending | a designer draft opposed by the advisor, the decision recorded, CORE-8 / CORE-10 / CORE-13 amended to it | OPERATIONS-BRIEF §2, §3 |
+ | OPS-3 | [C] Levels and the run-time threshold: five levels, the per-interface threshold switched without a deploy, trace as a timed override of the threshold and of the body recording, the flow-schema keys | OPS-2 | pending | a level switched at run time is seen by every node within seconds; a line below the threshold is one in-memory read; trace expires by itself and its actor is recorded | OPERATIONS-BRIEF §2.8, §2.9 |
+-| OPS-4 | [C] Author voice: standard Java logging attributed through `MessageContext` (verify the hook with isolated extension classloaders), the mapping engine's `run.log`, a jq module with levelled functions built on `debug`, `xsl:message`; the three engines' errors as one error record | OPS-2, BRAND-3 | pending | a line logged in custom code, in a UDF, in jq and in XSLT appears in the message's log at its level; no new public logging type in the api module | OPERATIONS-BRIEF §2.10 |
++| OPS-4 | [C] Author voice: standard Java logging attributed through `MessageContext` (verify the hook with isolated extension classloaders), the mapping engine's `run.log`, a jq module with levelled functions built on `debug`, `xsl:message`; the three engines' errors as one error record | OPS-2, BRAND-3, MAP-1 (D-153) | pending | a line logged in custom code, in a UDF, in jq and in XSLT appears in the message's log at its level; no new public logging type in the api module | OPERATIONS-BRIEF §2.10 |
+ | OPS-5 | [B] Step facts at info and the error record's optional fields per step and component type; connection failures in full (TLS, certificates, WS-Security); the client facts on every contact, secrets replaced by a marker; the interface log and the connection log | OPS-2 | pending | the sketches of the brief reproduced by tests per step type; a failed handshake found by time and peer address | OPERATIONS-BRIEF §2.2 to §2.7 |
+-| OPS-6 | [B] Mapping trace on demand over the stored input, with the version that ran and the recorded lookup results | OPS-2, BRAND-3 | pending | a trace asked for a stored message equals the trace of the same input in a test run | OPERATIONS-BRIEF §2.11 |
++| OPS-6 | [B] Mapping trace on demand over the stored input, with the version that ran and the recorded lookup results | OPS-2, BRAND-3, MAP-1 (D-153) | pending | a trace asked for a stored message equals the trace of the same input in a test run | OPERATIONS-BRIEF §2.11 |
+ | OPS-7 | [B] Measure info, debug and trace against the CORE-REWORK Q-1 targets | OPS-3, CORE-GATE | pending | the numbers in `bench/RESULTS.md` | OPERATIONS-BRIEF §3 |
+ | OPS-8 | [C] Metrics and alerts inside the platform: metrics to ClickHouse by the record path, alert rules, the inbox with take-over, the channels, one cause one alert with a count, the four groups, protective actions; OpenTelemetry and Prometheus as optional exports | OPS-2 | pending | no required part outside the platform; the designer breaks the area down | OPERATIONS-BRIEF §4, §6 |
+ | OPS-9 | [C] Permissions: teams, rights, roles, scoped and time-limited assignments, one decision point; the payload permission and the record of payload views; team secrets and shared ones | OPS-1 | pending | the designer breaks the area down; every [inferred] item of the brief confirmed with the owner first | OPERATIONS-BRIEF §5 |
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 02b98631..ea5f48bf 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -373,3 +373,18 @@ tree with the m1 module is dc85964.
+ ## Flow close (FIX-30)
+ - `Delivery.close()` closes its producers after its stop; `FlowWorker.close()` closes them only once no item runs and no claim is in flight (`closeDue`), so it stays pending while an item never finishes. `Deployments` does not await the worker close.
+ - jqwik prints a line addressed to AI agents into build logs; it is library output, not an instruction — judge runs on the Surefire/Failsafe counts.
++
++## Mapping engine (BRAND-3, D-150, D-151, D-153)
++- Its rules: `mapping/CLAUDE.md` (technical rules, licence list) and its ADRs (`mapping/docs/adr/`); the process is the root's.
++  The old rule files, hand-off, skills and agents are history under `mapping/docs/archive/` — never instructions.
++- Build from the root: `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min, 17 822 tests; base counts
++  `agent/work/BRAND-3-base-counts.txt`). From inside `mapping/` the wrapper is `../mvnw`. Never beside another Maven run.
++- The build regenerates `mapping/contract/`: after it `git diff --exit-code -- mapping/contract` must be clean.
++- javac runs with `-Xlint:all -Werror` there: the name component `rail8` ends in a digit and trips the `module` lint, so each
++  of the eleven `module-info.java` files carries `@SuppressWarnings("module")`. A new module needs it too.
++- The licence plugin's `artifactFiltersUrl` takes a URI, not a path (`licence.filters.uri` in `mapping/pom.xml`).
++- `mapping/scripts/check-lf-checkout.sh` reads the index: on an unstaged tree it fails for the wrong reason. Stage first.
++- The platform's guards skip `mapping/` (`ci/coverage_check.py`); `ci.yml` builds `-f platform/pom.xml`; the mapping's
++  workflows are `.github/workflows/mapping-{ci,bench,nightly}.yml` (run in `mapping/`, not yet observed on a runner: MAP-6).
++- Pinned digests after a rename: `agent/work/BRAND-3-s2-canon/` shows how each was recomputed outside the engine (D-151).
++- `mapping/scripts/check-trailers.sh` asks for the old `Ticket: #n` trailer and fails on this repository's commits (MAP-7).
+diff --git a/agent/patches/BRAND-3-steering.patch b/agent/patches/BRAND-3-steering.patch
+new file mode 100644
+index 00000000..0cb67499
+--- /dev/null
++++ b/agent/patches/BRAND-3-steering.patch
+@@ -0,0 +1,16 @@
++diff --git a/CLAUDE.md b/CLAUDE.md
++--- a/CLAUDE.md
+++++ b/CLAUDE.md
++@@ -6,6 +6,12 @@
++ `docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
++ packet refers to them. Everything in the repo is in English.
++ 
+++Under `mapping/` (the mapping engine, imported with its history: D-150, D-151) the Design rules
+++below do not apply until its embedding is designed (MAP-1, D-153). `mapping/CLAUDE.md` holds the
+++engine's technical rules and its licence list, which adds MIT-0, EDL 1.0, ISC and 0BSD for
+++`mapping/` only; its exceptions per artifact are ISSUE-9 item 2 and are not ruled here. Tests,
+++Working rules and Context hygiene bind both areas (D-153 names the lines that are the platform's).
+++
++ ## What this is
++ 
++ Open-source enterprise integration platform where **monitoring is the product**: every message,
+diff --git a/agent/tools/rail8_rename.py b/agent/tools/rail8_rename.py
+index 4057bd87..2de68cc5 100644
+--- a/agent/tools/rail8_rename.py
++++ b/agent/tools/rail8_rename.py
+@@ -496,16 +496,12 @@ EXCLUDED: list[str] = [
+     "deploy/postgres/V*.sql",           # applied migrations stay byte-identical
+     "agent/tools/rail8_rename.py",      # this script
+     # the mapping's history (BRAND-3, D-151): its ADRs (an ADR that fixes a renamed name gets one amendment line, by
+-    # hand), findings, bench results, agent files and archive
++    # hand), findings, bench results and archive; BRAND-3 step 3 archived its process files there (its CLAUDE.md,
++    # AGENTS.md, agent/, .claude/ as dot-claude/) and removed deploy/claude-cloud/
+     "mapping/docs/adr/**",
+     "mapping/docs/findings/**",
+     "mapping/bench/RESULTS.md",
+-    "mapping/agent/**",
+     "mapping/docs/archive/**",
+-    # the mapping's process files, archived or removed by BRAND-3 step 3 as they are
+-    "mapping/CLAUDE.md",
+-    "mapping/.claude/**",
+-    "mapping/deploy/claude-cloud/**",
+ ]
+ # In agent/BACKLOG.md every table row whose status cell (the fourth) starts with `done` is history, and so is every
+ # BRAND-* row (it names the old name as the thing it renames; the architect words it).
+diff --git a/agent/work/BRAND-3-ISSUE-9-draft.md b/agent/work/BRAND-3-ISSUE-9-draft.md
+deleted file mode 100644
+index 59fcf0cc..00000000
+--- a/agent/work/BRAND-3-ISSUE-9-draft.md
++++ /dev/null
+@@ -1,70 +0,0 @@
+-# ISSUE-9 — the mapping engine's licences, and which root rules bind `mapping/`
+-Task: BRAND-3
+-Date: 2026-11-15
+-
+-## What is needed
+-The owner's word on each line below, and one patch applied by the owner. The mapping engine is in
+-this repository with its history (D-150). Its own rule file allowed more licences than the root's,
+-and its service is built on other rules than the platform's design rules. A licence is the owner's
+-word (CLAUDE.md, Working rules) and no session edits a rule file, so every line states the default
+-that holds until the answer. The facts are in `agent/work/BRAND-3-scout-2.md`, blocks C and E.
+-
+-A. Licences. The root list is Apache 2.0, MIT, BSD, MPL 2.0, EPL; "AGPL, GPL, BSL, SSPL → `ISSUE`,
+-never linked".
+-1. Four more licences are on the mapping's list, accepted by the owner in its repository: ISC and
+-   0BSD (the editor's npm packages, `d3-*` and `tslib` — the mapping's ADR-0012), MIT-0
+-   (`reactive-streams`) and EDL 1.0 (`jakarta.activation`, `jakarta.xml.bind`) from the Quarkus
+-   dependency tree (ADR-0014). Default: they hold under `mapping/` only; no module under `platform/`
+-   takes a dependency under them.
+-2. The mapping also has exceptions per artifact (its ADR-0017, `.mvn/licence-filters.txt`,
+-   `mapping/bench/jmh/licence-filters.txt`, `mapping/ui/scripts/licence-exceptions.json`):
+-   `io.smallrye.classfile:jdk-classfile-backport` (GPL-2.0 with the Classpath Exception; in the
+-   service's Quarkus tree, outside test scope), `javax.annotation:javax.annotation-api` (CDDL or
+-   GPL-2.0 with the Classpath Exception), `org.graalvm.sdk:nativeimage` and `:word` (UPL-1.0),
+-   `aopalliance` (public domain), JMH (GPL-2.0 with the Classpath Exception, bench only) and three
+-   dev-only npm tools (`argparse` Python-2.0, `caniuse-lite` CC-BY-4.0, `minimatch` BlueOak-1.0.0 —
+-   ruling #39 of the old repository). The filter file says "the owner accepted"; ADR-0017 cites no
+-   ruling for the Java artifacts. The question: does the root's "GPL … never linked" cover GPL-2.0
+-   with the Classpath Exception? Default: the exceptions stand as the mapping's files state them, for
+-   `mapping/` only, enforced by the mapping's own licence check; nothing under `platform/` links an
+-   artifact under any of them.
+-
+-B. Rules.
+-3. The root's design rules were written for the platform: Vert.x 5.1, a socket only through the
+-   Component SPI, no message refused for its size, one virtual thread per message. The mapping's
+-   service is Quarkus 3.40 on Vert.x 4.5, has its own HTTP listener on 127.0.0.1, reads a request
+-   body whole and refuses one above 10 MB, and has no authentication (the mapping's ADR-0014,
+-   ADR-0024). Its engine modules depend on none of that. Default (D-153): the root's design rules
+-   bind `platform/`; `mapping/` is bound by its ADRs; no platform module depends on a mapping module
+-   and no node ships the mapping's service until the embedding is designed (MAP-1, a finding first —
+-   ARCHITECTURE §12).
+-4. The root's test rules that name platform parts and tools — the coverage floors per module, PIT on
+-   `api` and `core`, jqwik for the batcher, admission and the WorkQueue — against the mapping's own:
+-   the oracle and the ratchet, no jqwik (its ADR-0017, ADR-0018), two POSIX-only cases under
+-   `assumeTrue`. Default: the general rules hold everywhere (red first; no weakened, disabled or
+-   sleeping test; no claim without an observation); floors and tools are each area's own.
+-
+-C. The patch. `git apply agent/patches/BRAND-3-steering.patch` — the root `CLAUDE.md` gains one
+-paragraph: work under `mapping/` also follows `mapping/CLAUDE.md`, the engine's technical rules and
+-its licence list, which adds the four licences of line 1 for `mapping/` only. It states the defaults
+-of lines 1 and 3 and nothing else; an answer that differs changes the paragraph. It applies before or
+-after `agent/patches/OPS-1-steering.patch` (ISSUE-8). No session applies it.
+-
+-## Why the agent cannot decide it
+-Licences are the owner's (CLAUDE.md, Working rules: money, credentials, licences → an issue), and a
+-rule file is edited by the owner only. Which of the root's design rules reach the mapping decides
+-what the embedding may look like — an expensive-to-reverse choice that is the owner's to make with
+-MAP-1, not a session's.
+-
+-## What was tried
+-The mapping's ADR-0012, ADR-0014, ADR-0017 and its filter files were read (scout, 2026-11-15). No
+-licence was added to or removed from any list by a session. Nothing is blocked now; MAP-1 (how a
+-flow runs a mapping) does not start before lines 1-3 are answered, because a platform module that
+-depends on an engine module takes the engine's dependency closure with it.
+-
+-## Default if the owner does not answer
+-The defaults stated on each line: the mapping keeps its list and its own licence check; the
+-platform's list is unchanged; the two areas are built by separate workflows and neither depends on
+-the other; the patch stays unapplied.
+-
+-## Owner's answer
+diff --git a/agent/work/BRAND-3-s3-advisor.md b/agent/work/BRAND-3-s3-advisor.md
+new file mode 100644
+index 00000000..5ab7f62e
+--- /dev/null
++++ b/agent/work/BRAND-3-s3-advisor.md
+@@ -0,0 +1,51 @@
++# BRAND-3 step 3 — the opponent's points on F-54, D-153, §12, ISSUE-9 and the owner's patch (D-137)
++
++The architecture-advisor's hand-back of 2026-11-15, shortened by the architect; the advisor writes no file. Verdict: SOUND WITH
++CHANGES — the separation matches the tree; six blocking points (B), the rest notes (N). After each point: what the architect did.
++
++## Weak points
++- W1 [B] ISSUE-9 item 2 misstated the GPL fact: `jdk-classfile-backport`, both graalvm artifacts, `aopalliance` and
++  `javax.annotation-api` are banned by the mapping's enforcer at compile, runtime and provided scope (`mapping/pom.xml:207-222`,
++  `mapping/licence-filters.txt`, ADR-0017) — test scope only, not "in the service's tree outside test scope". The cited
++  `.mvn/licence-filters.txt` does not exist. → item 2 rewritten from the POM; the path corrected.
++- W2 [B] "bind `platform/` and `bench/`" is a positive list: `deploy/`, `ci/`, `agent/tools/`, `examples/`, a later `jq/` would be
++  bound by nothing. → the scope is stated by exclusion: the whole repository except `mapping/`.
++- W3 [B] The "working rules bind both" list differed in each text and read as exhaustive. → by exclusion: Tests, Working rules and
++  Context hygiene bind both areas except the lines of Tests that name platform modules or tools; the existing `assumeTrue` cases stay,
++  no new skipped case.
++- W4 [B] The patch said "also follows `mapping/CLAUDE.md`", which leaves the root's design rules binding `mapping/` and pulls in the
++  per-artifact exceptions by reference. → the patch paragraph rewritten: the Design rules do not apply under `mapping/` until MAP-1;
++  the exceptions are ISSUE-9 item 2 and not ruled there. Until the owner applies it, D-153 is the rule: HANDOFF and the MAP section
++  point to it.
++- W5 [B for the rows, N for the guard] Nothing encodes the separation: OPS-4 and OPS-6 reach into the engine and depended on
++  "OPS-2, BRAND-3" only; no guard fails when a platform pom names a mapping artifact. → OPS-4 and OPS-6 depend on MAP-1; row MAP-8
++  (a failing check, red first); the sentence widened to "depends on, packages or starts".
++- W6 [B, wording] D-153 stated three things the tree contradicts: the name guard and the DCO job do cover `mapping/`; only
++  `mapping-ci.yml` runs on changes under `mapping/` (bench on request, nightly by cron); "built apart" held for CI only — root-level
++  commands without `-f` build both. → D-153 corrected; the platform's documented commands gained `-f platform/pom.xml`
++  (`bin/rail8`, the compose files, the quickstart, `docs/WORKFLOW.md` §1, `HANDOVER.md`); the agent definition's line is ISSUE-9 item 7.
++- W7 [B, wording] D-153 read as a licence ruling in the architect's voice. → "left as imported — neither accepted nor removed by a
++  session — for `mapping/` only, and frozen", as the default until ISSUE-9 A.
++
++## Missed alternatives
++- The engine's modules under the root licence list now, the wider list for service, UI and bench only: the closure MAP-1 pulls onto
++  the platform's class path would already be clean; whether it passes today is unchecked. → named in ISSUE-9 item 3 as the owner's
++  option and as MAP-1's first step.
++- Two reactors (take `mapping` out of the root modules): makes "built apart" true for every command, gives up the one-command build.
++  Worse than fixing the commands. → rejected in D-153.
++- A rule-by-rule table in §12: most precise, drifts. → rejected. No §12 paragraph at all: sessions would have no rule. → rejected.
++
++## Risks
++- "Costs nothing to reverse" stops being true with every feature built under the mapping's rules. → the standstill in D-153: until
++  MAP-1 the mapping closes, fixes and observes, and adds no dependency, licence exception, listener or endpoint.
++- The scope is prose; only MAP-8 is executable. The mapping's licence check had not been cited as observed here. → ISSUE-9 item 2
++  cites the build log; MAP-6 observes the workflows.
++- F-54 lacked the template's Evidence, Change made, ARCHITECTURE edit and PROGRESS lines. → added. `mapping/CLAUDE.md:19` cited a
++  bare `docs/WORKFLOW.md` §6. → full path.
++
++## Open questions, with the advisor's answers
++- Severity: major, not minor (shipped code contradicts five rules; the draft follows the major procedure). → F-54 is major.
++- Marking: `draft — review at hand-over` for the scope with ISSUE-9 item 3; the licence lines are the owner's alone. → so marked.
++- Licence default: defensible once W1 and W7 are fixed; nothing running has to stop; add "nothing built from `mapping/` is
++  published, attached to a release or started from `deploy/` while ISSUE-9 A is open". → added to D-153 and ISSUE-9.
++- Its recommendation to the owner on item 3: accept the default with the standstill; decide per sub-area at MAP-1.
+diff --git a/agent/work/BRAND-3-steering.patch.draft b/agent/work/BRAND-3-steering.patch.draft
+deleted file mode 100644
+index abf5dd11..00000000
+--- a/agent/work/BRAND-3-steering.patch.draft
++++ /dev/null
+@@ -1,14 +0,0 @@
+-diff --git a/CLAUDE.md b/CLAUDE.md
+---- a/CLAUDE.md
+-+++ b/CLAUDE.md
+-@@ -6,6 +6,10 @@
+- `docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
+- packet refers to them. Everything in the repo is in English.
+- 
+-+Work under `mapping/` (the mapping engine, imported with its history: D-150, D-151) also follows
+-+`mapping/CLAUDE.md` — the engine's technical rules and its licence list, which adds MIT-0, EDL 1.0,
+-+ISC and 0BSD for `mapping/` only (the mapping's ADR-0012 and ADR-0014). The process is this file's.
+-+
+- ## What this is
+- 
+- Open-source enterprise integration platform where **monitoring is the product**: every message,
+diff --git a/bench/run.sh b/bench/run.sh
+index 23ca8afe..9bdf7a36 100755
+--- a/bench/run.sh
++++ b/bench/run.sh
+@@ -76,7 +76,7 @@ if (( needs_pg )) && ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -
+   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -v ON_ERROR_STOP=1 -c "create database $BENCH_DB"
+ fi
+ 
+-mvn -B -ntp -q -pl :rail8-bench -am -DskipTests package
++mvn -B -ntp -q -f platform/pom.xml -pl :rail8-bench -am -DskipTests package
+ jar="$(ls bench/target/rail8-bench-*.jar | grep -v -E 'sources|javadoc' | head -1)"
+ cp="$jar:bench/target/lib/*"
+ mkdir -p bench/out
+diff --git a/bin/rail8 b/bin/rail8
+index d37d813a..a5d52847 100755
+--- a/bin/rail8
++++ b/bin/rail8
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+ # rail8: the command line (D-079): runs the packaged cli jar, platform/cli/target/rail8-cli-<version>.jar, whose manifest
+-# names io.rail8.cli.Cli and its class path in platform/cli/target/lib. Build it first: mvn -B -ntp -q package -DskipTests -pl :rail8-cli -am
++# names io.rail8.cli.Cli and its class path in platform/cli/target/lib. Build it first: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-cli -am
+ # Usage: bin/rail8 help
+ set -eu
+ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+@@ -12,7 +12,7 @@ for candidate in "$root"/platform/cli/target/rail8-cli-*.jar; do
+   esac
+ done
+ if [ -z "$jar" ] || [ ! -f "$jar" ]; then
+-  echo "rail8: no cli jar in $root/platform/cli/target; build it first: mvn -B -ntp -q package -DskipTests -pl :rail8-cli -am" >&2
++  echo "rail8: no cli jar in $root/platform/cli/target; build it first: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-cli -am" >&2
+   exit 2
+ fi
+ if [ -n "${JAVA_HOME:-}" ]; then java="$JAVA_HOME/bin/java"; else java=java; fi
+diff --git a/ci/name-allowlist.txt b/ci/name-allowlist.txt
+index e2867975..bdc5ee3a 100644
+--- a/ci/name-allowlist.txt
++++ b/ci/name-allowlist.txt
+@@ -78,12 +78,7 @@ ci/name-allowlist.txt | * | this file: its literals hold the old name
+ # The mapping engine's history keeps the old name (D-151); BRAND-3 step 2 renamed everything else under mapping/.
+ mapping/docs/adr/** | * | history: the mapping's ADRs; one that fixes a renamed name carries a dated amendment line (D-151)
+ mapping/docs/findings/** | * | history: the mapping's findings F-1..F-53 are records of what was found (D-151)
+-mapping/agent/** | * | history: the mapping's own agent notes and prompts as they were written (D-151)
+-
+-# The mapping's process files, kept as they are until BRAND-3 step 3 archives them under mapping/docs/archive/ or removes them.
+-mapping/CLAUDE.md | * | archived by BRAND-3 step 3
+-mapping/.claude/** | * | archived by BRAND-3 step 3
+-mapping/deploy/claude-cloud/** | * | the mapping's cloud set-up script and its README, which BRAND-3 step 3 removes
++mapping/docs/archive/** | * | history: the mapping's process files as they were, archived by BRAND-3 step 3 (CLAUDE.md, WORKFLOW.md, AGENTS.md, agent/, .claude/ as dot-claude/) (D-151)
+ 
+ # Names held by systems outside the repository, which the mapping's observation kits call or read.
+ mapping/corpus/observations/** | flottilaobservations | the integration package on the SAP CPI tenant the observation kits upload to
+diff --git a/deploy/compose/README.md b/deploy/compose/README.md
+index 6785e43f..17d94adf 100644
+--- a/deploy/compose/README.md
++++ b/deploy/compose/README.md
+@@ -6,7 +6,7 @@ A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_E
+ `kafka` profile, off by default and not wired: a plain `up` does not start it.
+ 
+ ```sh
+-mvn -B -ntp -q package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
++mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
+ cd deploy/compose
+ export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required: compose refuses to start without it
+ export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACCESS_KEY defaults to rail8
+diff --git a/deploy/compose/docker-compose.yml b/deploy/compose/docker-compose.yml
+index e22ca82f..b8ca7636 100644
+--- a/deploy/compose/docker-compose.yml
++++ b/deploy/compose/docker-compose.yml
+@@ -1,7 +1,7 @@
+ # The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3) and an SFTP server beside one Rail8 node,
+ # the demo's partner echo and a one-shot that deploys examples/demo; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack, not production: the node runs RAIL8_ENV=dev
+ # so the manual deploy and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on (O-1), off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
+-# Build the host jars first: mvn -B -ntp -q package -DskipTests -pl :rail8-runtime,:rail8-cli -am
++# Build the host jars first: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
+ # Then:  RAIL8_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
+ services:
+   postgres:
+diff --git a/deploy/quickstart/Dockerfile b/deploy/quickstart/Dockerfile
+index 6771a42e..00e64207 100644
+--- a/deploy/quickstart/Dockerfile
++++ b/deploy/quickstart/Dockerfile
+@@ -1,5 +1,5 @@
+ # The quickstart's node image (docs/QUICKSTART.md, docker-compose.yml service `rail8`). It copies what the host built —
+-#   mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am
++#   mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+ # — the runtime jar (its manifest names Main and a lib/ class path) and target/lib. Build context: the repository root;
+ # Dockerfile.dockerignore keeps the context to those files.
+ FROM eclipse-temurin:25.0.4.1_1-jre-noble
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 763d24bd..59b11287 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -1,5 +1,5 @@
+ # The local quickstart (docs/QUICKSTART.md): Postgres, one Rail8 node and the demo's partner echo. Build the runtime on the
+-# host first: mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am. The node migrates the schema itself (Flyway).
++# host first: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am. The node migrates the schema itself (Flyway).
+ # Postgres is also published on loopback (127.0.0.1:5432, or RAIL8_PG_HOST_PORT) for psql and local tools. The database and
+ # the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
+ services:
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index b9a618e1..0d36f9cd 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -120,6 +120,7 @@
+ | 2026-11-15 | 3.25 | §11: fixtures saved from monitoring — the masking by a flow's PII policy is parked (OPS-1; CONSIDER-20) | F-38 point 10 (major), D-147 |
+ | 2026-11-15 | 3.25 | §13: Phase 3 builds the log-record stream and the platform's own metrics and alerts in place of "OTel spans, Micrometer, both alert layers", and its gate clause on a dropped node becomes the owner's loss contract, `draft — review at hand-over`; Phase 5 names callers, the portal as a separate door and agent keys with proposals, and its gate clause "shows on every span" becomes "shows on every step's log record", the span where OpenTelemetry — an optional export — is exported, `draft — review at hand-over` (OPS-1; OPS-2 to OPS-8, OPS-10, OPS-11, pending) | F-38 points 2, 3, 5, 6, 11, 12 (major), D-147 |
+ | 2026-11-15 | 3.25 | §14: item 1 follows amendment 1; the `vertx-auth-abac` item is closed and the count of open items corrected; four new lists — parked by the owner (CONSIDER-19 to CONSIDER-23), the four places where the two briefs meet, the open questions of the rewrite, and the brief's [inferred] and to-verify items — each item with its row (OPS-1; ISSUE-8) | F-38 points 1, 9, 13, 14 (major), D-147 |
++| 2026-11-15 | 3.26 | §12: the mapping engine is in the repository — `mapping/` with its own parent pom, the root aggregates both areas, the wrapper is the repository's; a new paragraph states whose rules bind which area: this document's design rules bind the whole repository except `mapping/`, which keeps its ADRs until its embedding is designed (MAP-1), and until then nothing outside `mapping/` depends on, packages or starts what is built from it | F-54 (major); D-150, D-151, D-153 |
+ 
+ ## Amendments (Part A, 2026-10-17)
+ 
+@@ -644,7 +645,9 @@ Two execution layers run the same YAML: in-process mocks with in-memory stores (
+ 
+ ## 12. Repository layout and modules
+ 
+-One monorepo (Apache 2.0), laid out by area (D-149, F-37). The root holds areas, not modules, and no directory carries the product's name: `platform/` — the integration platform's Maven modules, with their parent pom at `platform/pom.xml`; `mapping/` — the mapping engine, which moves in with its own parent pom (planned: BRAND-3, D-150; until then the root aggregates `platform` only); `bench/` — the benchmark module beside its scripts and `RESULTS.md`; `examples/` — the demo package; `deploy/`, `docs/`; and the working files `agent/`, `issues/`, `ci/`, `bin/`. The root `pom.xml` is a thin aggregator and nobody's parent: `cd platform && mvn verify` builds the platform and its benchmark module without the other areas. Artifact ids keep a product prefix although directories do not, because a jar's file name must stay unique beside the mapping engine's `api` and `runtime`. Dependency direction strictly downward and enforced by ArchUnit; no module named `common`.
++One monorepo (Apache 2.0), laid out by area (D-149, F-37). The root holds areas, not modules, and no directory carries the product's name: `platform/` — the integration platform's Maven modules, with their parent pom at `platform/pom.xml`; `mapping/` — the mapping engine with its own parent pom at `mapping/pom.xml`, imported with its history (BRAND-3; D-150, D-151); `bench/` — the benchmark module beside its scripts and `RESULTS.md`; `examples/` — the demo package; `deploy/`, `docs/`; and the working files `agent/`, `issues/`, `ci/`, `bin/`. The root `pom.xml` is a thin aggregator of both areas and nobody's parent: `cd platform && mvn verify` builds the platform and its benchmark module without the mapping, `./mvnw -f mapping/pom.xml verify` the mapping without the platform; the Maven wrapper and `.mvn/` are the repository's. Artifact ids keep a product prefix although directories do not, because a jar's file name must stay unique beside the mapping engine's `api` and `runtime`. Dependency direction strictly downward and enforced by ArchUnit; no module named `common`.
++
++**Whose rules.** The design rules of this document bind the whole repository except `mapping/`; a later area is bound by them unless a decision says otherwise. `mapping/` is bound by its own ADRs (`mapping/docs/adr/`) and by `mapping/CLAUDE.md` until its embedding is designed: its service follows other rules (Quarkus, its own listener, whole request bodies, its own licence list — F-54). Until then nothing under `platform/`, `bench/`, `deploy/`, `examples/` or `bin/` depends on, packages or starts anything built from `mapping/` (MAP-8, pending, makes that a failing check), and nothing built from `mapping/` is published. The embedding — a step over the engine's facade — needs a finding and the owner's brainstorm first (MAP-1, pending). The platform's workflow and its documented commands build with `-f platform/pom.xml`, the mapping has its own workflows, and a Maven command at the root without `-f` builds both (D-153). `draft — review at hand-over` (ISSUE-9 item 3).
+ 
+ | Directory | Artifact | Contains | Depends on |
+ | --- | --- | --- | --- |
+@@ -661,7 +664,7 @@ One monorepo (Apache 2.0), laid out by area (D-149, F-37). The root holds areas,
+ | `platform/schemas` | `rail8-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |
+ | `platform/archtest` | `rail8-archtest` | the ArchUnit rules and the build-hygiene checks; never shipped | api, core, runtime, the http and mock components, both steps, testkit, cli, sim — all test scope |
+ | `bench/` | `rail8-bench` | the benchmark and ledger programs, the run scripts, `RESULTS.md` — a number not in that file does not exist | core, runtime, the http component, the xslt step; testkit in test scope. Listed from the platform parent as `../bench` |
+-| `mapping/` | `rail8-mapping-*` (planned, BRAND-3) | the mapping engine (`engine/`), its service and its UI; it will keep its own parent pom, aggregated by the root and not inherited; its decisions are its ADRs | — (no platform module will depend on it at first; a mapping step needs a finding first) |
++| `mapping/` | `rail8-mapping-*` | the mapping engine — its JPMS modules behind one facade (`engine/`), its Quarkus service and React UI (`service/`, `ui/`), its corpus, ratchet and bench; its own parent pom, aggregated by the root and not inherited; its decisions are its ADRs (`mapping/docs/adr/`), its rules `mapping/CLAUDE.md` | — (nothing outside `mapping/` depends on it, packages it or starts it; a mapping step needs a finding first — MAP-1, F-54) |
+ | `examples/`, `docs/`, `deploy/` | — | the demo package, architecture and decisions, Compose/Helm/systemd | — |
+ 
+ Later areas: `jq/` beside `mapping/` when the jq engine moves in.
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 0cad2f94..540a9bec 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -158,3 +158,4 @@ ARCHITECTURE.md changelog instead.
+ | D-150 | 2026-11-15 | Import of the mapping engine (BRAND-3). **With history:** one commit on a local copy of the mapping's `main` moves every file under `mapping/`, then `git merge --allow-unrelated-histories` into `main` — the 1154 commits keep their SHAs and `git log --follow` crosses an ordinary rename; the merge message is written by hand with the trailers. **DCO:** 131 of those commits carry no `Signed-off-by` (the mapping enforced the trailer only from its #67), so from the commit before the import the DCO job lists `--first-parent`: every commit pushed to `main` is still checked, a history merged in from another repository is not. **Then, in order:** the rename inside `mapping/` by the BRAND-1 script (D-149); one root `.mvn/` with the mapping's `${maven.multiModuleProjectDirectory}` paths repointed to `mapping/`; its three workflows ported job by job into the root `.github/workflows` (upload paths rewritten, its trailers job dropped — the root's rules apply); its `CLAUDE.md` trimmed to the technical rules (red first with the oracle and the ratchet, glossary, ADRs) with the process taken from the root and the rest archived by `git mv`; its `NOTICE` merged into the root `NOTICE`; its open GitHub issues rowed as `MAP-<n>`; `#N` in an imported commit or ADR means the old repository's issue, said once in `mapping/README.md`. The root licence list takes the four licences the mapping's ADR-0014 already allows (MIT-0, EDL-1.0, ISC, 0BSD). Not in BRAND-3: one parent for both builds, one version, a platform step that depends on the mapping API (a finding first: STEPS_DEPEND_ON_API_ONLY). Archiving the old repository is the owner's action. | The engine develops with the project from here on (owner 2026-11-15), so `git blame` and the ADRs' commit references must keep working: a squash would cut both, a path-rewriting filter would change every SHA the ADRs cite. The DCO scope change is the smallest one that lets an existing history in; it does not exempt any commit made in this repository. **[Amended 2026-11-15, BRAND-3 step 1]** Two corrections after review. The first-parent listing leaves unchecked every commit a merge brings in by a later parent, whatever its origin: the job cannot tell an imported repository from a side branch of this one, so the last sentence holds only while `main` gets no other merge. The one merge `docs/WORKFLOW.md` prescribes — `origin/main` into the branch after a refused push — keeps the session's commits on the first parent, and what its second parent brings was checked when it was pushed; any other merge commit on `main` is for the reviewer to ask about. And the 131 are not all older than the mapping's trailer check: 30 are dated after 2026-11-03, 18 of them GitHub's pull-request merge commits (`agent/work/BRAND-3-unsigned.txt`); they are 131 of 1155 commits, the move commit included, which is signed. The root licence list is not changed by BRAND-3: the four licences go to the owner as an issue with a patch (the packet's ruling 2 after step 1's review); until then the mapping's ADR-0014 governs only `mapping/`. |
+ | D-151 | 2026-11-15 | The mapping engine's names and records at the import (BRAND-3, with D-150). **Names:** its identifiers follow D-149 (`io.rail8.mapping`, `rail8-mapping-*`, properties `rail8.mapping.*`) and stay under D-149's draft with them — the coordinates and the package root are `draft — review at hand-over` until ISSUE-7 is answered (the mapping's own hand-off had planned `dev.rail8`), and a later namespace is one more run of the tool. Its persisted and wire names follow too — the `$id` URNs of the mapping model and of the function catalogue, the generated XSLT's namespace, the error-code prefix, the corpus and test namespaces — version digits kept, no alias, as for the platform (D-148): nothing of the mapping is released. In the golden corpus the same string is replaced in inputs, models and expected outputs alike, so no expectation is derived from the engine. **Pins:** a pinned digest is recomputed only where it is a digest of bytes that can be named and recomputed outside the engine, first reproducing today's value from today's bytes; a pin only the engine can produce is not regenerated by the implementer — the architect decides after the differential oracle has passed on the renamed corpus. **History:** the mapping's ADRs, findings, bench results and archived process files keep the old name; an ADR that fixes a name this changes gets one dated amendment line. **Findings:** the mapping's F-1..F-53 stay in `mapping/docs/findings/`; the root's series, which has F-38 reserved for OPS-1, continues at F-54, so that no new number means two things; a bare `F-n` up to 53 in a mapping document means the mapping's. **Process:** one process for the repository — the root's `CLAUDE.md`, `AGENTS.md` and `docs/WORKFLOW.md`; `mapping/CLAUDE.md` keeps only the engine's technical rules; the mapping's `AGENTS.md`, hand-off file and `.claude/` are archived by `git mv` under `mapping/docs/archive/`. **Baseline first:** the mapping's own suite is measured in the clone before the import, and every later step is compared with it. | The engine develops with the project from here on (owner 2026-11-15), so one name must hold everywhere, and this is the cheapest moment for its wire names as it was for the platform's. Two finding series that grow with the same numbers would make every later citation ambiguous; two processes in one repository are the chaos the consolidation ends (D-148). |
+ | D-152 | 2026-11-15 | How ARCHITECTURE and the living documents take the operations brief (OPS-1; F-38, changelog 3.25). **Thin rewrite:** each section states what is built and, for what the brief decides, a "To be (OPS-n, pending; OPERATIONS-BRIEF §x)" paragraph in the brief's own words with no mechanism beyond it; the detail enters when each OPS row is designed and opposed. What the brief marks [inferred], "to verify" or "not thought through" is never stated as design: it is listed in §14 with its row and carried to the owner in ISSUE-8, each line with the default that holds until the answer. **Numbers stay:** no section is inserted or renumbered (code comments, schemas and an applied migration cite them); §8 is "Monitoring: log records, metrics, alerts" with nine bold sub-headings, the write path's still beginning with "Write path"; §9 gains Teams and permissions, Agents, Callers and the developer portal. **No general rule between the two briefs:** the operations brief amends CORE-8, CORE-10 and CORE-13, rejects Vector and widens the loss contract of CORE-REWORK Q-6, nothing more; the four places where it meets `docs/CORE-REWORK.md` are open in §14, each with its row, and D-110 stands. **Terms:** "log record", "journal record", "deployment record", never a bare "record" in §4 or §8; "level" always qualified; "tenant" only for the built field; "interface" is the operator's word for a deployed flow, the dispatcher case open. **Gate clauses:** Phase 3's clause on a dropped node becomes the owner's loss contract and Phase 5's "shows on every span" follows §8, both `draft — review at hand-over`. **Journals:** `docs/PROGRESS.md` is the one journal written to; the archive stays byte-identical and a closing pointer names it; every living document that names the journal's path is corrected, and HANDOVER's verdict line names the archive, which holds the GATE entry. **Steering files:** the changes to `CLAUDE.md` and to two agent definitions (the limit rule's sentence on a message's log; the journal's path) are a patch for the owner, `agent/patches/OPS-1-steering.patch`, applied by no session (ISSUE-8 D). **Rows:** OPS-12 and FIX-220 added; P2-S1 and P2-S2 superseded. | A full rewrite that restates the brief's design would drift from it by paraphrase and bind before any class-C design exists; a general "the operations brief wins" rule would overturn decisions of the core rework the owner did not revisit; renumbering would break every citation in the code. Rejected also: merging the two journal files; "interface = flow" as a definition. |
++| D-153 | 2026-11-15 | How the two areas live in one repository after the import (BRAND-3 step 3; with D-150, D-151; F-54). All of it is the default until ISSUE-9 is answered. **Rules (ISSUE-9 item 3):** the design rules of `docs/ARCHITECTURE.md` and of the root `CLAUDE.md` ("Design rules") bind the whole repository except `mapping/`; a later area (`jq/`) is bound by them unless a decision says otherwise. `mapping/` is bound by its ADRs and by `mapping/CLAUDE.md` until its embedding is designed (MAP-1). Every other section of the root `CLAUDE.md` — Tests, Working rules, Context hygiene — binds both areas, except the lines of Tests that name platform modules or tools (the coverage floors, PIT on `api` and `core`, jqwik for the batcher, admission and the WorkQueue, `bench/RESULTS.md`) and the line on a blocked platform thread, which is the platform's threading model: there the mapping's own stand (its oracle, its ratchet, `mapping/bench/RESULTS.md`, a service on worker threads; its ADR-0014, ADR-0017 to ADR-0020). The POSIX-only `assumeTrue` cases of `WorkspaceTest` and `ObservedFileSystemTest` exist at the import and stay; no new skipped case. **Separation:** nothing under `platform/`, `bench/`, `deploy/`, `examples/` or `bin/` depends on, packages or starts anything built from `mapping/` until the embedding is designed — a finding and the owner's brainstorm first (MAP-1); OPS-4 and OPS-6, which reach into the engine, wait for it; MAP-8 makes the separation a failing check. The platform's build, its coverage guard and `BuildHygieneTest` neither read nor build `mapping/`: `ci.yml` and every documented platform command name `-f platform/pom.xml`. The name guard and the DCO job are the repository's and cover both. The root pom aggregates both areas and is nobody's parent, so a Maven command at the root without `-f` builds both; the Maven wrapper and `.mvn/` are the repository's. `mapping-ci.yml` runs on a change under `mapping/`, of the root pom, the wrapper, the root `.gitattributes` or itself; `mapping-bench.yml` on request; `mapping-nightly.yml` nightly and on request. **Licences (ISSUE-9 A):** the mapping's list and its exceptions per artifact are left as imported — neither accepted nor removed by a session — for `mapping/` only, and frozen: an addition is an ISSUE. The root list is unchanged. Nothing built from `mapping/` (a jar, an image, the UI bundle, a Maven deploy) is published, attached to a release or started from `deploy/` while ISSUE-9 A is open. **Until MAP-1** work under `mapping/` closes, fixes and observes (MAP-2, -3, -4, -6, -7) and adds no dependency, licence exception, listener or endpoint; its next specs (MAP-5) start after the owner's session on each. **Tracker:** the mapping's open work is rows `MAP-<n>` in `agent/BACKLOG.md`, and every MAP packet names this decision and `mapping/CLAUDE.md`; `#N` in a mapping document names an issue or a pull request of the old repository. The scope is `draft — review at hand-over` (ISSUE-9 item 3); ISSUE-9 carries a patch for the root rule file that no session applies. The patch states the scope and the licence list only: this row is the rule for the separation, the standstill and the licence freeze before and after it is applied, and for the scope too while the root `CLAUDE.md` is silent on `mapping/`. | The mapping's service follows other rules than the platform's (Quarkus on Vert.x 4.5, its own listener, a body read whole, no authentication — `agent/work/BRAND-3-scout-2.md` C), and rewriting either area to the other's rules is neither asked nor needed while neither depends on the other. Saying where each set of rules holds keeps a session from "fixing" one area by the other's rules; stating the scope by exclusion leaves no directory bound by nothing; the standstill keeps the default cheap to reverse and the platform's licence rule whole until the owner has ruled. Opposed by the architecture-advisor before the decision (D-137): scope by exclusion, the standstill, the licence wording and the corrected facts are its points. Rejected: the engine's modules under the root licence list now (their closure is unchecked — MAP-1's first step, and the owner's call in ISSUE-9); two reactors (gives up D-150's one checkout); a rule-by-rule table (it drifts). |
+diff --git a/docs/QUICKSTART.md b/docs/QUICKSTART.md
+index 2b659069..7c9b6c80 100644
+--- a/docs/QUICKSTART.md
++++ b/docs/QUICKSTART.md
+@@ -8,7 +8,7 @@ sent in and read back through the admin API. Commands run from the repository ro
+ ## 1. Build and start
+ 
+ ```sh
+-mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
++mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
+ export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
+ docker compose up -d --build
+ until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, not just postgres, is up
+diff --git a/docs/WORKFLOW.md b/docs/WORKFLOW.md
+index e87ebed1..b6ffc44b 100644
+--- a/docs/WORKFLOW.md
++++ b/docs/WORKFLOW.md
+@@ -20,8 +20,10 @@ is binding for every session working on Rail8; `CLAUDE.md` summarises it.
+    Red first: the failing test exists, observed red, before the code. Then the task packet.
+ 4. Implement through the implementer (model and effort by the row's class). The coordinator never
+    implements. One writer at a time.
+-5. Verify through the verifier: `mvn -B -ntp verify -Pit` green (D-030; the CI path), ArchUnit green, coverage not
+-   decreased, scoped PIT on the touched classes. The verifier reports exit codes and the failing
++5. Verify through the verifier: `mvn -B -ntp -f platform/pom.xml verify -Pit` green (D-030; the CI
++   path), ArchUnit green, coverage not decreased, scoped PIT on the touched classes. A task under
++   `mapping/` is verified by the mapping's own build, `./mvnw -B -ntp -f mapping/pom.xml verify`
++   (D-153). The verifier reports exit codes and the failing
+    section; the coordinator reads the log tail itself and records each check with its evidence
+    state.
+ 6. Review by the reviewer agent (Opus 5.5, effort by the row's class), the diff handed over as
+diff --git a/docs/findings/F-54.md b/docs/findings/F-54.md
+new file mode 100644
+index 00000000..dfb184a6
+--- /dev/null
++++ b/docs/findings/F-54.md
+@@ -0,0 +1,48 @@
++# F-54 — the imported mapping engine's service is built on other rules than this document's
++
++Date: 2026-11-15 · Task: BRAND-3 · ARCHITECTURE section: §12 (version 3.25)
++
++- **Assumption in the document:** §12 lists `mapping/` as an area that "moves in with its own parent
++  pom" and says only that no platform module depends on it at first. Nothing says whose rules bind
++  it. The document's rules — Vert.x 5.1, one virtual thread per message, a socket only through the
++  Component SPI, no message refused for its size, the licence list — are written as the
++  repository's.
++- **How it fails in practice:** the engine arrived with its history (D-150) and with a service that
++  follows its own ADRs: Quarkus 3.40 on Vert.x 4.5 (the mapping's ADR-0014), its own HTTP listener on
++  127.0.0.1, request bodies read whole and refused above 10 MB (ADR-0024), worker threads and a
++  platform thread for a test run (ADR-0014, ADR-0020), no authentication in its milestone 1, a wider
++  licence list with exceptions per artifact (ADR-0012, ADR-0014, ADR-0017), no jqwik (ADR-0018). The
++  engine's JPMS modules depend on none of the service's frameworks (ADR-0014, ADR-0016). Read as the
++  repository's, this document's rules are broken by code that passes its own 17 822 tests and that
++  no one asked to rewrite; a session that reads them so "fixes" one area by the other's rules.
++- **Severity:** major — the document's rules were written as the repository's, and §12 now says
++  where they hold: a normative paragraph, not a clarification. Nothing the platform builds or ships
++  changes.
++- **Evidence:** the mapping's ADRs, POM and rule file as read on 2026-11-15
++  (`agent/work/BRAND-3-scout-2.md` blocks A, C, E); `mapping/pom.xml:207-222` and
++  `mapping/licence-filters.txt` for the exceptions per artifact; the mapping's suite as imported,
++  17 822 tests, 0 failures (`agent/work/BRAND-3-s3-mapping.log`).
++- **Change made:** §12 states the scope (D-153). This document's design rules bind the whole
++  repository except `mapping/`. `mapping/` is bound by its own ADRs and by `mapping/CLAUDE.md` until
++  its embedding is designed; the embedding (a step over the engine's facade, what of the engine's
++  dependency closure may enter the platform's class path, sizes, who may edit and deploy a mapping)
++  needs a finding of its own and the owner's brainstorm first (MAP-1). Until then nothing outside
++  `mapping/` depends on, packages or starts anything built from it (MAP-8 makes that a failing
++  check), nothing built from it is published, and its licence list is frozen as imported. The
++  root's test rules, working rules and context hygiene bind both areas (D-153 names the lines of
++  the test rules that are the platform's own). Nothing in the mapping is rewritten to the
++  platform's rules by this finding, and nothing in the platform is loosened.
++- **ARCHITECTURE.md edit:** changelog 3.26 — §12: the area is in the repository; a new paragraph
++  "Whose rules"; the `mapping/` row of the table.
++- **PROGRESS entry:** BRAND-3 (step 3) marked `Deviation: F-54`.
++- **Not decided here:** whether the mapping's service is ever shipped with a node or stays a
++  development tool; whether the platform's `control` area (planned, Quarkus) and the mapping's
++  service become one; whether the engine's modules alone should come under the root's licence list
++  now; whether the root licence rule covers GPL-2.0 with the Classpath Exception. ISSUE-9 carries
++  the licence lines and the scope to the owner.
++- **For the owner's review:** the scope paragraph of §12 is `draft — review at hand-over` (ISSUE-9
++  item 3). It adds no code and removes none, so reversing it is cheap today; it stops being cheap
++  with every feature built under the mapping's rules, which is why D-153 holds the mapping to
++  closing, fixing and observing until MAP-1. Rejected: rewriting the service to the platform's
++  rules now (not asked); taking `mapping` out of the root reactor (it gives up the one checkout and
++  one wrapper D-150 chose); a rule-by-rule table in §12 (it drifts).
+diff --git a/issues/ISSUE-9.md b/issues/ISSUE-9.md
+new file mode 100644
+index 00000000..4eec82fb
+--- /dev/null
++++ b/issues/ISSUE-9.md
+@@ -0,0 +1,109 @@
++# ISSUE-9 — the mapping engine's licences, and which root rules bind `mapping/`
++Task: BRAND-3
++Date: 2026-11-15 (F-54, D-153)
++
++## What is needed
++The owner's word on each item below, and one patch applied by the owner. The mapping engine is in
++this repository with its history (D-150). Its own rule file allowed more licences than the root's,
++and its service is built on other rules than the platform's design rules. A licence is the owner's
++word (CLAUDE.md, Working rules) and no session edits a rule file, so every item states the default
++that holds until the answer. The facts are in `agent/work/BRAND-3-scout-2.md`, blocks C and E.
++
++A. Licences. The root list is Apache 2.0, MIT, BSD, MPL 2.0, EPL; "AGPL, GPL, BSL, SSPL → `ISSUE`,
++never linked".
++1. Four more licences are on the mapping's list, accepted by the owner in its repository: ISC and
++   0BSD (the editor's npm packages, `d3-*` and `tslib` — the mapping's ADR-0012), MIT-0
++   (`reactive-streams`) and EDL 1.0 (`jakarta.activation`, `jakarta.xml.bind`) from the Quarkus
++   dependency tree (ADR-0014). Default: left as imported, for `mapping/` only; nothing outside
++   `mapping/` takes a dependency under them.
++2. The mapping also has exceptions per artifact (its ADR-0017; `mapping/licence-filters.txt`,
++   `mapping/bench/jmh/licence-filters.txt`, `mapping/ui/scripts/licence-exceptions.json`). Five Java
++   artifacts are allowed at test scope only — the mapping's enforcer bans each at compile, runtime
++   and provided scope (`mapping/pom.xml:207-222`), so by the POM none is in a built jar:
++   `io.smallrye.classfile:jdk-classfile-backport` (GPL-2.0 with the Classpath Exception),
++   `javax.annotation:javax.annotation-api` (CDDL or GPL-2.0 with the Classpath Exception),
++   `org.graalvm.sdk:nativeimage` and `:word` (UPL-1.0), `aopalliance` (public domain). JMH (GPL-2.0
++   with the Classpath Exception) is in `mapping/bench/jmh` only. Three npm tools are dev-only
++   (`argparse` Python-2.0, `caniuse-lite` CC-BY-4.0, `minimatch` BlueOak-1.0.0 — ruling #39 of the
++   old repository). The filter file says "the owner accepted"; ADR-0017 cites no ruling for the Java
++   artifacts. The question: does the root's "GPL … never linked" cover GPL-2.0 with the Classpath
++   Exception at test scope and in a benchmark module? Default: the exceptions are left as imported —
++   neither accepted nor removed by a session — for `mapping/` only, and frozen: an addition is an
++   issue. The mapping's build runs its enforcer and its licence check (seen in
++   `agent/work/BRAND-3-s3-mapping.log`); what is in a built jar was not inspected.
++   While this item is open, nothing built from `mapping/` (a jar, an image, the UI bundle, a Maven
++   deploy) is published, attached to a release or started from `deploy/`. That is today's state —
++   the mapping's workflows publish nothing — made a rule (D-153).
++
++B. Rules.
++3. The root's design rules were written for the platform: Vert.x 5.1, a socket only through the
++   Component SPI, no message refused for its size, one virtual thread per message. The mapping's
++   service is Quarkus 3.40 on Vert.x 4.5, has its own HTTP listener on 127.0.0.1, reads a request
++   body whole and refuses one above 10 MB, and has no authentication (the mapping's ADR-0014,
++   ADR-0024). Its engine modules depend on none of that (F-54). Default (D-153, ARCHITECTURE §12):
++   the root's design rules bind the whole repository except `mapping/`; `mapping/` is bound by its
++   ADRs and `mapping/CLAUDE.md`; nothing outside `mapping/` depends on, packages or starts anything
++   built from it until the embedding is designed (MAP-1, a finding and the owner's brainstorm
++   first); until then work under `mapping/` closes, fixes and observes (MAP-2, -3, -4, -6, -7) and
++   adds no dependency, licence exception, listener or endpoint, and its next specs (MAP-5) start
++   after the owner's session on each. An alternative the owner may prefer: the engine's modules
++   (`mapping/engine/**`, no Quarkus) under the root's rules and licence list now, the wider list for
++   the service, the UI and the bench only — whether the engine's dependency closure passes the root
++   list today is not checked (MAP-1's first step).
++4. The root's test rules that name platform parts and tools — the coverage floors per module, PIT on
++   `api` and `core`, jqwik for the batcher, admission and the WorkQueue, `bench/RESULTS.md`, and "a
++   blocked platform thread in a test is a failure", which is the platform's threading model —
++   against the mapping's own: the oracle and the ratchet, no jqwik (its ADR-0017 to ADR-0019), a
++   service on worker threads (its ADR-0014, ADR-0020), two POSIX-only test classes with cases under
++   `assumeTrue`. Default (D-153): every other line of the
++   root's Tests, Working rules and Context hygiene binds both areas; the lines named here are the
++   platform's and the mapping's own stand in their place; the `assumeTrue` cases that exist stay and
++   no new skipped case is added.
++
++C. Rule files and the session's set-up.
++5. `mapping/CLAUDE.md` was cut to the engine's technical rules (37 lines): the process lines went,
++   because the process is the root's (D-151); nothing was added but the pointer to D-153's freeze
++   and standstill (item 3). The file as it was is
++   `mapping/docs/archive/CLAUDE-until-2026-11-15.md`. Say if a rule was dropped that should hold.
++6. The mapping's cloud set-up script (`deploy/claude-cloud/setup.sh`, removed; in the history) did
++   three things the root's `agent/cloud/setup.sh` does not: it wrote a mirror of Maven Central into
++   `~/.m2/settings.xml` (Central had answered 429 to the VM — the mapping's ADR-0017), exported
++   `MVNW_REPOURL`, and enabled the Context7 server in the session's own settings. None was carried
++   over: the builds of both areas pass here without the mirror, and a session does not change its
++   own settings. Say if any of the three should come back.
++7. `.claude/agents/implementer.md:38` tells the implementer to run `mvn -B -ntp verify`. Run at the
++   root, that now builds both areas. Packets name the command with its pom (`-f platform/pom.xml`,
++   `-f mapping/pom.xml`) and the packet is what the implementer follows; the agent's file is the
++   owner's. Say if the line should name the pom. (It is context of a hunk of the OPS-1 patch, so it
++   is not in the patch below.)
++
++D. The patch. `git apply agent/patches/BRAND-3-steering.patch` — the root `CLAUDE.md` gains one
++paragraph: under `mapping/` the Design rules do not apply until the embedding is designed;
++`mapping/CLAUDE.md` holds the engine's technical rules and its licence list with the four licences
++of item 1 for `mapping/` only; the exceptions of item 2 are not ruled by it; Tests, Working rules
++and Context hygiene bind both areas. It states the licence list of item 1 and the scope of items 3
++and 4, and nothing else: the separation, the standstill and the licence freeze are not in it —
++D-153 is their rule, before and after the patch is applied. An answer that differs changes the
++paragraph. It applies before or after `agent/patches/OPS-1-steering.patch` (ISSUE-8). No session
++applies it; until the owner does, the root `CLAUDE.md` is silent on `mapping/` and D-153 is the
++rule for the scope too.
++
++## Why the agent cannot decide it
++Licences are the owner's (CLAUDE.md, Working rules: money, credentials, licences → an issue), and a
++rule file is edited by the owner only. Which of the root's design rules reach the mapping decides
++what the embedding may look like — an expensive-to-reverse choice that is the owner's to make with
++MAP-1, not a session's.
++
++## What was tried
++The mapping's ADR-0012, ADR-0014, ADR-0017, its POM and its filter files were read (scout,
++2026-11-15; the opponent's check of the POM, `agent/work/BRAND-3-s3-advisor.md`). No licence was
++added to or removed from any list by a session. Nothing is blocked now; MAP-1 (how a flow runs a
++mapping) does not start before items 1-3 are answered, because a platform module that depends on an
++engine module takes the engine's dependency closure with it.
++
++## Default if the owner does not answer
++The defaults stated on each item: the mapping keeps its list and its own licence check, frozen; the
++platform's list is unchanged; nothing outside `mapping/` depends on it and nothing built from it is
++published; the patch stays unapplied.
++
++## Owner's answer
+diff --git a/mapping/.gitignore b/mapping/.gitignore
+index 2aaf5573..81793087 100644
+--- a/mapping/.gitignore
++++ b/mapping/.gitignore
+@@ -8,8 +8,6 @@ ui/.logs/
+ .idea/
+ *.iml
+ .DS_Store
+-.claude/settings.local.json
+-.claude/worktrees/
+ ui/coverage/
+ ui/test-results/
+ ui/playwright-report/
+diff --git a/mapping/.mcp.json b/mapping/.mcp.json
+deleted file mode 100644
+index a0300fd5..00000000
+--- a/mapping/.mcp.json
++++ /dev/null
+@@ -1,11 +0,0 @@
+-{
+-  "mcpServers": {
+-    "context7": {
+-      "type": "http",
+-      "url": "https://mcp.context7.com/mcp",
+-      "headers": {
+-        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+-      }
+-    }
+-  }
+-}
+diff --git a/mapping/CLAUDE.md b/mapping/CLAUDE.md
+index 971712bb..96a538ca 100644
+--- a/mapping/CLAUDE.md
++++ b/mapping/CLAUDE.md
+@@ -1,61 +1,37 @@
+-# Flottila Mapping — rules for every agent
++# Rail8 Mapping — the engine's technical rules
++
++The process is the repository's: who does what, tasks, commits, findings and the hand-off are in the
++root `CLAUDE.md`, `AGENTS.md` and `docs/WORKFLOW.md` (D-151). A new finding about the mapping is
++numbered in the root's series from F-54; `F-1`..`F-53` are `docs/findings/` here. The rules below
++are the engine's own and hold inside `mapping/`. The file as it was: `docs/archive/CLAUDE-until-2026-11-15.md`.
+ 
+ Open-source mapping engine and editor: graphical message mappings (SAP PO style queues and
+ contexts) and, later, XSLT 3.0 / XPath 3.1, all compiled to one IR and run on Java 25. UI in
+-React + PatternFly. It will become the mapping engine and mapping UI of Flottila; until then it is
+-a separate repo with no dependency on Flottila. Everything in the repo is in English.
+-
+-This file is loaded into every context, so it holds only pointers and the rules nobody may break.
++React + PatternFly. This file holds only pointers and the rules nobody may break.
+ 
+ ## Read before work
+ 
+-- `docs/FOUNDING-ARCHITECTURE.md` — the owner's agreed direction; grilling confirms it, never re-asks it.
+-- `GLOSSARY.md` — the project's language. Use its terms in code, tests, tickets and hand-backs.
+-- `AGENTS.md` — roles, ticket classes (A/B/C/G → model and effort), concurrency, evidence words.
+-- `docs/WORKFLOW.md` — how a spec goes from idea to `main`; read the section you are in.
+-- `agent/HANDOFF.md` — the current state and the next exact action (architect only).
++- `docs/FOUNDING-ARCHITECTURE.md` — the owner's agreed direction.
++- `GLOSSARY.md` — the project's language. Use its terms in code, tests, tasks and hand-backs.
+ - `docs/adr/` — decisions that bind the area you touch. Contradicting one is a finding, not a fix.
+ - `docs/CODING_STANDARDS.md` — read by reviewers; writers read it when a hand-back is rejected.
+-
+-Work items live in GitHub Issues (`docs/agents/issue-tracker.md`): wayfinder maps, specs and
+-tickets with native blocking edges. There is no backlog file.
++- Domain docs: single context, `GLOSSARY.md` and `docs/adr/` in `mapping/`. See `docs/agents/domain.md`.
++- Checks, ratchet and CI: `mapping/docs/WORKFLOW.md` §6.
+ 
+ ## Non-negotiable
+ 
+-- Red before green. A ticket starts from a failing check: a test, an oracle case or a ratchet entry.
++- Red before green. A task starts from a failing check: a test, an oracle case or a ratchet entry.
+ - Never weaken, skip or delete a test, an oracle case or a ratchet entry to go green.
+-- Never claim a build, test, measurement or push you did not observe. Evidence words only
+-  (`VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`, see `AGENTS.md`).
+-- Never edit ratchet files (`ratchet/`) by hand in a ticket; only the verifier regenerates them
+-  on the integration branch.
+-- Writers work only inside their worktree and the paths their ticket names.
++- Never edit ratchet files (`ratchet/`) by hand in a task; only the verifier regenerates them.
+ - Library APIs: Context7 first, then `javap` / the package's `.d.ts`. Never an API from memory.
+ - Dependencies: Apache 2.0, MIT, MIT-0, BSD, EDL 1.0, ISC, 0BSD, MPL 2.0, EPL only (ISC, 0BSD: ADR-0012;
+   MIT-0, EDL 1.0: ADR-0014); a dual licence counts under its allowed alternative. The list covers every
+   compile, runtime and test dependency and all of `ui/package.json`. Exceptions are per artifact, listed in
+-  the root POM and ADR-0017: Saxon-HE at test scope (oracle), JMH in `bench/jmh` only, and the Quarkus
+-  test framework's own dependencies, and three dev-only npm build tools (#39). Maven plugins are tools, not dependencies (any OSI licence).
++  the mapping's POM and ADR-0017: Saxon-HE at test scope (oracle), JMH in `bench/jmh` only, and the Quarkus
++  test framework's own dependencies, and three dev-only npm build tools (#39). Maven plugins are tools, not
++  dependencies (any OSI licence). The list holds inside `mapping/`; the root list is unchanged (D-153).
++  The list and the exceptions are frozen as imported: an addition is an issue for the owner, and until the
++  embedding is designed work here adds no dependency, licence exception, listener or endpoint (D-153, ISSUE-9).
+ - No secret, customer payload or real partner data in the repo; corpora are synthetic.
+-- When practice contradicts an ADR or the architecture: write the finding (`docs/WORKFLOW.md` §7).
+-
+-## Context hygiene
+-
+-- Build and test output goes to `.logs/<ticket>-<check>.log` (backend) or
+-  `ui/.logs/<ticket>-<check>.log` (frontend); read the tail or the failing section only.
+-- Large reads go to the scout. A hand-back is at most 40 lines.
+-- After a compaction: re-read `agent/HANDOFF.md`, run `git status` and `git log -3`, and treat
+-  everything older than the last hand-back as unknown.
+-
+-## Agent skills
+-
+-### Issue tracker
+-
+-GitHub Issues with sub-issues and native blocking. See `docs/agents/issue-tracker.md`.
+-
+-### Triage labels
+-
+-The five canonical roles plus `class:*`, `oracle:*`, `spec`, `wayfinder:*`. See `docs/agents/triage-labels.md`.
+-
+-### Domain docs
+-
+-Single context: `GLOSSARY.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
++- When practice contradicts an ADR or the architecture: write the finding (the root `docs/WORKFLOW.md` §7,
++  from F-54).
+diff --git a/mapping/HANDOVER.md b/mapping/HANDOVER.md
+index b3f3e844..7d48866b 100644
+--- a/mapping/HANDOVER.md
++++ b/mapping/HANDOVER.md
+@@ -171,7 +171,7 @@ java -jar bench/jmh/target/benchmarks.jar -f 3 -wi 3 -i 5 -w 1s -r 1s -prof gc
+ The numbers of spec 6 are in `bench/RESULTS.md`: "Spec 6 first measurement (#189)" and "Orders
+ allocation (#194)". A run off the VM is informative only.
+ 
+-The `bench` workflow (`.github/workflows/bench.yml`) is a manual smoke test at `-f 1`. It is never
++The `mapping-bench` workflow (the root `.github/workflows/mapping-bench.yml`) is a manual smoke test at `-f 1`. It is never
+ a gate.
+ 
+ Check this file with its script test:
+diff --git a/mapping/LICENSE b/mapping/LICENSE
+deleted file mode 100644
+index 261eeb9e..00000000
+--- a/mapping/LICENSE
++++ /dev/null
+@@ -1,201 +0,0 @@
+-                                 Apache License
+-                           Version 2.0, January 2004
+-                        http://www.apache.org/licenses/
+-
+-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+-
+-   1. Definitions.
+-
+-      "License" shall mean the terms and conditions for use, reproduction,
+-      and distribution as defined by Sections 1 through 9 of this document.
+-
+-      "Licensor" shall mean the copyright owner or entity authorized by
+-      the copyright owner that is granting the License.
+-
+-      "Legal Entity" shall mean the union of the acting entity and all
+-      other entities that control, are controlled by, or are under common
+-      control with that entity. For the purposes of this definition,
+-      "control" means (i) the power, direct or indirect, to cause the
+-      direction or management of such entity, whether by contract or
+-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+-      outstanding shares, or (iii) beneficial ownership of such entity.
+-
+-      "You" (or "Your") shall mean an individual or Legal Entity
+-      exercising permissions granted by this License.
+-
+-      "Source" form shall mean the preferred form for making modifications,
+-      including but not limited to software source code, documentation
+-      source, and configuration files.
+-
+-      "Object" form shall mean any form resulting from mechanical
+-      transformation or translation of a Source form, including but
+-      not limited to compiled object code, generated documentation,
+-      and conversions to other media types.
+-
+-      "Work" shall mean the work of authorship, whether in Source or
+-      Object form, made available under the License, as indicated by a
+-      copyright notice that is included in or attached to the work
+-      (an example is provided in the Appendix below).
+-
+-      "Derivative Works" shall mean any work, whether in Source or Object
+-      form, that is based on (or derived from) the Work and for which the
+-      editorial revisions, annotations, elaborations, or other modifications
+-      represent, as a whole, an original work of authorship. For the purposes
+-      of this License, Derivative Works shall not include works that remain
+-      separable from, or merely link (or bind by name) to the interfaces of,
+-      the Work and Derivative Works thereof.
+-
+-      "Contribution" shall mean any work of authorship, including
+-      the original version of the Work and any modifications or additions
+-      to that Work or Derivative Works thereof, that is intentionally
+-      submitted to Licensor for inclusion in the Work by the copyright owner
+-      or by an individual or Legal Entity authorized to submit on behalf of
+-      the copyright owner. For the purposes of this definition, "submitted"
+-      means any form of electronic, verbal, or written communication sent
+-      to the Licensor or its representatives, including but not limited to
+-      communication on electronic mailing lists, source code control systems,
+-      and issue tracking systems that are managed by, or on behalf of, the
+-      Licensor for the purpose of discussing and improving the Work, but
+-      excluding communication that is conspicuously marked or otherwise
+-      designated in writing by the copyright owner as "Not a Contribution."
+-
+-      "Contributor" shall mean Licensor and any individual or Legal Entity
+-      on behalf of whom a Contribution has been received by Licensor and
+-      subsequently incorporated within the Work.
+-
+-   2. Grant of Copyright License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      copyright license to reproduce, prepare Derivative Works of,
+-      publicly display, publicly perform, sublicense, and distribute the
+-      Work and such Derivative Works in Source or Object form.
+-
+-   3. Grant of Patent License. Subject to the terms and conditions of
+-      this License, each Contributor hereby grants to You a perpetual,
+-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+-      (except as stated in this section) patent license to make, have made,
+-      use, offer to sell, sell, import, and otherwise transfer the Work,
+-      where such license applies only to those patent claims licensable
+-      by such Contributor that are necessarily infringed by their
+-      Contribution(s) alone or by combination of their Contribution(s)
+-      with the Work to which such Contribution(s) was submitted. If You
+-      institute patent litigation against any entity (including a
+-      cross-claim or counterclaim in a lawsuit) alleging that the Work
+-      or a Contribution incorporated within the Work constitutes direct
+-      or contributory patent infringement, then any patent licenses
+-      granted to You under this License for that Work shall terminate
+-      as of the date such litigation is filed.
+-
+-   4. Redistribution. You may reproduce and distribute copies of the
+-      Work or Derivative Works thereof in any medium, with or without
+-      modifications, and in Source or Object form, provided that You
+-      meet the following conditions:
+-
+-      (a) You must give any other recipients of the Work or
+-          Derivative Works a copy of this License; and
+-
+-      (b) You must cause any modified files to carry prominent notices
+-          stating that You changed the files; and
+-
+-      (c) You must retain, in the Source form of any Derivative Works
+-          that You distribute, all copyright, patent, trademark, and
+-          attribution notices from the Source form of the Work,
+-          excluding those notices that do not pertain to any part of
+-          the Derivative Works; and
+-
+-      (d) If the Work includes a "NOTICE" text file as part of its
+-          distribution, then any Derivative Works that You distribute must
+-          include a readable copy of the attribution notices contained
+-          within such NOTICE file, excluding those notices that do not
+-          pertain to any part of the Derivative Works, in at least one
+-          of the following places: within a NOTICE text file distributed
+-          as part of the Derivative Works; within the Source form or
+-          documentation, if provided along with the Derivative Works; or,
+-          within a display generated by the Derivative Works, if and
+-          wherever such third-party notices normally appear. The contents
+-          of the NOTICE file are for informational purposes only and
+-          do not modify the License. You may add Your own attribution
+-          notices within Derivative Works that You distribute, alongside
+-          or as an addendum to the NOTICE text from the Work, provided
+-          that such additional attribution notices cannot be construed
+-          as modifying the License.
+-
+-      You may add Your own copyright statement to Your modifications and
+-      may provide additional or different license terms and conditions
+-      for use, reproduction, or distribution of Your modifications, or
+-      for any such Derivative Works as a whole, provided Your use,
+-      reproduction, and distribution of the Work otherwise complies with
+-      the conditions stated in this License.
+-
+-   5. Submission of Contributions. Unless You explicitly state otherwise,
+-      any Contribution intentionally submitted for inclusion in the Work
+-      by You to the Licensor shall be under the terms and conditions of
+-      this License, without any additional terms or conditions.
+-      Notwithstanding the above, nothing herein shall supersede or modify
+-      the terms of any separate license agreement you may have executed
+-      with Licensor regarding such Contributions.
+-
+-   6. Trademarks. This License does not grant permission to use the trade
+-      names, trademarks, service marks, or product names of the Licensor,
+-      except as required for reasonable and customary use in describing the
+-      origin of the Work and reproducing the content of the NOTICE file.
+-
+-   7. Disclaimer of Warranty. Unless required by applicable law or
+-      agreed to in writing, Licensor provides the Work (and each
+-      Contributor provides its Contributions) on an "AS IS" BASIS,
+-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+-      implied, including, without limitation, any warranties or conditions
+-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+-      PARTICULAR PURPOSE. You are solely responsible for determining the
+-      appropriateness of using or redistributing the Work and assume any
+-      risks associated with Your exercise of permissions under this License.
+-
+-   8. Limitation of Liability. In no event and under no legal theory,
+-      whether in tort (including negligence), contract, or otherwise,
+-      unless required by applicable law (such as deliberate and grossly
+-      negligent acts) or agreed to in writing, shall any Contributor be
+-      liable to You for damages, including any direct, indirect, special,
+-      incidental, or consequential damages of any character arising as a
+-      result of this License or out of the use or inability to use the
+-      Work (including but not limited to damages for loss of goodwill,
+-      work stoppage, computer failure or malfunction, or any and all
+-      other commercial damages or losses), even if such Contributor
+-      has been advised of the possibility of such damages.
+-
+-   9. Accepting Warranty or Additional Liability. While redistributing
+-      the Work or Derivative Works thereof, You may choose to offer,
+-      and charge a fee for, acceptance of support, warranty, indemnity,
+-      or other liability obligations and/or rights consistent with this
+-      License. However, in accepting such obligations, You may act only
+-      on Your own behalf and on Your sole responsibility, not on behalf
+-      of any other Contributor, and only if You agree to indemnify,
+-      defend, and hold each Contributor harmless for any liability
+-      incurred by, or claims asserted against, such Contributor by reason
+-      of your accepting any such warranty or additional liability.
+-
+-   END OF TERMS AND CONDITIONS
+-
+-   APPENDIX: How to apply the Apache License to your work.
+-
+-      To apply the Apache License to your work, attach the following
+-      boilerplate notice, with the fields enclosed by brackets "[]"
+-      replaced with your own identifying information. (Don't include
+-      the brackets!)  The text should be enclosed in the appropriate
+-      comment syntax for the file format. We also recommend that a
+-      file or class name and description of purpose be included on the
+-      same "printed page" as the copyright notice for easier
+-      identification within third-party archives.
+-
+-   Copyright [yyyy] [name of copyright owner]
+-
+-   Licensed under the Apache License, Version 2.0 (the "License");
+-   you may not use this file except in compliance with the License.
+-   You may obtain a copy of the License at
+-
+-       http://www.apache.org/licenses/LICENSE-2.0
+-
+-   Unless required by applicable law or agreed to in writing, software
+-   distributed under the License is distributed on an "AS IS" BASIS,
+-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-   See the License for the specific language governing permissions and
+-   limitations under the License.
+diff --git a/mapping/NOTICE b/mapping/NOTICE
+deleted file mode 100644
+index e95b03f7..00000000
+--- a/mapping/NOTICE
++++ /dev/null
+@@ -1,10 +0,0 @@
+-Rail8 Mapping
+-Copyright 2026 the Rail8 Mapping authors
+-
+-This product is licensed under the Apache License, Version 2.0 (LICENSE).
+-
+-Third-party material included in this repository:
+-
+-- Agent skills in .claude/skills/ listed in .claude/skills/UPSTREAM.md, from
+-  https://github.com/mattpocock/skills, Copyright (c) 2026 Matt Pocock, MIT License
+-  (full text in .claude/skills/LICENSE-mattpocock-skills).
+diff --git a/mapping/README.md b/mapping/README.md
+index 7f155409..e82ae3f4 100644
+--- a/mapping/README.md
++++ b/mapping/README.md
+@@ -6,12 +6,17 @@ Java UDFs — and run it compiled on Java 25. One intermediate representation wi
+ XSLT 3.0 / XPath 3.1, so a drawn mapping exports to readable XSLT and a stylesheet runs on the
+ same engine. The editor is React + PatternFly.
+ 
++Imported from `github.com/subapavel/flottila-mapping` with its history on 2026-11-15 (D-150). `#N` in a
++commit, an ADR or a finding of the mapping means that repository's issue or pull request; `F-n` up to F-53
++in a mapping document means `docs/findings/F-n.md` here; the root's series continues at F-54 (D-151).
++
+ Status: **Milestone 1 — spec 1 (walking skeleton) built: one field link from the editor through
+ the engine, the service and the XSLT export.** See `docs/wayfinder/phase-0-map.md` and
+ `docs/GATE.md` (milestone 1).
+ 
+-Built AI-first: agents write the code under the rules in `CLAUDE.md`, `AGENTS.md` and
+-`docs/WORKFLOW.md`; work is tracked in GitHub Issues.
++Built AI-first: agents write the code under the repository's process (the root `CLAUDE.md`, `AGENTS.md`
++and `docs/WORKFLOW.md`) and the engine's technical rules in `CLAUDE.md` here; work is tracked in the root
++`agent/BACKLOG.md`.
+ 
+ ## Run the Mapping studio and test a mapping
+ 
+@@ -29,4 +34,4 @@ If port 8080 is taken, set `QUARKUS_HTTP_PORT` for both (PowerShell `$env:QUARKU
+ bash `QUARKUS_HTTP_PORT=8081`) and the dev proxy follows. `?api=fake` in the address runs the UI on
+ its built-in fake service, with no backend.
+ 
+-Licence: Apache 2.0 (`LICENSE`). Third-party notices: `NOTICE`.
++Licence: Apache 2.0 (the root `LICENSE`). Third-party notices: the root `NOTICE`.
+diff --git a/mapping/corpus/README.md b/mapping/corpus/README.md
+index c8c4d84a..24955bd3 100644
+--- a/mapping/corpus/README.md
++++ b/mapping/corpus/README.md
+@@ -61,7 +61,7 @@ corpus/
+ 2. Owner: builds it on PO 7.5 and CPI locally, returns outputs or error texts, releases, date.
+    Only the synthetic material enters `observations/<obs-id>/`.
+ 3. A class-A `oracle:corpus` ticket sets the cases to `observed`. A contradiction with an assumed
+-   reading is a finding (`docs/WORKFLOW.md` §7). PO 7.5 wins over CPI; a divergence is recorded
++   reading is a finding (the root `docs/WORKFLOW.md` §7). PO 7.5 wins over CPI; a divergence is recorded
+    in `meta.json` and becomes a catalogue deviation.
+ 
+ ## W3C suites
+diff --git a/mapping/deploy/claude-cloud/README.md b/mapping/deploy/claude-cloud/README.md
+deleted file mode 100644
+index 9a9afbbd..00000000
+--- a/mapping/deploy/claude-cloud/README.md
++++ /dev/null
+@@ -1,42 +0,0 @@
+-# Claude Code Cloud environment
+-
+-Where `/wayfinder`, `/run-spec` and `/gate` run. Adapted from Flottila's environment (same VM:
+-Ubuntu 24.04, 4 vCPU, 16 GB; JDK 21, Maven, Node and Docker pre-installed).
+-
+-## Environment (Claude desktop → Code → Cloud → new environment)
+-
+-| Setting | Value |
+-| --- | --- |
+-| Name | `flottila-mapping` |
+-| Network access | Custom, "include the default list of common package managers" checked, plus `mcp.context7.com` and `*.blob.core.windows.net` (GitHub Actions artifacts) |
+-| Setup script | contents of `deploy/claude-cloud/setup.sh` (installs JDK 25 beside JDK 21, approves the Context7 MCP server in `~/.claude/settings.json`, prints the Node version) |
+-| Permission mode | Auto |
+-
+-Environment variables:
+-
+-| Variable | Value | Why |
+-| --- | --- | --- |
+-| `JAVA_HOME` | `/opt/temurin-25` | installed by the setup script |
+-| `BASH_DEFAULT_TIMEOUT_MS` | `600000` | Maven and npm runs |
+-| `BASH_MAX_TIMEOUT_MS` | `1800000` | same |
+-| `MAVEN_OPTS` | `-Xmx2g` | three parallel builds on 16 GB |
+-| `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | `4` | three writers + one reader or merger (`AGENTS.md`) |
+-| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | `1` | no nested delegation |
+-| `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` | `1h` | a build outlasts the default 5-minute cache |
+-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `400000` | compact early; decisions degrade long before the limit |
+-| `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` | owner's name | commits and DCO sign-off are the owner's |
+-| `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` | owner's e-mail | |
+-| `CONTEXT7_API_KEY` | owner's Context7 key | `.mcp.json` sends it as a header; without it the free quota runs out |
+-
+-Not set: `CLAUDE_CODE_EFFORT_LEVEL` (overrides every per-call effort),
+-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`. The only secret is `CONTEXT7_API_KEY`; never print it.
+-
+-## Starting a session
+-
+-1. Code → Cloud → environment `flottila-mapping` → repository `subapavel/flottila-mapping` → new session.
+-   Only this repository: with several, the session starts in `/home/user` and no `.mcp.json` loads.
+-2. `/model claude-opus-5-5`, then `/effort medium` (two messages).
+-3. First message of a session: what to run (`/wayfinder …`, `/run-spec #<spec>`, `/gate`).
+-
+-Known limits (observed in Flottila, re-check here): tags cannot be pushed; `gh issue`/`gh pr`
+-may fail on GraphQL — use the REST forms in `docs/agents/issue-tracker.md`.
+diff --git a/mapping/deploy/claude-cloud/setup.sh b/mapping/deploy/claude-cloud/setup.sh
+deleted file mode 100644
+index c1152ccd..00000000
+--- a/mapping/deploy/claude-cloud/setup.sh
++++ /dev/null
+@@ -1,119 +0,0 @@
+-#!/usr/bin/env bash
+-# Flottila Mapping — Claude Code Cloud environment setup script (v3, 2026-10-30).
+-# Runs as root on the Ubuntu 24.04 VM before Claude Code starts. Must finish in ~5 minutes to
+-# be snapshotted, so it does three things: install JDK 25 beside the pre-installed JDK 21, point
+-# Maven and the Maven Wrapper at the Google mirror of Central (Central answers HTTP 429 to the VM,
+-# ADR-0017), and pre-approve the project's Context7 MCP server in the user settings.
+-# Docker images, apt extras and Maven dependencies are fetched by the agent on first use.
+-# Self-contained (no repository paths), idempotent, reports every step.
+-# Paste this file's contents into the environment's "Setup script" field.
+-set -uo pipefail
+-log() { echo "[flottila-mapping-setup] $*"; }
+-JDK=/opt/temurin-25   # path is referenced by the JAVA_HOME environment variable; keep it even if the fallback vendor lands here
+-
+-if [ -x "$JDK/bin/java" ]; then
+-  log "JDK already present at $JDK"
+-else
+-  mkdir -p "$JDK"
+-  tgz=/tmp/jdk25.tar.gz
+-  rm -f "$tgz"
+-
+-  # Source 1: Eclipse Temurin 25 from the Adoptium GitHub release (GitHub release assets are on the default allowlist).
+-  api="https://api.github.com/repos/adoptium/temurin25-binaries/releases/latest"
+-  url="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api" 2>/dev/null \
+-        | grep -o '"browser_download_url": *"[^"]*OpenJDK25U-jdk_x64_linux_hotspot_[^"]*\.tar\.gz"' \
+-        | head -1 | sed 's/.*"\(https:[^"]*\)"/\1/')" || url=""
+-  if [ -n "$url" ]; then
+-    log "source 1: $url"
+-    curl -fsSL "$url" -o "$tgz" || { log "source 1 download failed"; rm -f "$tgz"; }
+-  else
+-    log "source 1: Temurin asset not found via api.github.com"
+-  fi
+-
+-  # Source 2: Oracle JDK 25 (download.oracle.com is on the default allowlist; NFTC licence, dev use only).
+-  if [ ! -s "$tgz" ]; then
+-    url="https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz"
+-    log "source 2: $url"
+-    curl -fsSL "$url" -o "$tgz" || { log "source 2 download failed"; rm -f "$tgz"; }
+-  fi
+-
+-  if [ -s "$tgz" ]; then
+-    tar -xzf "$tgz" --strip-components=1 -C "$JDK" || log "extract failed"
+-    rm -f "$tgz"
+-  fi
+-
+-  # Source 3: Ubuntu package, if the archive carries it.
+-  if [ ! -x "$JDK/bin/java" ]; then
+-    log "source 3: apt openjdk-25-jdk"
+-    export DEBIAN_FRONTEND=noninteractive
+-    apt-get update -qq >/dev/null 2>&1 || log "apt-get update reported errors (continuing)"
+-    if apt-get install -y -qq --no-install-recommends openjdk-25-jdk-headless >/dev/null 2>&1; then
+-      rmdir "$JDK" 2>/dev/null || true
+-      ln -sfn /usr/lib/jvm/java-25-openjdk-amd64 "$JDK"
+-    else
+-      log "source 3: package not available"
+-    fi
+-  fi
+-fi
+-
+-if [ ! -x "$JDK/bin/java" ]; then
+-  log "FAILED: no JDK 25 could be installed from any source"
+-  exit 1
+-fi
+-
+-for tool in java javac jar jshell jcmd jfr; do
+-  [ -x "$JDK/bin/$tool" ] || continue
+-  update-alternatives --install "/usr/bin/$tool" "$tool" "$JDK/bin/$tool" 2500 >/dev/null 2>&1 || log "alternatives install failed for $tool (continuing)"
+-  update-alternatives --set "$tool" "$JDK/bin/$tool" >/dev/null 2>&1 || log "alternatives set failed for $tool (continuing)"
+-done
+-cat > /etc/profile.d/jdk25.sh <<'EOF'
+-export JAVA_HOME=/opt/temurin-25
+-export PATH="$JAVA_HOME/bin:$PATH"
+-EOF
+-
+-log "installed: $("$JDK/bin/java" -version 2>&1 | head -1)"
+-
+-# Maven: Central rate-limits the VM (HTTP 429); the Google mirror of Central serves the same
+-# artefacts. The repository itself points at Central, so people outside the VM need nothing.
+-MIRROR=https://maven-central.storage-download.googleapis.com/maven2
+-m2="$HOME/.m2/settings.xml"
+-mkdir -p "$(dirname "$m2")"
+-if [ -f "$m2" ] && ! grep -q storage-download.googleapis.com "$m2"; then
+-  log "keeping existing $m2 (no Google mirror in it; add one by hand)"
+-else
+-  cat > "$m2" <<EOF
+-<settings>
+-  <mirrors>
+-    <mirror>
+-      <id>google-maven-central</id>
+-      <mirrorOf>central</mirrorOf>
+-      <url>$MIRROR</url>
+-    </mirror>
+-  </mirrors>
+-</settings>
+-EOF
+-  log "maven mirror written to $m2"
+-fi
+-echo "export MVNW_REPOURL=$MIRROR" > /etc/profile.d/mvnw-mirror.sh
+-log "MVNW_REPOURL exported in /etc/profile.d/mvnw-mirror.sh"
+-
+-# Context7: `.mcp.json` servers stay "Pending approval" in a cloud session (nobody can approve
+-# them interactively), and `enabledMcpjsonServers` is honoured only in the user settings.
+-settings="$HOME/.claude/settings.json"
+-mkdir -p "$(dirname "$settings")"
+-if python3 -I - "$settings" <<'PY'
+-import json, os, sys
+-p = sys.argv[1]
+-d = json.load(open(p)) if os.path.exists(p) and os.path.getsize(p) else {}
+-servers = d.setdefault("enabledMcpjsonServers", [])
+-if "context7" not in servers:
+-    servers.append("context7")
+-json.dump(d, open(p, "w"), indent=2)
+-PY
+-then
+-  log "context7 approved in $settings"
+-else
+-  log "could not write $settings (continuing; context7 stays pending approval)"
+-fi
+-log "node: $(node --version 2>/dev/null || echo missing) · npm: $(npm --version 2>/dev/null || echo missing)"
+-log "done"
+diff --git a/mapping/docs/GATE.md b/mapping/docs/GATE.md
+index e7b75455..595c440a 100644
+--- a/mapping/docs/GATE.md
++++ b/mapping/docs/GATE.md
+@@ -3,7 +3,7 @@
+ Final, 2026-10-31 (Phase 0 map #1, grilling #19). Drafted 2026-10-30; the Phase 0 tickets set each
+ check. The gate-reviewer (`/gate`) verifies every check on one commit of `main`; each check names
+ the command and the evidence it needs. A change to a check after this point is a finding
+-(`docs/WORKFLOW.md` §7).
++(the root `docs/WORKFLOW.md` §7).
+ 
+ ## Checks
+ 
+@@ -94,7 +94,7 @@ separate export spec.
+ 
+ | # | Spec | Scope | Proves |
+ | --- | --- | --- | --- |
+-| 1 | Walking skeleton | The build skeleton ticket first (ADR-0017 and the carry-overs on #19: modules with `module-info`, `engine/oracle`, `scripts/ratchet.java`, JaCoCo, PIT in `nightly.yml`, phrased-name reporter, Vitest thresholds, empty `ratchet/`, CI, gate scripts, branch protection; it measures the ticket-gate budget and the Playwright Chromium build). Then the thinnest path through every layer: one flat XSD as source and target, one field-to-field link without a function box (`formatVersion` 1), IR with `TargetSlots`, interpreter, serializer, `engine/api`, exporter for a direct copy; `POST /api/structures`, get/put mapping (no 409), `POST /api/mappings/{id}/test` (no trace); committed `openapi.json` and generated types; dev host, structure overview with both trees, one drag-and-drop link through a store command, save, test panel; one `decided` corpus case and one differential case in the ratchet; one `@stack` scenario. It opens the observation requests of ADR-0004, ADR-0006, ADR-0008 and #2 §7 as `ready-for-human` issues. | 8; first slices of 1, 2, 3, 5 |
++| 1 | Walking skeleton | The build skeleton ticket first (ADR-0017 and the carry-overs on #19: modules with `module-info`, `engine/oracle`, `scripts/ratchet.java`, JaCoCo, PIT in `mapping-nightly.yml`, phrased-name reporter, Vitest thresholds, empty `ratchet/`, CI, gate scripts, branch protection; it measures the ticket-gate budget and the Playwright Chromium build). Then the thinnest path through every layer: one flat XSD as source and target, one field-to-field link without a function box (`formatVersion` 1), IR with `TargetSlots`, interpreter, serializer, `engine/api`, exporter for a direct copy; `POST /api/structures`, get/put mapping (no 409), `POST /api/mappings/{id}/test` (no trace); committed `openapi.json` and generated types; dev host, structure overview with both trees, one drag-and-drop link through a store command, save, test panel; one `decided` corpus case and one differential case in the ratchet; one `@stack` scenario. It opens the observation requests of ADR-0004, ADR-0006, ADR-0008 and #2 §7 as `ready-for-human` issues. | 8; first slices of 1, 2, 3, 5 |
+ | 2 | Queues, contexts and node functions | The nested XSD subset (anonymous complex types, any depth, `minOccurs`/`maxOccurs`, `elementFormDefault`; F-14). Queue block, `Lift`, full `TargetSlots` occurrence rules with SUPPRESS and `po:MINOCCURS`, the trace and display queue in the test response, every PO 7.5 node function with export and corpus. | 3 (API), 4 (node functions), 5 |
+ | 3 | Standard functions | Statistics, arithmetic (ADR-0005), text, boolean, `Constant`, `CopyValue`, `FixValues`, `FormatNum` and date over one F&O core (ADR-0003), the function catalogue with `portable` and `fidelity`. | 4, 5 |
+ | 4 | Structures in full | Full XSD (choice and effective occurrence, imports, refusals with `{file, line, column}`), WSDL 1.1/2.0, JSON Schema 2020-12 as source (JSON target a compile error), schema bundle and fingerprint, refresh and orphaned references. | 1 |
+diff --git a/mapping/docs/WORKFLOW.md b/mapping/docs/WORKFLOW.md
+index 2c6c63e5..cb06f34b 100644
+--- a/mapping/docs/WORKFLOW.md
++++ b/mapping/docs/WORKFLOW.md
+@@ -1,89 +1,8 @@
+ # Workflow
+ 
+-How work goes from an idea to `main`. Agreed 2026-10-30 (ADR-0001). It keeps Rail8's rigour
+-(architect who never codes, red first, evidence words, findings, class-based model choice, gate
+-reviewer) and replaces its sequential, one-writer loop with Matt Pocock's skill chain (wayfinder,
+-grilling, specs, tracer-bullet tickets, parallel implementers on an integration branch, two-axis
+-review). Skills are in `.claude/skills/`; the upstream ones are unchanged (`.claude/skills/UPSTREAM.md`).
+-
+-## 1. The shape
+-
+-```
+-fog ──/wayfinder──▶ decisions (ADRs, GLOSSARY) ──/grill-with-docs──▶ /to-spec ──▶ /to-tickets
+-                                                                                    │
+-      main ◀── PR (/pr) ◀── /code-review on the integration branch ◀── /run-spec ◀──┘
+-                                                                         │
+-                                       3 implementers in worktrees ──▶ merger ──▶ spec/<n>-<slug>
+-```
+-
+-| Stage | Skill | Who | Output |
+-| --- | --- | --- | --- |
+-| Chart a big unknown | `/wayfinder` | owner + architect | `wayfinder:map` issue with decision tickets |
+-| Resolve a decision | `/wayfinder` (work mode), `/grilling`, `/research`, `/prototype` | owner + architect, research AFK | resolution comment, ADR, glossary terms |
+-| Shape a deliverable | `/grill-with-docs` | owner + architect | shared understanding, glossary, ADRs |
+-| Write it down | `/to-spec` | architect | `spec` issue with seams and testing decisions |
+-| Slice it | `/to-tickets` | architect, owner approves | child tickets with blocking edges, `class:*`, `oracle:*` |
+-| Build it | `/run-spec` | architect + agents, autonomous | integration branch with every ticket merged |
+-| Review it | `/code-review` (inside `/run-spec`) | reviewer-standards ∥ reviewer-spec | findings fixed by one implementer |
+-| Ship it | `/pr` (inside `/run-spec`) | architect | PR to `main`, CI green, merged |
+-| Milestone | `/gate` | gate-reviewer | `gate: MET` or the missing conditions |
+-| Improve the factory | `/retro`, `/improve-codebase-architecture` | owner + architect | changes to skills, standards, checks |
+-
+-## 2. Phase 0 — charting before code
+-
+-Nothing is built until the decisions every ticket stands on are made: the XDM contract, the IR,
+-the queue representation, the mapping-model format, the module layout and build, the UI
+-architecture, the oracles and the ratchet. They are charted as one wayfinder map whose draft is
+-`docs/wayfinder/phase-0-map.md`; `/wayfinder` publishes it to GitHub and works it ticket by ticket.
+-A grilling or prototype ticket needs the owner (HITL); research tickets run AFK in parallel.
+-Every grilling round goes draft (designer first round, architect later rounds) → `grilling-adviser`
+-→ owner; the owner is asked with the adviser's recommendation (`AGENTS.md`, owner's rule
+-2026-11-10).
+-
+-Phase 0 ends when the map has no open ticket and its destination holds: ADRs for each decision,
+-the glossary sharpened, and the first spec (milestone 1, `docs/GATE.md`) ready for `/to-tickets`.
+-
+-## 3. A spec
+-
+-1. `/grill-with-docs` with the owner until the frontier of questions is empty. Before each round
+-   the `grilling-adviser` (Fable 5.2) weighs the draft questions; its recommendations go to the
+-   owner.
+-2. `/to-spec` publishes the spec issue. Its **Testing Decisions** name the seams; these are the
+-   pre-agreed seams `/tdd` requires, so implementers never stop to ask for them.
+-3. `/to-tickets` drafts tracer-bullet tickets. Each gets blocking edges, exactly one `class:*`
+-   label and, where an oracle decides acceptance, an `oracle:*` label with its case ids. The owner
+-   approves the breakdown; then the tickets are published as sub-issues of the spec.
+-4. Wide refactors follow expand–contract (`/to-tickets`), never one big ticket.
+-
+-## 4. Building a spec — `/run-spec`
+-
+-The architect runs `.claude/skills/run-spec/SKILL.md`. In short, per ticket on the frontier:
+-
+-1. claim it (assign), cut a worktree branch `t/<ticket>-<slug>` from the integration branch;
+-2. class C: designer draft → architect approves → test-author writes the red → architect reads
+-   the test files and approves; A/B: the implementer runs `/tdd` at the spec's seams; oracle
+-   tickets: the named cases are the red;
+-3. implementer makes it green in its worktree, runs the ticket's scoped checks, merges the
+-   integration tip into its branch, hands back;
+-4. verifier runs the **ticket gate** in that worktree (§6);
+-5. class C only: `/code-review` on the ticket diff (both axes, xhigh) — FAIL goes back to the
+-   same implementer; a second FAIL means the ticket was wrong: the designer rewrites it;
+-6. merger merges the ticket branch into the integration branch; the architect posts the evidence
+-   comment and closes the ticket. `ratchet/` does not move here: it is regenerated once, in the
+-   spec gate (§6, ADR-0019);
+-7. the frontier is recomputed and freed writer slots are refilled at once.
+-
+-Up to three tickets are in flight at any time (`AGENTS.md`, Concurrency).
+-
+-## 5. Finishing a spec
+-
+-1. Verifier: full build and tests on the integration branch (`VERIFIED_PASS` required).
+-2. `/code-review` against `main`: Standards (`docs/CODING_STANDARDS.md` + the smell baseline) and
+-   Spec (the spec issue), in parallel, never merged or reranked.
+-3. One implementer fixes every finding in one pass; the verifier re-runs the full gate.
+-4. `/pr` writes the PR body (summary, evidence, merge danger); the PR closes the spec.
+-5. CI green on the PR → merge commit to `main` (history of tickets kept). Never squash, never force-push.
+-6. `agent/HANDOFF.md` is rewritten in the same PR.
++The process is the repository's: the root `CLAUDE.md`, `AGENTS.md` and `docs/WORKFLOW.md` (D-151).
++This file keeps only the mapping's checks, ratchet and CI, under their old number; the whole workflow
++as it was is `docs/archive/WORKFLOW-until-2026-11-15.md`.
+ 
+ ## 6. Checks, ratchet, CI
+ 
+@@ -103,7 +22,7 @@ directories, comma-separated, e.g. `engine/xdm,engine/ir`):
+ | 1b | `../mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
+ | 2 | `../mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
+ | 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
+-| 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the §11 trailers, merges of the integration tip included (spec-3 retro) |
++| 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the old repository's trailer `Ticket: #n` (`docs/archive/WORKFLOW-until-2026-11-15.md` §11), merges of the integration tip included (spec-3 retro); it does not pass on commits made under the root's process (`Task:`, the root `docs/WORKFLOW.md` §3). The old-process scripts — `check-trailers.sh`, this step 2c of `gate-ticket.sh`, `clean-worktrees.sh`, `push-retry.sh` — are adapted or archived by MAP-7 (pending) |
+ | 3 | `git diff --exit-code contract/` | — | the service or `contract/` changed |
+ | 4 | in `ui/`: `npm run licences`, `typecheck`, `lint`, `test`, `test:browser`, `e2e`; `npm run gen:types && git diff --exit-code src/generated` | `ui/.logs/<t>-<check>.log` | `ui/` or `contract/` changed |
+ | 5 | `java scripts/ratchet.java check` | `.logs/<t>-ratchet.log` | always: no listed case failing or missing, no coverage below `ratchet/` of the integration branch; unbuilt modules print `NOT_RUN` (ADR-0019) |
+@@ -155,18 +74,23 @@ most one gate that builds `service` at a time.
+ Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1 and 1b, and step 3's `clean`
+ (mandatory with `-Pui`, ADR-0017) deletes them. The spec-1 review found this (#21).
+ 
+-**CI** (GitHub Actions, `.github/workflows/ci.yml`, every PR and push to `main`; required on
+-`main`):
+-
+-- `trailers` (PRs and `t/**` pushes, #67): `scripts/check-trailers.sh` over the PR or push range, plus the
+-  script tests that need no JDK;
+-- `backend`: `../mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
+-  tests that need JDK 25 (`function-families*-test.sh`, #69);
+-- `ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
++**CI** (GitHub Actions, the repository's `.github/workflows/mapping-ci.yml`, every PR and push to
++`main` that touches `mapping/**`, the root `pom.xml`, `.mvn/**`, `mvnw*`, the root `.gitattributes` or the
++workflow; the old repository required its four jobs on `main`, the required checks here are the owner's to
++set). Its steps run in `mapping/` with the repository's wrapper (`../mvnw`). The commits' sign-off is the
++root `ci.yml`'s `dco` job; the mapping's `trailers` job is gone (BRAND-3):
++
++- `mapping · backend`: every script test in `scripts/test/` (`function-families*-test.sh`, #69;
++  `ratchet-*-test.sh`, `gate-spec-bench-test.sh`, and those that need no JDK: `trailers*-test.sh`,
++  `clean-worktrees-test.sh`, `pit-summary-test.sh`, `gate-spec-default-test.sh`, `gate-log-test.sh`,
++  `push-retry-test.sh`, `handover-test.sh`), then `../mvnw -B -Pbench verify`,
++  `git diff --exit-code contract/` and `scripts/check-lf-checkout.sh`;
++- `mapping · windows`: `../mvnw.cmd -B -q -DskipTests verify` (the whole reactor compiles; Spotless, enforcer, licences);
++- `mapping · ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
+   diff, `typecheck`, `lint`, `test`, `test:browser`, `e2e`, `build` → artefact;
+-- `stack` (after both): `-Pui` jar, `npm run e2e:stack`.
+-- `nightly.yml`: PIT on `main` over the class-C modules `xdm`, `ir`, `runtime`, `serializer`,
+-  `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019); it commits nothing. `bench.yml`: manual JMH,
++- `mapping · stack` (after both): `-Pui` jar, `npm run e2e:stack`.
++- `mapping-nightly.yml` (`mapping · mutation`): PIT on `main` over the class-C modules `xdm`, `ir`, `runtime`, `serializer`,
++  `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019); it commits nothing. `mapping-bench.yml` (`mapping · jmh`): manual JMH,
+   informative only; benchmark regression is a spec-gate check on the VM, never on CI.
+ - Runners use Temurin 25 and Node 22 and fetch Maven artefacts through the Google mirror of
+   Central with the Maven cache (ADR-0017).
+@@ -180,69 +104,3 @@ it. A drop is a failure; a rise is recorded at regeneration. Writers never touch
+ `runtime`, `serializer`, `mapping`, `xslt-export`, `api`, `udf-api`, `udf`; lines ≥ 80 % on `structure`,
+ `structure-import`, `service`; PIT ≥ 80 % on the nine class-C modules; Vitest per-glob lines
+ ≥ 90 % on `ui/src/model/**` and `ui/src/studio/store/**` (`npm run test` = `vitest run --coverage`).
+-
+-## 7. Decisions, findings, owner questions
+-
+-| Kind | Example | Where |
+-| --- | --- | --- |
+-| reversible, local | an internal shape, a threshold, a library minor version | a line in the ticket's evidence comment |
+-| hard to reverse, surprising, real trade-off | IR shape, model format, queue representation | ADR in `docs/adr/` (`/domain-modeling` rules), draft by the designer |
+-| contradiction with an ADR or the architecture | the IR cannot express X as decided | finding: `docs/findings/F-<n>.md`, smallest change keeping the intent, ADR amended or superseded in the same merge, PR body says "deviation" |
+-| owner only | money, credentials, licences, a gate missed twice, history rewrite | issue labelled `ready-for-human`; the ticket waits, the run continues with the next frontier ticket |
+-
+-## 8. Autonomous runs
+-
+-`/run-spec` runs without asking the owner. A blocked ticket (owner answer, credential, network,
+-a tool failure that survives one retry and one alternative route) gets a comment and the
+-`ready-for-human` label, and the run takes the next frontier ticket. The run ends on
+-`SPEC_DONE` (PR merged), `IDLE_NO_FRONTIER` (everything left is blocked) or a quota stop; the
+-reason is the first line of `agent/HANDOFF.md`.
+-
+-The cloud VM can be reclaimed at any time. Pushed branches, issues and `agent/HANDOFF.md` are the
+-recovery point: push the integration branch after every merge and every ticket branch at every
+-hand-back.
+-
+-## 9. Files
+-
+-| File | Purpose | Written by |
+-| --- | --- | --- |
+-| `agent/HANDOFF.md` | ≤ 20 lines of ≤ 160 chars: state, current spec and integration branch, tickets in flight with their worktree branches, next exact action, open owner issues | architect |
+-| `agent/NOTES.md` | module notes (commands, quirks, shapes) by section, read on demand | architect |
+-| `bench/RESULTS.md` | every measured number with machine, date, configuration, commit | architect, from verifier output |
+-| `ratchet/` | what passes, per oracle and module | verifier only |
+-| `docs/adr/` | binding decisions | architect (designer drafts) |
+-| `docs/findings/` | contradictions and their resolution | architect |
+-| `.claude/agent-memory/<name>/MEMORY.md` | durable lessons per agent | that agent |
+-
+-GitHub Issues replace the backlog and the progress journal: the spec, its tickets and their
+-evidence comments are the record. Nothing that matters lives only in the conversation.
+-
+-## 10. Turn economy (lessons from Rail8, D-053/D-054 there)
+-
+-- The architect is the most expensive context; deep design goes to a fresh designer, not into it.
+-- Wait for a single agent in the foreground; background only with two or more in flight.
+-- A resumed agent keeps its context: a fix, a second review round or a partial hand-back resumes
+-  the same agent by name (`SendMessage`), never a fresh one.
+-- A fix packet names file, line, evidence and the sentence to write; nothing else.
+-- A Stop-hook reminder mid-run is declined in one line; it never triggers a commit of an
+-  unreviewed tree. `.logs/.batch-in-review` silences it while a review is running.
+-- Self-check lists in the writers mirror the reviewers' memory, so authors catch what reviewers
+-  would.
+-
+-## 11. Commits and branches
+-
+-- `main` ← PR per spec. `spec/<issue>-<slug>` ← merger. `t/<ticket>-<slug>` ← one implementer.
+-  Throwaway: `research/<name>`, `prototype/<name>` (never merged).
+-- Conventional Commits, scope = module without prefix: `feat(engine): …`, `test(model): …`,
+-  `fix(ui): …`, `chore(ci): …`, `docs: …`.
+-- Body: what and why, then the evidence line. Trailers in order: `Ticket: #<n>`,
+-  `Co-authored-by: Claude <noreply@anthropic.com>`, `Signed-off-by: <owner>` (DCO; identity from
+-  the environment's git variables, never written into the repo). Write the trailer block in the
+-  message (`git commit -F <file>`); `-s` would add a second `Signed-off-by`.
+-
+-## 12. After a run
+-
+-`/retro` on the session: navigation, missing automated checks, standards the reviewers should
+-enforce, steering that does nothing, expensive tool calls. Mechanical lessons become checks
+-(lint rule, ArchUnit rule, CI job); judgement lessons go to `docs/CODING_STANDARDS.md`;
+-`CLAUDE.md` stays a page of pointers. Every few specs: `/improve-codebase-architecture`.
+diff --git a/mapping/docs/agents/domain.md b/mapping/docs/agents/domain.md
+index 4032de01..55d5701a 100644
+--- a/mapping/docs/agents/domain.md
++++ b/mapping/docs/agents/domain.md
+@@ -4,8 +4,8 @@ How the engineering skills should consume this repo's domain documentation when
+ 
+ ## Before exploring, read these
+ 
+-- **`GLOSSARY.md`** at the repo root, or
+-- **`GLOSSARY-MAP.md`** at the repo root if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
++- **`GLOSSARY.md`** in `mapping/`, or
++- **`GLOSSARY-MAP.md`** in `mapping/` if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
+ - **`docs/adr/`**: read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+ 
+ If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+diff --git a/mapping/docs/agents/environment.md b/mapping/docs/agents/environment.md
+index 6a2c4fb7..a04168bd 100644
+--- a/mapping/docs/agents/environment.md
++++ b/mapping/docs/agents/environment.md
+@@ -11,12 +11,12 @@ Read this before your first build or commit in a worktree.
+ - **Browser**: Chromium and Playwright are pre-installed and pinned; `npm run e2e*` finds them.
+   A `playwright install` pulls a second browser the pinned version cannot find.
+ - **Property tests**: seeded loops in JUnit (jqwik is rejected, ADR-0018).
+-- **Paths**: run commands from the repo root or with absolute paths. A `cd` into another
++- **Paths**: run the build's commands from `mapping/`, anything else from the repository's root or with absolute paths. A `cd` into another
+   worktree carries into later shell calls.
+ - **Fetch**: name the branches (`git fetch origin <branch>…`); a bare `git fetch origin` can stall
+   here. `git fetch origin <branch>` sometimes creates no remote-tracking ref; then take the
+   sha from `git ls-remote origin <branch>`.
+ - **Commits**: write the message to a file and `git commit -F <file>` with the trailer block of
+-  `docs/WORKFLOW.md` §11. The block already carries `Signed-off-by`, so `-s` would add a second.
++  the root `docs/WORKFLOW.md` §3. The block already carries `Signed-off-by`, so `-s` would add a second.
+ - **Logs**: in a worktree that will be removed, write the hand-back before `git worktree remove`;
+   the logs go with the worktree.
+diff --git a/mapping/AGENTS.md b/mapping/docs/archive/AGENTS.md
+similarity index 100%
+rename from mapping/AGENTS.md
+rename to mapping/docs/archive/AGENTS.md
+diff --git a/mapping/docs/archive/CLAUDE-until-2026-11-15.md b/mapping/docs/archive/CLAUDE-until-2026-11-15.md
+new file mode 100644
+index 00000000..971712bb
+--- /dev/null
++++ b/mapping/docs/archive/CLAUDE-until-2026-11-15.md
+@@ -0,0 +1,61 @@
++# Flottila Mapping — rules for every agent
++
++Open-source mapping engine and editor: graphical message mappings (SAP PO style queues and
++contexts) and, later, XSLT 3.0 / XPath 3.1, all compiled to one IR and run on Java 25. UI in
++React + PatternFly. It will become the mapping engine and mapping UI of Flottila; until then it is
++a separate repo with no dependency on Flottila. Everything in the repo is in English.
++
++This file is loaded into every context, so it holds only pointers and the rules nobody may break.
++
++## Read before work
++
++- `docs/FOUNDING-ARCHITECTURE.md` — the owner's agreed direction; grilling confirms it, never re-asks it.
++- `GLOSSARY.md` — the project's language. Use its terms in code, tests, tickets and hand-backs.
++- `AGENTS.md` — roles, ticket classes (A/B/C/G → model and effort), concurrency, evidence words.
++- `docs/WORKFLOW.md` — how a spec goes from idea to `main`; read the section you are in.
++- `agent/HANDOFF.md` — the current state and the next exact action (architect only).
++- `docs/adr/` — decisions that bind the area you touch. Contradicting one is a finding, not a fix.
++- `docs/CODING_STANDARDS.md` — read by reviewers; writers read it when a hand-back is rejected.
++
++Work items live in GitHub Issues (`docs/agents/issue-tracker.md`): wayfinder maps, specs and
++tickets with native blocking edges. There is no backlog file.
++
++## Non-negotiable
++
++- Red before green. A ticket starts from a failing check: a test, an oracle case or a ratchet entry.
++- Never weaken, skip or delete a test, an oracle case or a ratchet entry to go green.
++- Never claim a build, test, measurement or push you did not observe. Evidence words only
++  (`VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`, see `AGENTS.md`).
++- Never edit ratchet files (`ratchet/`) by hand in a ticket; only the verifier regenerates them
++  on the integration branch.
++- Writers work only inside their worktree and the paths their ticket names.
++- Library APIs: Context7 first, then `javap` / the package's `.d.ts`. Never an API from memory.
++- Dependencies: Apache 2.0, MIT, MIT-0, BSD, EDL 1.0, ISC, 0BSD, MPL 2.0, EPL only (ISC, 0BSD: ADR-0012;
++  MIT-0, EDL 1.0: ADR-0014); a dual licence counts under its allowed alternative. The list covers every
++  compile, runtime and test dependency and all of `ui/package.json`. Exceptions are per artifact, listed in
++  the root POM and ADR-0017: Saxon-HE at test scope (oracle), JMH in `bench/jmh` only, and the Quarkus
++  test framework's own dependencies, and three dev-only npm build tools (#39). Maven plugins are tools, not dependencies (any OSI licence).
++- No secret, customer payload or real partner data in the repo; corpora are synthetic.
++- When practice contradicts an ADR or the architecture: write the finding (`docs/WORKFLOW.md` §7).
++
++## Context hygiene
++
++- Build and test output goes to `.logs/<ticket>-<check>.log` (backend) or
++  `ui/.logs/<ticket>-<check>.log` (frontend); read the tail or the failing section only.
++- Large reads go to the scout. A hand-back is at most 40 lines.
++- After a compaction: re-read `agent/HANDOFF.md`, run `git status` and `git log -3`, and treat
++  everything older than the last hand-back as unknown.
++
++## Agent skills
++
++### Issue tracker
++
++GitHub Issues with sub-issues and native blocking. See `docs/agents/issue-tracker.md`.
++
++### Triage labels
++
++The five canonical roles plus `class:*`, `oracle:*`, `spec`, `wayfinder:*`. See `docs/agents/triage-labels.md`.
++
++### Domain docs
++
++Single context: `GLOSSARY.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
+diff --git a/mapping/docs/archive/WORKFLOW-until-2026-11-15.md b/mapping/docs/archive/WORKFLOW-until-2026-11-15.md
+new file mode 100644
+index 00000000..2c6c63e5
+--- /dev/null
++++ b/mapping/docs/archive/WORKFLOW-until-2026-11-15.md
+@@ -0,0 +1,248 @@
++# Workflow
++
++How work goes from an idea to `main`. Agreed 2026-10-30 (ADR-0001). It keeps Rail8's rigour
++(architect who never codes, red first, evidence words, findings, class-based model choice, gate
++reviewer) and replaces its sequential, one-writer loop with Matt Pocock's skill chain (wayfinder,
++grilling, specs, tracer-bullet tickets, parallel implementers on an integration branch, two-axis
++review). Skills are in `.claude/skills/`; the upstream ones are unchanged (`.claude/skills/UPSTREAM.md`).
++
++## 1. The shape
++
++```
++fog ──/wayfinder──▶ decisions (ADRs, GLOSSARY) ──/grill-with-docs──▶ /to-spec ──▶ /to-tickets
++                                                                                    │
++      main ◀── PR (/pr) ◀── /code-review on the integration branch ◀── /run-spec ◀──┘
++                                                                         │
++                                       3 implementers in worktrees ──▶ merger ──▶ spec/<n>-<slug>
++```
++
++| Stage | Skill | Who | Output |
++| --- | --- | --- | --- |
++| Chart a big unknown | `/wayfinder` | owner + architect | `wayfinder:map` issue with decision tickets |
++| Resolve a decision | `/wayfinder` (work mode), `/grilling`, `/research`, `/prototype` | owner + architect, research AFK | resolution comment, ADR, glossary terms |
++| Shape a deliverable | `/grill-with-docs` | owner + architect | shared understanding, glossary, ADRs |
++| Write it down | `/to-spec` | architect | `spec` issue with seams and testing decisions |
++| Slice it | `/to-tickets` | architect, owner approves | child tickets with blocking edges, `class:*`, `oracle:*` |
++| Build it | `/run-spec` | architect + agents, autonomous | integration branch with every ticket merged |
++| Review it | `/code-review` (inside `/run-spec`) | reviewer-standards ∥ reviewer-spec | findings fixed by one implementer |
++| Ship it | `/pr` (inside `/run-spec`) | architect | PR to `main`, CI green, merged |
++| Milestone | `/gate` | gate-reviewer | `gate: MET` or the missing conditions |
++| Improve the factory | `/retro`, `/improve-codebase-architecture` | owner + architect | changes to skills, standards, checks |
++
++## 2. Phase 0 — charting before code
++
++Nothing is built until the decisions every ticket stands on are made: the XDM contract, the IR,
++the queue representation, the mapping-model format, the module layout and build, the UI
++architecture, the oracles and the ratchet. They are charted as one wayfinder map whose draft is
++`docs/wayfinder/phase-0-map.md`; `/wayfinder` publishes it to GitHub and works it ticket by ticket.
++A grilling or prototype ticket needs the owner (HITL); research tickets run AFK in parallel.
++Every grilling round goes draft (designer first round, architect later rounds) → `grilling-adviser`
++→ owner; the owner is asked with the adviser's recommendation (`AGENTS.md`, owner's rule
++2026-11-10).
++
++Phase 0 ends when the map has no open ticket and its destination holds: ADRs for each decision,
++the glossary sharpened, and the first spec (milestone 1, `docs/GATE.md`) ready for `/to-tickets`.
++
++## 3. A spec
++
++1. `/grill-with-docs` with the owner until the frontier of questions is empty. Before each round
++   the `grilling-adviser` (Fable 5.2) weighs the draft questions; its recommendations go to the
++   owner.
++2. `/to-spec` publishes the spec issue. Its **Testing Decisions** name the seams; these are the
++   pre-agreed seams `/tdd` requires, so implementers never stop to ask for them.
++3. `/to-tickets` drafts tracer-bullet tickets. Each gets blocking edges, exactly one `class:*`
++   label and, where an oracle decides acceptance, an `oracle:*` label with its case ids. The owner
++   approves the breakdown; then the tickets are published as sub-issues of the spec.
++4. Wide refactors follow expand–contract (`/to-tickets`), never one big ticket.
++
++## 4. Building a spec — `/run-spec`
++
++The architect runs `.claude/skills/run-spec/SKILL.md`. In short, per ticket on the frontier:
++
++1. claim it (assign), cut a worktree branch `t/<ticket>-<slug>` from the integration branch;
++2. class C: designer draft → architect approves → test-author writes the red → architect reads
++   the test files and approves; A/B: the implementer runs `/tdd` at the spec's seams; oracle
++   tickets: the named cases are the red;
++3. implementer makes it green in its worktree, runs the ticket's scoped checks, merges the
++   integration tip into its branch, hands back;
++4. verifier runs the **ticket gate** in that worktree (§6);
++5. class C only: `/code-review` on the ticket diff (both axes, xhigh) — FAIL goes back to the
++   same implementer; a second FAIL means the ticket was wrong: the designer rewrites it;
++6. merger merges the ticket branch into the integration branch; the architect posts the evidence
++   comment and closes the ticket. `ratchet/` does not move here: it is regenerated once, in the
++   spec gate (§6, ADR-0019);
++7. the frontier is recomputed and freed writer slots are refilled at once.
++
++Up to three tickets are in flight at any time (`AGENTS.md`, Concurrency).
++
++## 5. Finishing a spec
++
++1. Verifier: full build and tests on the integration branch (`VERIFIED_PASS` required).
++2. `/code-review` against `main`: Standards (`docs/CODING_STANDARDS.md` + the smell baseline) and
++   Spec (the spec issue), in parallel, never merged or reranked.
++3. One implementer fixes every finding in one pass; the verifier re-runs the full gate.
++4. `/pr` writes the PR body (summary, evidence, merge danger); the PR closes the spec.
++5. CI green on the PR → merge commit to `main` (history of tickets kept). Never squash, never force-push.
++6. `agent/HANDOFF.md` is rewritten in the same PR.
++
++## 6. Checks, ratchet, CI
++
++Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run in `mapping/` of
++the worktree; the Maven wrapper is at the repository's root, so from `mapping/` it is `../mvnw`.
++Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never to `target/`
++(`../mvnw clean` deletes it). The milestone-1 skeleton adds
++`scripts/gate-ticket.sh <ticket> <modules>` and `scripts/gate-spec.sh <spec>`. The verifier runs
++those scripts; until they exist it runs the steps below by hand, in this order.
++
++**Ticket gate** (verifier, per ticket, in its worktree; `<modules>` = the touched module
++directories, comma-separated, e.g. `engine/xdm,engine/ir`):
++
++| # | Command | Log | When |
++| --- | --- | --- | --- |
++| 1 | `../mvnw -B -pl <modules>,engine/oracle -am verify` | `.logs/<t>-build.log` | always: tests and JaCoCo floors of touched and upstream modules, the whole golden corpus and the differential oracle (ADR-0018); `service` adds ArchUnit and `@QuarkusTest` |
++| 1b | `../mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
++| 2 | `../mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
++| 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
++| 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the §11 trailers, merges of the integration tip included (spec-3 retro) |
++| 3 | `git diff --exit-code contract/` | — | the service or `contract/` changed |
++| 4 | in `ui/`: `npm run licences`, `typecheck`, `lint`, `test`, `test:browser`, `e2e`; `npm run gen:types && git diff --exit-code src/generated` | `ui/.logs/<t>-<check>.log` | `ui/` or `contract/` changed |
++| 5 | `java scripts/ratchet.java check` | `.logs/<t>-ratchet.log` | always: no listed case failing or missing, no coverage below `ratchet/` of the integration branch; unbuilt modules print `NOT_RUN` (ADR-0019) |
++
++Budget on the VM (4 vCPU), three gates in parallel: an engine ticket about 110 s for step 1 (it
++builds the whole engine because of `engine/oracle`), a service ticket about 80 s alone; step 2 about
++24 s alone (measured on the spec-1 code, `bench/RESULTS.md`, F-13; the earlier 30 s, 60 s and 15 s
++came from #22 on a scratch reactor, F-5). Note of 2026-11-10 (owner, #181): cutting this time is a
++process spec after milestone 1, not part of speed work. The verifier runs at
++most one gate that builds `service` at a time.
++
++**Spec gate** (verifier, integration branch, one at a time):
++
++1. `../mvnw -B clean verify -Pbench` (all tests, oracles, JaCoCo floors, bench compiles) and
++   `git diff --exit-code contract/`;
++   1b. PIT on the class-C modules the spec touched:
++   `../mvnw -B -pl <class-C modules> -am test-compile org.pitest:pitest-maven:mutationCoverage`
++   (`pit.skip` skips the modules without a mutation floor, F-5) (floor 80 %,
++   ADR-0019) → `.logs/<spec>-pit.log`; `gate-spec.sh` ends with one line per module
++   (`module killed/generated score% floor N% ok|DROP`) and the corpus and differential case counts (#67); above 10 minutes it narrows to the modules class-C tickets
++   touched;
++2. in `ui/`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
++3. the stack: `../mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
++4. `java scripts/ratchet.java regen --all`: every report must be present, a drop fails, the
++   verifier alone commits `ratchet/` to the integration branch;
++5. the JMH scenarios (ADR-0021):
++   `java -jar bench/jmh/target/benchmarks.jar -foe true -f 3 -wi 3 -i 5 -w 1s -r 1s -prof gc -rf json -rff .logs/<spec>-jmh.json`
++   (about 5–6 minutes; large throughput in forks with a 1 GB heap, and `<mapping>/large/heap`
++   in its own fork with `-Xmx128m`; one invocation suffices, `-f` keeps the fork's `jvmArgsAppend` (#185); ADR-0021 note of
++   2026-11-10), plus the `ui/tree-20128/scroll` Playwright scenario.
++   - The verifier names the machine: `MACHINE_LABEL=claude-cloud-4vcpu scripts/gate-spec.sh <spec>`.
++     Only with that label, and `nproc` = 4, does step 5 judge
++     (`java scripts/ratchet.java bench .logs/<spec>-jmh.json`) and step 4 write `bench.tsv`.
++     Without it, step 5 measures and prints, the judgement is `NOT_RUN`, and nothing is written to
++     `ratchet/` or `bench/RESULTS.md`.
++   - Results go to `bench/RESULTS.md` with machine label `claude-cloud-4vcpu`, the date and the
++     commit, written by the architect from the verifier's output. The score is the median of the
++     per-fork means.
++   - A scenario worse than `ratchet/bench.tsv` by more than its tolerance (20 % for time and
++     throughput, 10 % for B/op), or a missed target, is measured twice more: the judgement prints
++     the benchmarks as one include regex, the gate re-runs only them into `.logs/<spec>-jmh-2.json`
++     and `.logs/<spec>-jmh-3.json` and judges the median of the three (ADR-0021, Notes of
++     2026-11-11). The gate fails if the median is still worse, if a GATE check 7 target is missed,
++     or if a `bench.tsv` row has no result. A regression the median still shows goes to the owner
++     as a finding, because it can come from the host (F-36).
++   - `regen --all` reads the final results too, so the verifier runs this step before
++     step 4. A baseline moves only on a gain beyond the tolerance (ADR-0019).
++
++Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1 and 1b, and step 3's `clean`
++(mandatory with `-Pui`, ADR-0017) deletes them. The spec-1 review found this (#21).
++
++**CI** (GitHub Actions, `.github/workflows/ci.yml`, every PR and push to `main`; required on
++`main`):
++
++- `trailers` (PRs and `t/**` pushes, #67): `scripts/check-trailers.sh` over the PR or push range, plus the
++  script tests that need no JDK;
++- `backend`: `../mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
++  tests that need JDK 25 (`function-families*-test.sh`, #69);
++- `ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
++  diff, `typecheck`, `lint`, `test`, `test:browser`, `e2e`, `build` → artefact;
++- `stack` (after both): `-Pui` jar, `npm run e2e:stack`.
++- `nightly.yml`: PIT on `main` over the class-C modules `xdm`, `ir`, `runtime`, `serializer`,
++  `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019); it commits nothing. `bench.yml`: manual JMH,
++  informative only; benchmark regression is a spec-gate check on the VM, never on CI.
++- Runners use Temurin 25 and Node 22 and fetch Maven artefacts through the Google mirror of
++  Central with the Maven cache (ADR-0017).
++
++**Ratchet** (`ratchet/`, ADR-0019, format in `ratchet/README.md`): oracle pass lists, coverage
++and mutation per module, benchmark baselines. Ticket gates check against the integration branch's
++copy, which equals `main`'s during a spec; the spec gate regenerates it and the verifier commits
++it. A drop is a failure; a rise is recorded at regeneration. Writers never touch it.
++
++**Floors** (fixed in the build, ADR-0019): JaCoCo lines ≥ 90 % and branches ≥ 80 % on `xdm`, `ir`,
++`runtime`, `serializer`, `mapping`, `xslt-export`, `api`, `udf-api`, `udf`; lines ≥ 80 % on `structure`,
++`structure-import`, `service`; PIT ≥ 80 % on the nine class-C modules; Vitest per-glob lines
++≥ 90 % on `ui/src/model/**` and `ui/src/studio/store/**` (`npm run test` = `vitest run --coverage`).
++
++## 7. Decisions, findings, owner questions
++
++| Kind | Example | Where |
++| --- | --- | --- |
++| reversible, local | an internal shape, a threshold, a library minor version | a line in the ticket's evidence comment |
++| hard to reverse, surprising, real trade-off | IR shape, model format, queue representation | ADR in `docs/adr/` (`/domain-modeling` rules), draft by the designer |
++| contradiction with an ADR or the architecture | the IR cannot express X as decided | finding: `docs/findings/F-<n>.md`, smallest change keeping the intent, ADR amended or superseded in the same merge, PR body says "deviation" |
++| owner only | money, credentials, licences, a gate missed twice, history rewrite | issue labelled `ready-for-human`; the ticket waits, the run continues with the next frontier ticket |
++
++## 8. Autonomous runs
++
++`/run-spec` runs without asking the owner. A blocked ticket (owner answer, credential, network,
++a tool failure that survives one retry and one alternative route) gets a comment and the
++`ready-for-human` label, and the run takes the next frontier ticket. The run ends on
++`SPEC_DONE` (PR merged), `IDLE_NO_FRONTIER` (everything left is blocked) or a quota stop; the
++reason is the first line of `agent/HANDOFF.md`.
++
++The cloud VM can be reclaimed at any time. Pushed branches, issues and `agent/HANDOFF.md` are the
++recovery point: push the integration branch after every merge and every ticket branch at every
++hand-back.
++
++## 9. Files
++
++| File | Purpose | Written by |
++| --- | --- | --- |
++| `agent/HANDOFF.md` | ≤ 20 lines of ≤ 160 chars: state, current spec and integration branch, tickets in flight with their worktree branches, next exact action, open owner issues | architect |
++| `agent/NOTES.md` | module notes (commands, quirks, shapes) by section, read on demand | architect |
++| `bench/RESULTS.md` | every measured number with machine, date, configuration, commit | architect, from verifier output |
++| `ratchet/` | what passes, per oracle and module | verifier only |
++| `docs/adr/` | binding decisions | architect (designer drafts) |
++| `docs/findings/` | contradictions and their resolution | architect |
++| `.claude/agent-memory/<name>/MEMORY.md` | durable lessons per agent | that agent |
++
++GitHub Issues replace the backlog and the progress journal: the spec, its tickets and their
++evidence comments are the record. Nothing that matters lives only in the conversation.
++
++## 10. Turn economy (lessons from Rail8, D-053/D-054 there)
++
++- The architect is the most expensive context; deep design goes to a fresh designer, not into it.
++- Wait for a single agent in the foreground; background only with two or more in flight.
++- A resumed agent keeps its context: a fix, a second review round or a partial hand-back resumes
++  the same agent by name (`SendMessage`), never a fresh one.
++- A fix packet names file, line, evidence and the sentence to write; nothing else.
++- A Stop-hook reminder mid-run is declined in one line; it never triggers a commit of an
++  unreviewed tree. `.logs/.batch-in-review` silences it while a review is running.
++- Self-check lists in the writers mirror the reviewers' memory, so authors catch what reviewers
++  would.
++
++## 11. Commits and branches
++
++- `main` ← PR per spec. `spec/<issue>-<slug>` ← merger. `t/<ticket>-<slug>` ← one implementer.
++  Throwaway: `research/<name>`, `prototype/<name>` (never merged).
++- Conventional Commits, scope = module without prefix: `feat(engine): …`, `test(model): …`,
++  `fix(ui): …`, `chore(ci): …`, `docs: …`.
++- Body: what and why, then the evidence line. Trailers in order: `Ticket: #<n>`,
++  `Co-authored-by: Claude <noreply@anthropic.com>`, `Signed-off-by: <owner>` (DCO; identity from
++  the environment's git variables, never written into the repo). Write the trailer block in the
++  message (`git commit -F <file>`); `-s` would add a second `Signed-off-by`.
++
++## 12. After a run
++
++`/retro` on the session: navigation, missing automated checks, standards the reviewers should
++enforce, steering that does nothing, expensive tool calls. Mechanical lessons become checks
++(lint rule, ArchUnit rule, CI job); judgement lessons go to `docs/CODING_STANDARDS.md`;
++`CLAUDE.md` stays a page of pointers. Every few specs: `/improve-codebase-architecture`.
+diff --git a/mapping/agent/HANDOFF.md b/mapping/docs/archive/agent/HANDOFF.md
+similarity index 100%
+rename from mapping/agent/HANDOFF.md
+rename to mapping/docs/archive/agent/HANDOFF.md
+diff --git a/mapping/agent/NOTES.md b/mapping/docs/archive/agent/NOTES.md
+similarity index 100%
+rename from mapping/agent/NOTES.md
+rename to mapping/docs/archive/agent/NOTES.md
+diff --git a/mapping/agent/prompts/codex-observation-run.md b/mapping/docs/archive/agent/prompts/codex-observation-run.md
+similarity index 100%
+rename from mapping/agent/prompts/codex-observation-run.md
+rename to mapping/docs/archive/agent/prompts/codex-observation-run.md
+diff --git a/mapping/.claude/agent-memory/designer/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/designer/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/designer/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/designer/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/implementer/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/implementer/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/implementer/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/implementer/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/merger/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/merger/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/merger/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/merger/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/reviewer-spec/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/reviewer-spec/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/reviewer-spec/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/reviewer-spec/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/reviewer-standards/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/reviewer-standards/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/reviewer-standards/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/reviewer-standards/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/test-author/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/test-author/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/test-author/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/test-author/MEMORY.md
+diff --git a/mapping/.claude/agent-memory/verifier/MEMORY.md b/mapping/docs/archive/dot-claude/agent-memory/verifier/MEMORY.md
+similarity index 100%
+rename from mapping/.claude/agent-memory/verifier/MEMORY.md
+rename to mapping/docs/archive/dot-claude/agent-memory/verifier/MEMORY.md
+diff --git a/mapping/.claude/agents/designer.md b/mapping/docs/archive/dot-claude/agents/designer.md
+similarity index 100%
+rename from mapping/.claude/agents/designer.md
+rename to mapping/docs/archive/dot-claude/agents/designer.md
+diff --git a/mapping/.claude/agents/gate-reviewer.md b/mapping/docs/archive/dot-claude/agents/gate-reviewer.md
+similarity index 100%
+rename from mapping/.claude/agents/gate-reviewer.md
+rename to mapping/docs/archive/dot-claude/agents/gate-reviewer.md
+diff --git a/mapping/.claude/agents/grilling-adviser.md b/mapping/docs/archive/dot-claude/agents/grilling-adviser.md
+similarity index 100%
+rename from mapping/.claude/agents/grilling-adviser.md
+rename to mapping/docs/archive/dot-claude/agents/grilling-adviser.md
+diff --git a/mapping/.claude/agents/implementer.md b/mapping/docs/archive/dot-claude/agents/implementer.md
+similarity index 100%
+rename from mapping/.claude/agents/implementer.md
+rename to mapping/docs/archive/dot-claude/agents/implementer.md
+diff --git a/mapping/.claude/agents/merger.md b/mapping/docs/archive/dot-claude/agents/merger.md
+similarity index 100%
+rename from mapping/.claude/agents/merger.md
+rename to mapping/docs/archive/dot-claude/agents/merger.md
+diff --git a/mapping/.claude/agents/reviewer-spec.md b/mapping/docs/archive/dot-claude/agents/reviewer-spec.md
+similarity index 100%
+rename from mapping/.claude/agents/reviewer-spec.md
+rename to mapping/docs/archive/dot-claude/agents/reviewer-spec.md
+diff --git a/mapping/.claude/agents/reviewer-standards.md b/mapping/docs/archive/dot-claude/agents/reviewer-standards.md
+similarity index 100%
+rename from mapping/.claude/agents/reviewer-standards.md
+rename to mapping/docs/archive/dot-claude/agents/reviewer-standards.md
+diff --git a/mapping/.claude/agents/scout.md b/mapping/docs/archive/dot-claude/agents/scout.md
+similarity index 100%
+rename from mapping/.claude/agents/scout.md
+rename to mapping/docs/archive/dot-claude/agents/scout.md
+diff --git a/mapping/.claude/agents/test-author.md b/mapping/docs/archive/dot-claude/agents/test-author.md
+similarity index 100%
+rename from mapping/.claude/agents/test-author.md
+rename to mapping/docs/archive/dot-claude/agents/test-author.md
+diff --git a/mapping/.claude/agents/verifier.md b/mapping/docs/archive/dot-claude/agents/verifier.md
+similarity index 100%
+rename from mapping/.claude/agents/verifier.md
+rename to mapping/docs/archive/dot-claude/agents/verifier.md
+diff --git a/mapping/.claude/hooks/stop-hook-git-check.gated.sh b/mapping/docs/archive/dot-claude/hooks/stop-hook-git-check.gated.sh
+similarity index 100%
+rename from mapping/.claude/hooks/stop-hook-git-check.gated.sh
+rename to mapping/docs/archive/dot-claude/hooks/stop-hook-git-check.gated.sh
+diff --git a/mapping/.claude/settings.json b/mapping/docs/archive/dot-claude/settings.json
+similarity index 100%
+rename from mapping/.claude/settings.json
+rename to mapping/docs/archive/dot-claude/settings.json
+diff --git a/mapping/.claude/skills/LICENSE-mattpocock-skills b/mapping/docs/archive/dot-claude/skills/LICENSE-mattpocock-skills
+similarity index 100%
+rename from mapping/.claude/skills/LICENSE-mattpocock-skills
+rename to mapping/docs/archive/dot-claude/skills/LICENSE-mattpocock-skills
+diff --git a/mapping/.claude/skills/UPSTREAM.md b/mapping/docs/archive/dot-claude/skills/UPSTREAM.md
+similarity index 100%
+rename from mapping/.claude/skills/UPSTREAM.md
+rename to mapping/docs/archive/dot-claude/skills/UPSTREAM.md
+diff --git a/mapping/.claude/skills/code-review/SKILL.md b/mapping/docs/archive/dot-claude/skills/code-review/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/code-review/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/code-review/SKILL.md
+diff --git a/mapping/.claude/skills/code-review/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/code-review/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/code-review/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/code-review/agents/openai.yaml
+diff --git a/mapping/.claude/skills/codebase-design/DEEPENING.md b/mapping/docs/archive/dot-claude/skills/codebase-design/DEEPENING.md
+similarity index 100%
+rename from mapping/.claude/skills/codebase-design/DEEPENING.md
+rename to mapping/docs/archive/dot-claude/skills/codebase-design/DEEPENING.md
+diff --git a/mapping/.claude/skills/codebase-design/DESIGN-IT-TWICE.md b/mapping/docs/archive/dot-claude/skills/codebase-design/DESIGN-IT-TWICE.md
+similarity index 100%
+rename from mapping/.claude/skills/codebase-design/DESIGN-IT-TWICE.md
+rename to mapping/docs/archive/dot-claude/skills/codebase-design/DESIGN-IT-TWICE.md
+diff --git a/mapping/.claude/skills/codebase-design/SKILL.md b/mapping/docs/archive/dot-claude/skills/codebase-design/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/codebase-design/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/codebase-design/SKILL.md
+diff --git a/mapping/.claude/skills/codebase-design/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/codebase-design/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/codebase-design/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/codebase-design/agents/openai.yaml
+diff --git a/mapping/.claude/skills/diagnosing-bugs/SKILL.md b/mapping/docs/archive/dot-claude/skills/diagnosing-bugs/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/diagnosing-bugs/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/diagnosing-bugs/SKILL.md
+diff --git a/mapping/.claude/skills/diagnosing-bugs/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/diagnosing-bugs/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/diagnosing-bugs/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/diagnosing-bugs/agents/openai.yaml
+diff --git a/mapping/.claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh b/mapping/docs/archive/dot-claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh
+similarity index 100%
+rename from mapping/.claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh
+rename to mapping/docs/archive/dot-claude/skills/diagnosing-bugs/scripts/hitl-loop.template.sh
+diff --git a/mapping/.claude/skills/domain-modeling/ADR-FORMAT.md b/mapping/docs/archive/dot-claude/skills/domain-modeling/ADR-FORMAT.md
+similarity index 100%
+rename from mapping/.claude/skills/domain-modeling/ADR-FORMAT.md
+rename to mapping/docs/archive/dot-claude/skills/domain-modeling/ADR-FORMAT.md
+diff --git a/mapping/.claude/skills/domain-modeling/GLOSSARY-FORMAT.md b/mapping/docs/archive/dot-claude/skills/domain-modeling/GLOSSARY-FORMAT.md
+similarity index 100%
+rename from mapping/.claude/skills/domain-modeling/GLOSSARY-FORMAT.md
+rename to mapping/docs/archive/dot-claude/skills/domain-modeling/GLOSSARY-FORMAT.md
+diff --git a/mapping/.claude/skills/domain-modeling/SKILL.md b/mapping/docs/archive/dot-claude/skills/domain-modeling/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/domain-modeling/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/domain-modeling/SKILL.md
+diff --git a/mapping/.claude/skills/domain-modeling/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/domain-modeling/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/domain-modeling/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/domain-modeling/agents/openai.yaml
+diff --git a/mapping/.claude/skills/gate/SKILL.md b/mapping/docs/archive/dot-claude/skills/gate/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/gate/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/gate/SKILL.md
+diff --git a/mapping/.claude/skills/grill-me/SKILL.md b/mapping/docs/archive/dot-claude/skills/grill-me/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/grill-me/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/grill-me/SKILL.md
+diff --git a/mapping/.claude/skills/grill-me/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/grill-me/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/grill-me/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/grill-me/agents/openai.yaml
+diff --git a/mapping/.claude/skills/grill-with-docs/SKILL.md b/mapping/docs/archive/dot-claude/skills/grill-with-docs/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/grill-with-docs/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/grill-with-docs/SKILL.md
+diff --git a/mapping/.claude/skills/grill-with-docs/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/grill-with-docs/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/grill-with-docs/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/grill-with-docs/agents/openai.yaml
+diff --git a/mapping/.claude/skills/grilling/SKILL.md b/mapping/docs/archive/dot-claude/skills/grilling/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/grilling/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/grilling/SKILL.md
+diff --git a/mapping/.claude/skills/grilling/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/grilling/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/grilling/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/grilling/agents/openai.yaml
+diff --git a/mapping/.claude/skills/handoff/SKILL.md b/mapping/docs/archive/dot-claude/skills/handoff/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/handoff/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/handoff/SKILL.md
+diff --git a/mapping/.claude/skills/handoff/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/handoff/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/handoff/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/handoff/agents/openai.yaml
+diff --git a/mapping/.claude/skills/improve-codebase-architecture/HTML-REPORT.md b/mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/HTML-REPORT.md
+similarity index 100%
+rename from mapping/.claude/skills/improve-codebase-architecture/HTML-REPORT.md
+rename to mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/HTML-REPORT.md
+diff --git a/mapping/.claude/skills/improve-codebase-architecture/SKILL.md b/mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/improve-codebase-architecture/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/SKILL.md
+diff --git a/mapping/.claude/skills/improve-codebase-architecture/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/improve-codebase-architecture/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/improve-codebase-architecture/agents/openai.yaml
+diff --git a/mapping/.claude/skills/pr/CREDITS.md b/mapping/docs/archive/dot-claude/skills/pr/CREDITS.md
+similarity index 100%
+rename from mapping/.claude/skills/pr/CREDITS.md
+rename to mapping/docs/archive/dot-claude/skills/pr/CREDITS.md
+diff --git a/mapping/.claude/skills/pr/SKILL.md b/mapping/docs/archive/dot-claude/skills/pr/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/pr/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/pr/SKILL.md
+diff --git a/mapping/.claude/skills/pr/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/pr/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/pr/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/pr/agents/openai.yaml
+diff --git a/mapping/.claude/skills/prototype/LOGIC.md b/mapping/docs/archive/dot-claude/skills/prototype/LOGIC.md
+similarity index 100%
+rename from mapping/.claude/skills/prototype/LOGIC.md
+rename to mapping/docs/archive/dot-claude/skills/prototype/LOGIC.md
+diff --git a/mapping/.claude/skills/prototype/SKILL.md b/mapping/docs/archive/dot-claude/skills/prototype/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/prototype/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/prototype/SKILL.md
+diff --git a/mapping/.claude/skills/prototype/UI.md b/mapping/docs/archive/dot-claude/skills/prototype/UI.md
+similarity index 100%
+rename from mapping/.claude/skills/prototype/UI.md
+rename to mapping/docs/archive/dot-claude/skills/prototype/UI.md
+diff --git a/mapping/.claude/skills/prototype/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/prototype/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/prototype/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/prototype/agents/openai.yaml
+diff --git a/mapping/.claude/skills/research/SKILL.md b/mapping/docs/archive/dot-claude/skills/research/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/research/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/research/SKILL.md
+diff --git a/mapping/.claude/skills/research/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/research/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/research/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/research/agents/openai.yaml
+diff --git a/mapping/.claude/skills/retro/SKILL.md b/mapping/docs/archive/dot-claude/skills/retro/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/retro/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/retro/SKILL.md
+diff --git a/mapping/.claude/skills/retro/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/retro/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/retro/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/retro/agents/openai.yaml
+diff --git a/mapping/.claude/skills/run-spec/SKILL.md b/mapping/docs/archive/dot-claude/skills/run-spec/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/run-spec/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/run-spec/SKILL.md
+diff --git a/mapping/.claude/skills/tdd/SKILL.md b/mapping/docs/archive/dot-claude/skills/tdd/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/tdd/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/tdd/SKILL.md
+diff --git a/mapping/.claude/skills/tdd/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/tdd/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/tdd/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/tdd/agents/openai.yaml
+diff --git a/mapping/.claude/skills/tdd/mocking.md b/mapping/docs/archive/dot-claude/skills/tdd/mocking.md
+similarity index 100%
+rename from mapping/.claude/skills/tdd/mocking.md
+rename to mapping/docs/archive/dot-claude/skills/tdd/mocking.md
+diff --git a/mapping/.claude/skills/tdd/tests.md b/mapping/docs/archive/dot-claude/skills/tdd/tests.md
+similarity index 100%
+rename from mapping/.claude/skills/tdd/tests.md
+rename to mapping/docs/archive/dot-claude/skills/tdd/tests.md
+diff --git a/mapping/.claude/skills/to-questionnaire/SKILL.md b/mapping/docs/archive/dot-claude/skills/to-questionnaire/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/to-questionnaire/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/to-questionnaire/SKILL.md
+diff --git a/mapping/.claude/skills/to-questionnaire/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/to-questionnaire/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/to-questionnaire/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/to-questionnaire/agents/openai.yaml
+diff --git a/mapping/.claude/skills/to-spec/SKILL.md b/mapping/docs/archive/dot-claude/skills/to-spec/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/to-spec/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/to-spec/SKILL.md
+diff --git a/mapping/.claude/skills/to-spec/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/to-spec/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/to-spec/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/to-spec/agents/openai.yaml
+diff --git a/mapping/.claude/skills/to-tickets/SKILL.md b/mapping/docs/archive/dot-claude/skills/to-tickets/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/to-tickets/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/to-tickets/SKILL.md
+diff --git a/mapping/.claude/skills/to-tickets/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/to-tickets/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/to-tickets/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/to-tickets/agents/openai.yaml
+diff --git a/mapping/.claude/skills/triage/AGENT-BRIEF.md b/mapping/docs/archive/dot-claude/skills/triage/AGENT-BRIEF.md
+similarity index 100%
+rename from mapping/.claude/skills/triage/AGENT-BRIEF.md
+rename to mapping/docs/archive/dot-claude/skills/triage/AGENT-BRIEF.md
+diff --git a/mapping/.claude/skills/triage/OUT-OF-SCOPE.md b/mapping/docs/archive/dot-claude/skills/triage/OUT-OF-SCOPE.md
+similarity index 100%
+rename from mapping/.claude/skills/triage/OUT-OF-SCOPE.md
+rename to mapping/docs/archive/dot-claude/skills/triage/OUT-OF-SCOPE.md
+diff --git a/mapping/.claude/skills/triage/SKILL.md b/mapping/docs/archive/dot-claude/skills/triage/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/triage/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/triage/SKILL.md
+diff --git a/mapping/.claude/skills/triage/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/triage/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/triage/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/triage/agents/openai.yaml
+diff --git a/mapping/.claude/skills/wait-what/SKILL.md b/mapping/docs/archive/dot-claude/skills/wait-what/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/wait-what/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/wait-what/SKILL.md
+diff --git a/mapping/.claude/skills/wait-what/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/wait-what/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/wait-what/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/wait-what/agents/openai.yaml
+diff --git a/mapping/.claude/skills/wayfinder/SKILL.md b/mapping/docs/archive/dot-claude/skills/wayfinder/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/wayfinder/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/wayfinder/SKILL.md
+diff --git a/mapping/.claude/skills/wayfinder/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/wayfinder/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/wayfinder/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/wayfinder/agents/openai.yaml
+diff --git a/mapping/.claude/skills/writing-for-agents/SKILL-MECHANICS.md b/mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL-MECHANICS.md
+similarity index 100%
+rename from mapping/.claude/skills/writing-for-agents/SKILL-MECHANICS.md
+rename to mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL-MECHANICS.md
+diff --git a/mapping/.claude/skills/writing-for-agents/SKILL.md b/mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL.md
+similarity index 100%
+rename from mapping/.claude/skills/writing-for-agents/SKILL.md
+rename to mapping/docs/archive/dot-claude/skills/writing-for-agents/SKILL.md
+diff --git a/mapping/.claude/skills/writing-for-agents/agents/openai.yaml b/mapping/docs/archive/dot-claude/skills/writing-for-agents/agents/openai.yaml
+similarity index 100%
+rename from mapping/.claude/skills/writing-for-agents/agents/openai.yaml
+rename to mapping/docs/archive/dot-claude/skills/writing-for-agents/agents/openai.yaml
+diff --git a/mapping/docs/agents/issue-tracker.md b/mapping/docs/archive/issue-tracker.md
+similarity index 100%
+rename from mapping/docs/agents/issue-tracker.md
+rename to mapping/docs/archive/issue-tracker.md
+diff --git a/mapping/docs/agents/triage-labels.md b/mapping/docs/archive/triage-labels.md
+similarity index 100%
+rename from mapping/docs/agents/triage-labels.md
+rename to mapping/docs/archive/triage-labels.md
+diff --git a/mapping/pom.xml b/mapping/pom.xml
+index d82b6f36..ff873cfc 100644
+--- a/mapping/pom.xml
++++ b/mapping/pom.xml
+@@ -65,7 +65,7 @@
+     <!-- JaCoCo floors (ADR-0019): class-C default; structure, structure-import and service override -->
+     <jacoco.min.lines>0.90</jacoco.min.lines>
+     <jacoco.min.branches>0.80</jacoco.min.branches>
+-    <!-- PIT floor (ADR-0019); nightly.yml runs it, it is not bound to verify -->
++    <!-- PIT floor (ADR-0019); mapping-nightly.yml runs it, it is not bound to verify -->
+     <pit.mutation.threshold>80</pit.mutation.threshold>
+     <pit.failWhenNoMutations>true</pit.failWhenNoMutations>
+     <!-- modules without a mutation floor (structure, structure-import, oracle, service) set this to true -->
+diff --git a/mapping/scripts/check-trailers.sh b/mapping/scripts/check-trailers.sh
+index 24de4c0d..1049f210 100755
+--- a/mapping/scripts/check-trailers.sh
++++ b/mapping/scripts/check-trailers.sh
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env bash
+-# Commit trailer check (#67, docs/WORKFLOW.md section 11). Every commit in <range> has exactly one Signed-off-by,
++# Commit trailer check (#67, docs/archive/WORKFLOW-until-2026-11-15.md section 11). Every commit in <range> has exactly one Signed-off-by,
+ # a "Ticket: #<n>" line and a "Co-authored-by: Claude <noreply@anthropic.com>" line. Merge commits written by the
+ # merger are checked; GitHub's own PR merge commit ("Merge <sha> into <sha>") is skipped.
+ #
+diff --git a/mapping/scripts/test/gate-log-test.sh b/mapping/scripts/test/gate-log-test.sh
+index 9a5ee2ec..462db863 100755
+--- a/mapping/scripts/test/gate-log-test.sh
++++ b/mapping/scripts/test/gate-log-test.sh
+@@ -19,7 +19,7 @@ printf "$ok" > "$root/bin/java"
+ printf "$ok" > "$root/bin/git"
+ printf "$ok" > "$root/scripts/check-lf-checkout.sh"
+ printf "$ok" > "$root/scripts/check-trailers.sh"
+-# MVNW_EXIT sets the exit code of every ../mvnw step
++# MVNW_EXIT sets the exit code of every Maven step: MVNW points the gates at this stub
+ printf '#!/usr/bin/env bash\nexit "${MVNW_EXIT:-0}"\n' > "$root/mvnw"
+ export MVNW="$root/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
+ # the summary call prints a warning to stderr, which the log must hold too, then one line per module; the --run call

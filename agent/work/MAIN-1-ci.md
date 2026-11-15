@@ -40,3 +40,13 @@ Workflow `ci`, branch `main`. Names are the ones before commit B (`io.flottila.*
 - What stops the build next, in this order: FIX-213 (runtime unit, a race), FIX-212 (runtime IT, every run seen so far). Nothing after
   the runtime module has been reached on a runner since 2026-11-05, so cli, sim, archtest and bench are unobserved there.
 - Reading a job's log: `get_job_logs` with `tail_lines` 112-120 reaches the "[ERROR] Failures" block; 60 does not.
+
+## Run 202 (read 2026-11-15 09:30 UTC) — the first run with `-f platform/pom.xml`
+
+Run 202 (id 43695734886, head 29379f9c, BRAND-3 step 2): DCO success. The reactor summary lists the platform's modules only — the
+root aggregator's `mapping` is not built by this workflow, as intended. Both build jobs fail where run 201 did:
+- job PG 17.11 (132755722551), 2 min 44 s: `ReplicaStartTest.theStartRoomCheckCountsTheReplicas:159 … expected: <3465> but was: <3514>`
+  (FIX-213, fixed in 02ef7bf8 — run 203 is its proof).
+- job PG 18.6 (132755722764), 17 min: `StepBodiesIT…:442->rowsOf:324->until:373 not within 20 s: fixture: 5 rows of sb-rerun`
+  (FIX-212), 709 ITs run in the runtime module.
+Nothing after the runtime module has been observed on a runner since 2026-11-05.

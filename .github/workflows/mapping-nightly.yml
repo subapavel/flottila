@@ -1,7 +1,8 @@
-name: nightly
+name: mapping-nightly
 
 # PIT on main over the nine class-C modules, failing below 80 % (ADR-0019). It commits nothing:
 # the mutation ratchet is written by the spec gate (step 1b), not here.
+# Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
 on:
   schedule:
     - cron: '17 2 * * *'
@@ -15,7 +16,11 @@ env:
 
 jobs:
   mutation:
+    name: mapping · mutation
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -23,6 +28,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
       - name: Maven mirror
         run: |
           mkdir -p ~/.m2
@@ -41,12 +47,12 @@ jobs:
       # Modules without production code set failWhenNoMutations=false until their first ticket removes it.
       - name: PIT
         run: >
-          ./mvnw -B
+          ../mvnw -B
           -pl engine/xdm,engine/ir,engine/runtime,engine/serializer,engine/mapping,engine/xslt-export,engine/api,engine/udf-api,engine/udf
           -am test-compile org.pitest:pitest-maven:mutationCoverage
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pit-reports
-          path: engine/*/target/pit-reports
+          path: mapping/engine/*/target/pit-reports
           if-no-files-found: ignore

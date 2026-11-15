@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Commit trailer check (#67, docs/WORKFLOW.md section 11). Every commit in <range> has exactly one Signed-off-by,
+# Commit trailer check (#67, docs/archive/WORKFLOW-until-2026-11-15.md section 11). Every commit in <range> has exactly one Signed-off-by,
 # a "Ticket: #<n>" line and a "Co-authored-by: Claude <noreply@anthropic.com>" line. Merge commits written by the
 # merger are checked; GitHub's own PR merge commit ("Merge <sha> into <sha>") is skipped.
 #

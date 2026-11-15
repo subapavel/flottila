@@ -8,7 +8,7 @@ sent in and read back through the admin API. Commands run from the repository ro
 ## 1. Build and start
 
 ```sh
-mvn -B -ntp -q package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
 export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
 docker compose up -d --build
 until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, not just postgres, is up

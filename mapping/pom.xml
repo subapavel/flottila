@@ -65,7 +65,7 @@
     <!-- JaCoCo floors (ADR-0019): class-C default; structure, structure-import and service override -->
     <jacoco.min.lines>0.90</jacoco.min.lines>
     <jacoco.min.branches>0.80</jacoco.min.branches>
-    <!-- PIT floor (ADR-0019); nightly.yml runs it, it is not bound to verify -->
+    <!-- PIT floor (ADR-0019); mapping-nightly.yml runs it, it is not bound to verify -->
     <pit.mutation.threshold>80</pit.mutation.threshold>
     <pit.failWhenNoMutations>true</pit.failWhenNoMutations>
     <!-- modules without a mutation floor (structure, structure-import, oracle, service) set this to true -->

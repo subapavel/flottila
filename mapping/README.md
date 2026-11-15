@@ -6,12 +6,17 @@ Java UDFs — and run it compiled on Java 25. One intermediate representation wi
 XSLT 3.0 / XPath 3.1, so a drawn mapping exports to readable XSLT and a stylesheet runs on the
 same engine. The editor is React + PatternFly.
 
+Imported from `github.com/subapavel/flottila-mapping` with its history on 2026-11-15 (D-150). `#N` in a
+commit, an ADR or a finding of the mapping means that repository's issue or pull request; `F-n` up to F-53
+in a mapping document means `docs/findings/F-n.md` here; the root's series continues at F-54 (D-151).
+
 Status: **Milestone 1 — spec 1 (walking skeleton) built: one field link from the editor through
 the engine, the service and the XSLT export.** See `docs/wayfinder/phase-0-map.md` and
 `docs/GATE.md` (milestone 1).
 
-Built AI-first: agents write the code under the rules in `CLAUDE.md`, `AGENTS.md` and
-`docs/WORKFLOW.md`; work is tracked in GitHub Issues.
+Built AI-first: agents write the code under the repository's process (the root `CLAUDE.md`, `AGENTS.md`
+and `docs/WORKFLOW.md`) and the engine's technical rules in `CLAUDE.md` here; work is tracked in the root
+`agent/BACKLOG.md`.
 
 ## Run the Mapping studio and test a mapping
 
@@ -29,4 +34,4 @@ If port 8080 is taken, set `QUARKUS_HTTP_PORT` for both (PowerShell `$env:QUARKU
 bash `QUARKUS_HTTP_PORT=8081`) and the dev proxy follows. `?api=fake` in the address runs the UI on
 its built-in fake service, with no backend.
 
-Licence: Apache 2.0 (`LICENSE`). Third-party notices: `NOTICE`.
+Licence: Apache 2.0 (the root `LICENSE`). Third-party notices: the root `NOTICE`.

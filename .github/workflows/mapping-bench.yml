@@ -1,7 +1,8 @@
-name: bench
+name: mapping-bench
 
 # JMH on a shared runner, for information only (ADR-0017, ADR-0021). Never a gate: shared runners are too
 # noisy for a regression threshold. A manual smoke test at -f 1; spec-gate step 5 runs the benchmarks at -f 3.
+# Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
 on:
   workflow_dispatch:
 
@@ -13,7 +14,11 @@ env:
 
 jobs:
   jmh:
+    name: mapping · jmh
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -21,6 +26,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
       - name: Maven mirror
         run: |
           mkdir -p ~/.m2
@@ -36,7 +42,7 @@ jobs:
           </settings>
           EOF
       - name: Build the benchmarks
-        run: ./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
+        run: ../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
       - name: Run JMH
         run: |
           if [ -f bench/jmh/target/benchmarks.jar ]; then
@@ -49,5 +55,5 @@ jobs:
         if: always()
         with:
           name: jmh
-          path: .logs/bench-ci-jmh.json
+          path: mapping/.logs/bench-ci-jmh.json
           if-no-files-found: ignore

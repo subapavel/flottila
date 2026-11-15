@@ -6,7 +6,7 @@ A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_E
 `kafka` profile, off by default and not wired: a plain `up` does not start it.
 
 ```sh
-mvn -B -ntp -q package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
 cd deploy/compose
 export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required: compose refuses to start without it
 export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACCESS_KEY defaults to rail8

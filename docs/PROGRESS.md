@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-3 step 3 one CI, one set of rules, one notice for the mapping engine — done, review PASS
+
+- Deviation: F-54 (major) — ARCHITECTURE 3.26, section 12 says whose rules bind which area (D-153, a draft for the owner's review).
+- Files (implementer): the engine's three workflows are `.github/workflows/mapping-{ci,bench,nightly}.yml` (steps run in `mapping/`
+  with `../mvnw`; jobs named `mapping · …`; the trailers job replaced by the root DCO job, its script tests kept in `backend`);
+  `mapping/CLAUDE.md` and `mapping/docs/WORKFLOW.md` keep the engine's technical rules and checks; the old process files are under
+  `mapping/docs/archive/` by `git mv`; NOTICE merged; the platform's documented commands name `-f platform/pom.xml`.
+- Documents (architect): F-54, D-153, section 12, ISSUE-9 (licences incl. GPL-2.0 with the Classpath Exception at test scope; the
+  rule scope) with `agent/patches/BRAND-3-steering.patch` for the owner, rows MAP-1..MAP-8, OPS-4 and OPS-6 wait for MAP-1, NOTES, README.
+- Opposed before the decision (D-137), six blocking points taken: scope by exclusion, the standstill until MAP-1, the licence wording.
+- VERIFIED_PASS (verifier, staged tree): mapping suite 17 822 tests 0/0/0, every module = base; contract unchanged by the build; 14
+  script tests; check-lf; name guard; 46 guard tests; root and platform validate; workflows parse (`BRAND-3-s3-verify-counts.txt`).
+  NOT_RUN: the ported workflows on a runner (MAP-6); the platform reactor (only comments, documents and two script lines changed).
+- Review r1 FAIL (ISSUE-9 said the patch states more than it does), r2 PASS. `ci` run 202 read: FIX-213, FIX-212 (`MAIN-1-ci.md`).
+- BRAND-3 is done. Next: MAIN-1 — FIX-212; read `ci` run 203 and the first `mapping-ci` run.
+
 ## 2026-11-15 — FIX-213 the replica start test waits for the pre-opened segment's file — done, review PASS
 
 - Context compacted before this entry; re-verified with `git status`, `git log -3` and HANDOFF.
