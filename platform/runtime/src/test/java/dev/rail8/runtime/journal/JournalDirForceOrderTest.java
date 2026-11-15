@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static dev.rail8.runtime.journal.JournalFixture.KEY;
 import static dev.rail8.runtime.journal.JournalFixture.START;
@@ -64,20 +66,62 @@ class JournalDirForceOrderTest {
         Two(String name) throws Exception {
             seams.add(files);
             Settings s = settings(Files.createDirectories(tmp.resolve(name))).segmentAge(Duration.ofHours(1)).segmentRecords(1).recordMax(4096);
-            journal = Journal.open(s.config(), clock, timer, keys(KEY), files, (node, segment) -> Future.succeededFuture());
-            journals.add(journal);
             Path segments = s.dir.resolve("segments");
-            // the open's forces of segments/ are over: the holds below can only meet A's and B's
+            // FIX-168: the open's pre-open of segment 2 forces segments/ on a thread of its own; it is held at its file's force,
+            // before its force of segments/, so that one enters after A's hold is armed — the order a loaded run met, where a
+            // hold that took any thread's force held the pre-open's as A's
+            HeldFiles.Hold preopen = files.holdForceOn(segments.resolve("2.seg"), 0);
+            // opened off the test thread with a bounded join: an open that forced 2.seg itself, or waited for its pre-open,
+            // would sit in the held force; it fails here within the bound instead of hanging the run
+            Outcome<Journal> opening = onVirtual(() -> Journal.open(s.config(), clock, timer, keys(KEY), files, (node, segment) -> Future.succeededFuture()));
+            preopen.awaitReached();
+            if (preopen.thread() == opening.thread()) throw new AssertionError("fixture: 2.seg is forced by the opening thread, not a pre-open: " + preopen.op());
+            try {
+                journal = opening.join();
+            } catch (AssertionError e) {
+                throw new AssertionError("fixture: Journal.open returns while its pre-open's force of 2.seg is held (" + preopen.op() + ")", e);
+            }
+            journals.add(journal);
+            // the opener's own forces of segments/ (its creation, segment 1's) are over
             until(() -> files.forcesOn(segments).size() >= 2 && files.forcesOn(segments).stream().allMatch(HeldFiles.Op::returnedOk),
                     () -> "the forces of segments/ so far: " + files.forcesOn(segments));
             a = journal.spill(BlobKey.body(name + "-a", 0), KEY, new GeneratedInput(2, 10_000), 1L << 20, Hasher.sha256());
             b = journal.spill(BlobKey.body(name + "-b", 0), KEY, new GeneratedInput(3, 10_000), 1L << 20, Hasher.sha256());
-            aForce = files.holdForceOn(segments, files.now());
-            pa = onVirtual(a::persist);
+            Persisting persistA = new Persisting(a, segments);
+            pa = persistA.call;
+            aForce = persistA.force;
+            // the pre-open's force of segments/ enters after A's hold is armed, is let through (not A's thread) and returns:
+            // no pre-open is in flight once A's persist starts
+            preopen.release();
+            until(() -> files.forcesOn(segments).stream().anyMatch(op -> op.thread == preopen.thread() && op.returnedOk()),
+                    () -> "the pre-open's force of segments/ returned: " + files.forcesOn(segments));
+            persistA.go();
             aForce.awaitReached();
-            bForce = files.holdForceOn(segments, files.now());
-            pb = onVirtual(b::persist);
+            Persisting persistB = new Persisting(b, segments);
+            pb = persistB.call;
+            bForce = persistB.force;
+            persistB.go();
             bForce.awaitReached();
+        }
+
+        /**
+         * A persist of {@code spill} on a virtual thread of its own, whose first force of {@code segments} is held by that
+         * thread (FIX-168: the hold is armed before the thread runs, so it can only meet this persist's own directory force).
+         */
+        private final class Persisting {
+            final CountDownLatch started = new CountDownLatch(1);
+            final Outcome<JournalRef> call;
+            final HeldFiles.Hold force;
+
+            Persisting(Journal.Spill spill, Path segments) {
+                call = onVirtual(() -> {
+                    if (!started.await(JournalFixture.BOUND.toSeconds(), TimeUnit.SECONDS)) throw new AssertionError("fixture: the persist was never let go");
+                    return spill.persist();
+                });
+                force = files.holdForceOn(segments, files.now(), call.thread());
+            }
+
+            void go() { started.countDown(); }
         }
 
         /** B's force returns first; B's persist does not return while A's earlier force is still held. */

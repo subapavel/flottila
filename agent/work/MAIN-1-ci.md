@@ -109,3 +109,11 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   132797179732) stopped at testkit after 63 s on `ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337`, the
   same extra case `aSendCarriesTheMessageIdToThePartner`: FIX-221 again, the second time on a runner in three runs, both
   times in the 17.11 job. FIX-214's own tests were not reached in that job; the 18.6 job did not fail.
+- `ci` run 212 (id 43714561962, 2f45323e, FIX-221): in progress at 12:53Z; its conclusion not read.
+- `ci` run 213 (id 43715949051, e69abdd3, FIX-218; the push also carried a1b89ee2, FIX-222): `failure`, read 13:20Z. DCO
+  success. Postgres main 18.6 (job 132817394797): `success` — Verify 20 min and every later step green. Postgres floor 17.11
+  (job 132817394902): Verify FAILED after 3 min in the runtime module's unit tests, `Tests run: 1578, Failures: 1`:
+  `DeploymentsRedeployTest.everyStartWaitsForEveryStop:558 c's held message: not within PT10S` — a message held at the
+  partner while its flow's stop was called was not answered within 10 s of its release. New here: no row and no earlier
+  sighting in the ledgers (row FIX-229). In that job testkit passed (59.6 s): FIX-221's fix held on the runner where runs
+  209 and 211 failed. The modules after runtime were skipped, so FIX-222's and FIX-218's ITs ran in the 18.6 job only.

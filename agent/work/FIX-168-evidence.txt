@@ -1,0 +1,53 @@
+FIX-168 — evidence (2026-11-15)
+
+The fault: JournalDirForceOrderTest.aLaterForceThatReturnedFirstFailsWithTheEarlierOneThatFailed:98 "A's persist fails with its
+directory force ==> Unexpected type, expected: <java.io.IOException> but was: <dev.rail8.runtime.journal.JournalFailedException>",
+three times, each once in a run of the whole runtime module (the last: agent/work/FIX-221-reactor.log :55216).
+
+The cause, shown. A first open forces segments/ twice on the opening thread (the directory's creation, Journal.java:400 through
+JournalIo:71, then segment 1, :476), so the fixture's wait "at least two forces of segments/, all returned" passed without the
+open's own pre-open of segment 2 (thread journal-open-2, :919/:927). When that pre-open was late its force of segments/ was the
+first one after A's hold was armed; the hold took the first force by any thread; the case failed that force, dirFailedAt took its
+generation (:996), A's own force succeeded and requireNoEarlierDirFailure (:1014) gave A the JournalFailedException.
+The scout's reading said the spills start further pre-opens; they do not (only roll()/moveOn pre-open). Corrected here.
+
+The red — the order forced with the old any-thread holds (test-only variant, agent/work/FIX-168-demo.diff, never committed):
+EXECUTED_FAIL  agent/work/FIX-168-red.log      runtime: Tests run: 1576, Failures: 1 (:55565) — the reported message, at :105
+               in the variant (:55563); the held op printed at :43923: "FIX-168 held as A's force: #37-? FORCE segments on
+               journal-open-2 (virtual)"
+
+The fix (test only; the forced order stays in the fixture). Round 1 (+43/-6):
+VERIFIED_PASS  agent/work/FIX-168-forced.log   author: the class 2 tests, 0 failures (:42696); runtime 1576, 0 failures
+VERIFIED_PASS  agent/work/FIX-168-run-1.log    author, on 2f45323e: the class 2, runtime 1576 and 3, 0 failures
+VERIFIED_PASS  agent/work/FIX-168-verify-1.log verifier, on e69abdd3: exit 0; the class 2 tests, 0 failures; runtime 1578
+               (:56465) and 3 (:56484), 0 failures; api 107, testkit 279, core 763, schemas 304
+EXECUTED_FAIL  agent/work/FIX-168-verify-cpu0.log  verifier, the JVMs pinned to one CPU (taskset -c 0), failures ignored: the
+               class 2 tests, 0 failures; runtime 1578 with 3 failures (:54386) and 3 with 1 failure (:54419) — none in this
+               class: PeerProtocolTest :586, :718 ("not within 30 s: node-b's reader paused its link … held 0"), :758 ("fixture:
+               the link paused"), PeerReadHeapTest :134 -> stalledAhead:435 ("node-b's reader never stopped reading the link
+               within 30 s"). Row FIX-228.
+Round 2, after the review (the open off the test thread with a bounded join; +51/-7 in all) — the tree committed:
+VERIFIED_PASS  agent/work/FIX-168-run-2.log    author: the class 2, runtime 1578 and 3, 0 failures, BUILD SUCCESS
+VERIFIED_PASS  agent/work/FIX-168-verify-2.log verifier: exit 0; the class 2 tests, 0 failures (:43658); runtime 1578 (:55248)
+               and 3 (:55267), 0 failures; BUILD SUCCESS (:55397)
+EXECUTED_FAIL  agent/work/FIX-168-verify-2-cpu0.log  verifier, pinned to one CPU: the class 2 tests, 0 failures (:43752);
+               runtime 1578 with 3 failures (:55268) and 3 with 1 (:55301) — the same four peer cases, no other
+NOT_RUN        the forced order with the old holds against the round-2 fixture: the red was made on the round-1 shape; round 2
+               changed how the journal is opened, not the forced order or the holds (review round 2, point 3)
+
+The survey (holds armed before the operation they mean to hold, runtime module): JournalCloseAndDirForceTest :168-176 has the
+same fault (row FIX-227). JournalLifecycleTest :290/:318, LargeBodyEdgeTest :215, LargeBodyTest :399 hold by thread;
+MasterKeySourceTest :243 and JournalIoTest open no journal; JournalKeptRowsTest :169 holds a write outside segments/; the
+replica tests hold .part files and the replica directory, which a pre-open never touches.
+
+review: PASS   class B. Round 1 FAIL: the hold on 2.seg was armed before Journal.open ran on the test thread, and a held
+               force waits without a bound — a later change that made open force 2.seg itself, or wait for its pre-open,
+               would have hung the module run instead of failing. Round 2 PASS: open runs off the test thread with a bounded
+               join; every wait of the fixture is bounded and every failure path reaches @AfterEach, which releases the hold.
+               Held in both rounds: the cause is shown (red log :43922-43923, :55563); the red variant forces the same order
+               as the final fixture; the identity is real (the persisting thread does nothing before the latch, its seal forces
+               spill/N.seg, its only force of segments/ is forceSegments); nothing the old fixture exercised is lost; no
+               assertion changed. Accepted gap: when the fixture's own thread check fails, the journal that open returns is
+               not closed — only after the case has already failed, and it cannot reach another case. Not blocking: an open
+               that throws before its pre-open is reported as "2.seg not reached" first.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-168.diff.

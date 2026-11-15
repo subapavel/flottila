@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-168 a held force is its persist's own, not the first by anyone — done, review PASS
+
+- Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
+- Fault (three sightings, whole-module runs only): `JournalDirForceOrderTest…:98` got `JournalFailedException` for `IOException`.
+- Cause shown (test-author, class B): a first open forces `segments/` twice on the opening thread, so the fixture's wait for two
+  returned forces did not cover the open's own pre-open (`journal-open-2`). Its late force of `segments/` was the first after A's
+  hold was armed; the hold took any thread's force and the case failed that one. Red with the order forced: the held op is
+  `FORCE segments on journal-open-2` (FIX-168-red.log :43923), the reported message, runtime 1576 tests, 1 failure.
+- Change (test only, +51/-7): `Two.Persisting` starts each persist gated on a latch and arms its hold by the persisting thread;
+  the fixture keeps the bad order forced and opens the journal off the test thread, every wait bounded. No production change.
+- Evidence: VERIFIED_PASS the final tree (verifier): the class 2, runtime 1578 and 3. Pinned to one CPU the class passes and four
+  peer flow-control cases fail, in both such runs (EXECUTED_FAIL): row FIX-228. Review: round 1 FAIL (a hang), round 2 PASS.
+- Survey: `JournalCloseAndDirForceTest` :168-176 has the same fault: row FIX-227. `ci` run 213 red on a new one: row FIX-229.
+- Also: FIX-219's cause shown by a probe under load (19, then 20); its seam is in work. Packets FIX-224, 225, 226 written.
+
 ## 2026-11-15 — FIX-218 the node file's magic and the retention lock key are pinned — done, review PASS
 
 - Gap (BRAND-1 C): the rename changed two persisted values and no unit test noticed — the identity file's magic `RJN1` and the
