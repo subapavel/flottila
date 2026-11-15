@@ -355,7 +355,9 @@ public final class PgIntake implements Intake {
                     long weight = PgMessageStore.weight(ingress) + PgMessageStore.utf8(arrived.id()) + PgMessageStore.utf8(flow)
                             + PgMessageStore.utf8(partitionKey) + PgMessageStore.utf8(dedupeKey);
                     Member m = new Member(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned, durable, weight, Promise.promise());
-                    writer.save(m).onFailure(refused -> fail(m, refused));   // a full backlog or a window refused: never handed to a group
+                    // fails for a full backlog (never handed to a group) or a failed run, i.e. a throw out of run or its chain, which
+                    // the writer makes the batch's failure; a closed writer would fail it too, but this intake never closes its writer
+                    writer.save(m).onFailure(refused -> fail(m, refused));
                     return m.answer().future();
                 });
     }

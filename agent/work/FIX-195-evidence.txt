@@ -1,0 +1,75 @@
+FIX-195 — evidence of the late review (2026-11-15)
+
+FIX-195 (BatchingWriter under D-146: a refused window commits its taken batch; Error is caught as RuntimeException is; refused
+cancels are contained, counted and logged per episode) landed in a6b12011 with no verification build of the architect's and no
+review. This file records both, made late, and the fixes the review asked for.
+
+The verifier, on de39cc99 (the tree as landed):
+VERIFIED_PASS  agent/work/FIX-195-verify-core.log  core module `verify`, exit 0: api 107 (:109), testkit 286 (:222), core 763
+               (:40930), 0 failures, errors, skipped; BUILD SUCCESS (:40951); BatchingWriter classes: Test 26, WindowRefusalLogTest
+               8, WindowRefusalTest 7, ErrorContainmentTest 6, PropertyTest 4, FlushTest 3, WeightTest 1, DispatchOrderTest 1
+VERIFIED_PASS  agent/work/FIX-195-pit.log          scoped PIT on dev.rail8.core.batch.BatchingWriter: 77 mutations, 76 killed, 0
+               without coverage, line coverage 136/136. Survivor: :121, "replaced long return with 0" in the count-only
+               constructor's weight `item -> 1L` - equivalent (review): with the byte bound equal to the count bound the byte
+               terms bind exactly when the count terms do, and with weight 0 they never bind; no reachable state differs
+
+Review round 1 (class B): FAIL, four blocking findings.
+1. BatchingWriterErrorContainmentTest, aCancelRefusedWhenAWaiterEntersLeavesNoItemUnsettled: `isComplete()` only for q0 and the
+   waiter, the clock never past MAX_WAIT - a writer that fails the entering waiter, or whose stale deadline fails a queued item,
+   passed. Now: the waiter is not complete after the refused cancel, the clock passes MAX_WAIT while it is queued, it is still
+   not complete and still queued, then q0 and the waiter both succeeded and the sink saw [busy, q0, w] in arrival order.
+EXECUTED_FAIL  agent/work/FIX-195-r2-kill-1.log  temporary wrong writer (the catch in takeLocked fails the entering waiter with
+               the refused cancel's cause): 6 tests, 2 failures (:595), at :255 "Future{cause=cancel refused}" (:700)
+EXECUTED_FAIL  agent/work/FIX-195-r2-kill-2.log  temporary wrong writer (expire() without `if (!waiters.remove(w)) return;`):
+               6 tests, 2 failures (:595), at :262 "Future{cause=writer backlog full (1 items pending)}" (:700)
+2. BatchingWriterWindowRefusalTest, aPermanentlyRefusedWindowDrainsTheWholeBacklogAndEveryWaiter: the landing removed
+   `assertDoesNotThrow(w::flush)` and `flush.isComplete()`, neither wrong under D-146. Both are back; the flush is called while
+   three waiters still wait.
+3. BatchingWriter.cancelsRefused() was public with @since 0.1; D-146 exposes that count to tests only. Package-private now; only
+   same-package tests call it.
+4. PgIntake.java:358: the comment named "a window refused" as a failure of the save; under D-146 it is none. It now names what
+   still fails a save there: a full backlog, or a failed run.
+Notes of round 1, answered:
+- The class Javadoc said "no public method ever completes by throwing". False as written; it now lists what is contained (the
+  sink's throw, every timer throw - schedule and cancel - RuntimeException and Error) and what is not. No behaviour changed.
+  Still reaching a caller: a null item, a throw of the caller's weight function, a negative weight (save/saveWaiting, nothing
+  queued); and a sink that answers null - NPE in commit through dispatch, the batch stays counted in flight, its items never
+  complete, the batches taken with it never reach the sink. Row FIX-235.
+- "Vert.x contains their exceptions" (afterCommit): true. javap -c -p on vertx-core-5.1.10: Promise.promise() is a PromiseImpl
+  with a null context; FutureBase.emitResult calls signalComplete, whose handler table catches java/lang/Throwable and hands it
+  to reportException; FutureImpl$ListenerArray.complete catches each listener's Throwable. An Error thrown by a listener does
+  not escape tryComplete of a context-less promise.
+- Field stores PIT does not mutate, four hand mutants, each killed (agent/work/FIX-195-r2-mutant-{a,b,c,d}.log):
+EXECUTED_FAIL  (a) `site.refusing = true` removed: 5 failures (:5800-5804), e.g. WindowRefusalLogTest :177 "one WARNING for the
+               whole episode"; (b) `windowRefusing = true` removed: 2 failures (:10885-10886); (c) its reset removed: 1 failure,
+               aRefusedWindowIsCountedAndNotSilent:87 (:5672); (d) one CancelSite for both sites: 2 failures (:5943-5944)
+- "Observed red without the fix" has no log of the landing. The review worked it out from the code: ErrorContainmentTest 6
+  cases, WindowRefusalTest 7 cases and the new property are red against the narrow catches and a refused window that fails its
+  batch; WindowRefusalLogTest's red against main was a compile error only, and the hand mutants above stand in for it.
+VERIFIED_PASS  agent/work/FIX-195-r2-impl.log  implementer, the fixed tree: api 107 (:109), testkit 286 (:222), core 763 (:44126),
+               BUILD SUCCESS (:44148); coverage no decrease; runtime test-compile exit 0 (FIX-195-r2-runtime-compile.log)
+The verifier, on the fixed tree:
+VERIFIED_PASS  agent/work/FIX-195-r2-verify-core.log  core module `verify`, exit 0: api 107 (:109), testkit 286 (:222), core 763
+               (:40277), 0 failures, errors, skipped; BUILD SUCCESS (:40299); "Coverage checks have not been met" 0 times;
+               ErrorContainmentTest 6 (:40265), WindowRefusalTest 7 (:39875), WindowRefusalLogTest 8 (:39190)
+VERIFIED_PASS  agent/work/FIX-195-r2-pit.log          scoped PIT on the class: 77 mutations, 76 killed (:7425), 0 without coverage
+               (:7426), line coverage 136/136 (:7423); the one survivor is the same equivalent mutant, now at :129
+VERIFIED_PASS  agent/work/FIX-195-r2-verify-compile.log  the runtime module compiles with the comment change, exit 0; name
+               guard clean, 5942 tracked files; the tree held the four changed files only, before and after
+NOT_RUN        the runtime module's tests for this commit: its one change there is a comment (PgIntake.java:358-359); the
+               module compiles; the next whole-reactor run covers it
+
+review: PASS   class B, round 2 (the same reviewer). All four findings closed: the refused-cancel case now fails both wrong
+               writers; the flush assertion is back with three waiters present; `cancelsRefused()` is package-private and only
+               BatchingWriter and WindowRefusalLogTest refer to it; the PgIntake comment is accurate (`run` at :369, nothing
+               there closes the writer). The uncontained paths are a row, not a blocker: they predate the task and every real
+               caller is safe (PgIntake saves inside compose, Member::weight is a plain accessor, the sinks are internal) - on
+               the condition, met in this commit, that D-146's row carries an amendment naming them and pointing to FIX-235,
+               so that the decision and the code do not disagree. The hand mutants close the gap on field stores.
+               The reviewer's memory line 78 ("an Error thrown in a Vert.x listener escapes synchronously") is wrong for
+               5.1.10. It should read: "Vert.x 5.1.10 (javap): a Throwable thrown by a listener, Error included, is caught when
+               tryComplete/tryFail notifies it, even with a null context (FutureBase.signalComplete /
+               FutureImpl$ListenerArray.complete -> reportException), so it never escapes the completer. Whether a handler
+               added to an already-completed future can throw at the caller is not verified: javap the addListener path before
+               citing it." The reviewer cannot write its memory file and the session does not: the owner's.
+Logs are not committed (agent/work is ignored); the diffs are agent/work/FIX-195.diff (as landed) and FIX-195-r2.diff.

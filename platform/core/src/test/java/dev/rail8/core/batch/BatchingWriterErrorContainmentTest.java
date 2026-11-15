@@ -252,14 +252,26 @@ class BatchingWriterErrorContainmentTest {
             Promise<Void> gate = sink.gate();
             assertDoesNotThrow(() -> { gate.complete(); }, "the cancel refused as the waiter enters is never carried out of the writer");
             assertTrue(timer.cancelsAttempted.get() >= 1, "fixture: the entering waiter's deadline was cancelled and the timer refused");
+            assertFalse(waiter.isComplete(),
+                    "D-146: a refused cancel fails no item - w entered the backlog and waits for its commit: " + waiter);
+            assertEquals(1, w.backlog(), "fixture: w is queued behind q0's commit, not yet handed to the sink");
+            assertEquals(2, inner.pending(), "fixture: the armed window and w's deadline, whose cancel was refused, are both pending");
+
+            clock.advance(MAX_WAIT.plusMillis(1));        // past w's deadline while w is queued and not yet committed
+            assertEquals(1, inner.pending(), "fixture: w's stale deadline fired; only the window armed anew is pending");
+            assertFalse(waiter.isComplete(),
+                    "D-146: the stale deadline of a refused cancel fails nobody - w is still queued for commit: " + waiter);
+            assertEquals(1, w.backlog(), "w stays queued, the stale deadline did not take it out of the backlog");
 
             timer.refuseCancel = false;
             for (int i = 0; i < 10 && sink.open() > 0; i++) sink.gate().complete();
             assertTrue(busy.isComplete() && queued.isComplete() && waiter.isComplete(),
                     "the refused cancel left an item unresolved: busy=" + busy + ", q0=" + queued + ", w=" + waiter);
             assertTrue(busy.succeeded(), "busy committed: " + busy.cause());
-            assertTrue(queued.isComplete(), "q0 is settled, not left unresolved by the refused cancel: " + queued);
-            assertTrue(waiter.isComplete(), "the entering waiter is settled, not left unresolved by the refused cancel: " + waiter);
+            assertTrue(queued.succeeded(), "q0 committed, no item is failed by a refused cancel (D-146): " + queued.cause());
+            assertTrue(waiter.succeeded(), "the entering waiter committed, no item is failed by a refused cancel (D-146): " + waiter.cause());
+            assertEquals(List.of("busy", "q0", "w"), sink.batches.stream().flatMap(List::stream).toList(),
+                    "every item reached the sink once, in arrival order");
             assertEquals(0, w.waiting(), "nobody is left waiting");
             assertEquals(0, w.backlog());
             assertEquals(0, w.inFlight(), "no commit is left counted in flight");

@@ -23,14 +23,22 @@ import java.util.function.ToLongFunction;
  * Ported from the milestone-1 prototype onto Vert.x {@code Future} and an injected {@link Timer}; thread-safe,
  * callers are the messages' virtual threads.
  *
- * <p>D-146: no public method ever completes by throwing. A timer that refuses the window schedule — {@code RuntimeException}
- * or {@code Error} — fails no item: the batches the drain just took are committed, they reach the sink in the order taken and
- * whatever stayed queued rides their completions, so nothing is left queued with no commit in flight and no window. The
- * refusal is counted ({@link #windowsRefused()}) and logged at WARNING on the first refusal of an episode and on recovery,
- * two lines per episode. A timer that refuses a cancel is contained the same way: counted ({@link #cancelsRefused()}) and
- * logged on the first refusal of an episode and on recovery, each cancel site (the armed window, an entering waiter's
- * deadline) with an episode of its own. An {@code Error} from {@code sink.write} or from a waiter's deadline schedule becomes
- * the failure cause of the batch or item it belongs to; nothing is thrown at the caller.
+ * <p>D-146 containment, exactly as far as it goes. Contained — never thrown at a caller, {@code RuntimeException} and
+ * {@code Error} alike — are the throws of the sink and of the timer. A timer that refuses the window schedule fails no item:
+ * the batches the drain just took are committed, they reach the sink in the order taken and whatever stayed queued rides their
+ * completions, so nothing is left queued with no commit in flight and no window. The refusal is counted
+ * ({@link #windowsRefused()}) and logged at WARNING on the first refusal of an episode and on recovery, two lines per episode.
+ * A timer that refuses a cancel is contained the same way: counted and logged on the first refusal of an episode and on
+ * recovery, each cancel site (the armed window, an entering waiter's deadline) with an episode of its own. A throw of
+ * {@code sink.write} becomes the failure cause of its batch, a throw of a waiter's deadline schedule that of its item.
+ *
+ * <p>Not contained, thrown at the caller of {@link #save} or {@link #saveWaiting} with nothing queued: a null item
+ * ({@code NullPointerException}), whatever the weight function throws, and a negative weight
+ * ({@code IllegalArgumentException}). Not contained either: a sink that answers {@code null}. Its
+ * {@code NullPointerException} escapes whatever dispatched that batch — {@link #save}, {@link #saveWaiting}, {@link #flush},
+ * the window's timer task or an earlier batch's completion listener (where Vert.x catches it) — the batch stays counted in
+ * flight and its items never complete, the batches taken with it are never handed to the sink and, in a completion listener,
+ * the earlier batch's items are never completed either.
  *
  * <p>Documented non-guarantee: the batches of one drain are handed to the sink oldest first, but a sink that completes
  * inline re-enters the drain from inside that hand-off, so a younger batch can reach the sink before the outer loop's
@@ -223,11 +231,10 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * How often the timer has refused a cancel, the armed window's and an entering waiter's deadline's together (D-146). It
-     * only rises; each refusal is counted, whether or not it opened an episode and was logged.
-     *
-     * @since 0.1
+     * only rises; each refusal is counted, whether or not it opened an episode and was logged. Package-private: D-146 exposes
+     * this count to the tests and nowhere else.
      */
-    public long cancelsRefused() {
+    long cancelsRefused() {
         synchronized (lock) { return cancelsRefused; }
     }
 
@@ -326,7 +333,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Under the lock: cancels {@code handle}; a timer that refuses the cancel — {@code RuntimeException} or {@code Error} —
-     * goes no further (D-146): no public method completes by throwing. Every refusal is counted; the first of an episode at
+     * goes no further (D-146): a refused cancel never reaches the caller. Every refusal is counted; the first of an episode at
      * {@code site} is logged with its cause and a cancel served again at that site ends the episode with a second line, so a
      * timer refusing every cancel logs two lines per episode, not one per message. The task the refused cancel leaves
      * pending costs tempo at most — the window's fires into {@link #onWindow}, which only drains again (and gives up a
@@ -389,7 +396,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
             taken = drainLocked(false);
         }
         dispatch(taken);
-        for (Pending<T> p : batch) {    // listeners run inline here; Vert.x contains their exceptions
+        for (Pending<T> p : batch) {    // listeners run inline here; Vert.x catches any Throwable of theirs, Error included
             if (failure == null) p.done().tryComplete(); else p.done().tryFail(failure);
         }
     }

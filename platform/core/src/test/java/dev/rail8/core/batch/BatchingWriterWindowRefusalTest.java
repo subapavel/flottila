@@ -230,8 +230,11 @@ class BatchingWriterWindowRefusalTest {
         assertTrue(timer.refused.get() >= 1, "fixture: the window task asked for the next window and was refused");
         assertEquals(List.of("a"), flushed(), "fixture: the slot is busy, nothing more was handed to the sink");
 
+        assertEquals(3, w.waiting(), "fixture: flush is called while the three still wait for room");
+        Future<Void> flush = assertDoesNotThrow(w::flush, "a refused window is never thrown at the flusher, waiters present");
         gateA.complete();
         completeEveryOpenCommit();                              // every commit the permanently refused writer still issues
+        assertTrue(flush.isComplete(), "flush completes once everything it saw, the waiters included, completed: " + flush);
 
         assertEquals(0, w.backlog(), "a permanently refused window leaves nothing queued: the backlog rides the commits in flight");
         assertEquals(0, w.waiting(), "every waiter entered the backlog and was handed on");

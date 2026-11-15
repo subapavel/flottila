@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-195 the late review: FAIL, four findings fixed, PASS — done
+
+- Context compacted before this entry; the tree and the last three commits were re-read first.
+- FIX-195 (`BatchingWriter` under D-146) landed unreviewed in a6b12011. The verifier ran what was never run: core 763 green, scoped
+  PIT 76 of 77 (the survivor, the count-only constructor's weight `item -> 1L`, is equivalent: the byte bound equals the count bound).
+- Review round 1 FAIL (class B), four findings: the refused-cancel case asserted `isComplete()` only and never passed the deadline;
+  the landing had dropped a flush assertion that D-146 still demands; `cancelsRefused()` was public API against D-146; a comment in
+  `PgIntake` still described the behaviour D-146 removed. All four fixed; no behaviour changed.
+- The tests are shown real where PIT is blind: two wrong writers fail the new assertions, four hand mutants of the episode flags die.
+- The class Javadoc claimed more than the code does: it now lists what is contained and what still reaches a caller. New row FIX-235
+  [C]: a sink that answers null strands its batch in flight; a throw of the caller's weight function leaves `save` by throwing.
+- Decided by javap, vertx-core 5.1.10: a listener's Throwable, Error included, never escapes `tryComplete` of a context-less promise.
+- Evidence: `agent/work/FIX-195-evidence.txt`. Review round 2 PASS. FIX-205 is no longer blocked.
+
 ## 2026-11-15 — FIX-224 the bound on bytes taken while the link is paused is absolute — done, review PASS
 
 - Fault (once, in FIX-214's red run): `PeerReadHeapTest.aReadThatGaveItsHoldBackLeavesTheLinkPausedWhileAnotherReadsBufferIsFull`
