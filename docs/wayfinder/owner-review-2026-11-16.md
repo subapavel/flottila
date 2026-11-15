@@ -78,6 +78,10 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     design and named in ADR-0045 #117; the census asserts that exact set. ADR-0020 #117: the census
     reaches the capped compile by reflection. The adviser reads the change as fixing a wrong red,
     not a weakening; a "no" makes the census red until a cap rule changes.
+  - F-96 closes F-94's open point: a parameter chain can spend the cap before a later prelude
+    loop; the order stays and the filter is the fourth refused by design. The order test changes
+    from "recurse must be copied" to "the result is jq's at default limits". The adviser reads this
+    as re-specifying its own earlier red before any pass exists; a "no" means reversing S2's order.
   - F-95: the provisional b = 96 does not cover a Collect-heavy descent; #113 owns b, and #114
     merges after #113.
   - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
