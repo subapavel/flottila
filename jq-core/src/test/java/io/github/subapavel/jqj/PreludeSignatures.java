@@ -6,8 +6,8 @@ import java.util.Set;
 
 /**
  * The pinned signatures of #71's prelude tests (ADR-0042, GLOSSARY "Prelude", "Native table", "Replaced definition"):
- * builtin.jq's definitions in file order, the prelude definitions whose call is a Stub at #71, and F-31's replaced
- * set. Derived by the test-author from jq 1.8.2's {@code src/builtin.jq}, fetched raw from
+ * builtin.jq's definitions in file order, the prelude definitions whose call is a Stub (at #71, then fewer), the
+ * recursive ones that lift a function since #110, and F-31's replaced set. Derived by the test-author from jq 1.8.2's {@code src/builtin.jq}, fetched raw from
  * https://raw.githubusercontent.com/jqlang/jq/jq-1.8.2/src/builtin.jq (SHA-256 b8a5fd95…f2a4, the value of
  * {@code jq/SOURCES.sha256}): one entry per top-level {@code def}, its arity the count of its parameters. Cross-check on
  * jq-ref 1.8.2 (2026-11-13): these 106 signatures without the three that start with {@code _}, together with
@@ -38,13 +38,24 @@ public final class PreludeSignatures {
   public static final Set<String> REPLACED = Set.of("flatten/0", "flatten/1", "inputs/0", "to_entries/0");
 
   /**
-   * The definitions whose call {@code name(.;…)} compiles to a Stub at #71, each for the first reason its body reaches
+   * The definitions whose call {@code name(.;…)} lifts a recursive prelude group to a function at #110 (ADR-0042
+   * amendment for #110, read from builtin.jq by the test-author): recurse/0, recurse/1, recurse/2, _flatten/1,
+   * while/2, until/2, repeat/1 and combinations/0 are in a recursive group, and range/3 (two calls of while/2) and
+   * combinations/1 (one of combinations/0) call one. Each reaches exactly one recursive definition, so each call lifts
+   * one function. They left {@link #STUBS} at #110; tostream/0 and walk/1, also recursive, and paths/0 and paths/1,
+   * which call recurse/0, stay there for spec 3's {@code path/1} and update operators.
+   */
+  public static final Set<String> LIFTED =
+      Set.of("recurse/0", "recurse/1", "recurse/2", "_flatten/1", "while/2", "until/2", "repeat/1", "combinations/0", "range/3", "combinations/1");
+
+  /**
+   * The definitions whose call {@code name(.;…)} compiles to a Stub at #110, each for the first reason its body reaches
    * (read from builtin.jq by the test-author):
    *
    * <ul>
-   *   <li>a recursive group (ADR-0040's SCC rule; the spec's nine and {@code ..}): recurse/0, recurse/1, recurse/2,
-   *       _flatten/1, while/2, until/2, repeat/1, combinations/0, tostream/0, walk/1, and every definition calling
-   *       one: paths/0, paths/1, range/3, combinations/1;
+   *   <li>a recursive group that also reaches spec 3's paths: tostream/0 and walk/1 ({@code path/1}, {@code getpath},
+   *       {@code map_values}), and paths/0 and paths/1, which call recurse/0 inside {@code path/1}. The other ten
+   *       recursive ones ({@link #LIFTED}) left at #110 (ADR-0042 amendment for #110);
    *   <li>a replaced definition, whose native is unbuilt: inputs/0 (spec 5);
    *   <li>spec 4's {@code _strindices}, past the natives #72 built (indices, index, rindex), and {@code _match_impl}
    *       (match/1, test/1, capture/1);
@@ -58,23 +69,24 @@ public final class PreludeSignatures {
    *   <li>spec 7's host builtins: {@code halt_error/1}, {@code debug/0} (halt_error/0, debug/1).
    * </ul>
    *
-   * <p>The 52 others compile: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
+   * <p>The 62 others compile. 52 lift no function: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
    * first/1, isempty, all/0..2, any/0..2, nth/1, nth/2, last/0, JOIN/2..4, IN/1, IN/2 with the natives built before
    * #71 ({@code empty}, {@code not}, {@code error/0}, {@code range/2}) and the constructs of #63 to #70; since #72's
    * natives ({@code type}, {@code length}, {@code tostring}, {@code has}, {@code keys_unsorted}, {@code isinfinite},
    * {@code isnormal}, flatten's two), to_entries, from_entries, with_entries, reverse, isfinite, arrays, objects,
    * iterables, booleans, numbers, normals, finites, strings, scalars, join, in, flatten/0 and flatten/1; and since
-   * #73's ({@code max} and the {@code _…_by_impl} family), sort_by, group_by, unique_by, max_by, min_by and transpose.
-   * #72 and #73 may move entries out of this set, and only out (design approval, O3); an entry leaving it with its Stub
-   * is not a weakened test.
+   * #73's ({@code max} and the {@code _…_by_impl} family), sort_by, group_by, unique_by, max_by, min_by and transpose;
+   * and since #110 the ten of {@link #LIFTED} compile too, each lifting one. #72 and #73 may move entries out of this set, and only out
+   * (design approval, O3); an entry leaving it with its Stub is not a weakened test, and each of the ten that left at
+   * #110 is asserted to lift one function (PreludeLiftTest) and run (diff/rec-prelude.cases).
    */
   public static final Set<String> STUBS =
       Set.of(
-          "halt_error/0", "del/1", "_assign/2", "_modify/2", "map_values/1", "recurse/1", "recurse/2", "recurse/0", "indices/1", "index/1", "rindex/1",
-          "paths/0", "paths/1", "_flatten/1", "fromdateiso8601/0", "todateiso8601/0", "fromdate/0", "todate/0",
+          "halt_error/0", "del/1", "_assign/2", "_modify/2", "map_values/1", "indices/1", "index/1", "rindex/1",
+          "paths/0", "paths/1", "fromdateiso8601/0", "todateiso8601/0", "fromdate/0", "todate/0",
           "ltrimstr/1", "rtrimstr/1", "trimstr/1", "match/2", "match/1", "test/2", "test/1",
           "capture/2", "capture/1", "scan/2", "scan/1", "splits/2", "splits/1", "split/2", "sub/3", "sub/2", "gsub/3",
-          "gsub/2", "while/2", "until/2", "range/3", "combinations/0", "combinations/1", "inside/1", "repeat/1", "inputs/0", "ascii_downcase/0", "ascii_upcase/0", "truncate_stream/1",
+          "gsub/2", "inside/1", "inputs/0", "ascii_downcase/0", "ascii_upcase/0", "truncate_stream/1",
           "fromstream/1", "tostream/0", "walk/1", "pick/1", "debug/1", "INDEX/2", "INDEX/1");
 
   /** The call of {@code signature} with {@code .} for every argument: {@code map(.)}, {@code limit(.; .)}, {@code add}. */

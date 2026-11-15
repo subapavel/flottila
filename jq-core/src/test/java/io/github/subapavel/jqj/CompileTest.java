@@ -37,9 +37,10 @@ class CompileTest {
     // #62 built the syntax errors and the not-given message (ADR-0032), so '', '   ', FF and VT left the Stub list and
     // are asserted as jq's errors below (diff/syntax.rec program-empty, program-only-spaces, form-feed-before-dot and
     // vertical-tab-before-dot); none was dropped. #63 built 1, 2 and .[0] (NavigationBudgetTest and diff/comma.rec,
-    // index.rec run them), so their entries ended with their Stubs; .. and ..? stay Stubs until spec 2b (ResolverTest's
-    // GRAMMAR list: jq-ref runs both).
-    for (String text : List.of("..", "..?")) {
+    // index.rec run them), so their entries ended with their Stubs; .. and ..? stayed Stubs until #110 (ADR-0042
+    // amendment for #110), so they moved to the witness below and the Stub to $ENV, unbuilt until spec 7 (jq-ref 1.8.2,
+    // observed 2026-11-15: jq-ref -nc '$ENV|type' -> "object", rc 0).
+    for (String text : List.of("$ENV")) {
       assertThatExceptionOfType(JqCompileException.class)
           .as("compile of %s", quoted(text))
           .isThrownBy(() -> engine.compile(text))
@@ -77,6 +78,24 @@ class CompileTest {
                   },
                   workspace);
       assertThat(results).as("results of %s on [1]", quoted(text)).containsExactly(root);
+      assertThat(ranOut).as("run's answer for %s when the sink never stops", quoted(text)).isTrue();
+    }
+    // .. and ..? compile and run since #110: jq-ref 1.8.2, observed 2026-11-15 (.logs/110-jqref-observe.log), printf
+    // '[1]' | jq-ref -c '..' and '..?' -> [1] then 1, rc 0 (basics/recurse-of-array).
+    for (String text : List.of("..", "..?")) {
+      List<String> results = new ArrayList<>();
+      boolean ranOut =
+          engine
+              .compile(text)
+              .run(
+                  read(workspace, "[1]").root(),
+                  Bindings.builder().build(),
+                  v -> {
+                    results.add(v.toJson());
+                    return true;
+                  },
+                  workspace);
+      assertThat(results).as("results of %s on [1]", quoted(text)).containsExactly("[1]", "1");
       assertThat(ranOut).as("run's answer for %s when the sink never stops", quoted(text)).isTrue();
     }
   }

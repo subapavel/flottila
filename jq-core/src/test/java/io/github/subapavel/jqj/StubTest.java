@@ -34,9 +34,10 @@ class StubTest {
     JqEngine engine = JqEngine.builder().build();
 
     Map<String, ThrowingCallable> stubs = new LinkedHashMap<>();
-    // #61 built the literal 1, so the unbuilt construct moved to .[0]; #63 built .[0], so it moved to .., a Stub until
-    // spec 2b (jq-ref 1.8.2, observed 2026-11-11: printf '[1]' | jq-ref -c '..' -> [1] 1, rc 0; CompileTest).
-    stubs.put("JqEngine.compile(String) of an unbuilt construct (the recursion ..)", () -> engine.compile(".."));
+    // #61 built the literal 1, so the unbuilt construct moved to .[0]; #63 built .[0], so it moved to ..; #110 built ..
+    // (RecursivePreludeTest, basics/recurse-of-array), so it moved to $ENV, a Stub until spec 7 (ADR-0042 amendment
+    // for #110; jq-ref 1.8.2, observed 2026-11-15: jq-ref -nc '$ENV|type' -> "object", rc 0; VariablesEdgesTest).
+    stubs.put("JqEngine.compile(String) of an unbuilt construct (the variable $ENV)", () -> engine.compile("$ENV"));
 
     Stream<DynamicTest> mark = Stream.of(dynamicTest("Stub.PREFIX is the mark", () -> assertThat(Stub.PREFIX).isEqualTo(MARK)));
     Stream<DynamicTest> members =

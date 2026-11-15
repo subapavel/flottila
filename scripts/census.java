@@ -69,7 +69,7 @@ public class census {
 
   /** The specs in build order (ADR-0023, docs/GATE.md), and the issue of each spec the gate can name. */
   static final List<String> SPECS = List.of("1", "2a", "2b", "3", "4", "5", "6", "7");
-  static final Map<String, String> SPEC_ISSUES = Map.of("22", "1", "56", "2a");
+  static final Map<String, String> SPEC_ISSUES = Map.of("22", "1", "56", "2a", "106", "2b");
 
   record Ticket(String name, int issue, String title) {}
 
