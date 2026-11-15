@@ -82,7 +82,7 @@ class RestoreIT {
 
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
-    static final String BUCKET = "flottila-restore-it";
+    static final String BUCKET = "rail8-restore-it";
     static final String REVISION = "9df3f78";
     static final Pattern NUMBER = Pattern.compile("number=\"(\\d+)\"");
     static final AtomicInteger cases = new AtomicInteger();

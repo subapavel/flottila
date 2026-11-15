@@ -75,7 +75,7 @@ class FlowHashTest {
 
         String hash = FlowHash.of(relativeDir, Map.of(), pkg.resolve("flows/orders.yaml"), reads, from, List.of(partner, archive));
 
-        String text = "flottila-flow-hash 2\n"
+        String text = "rail8-flow-hash 2\n"
                 + "yaml " + sha256("id: orders\n") + "\n"
                 + "absent flows/data/missing.txt\n"
                 + "dir flows/lookup [\"a.txt\",\"b.txt\",\"c.txt\",\"d\"]\n"
@@ -90,7 +90,7 @@ class FlowHashTest {
                         + " unread file nowhere), from, then the endpoints sent to by id, options with sorted keys at every level, lists in order");
     }
 
-    /** P2-02a (D-078): the text starts with the version line {@code flottila-flow-hash 2}; the yaml line is {@code yaml <sha256>}. */
+    /** P2-02a (D-078): the text starts with the version line {@code rail8-flow-hash 2}; the yaml line is {@code yaml <sha256>}. */
     @Test
     void theFirstLineIsVersion2() throws Exception {
         Path pkg = tmp.resolve("pkg");
@@ -100,7 +100,7 @@ class FlowHashTest {
 
         String hash = FlowHash.of(pkg, Map.of(), pkg.resolve("urn-a/orders.yaml"), List.of(), from, List.of());
 
-        assertEquals("sha256:" + sha256("flottila-flow-hash 2\nyaml " + sha256("id: orders\n") + "\nendpoint orders-in doors {\"flow\":\"shop/orders\"}\n"), hash,
+        assertEquals("sha256:" + sha256("rail8-flow-hash 2\nyaml " + sha256("id: orders\n") + "\nendpoint orders-in doors {\"flow\":\"shop/orders\"}\n"), hash,
                 "version 2, the yaml's bytes without its path, the from endpoint");
     }
 
@@ -187,7 +187,7 @@ class FlowHashTest {
 
         String hash = FlowHash.of(pkg, deps, pkg.resolve("flows/invoice.yaml"), reads, from, List.of());
 
-        String text = "flottila-flow-hash 2\n"
+        String text = "rail8-flow-hash 2\n"
                 + "yaml " + sha256("id: invoice\n") + "\n"
                 + "dir common:lookup [\"a.txt\",\"b.txt\"]\n"
                 + "absent common:missing.txt\n"
@@ -222,7 +222,7 @@ class FlowHashTest {
 
         String withCommon = FlowHash.of(pkg, Map.of("common", common), pkg.resolve("flows/invoice.yaml"), reads, from, List.of());
 
-        assertEquals("sha256:" + sha256("flottila-flow-hash 2\nyaml " + sha256("id: invoice\n") + "\nfile flows/main.xsl " + sha256("main")
+        assertEquals("sha256:" + sha256("rail8-flow-hash 2\nyaml " + sha256("id: invoice\n") + "\nfile flows/main.xsl " + sha256("main")
                 + "\nendpoint invoice-in doors {\"flow\":\"invoice/invoice\"}\n"), withCommon, "the text as before P2-02b: no dependency line");
         assertEquals(FlowHash.of(pkg, Map.of(), pkg.resolve("flows/invoice.yaml"), reads, from, List.of()), withCommon, "and as without the dependency");
     }

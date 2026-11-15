@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:flottila:schema:lock:1",
+  "$id": "urn:rail8:schema:lock:1",
   "title": "Rail8 package.lock, schemaVersion 1 (draft — review at hand-over, D-087)",
-  "description": "The exact version and content digest of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'flottila-package-content 1' and 'file <path> <sha256>' for every regular file of the dependency, sorted by its /-separated path, each ended by a newline: the files decide, not the archive they came in.",
+  "description": "The exact version and content digest of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'rail8-package-content 1' and 'file <path> <sha256>' for every regular file of the dependency, sorted by its /-separated path, each ended by a newline: the files decide, not the archive they came in.",
   "type": "object",
   "required": ["schemaVersion", "kind", "dependencies"],
   "additionalProperties": false,

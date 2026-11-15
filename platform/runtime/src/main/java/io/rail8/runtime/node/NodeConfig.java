@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * @param nodeId {@code RAIL8_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code RAIL8_ENV}, required
  * @param admin {@code RAIL8_ADMIN_HOST} (127.0.0.1), {@code RAIL8_ADMIN_PORT} (8081, 0 binds any free port), {@code RAIL8_ADMIN_TOKEN}
- * @param dataDir {@code RAIL8_DATA_DIR} (/var/lib/flottila): the spool lives under it, and the dir archive store by default
+ * @param dataDir {@code RAIL8_DATA_DIR} (/var/lib/rail8): the spool lives under it, and the dir archive store by default
  * @param stopDeadline {@code RAIL8_STOP_DEADLINE}, ISO-8601, not negative (PT10S)
  * @param maxPackageBytes {@code RAIL8_MAX_PACKAGE_BYTES}, 1 byte to 1 GiB (64 MiB)
  * @param pg the {@code RAIL8_PG_*} keys
@@ -285,8 +285,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      *
      * @param host {@code RAIL8_PG_HOST} (localhost)
      * @param port {@code RAIL8_PG_PORT} (5432)
-     * @param database {@code RAIL8_PG_DATABASE} (flottila)
-     * @param user {@code RAIL8_PG_USER} (flottila)
+     * @param database {@code RAIL8_PG_DATABASE} (rail8)
+     * @param user {@code RAIL8_PG_USER} (rail8)
      * @param password {@code RAIL8_PG_PASSWORD} (empty)
      * @param poolSize {@code RAIL8_PG_POOL_SIZE}, 2 to 1024 (21 = 5 intake + 16 work, F-33): the pooled connections of both pools together (D-130 draft)
      * @param sslMode {@code RAIL8_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full} (D-124); unset,
@@ -550,7 +550,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param endpoint {@code RAIL8_S3_ENDPOINT}, an absolute http or https URI (none: the SDK's endpoint for the region); a
      *                 deployed node refuses http
      * @param pathStyle {@code RAIL8_S3_PATH_STYLE}, true or false (false)
-     * @param prefix {@code RAIL8_S3_PREFIX} (flottila): archives are the objects {@code <prefix>/archives/<sha256>.zip}
+     * @param prefix {@code RAIL8_S3_PREFIX} (rail8): archives are the objects {@code <prefix>/archives/<sha256>.zip}
      * @param accessKey {@code RAIL8_S3_ACCESS_KEY}, given together with the secret key or not at all
      * @param secretKey {@code RAIL8_S3_SECRET_KEY}, given together with the access key or not at all
      * @since 0.1
@@ -679,7 +679,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         int poolSize = (int) number(env, "RAIL8_PG_POOL_SIZE", 21, 2, 1024);
         int intakePoolSize = (int) number(env, "RAIL8_PG_POOL_INTAKE", Pg.intakeDefault(poolSize), 1, 1023);
         Pg pg = new Pg(pgHost, (int) number(env, "RAIL8_PG_PORT", 5432, 1, 65535),
-                env.getOrDefault("RAIL8_PG_DATABASE", "flottila"), env.getOrDefault("RAIL8_PG_USER", "flottila"),
+                env.getOrDefault("RAIL8_PG_DATABASE", "rail8"), env.getOrDefault("RAIL8_PG_USER", "rail8"),
                 env.getOrDefault("RAIL8_PG_PASSWORD", ""), poolSize, sslMode(env, pgHost), sslRootCert(env),
                 durability(env, deployed(name)), intakePoolSize, duration(env, "RAIL8_PG_POOL_WAIT", Pg.POOL_WAIT_DEFAULT),
                 (int) number(env, "RAIL8_PG_POOL_QUEUE", Pg.POOL_QUEUE_DEFAULT, 1, POOL_QUEUE_MAX));   // the constructor checks the range too (an in-process Pg)
@@ -690,7 +690,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
         Blobs blobs = new Blobs(number(env, "RAIL8_BLOB_TREE_LIMIT", 8 * MIB, 1, Integer.MAX_VALUE), memoryTier, memoryBudget,
                 number(env, "RAIL8_BLOB_DURABLE_MAX", MIB, 1, 64 * MIB));
-        Path dataDir = Path.of(env.getOrDefault("RAIL8_DATA_DIR", "/var/lib/flottila"));
+        Path dataDir = Path.of(env.getOrDefault("RAIL8_DATA_DIR", "/var/lib/rail8"));
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("RAIL8_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "RAIL8_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
@@ -1014,7 +1014,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException((accessKey.isPresent() ? "RAIL8_S3_SECRET_KEY" : "RAIL8_S3_ACCESS_KEY") + " is missing: the S3 keys "
                     + "are given both or neither (neither: the AWS SDK's default credentials chain)");
         }
-        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("RAIL8_S3_PREFIX", "flottila"), accessKey, secretKey);
+        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("RAIL8_S3_PREFIX", "rail8"), accessKey, secretKey);
     }
 
     /** {@code key}'s value, which must be there and not blank. */

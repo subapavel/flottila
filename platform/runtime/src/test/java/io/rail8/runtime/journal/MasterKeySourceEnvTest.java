@@ -217,13 +217,13 @@ class MasterKeySourceEnvTest {
     void theTextOfASourceNamesItsKindAndNeverAKey() {
         byte[] key = material(43, 32);
         String env = MasterKeySource.fromEnv(Map.of(ENV, base64(key))).toString();
-        String file = MasterKeySource.fromEnv(Map.of(FILE, "/run/secrets/flottila-master")).toString();
+        String file = MasterKeySource.fromEnv(Map.of(FILE, "/run/secrets/rail8-master")).toString();
         String generated = MasterKeySource.fromEnv(Map.of(GENERATE, "true")).toString();
         String none = MasterKeySource.fromEnv(Map.of()).toString();
 
         assertTrue(env.contains(ENV), env);
         assertCarriesNoKey(env, List.of(base64(key)), key);
-        assertTrue(file.contains("/run/secrets/flottila-master"), "a file source shows its path: " + file);
+        assertTrue(file.contains("/run/secrets/rail8-master"), "a file source shows its path: " + file);
         assertTrue(generated.contains(GENERATE), generated);
         assertFalse(none.contains(ENV) || none.contains(GENERATE), "no source names none of the keys: " + none);
         assertEquals(4, java.util.Set.of(env, file, generated, none).size(), "four kinds, four texts");

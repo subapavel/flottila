@@ -89,13 +89,13 @@ public final class ReplWire {
     }
 
     /**
-     * A segment header as CORE-3 item 1 writes it: {@code FJS1} · version 1 · journal id · u16 L · owner · n u64 · created ms u64
+     * A segment header as CORE-3 item 1 writes it: {@code RJS1} · version 1 · journal id · u16 L · owner · n u64 · created ms u64
      * · crc32c u32 over the bytes before it.
      */
     public static byte[] header(String owner, UUID journal, long n, long createdMs) {
         byte[] o = owner.getBytes(StandardCharsets.UTF_8);
         ByteBuffer b = ByteBuffer.allocate(43 + o.length);
-        b.putInt(0x464A5331).put((byte) 1).putLong(journal.getMostSignificantBits()).putLong(journal.getLeastSignificantBits())
+        b.putInt(0x524A5331).put((byte) 1).putLong(journal.getMostSignificantBits()).putLong(journal.getLeastSignificantBits())
                 .putShort((short) o.length).put(o).putLong(n).putLong(createdMs);
         b.putInt(crc32c(b.array(), 0, b.capacity() - 4));
         return b.array();

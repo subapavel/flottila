@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * CORE-17 (D-130 draft, F-27 I4): a node's Postgres sessions by role, observed in {@code pg_stat_activity}. A node of
  * {@code RAIL8_PG_POOL_SIZE} 4 splits it 2 + 2 (intake, work); every session it opens names its role and the node
- * ({@code flottila-<role>@<nodeId>}: intake, work, membership, listen), and a work pool held by two parks waiting on a lock
+ * ({@code rail8-<role>@<nodeId>}: intake, work, membership, listen), and a work pool held by two parks waiting on a lock
  * does not delay an at-least-once save: the ACK path touches the intake pool only.
  *
  * <p>The flow: {@code invoice-async} over the demo package ({@link InvoiceAsyncIT}); a body that is not XML is accepted (202,
@@ -66,10 +66,10 @@ class NodePoolRolesIT {
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final String NODE = "node-roles";
-    static final String INTAKE = "flottila-intake@" + NODE;
-    static final String WORK = "flottila-work@" + NODE;
-    static final String MEMBERSHIP = "flottila-membership@" + NODE;
-    static final String LISTEN = "flottila-listen@" + NODE;
+    static final String INTAKE = "rail8-intake@" + NODE;
+    static final String WORK = "rail8-work@" + NODE;
+    static final String MEMBERSHIP = "rail8-membership@" + NODE;
+    static final String LISTEN = "rail8-listen@" + NODE;
     static final byte[] NO_XML = "this is no invoice".getBytes(StandardCharsets.UTF_8);
     static Vertx vertx;
 
@@ -190,9 +190,9 @@ class NodePoolRolesIT {
     }
 
     /**
-     * P3 (review r1): the names sit on the right connections — the session named {@code flottila-listen@<node>} is the one that
+     * P3 (review r1): the names sit on the right connections — the session named {@code rail8-listen@<node>} is the one that
      * ran {@code LISTEN} (its only statement; {@code Node.start} returns after it was acknowledged), the one named
-     * {@code flottila-membership@<node>} ran the lease's statements and never a LISTEN. Swapping the two names fails here.
+     * {@code rail8-membership@<node>} ran the lease's statements and never a LISTEN. Swapping the two names fails here.
      */
     @Test
     void theListenSessionIsTheOneThatListens() throws Exception {

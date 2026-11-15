@@ -85,7 +85,7 @@ class SchemaIT {
 
     @Test
     void aPayloadMarkerSentThroughTheIntakeIsAbsentFromPgDump() throws Exception {
-        String marker = "FLOTTILA-PAYLOAD-MARKER-4c2-7d1e";
+        String marker = "RAIL8-PAYLOAD-MARKER-4c2-7d1e";
         try (JournalWorld a = JournalWorld.open(vertx, db.pool(), db.pool(), Files.createDirectories(tmp.resolve("journal")), "node-a")) {
             Buffer body = Buffer.buffer("<Invoice><Note>" + marker + "</Note></Invoice>");
             Envelope in = a.arrive("m-dumped", body);

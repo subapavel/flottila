@@ -82,7 +82,7 @@ class JournalStartLossTest {
     @Test
     void aFirstSegmentFileTooShortToNameItsJournalPrintsTheZeroId() throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("torn"));
-        Files.write(Files.createDirectories(dir.resolve("segments")).resolve("1.seg"), new byte[] {0x46, 0x4A, 0x53});   // a header torn after 3 bytes
+        Files.write(Files.createDirectories(dir.resolve("segments")).resolve("1.seg"), new byte[] {0x52, 0x4A, 0x53});   // a header torn after 3 bytes
         Settings s = settings(dir).segmentAge(Duration.ofHours(1));
 
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> open(s, JournalFiles.real(), new KeptRows()));
@@ -98,7 +98,7 @@ class JournalStartLossTest {
     @Test
     void thePrintedValueStartsANewJournalOnRowsThatRecordNoLoss() throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("accepted"));
-        Path torn = Files.write(Files.createDirectories(dir.resolve("segments")).resolve("1.seg"), new byte[] {0x46, 0x4A, 0x53});
+        Path torn = Files.write(Files.createDirectories(dir.resolve("segments")).resolve("1.seg"), new byte[] {0x52, 0x4A, 0x53});
         Settings s = settings(dir).segmentAge(Duration.ofHours(1));
         IllegalStateException refused = assertThrows(IllegalStateException.class, () -> open(s, JournalFiles.real(), new KeptRows()));
         java.util.regex.Matcher printed = PRINTED.matcher(refused.getMessage());

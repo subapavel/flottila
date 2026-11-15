@@ -25,15 +25,15 @@ import java.util.Objects;
  * @since 0.1
  */
 @Name(StepEvent.NAME)
-@Label("Flottila Step")
-@Category("Flottila")
+@Label("Rail8 Step")
+@Category("Rail8")
 @Description("A step of a flow running on the message's thread; the events of one message nest")
 @Enabled(false)
 @StackTrace(false)
 public final class StepEvent extends Event {
 
     /** The event's name, which a recording enables. */
-    public static final String NAME = "io.flottila.Step";
+    public static final String NAME = "io.rail8.Step";
 
     @Label("Flow")
     private String flow;

@@ -47,8 +47,8 @@ class StreamHeapMainTest {
     @Test
     void aDatabaseThatIsNotABenchDatabaseIsRefusedBeforeAnythingConnects() {
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
-                () -> StreamHeapMain.options(new String[] {"--db", "flottila"}));
-        assertTrue(refused.getMessage().contains("flottila") && refused.getMessage().contains("bench"),
+                () -> StreamHeapMain.options(new String[] {"--db", "rail8"}));
+        assertTrue(refused.getMessage().contains("rail8") && refused.getMessage().contains("bench"),
                 "names the database and the rule: " + refused.getMessage());
         // the run refuses before it touches a database or starts a child JVM (nothing listens on port 1)
         IllegalArgumentException run = assertThrows(IllegalArgumentException.class,

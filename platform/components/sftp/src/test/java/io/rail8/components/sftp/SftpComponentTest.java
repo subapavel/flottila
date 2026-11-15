@@ -547,7 +547,7 @@ class SftpComponentTest {
         assertEquals("sftp", component(rt).scheme());
         String schema = component(rt).configSchema();
         // what the deploy checks: the endpoint's own config, before it sets flow and maxBodyBytes on an in endpoint
-        Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+        Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         assertValid(schema, base, "user, password and hostKey");
         assertValid(schema, with(without(base, "password"), "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"),
                 "a private key instead of the password");
@@ -651,7 +651,7 @@ class SftpComponentTest {
     @Test
     void theConfigSchemaAcceptsHostPortAndDirAndRefusesBadPorts() {
         String schema = component(rt).configSchema();
-        Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+        Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         assertValid(schema, with(with(with(base, "host", "sftp"), "port", 22), "dir", "inbox"), "host, port and dir together");
         assertValid(schema, with(base, "host", "sftp"), "host alone");
         assertValid(schema, with(base, "port", 1), "port 1, the lowest");
@@ -667,7 +667,7 @@ class SftpComponentTest {
 
     @Test
     void anEmptyHostOptionIsRefusedByTheConfigSchema() {
-        Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+        Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         assertRefused(component(rt).configSchema(), with(base, "host", ""), "an empty host names no server (the URI's would silently not be used)");
     }
 
@@ -721,7 +721,7 @@ class SftpComponentTest {
     void everySftpEndpointPolls() {
         SftpComponent component = component(rt);
         EndpointConfig nowhere = new EndpointConfig("sftp-in", URI.create("sftp://127.0.0.1:1/inbox"),
-                Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+                Map.of("user", "rail8", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
 
         assertTrue(component.polls(inbox(Map.of())), "the default options");
         assertTrue(component.polls(inbox(Map.of("afterSuccess", "move", "moveTo", "/done", "glob", "*.xml"))), "moving, filtered");
@@ -739,7 +739,7 @@ class SftpComponentTest {
     void dedupesByTheFileKey() {
         SftpComponent component = component(rt);
         EndpointConfig nowhere = new EndpointConfig("sftp-in", URI.create("sftp://127.0.0.1:1/inbox"),
-                Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+                Map.of("user", "rail8", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
 
         assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of())), "the default options");
         assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of("afterSuccess", "move", "moveTo", "/done"))), "moving");
@@ -783,14 +783,14 @@ class SftpComponentTest {
     @Test
     void targetFollowsHostPortOptionsOverUri() {
         SftpComponent component = component(rt);
-        Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+        Map<String, Object> creds = Map.of("user", "rail8", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
         java.util.function.BiFunction<String, Map<String, Object>, EndpointConfig> at = (uri, extra) -> {
             Map<String, Object> options = new java.util.HashMap<>(creds);
             options.putAll(extra);
             return new EndpointConfig("sftp-in", URI.create(uri), options);
         };
 
-        assertEquals(Optional.of("sftp://files.example:2222"), component.target(at.apply("sftp://flottila@Files.Example:2222/inbox", Map.of())), "the URI alone, user and path dropped");
+        assertEquals(Optional.of("sftp://files.example:2222"), component.target(at.apply("sftp://rail8@Files.Example:2222/inbox", Map.of())), "the URI alone, user and path dropped");
         assertEquals(Optional.of("sftp://files.example:22"), component.target(at.apply("sftp://files.example/inbox", Map.of())), "no port anywhere: 22");
         assertEquals(Optional.of("sftp://sftp.partner.example:2200"), component.target(at.apply("sftp://partner-a", Map.of("host", "SFTP.Partner.Example", "port", 2200))),
                 "a deployed endpoint: sftp://<id>, host and port from the options");
@@ -808,7 +808,7 @@ class SftpComponentTest {
     @Test
     void anIpv6HostOptionIsBracketedInTheTarget() {
         SftpComponent component = component(rt);
-        Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+        Map<String, Object> creds = Map.of("user", "rail8", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
         java.util.function.BiFunction<String, Map<String, Object>, EndpointConfig> at = (uri, extra) -> {
             Map<String, Object> options = new java.util.HashMap<>(creds);
             options.putAll(extra);

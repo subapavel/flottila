@@ -210,7 +210,7 @@ class NodeIT {
         // P1-09c3a (D-070): a deployed node refuses the dir archive store and a plain-http endpoint; it builds its S3 client at
         // start and contacts S3 only to restore a recorded package (none here), so an https endpoint nothing listens on will do
         env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "flottila-archives");
+        env.put("RAIL8_S3_BUCKET", "rail8-archives");
         env.put("RAIL8_S3_REGION", "eu-central-1");
         env.put("RAIL8_S3_ENDPOINT", "https://127.0.0.1:9");
         env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");
@@ -442,7 +442,7 @@ class NodeIT {
     // closed at close; absent: they are held in memory and start logs one WARNING naming the missing Valkey.
 
     /** The lease of {@link #pollingShop()}'s flow in Valkey: the store's prefix, then {@code <package>/<flow>/<scheme>://<endpoint id>}. */
-    static final String FEED_LEASE = "flottila:poller:shop/feed/poll://drop";
+    static final String FEED_LEASE = "rail8:poller:shop/feed/poll://drop";
 
     /** The {@code poll} scheme: the {@link Doors} of the deploy tests, every endpoint of which polls, so the node leases its consumers. */
     static final class PollingDoors implements Component {
@@ -810,7 +810,7 @@ class NodeIT {
 
     /**
      * FIX-108 owner decision 2026-11-03 (sampling off costs nothing): a node without {@code RAIL8_CPU_SAMPLING} marks no step — an
-     * external recording that enables {@code io.flottila.Step} sees none of {@code demo/invoice-sync} over three invoices —, while the
+     * external recording that enables {@code io.rail8.Step} sees none of {@code demo/invoice-sync} over three invoices —, while the
      * same node started again with sampling on (it restores the demo), under the same recording, marks each of the five steps once per
      * invoice (the witness that the recording sees the event). A phase event the case commits between the two nodes splits the
      * recording. The CPU rows of a sampling node: {@code aSamplingNodeShowsEachStepsCpuAndWithoutSamplingAnswersOff}.
@@ -822,7 +822,7 @@ class NodeIT {
         int messages = 3;
         Path file = data.resolve("external-steps.jfr");
         try (HttpClient client = http(); jdk.jfr.Recording external = new jdk.jfr.Recording()) {
-            external.enable("io.flottila.Step");
+            external.enable("io.rail8.Step");
             external.enable(Phase.class);
             external.start();
             int inPort = freePort();
@@ -858,14 +858,14 @@ class NodeIT {
         assertEquals(1, phases.size(), "fixture: the phase event was recorded");
         Instant boundary = phases.get(0).getStartTime();
         List<jdk.jfr.consumer.RecordedEvent> steps = all.stream()
-                .filter(e -> e.getEventType().getName().equals("io.flottila.Step") && e.getString("flow").endsWith("invoice-sync")).toList();
+                .filter(e -> e.getEventType().getName().equals("io.rail8.Step") && e.getString("flow").endsWith("invoice-sync")).toList();
         List<String> withoutSampling = steps.stream().filter(e -> e.getStartTime().isBefore(boundary))
                 .map(e -> e.getString("flow") + " " + e.getInt("step") + " " + e.getString("name")).toList();
         Map<String, Long> withSampling = steps.stream().filter(e -> e.getStartTime().isAfter(boundary))
                 .collect(java.util.stream.Collectors.groupingBy(e -> e.getString("name"), java.util.TreeMap::new, java.util.stream.Collectors.counting()));
         assertEquals(Map.of("validate", 3L, "extractKey", 3L, "route", 3L, "toPartner", 3L, "partner", 3L), withSampling,
                 "witness: with sampling on the node marks each step once per invoice, and the external recording sees it");
-        assertEquals(List.of(), withoutSampling, "a node without sampling marks no step: the external recording sees no io.flottila.Step of its invoices");
+        assertEquals(List.of(), withoutSampling, "a node without sampling marks no step: the external recording sees no io.rail8.Step of its invoices");
     }
 
     /**
@@ -936,7 +936,7 @@ class NodeIT {
      */
     @Test
     void aPutOnAnS3NodeStoresTheArchiveBySha256AndRecordsTheRow() throws Exception {
-        String bucket = "flottila-node-it";
+        String bucket = "rail8-node-it";
         String prefix = "node-it-prefix";
         try (LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3")) {
             localstack.start();

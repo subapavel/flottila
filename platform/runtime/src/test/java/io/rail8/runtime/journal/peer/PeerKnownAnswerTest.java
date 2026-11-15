@@ -27,10 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Inputs: K1 = bytes 0x00..0x1f, K2 = bytes 0x80..0x9f (32 each); the dialer node-b (epoch 4, journal 0b0b0b0b-…-0b, masters
  * [K1], nonce 0x40..0x5f) dials the listener node-a (epoch 3, journal 0a0a0a0a-…-0a, masters [K2, K1]: K1 its previous key,
- * nonce 0x60..0x7f). The fingerprint label is {@code INFO + " fingerprint"} with {@code INFO = "flottila-peer-v1"}
- * (PeerHandshake.java:35, :39) = {@code "flottila-peer-v1 fingerprint"}; the HKDF info is {@code "flottila-peer-v1"} (:114),
- * the proof label {@code "flottila-peer-v1 proof"} (:38). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
- * {@code "flottila-peer-v1 subkey"}, 32); the fingerprint is HMAC-SHA256(K_peer, label)[0..8] and the session keys HKDF over K_peer:
+ * nonce 0x60..0x7f). The fingerprint label is {@code INFO + " fingerprint"} with {@code INFO = "rail8-peer-v1"}
+ * (PeerHandshake.java:35, :39) = {@code "rail8-peer-v1 fingerprint"}; the HKDF info is {@code "rail8-peer-v1"} (:114),
+ * the proof label {@code "rail8-peer-v1 proof"} (:38). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
+ * {@code "rail8-peer-v1 subkey"}, 32); the fingerprint is HMAC-SHA256(K_peer, label)[0..8] and the session keys HKDF over K_peer:
  * the master key keys no HMAC on the link; its only use there is the input of the one HKDF that makes the subkey. Both HELLOs
  * name channel read (1); the listener's too (assumed: a 5a2 listener's HELLO goes out before the dialer's, on the only channel
  * 5a2 uses).
@@ -47,26 +47,26 @@ class PeerKnownAnswerTest {
 
     /*
      * K_peer (P5), with H and hkdf of the python3 block at bothProofFramesOfAFixedExchangeAreTheKnownBytes:
-     * python3 -c "import hmac,hashlib;H=lambda k,m:hmac.new(k,m,hashlib.sha256).digest();prk=H(b'',bytes(range(32)));print(H(prk,b'flottila-peer-v1 subkey'+bytes([1])).hex())"
+     * python3 -c "import hmac,hashlib;H=lambda k,m:hmac.new(k,m,hashlib.sha256).digest();prk=H(b'',bytes(range(32)));print(H(prk,b'rail8-peer-v1 subkey'+bytes([1])).hex())"
      *   (one expand block: L = 32 = HashLen; hmac.new(b'') pads the empty salt to the zeros RFC 5869 §2.2 names)
      */
-    private static final String SUB_K1 = "29270d2bedfc61712f9fd2011df34155d0e57e067591f705e25c765d56a8b969";
+    private static final String SUB_K1 = "4bf3e05f4f8dbce605562950fcb641f50ffd7bd6c2c2fe34deb6c21885658cea";
     /* the same with bytes(range(0x80,0xa0)) */
-    private static final String SUB_K2 = "373384c9a9bf6c4c3cabf482d24052a756c7b31e19d4f4c5683a6b1a5b96b953";
+    private static final String SUB_K2 = "678a89202eac406b5ab15a3a8fb58b5265b9437b9983463897809f566a2a0352";
     /*
-     * python3 -c "import hmac,hashlib;print(hmac.new(bytes.fromhex(SUB_K1),b'flottila-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
+     * python3 -c "import hmac,hashlib;print(hmac.new(bytes.fromhex(SUB_K1),b'rail8-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
      *   (SUB_K1 written out)
      */
-    private static final String FP_K1 = "921381e52ce9d750";
+    private static final String FP_K1 = "923c5a41eae666b1";
     /* the same under SUB_K2 */
-    private static final String FP_K2 = "aa0aa5b0de650e76";
+    private static final String FP_K2 = "7205e54e940fd589";
     /*
      * The master-keyed values of 5a, a mutant's answers (the master key used directly, P5 says never):
-     * python3 -c "import hmac,hashlib;print(hmac.new(bytes(range(32)),b'flottila-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
+     * python3 -c "import hmac,hashlib;print(hmac.new(bytes(range(32)),b'rail8-peer-v1 fingerprint',hashlib.sha256).hexdigest()[:16])"
      */
-    private static final String MASTER_FP_K1 = "0a2082a6b58e11ea";
+    private static final String MASTER_FP_K1 = "5d03b11cd5f2c09a";
     /* the same under bytes(range(0x80,0xa0)) */
-    private static final String MASTER_FP_K2 = "99a7d37570fe2dfc";
+    private static final String MASTER_FP_K2 = "c8879eb8a2a3ee96";
 
     private static byte[] range(int from, int n) {
         byte[] b = new byte[n];
@@ -89,13 +89,13 @@ class PeerKnownAnswerTest {
     /** P5: K_peer is HKDF-SHA256 of the master key with an empty salt under its own label, 32 bytes. */
     @Test
     void thePeerSubkeyIsTheKnownHkdfOfTheMasterKeyUnderItsOwnLabel() {
-        byte[] info = "flottila-peer-v1 subkey".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] info = "rail8-peer-v1 subkey".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         assertEquals(SUB_K1, HEX.formatHex(PeerHandshake.hkdf(new byte[0], K1_BYTES, info, 32)), "K_peer of K1");
         assertEquals(SUB_K2, HEX.formatHex(PeerHandshake.hkdf(new byte[0], K2_BYTES, info, 32)), "K_peer of K2");
     }
 
     /**
-     * P5: the fingerprint a HELLO sends is HMAC-SHA256(K_peer, "flottila-peer-v1 fingerprint")[0..8]: not the master-keyed one of
+     * P5: the fingerprint a HELLO sends is HMAC-SHA256(K_peer, "rail8-peer-v1 fingerprint")[0..8]: not the master-keyed one of
      * 5a, and neither a prefix of the master key's bytes nor of the subkey's.
      */
     @Test
@@ -171,8 +171,8 @@ class PeerKnownAnswerTest {
 
     /**
      * Both proof frames of the fixed exchange (the listener finds K1 by the dialer's fingerprint among [K2, K1]): keys =
-     * HKDF-SHA256(salt = dialer nonce ‖ listener nonce, ikm = K_peer of K1, info "flottila-peer-v1", 128) split into dialer proof, listener
-     * proof, dialer frames, listener frames; a proof = HMAC(direction proof key, "flottila-peer-v1 proof" ‖ dialer HELLO payload ‖
+     * HKDF-SHA256(salt = dialer nonce ‖ listener nonce, ikm = K_peer of K1, info "rail8-peer-v1", 128) split into dialer proof, listener
+     * proof, dialer frames, listener frames; a proof = HMAC(direction proof key, "rail8-peer-v1 proof" ‖ dialer HELLO payload ‖
      * listener HELLO payload) in a PROOF frame of sequence 1 whose tag is HMAC(direction frame key, frame without tag)[0..16].
      * Computed outside the code under test (python3; the same hkdf answers RFC 5869 TC1 above):
      * <pre>
@@ -183,15 +183,15 @@ class PeerKnownAnswerTest {
      *     while len(out) < n: t = H(prk, t + info + bytes([i])); out += t; i += 1
      *     return out[:n]
      * k1, k2 = bytes(range(32)), bytes(range(0x80, 0xa0)); dn, ln = bytes(range(0x40, 0x60)), bytes(range(0x60, 0x80))
-     * sub = lambda k: hkdf(b'', k, b'flottila-peer-v1 subkey', 32)            # SUB_K1, SUB_K2
-     * fp = lambda k: H(sub(k), b'flottila-peer-v1 fingerprint')[:8]          # FP_K1, FP_K2
+     * sub = lambda k: hkdf(b'', k, b'rail8-peer-v1 subkey', 32)            # SUB_K1, SUB_K2
+     * fp = lambda k: H(sub(k), b'rail8-peer-v1 fingerprint')[:8]          # FP_K1, FP_K2
      * def hello(role, node, epoch, j, nonce, k):                              # channel read: the 1 after role
      *     return bytes([1, role, 1]) + struct.pack('>H', len(node)) + node + struct.pack('>q', epoch) + uuid.UUID(j).bytes + nonce + fp(k)
      * dh = hello(1, b'node-b', 4, '0b0b0b0b-0000-4000-8000-00000000000b', dn, k1)
      * lh = hello(2, b'node-a', 3, '0a0a0a0a-0000-4000-8000-00000000000a', ln, k2)
-     * keys = hkdf(dn + ln, sub(k1), b'flottila-peer-v1', 128)
+     * keys = hkdf(dn + ln, sub(k1), b'rail8-peer-v1', 128)
      * def proof(pk, fk):
-     *     f = struct.pack('>I', 57) + bytes([2]) + struct.pack('>q', 1) + H(pk, b'flottila-peer-v1 proof' + dh + lh)
+     *     f = struct.pack('>I', 57) + bytes([2]) + struct.pack('>q', 1) + H(pk, b'rail8-peer-v1 proof' + dh + lh)
      *     return (f + H(fk, f)[:16]).hex()
      * print(proof(keys[0:32], keys[64:96]), proof(keys[32:64], keys[96:128]))   # dialer's, listener's
      * </pre>
@@ -211,13 +211,13 @@ class PeerKnownAnswerTest {
     }
 
     private static final String DIALER_PROOF = "00000039020000000000000001"
-            + "54cd8faac02fec83412db46d4ce3dbb3e172e5222b6d95a9323ffb9d1ff1aeb5" + "7b0061c6c1681546864de81b39dfcb23";
+            + "e26a0f2aa5e3c3247ce9ca463785499802b3e855644c642fb09fa83baa212c26" + "f0b87a158c1737a8b742490bfa67d21c";
     private static final String LISTENER_PROOF = "00000039020000000000000001"
-            + "7ff9e01b14a6c639384d69a3413659a39f9fec853847d12489333a257810e905" + "379ee1237dbc381a9bb523d80c5114c5";
+            + "ce8f832f72847320621ba216f63b8afefc899cfa756ddfc874e029b31b2d6f71" + "71475c4b35bdcba2a583ca391adf16c3";
     private static final String MASTER_DIALER_PROOF = "00000039020000000000000001"
-            + "5f2257d558968dbd5d559e69ea56adcfe24bd17a0a4b75e7ce83356f5c9dd202" + "eb95677b6c3be6fed605e5425e9265ee";
+            + "4d280a2b385aae7e9523e7c47bb9eed040da7cdeb3525844e8df6e38f7524690" + "656b1fe08dd6306a66d36c9e185a6ac7";
     private static final String MASTER_LISTENER_PROOF = "00000039020000000000000001"
-            + "7088689f0c1bb7293af99f0888deb8df707635c7accf9d25b16f751f47e7f115" + "aa17533675d435f5def6f0b5fca9469f";
+            + "2ad8f08048454b0ddf9d5eb5b76e148aa71de9917600fa8b58e637b04218451f" + "4bbfeda6048b4c3886a409a80751e589";
 
     /**
      * Fixture self-test: {@link ScriptedPeer}, which the CORE-5a2 HELLO cases dial with, derives the same known answers from the

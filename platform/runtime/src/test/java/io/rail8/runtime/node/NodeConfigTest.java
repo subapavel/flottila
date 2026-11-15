@@ -60,10 +60,10 @@ class NodeConfigTest {
                 () -> assertEquals("dev", c.env()),
                 () -> assertFalse(c.deployed(), "dev is not deployed"),
                 () -> assertEquals(new AdminServer.Config("127.0.0.1", 8081, Optional.empty()), c.admin(), "loopback, 8081, no token"),
-                () -> assertEquals(Path.of("/var/lib/flottila"), c.dataDir()),
+                () -> assertEquals(Path.of("/var/lib/rail8"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(10), c.stopDeadline()),
                 () -> assertEquals(64 * MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 21), c.pg(), "21 = 5 intake + 16 work (F-33)"),
+                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "rail8", "rail8", "", 21), c.pg(), "21 = 5 intake + 16 work (F-33)"),
                 () -> assertEquals(new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), c.blobs(), "durableMax defaults to 1 MiB (D-059)"));
     }
 
@@ -76,7 +76,7 @@ class NodeConfigTest {
         env.put("RAIL8_ADMIN_HOST", "0.0.0.0");
         env.put("RAIL8_ADMIN_PORT", "9443");
         env.put("RAIL8_ADMIN_TOKEN", "s3cret");
-        env.put("RAIL8_DATA_DIR", "/srv/flottila");
+        env.put("RAIL8_DATA_DIR", "/srv/rail8");
         env.put("RAIL8_STOP_DEADLINE", "PT1M30S");
         env.put("RAIL8_MAX_PACKAGE_BYTES", "1048576");
         env.put("RAIL8_PG_HOST", "db.internal");
@@ -96,7 +96,7 @@ class NodeConfigTest {
                 () -> assertEquals("prod", c.env()),
                 () -> assertTrue(c.deployed(), "prod is deployed"),
                 () -> assertEquals(new AdminServer.Config("0.0.0.0", 9443, Optional.of("s3cret")), c.admin(), "a non-loopback bind with its token"),
-                () -> assertEquals(Path.of("/srv/flottila"), c.dataDir()),
+                () -> assertEquals(Path.of("/srv/rail8"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(90), c.stopDeadline(), "ISO-8601"),
                 () -> assertEquals(MIB, c.maxPackageBytes()),
                 () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
@@ -219,24 +219,24 @@ class NodeConfigTest {
 
     /** {@code minimal()} with the archive store s3, a bucket and a region: the least an s3 node needs. */
     static Map<String, String> s3() {
-        return with(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "s3"), "RAIL8_S3_BUCKET", "flottila-archives"), "RAIL8_S3_REGION", "eu-central-1");
+        return with(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "s3"), "RAIL8_S3_BUCKET", "rail8-archives"), "RAIL8_S3_REGION", "eu-central-1");
     }
 
     @Test
     void archiveStoreDefaultsToDirUnderTheDataDir() {
-        NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/flottila"));
+        NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/rail8"));
         assertAll(
                 () -> assertEquals(NodeConfig.Archives.Store.DIR, c.archives().store(), "RAIL8_ARCHIVE_STORE defaults to dir"),
-                () -> assertEquals(Path.of("/srv/flottila/archives"), c.archives().dir(), "RAIL8_ARCHIVE_DIR defaults to <dataDir>/archives"),
+                () -> assertEquals(Path.of("/srv/rail8/archives"), c.archives().dir(), "RAIL8_ARCHIVE_DIR defaults to <dataDir>/archives"),
                 () -> assertEquals(Optional.empty(), c.s3(), "no S3 for a dir store"));
-        assertEquals(Path.of("/var/lib/flottila/archives"), NodeConfig.from(minimal()).archives().dir(), "under the default data dir too");
+        assertEquals(Path.of("/var/lib/rail8/archives"), NodeConfig.from(minimal()).archives().dir(), "under the default data dir too");
         NodeConfig explicit = NodeConfig.from(with(with(minimal(), "RAIL8_ARCHIVE_STORE", "dir"), "RAIL8_ARCHIVE_DIR", "/mnt/archives"));
         assertEquals(NodeConfig.Archives.Store.DIR, explicit.archives().store());
         assertEquals(Path.of("/mnt/archives"), explicit.archives().dir(), "RAIL8_ARCHIVE_DIR is read under its own name");
-        NodeConfig read = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/flottila"));
+        NodeConfig read = NodeConfig.from(with(minimal(), "RAIL8_DATA_DIR", "/srv/rail8"));
         NodeConfig built = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(), read.pg(), read.blobs());
         assertEquals(NodeConfig.Archives.Store.DIR, built.archives().store(), "the 8-argument constructor stays: a dir store");
-        assertEquals(Path.of("/srv/flottila/archives"), built.archives().dir(), "under the data dir it was given");
+        assertEquals(Path.of("/srv/rail8/archives"), built.archives().dir(), "under the data dir it was given");
         assertEquals(Optional.empty(), built.s3());
     }
 
@@ -246,11 +246,11 @@ class NodeConfigTest {
         assertEquals(NodeConfig.Archives.Store.S3, c.archives().store());
         NodeConfig.S3 s3 = c.s3().orElseThrow(() -> new AssertionError("an s3 store has its S3 settings: " + c));
         assertAll(
-                () -> assertEquals("flottila-archives", s3.bucket()),
+                () -> assertEquals("rail8-archives", s3.bucket()),
                 () -> assertEquals("eu-central-1", s3.region()),
                 () -> assertEquals(Optional.empty(), s3.endpoint(), "no endpoint: the SDK's for the region"),
                 () -> assertFalse(s3.pathStyle(), "RAIL8_S3_PATH_STYLE defaults to false"),
-                () -> assertEquals("flottila", s3.prefix(), "RAIL8_S3_PREFIX defaults to flottila"),
+                () -> assertEquals("rail8", s3.prefix(), "RAIL8_S3_PREFIX defaults to rail8"),
                 () -> assertEquals(Optional.empty(), s3.accessKey(), "no keys: the SDK's default chain"),
                 () -> assertEquals(Optional.empty(), s3.secretKey()));
         for (String key : List.of("RAIL8_S3_BUCKET", "RAIL8_S3_REGION")) {
@@ -271,7 +271,7 @@ class NodeConfigTest {
         env.put("RAIL8_S3_SECRET_KEY", "secret-example");
         NodeConfig.S3 s3 = NodeConfig.from(env).s3().orElseThrow();
         assertAll(
-                () -> assertEquals("flottila-archives", s3.bucket()),
+                () -> assertEquals("rail8-archives", s3.bucket()),
                 () -> assertEquals("eu-central-1", s3.region()),
                 () -> assertEquals(Optional.of(URI.create("https://s3.example.net:9000")), s3.endpoint()),
                 () -> assertTrue(s3.pathStyle()),
@@ -326,8 +326,8 @@ class NodeConfigTest {
             String text = shown.toString();
             assertFalse(text.contains(secret), "a log line of " + shown.getClass().getSimpleName() + " must not carry the S3 secret key: " + text);
         }
-        assertTrue(s3.toString().contains("flottila-archives"), "the rest still shows: " + s3);
-        assertTrue(c.toString().contains("flottila-archives"), "the config's line shows its S3 settings, redacted: " + c);
+        assertTrue(s3.toString().contains("rail8-archives"), "the rest still shows: " + s3);
+        assertTrue(c.toString().contains("rail8-archives"), "the config's line shows its S3 settings, redacted: " + c);
     }
 
     // --- P2-02L (D-083): poller leases
@@ -386,8 +386,8 @@ class NodeConfigTest {
     @Test
     void theValkeyPasswordIsRedacted() {
         String password = "valkey-pass-4711";
-        NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "redis://flottila:" + password + "@valkey.internal:6379"));
-        assertEquals(Optional.of(URI.create("redis://flottila:" + password + "@valkey.internal:6379")), c.leases().valkey(),
+        NodeConfig c = NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "redis://rail8:" + password + "@valkey.internal:6379"));
+        assertEquals(Optional.of(URI.create("redis://rail8:" + password + "@valkey.internal:6379")), c.leases().valkey(),
                 "the password is read: the checks below are not vacuous");
         for (Object shown : new Object[] {c, c.leases()}) {
             String text = shown.toString();
@@ -397,7 +397,7 @@ class NodeConfigTest {
         assertTrue(c.toString().contains("valkey.internal"), "the config's line shows its Valkey host: " + c);
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "http://flottila:" + password + "@valkey.internal:6379")));
+                () -> NodeConfig.from(with(minimal(), "RAIL8_VALKEY_URI", "http://rail8:" + password + "@valkey.internal:6379")));
         assertTrue(e.getMessage().contains("RAIL8_VALKEY_URI"), e.getMessage());
         assertFalse(e.getMessage().contains(password), "a refusal is logged: it must not carry the password either: " + e.getMessage());
     }
@@ -585,9 +585,9 @@ class NodeConfigTest {
     void cpuSamplingIsOffByDefault() {
         assertEquals(Optional.empty(), NodeConfig.from(minimal()).cpuSampling(), "absent: off");
         assertEquals(Optional.empty(), NodeConfig.from(with(minimal(), "RAIL8_CPU_SAMPLING", "off")).cpuSampling(), "off");
-        NodeConfig built = new NodeConfig("node-1", "ci", new AdminServer.Config("127.0.0.1", 0, Optional.empty()), Path.of("/tmp/flottila"),
-                Duration.ofSeconds(10), 64 * MIB, new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16),
-                new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), new NodeConfig.Archives(NodeConfig.Archives.Store.DIR, Path.of("/tmp/flottila/archives")),
+        NodeConfig built = new NodeConfig("node-1", "ci", new AdminServer.Config("127.0.0.1", 0, Optional.empty()), Path.of("/tmp/rail8"),
+                Duration.ofSeconds(10), 64 * MIB, new NodeConfig.Pg("localhost", 5432, "rail8", "rail8", "", 16),
+                new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), new NodeConfig.Archives(NodeConfig.Archives.Store.DIR, Path.of("/tmp/rail8/archives")),
                 Optional.empty(), Secrets.fromEnv(Map.of()), NodeConfig.Leases.DEFAULTS,
                 new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000));
         assertEquals(Optional.empty(), built.cpuSampling(), "the constructor of every key before FIX-108 stays, sampling off");
@@ -749,7 +749,7 @@ class NodeConfigTest {
     /** An in-process {@code Pg} (the 6-argument constructor, env parsing never uses it) is {@code local}. */
     @Test
     void aPgBuiltInProcessIsLocal() {
-        assertEquals(NodeConfig.Pg.Durability.LOCAL, new NodeConfig.Pg("db.internal", 5432, "flottila", "flottila", "", 4).durability());
+        assertEquals(NodeConfig.Pg.Durability.LOCAL, new NodeConfig.Pg("db.internal", 5432, "rail8", "rail8", "", 4).durability());
     }
 
     /** Any other value, a near miss in case or space and the empty value included, is refused naming the key and both values. */

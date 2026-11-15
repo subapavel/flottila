@@ -138,7 +138,7 @@ class PgDurabilityTest {
     // ------------------------------------------------------------------------------------- FIX-137 B5: the duplicate's barrier
 
     @ParameterizedTest(name = "user {0}")
-    @CsvSource({"intake", "flottila_ha"})
+    @CsvSource({"intake", "rail8_ha"})
     void haRefusesARoleThatMayNotEmitLogicalMessagesNamingTheGrantAndTheUser(String user) {
         String refusal = refused(Durability.HA, new PgDurability.Server(user, "on", false, "*", true, List.of(SYNC), false));
         assertTrue(emitGrant(user).matcher(refusal).find(), "names GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(...) TO "
@@ -228,7 +228,7 @@ class PgDurabilityTest {
                 Arbitraries.of("streaming", "catchup", "startup", "backup", "stopping").injectNull(0.1),
                 Arbitraries.of("sync", "quorum", "async", "potential").injectNull(0.1)).as(PgDurability.Standby::new);
         return Combinators.combine(
-                Arbitraries.of("intake", "flottila"),
+                Arbitraries.of("intake", "rail8"),
                 Arbitraries.of("on", "off", "local", "remote_write", "remote_apply"),
                 Arbitraries.of(false, true),
                 Arbitraries.of("", "*", "standby-a", "FIRST 1 (standby-a, standby-b)", "ANY 2 (standby-a, standby-b, standby-c)"),

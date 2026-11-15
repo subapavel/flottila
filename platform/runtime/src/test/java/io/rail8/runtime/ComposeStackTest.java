@@ -26,7 +26,7 @@ class ComposeStackTest {
     private static final Path DIR = Path.of("..", "..", "deploy", "compose").toAbsolutePath().normalize();
     private static final Path FILE = DIR.resolve("docker-compose.yml");
     private static final Set<String> GATE_SERVICES =
-            Set.of("postgres", "valkey", "s3", "kafka", "sftp", "sftp-keys", "flottila", "echo", "deploy", "clickhouse");
+            Set.of("postgres", "valkey", "s3", "kafka", "sftp", "sftp-keys", "rail8", "echo", "deploy", "clickhouse");
 
     private static JsonNode services() throws IOException {
         assertTrue(Files.isRegularFile(FILE), FILE + " must exist");
@@ -80,7 +80,7 @@ class ComposeStackTest {
             var e = it.next();
             JsonNode image = e.getValue().path("image");
             if (!image.isTextual()) {
-                // a service built from the repo's Dockerfile (flottila) or sharing another's network may have no registry image
+                // a service built from the repo's Dockerfile (rail8) or sharing another's network may have no registry image
                 assertTrue(e.getValue().has("build"), e.getKey() + " has neither an image nor a build");
                 built++;
                 continue;
@@ -140,7 +140,7 @@ class ComposeStackTest {
         services().fields().forEachRemaining(e -> {
             if (!e.getValue().has("profiles")) unprofiled.add(e.getKey());
         });
-        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "flottila", "echo", "deploy")),
+        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "rail8", "echo", "deploy")),
                 unprofiled, "a plain `docker compose up` starts exactly these: everything but kafka and clickhouse");
     }
 
@@ -171,7 +171,7 @@ class ComposeStackTest {
             }
         }
         // witness (not vacuous): the environments are read — the node alone sets RAIL8_ENV, RAIL8_PG_HOST and more
-        assertTrue(environment(service("flottila")).containsKey("RAIL8_ENV") && keys >= 10, "environment keys read: " + keys);
+        assertTrue(environment(service("rail8")).containsKey("RAIL8_ENV") && keys >= 10, "environment keys read: " + keys);
     }
 
     @Test
@@ -183,12 +183,12 @@ class ComposeStackTest {
             assertFalse(test.isMissingNode() || joined(test).isBlank(), e.getKey() + " has a healthcheck with a test");
         }
         assertTrue(joined(service("postgres").path("healthcheck").path("test")).contains("pg_isready"), "postgres is checked with pg_isready");
-        assertTrue(joined(service("flottila").path("healthcheck").path("test")).contains("/health"), "the node is checked on GET /health");
+        assertTrue(joined(service("rail8").path("healthcheck").path("test")).contains("/health"), "the node is checked on GET /health");
     }
 
     @Test
     void theNodeRunsDevWithS3ValkeyAndATokenFromTheEnv() throws IOException {
-        JsonNode node = service("flottila");
+        JsonNode node = service("rail8");
         Map<String, String> env = environment(node);
         assertEquals("dev", env.get("RAIL8_ENV"));
         assertEquals("postgres", env.get("RAIL8_PG_HOST"));
@@ -211,8 +211,8 @@ class ComposeStackTest {
         JsonNode deploy = service("deploy");
         String command = joined(deploy.path("command")) + " " + joined(deploy.path("entrypoint"));
         assertTrue(command.contains("deploy") && command.contains("/packages/demo"), "deploy runs 'rail8 deploy /packages/demo': " + command);
-        assertTrue(command.contains("http://flottila:8081"), "deploy targets the node's admin port: " + command);
-        assertEquals("service_healthy", deploy.path("depends_on").path("flottila").path("condition").asText());
+        assertTrue(command.contains("http://rail8:8081"), "deploy targets the node's admin port: " + command);
+        assertEquals("service_healthy", deploy.path("depends_on").path("rail8").path("condition").asText());
         assertEquals("no", deploy.path("restart").asText("no"), "a one-shot is not restarted");
         assertTrue(environment(deploy).getOrDefault("RAIL8_ADMIN_TOKEN", "").startsWith("${RAIL8_ADMIN_TOKEN:?"),
                 "the CLI reads the same required token");
@@ -248,7 +248,7 @@ class ComposeStackTest {
 
     @Test
     void theS3SecretComesFromTheEnvAndIsRequired() throws IOException {
-        for (String name : List.of("flottila", "s3")) {
+        for (String name : List.of("rail8", "s3")) {
             String secret = environment(service(name)).getOrDefault("RAIL8_S3_SECRET_KEY", "");
             assertTrue(secret.startsWith("${RAIL8_S3_SECRET_KEY:?"), name + ": the S3 secret is required from the environment, was '" + secret + "'");
         }
@@ -298,7 +298,7 @@ class ComposeStackTest {
 
     @Test
     void theNodePublishesTheAsyncDoorOnLoopbackBesideTheOthers() throws IOException {
-        // FIX-105: the ports are published by the namespace holder `netns`, no longer by the node (the old pin on flottila contradicted it)
+        // FIX-105: the ports are published by the namespace holder `netns`, no longer by the node (the old pin on rail8 contradicted it)
         List<String> ports = ports(service("netns"));
         assertTrue(ports.contains("127.0.0.1:8082:8082"), "the async http door 8082 is published on loopback: " + ports);
         assertTrue(ports.contains("127.0.0.1:8080:8080") && ports.contains("127.0.0.1:8081:8081"), "the sync door and the admin API stay: " + ports);
@@ -338,17 +338,17 @@ class ComposeStackTest {
     @Test
     void theNodeAndTheEchoJoinTheHoldersNamespace() throws IOException {
         for (Path file : NODE_PORTS.keySet()) {
-            for (String name : List.of("flottila", "echo")) {
+            for (String name : List.of("rail8", "echo")) {
                 assertEquals("service:netns", serviceIn(file, name).path("network_mode").asText(), file + ": " + name + " joins the holder");
             }
-            assertEquals("service_healthy", serviceIn(file, "flottila").path("depends_on").path("netns").path("condition").asText(),
+            assertEquals("service_healthy", serviceIn(file, "rail8").path("depends_on").path("netns").path("condition").asText(),
                     file + ": the node waits for the holder healthy");
             assertEquals("service_healthy", serviceIn(file, "echo").path("depends_on").path("netns").path("condition").asText(),
                     file + ": the echo waits for the holder healthy");
             JsonNode echoDeps = serviceIn(file, "echo").path("depends_on");
-            assertTrue(echoDeps.has("flottila") || echoDeps.toString().contains("\"flottila\""), file + ": the echo still waits for the node: " + echoDeps);
+            assertTrue(echoDeps.has("rail8") || echoDeps.toString().contains("\"rail8\""), file + ": the echo still waits for the node: " + echoDeps);
             if (file.equals(FILE)) {
-                assertEquals("service_healthy", echoDeps.path("flottila").path("condition").asText(), file + ": healthy, as today");
+                assertEquals("service_healthy", echoDeps.path("rail8").path("condition").asText(), file + ": healthy, as today");
             }
         }
     }
@@ -356,7 +356,7 @@ class ComposeStackTest {
     @Test
     void neitherTheNodeNorTheEchoPublishesAPort() throws IOException {
         for (Path file : NODE_PORTS.keySet()) {
-            for (String name : List.of("flottila", "echo")) {
+            for (String name : List.of("rail8", "echo")) {
                 assertFalse(serviceIn(file, name).has("ports"), file + ": " + name + " shares the holder's namespace and publishes nothing itself");
             }
         }
@@ -368,8 +368,8 @@ class ComposeStackTest {
             JsonNode aliases = serviceIn(file, "netns").path("networks").path("default").path("aliases");
             List<String> names = new ArrayList<>();
             aliases.forEach(a -> names.add(a.asText()));
-            assertTrue(names.contains("flottila"), file + ": netns carries the alias flottila on the default network, was " + names);
-            assertFalse(serviceIn(file, "flottila").has("networks"), file + ": the node joins the holder's namespace, it has no networks of its own");
+            assertTrue(names.contains("rail8"), file + ": netns carries the alias rail8 on the default network, was " + names);
+            assertFalse(serviceIn(file, "rail8").has("networks"), file + ": the node joins the holder's namespace, it has no networks of its own");
         }
     }
 
@@ -398,7 +398,7 @@ class ComposeStackTest {
         assertEquals("no", keys.path("restart").asText("no"), "a one-shot is not restarted");
         assertFalse(keys.has("ports"), "the one-shot publishes nothing");
         assertFalse(keys.has("profiles"), "and starts without a profile");
-        for (String waiter : List.of("sftp", "flottila")) {
+        for (String waiter : List.of("sftp", "rail8")) {
             assertEquals("service_completed_successfully", service(waiter).path("depends_on").path("sftp-keys").path("condition").asText(),
                     waiter + " waits for the host key one-shot to exit 0");
         }
@@ -437,16 +437,16 @@ class ComposeStackTest {
 
     @Test
     void theNodeMountsOnlyTheFingerprintAndReadsItIntoItsSecretVariable() throws IOException {
-        JsonNode node = service("flottila");
+        JsonNode node = service("rail8");
         assertFalse(environment(node).containsKey("RAIL8_SECRET_SFTP_HOST_KEY"),
                 "the fingerprint is unknown until the key exists: it is not a fixed value of the compose file");
         List<Mount> mounted = mounts(node);
         // CORE-4c1 r1 (architect): the node's data directory is a named volume too, so a recreated container keeps its journal
-        assertEquals(List.of("sftp-fingerprint", "flottila-data"), mounted.stream().map(Mount::source).toList(),
+        assertEquals(List.of("sftp-fingerprint", "rail8-data"), mounted.stream().map(Mount::source).toList(),
                 "the node mounts the fingerprint volume and its data volume, no other (in particular none that holds a host key): " + mounted);
         assertTrue(mounted.get(0).readOnly(), "and only reads the fingerprint: " + mounted);
-        assertEquals(new Mount("flottila-data", "/var/lib/flottila", false), mounted.get(1), "the data volume is the node's data directory, written");
-        assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("flottila-data"), "flottila-data is a declared volume");
+        assertEquals(new Mount("rail8-data", "/var/lib/rail8", false), mounted.get(1), "the data volume is the node's data directory, written");
+        assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("rail8-data"), "rail8-data is a declared volume");
         String wrapper = script(node) + " " + environment(node);
         assertFalse(wrapper.contains("ssh_host"), "nothing the node runs names a host key file, public or private, of any type: " + wrapper);
         String assigned = script(node);

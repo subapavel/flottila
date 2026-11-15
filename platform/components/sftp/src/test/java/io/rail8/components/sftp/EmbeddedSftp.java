@@ -50,7 +50,7 @@ import java.util.stream.Stream;
  */
 public final class EmbeddedSftp implements AutoCloseable {
 
-    static final String USER = "flottila";
+    static final String USER = "rail8";
     static final String PASSWORD = "s3cret-for-tests";
     static final KeyPair HOST_KEY = ecKey();
     static final KeyPair OTHER_KEY = ecKey();

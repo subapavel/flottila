@@ -327,7 +327,7 @@ class SftpConsumerEdgeTest {
 
     static String openSsh(KeyPair key) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        OpenSSHKeyPairResourceWriter.INSTANCE.writePrivateKey(key, "flottila-test", (OpenSSHKeyEncryptionContext) null, out);
+        OpenSSHKeyPairResourceWriter.INSTANCE.writePrivateKey(key, "rail8-test", (OpenSSHKeyEncryptionContext) null, out);
         return out.toString(StandardCharsets.UTF_8);
     }
 

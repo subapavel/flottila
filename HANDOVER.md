@@ -22,7 +22,7 @@ docker compose --profile history up -d clickhouse      # optional, nothing feeds
 docker compose --profile history --profile kafka down -v   # stop, remove every volume
 ```
 
-Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
+Services: `rail8` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
 `deploy` (one-shot `rail8 deploy` of `examples/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:
@@ -52,7 +52,7 @@ docker compose stop echo; curl -X POST -H 'Content-Type: application/xml' --data
 curl -H "$A" localhost:8081/admin/dlq                                       # the row appears (gate run: 1.1 s, step 5 `partner`; since CORE-14a after one scheduled retry, at step 1)
 docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/retry    # 202, the same id once more (D-136)
 curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                           # instead of the line above: a new copy, new id, replayOf
-# Kill test (check 5): drop files, then `docker kill -s KILL compose-flottila-1` and `docker compose up -d`
+# Kill test (check 5): drop files, then `docker kill -s KILL compose-rail8-1` and `docker compose up -d`
 ```
 
 ## 3. Run the tests

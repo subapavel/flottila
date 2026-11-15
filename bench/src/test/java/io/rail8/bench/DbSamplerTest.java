@@ -130,7 +130,7 @@ class DbSamplerTest {
     @Test
     void walSyncTimeWithTimingOffAndStatementsWithoutTheExtensionAreNullWithTheSourcesNoteNeverZero() {
         JsonObject notes = new JsonObject().put("walSyncTimeMs", "track_wal_io_timing is off")
-                .put("statements", "pg_stat_statements is not installed in flottila_bench");
+                .put("statements", "pg_stat_statements is not installed in rail8_bench");
         List<JsonObject> readings = new ArrayList<>();
         for (int k = 0; k < 3; k++) {
             readings.add(reading(100 + 10L * k, 5 + k, null, 1, 1000 + k, 0, 1, 0, k).putNull("statements").put("notes", notes.copy()));

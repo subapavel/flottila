@@ -54,8 +54,8 @@ public final class Retention {
 
     private static final System.Logger LOG = System.getLogger(Retention.class.getName());
 
-    /** The advisory lock every batch tries first: the bytes of "flottila" (D-088). */
-    static final long LOCK_KEY = 0x666c6f7474696c61L;
+    /** The advisory lock every batch tries first: the ASCII bytes of "rail8" in the high five bytes, zero below (D-088). */
+    static final long LOCK_KEY = 0x7261696C38000000L;
 
     private static final String LOCK = "select pg_try_advisory_xact_lock($1)";
 

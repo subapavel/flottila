@@ -1,7 +1,7 @@
 # The gate stack (`deploy/compose`)
 
 A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_ENV=dev`. Services: `postgres`, `valkey`
-(persistence off), `s3` (SeaweedFS), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `flottila` (the node), `echo` (the demo's partner),
+(persistence off), `s3` (SeaweedFS), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `rail8` (the node), `echo` (the demo's partner),
 `deploy` (one-shot: `rail8 deploy /packages/demo`), `clickhouse` under the `history` profile (not wired), and `kafka` (KRaft, the optional event-broker add-on, O-1) under the
 `kafka` profile, off by default and not wired: a plain `up` does not start it.
 
@@ -9,7 +9,7 @@ A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_E
 mvn -B -ntp -q package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
 cd deploy/compose
 export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required: compose refuses to start without it
-export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACCESS_KEY defaults to flottila
+export RAIL8_S3_SECRET_KEY=$(openssl rand -hex 16)  # required too; RAIL8_S3_ACCESS_KEY defaults to rail8
 docker compose up -d --build                           # returns once the node is healthy
 docker compose ps -a deploy                            # exited (0) after the demo is deployed
 curl -H "Authorization: Bearer $RAIL8_ADMIN_TOKEN" localhost:8081/admin/packages
@@ -24,8 +24,15 @@ Postgres runs `postgres:18.6` with its volume at `/var/lib/postgresql` (D-129). 
 `postgres:17.11` cannot be reused (the 18 image refuses to start on it): run `docker compose --profile history --profile kafka down -v` once
 before the first `up` after the upgrade; it deletes every volume of this demo stack (database, node archives, S3 objects, SFTP keys and files, ClickHouse).
 
+A stack that was started before the rename to Rail8 (2026-11-15, D-148) needs the same once, with `--remove-orphans` added, before the first
+`up`: `docker compose --profile history --profile kafka down -v --remove-orphans`. Its `pg-data` volume holds the role and the database of
+the former name and Postgres initialises only an empty volume, so the node cannot log in although `pg_isready` passes
+(`docker compose logs postgres` shows the refused login). And the node's service was renamed, so the old node container is an orphan: a plain
+`down -v` leaves it, and while it exists it keeps its volumes in use. The old node-data volume is no longer declared in this file and stays
+after that: `docker volume ls` shows it under the former name, `docker volume rm` removes it.
+
 - Admin API and `/health`: `localhost:8081`; the demo's http-in: `localhost:8080`; its async door `http-in-async`: `localhost:8082/invoice/async` (answers 202).
-- Postgres password: `RAIL8_PG_PASSWORD` (default `flottila`). S3: bucket `flottila`, one Admin identity written at start
+- Postgres password: `RAIL8_PG_PASSWORD` (default `rail8`). S3: bucket `rail8`, one Admin identity written at start
   from `RAIL8_S3_ACCESS_KEY` / `RAIL8_S3_SECRET_KEY` (an http endpoint, allowed in `dev`).
 - SFTP: user `demo`, password `RAIL8_SFTP_PASSWORD` (default `demo`), directory `inbox` (the demo's `sftp-inbox` polls `/inbox` every
   10 s and deletes a file once the flow `sftp-invoice` has saved it). The one-shot `sftp-keys` generates an RSA host key (3072 bits; the node's SFTP client does not offer ed25519) into the

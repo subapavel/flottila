@@ -65,8 +65,8 @@ class LedgerMainTest {
     @Test
     void aDatabaseThatIsNotABenchDatabaseIsRefusedBeforeAnythingConnects() {
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
-                () -> LedgerMain.options(new String[] {"--db", "flottila"}));
-        assertTrue(refused.getMessage().contains("flottila") && refused.getMessage().contains("bench"),
+                () -> LedgerMain.options(new String[] {"--db", "rail8"}));
+        assertTrue(refused.getMessage().contains("rail8") && refused.getMessage().contains("bench"),
                 "names the database and the rule: " + refused.getMessage());
         // the default database is a bench one
         assertTrue(LedgerMain.options(new String[] {}).db().contains("bench"), "the default --db names a bench database");

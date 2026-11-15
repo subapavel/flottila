@@ -27,7 +27,7 @@ class NodeConfigPoolsInProcessTest {
     @ValueSource(ints = {2, 4, 8, 16})
     void anInProcessNodeDefaultsItsGroupsOverTheIntakePool(int poolSize) {
         NodeConfig read = NodeConfig.from(NodeConfigTest.with(NodeConfigTest.minimal(), "RAIL8_PG_POOL_SIZE", String.valueOf(poolSize)));
-        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
+        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize);
         NodeConfig built = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(), pg,
                 read.blobs());
         assertEquals(read.intakeGroup(), built.intakeGroup(), "the groups an in-process node defaults are those an env of RAIL8_PG_POOL_SIZE "
@@ -43,7 +43,7 @@ class NodeConfigPoolsInProcessTest {
     @CsvSource({"2, 1", "4, 1", "8, 3", "16, 4"})
     void anInProcessNodeDefaultsItsGroupsToTheWorkedValues(int poolSize, int concurrency) {
         NodeConfig read = NodeConfig.from(NodeConfigTest.minimal());
-        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
+        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize);
         NodeConfig built = new NodeConfig(read.nodeId(), read.env(), read.admin(), read.dataDir(), read.stopDeadline(), read.maxPackageBytes(), pg,
                 read.blobs());
         assertEquals(new NodeConfig.IntakeGroup(64, 1_048_576L, Duration.ofMillis(1), concurrency), built.intakeGroup(),
@@ -52,7 +52,7 @@ class NodeConfigPoolsInProcessTest {
 
     @Test
     void theLogLineStatesBothShares() {
-        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "pw", 12, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        NodeConfig.Pg pg = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "pw", 12, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.LOCAL, 3);
         String line = pg.toString();
         assertAll(

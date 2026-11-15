@@ -51,7 +51,7 @@ public final class PeerHandshake {
     static final long HELLO_LEN_MAX = Frames.MIN_LEN + FIXED + 0xFFFF;
     /** A proof frame's {@code len}: an HMAC-SHA256; after the peer's HELLO a longer frame is refused (r2 R1). */
     static final long PROOF_LEN = Frames.MIN_LEN + 32;
-    private static final String INFO = "flottila-peer-v1";
+    private static final String INFO = "rail8-peer-v1";
     private static final String SUBKEY = INFO + " subkey";
     private static final byte DIALER = 1;
     private static final byte LISTENER = 2;

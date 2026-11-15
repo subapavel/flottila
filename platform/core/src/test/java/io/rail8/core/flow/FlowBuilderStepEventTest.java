@@ -59,7 +59,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * FIX-108 (D-094): only when the builder is asked to, {@code stepEvents(true)} — which the node does only when it samples (owner
  * decision 2026-11-03: sampling off costs nothing) —, every step of a flow it builds is wrapped, outermost, in the JFR event
- * {@code io.flottila.Step} (fields {@code flow}, {@code step}, {@code name}; category Flottila; no stack trace; no message id),
+ * {@code io.rail8.Step} (fields {@code flow}, {@code step}, {@code name}; category Rail8; no stack trace; no message id),
  * disabled unless a recording enables it; by default, or after {@code stepEvents(false)}, no step is wrapped. The event begins when
  * the step's stage is entered and is committed when it returns or throws, on the message's thread: it spans the rest of the pipeline
  * (the events of one message nest) and the step's retry, numbering, recording and parking wrappers. The start stage (ingress, replay)
@@ -72,7 +72,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class FlowBuilderStepEventTest {
 
-    static final String STEP_EVENT = "io.flottila.Step";
+    static final String STEP_EVENT = "io.rail8.Step";
     static final String PROBE_EVENT = "io.rail8.test.Probe";
     static final Path NO_FILES = Path.of("");
     static final Duration BOUND = Duration.ofSeconds(30);
@@ -259,7 +259,7 @@ class FlowBuilderStepEventTest {
                 .collect(Collectors.toMap(ValueDescriptor::getName, ValueDescriptor::getTypeName));
         assertEquals(Map.of("flow", "java.lang.String", "step", "int", "name", "java.lang.String"), fields,
                 "the event carries flow, step and name and nothing else — no message id");
-        assertEquals(List.of("Flottila"), type.getCategoryNames());
+        assertEquals(List.of("Rail8"), type.getCategoryNames());
     }
 
     /**
@@ -336,7 +336,7 @@ class FlowBuilderStepEventTest {
 
     /**
      * By default the builder marks no step (owner decision 2026-11-03): built as a node's is (store, DLQ, queue) without
-     * {@code stepEvents}, its pipeline, sync delivery, at-least-once worker and replay emit no {@code io.flottila.Step} under a recording
+     * {@code stepEvents}, its pipeline, sync delivery, at-least-once worker and replay emit no {@code io.rail8.Step} under a recording
      * that enables it — while that recording sees each step's body probe on the same threads, and the step events of a flow built
      * with {@code stepEvents(true)} run in the same window.
      */
@@ -402,7 +402,7 @@ class FlowBuilderStepEventTest {
 
     /**
      * The flag is the builder's state when it builds, both ways: one builder, {@code stepEvents(true)}, flow A built, then
-     * {@code stepEvents(false)}, flow B built — under a recording enabling {@code io.flottila.Step}, A's steps are marked and B's are
+     * {@code stepEvents(false)}, flow B built — under a recording enabling {@code io.rail8.Step}, A's steps are marked and B's are
      * not (B's step bodies witness that it ran in the recording).
      */
     @Test

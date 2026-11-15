@@ -64,7 +64,7 @@ final class Lock {
      * reads back as the string it is.
      */
     static String text(List<Package.Locked> pins) {
-        StringBuilder text = new StringBuilder("# written by flottila lock (D-087): the direct dependencies, sorted by name, each with its content digest\n")
+        StringBuilder text = new StringBuilder("# written by rail8 lock (D-087): the direct dependencies, sorted by name, each with its content digest\n")
                 .append("schemaVersion: 1\nkind: lock\ndependencies:").append(pins.isEmpty() ? " []\n" : "\n");
         for (Package.Locked p : pins) {
             text.append("  - name: ").append(quoted(p.name())).append("\n    version: ").append(quoted(p.version()))

@@ -16,12 +16,18 @@ until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, 
 
 The node migrates the database itself (Flyway) and serves `/health` on `localhost:8081`. Compose also publishes Postgres on
 the host's loopback, port 5432; if that port is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token
-the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs flottila`).
+the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs rail8`).
 
 **Upgrading from an earlier checkout:** Postgres runs `postgres:18.6` (D-129), whose volume is mounted at `/var/lib/postgresql`.
 A database volume made by the earlier `postgres:16` cannot be reused: the 18 image refuses to start on it ("there appears to be
 PostgreSQL data in: /var/lib/postgresql", `docker compose logs postgres`). Run `docker compose down -v` once before the `up`;
 it deletes this dev stack's database and the node's archives, so the demo is deployed again afterwards.
+
+A stack started before the rename to Rail8 (2026-11-15, D-148): run `docker compose down -v --remove-orphans` once before the first `up`.
+The node's service was renamed, so its old container is an orphan that a plain `down` leaves, and while it exists it keeps its volumes in
+use. That stack kept its database and its archives in two volumes under the former name, which this file no longer declares, so `down -v`
+does not remove them either: `docker volume ls` shows them and `docker volume rm` removes them once the old container is gone. The renamed
+stack starts on new, empty volumes, so the demo is deployed again.
 
 The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` in the network namespace the `netns` service holds for the node (it publishes the ports), on
 `localhost:8090`; it answers every path with the body it was sent.

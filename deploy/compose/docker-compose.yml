@@ -7,14 +7,14 @@ services:
   postgres:
     image: postgres:18.6
     environment:
-      POSTGRES_DB: flottila
-      POSTGRES_USER: flottila
-      POSTGRES_PASSWORD: ${RAIL8_PG_PASSWORD:-flottila}
+      POSTGRES_DB: rail8
+      POSTGRES_USER: rail8
+      POSTGRES_PASSWORD: ${RAIL8_PG_PASSWORD:-rail8}
     volumes:
       # the 18 image keeps PGDATA at /var/lib/postgresql/18/docker and refuses a mount at .../data; a 17 volume is not reused
       - pg-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
+      test: ["CMD-SHELL", "pg_isready -U rail8 -d rail8"]
       interval: 2s
       timeout: 2s
       retries: 30
@@ -34,13 +34,13 @@ services:
     # one process (master, volume, filer, S3 gateway on 8333). The demo identity is written to /tmp/s3.json at start from the
     # S3 keys of the environment (Admin, so that the first upload creates the bucket: autoCreateBucket needs an admin identity)
     environment:
-      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-flottila}"
+      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-rail8}"
       RAIL8_S3_SECRET_KEY: "${RAIL8_S3_SECRET_KEY:?set RAIL8_S3_SECRET_KEY: the S3 secret key of the stack}"
     entrypoint:
       - sh
       - -c
       - |
-        printf '{"identities":[{"name":"flottila","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$RAIL8_S3_ACCESS_KEY" "$$RAIL8_S3_SECRET_KEY" > /tmp/s3.json
+        printf '{"identities":[{"name":"rail8","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$RAIL8_S3_ACCESS_KEY" "$$RAIL8_S3_SECRET_KEY" > /tmp/s3.json
         chmod 644 /tmp/s3.json
         exec /entrypoint.sh server -s3 -s3.config=/tmp/s3.json -s3.autoCreateBucket=true -s3.port=8333
     volumes:
@@ -119,7 +119,7 @@ services:
     networks:
       default:
         aliases:
-          - flottila
+          - rail8
     ports:
       - "127.0.0.1:8080:8080"   # the demo's http-in
       - "127.0.0.1:8082:8082"   # the demo's http-in-async (/invoice/async)
@@ -130,7 +130,7 @@ services:
       timeout: 2s
       retries: 30
 
-  flottila:
+  rail8:
     network_mode: "service:netns"
     build:
       context: ../..
@@ -143,16 +143,16 @@ services:
       # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes RAIL8_JOURNAL_KEY_FILE
       RAIL8_JOURNAL_KEY_GENERATE: "true"
       RAIL8_PG_HOST: postgres
-      RAIL8_PG_PASSWORD: ${RAIL8_PG_PASSWORD:-flottila}
+      RAIL8_PG_PASSWORD: ${RAIL8_PG_PASSWORD:-rail8}
       # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
       # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and RAIL8_PG_SSL_ROOT_CERT
       RAIL8_PG_SSL_MODE: disable
       RAIL8_ARCHIVE_STORE: s3
       RAIL8_S3_ENDPOINT: http://s3:8333
       RAIL8_S3_PATH_STYLE: "true"
-      RAIL8_S3_BUCKET: flottila
+      RAIL8_S3_BUCKET: rail8
       RAIL8_S3_REGION: us-east-1
-      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-flottila}"
+      RAIL8_S3_ACCESS_KEY: "${RAIL8_S3_ACCESS_KEY:-rail8}"
       RAIL8_S3_SECRET_KEY: "${RAIL8_S3_SECRET_KEY:?set RAIL8_S3_SECRET_KEY: the S3 secret key of the stack}"
       RAIL8_VALKEY_URI: redis://valkey:6379
       RAIL8_ADMIN_HOST: 0.0.0.0
@@ -163,12 +163,12 @@ services:
     entrypoint:
       - sh
       - -c
-      - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/flottila/rail8-runtime.jar'
+      - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/rail8/rail8-runtime.jar'
     volumes:
       - sftp-fingerprint:/sftp-fingerprint:ro
       # the node's data directory (the body journal with its NODE, segments and generated MASTER, the deployment archives) is a
       # named volume: a recreated container finds its journal again; `docker compose down -v` removes it together with pg-data
-      - flottila-data:/var/lib/flottila
+      - rail8-data:/var/lib/rail8
     depends_on:
       netns:
         condition: service_healthy
@@ -198,7 +198,7 @@ services:
     depends_on:
       netns:
         condition: service_healthy
-      flottila:
+      rail8:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090"]
@@ -215,9 +215,9 @@ services:
     volumes:
       - ../../platform/cli/target:/cli:ro
       - ../../examples:/packages:ro
-    entrypoint: ["sh", "-c", "jar=$$(ls /cli/rail8-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy /packages/demo --admin http://flottila:8081"]
+    entrypoint: ["sh", "-c", "jar=$$(ls /cli/rail8-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy /packages/demo --admin http://rail8:8081"]
     depends_on:
-      flottila:
+      rail8:
         condition: service_healthy
 
   clickhouse:
@@ -234,7 +234,7 @@ services:
 
 volumes:
   pg-data:
-  flottila-data:
+  rail8-data:
   s3-data:
   sftp-hostkeys:
   sftp-fingerprint:

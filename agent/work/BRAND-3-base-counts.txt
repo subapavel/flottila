@@ -1,0 +1,13 @@
+Building Flottila Mapping xdm 0.1.0-SNAPSHOT                      [3/16] | Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping structure 0.1.0-SNAPSHOT                [4/16] | Tests run: 412, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping structure-import 0.1.0-SNAPSHOT         [5/16] | Tests run: 211, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping ir 0.1.0-SNAPSHOT                       [6/16] | Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping serializer 0.1.0-SNAPSHOT               [7/16] | Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping runtime 0.1.0-SNAPSHOT                 [10/16] | Tests run: 717, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping mapping 0.1.0-SNAPSHOT                 [11/16] | Tests run: 563, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping xslt-export 0.1.0-SNAPSHOT             [12/16] | Tests run: 53, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping api 0.1.0-SNAPSHOT                     [13/16] | Tests run: 409, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping oracle 0.1.0-SNAPSHOT                  [14/16] | Tests run: 2910, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping service 0.1.0-SNAPSHOT                 [15/16] | Tests run: 1257, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping bench (JMH) 0.1.0-SNAPSHOT             [16/16] | Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+GRAND surefire total Tests run: 17822

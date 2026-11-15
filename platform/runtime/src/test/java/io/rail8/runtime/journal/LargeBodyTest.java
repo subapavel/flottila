@@ -72,7 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code SegmentRows}: {@code Future<Void> insert(String node, long segment)}; {@code JournalRef.length()} a {@code long}.
  *
  * <p>Where a case reaches into a segment file it uses the documented format only (CORE-3 items 1 and 2): the trailer's
- * last 32 bytes (count u32 at 8, sealed ms u64 at 12, magic FJSE at 28), and the AEAD chunks as the record's last bytes,
+ * last 32 bytes (count u32 at 8, sealed ms u64 at 12, magic RJSE at 28), and the AEAD chunks as the record's last bytes,
  * 1 MiB of plaintext plus a 16-byte tag each.
  */
 class LargeBodyTest {
@@ -83,7 +83,7 @@ class LargeBodyTest {
     static final int CHUNK = 1 << 20;
     static final int TAG = 16;
     static final int TRAILER = 32;
-    static final int END_MAGIC = 0x464A5345;   // "FJSE"
+    static final int END_MAGIC = 0x524A5345;   // "RJSE"
     static final String NODE = "node-1";        // JournalFixture.Settings' node
 
     @TempDir Path tmp;
@@ -270,7 +270,7 @@ class LargeBodyTest {
                 "the footer index lists the one record");
         byte[] file = Files.readAllBytes(segmentFile(s.dir, ref.segment()));
         ByteBuffer trailer = ByteBuffer.wrap(file, file.length - TRAILER, TRAILER).slice();
-        assertEquals(END_MAGIC, trailer.getInt(28), "the file ends with a trailer (magic FJSE)");
+        assertEquals(END_MAGIC, trailer.getInt(28), "the file ends with a trailer (magic RJSE)");
         assertEquals(1, trailer.getInt(8), "the trailer counts one record");
         assertEquals(START.plusMillis(1234).toEpochMilli(), trailer.getLong(12), "sealed ms is the injected clock at persist");
         assertEquals(List.of(), regularFiles(spillDir(s.dir)), "the spill moved into segments/");
@@ -417,7 +417,7 @@ class LargeBodyTest {
         assertArrayEquals(GeneratedInput.bytes(5, LARGE), readAll(j.stream(ref)));
     }
 
-    /** True when {@code file} ends with a trailer counting one record (magic FJSE last). */
+    /** True when {@code file} ends with a trailer counting one record (magic RJSE last). */
     private static boolean endsWithTrailer(Path file) {
         try {
             byte[] all = Files.readAllBytes(file);

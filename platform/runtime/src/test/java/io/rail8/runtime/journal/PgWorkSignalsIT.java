@@ -55,12 +55,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P2-16b (D-121 (b), B1–B3): {@link PgWorkSignals} — work events between nodes through Postgres {@code LISTEN/NOTIFY} on channel
- * {@code flottila_work}. A node listens on a dedicated connection (relayed by {@link PgWire} {@code listenWire}, never the pool)
+ * {@code rail8_work}. A node listens on a dedicated connection (relayed by {@link PgWire} {@code listenWire}, never the pool)
  * and sends on its pool (relayed by {@code poolWire}, one connection: a {@code select 1} through it after a timer step is a
  * barrier — anything the step sent was answered before it). Each node's {@link Workers} holds the started workers of flows
  * {@code orders} and {@code invoices} over in-memory queues that count claims: a wake is one claim, answered at once.
  *
- * <p>Witnesses: a raw observer session of the case's own, {@code LISTEN flottila_work}, records every payload in delivery order;
+ * <p>Witnesses: a raw observer session of the case's own, {@code LISTEN rail8_work}, records every payload in delivery order;
  * a NOTIFY of the case's own ({@link #notifyRaw}) is delivered to a listener after every notification committed before it, so a
  * positive payload sent after negative ones is the barrier that the negative ones were received and ignored. One database per
  * case (channels are per database). The fake clock drives the 50 ms window and any reconnect backoff; worker intervals are ten
@@ -117,7 +117,7 @@ class PgWorkSignalsIT {
         pool = PgBuilder.pool().connectingTo(through(poolWire)).with(new PoolOptions().setMaxSize(1)).using(vertx).build();
         observer = bounded(PgConnection.connect(vertx, db.options()), "the observer connects");
         observer.notificationHandler(n -> observed.add(n.getPayload()));
-        bounded(observer.query("LISTEN flottila_work").execute(), "the observer listens");
+        bounded(observer.query("LISTEN rail8_work").execute(), "the observer listens");
     }
 
     @AfterEach
@@ -231,9 +231,9 @@ class PgWorkSignalsIT {
         }
     }
 
-    /** A NOTIFY of the case's own on {@code flottila_work}, committed when this returns. */
+    /** A NOTIFY of the case's own on {@code rail8_work}, committed when this returns. */
     void notifyRaw(String payload) {
-        bounded(db.pool().preparedQuery("select pg_notify('flottila_work', $1)").execute(Tuple.of(payload)), "the NOTIFY " + payload);
+        bounded(db.pool().preparedQuery("select pg_notify('rail8_work', $1)").execute(Tuple.of(payload)), "the NOTIFY " + payload);
     }
 
     /** The {@code pg_notify} statements the node pool sent after {@code mark}. */

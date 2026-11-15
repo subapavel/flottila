@@ -32,9 +32,9 @@ import java.util.UUID;
  *
  * <p>HELLO v1 payload (P1): u8 version · u8 role (1 dialer, 2 listener) · u8 channel (1 read, 2 repl, 3 bulk) · u16 node length
  * · node (UTF-8) · i64 epoch · journal id (16) · nonce (32) · fingerprint (8) · anything after (P2). P5: K_peer =
- * HKDF-SHA256(salt empty, ikm master, info "flottila-peer-v1 subkey", 32); fingerprint = HMAC-SHA256(K_peer, "flottila-peer-v1
- * fingerprint")[0..8]; keys = HKDF-SHA256(salt dialer nonce ‖ listener nonce, ikm K_peer, info "flottila-peer-v1", 128) = dialer
- * proof, listener proof, dialer frames, listener frames; a proof = HMAC(its direction's proof key, "flottila-peer-v1 proof" ‖
+ * HKDF-SHA256(salt empty, ikm master, info "rail8-peer-v1 subkey", 32); fingerprint = HMAC-SHA256(K_peer, "rail8-peer-v1
+ * fingerprint")[0..8]; keys = HKDF-SHA256(salt dialer nonce ‖ listener nonce, ikm K_peer, info "rail8-peer-v1", 128) = dialer
+ * proof, listener proof, dialer frames, listener frames; a proof = HMAC(its direction's proof key, "rail8-peer-v1 proof" ‖
  * dialer HELLO payload ‖ listener HELLO payload) in a PROOF frame of sequence 1 tagged under its direction's frame key. Reads
  * are bounded by {@value #BOUND_SECONDS} s: a failure detector, never a timing.
  */
@@ -144,18 +144,18 @@ public final class ScriptedPeer implements AutoCloseable {
 
     /** K_peer of {@code master}. */
     public static byte[] subkey(SecretKey master) {
-        return hkdf(new byte[0], master.getEncoded(), ascii("flottila-peer-v1 subkey"), 32);
+        return hkdf(new byte[0], master.getEncoded(), ascii("rail8-peer-v1 subkey"), 32);
     }
 
     /** The fingerprint a HELLO under {@code master} carries. */
     public static byte[] fingerprint(SecretKey master) {
-        return Arrays.copyOf(hmac(subkey(master), ascii("flottila-peer-v1 fingerprint")), 8);
+        return Arrays.copyOf(hmac(subkey(master), ascii("rail8-peer-v1 fingerprint")), 8);
     }
 
     /** The four keys of an exchange of these HELLO payloads (nonces at their v1 positions): dialer proof, listener proof, dialer frames, listener frames. */
     static byte[][] keys(byte[] dialerHello, byte[] listenerHello, SecretKey master) {
         byte[] salt = concat(nonceOf(dialerHello), nonceOf(listenerHello));
-        byte[] k = hkdf(salt, subkey(master), ascii("flottila-peer-v1"), 128);
+        byte[] k = hkdf(salt, subkey(master), ascii("rail8-peer-v1"), 128);
         return new byte[][] {Arrays.copyOfRange(k, 0, 32), Arrays.copyOfRange(k, 32, 64), Arrays.copyOfRange(k, 64, 96), Arrays.copyOfRange(k, 96, 128)};
     }
 
@@ -168,7 +168,7 @@ public final class ScriptedPeer implements AutoCloseable {
     private static byte[] proofFrame(byte[] proofKey, byte[] frameKey, byte[] dialerHello, byte[] listenerHello) {
         byte[] f = new byte[4 + 1 + 8 + 32 + 16];
         ByteBuffer.wrap(f).putInt(f.length - 4).put((byte) PROOF).putLong(1)
-                .put(hmac(proofKey, ascii("flottila-peer-v1 proof"), dialerHello, listenerHello));
+                .put(hmac(proofKey, ascii("rail8-peer-v1 proof"), dialerHello, listenerHello));
         System.arraycopy(hmac(frameKey, Arrays.copyOf(f, f.length - 16)), 0, f, f.length - 16, 16);
         return f;
     }

@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
 final class Validate {
 
     /** The node id of the dry build's configuration: a DNS label, named nowhere in the output. */
-    private static final String NODE_ID = "flottila-validate";
+    private static final String NODE_ID = "rail8-validate";
 
     private Validate() {}
 

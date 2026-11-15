@@ -61,9 +61,9 @@ class NodeConfigPoolsTest {
                 () -> assertEquals(intake, fromEnv.intakePoolSize(), "RAIL8_PG_POOL_INTAKE unset over " + poolSize),
                 () -> assertEquals(work, fromEnv.workPoolSize(), "the work pool keeps the rest of " + poolSize));
 
-        NodeConfig.Pg six = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize);
-        NodeConfig.Pg eight = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty());
-        NodeConfig.Pg nine = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        NodeConfig.Pg six = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize);
+        NodeConfig.Pg eight = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty());
+        NodeConfig.Pg nine = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.HA);
         assertAll(
                 () -> assertEquals(intake, six.intakePoolSize(), "the 6-argument constructor takes the formula"),
@@ -93,8 +93,8 @@ class NodeConfigPoolsTest {
                 () -> assertEquals(List.of(21, 20, 1), List.of(unsetTotal.poolSize(), unsetTotal.intakePoolSize(), unsetTotal.workPoolSize()),
                         "RAIL8_PG_POOL_INTAKE 20 below the default total 21"));
 
-        NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
-                Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7);
+        NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
+                Optional.of(Path.of("/etc/rail8/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7);
         assertAll(
                 () -> assertEquals(7, canonical.intakePoolSize(), "the canonical constructor takes the share as given"),
                 () -> assertEquals(9, canonical.workPoolSize(), "16 - 7"));
@@ -103,7 +103,7 @@ class NodeConfigPoolsTest {
     /** P5: "Pg ctor refuses nothing new" — the split is refused at start, by the env reader ({@link #refusesNamingTheKey}), not by the record. */
     @Test
     void thePgConstructorRefusesNoSplit() {
-        assertDoesNotThrow(() -> new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 4, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        assertDoesNotThrow(() -> new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 4, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.LOCAL, 4), "an in-process caller's split is not checked by the record");
     }
 
@@ -114,7 +114,7 @@ class NodeConfigPoolsTest {
     }
 
     static NodeConfig.Pg canonical(int poolSize, int intakePoolSize) {
-        return new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        return new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", poolSize, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.LOCAL, intakePoolSize);
     }
 
@@ -126,10 +126,10 @@ class NodeConfigPoolsTest {
     @Test
     void anInProcessNodeRefusesASplitThatLeavesAPoolNoConnection() {
         Map<String, NodeConfig.Pg> refused = new LinkedHashMap<>();
-        refused.put("6-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1));
-        refused.put("8-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1,
+        refused.put("6-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 1));
+        refused.put("8-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 1,
                 NodeConfig.Pg.SslMode.DISABLE, Optional.empty()));
-        refused.put("9-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 1,
+        refused.put("9-argument, poolSize 1 (intake 1, work 0)", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 1,
                 NodeConfig.Pg.SslMode.DISABLE, Optional.empty(), NodeConfig.Pg.Durability.HA));
         refused.put("canonical 4/4 (work 0)", canonical(4, 4));
         refused.put("canonical 4/0 (intake 0)", canonical(4, 0));
@@ -147,7 +147,7 @@ class NodeConfigPoolsTest {
             NodeConfig c = assertDoesNotThrow(() -> inProcess(canonical(split[0], split[1])), "canonical " + split[0] + "/" + split[1] + " is accepted");
             assertEquals(List.of(split[0], split[1]), List.of(c.pg().poolSize(), c.pg().intakePoolSize()), "the split as given");
         }
-        NodeConfig six = assertDoesNotThrow(() -> inProcess(new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 2)),
+        NodeConfig six = assertDoesNotThrow(() -> inProcess(new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 2)),
                 "6-argument poolSize 2: intake 1, work 1");
         assertEquals(List.of(1, 1), List.of(six.pg().intakePoolSize(), six.pg().workPoolSize()), "poolSize 2 splits 1/1");
     }

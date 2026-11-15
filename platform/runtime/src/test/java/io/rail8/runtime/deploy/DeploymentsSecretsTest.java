@@ -287,7 +287,7 @@ class DeploymentsSecretsTest {
     void anSftpPasswordReferenceReachesTheComponentResolved() throws Exception {
         Node n = node(Map.of("RAIL8_SECRET_DROP_PASSWORD", "pw-from-the-env-4711"));
         PackageDraft p = PackageDraft.of("drop", "1.0.0")
-                .endpoint("drop", "sftp", "in", new JsonObject().put("user", "flottila").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
+                .endpoint("drop", "sftp", "in", new JsonObject().put("user", "rail8").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
                 .endpoint("partner", "out", url("rec://partner"))
                 .flow("from-drop", "1.0.0", "sync", "drop", 4096, PackageDraft.toPartner());
 
@@ -296,7 +296,7 @@ class DeploymentsSecretsTest {
         assertEquals(1, n.sftp.consumers.size(), "one consumer built: " + n.sftp.consumers);
         Map<String, Object> options = n.sftp.consumers.getFirst().options();
         assertEquals("pw-from-the-env-4711", options.get("password"), "the component gets the value: " + options);
-        assertEquals("flottila", options.get("user"), "the other options as written: " + options);
+        assertEquals("rail8", options.get("user"), "the other options as written: " + options);
         assertEquals(HOST_KEY, options.get("hostKey"), "the other options as written: " + options);
     }
 
@@ -464,7 +464,7 @@ class DeploymentsSecretsTest {
     /** {@code roll} at {@code version}: {@code from-drop} (sftp, password by reference) and {@code orders} (rec), both sync to partner by reference. */
     static PackageDraft rolled(String version) {
         return PackageDraft.of("roll", version)
-                .endpoint("drop", "sftp", "in", new JsonObject().put("user", "flottila").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
+                .endpoint("drop", "sftp", "in", new JsonObject().put("user", "rail8").put("password", "secret://drop-password").put("hostKey", HOST_KEY))
                 .endpoint("orders-in", "in", new JsonObject().put("path", "/orders"))
                 .endpoint("partner", "out", url("secret://partner-url"))
                 .flow("from-drop", version, "sync", "drop", 4096, PackageDraft.toPartner())

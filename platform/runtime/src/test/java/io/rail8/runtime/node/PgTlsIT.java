@@ -50,12 +50,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * with the CA it is given and, under {@code verify-full}, the server's name checked — the pool, the membership, the LISTEN
  * connection and the Flyway migration alike; a wrong CA, a misnamed server under verify-full and {@code disable} are refused.
  * Two servers, one CA: {@link #pg} presents a certificate naming the host the client dials; {@link #misnamed} one naming only
- * {@code db.flottila.test}. The admin channel is psql over the container's local socket (trust), independent of TLS. A third,
+ * {@code db.rail8.test}. The admin channel is psql over the container's local socket (trust), independent of TLS. A third,
  * {@link #plain}, runs with {@code ssl} off: a verifying node never falls back to plaintext against it (review r1 R2).
  */
 class PgTlsIT {
 
-    static final String MISNAMED_HOST = "db.flottila.test";
+    static final String MISNAMED_HOST = "db.rail8.test";
     static final String NODE = "node-tls";
 
     @TempDir static Path certs;

@@ -54,9 +54,9 @@ public final class BenchMain {
         boolean syncCommit = !"off".equalsIgnoreCase(a.getOrDefault("sync-commit", "on"));
         String host = a.getOrDefault("host", "localhost");
         int port = Integer.parseInt(a.getOrDefault("port", "5432"));
-        String db = a.getOrDefault("db", "flottila_bench");
-        String user = a.getOrDefault("user", "flottila");
-        String password = a.getOrDefault("password", "flottila");
+        String db = a.getOrDefault("db", "rail8_bench");
+        String user = a.getOrDefault("user", "rail8");
+        String password = a.getOrDefault("password", "rail8");
         Path out = Path.of(a.getOrDefault("out", "bench/out/" + name + ".json"));
 
         Migrations.Result migrated = Migrations.migrate("jdbc:postgresql://" + host + ":" + port + "/" + db, user, password);

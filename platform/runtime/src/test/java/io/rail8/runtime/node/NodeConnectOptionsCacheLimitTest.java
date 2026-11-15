@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeConnectOptionsCacheLimitTest {
 
-    static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7);
+    static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "rail8_orders", "intake", "s3cret-pw", 7);
 
     @Test
     void aStatementOf8192CharactersIsCachedAndOneLongerIsNot() {

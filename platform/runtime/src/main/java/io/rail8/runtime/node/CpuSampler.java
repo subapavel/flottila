@@ -82,7 +82,7 @@ public final class CpuSampler implements AutoCloseable {
 
     static final String CPU_TIME_SAMPLE = "jdk.CPUTimeSample";
     static final String SAMPLES_LOST = "jdk.CPUTimeSamplesLost";
-    static final String DRAIN = "io.flottila.CpuSamplerDrain";
+    static final String DRAIN = "io.rail8.CpuSamplerDrain";
     /** A node's read cycle (F-22). */
     static final Duration READ_EVERY = Duration.ofSeconds(5);
     /** The most the recording keeps on disk between two reads. */
@@ -92,8 +92,8 @@ public final class CpuSampler implements AutoCloseable {
 
     /** The cut a read cycle commits after its dump (cut 0 at the start): {@link #marker} its recording and cycle; enabled by the sampler's recording only. */
     @Name(DRAIN)
-    @Label("Flottila CPU Sampler Drain")
-    @Category("Flottila")
+    @Label("Rail8 CPU Sampler Drain")
+    @Category("Rail8")
     @Enabled(false)
     @StackTrace(false)
     static final class DrainMarker extends Event {
@@ -162,7 +162,7 @@ public final class CpuSampler implements AutoCloseable {
         FlightRecorder.register(StepEvent.class);
         FlightRecorder.register(DrainMarker.class);
         Recording recording = new Recording();
-        recording.setName("flottila-cpu-sampler");
+        recording.setName("rail8-cpu-sampler");
         recording.enable(CPU_TIME_SAMPLE).with("throttle", period.toMillis() + "ms").withoutStackTrace();
         recording.enable(SAMPLES_LOST);
         recording.enable(StepEvent.class).withoutStackTrace();

@@ -5,18 +5,18 @@
 services:
   postgres:
     image: postgres:18.6
-    container_name: flottila-postgres
+    container_name: rail8-postgres
     environment:
-      POSTGRES_DB: flottila
-      POSTGRES_USER: flottila
-      POSTGRES_PASSWORD: flottila
+      POSTGRES_DB: rail8
+      POSTGRES_USER: rail8
+      POSTGRES_PASSWORD: rail8
     ports:
       - "127.0.0.1:${RAIL8_PG_HOST_PORT:-5432}:5432"
     volumes:
       # the 18 image keeps PGDATA at /var/lib/postgresql/18/docker and refuses a mount at .../data; a 16/17 volume is not reused
-      - flottila-pg:/var/lib/postgresql
+      - rail8-pg:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
+      test: ["CMD-SHELL", "pg_isready -U rail8 -d rail8"]
       interval: 2s
       timeout: 2s
       retries: 15
@@ -28,7 +28,7 @@ services:
     networks:
       default:
         aliases:
-          - flottila
+          - rail8
     ports:
       - "127.0.0.1:8080:8080"   # the demo's http-in
       - "127.0.0.1:8081:8081"   # admin API and /health
@@ -38,7 +38,7 @@ services:
       timeout: 2s
       retries: 30
 
-  flottila:
+  rail8:
     network_mode: "service:netns"
     build:
       context: .
@@ -51,7 +51,7 @@ services:
       # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes RAIL8_JOURNAL_KEY_FILE
       RAIL8_JOURNAL_KEY_GENERATE: "true"
       RAIL8_PG_HOST: postgres
-      RAIL8_PG_PASSWORD: flottila
+      RAIL8_PG_PASSWORD: rail8
       # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
       # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and RAIL8_PG_SSL_ROOT_CERT
       RAIL8_PG_SSL_MODE: disable
@@ -69,7 +69,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - flottila-data:/var/lib/flottila   # a restart restores the deployed packages from the archives here
+      - rail8-data:/var/lib/rail8   # a restart restores the deployed packages from the archives here
     healthcheck:
       # the image has no curl: one HTTP/1.0 request over bash's /dev/tcp, healthy on a 200
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
@@ -89,9 +89,9 @@ services:
     depends_on:
       netns:
         condition: service_healthy
-      flottila:
+      rail8:
         condition: service_healthy
 
 volumes:
-  flottila-pg:
-  flottila-data:
+  rail8-pg:
+  rail8-data:

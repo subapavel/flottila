@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * The record's key and chunk on disk, rebuilt from CORE-3 item 2 alone (the twin of SpoolCipherTest's derived-key case): a
- * record is encrypted under HKDF-SHA256(tenant key, its salt, "flottila-journal-v1") — never under the tenant key itself —
+ * record is encrypted under HKDF-SHA256(tenant key, its salt, "rail8-journal-v1") — never under the tenant key itself —
  * with the nonce salt[0..8) ‖ counter|LAST and the header bytes after the CRC as associated data. A large record (kind 2,
  * CORE-3 item 4, CORE-4b) the same, but its {@code length} field is its header's length and its chunks before the last carry
  * the header with the plain size zeroed as associated data, its last chunk the header with the plain size.
@@ -93,7 +93,7 @@ class JournalRecordFormatTest {
         byte[] real = Arrays.copyOfRange(rec, 4, end);
         byte[] sizeless = real.clone();
         Arrays.fill(sizeless, 14 - 4, 22 - 4, (byte) 0);
-        SecretKey k = hkdfSha256(tenantKey.getEncoded(), salt, "flottila-journal-v1");
+        SecretKey k = hkdfSha256(tenantKey.getEncoded(), salt, "rail8-journal-v1");
         int chunk = 1 << 20;
         int last = 2 | 0x80000000;
         byte[] out = new byte[size];
@@ -133,7 +133,7 @@ class JournalRecordFormatTest {
         assertThrows(AEADBadTagException.class, () -> withTenantKey.doFinal(chunk), "the tenant key never encrypts a record");
 
         Cipher withDerived = Cipher.getInstance("AES/GCM/NoPadding");
-        withDerived.init(Cipher.DECRYPT_MODE, hkdfSha256(tenantKey.getEncoded(), salt, "flottila-journal-v1"), new GCMParameterSpec(128, nonce));
+        withDerived.init(Cipher.DECRYPT_MODE, hkdfSha256(tenantKey.getEncoded(), salt, "rail8-journal-v1"), new GCMParameterSpec(128, nonce));
         withDerived.updateAAD(rec, 4, end - 4);
         assertArrayEquals(plain, withDerived.doFinal(chunk), "HKDF-SHA256(tenant key, salt) is the record's key: the format is reproducible from this test alone");
         return salt;

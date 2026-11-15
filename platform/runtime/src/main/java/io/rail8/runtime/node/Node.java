@@ -423,11 +423,11 @@ public final class Node implements AutoCloseable {
 
     /**
      * {@link #connectOptions(NodeConfig.Pg)} — the one source of the server, the credentials, the session pins and TLS — with the
-     * session named {@code flottila-<role>@<nodeId>} ({@code application_name}, D-130 draft), so {@code pg_stat_activity} shows
+     * session named {@code rail8-<role>@<nodeId>} ({@code application_name}, D-130 draft), so {@code pg_stat_activity} shows
      * which pool or connection of which node a session is: {@code intake}, {@code work}, {@code membership} or {@code listen}.
      */
     public static PgConnectOptions connectOptions(NodeConfig.Pg pg, String role, String nodeId) {
-        return connectOptions(pg).addProperty("application_name", "flottila-" + role + "@" + nodeId);
+        return connectOptions(pg).addProperty("application_name", "rail8-" + role + "@" + nodeId);
     }
 
     /**

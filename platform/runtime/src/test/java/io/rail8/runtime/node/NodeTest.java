@@ -115,7 +115,7 @@ class NodeTest {
     /** {@code env} with an s3 archive store at {@code endpoint}, keys given (the SDK's default chain is never asked). */
     static Map<String, String> s3(Map<String, String> env, String endpoint) {
         env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "flottila-archives");
+        env.put("RAIL8_S3_BUCKET", "rail8-archives");
         env.put("RAIL8_S3_REGION", "eu-central-1");
         env.put("RAIL8_S3_ENDPOINT", endpoint);
         env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");

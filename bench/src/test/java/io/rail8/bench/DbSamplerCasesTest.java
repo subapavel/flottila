@@ -167,9 +167,9 @@ class DbSamplerCasesTest {
     void noStatementRunIsAnEmptyListAndAnUnreadableExtensionIsNullWithItsNote() {
         assertEquals(new JsonArray(), DbSampler.reading(row(), null).getJsonArray("statements"), "none ran: none, not unknown");
 
-        JsonObject r = DbSampler.reading(row(), "pg_stat_statements is not readable in flottila_bench: relation does not exist");
+        JsonObject r = DbSampler.reading(row(), "pg_stat_statements is not readable in rail8_bench: relation does not exist");
         assertNull(r.getValue("statements"), r.encode());
-        assertEquals("pg_stat_statements is not readable in flottila_bench: relation does not exist", r.getJsonObject("notes").getString("statements"));
+        assertEquals("pg_stat_statements is not readable in rail8_bench: relation does not exist", r.getJsonObject("notes").getString("statements"));
     }
 
     @Test

@@ -76,7 +76,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * FIX-108 (D-094, F-22), real JFR: the node's {@link CpuSampler} keeps an on-disk recording of {@code jdk.CPUTimeSample}s and
- * {@code io.flottila.Step} events and, every read cycle, dumps it and feeds the window the previous cycle closed into a {@link StepCpu}
+ * {@code io.rail8.Step} events and, every read cycle, dumps it and feeds the window the previous cycle closed into a {@link StepCpu}
  * (F-22: a live stream loses the thread of virtual-thread events). Here a cycle is every {@value #READ_EVERY_MILLIS} ms on a real
  * timer — the runtime's {@link VertxTimer} over a Vert.x instance of the class, counted ({@link CountingTimer}) so a case can tell how
  * many reads ran; {@code drained()} completes once everything committed before the call has reached the matcher (no sleep here: every
@@ -738,7 +738,7 @@ class CpuSamplerIT {
     }
 
     /** A twin of the step event: its name, its {@code step} a string — the sampler cannot read it as a step's int. */
-    @Name("io.flottila.Step")
+    @Name("io.rail8.Step")
     @Label("CpuSamplerIT twin step")
     @StackTrace(false)
     static final class TwinStep extends Event {

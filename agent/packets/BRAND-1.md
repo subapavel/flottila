@@ -13,11 +13,12 @@ starts. The architect commits; the implementer never commits and never pushes.
 
 Write one script, `agent/tools/rail8_rename.py` (Python 3, standard library only), and do the
 mechanical part of every commit with it — never by hand, never by an ad-hoc sed. It is kept in the
-repository: BRAND-3 runs it again on `mapping/`, and a parked diff is translated with it.
+repository: BRAND-3 runs it again on `mapping/`, and a parked diff is translated with it
+(the last clause no longer holds: `translate` was removed in C, Rulings on C 2).
 
 - Subcommands `moves`, `identifiers`, `wire`; each idempotent (a second run changes nothing) and each
   with `--dry-run` printing what it would do. `--root <dir>` limits it to a subtree (BRAND-3).
-  `translate <file>` applies the path map and the identifier map to one text file (a parked diff).
+  `translate <file>` applies the path map and the identifier map to one text file (a parked diff) — removed in C, Rulings on C 2.
 - The maps are data at the top of the file: the path map (old directory -> new), the identifier map
   (ordered, longest first), the wire map (one entry per literal, each with the file it lives in),
   the exclusion list (below). No regular expression broader than it needs to be; no blanket
@@ -141,6 +142,50 @@ value. Never copy the "actual" of a failing assertion into the expectation. Wher
 cannot be recomputed without the production code, say so and stop for that test.
 
 No migration is added or edited (the applied ones carry the name in comments only).
+
+### Rulings on C (architect, 2026-11-15, on the implementer's five questions)
+
+1. The two lines of `agent/HANDOFF.md` that still held the old name are the architect's: reworded at the commit, not kept by the tool.
+2. `translate` is removed from the tool, not extended (this replaces the first ruling, which asked for the wire map in it): the review
+   found six more gaps in it, and it has no input — nothing is parked (FIX-196 was never started), FIX-195 is in the tree and was renamed
+   with it, and the remote holds only `main` and the session's branch. A pre-rename diff that turns up later is redone on the tree; the
+   name guard (BRAND-4) stops an old name from coming back.
+3. No test pins the node identity file's magic bytes or the retention advisory lock key (both mutants survive the unit tests). The gap is
+   older than the rename: its own row, FIX-218, red test first. Not part of C.
+4. A fresh machine's native Postgres has no `rail8` role; `agent/NOTES.md` "Build and VM" and `ci.yml` say how it is created. The
+   verification of C ran without it, as BASE-1 ran without the old one, so the two runs compare.
+5. `agent/work/BRAND-1-C-golden.py` and `BRAND-1-C-golden.md` are committed past the ignore rule: `ReplFramesTest` cites the `.md`, and
+   the script is the independent derivation of every recomputed constant.
+
+### After review r1 of C (FAIL, three points; architect, 2026-11-15)
+
+1. A compose stack from before the rename: `deploy/compose` reuses its `pg-data` volume, which holds the old role and database, so the
+   node fails although `pg_isready` passes; the old node-data volume and the root quickstart's two volumes are no longer declared and
+   `down -v` leaves them. Said in `deploy/compose/README.md` and `docs/QUICKSTART.md` (architect's edit, documents only).
+2. What C breaks is written where a reader looks: the amendment on D-148 (`docs/DECISIONS.md`), the commit body and the PROGRESS entry —
+   no rolling upgrade across C, data written before it is not read, no migration (pre-release).
+3. The golden script was run by the architect, not only by its author: `python3 -I agent/work/BRAND-1-C-golden.py flottila FJS1` equals
+   `BRAND-1-C-golden-old.txt` and `… rail8 RJS1` equals `BRAND-1-C-golden-new.txt` (both `diff` exit 0). `git status --short`: 109 lines,
+   all ` M`, nothing untracked outside the ignored `agent/work`.
+4. The wire pass reworded the open row FIX-99 (the compose service a test asserts on is now `rail8`): accepted — an open row names the
+   thing as it is called now.
+5. The tool's stale-entry check must not pass on a replacement so generic that its new text is in the file anyway (`"rail8"`): the
+   check is made to tell an applied entry from one that never matched — fixed with ruling 2's removal, in the same round.
+6. `ClickHouseCompressionMainIT` failed once in the whole-reactor run (`readsLogged` 19 of 20 in one cell) and passed three times alone;
+   C touches neither it nor its main class. Its own row, FIX-219, under MAIN-1.
+
+### After review r2 of C (FAIL, four points, all in the architect's texts; 2026-11-15)
+
+1. The compose README quoted an error message nobody observed: the sentence now states the cause and where the refused login shows,
+   and quotes nothing.
+2. The node's service was renamed, so an old stack's node container is an orphan that holds its volumes: both documents say
+   `down -v --remove-orphans`.
+3. D-148's amendment said "bucket" where the default that changed is the S3 key prefix (`RAIL8_S3_BUCKET` is required, no default), and
+   left out what the changed defaults break; both corrected, with the old actor header and the compose bucket.
+4. D-149 still promised `translate`: amended in place; `agent/HANDOFF.md` drops its line at the commit.
+Non-blocking, carried to BRAND-3 (the tool is touched there again): the stale check's base as a full SHA; `wire --root` says when the
+stale check did not run.
+
 
 ## What every hand-back holds (at most 40 lines)
 

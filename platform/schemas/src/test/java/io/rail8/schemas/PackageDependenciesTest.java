@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code <dep>:<path from its root>} — the prefix {@code ^[a-z][a-z0-9-]{0,63}:} before the first {@code /} — and only a declared
  * dependency may be named; such a reference stays inside its dependency. {@code Package.problems()} says what is wrong with any of
  * it, by the package-relative file, never an absolute path. {@code Package.content(dir)} is the content digest a lock pins: the
- * SHA-256 over the lines {@code flottila-package-content 1} and {@code file <path> <sha256>} per regular file, sorted by its
+ * SHA-256 over the lines {@code rail8-package-content 1} and {@code file <path> <sha256>} per regular file, sorted by its
  * {@code /}-path — the files, not the archive they came in.
  *
  * <p>The shape assumed (P2-02b test-author, within the packet): {@code public static String Package.content(Path dir) throws
@@ -370,7 +370,7 @@ class PackageDependenciesTest {
     // --- the content digest
 
     /**
-     * {@code Package.content(dir)}: {@code sha256:} over {@code flottila-package-content 1} and one {@code file <path> <sha256>} line
+     * {@code Package.content(dir)}: {@code sha256:} over {@code rail8-package-content 1} and one {@code file <path> <sha256>} line
      * per regular file, sorted by the whole {@code /}-path ({@code a-b.txt} before {@code a.txt} before {@code a/b.txt}: not a walk
      * that sorts each folder), package.yaml and package.lock included. Two directories holding the same files — created in opposite
      * orders, with other modification times, one with an extra empty folder — have the same digest: the files decide, not how
@@ -385,7 +385,7 @@ class PackageDependenciesTest {
         files.put("package.lock", lock("util 2.0.0 " + CONTENT_B));
         files.put("package.yaml", manifest("common", "util 2.0.0"));
         files.put("xsd/x.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>");
-        StringBuilder text = new StringBuilder("flottila-package-content 1\n");
+        StringBuilder text = new StringBuilder("rail8-package-content 1\n");
         for (Map.Entry<String, String> f : files.entrySet()) text.append("file ").append(f.getKey()).append(' ').append(sha256(f.getValue())).append('\n');
         String expected = "sha256:" + sha256(text.toString());
 

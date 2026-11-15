@@ -103,7 +103,7 @@ class SecretsTest {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "dev");
         env.put("RAIL8_NODE_ID", "node-1");
-        env.put("RAIL8_DATA_DIR", "/tmp/flottila-secrets-test");
+        env.put("RAIL8_DATA_DIR", "/tmp/rail8-secrets-test");
         env.put("RAIL8_SECRET_PARTNER_TOKEN", value);
         Secrets secrets = Secrets.fromEnv(env);
         assertEquals(Optional.of(value), secrets.resolve("secret://partner-token"), "the value is there: the checks below are not vacuous");

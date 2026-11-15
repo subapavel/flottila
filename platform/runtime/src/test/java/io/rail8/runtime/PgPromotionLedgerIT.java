@@ -261,7 +261,7 @@ class PgPromotionLedgerIT {
         assertEquals("f", query(url, primary.getUsername(), primary.getPassword(),
                 "select has_function_privilege('" + INTAKE + "', 'pg_catalog." + signature + "', 'EXECUTE')"), "fixture: EXECUTE revoked");
         SQLException denied = org.junit.jupiter.api.Assertions.assertThrows(SQLException.class,
-                () -> execute(url, INTAKE, INTAKE, "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')"),
+                () -> execute(url, INTAKE, INTAKE, "select pg_current_xact_id(), pg_logical_emit_message(true, 'rail8', '')"),
                 "fixture: the role's barrier statement is denied");
         assertTrue(denied.getMessage().contains("permission denied for function pg_logical_emit_message"), "fixture: " + denied.getMessage());
 

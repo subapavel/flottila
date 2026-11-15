@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:flottila:schema:flow:1",
+  "$id": "urn:rail8:schema:flow:1",
   "title": "Rail8 flow file, schemaVersion 1 (draft — review at hand-over, P0-12)",
   "description": "One flow: where messages come from, how they are delivered and recorded, the finite limits every flow has, and the ordered steps. Component- and step-specific keys are passed through to the component's or step's own configSchema at deploy time.",
   "type": "object",

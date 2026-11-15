@@ -139,7 +139,7 @@ import java.util.function.Supplier;
  * {@code RAIL8_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
  * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
  * answering 200 {@code {seq, auditId}}, 404 for a seq unknown or not lost, 400 for a seq that is not a long or an
- * {@code X-Flottila-Actor} over 128 characters; the actor is that header ({@code unknown} without one), self-declared under the
+ * {@code X-Rail8-Actor} over 128 characters; the actor is that header ({@code unknown} without one), self-declared under the
  * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
  * queue these routes do not exist (404).
  *
@@ -175,7 +175,7 @@ public final class AdminServer {
     private static final System.Logger LOG = System.getLogger(AdminServer.class.getName());
 
     /** The header an admin request declares its actor in, for the audit row (D-126 L4); and its length at most. */
-    static final String ACTOR = "X-Flottila-Actor";
+    static final String ACTOR = "X-Rail8-Actor";
     static final int ACTOR_MAX = 128;
     private static final String JSON = "application/json";
     private static final String OCTETS = "application/octet-stream";

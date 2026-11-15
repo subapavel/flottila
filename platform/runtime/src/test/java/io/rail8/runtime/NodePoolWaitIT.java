@@ -83,8 +83,8 @@ class NodePoolWaitIT {
     static final AtomicInteger cases = new AtomicInteger();
     static final AtomicBoolean warmed = new AtomicBoolean();
     static final String NODE = "node-wait";
-    static final String INTAKE = "flottila-intake@" + NODE;
-    static final String WORK = "flottila-work@" + NODE;
+    static final String INTAKE = "rail8-intake@" + NODE;
+    static final String WORK = "rail8-work@" + NODE;
     static final byte[] NO_XML = "this is no invoice".getBytes(StandardCharsets.UTF_8);
     static Vertx vertx;
 
@@ -336,7 +336,7 @@ class NodePoolWaitIT {
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, inPort);
             woken.set(true);
-            observer.query("notify flottila_work, 'w1 test-sender * *'").execute().await();
+            observer.query("notify rail8_work, 'w1 test-sender * *'").execute().await();
             assertTrue(refusedAfterTheWake.await(10, TimeUnit.SECONDS),
                     "the claim the wake issued is refused within RAIL8_PG_POOL_WAIT PT0.2S, logged well inside 10 s; none was");
 

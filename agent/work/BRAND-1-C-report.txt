@@ -1,0 +1,31 @@
+kept (ruling 4, never rewritten): 17 line(s) in 9 file(s)
+agent/HANDOFF.md (1)
+  14: [kept: repository name; the mapping repository's name] The clone /home/user/subapavel/flottila-mapping has branch `rail8-import` (cf970caf, all under mapping/), unpushed; redo it if the clone is gone.
+agent/NOTES.md (1)
+  352: [kept: the checkout directory (the repository's name)] cd /home/user/flottila && python3 -m unittest ci.test_ledger_check -v
+agent/cloud/README.md (4)
+  9: [kept: repository name] 1. Create the **public** repository `subapavel/flottila` on GitHub, empty (no README, no licence,
+  13: [kept: repository URL; repository name] git remote add origin https://github.com/subapavel/flottila.git
+  27: [kept: the cloud environment's name] | Name | `flottila` |
+  60: [kept: repository name; the cloud environment's name] 1. Code tab → Cloud → environment `flottila` → repository `subapavel/flottila` → new session.
+ci/coverage_check.py (1)
+  33: [kept: modules that no longer exist, named as they were] # modules allowed to have classes without a JaCoCo report; empty since P0-09 removed flottila-m1 — keep it empty
+docs/ARCHITECTURE.md (1)
+  113: [kept: repository URL; repository name] 5. **§12 — repository.** `github.com/subapavel/flottila`, public, Apache 2.0 + DCO, `main` only.
+docs/OPERATIONS-BRIEF.md (1)
+  70: [kept: the mapping repository's name] info (flottila-mapping already sends it to `System.Logger` outside a test run).
+docs/PROTOTYPE-VS-ARCHITECTURE.md (4)
+  9: [kept: modules that no longer exist, named as they were] During Phase 0 the old single-module tree lived on as module `flottila-m1` so the build stayed green
+  24: [kept: modules that no longer exist, named as they were] Single Maven module (`flottila-proto` in the pom; becomes `flottila-m1` in P0-01), Vert.x 4.5.10 +
+  79: [kept: modules that no longer exist, named as they were] `flottila-m1`), CI, ArchUnit, `api` import, batcher port, WorkQueue import, migrations, removal of
+  80: [kept: modules that no longer exist, named as they were] `flottila-m1`, native bench baseline, the two spikes, the JSON Schemas.
+platform/archtest/src/test/java/io/rail8/archtest/BuildHygieneTest.java (3)
+  31: [kept: modules that no longer exist, named as they were] assertFalse(rootPom.contains("<module>flottila-m1</module>"), "root pom still lists flottila-m1");
+  33: [kept: modules that no longer exist, named as they were] assertFalse(platformPom.contains("<module>flottila-m1</module>"), "platform pom still lists flottila-m1");
+  34: [kept: modules that no longer exist, named as they were] assertFalse(Files.exists(ROOT.resolve("flottila-m1")), "flottila-m1 directory still exists");
+platform/pom.xml (1)
+  14: [kept: repository URL; repository name] <url>https://github.com/subapavel/flottila</url>
+remaining occurrences of the old name outside the exclusion list: 2 line(s) in 1 file(s): [?] 2
+agent/HANDOFF.md (2)
+  8: [?] Verify mode: `mvn -B -ntp clean verify -Pit -Dmaven.test.failure.ignore=true` (26 min); move ~/.m2/repository/io/flottila away first.
+  13: [?] BRAND-3 (D-150): inventory agent/work/BRAND-3-scout.md - the mapping has wire names too (`urn:flottila:*` in contract, XSLT, 175 corpus files).

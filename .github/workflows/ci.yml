@@ -171,9 +171,9 @@ jobs:
         # numbers in bench/RESULTS.md; the bench ITs in the build job run on the pinned image
         run: |
           sudo systemctl start postgresql
-          # CREATEDB: bench/run.sh creates the flottila_bench database itself
-          sudo -u postgres psql -c "CREATE ROLE flottila LOGIN CREATEDB PASSWORD 'flottila';"
-          sudo -u postgres psql -c "CREATE DATABASE flottila OWNER flottila;"
+          # CREATEDB: bench/run.sh creates the rail8_bench database itself
+          sudo -u postgres psql -c "CREATE ROLE rail8 LOGIN CREATEDB PASSWORD 'rail8';"
+          sudo -u postgres psql -c "CREATE DATABASE rail8 OWNER rail8;"
       - name: Run the harness (bench/run.sh from P0-10; fails on a > 20 % regression once a baseline exists)
         run: |
           bench/run.sh

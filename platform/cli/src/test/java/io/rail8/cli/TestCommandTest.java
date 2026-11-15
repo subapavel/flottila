@@ -576,7 +576,7 @@ class TestCommandTest {
                 scheme: sftp
                 direction: in
                 config:
-                  user: flottila
+                  user: rail8
                   password: secret
                   hostKey: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
                 """);

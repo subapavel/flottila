@@ -29,7 +29,7 @@ final class TestCertificates {
     static TestCertificates ca(Path dir, String name) throws IOException, InterruptedException {
         Path home = Files.createDirectories(dir.resolve(name));
         TestCertificates ca = new TestCertificates(home);
-        keytool(home, "-genkeypair", "-alias", "ca", "-keyalg", "EC", "-groupname", "secp256r1", "-dname", "CN=Flottila FIX-146 " + name,
+        keytool(home, "-genkeypair", "-alias", "ca", "-keyalg", "EC", "-groupname", "secp256r1", "-dname", "CN=Rail8 FIX-146 " + name,
                 "-validity", "2", "-ext", "bc:c", "-storetype", "PKCS12", "-keystore", "ca.p12", "-storepass", PASS);
         keytool(home, "-exportcert", "-alias", "ca", "-rfc", "-keystore", "ca.p12", "-storepass", PASS, "-file", "ca.pem");
         return ca;

@@ -26,7 +26,7 @@ class NodeJdbcUrlTest {
 
     @Test
     void aCaPathWithUrlCharactersReachesTheDriverIntact() throws SQLException {
-        Path ca = Path.of("/etc/flottila/ca dir/a&b=c?d%20e+f#g.pem");
+        Path ca = Path.of("/etc/rail8/ca dir/a&b=c?d%20e+f#g.pem");
         NodeConfig.Pg pg = new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 4, NodeConfig.Pg.SslMode.VERIFY_FULL, Optional.of(ca));
         Properties p = parsed(pg);
         assertAll(
@@ -39,9 +39,9 @@ class NodeJdbcUrlTest {
 
     @Test
     void verifyCaAndDisableAreWrittenAsTheDriverSpellsThem() throws SQLException {
-        Path ca = Path.of("/etc/flottila/ca.pem");
-        NodeConfig.Pg verifyCa = new NodeConfig.Pg("db.internal", 5432, "flottila", "node", "pw", 4, NodeConfig.Pg.SslMode.VERIFY_CA, Optional.of(ca));
-        NodeConfig.Pg plain = new NodeConfig.Pg("localhost", 5432, "flottila", "node", "pw", 4);
+        Path ca = Path.of("/etc/rail8/ca.pem");
+        NodeConfig.Pg verifyCa = new NodeConfig.Pg("db.internal", 5432, "rail8", "node", "pw", 4, NodeConfig.Pg.SslMode.VERIFY_CA, Optional.of(ca));
+        NodeConfig.Pg plain = new NodeConfig.Pg("localhost", 5432, "rail8", "node", "pw", 4);
         Properties p = parsed(verifyCa);
         Properties q = parsed(plain);
         assertAll(

@@ -39,7 +39,7 @@ class S3ArchiveStoreTest {
         try (S3Client nowhere = S3Client.builder().region(Region.EU_CENTRAL_1).endpointOverride(URI.create("http://127.0.0.1:" + closedPort()))
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAEXAMPLE", "secret-example")))
                 .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build()) {
-            ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet");
+            ArchiveStore store = new S3ArchiveStore(nowhere, "rail8-archives", "fleet");
             Path absent = tmp.resolve("absent.zip");
             NoSuchFileException missing = assertThrows(NoSuchFileException.class, () -> OnVirtualThread.call(() -> {
                 store.put("ab".repeat(32), absent);

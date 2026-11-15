@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-1 C the persisted and wire names become Rail8 — done, review PASS (r4); Deviation: F-37
+
+- Context compacted before this entry; state re-verified with `git status` and `git log -3`. Commit C of three (D-149), the rename's last.
+- By `rail8_rename.py wire` (137 entries): 105 files, 407 lines — KDF and digest labels, the journal's magics (`RJS1`, `RJSE`, `RJN1`), the
+  retention lock key, schema URNs, the NOTIFY channel, WAL and Valkey prefixes, `application_name`, `X-Rail8-Actor`, JFR names, NodeConfig's
+  defaults, the image, both compose files, CI and bench defaults. By hand, 30 lines: the 16 known-answer constants of PeerKnownAnswerTest
+  and ReplFramesTest, from `agent/work/BRAND-1-C-golden.py` (stdlib only; it first reproduces the old 16), run by the architect too.
+- No alias, no fallback, no migration (D-148, amended): no rolling upgrade across this commit; data written before it is not read; a node on
+  the defaults starts without its earlier state; a compose stack from before it needs `down -v --remove-orphans` once (README, QUICKSTART).
+- Whole reactor in BASE-1's mode (`agent/work/BRAND-1-C-verify.log`): 4580 tests, none skipped, every module's count equal to BASE-1;
+  ArchUnit 48. EXECUTED_FAIL 2: StepBodiesIT (FIX-212, red set) and ClickHouseCompressionMainIT — new, 19 of 20 reads logged in one cell,
+  untouched by C, VERIFIED_PASS three times alone (`agent/work/BRAND-1-C-ch-rerun-*.log`) → FIX-219. VERIFIED_PASS: `--check-baseline`,
+  the guards' tests, `deploy/postgres` untouched, the tool's second run 0 changes and 0 stale.
+- Review r1 FAIL (reused `pg-data` volume; the break stated nowhere; golden script run by its author only), r2 FAIL (four inaccuracies in
+  the architect's texts), r3 FAIL (a wrong round number in a draft), fixed; r4 PASS. `translate` removed from the tool. New: FIX-218, FIX-219.
+
 ## 2026-11-15 — BRAND-1 B the identifiers become Rail8 — done, review PASS; Deviation: F-37
 
 - Commit B of three (D-149): groupId `io.rail8`, artifacts `rail8-*`, the package root `io.rail8`, build properties `rail8.*`, environment

@@ -204,7 +204,7 @@ class TwoNodeWorkEventsIT {
     }
 
     /**
-     * A raw session of the case's own, {@code LISTEN flottila_work}: every payload delivered on the channel, in delivery order —
+     * A raw session of the case's own, {@code LISTEN rail8_work}: every payload delivered on the channel, in delivery order —
      * what any node's listener receives (Postgres delivers one channel's notifications to every listener in commit order).
      */
     List<String> observer() throws Exception {
@@ -212,7 +212,7 @@ class TwoNodeWorkEventsIT {
         PgConnection o = PgConnection.connect(vertx, db.options()).await(10, TimeUnit.SECONDS);
         observers.add(o);
         o.notificationHandler(n -> observed.add(n.getPayload()));
-        o.query("LISTEN flottila_work").execute().await(10, TimeUnit.SECONDS);
+        o.query("LISTEN rail8_work").execute().await(10, TimeUnit.SECONDS);
         return observed;
     }
 
@@ -435,7 +435,7 @@ class TwoNodeWorkEventsIT {
             saved = a.intake.save(in, JournalWorld.ingress(in), FLOW, null, null, false, undecided());
             commitReply.awaitReached();   // committed on the server; its acknowledgement held
             a.wire.awaitQuiet();
-            assertTrue(a.pool.preparedQuery("select pg_notify('flottila_work', $1)").execute(Tuple.of(barrier))
+            assertTrue(a.pool.preparedQuery("select pg_notify('rail8_work', $1)").execute(Tuple.of(barrier))
                     .await(10, TimeUnit.SECONDS).size() == 1, "the barrier NOTIFY through node-a's pool");
             until(() -> observed.contains(barrier), () -> "the observer receives the barrier; observed " + observed);
             assertEquals(List.of(barrier), observed, "no NOTIFY reached a listener before the save's COMMIT was acknowledged");

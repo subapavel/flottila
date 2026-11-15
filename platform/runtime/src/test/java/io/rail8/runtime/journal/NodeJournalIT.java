@@ -99,7 +99,7 @@ class NodeJournalIT {
     static final byte[] MASTER_A = material(201, 32);
     static final byte[] MASTER_B = material(202, 32);
     static final String NODE_ID = "node-it";
-    /** NODE: magic FJN1 · version u8 · journal id (CORE-3 item 1, the identity file). */
+    /** NODE: magic RJN1 · version u8 · journal id (CORE-3 item 1, the identity file). */
     static final int ID_AT = 5;
 
     @TempDir Path data;
@@ -180,7 +180,7 @@ class NodeJournalIT {
         Map<String, String> env = env("prod");
         env.put("RAIL8_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
         env.put("RAIL8_ARCHIVE_STORE", "s3");
-        env.put("RAIL8_S3_BUCKET", "flottila-archives");
+        env.put("RAIL8_S3_BUCKET", "rail8-archives");
         env.put("RAIL8_S3_REGION", "eu-central-1");
         env.put("RAIL8_S3_ENDPOINT", "https://127.0.0.1:9");
         env.put("RAIL8_S3_ACCESS_KEY", "AKIAEXAMPLE");

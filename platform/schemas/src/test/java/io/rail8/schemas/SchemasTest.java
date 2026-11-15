@@ -20,7 +20,7 @@ class SchemasTest {
     void everySchemaIsDraft202012CarriesAnIdAndRequiresSchemaVersionOne(Schemas schema) {
         JsonObject json = schema.json();
         assertEquals("https://json-schema.org/draft/2020-12/schema", json.getString("$schema"));
-        assertEquals("urn:flottila:schema:" + schema.kind() + ":1", json.getString("$id"));
+        assertEquals("urn:rail8:schema:" + schema.kind() + ":1", json.getString("$id"));
         assertTrue(json.getJsonArray("required").contains("schemaVersion"), "schemaVersion is required");
         assertTrue(json.getJsonArray("required").contains("kind"), "kind is required");
         assertEquals(1, json.getJsonObject("properties").getJsonObject("schemaVersion").getInteger("const"));

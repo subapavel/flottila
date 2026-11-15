@@ -35,9 +35,9 @@ class NodeConfigJournalTest {
 
     @Test
     void theJournalLivesUnderTheDataDirectoryWithTheDesignDefaults() {
-        JournalConfig j = NodeConfig.from(with(env(), "RAIL8_DATA_DIR", "/srv/flottila")).journal();
+        JournalConfig j = NodeConfig.from(with(env(), "RAIL8_DATA_DIR", "/srv/rail8")).journal();
         assertAll(
-                () -> assertEquals(Path.of("/srv/flottila", "journal"), j.dir(), "RAIL8_JOURNAL_DIR defaults to <dataDir>/journal"),
+                () -> assertEquals(Path.of("/srv/rail8", "journal"), j.dir(), "RAIL8_JOURNAL_DIR defaults to <dataDir>/journal"),
                 () -> assertEquals(64 * MIB, j.segmentBytes(), "RAIL8_JOURNAL_SEGMENT_BYTES 64 MiB"),
                 () -> assertEquals(65_536, j.segmentRecords(), "RAIL8_JOURNAL_SEGMENT_RECORDS 65 536"),
                 () -> assertEquals(Duration.ofSeconds(1), j.segmentAge(), "RAIL8_JOURNAL_SEGMENT_AGE PT1S"),

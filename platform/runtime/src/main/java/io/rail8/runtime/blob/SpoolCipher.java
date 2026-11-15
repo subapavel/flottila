@@ -46,7 +46,7 @@ final class SpoolCipher {
     static final int TAG_BYTES = ChunkedAead.TAG_BYTES;
     private static final int HEADER_BYTES = 5;
     private static final int LAST = ChunkedAead.LAST;
-    private static final String INFO = "flottila-spool-v1";
+    private static final String INFO = "rail8-spool-v1";
     private static final String KEY_NAME = "spool master key";
 
     private final SecretKey key;

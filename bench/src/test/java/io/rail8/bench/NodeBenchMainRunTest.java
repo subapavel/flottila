@@ -28,10 +28,10 @@ class NodeBenchMainRunTest {
         IllegalArgumentException value = assertThrows(IllegalArgumentException.class,
                 () -> NodeBenchMain.options(new String[] {"--scenario", "ack", "--sync-commit", "yes"}));
         assertTrue(value.getMessage().contains("'yes'"), value.getMessage());
-        String[] production = java.util.stream.Stream.concat(java.util.Arrays.stream(NOWHERE), java.util.stream.Stream.of("--db", "flottila"))
+        String[] production = java.util.stream.Stream.concat(java.util.Arrays.stream(NOWHERE), java.util.stream.Stream.of("--db", "rail8"))
                 .toArray(String[]::new);
         IllegalArgumentException db = assertThrows(IllegalArgumentException.class, () -> NodeBenchMain.run(production));
-        assertTrue(db.getMessage().contains("'flottila'") && db.getMessage().contains("truncates"), db.getMessage());
+        assertTrue(db.getMessage().contains("'rail8'") && db.getMessage().contains("truncates"), db.getMessage());
         assertTrue(NodeBenchMain.options(new String[] {"--scenario", "ack", "--db", "nodebench_1"}).db().equals("nodebench_1"));
     }
 

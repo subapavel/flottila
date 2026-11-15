@@ -51,10 +51,10 @@ class NodeConfigPeerTest {
         Map<String, String> e = env();
         e.put("RAIL8_PEER_BIND", "10.1.2.3");
         e.put("RAIL8_PEER_PORT", "9083");
-        e.put("RAIL8_PEER_HOST", "flottila-1.internal");
+        e.put("RAIL8_PEER_HOST", "rail8-1.internal");
         e.put("RAIL8_PEER_TIMEOUT", "PT5S");
         e.put("RAIL8_PEER_READS", "32");
-        assertEquals(new PeerConfig("10.1.2.3", 9083, "flottila-1.internal", Duration.ofSeconds(5), 32), NodeConfig.from(e).peer());
+        assertEquals(new PeerConfig("10.1.2.3", 9083, "rail8-1.internal", Duration.ofSeconds(5), 32), NodeConfig.from(e).peer());
     }
 
     @ParameterizedTest(name = "{0}={1}")

@@ -26,7 +26,7 @@ import java.util.stream.Stream;
  * A flow's effective hash (D-063, D-060 c, D-078): {@code sha256:} and the lower-case hex SHA-256 of these UTF-8 lines, each
  * ended by {@code \n}, paths package-relative with {@code /} (a path outside the package is refused, never hashed):
  * <ol>
- *   <li>{@code flottila-flow-hash 2};</li>
+ *   <li>{@code rail8-flow-hash 2};</li>
  *   <li>{@code yaml <sha256>} over the flow file's bytes, without its path: a flow file moved alone to another folder is no
  *       change (its references are paths from the package root, D-078);</li>
  *   <li>for every distinct path its build read (the {@code StepResources} reads sink), sorted by path — a path in a
@@ -63,7 +63,7 @@ final class FlowHash {
         Map<String, Path> roots = new TreeMap<>();
         dependencies.forEach((name, d) -> roots.put(name, d.toAbsolutePath().normalize()));
         MessageDigest digest = digest();
-        line(digest, "flottila-flow-hash 2");
+        line(digest, "rail8-flow-hash 2");
         line(digest, "yaml " + sha256(yaml));
         Map<String, Path> byPath = new TreeMap<>();
         for (Path read : reads) byPath.put(relative(root, roots, read), read);

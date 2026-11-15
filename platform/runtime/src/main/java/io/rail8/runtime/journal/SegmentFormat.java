@@ -8,23 +8,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * The segment file of one journal (CORE-3 item 1), big-endian. Header: {@code magic FJS1} · {@code version u8} ·
+ * The segment file of one journal (CORE-3 item 1), big-endian. Header: {@code magic RJS1} · {@code version u8} ·
  * {@code journal id (UUID)} · {@code node id (u16 length, UTF-8)} · {@code n u64} · {@code created ms u64} ·
  * {@code crc32c u32} (over the header's other bytes); then records; at seal a footer index of one entry per record,
  * {@code message id (u16 length)} · {@code step u32} · {@code part (u16 length)} · {@code position u64} ·
  * {@code length u64} (a large record, CORE-3 item 4, may be longer than a u32 says), and a {@value #TRAILER}-byte
  * trailer: {@code index position u64} · {@code count u32} · {@code sealed ms u64} · {@code index crc32c u32} ·
- * {@code crc32c u32} (over the trailer's first 24 bytes) · {@code magic FJSE}. Neither CRC covers the records: each
+ * {@code crc32c u32} (over the trailer's first 24 bytes) · {@code magic RJSE}. Neither CRC covers the records: each
  * record carries its own.
  *
- * <p>The identity file {@code NODE}: {@code magic FJN1} · {@code version u8} · {@code journal id} · {@code node id
+ * <p>The identity file {@code NODE}: {@code magic RJN1} · {@code version u8} · {@code journal id} · {@code node id
  * (u16 length)} · {@code crc32c u32}.
  */
 final class SegmentFormat {
 
-    static final int MAGIC = 0x464A5331;
-    static final int END_MAGIC = 0x464A5345;
-    static final int NODE_MAGIC = 0x464A4E31;
+    static final int MAGIC = 0x524A5331;
+    static final int END_MAGIC = 0x524A5345;
+    static final int NODE_MAGIC = 0x524A4E31;
     static final byte VERSION = 1;
     static final int TRAILER = 32;
     private static final int TRAILER_CRC_AT = 24;

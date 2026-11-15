@@ -221,7 +221,7 @@ final class DbSampler implements OpenLoop.Sampler {
     static final class PgSource implements Supplier<JsonObject>, AutoCloseable {
 
         static final String STATEMENT_TIMEOUT = "10s";
-        static final String APPLICATION_NAME = "flottila-bench-sampler";
+        static final String APPLICATION_NAME = "rail8-bench-sampler";
 
         /** The node's statements in the run's database, summed per queryid, as JSON text (null when there are none). */
         static final String STATEMENTS = "(select json_agg(json_build_object('queryid', queryid, 'query', query, 'calls', calls,"

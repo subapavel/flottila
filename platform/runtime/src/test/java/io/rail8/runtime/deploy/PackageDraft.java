@@ -185,11 +185,11 @@ public final class PackageDraft {
 
     /**
      * The content digest of this package as unpacked (D-087): {@code sha256:} and the SHA-256 over the UTF-8 lines
-     * {@code flottila-package-content 1} and {@code file <path> <sha256>} for every file, sorted by path, each ended by {@code \n} —
+     * {@code rail8-package-content 1} and {@code file <path> <sha256>} for every file, sorted by path, each ended by {@code \n} —
      * whatever archive the files come in.
      */
     public String content() {
-        StringBuilder text = new StringBuilder("flottila-package-content 1\n");
+        StringBuilder text = new StringBuilder("rail8-package-content 1\n");
         files().forEach((path, bytes) -> text.append("file ").append(path).append(' ').append(sha256(bytes)).append('\n'));
         return "sha256:" + sha256(text.toString().getBytes(StandardCharsets.UTF_8));
     }

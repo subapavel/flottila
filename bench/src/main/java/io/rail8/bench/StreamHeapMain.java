@@ -113,12 +113,12 @@ public final class StreamHeapMain {
         Map<String, String> a = BenchMain.parse(args);
         int mb = Integer.parseInt(a.getOrDefault("mb", "50"));
         if (mb < 1) throw new IllegalArgumentException("--mb must be at least 1 (the body's MiB), was " + mb);
-        String db = a.getOrDefault("db", "flottila_bench");
+        String db = a.getOrDefault("db", "rail8_bench");
         if (!db.contains("bench")) {
             throw new IllegalArgumentException("--db '" + db + "' does not name a bench database (its name contains 'bench'): the run truncates every table in it");
         }
         return new Options(mb, a.getOrDefault("xmx", "64m"), a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")),
-                db, a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
+                db, a.getOrDefault("user", "rail8"), a.getOrDefault("password", "rail8"),
                 Path.of(a.getOrDefault("out", "bench/out/stream-heap.json")), a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")));
     }
 

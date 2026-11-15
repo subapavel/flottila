@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:flottila:schema:test:1",
+  "$id": "urn:rail8:schema:test:1",
   "title": "Rail8 *.test.yaml, schemaVersion 1 (draft — review at hand-over, P0-12)",
   "description": "Mock bindings and test cases for one flow (ARCHITECTURE §11). Behaviours use one vocabulary for every component: reply, recorded, script, files, messages, fail, delay; capture is always on.",
   "type": "object",

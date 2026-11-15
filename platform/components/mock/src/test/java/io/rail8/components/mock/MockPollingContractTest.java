@@ -21,7 +21,7 @@ class MockPollingContractTest extends PollingConsumerContract {
 
     @Override protected EndpointConfig endpoint() {
         return new EndpointConfig("sftp-in", URI.create("sftp://partner.example/inbox"),
-                Map.of("user", "flottila", "password", "not-used-by-the-mock", "hostKey", "SHA256:bm90LXVzZWQtYnktdGhlLW1vY2s", "maxBodyBytes", 1_000_000,
+                Map.of("user", "rail8", "password", "not-used-by-the-mock", "hostKey", "SHA256:bm90LXVzZWQtYnktdGhlLW1vY2s", "maxBodyBytes", 1_000_000,
                         "flow", "contract"));
     }
 

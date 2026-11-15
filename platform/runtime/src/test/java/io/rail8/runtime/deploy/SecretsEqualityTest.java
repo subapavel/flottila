@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SecretsEqualityTest {
 
     static Map<String, String> node() {
-        return Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "node-1", "RAIL8_DATA_DIR", "/tmp/flottila-secrets-equality");
+        return Map.of("RAIL8_ENV", "dev", "RAIL8_NODE_ID", "node-1", "RAIL8_DATA_DIR", "/tmp/rail8-secrets-equality");
     }
 
     /** A string that does not start with {@code secret://} is no reference, even when the rest would be a name. */

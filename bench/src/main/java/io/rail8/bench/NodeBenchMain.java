@@ -284,7 +284,7 @@ public final class NodeBenchMain {
         String name = a.getOrDefault("name", "node-" + cli(scenario));
         String syncCommit = a.getOrDefault("sync-commit", "on");
         if (!syncCommit.equals("on") && !syncCommit.equals("off")) throw new IllegalArgumentException("--sync-commit must be on or off, was '" + syncCommit + "'");
-        String db = a.getOrDefault("db", "flottila_bench");
+        String db = a.getOrDefault("db", "rail8_bench");
         if (!db.contains("bench")) {
             throw new IllegalArgumentException("--db '" + db + "' does not name a bench database (its name contains 'bench'): the run truncates every table in it");
         }
@@ -295,7 +295,7 @@ public final class NodeBenchMain {
                 Integer.parseInt(a.getOrDefault("warmup", "1000")), concurrency, maxInFlight, name,
                 Path.of(a.getOrDefault("out", "bench/out/" + name + ".json")), syncCommit.equals("on"),
                 a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
-                a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
+                a.getOrDefault("user", "rail8"), a.getOrDefault("password", "rail8"),
                 a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), cpuSampling(a.getOrDefault("cpu-sampling", "off")),
                 open(scenario, a), level);
     }

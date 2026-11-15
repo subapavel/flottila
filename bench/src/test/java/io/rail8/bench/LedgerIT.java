@@ -67,7 +67,7 @@ class LedgerIT {
 
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
-    static final String BUCKET = "flottila-ledger-it";
+    static final String BUCKET = "rail8-ledger-it";
     static final AtomicInteger cases = new AtomicInteger();
     /** A final-step row: the bench flow's last step, {@code to partner}, recorded as done. */
     static final String FINAL = "step_name = 'partner' and outcome = 'ok'";

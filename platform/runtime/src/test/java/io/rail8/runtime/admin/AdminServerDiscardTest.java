@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * FIX-141 (D-126 L3, L4) without a database: what the discard route hands the queue and does with its answer. A blank
- * {@code X-Flottila-Actor} is {@code unknown} as an absent one is; the remote is the client's address; a discard whose key has no
+ * {@code X-Rail8-Actor} is {@code unknown} as an absent one is; the remote is the client's address; a discard whose key has no
  * next row (an unkeyed one) announces nothing, one with a next row announces that row's node for its flow. The lost route over a
  * queue that keeps {@link WorkQueue#lost}'s default lists nothing and refuses a bad limit as /held does.
  */
@@ -80,7 +80,7 @@ class AdminServerDiscardTest {
 
     HttpResponse<String> send(String method, String path, String actor) throws Exception {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).method(method, HttpRequest.BodyPublishers.noBody());
-        if (actor != null) req.header("X-Flottila-Actor", actor);
+        if (actor != null) req.header("X-Rail8-Actor", actor);
         return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).build().send(req.build(), HttpResponse.BodyHandlers.ofString());
     }
 

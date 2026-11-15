@@ -275,8 +275,8 @@ fail, run only through EngineTestKit) — name the two classes.
 
 ## Bench
 
-`bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB;
-db flottila_bench; a fresh container has no role: `sudo -n -u postgres psql -c "create role flottila login createdb password 'flottila'"`, as ci.yml), results in bench/out/ (ignored), baselines as markers in bench/RESULTS.md per
+`bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role rail8 has CREATEDB;
+db rail8_bench; a fresh container has no role: `sudo -n -u postgres psql -c "create role rail8 login createdb password 'rail8'"`, as ci.yml), results in bench/out/ (ignored), baselines as markers in bench/RESULTS.md per
 machine label (D-037); on this VM run it as `BENCH_MACHINE="cloud VM, 4 vCPU" bench/run.sh`. The
 runner has its own throughput-only baseline (FIX-4/D-039; dispatch ci.yml after a bench change
 and read the job log via the MCP tool — the artifact's blob store is unreachable from the VM).

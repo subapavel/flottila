@@ -122,7 +122,7 @@ class BenchRunScriptOpenDbTest {
     @Test
     void theSummarySaysNaForUnknownWalSyncsAndStatementsNeverZero() throws Exception {
         JsonObject db = db().putNull("walSync").putNull("statements").put("notes", new JsonObject().put("walSync", "fsync is off")
-                .put("statements", "pg_stat_statements is not installed in flottila_bench"));
+                .put("statements", "pg_stat_statements is not installed in rail8_bench"));
         Result r = run(record(db), Map.of("BENCH_RATE", "5000", "BENCH_RAMP", "PT0S", "BENCH_WINDOW", "PT2S"));
         assertEquals(0, r.exit(), r.output());
         String line = summary(r);

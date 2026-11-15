@@ -28,8 +28,8 @@ import java.util.Objects;
  * an event missed while nobody listened costs one claim (D-121).
  *
  * <p>Sending (B3): an announce — made after the commit it tells of is acknowledged — is sent on the pool in autocommit, never in a
- * transaction: a leading edge as {@code select pg_notify('flottila_work', $1)}, a window's end as one {@code select
- * pg_notify('flottila_work', p) from unnest($1::text[]) p} (one payload alone as the first form). A send that fails logs one WARNING
+ * transaction: a leading edge as {@code select pg_notify('rail8_work', $1)}, a window's end as one {@code select
+ * pg_notify('rail8_work', p) from unnest($1::text[]) p} (one payload alone as the first form). A send that fails logs one WARNING
  * and is dropped, never sent again: the reconciliation covers it. Nothing is sent after {@link #close()}.
  *
  * @since 0.1
@@ -39,7 +39,7 @@ public final class PgWorkSignals implements WorkSignals {
     private static final System.Logger LOG = System.getLogger(PgWorkSignals.class.getName());
 
     /** The channel every node listens and notifies on. */
-    public static final String CHANNEL = "flottila_work";
+    public static final String CHANNEL = "rail8_work";
     /** The first reconnect's delay. */
     static final long FIRST_BACKOFF_MILLIS = 100;
     /** The longest delay between two reconnect tries (B7: a constant). */

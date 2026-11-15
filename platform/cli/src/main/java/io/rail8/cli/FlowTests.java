@@ -90,7 +90,7 @@ final class FlowTests {
     /** The environment a test runs in: a node that loads mocks (not deployed, ARCHITECTURE §11). */
     private static final String ENV = "ci";
     /** The node id of each case's node: a DNS label, named nowhere in the output. */
-    private static final String NODE_ID = "flottila-test";
+    private static final String NODE_ID = "rail8-test";
     /** Behaviours the schema takes and this runner does not run yet. */
     private static final List<String> NOT_YET = List.of("recorded", "script");
     /** The answer of a case without a send, fed by its from endpoint's mock: there is none to wait for, and no Ack. */

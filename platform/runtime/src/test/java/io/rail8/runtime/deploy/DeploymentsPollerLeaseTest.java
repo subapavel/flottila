@@ -57,7 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The shape these cases assume (P2-02L test-author): {@code Component.polls(EndpointConfig)}; the longest {@link Deployments}
  * constructor takes a {@code PollerLeases} after the intake; {@link NodeConfig} reads {@code RAIL8_POLLER_LEASE_TTL} and
  * {@code RAIL8_POLLER_LEASE_RENEW}; {@code InMemoryPollerLeases(Clock)}. The key handed to the store carries no
- * {@code flottila:poller:} prefix (the Valkey store's namespace, {@code ValkeyPollerLeasesIT}).
+ * {@code rail8:poller:} prefix (the Valkey store's namespace, {@code ValkeyPollerLeasesIT}).
  */
 @Timeout(60)
 class DeploymentsPollerLeaseTest {

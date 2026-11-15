@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class S3ArchiveStoreIT extends ArchiveStoreContract {
 
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
-    static final String BUCKET = "flottila-archives-it";
+    static final String BUCKET = "rail8-archives-it";
     static S3Client s3;
 
     /** The case's prefix: every case stores under its own. */

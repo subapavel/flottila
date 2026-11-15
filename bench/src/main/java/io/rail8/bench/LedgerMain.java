@@ -155,7 +155,7 @@ public final class LedgerMain {
             throw new IllegalArgumentException("--kill-after must be at least 1 and below --messages " + messages
                     + " (node 1 ACKs that many, node 2 takes the rest), was " + killAfter);
         }
-        String db = a.getOrDefault("db", "flottila_bench");
+        String db = a.getOrDefault("db", "rail8_bench");
         if (!db.contains("bench")) {
             throw new IllegalArgumentException("--db '" + db + "' does not name a bench database (its name contains 'bench'): the run truncates every table in it");
         }
@@ -165,7 +165,7 @@ public final class LedgerMain {
             if (value != null) s3.put(option.getValue(), value);
         }
         return new Options(messages, killAfter, a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
-                a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"), Path.of(a.getOrDefault("out", "bench/out/ledger.json")),
+                a.getOrDefault("user", "rail8"), a.getOrDefault("password", "rail8"), Path.of(a.getOrDefault("out", "bench/out/ledger.json")),
                 a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), s3);
     }
 

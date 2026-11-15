@@ -25,14 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeConnectOptionsTest {
 
-    static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7);
+    static final NodeConfig.Pg PG = new NodeConfig.Pg("pg.example.internal", 6543, "rail8_orders", "intake", "s3cret-pw", 7);
 
     @Test
     void theOptionsCarryTheConfiguredServerAndCredentials() {
         PgConnectOptions options = Node.connectOptions(PG);
         assertEquals("pg.example.internal", options.getHost(), "RAIL8_PG_HOST");
         assertEquals(6543, options.getPort(), "RAIL8_PG_PORT");
-        assertEquals("flottila_orders", options.getDatabase(), "RAIL8_PG_DATABASE");
+        assertEquals("rail8_orders", options.getDatabase(), "RAIL8_PG_DATABASE");
         assertEquals("intake", options.getUser(), "RAIL8_PG_USER");
         assertEquals("s3cret-pw", options.getPassword(), "RAIL8_PG_PASSWORD");
     }
@@ -65,12 +65,12 @@ class NodeConnectOptionsTest {
         assertEquals("off", startup.get("jit"), "FIX-130's pin is kept: " + startup);
     }
 
-    static final NodeConfig.Pg TLS = new NodeConfig.Pg("pg.example.internal", 6543, "flottila_orders", "intake", "s3cret-pw", 7,
-            NodeConfig.Pg.SslMode.VERIFY_FULL, Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.HA);
+    static final NodeConfig.Pg TLS = new NodeConfig.Pg("pg.example.internal", 6543, "rail8_orders", "intake", "s3cret-pw", 7,
+            NodeConfig.Pg.SslMode.VERIFY_FULL, Optional.of(Path.of("/etc/rail8/pg-ca.pem")), NodeConfig.Pg.Durability.HA);
 
     /**
      * CORE-17 P3 (D-130 draft): each role's options are {@link Node#connectOptions(NodeConfig.Pg)} — still the one source of the
-     * server, the credentials, the session pins and TLS — plus {@code application_name} {@code flottila-<role>@<nodeId>}, so a
+     * server, the credentials, the session pins and TLS — plus {@code application_name} {@code rail8-<role>@<nodeId>}, so a
      * session in {@code pg_stat_activity} names the pool or connection it belongs to.
      */
     @ParameterizedTest(name = "role {0}")
@@ -80,10 +80,10 @@ class NodeConnectOptionsTest {
         Map<String, String> startup = options.getProperties();
         ClientSSLOptions ssl = options.getSslOptions();
         assertAll(
-                () -> assertEquals("flottila-" + role + "@node-7", startup.get("application_name"), "the session names its role and its node: " + startup),
+                () -> assertEquals("rail8-" + role + "@node-7", startup.get("application_name"), "the session names its role and its node: " + startup),
                 () -> assertEquals("pg.example.internal", options.getHost(), "RAIL8_PG_HOST"),
                 () -> assertEquals(6543, options.getPort(), "RAIL8_PG_PORT"),
-                () -> assertEquals("flottila_orders", options.getDatabase(), "RAIL8_PG_DATABASE"),
+                () -> assertEquals("rail8_orders", options.getDatabase(), "RAIL8_PG_DATABASE"),
                 () -> assertEquals("intake", options.getUser(), "RAIL8_PG_USER"),
                 () -> assertEquals("s3cret-pw", options.getPassword(), "RAIL8_PG_PASSWORD"),
                 () -> assertTrue(options.getCachePreparedStatements(), "the prepared-statement cache (F-26)"),
@@ -93,13 +93,13 @@ class NodeConnectOptionsTest {
                 () -> assertEquals("0", startup.get("statement_timeout"), "FIX-136's pin: " + startup),
                 () -> assertEquals("off", startup.get("jit"), "FIX-130's pin: " + startup),
                 () -> assertEquals(io.vertx.pgclient.SslMode.VERIFY_FULL, options.getSslMode(), "RAIL8_PG_SSL_MODE verify-full (D-124)"),
-                () -> assertTrue(ssl != null && ssl.getTrustOptions() instanceof PemTrustOptions pem && pem.getCertPaths().equals(List.of("/etc/flottila/pg-ca.pem")),
+                () -> assertTrue(ssl != null && ssl.getTrustOptions() instanceof PemTrustOptions pem && pem.getCertPaths().equals(List.of("/etc/rail8/pg-ca.pem")),
                         "the link trusts RAIL8_PG_SSL_ROOT_CERT only: " + (ssl == null ? null : ssl.getTrustOptions())),
                 () -> assertEquals("HTTPS", ssl == null ? null : ssl.getHostnameVerificationAlgorithm(), "verify-full checks the server's name"));
 
         // nothing else differs from the one source: a pin added there reaches every role
         JsonObject expected = Node.connectOptions(TLS).toJson();
-        expected.getJsonObject("properties").put("application_name", "flottila-" + role + "@node-7");
+        expected.getJsonObject("properties").put("application_name", "rail8-" + role + "@node-7");
         assertEquals(expected, options.toJson(), "connectOptions(pg) plus the session's name, nothing else");
     }
 }

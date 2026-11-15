@@ -6,8 +6,8 @@
 # recorded in RESULTS.md, by hand, with machine, date, configuration and commit.
 #
 # Environment: PGHOST (localhost — loopback: the node benches start nodes with RAIL8_PG_SSL_MODE's loopback default disable;
-# a remote PGHOST defaults to verify-full for the nodes, but the bench's own migration and pool links carry no TLS — FIX-166, D-124), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
-# BENCH_DB (flottila_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
+# a remote PGHOST defaults to verify-full for the nodes, but the bench's own migration and pool links carry no TLS — FIX-166, D-124), PGPORT (5432), PGUSER (rail8), PGPASSWORD (rail8),
+# BENCH_DB (rail8_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
 # BENCH_WARMUP (1000), BENCH_CONCURRENCY (64), BENCH_MACHINE (the machine label the run is judged
 # against in RESULTS.md, D-037; unset → "host:<hostname>", which no baseline matches: set it on purpose,
 # e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM), BENCH_SCENARIOS (batched — what runs, space-separated:
@@ -46,7 +46,7 @@
 # syncs/s (the series summed, over scheduled / offered rate seconds) and the top statement by execution time; n/a when unknown.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-: "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
+: "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=rail8}" "${PGPASSWORD:=rail8}" "${BENCH_DB:=rail8_bench}"
 : "${BENCH_MESSAGES:=20000}" "${BENCH_WARMUP:=1000}" "${BENCH_CONCURRENCY:=64}" "${BENCH_SCENARIOS:=batched}"
 export PGPASSWORD
 commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -103,7 +103,7 @@ set_commit_delay() { # µs — in force for every later run of the script, reset
 }
 
 clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the container (and its data) however the run ends
-  local image="clickhouse/clickhouse-server:25.8.33.6" name="flottila-bench-clickhouse" port="${BENCH_CH_PORT:-18123}" password="flottila-bench"
+  local image="clickhouse/clickhouse-server:25.8.33.6" name="rail8-bench-clickhouse" port="${BENCH_CH_PORT:-18123}" password="rail8-bench"
   trap "docker rm -f -v $name > /dev/null" EXIT
   docker run -d --name "$name" -p "127.0.0.1:$port:8123" -e CLICKHOUSE_PASSWORD="$password" "$image" > /dev/null
   for _ in $(seq 120); do

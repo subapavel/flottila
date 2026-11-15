@@ -122,7 +122,7 @@ public final class PgIntake implements Intake {
     /** Each transaction id's status: committed, aborted, in progress, or null for one too old to be known. */
     static final String XACT_STATUS = "select x, pg_xact_status(x::xid8) from unnest($1::text[]) x";
     /** Under ha, the statement of a group with no row to write: an id taken and a WAL record written, so its commit waits (D-128). */
-    static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')";
+    static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'rail8', '')";
 
     private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
 

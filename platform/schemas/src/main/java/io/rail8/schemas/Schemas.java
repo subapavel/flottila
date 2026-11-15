@@ -39,7 +39,7 @@ public enum Schemas {
 
     private static Validator validator(JsonObject schema) {
         return Validator.create(JsonSchema.of(schema), new JsonSchemaOptions()
-                .setDraft(Draft.DRAFT202012).setBaseUri("urn:flottila:schema:").setOutputFormat(OutputFormat.Basic));
+                .setDraft(Draft.DRAFT202012).setBaseUri("urn:rail8:schema:").setOutputFormat(OutputFormat.Basic));
     }
 
     private static JsonObject load(String resource) {

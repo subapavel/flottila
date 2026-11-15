@@ -19,15 +19,15 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * P2-02L (D-083): the Valkey store passes the lease contract against valkey/valkey:8, and keeps a lease as the one key
- * {@code flottila:poller:<key>} whose value is the owner and whose ttl is set in milliseconds ({@code SET .. PX} to take,
+ * {@code rail8:poller:<key>} whose value is the owner and whose ttl is set in milliseconds ({@code SET .. PX} to take,
  * {@code PEXPIRE} to renew). A lapse is Valkey's own expiry, waited for (bounded) by polling {@code EXISTS}, never slept.
  *
  * <p>The shape these cases assume (P2-02L test-author): {@code new ValkeyPollerLeases(Redis)}; the store prefixes the key it is
- * given with {@code flottila:poller:} (the key the node gives is {@code <package>/<flow>/<endpoint uri>}).
+ * given with {@code rail8:poller:} (the key the node gives is {@code <package>/<flow>/<endpoint uri>}).
  */
 class ValkeyPollerLeasesIT extends PollerLeasesContract {
 
-    static final String PREFIX = "flottila:poller:";
+    static final String PREFIX = "rail8:poller:";
 
     @SuppressWarnings("resource")   // stopped in stop()
     static final GenericContainer<?> valkey = new GenericContainer<>(DockerImageName.parse("valkey/valkey:8")).withExposedPorts(6379);
@@ -69,7 +69,7 @@ class ValkeyPollerLeasesIT extends PollerLeasesContract {
     }
 
     /**
-     * The lease is the key {@code flottila:poller:<key>} holding the owner, with a millisecond ttl: 45.678 s taken with
+     * The lease is the key {@code rail8:poller:<key>} holding the owner, with a millisecond ttl: 45.678 s taken with
      * {@code SET .. PX} (not seconds, not none), 20.345 s on a renew ({@code PEXPIRE}); nothing else is written.
      */
     @Test

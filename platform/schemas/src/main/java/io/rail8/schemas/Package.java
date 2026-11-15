@@ -509,7 +509,7 @@ public final class Package {
 
     /**
      * The content digest of the package in {@code dir} (D-087), what {@code package.lock} pins: {@code sha256:} and the lower-case hex
-     * SHA-256 over the UTF-8 lines {@code flottila-package-content 1} and {@code file <path> <sha256>} for every regular file below
+     * SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and {@code file <path> <sha256>} for every regular file below
      * {@code dir}, sorted by its {@code /}-separated path, each line ended by {@code \n}. The files decide — not the archive they
      * came in, their modification times or empty folders.
      *
@@ -521,7 +521,7 @@ public final class Package {
             walk.filter(Files::isRegularFile).forEach(f -> files.put(path(dir, f), f));
         }
         MessageDigest digest = sha256();
-        digest.update("flottila-package-content 1\n".getBytes(StandardCharsets.UTF_8));
+        digest.update("rail8-package-content 1\n".getBytes(StandardCharsets.UTF_8));
         for (Map.Entry<String, Path> f : files.entrySet()) {
             String line = "file " + f.getKey() + " " + HexFormat.of().formatHex(sha256().digest(Files.readAllBytes(f.getValue()))) + "\n";
             digest.update(line.getBytes(StandardCharsets.UTF_8));

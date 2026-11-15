@@ -40,7 +40,7 @@ final class RecordFormat {
     static final int NAME_MAX = 0xFFFF;
     /** The longest header: both names at their bound. */
     static final int MAX_HEADER = FIXED + 2 * NAME_MAX;
-    private static final String INFO = "flottila-journal-v1";
+    private static final String INFO = "rail8-journal-v1";
     private static final int STEP_AT_WITHOUT_ID = 4 + 4 + 1 + 1 + 4 + 8 + 2;
     private static final int PLAIN_AT = 14;
 

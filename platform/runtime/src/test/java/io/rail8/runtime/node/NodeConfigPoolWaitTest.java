@@ -97,16 +97,16 @@ class NodeConfigPoolWaitTest {
     @Test
     void theInProcessConstructorsCarryTheDefaults() {
         Map<String, NodeConfig.Pg> defaulted = new LinkedHashMap<>();
-        defaulted.put("6-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16));
-        defaulted.put("8-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty()));
-        defaulted.put("9-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        defaulted.put("6-argument", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16));
+        defaulted.put("8-argument", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty()));
+        defaulted.put("9-argument", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.HA));
-        defaulted.put("10-argument", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
-                Optional.of(Path.of("/etc/flottila/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7));
+        defaulted.put("10-argument", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.VERIFY_CA,
+                Optional.of(Path.of("/etc/rail8/pg-ca.pem")), NodeConfig.Pg.Durability.LOCAL, 7));
         assertAll(defaulted.entrySet().stream().map(c -> () -> assertEquals(List.of(Duration.ofSeconds(5), 1024),
                 List.of(c.getValue().poolWait(), c.getValue().poolQueue()), "the " + c.getKey() + " constructor takes PT5S and 1024")));
 
-        NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        NodeConfig.Pg canonical = new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.LOCAL, 7, Duration.ofMillis(250), 3);
         assertAll(
                 () -> assertEquals(Duration.ofMillis(250), canonical.poolWait(), "the canonical constructor's wait as given"),
@@ -115,7 +115,7 @@ class NodeConfigPoolWaitTest {
     }
 
     static NodeConfig.Pg canonical(Duration poolWait, int poolQueue) {
-        return new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+        return new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
                 NodeConfig.Pg.Durability.LOCAL, 5, poolWait, poolQueue);
     }
 
@@ -171,7 +171,7 @@ class NodeConfigPoolWaitTest {
         accepted.put("PT1M / 65536", canonical(Duration.ofSeconds(60), 65536));
         accepted.put("PT0.001S / 65536", canonical(Duration.ofMillis(1), 65536));
         accepted.put("PT1M / 1", canonical(Duration.ofSeconds(60), 1));
-        accepted.put("6-argument defaults PT5S / 1024", new NodeConfig.Pg("db", 5432, "flottila", "flottila", "", 16));
+        accepted.put("6-argument defaults PT5S / 1024", new NodeConfig.Pg("db", 5432, "rail8", "rail8", "", 16));
         assertAll(accepted.entrySet().stream().map(c -> () -> {
             NodeConfig node = assertDoesNotThrow(() -> inProcess(c.getValue()), c.getKey() + ": an in-process node over it is accepted");
             assertEquals(List.of(c.getValue().poolWait(), c.getValue().poolQueue()), List.of(node.pg().poolWait(), node.pg().poolQueue()),

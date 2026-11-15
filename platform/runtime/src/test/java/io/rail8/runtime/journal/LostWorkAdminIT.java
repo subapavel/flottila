@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * FIX-141 (D-126 L2-L4) over the admin API and a real Postgres: a keyed message whose row an accepted ACCEPT_LOSS gave up (marked by
  * {@code update work set lost_at}, what the start writes) heads its key, so its successor waits. {@code GET /admin/work/lost} lists
  * the head with {@code blocks: 1}; {@code /admin/work/held} rows carry {@code blocks} too. {@code POST /admin/work/{seq}/discard}
- * answers 200 {@code {seq, auditId}}, writes one {@code audit} row whose actor is the {@code X-Flottila-Actor} header (absent:
+ * answers 200 {@code {seq, auditId}}, writes one {@code audit} row whose actor is the {@code X-Rail8-Actor} header (absent:
  * {@code unknown}; over 128 characters: 400, nothing discarded) and whose detail names flow, message, key, lost_at and the remote
  * address; it wakes the flow here — the started worker, whose start claim found nothing, then runs the successor to completion
  * (the fake timer never fires: only the wake can start that claim) — and announces the successor's body node like a release. A
@@ -193,7 +193,7 @@ class LostWorkAdminIT {
         return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + port + path))
                 .compose(req -> {
                     if (authorization != null) req.putHeader("Authorization", authorization);
-                    if (actor != null) req.putHeader("X-Flottila-Actor", actor);
+                    if (actor != null) req.putHeader("X-Rail8-Actor", actor);
                     req.response().onSuccess(HttpClientResponse::pause);
                     return req.send();
                 })

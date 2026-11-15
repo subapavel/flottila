@@ -58,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class JournalSegmentRowsTest {
 
-    /** {@code NODE}: magic FJN1 · version u8 · journal id; a segment header: magic FJS1 · version u8 · journal id (CORE-3 item 1). */
+    /** {@code NODE}: magic RJN1 · version u8 · journal id; a segment header: magic RJS1 · version u8 · journal id (CORE-3 item 1). */
     static final int ID_AT = 5;
     static final Pattern SEGMENT = Pattern.compile("([1-9][0-9]*)\\.seg");
 

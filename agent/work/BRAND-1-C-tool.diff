@@ -1,0 +1,544 @@
+diff --git a/agent/tools/rail8_rename.py b/agent/tools/rail8_rename.py
+index a317624..b115c48 100644
+--- a/agent/tools/rail8_rename.py
++++ b/agent/tools/rail8_rename.py
+@@ -4,8 +4,7 @@
+ Subcommands, each idempotent (a second run changes nothing) and each with --dry-run:
+   moves        commit A: `git mv` of every directory in PATH_MAP, then the path strings in the living documents
+   identifiers  commit B: `git mv` of the io/flottila package directories and bin/flottila, then IDENTIFIER_MAP
+-  wire         commit C: persisted and wire names, one entry per literal (WIRE_MAP)          -- not implemented yet
+-  translate F  the path map and the identifier map applied to one text file (a parked diff), to stdout or -o
++  wire         commit C: persisted and wire names, one entry per literal (WIRE_MAP)
+   report       only the final report: every remaining occurrence of the old name outside EXCLUDED, tagged
+ 
+ --root <dir> limits a subcommand to a subtree of the repository (BRAND-3 runs it on mapping/).
+@@ -209,8 +208,217 @@ TEXT_SUFFIXES = {".java", ".md", ".yaml", ".yml", ".xml", ".json", ".py", ".sh",
+                  ".sql", ".diff", ".patch", ".dockerignore"}
+ TEXT_NAMES = {"Dockerfile", "LICENSE", "NOTICE", ".gitignore", ".gitattributes", ".dockerignore", "flottila", "rail8"}
+ 
+-# Commit C: (file, old literal, new literal), one entry per literal on the scout's wire list. Filled in commit C.
+-WIRE_MAP: list[tuple[str, str, str]] = []
++# Commit C: (class, files, old, new), one entry per literal of the scout's wire list (agent/work/BRAND-1-scout.md lists 1
++# and 2, the architect's rulings for C), each with the files it lives in (repository globs). `old` is a literal; where a
++# bare name is only a name in one position (a compose service key, a network alias) it is a pattern anchored to that
++# position. `flottila` -> `rail8`, `Flottila` -> `Rail8`, `FJ..` -> `RJ..`, version digits kept; no alias is kept (D-148).
++# Within one file the longest literal applies first. The golden constants recomputed from these literals (PeerKnownAnswerTest,
++# ReplFramesTest) are not here: they are computed outside the code (agent/work/BRAND-1-C-golden.py) and edited by hand.
++_RT = "platform/runtime/src/main/java/io/rail8/runtime/"
++_RTT = "platform/runtime/src/test/java/io/rail8/runtime/"
++_SCH = "platform/schemas/src/main/"
++_CLI = "platform/cli/src/"
++_BENCH = "bench/src/main/java/io/rail8/bench/"
++_BENCHT = "bench/src/test/java/io/rail8/bench/"
++_COMPOSE = ("deploy/compose/docker-compose.yml", "docker-compose.yml")
++_STEP_EVENT = "platform/core/src/main/java/io/rail8/core/record/StepEvent.java"
++_STEP_EVENT_TEST = "platform/core/src/test/java/io/rail8/core/flow/FlowBuilderStepEventTest.java"
++_CPU = _RT + "node/CpuSampler.java"
++_NODE_CONFIG = _RT + "node/NodeConfig.java"
++_PG_TESTS = (_RTT + "node/NodeConfigTest.java", _RTT + "node/NodeConfigPoolWaitTest.java", _RTT + "node/NodeConfigPoolsTest.java",
++             _RTT + "node/NodeConfigPoolsInProcessTest.java")
++_BENCH_MAINS = tuple(_BENCH + m for m in ("BenchMain.java", "LedgerMain.java", "NodeBenchMain.java", "StreamHeapMain.java"))
++_NOTES = "agent/NOTES.md"
++WIRE_MAP: list[tuple[str, tuple[str, ...], object, str]] = [
++    # hash and KDF inputs
++    ("HKDF info label", (_RT + "journal/RecordFormat.java", _RTT + "journal/JournalRecordFormatTest.java"),
++     "flottila-journal-v1", "rail8-journal-v1"),
++    ("HKDF info label", (_RT + "blob/SpoolCipher.java",), "flottila-spool-v1", "rail8-spool-v1"),
++    ("HKDF info label", (_RT + "journal/peer/PeerHandshake.java", _RTT + "journal/peer/PeerKnownAnswerTest.java",
++                         _RTT + "journal/peer/ScriptedPeer.java"), "flottila-peer-v1", "rail8-peer-v1"),
++    ("digest input", (_SCH + "java/io/rail8/schemas/Package.java", _SCH + "resources/schemas/lock.schema.json",
++                      "platform/schemas/src/test/java/io/rail8/schemas/PackageDependenciesTest.java",
++                      _CLI + "test/java/io/rail8/cli/DepsFixture.java", _RTT + "deploy/PackageDraft.java"),
++     "flottila-package-content 1", "rail8-package-content 1"),
++    ("digest input", (_RT + "deploy/FlowHash.java", _RTT + "deploy/FlowHashTest.java"), "flottila-flow-hash 2", "rail8-flow-hash 2"),
++    # the advisory lock key: the ASCII bytes of the name (the architect's ruling for C)
++    ("advisory lock key", (_RT + "store/Retention.java",), "0x666c6f7474696c61L", "0x7261696C38000000L"),
++    ("advisory lock key", (_RT + "store/Retention.java",), 'the bytes of "flottila" (D-088)',
++     'the ASCII bytes of "rail8" in the high five bytes, zero below (D-088)'),
++    # on-disk magics of the journal segment and identity files (FJ -> RJ)
++    ("segment magic", (_RT + "journal/SegmentFormat.java", _RTT + "journal/peer/ReplWire.java"), "0x464A5331", "0x524A5331"),
++    ("segment magic", (_RT + "journal/SegmentFormat.java", _RTT + "journal/LargeBodyTest.java"), "0x464A5345", "0x524A5345"),
++    ("segment magic", (_RT + "journal/SegmentFormat.java",), "0x464A4E31", "0x524A4E31"),
++    ("segment magic", (_RT + "journal/SegmentFormat.java", _RTT + "journal/JournalSegmentRowsTest.java",
++                       _RTT + "journal/peer/ReplWire.java"), "FJS1", "RJS1"),
++    ("segment magic", (_RT + "journal/SegmentFormat.java", _RTT + "journal/LargeBodyTest.java"), "FJSE", "RJSE"),
++    ("segment magic", (_RT + "journal/SegmentFormat.java", _RTT + "journal/JournalSegmentRowsTest.java",
++                       _RTT + "journal/NodeJournalIT.java"), "FJN1", "RJN1"),
++    ("segment magic", (_RTT + "journal/JournalStartLossTest.java",), "new byte[] {0x46, 0x4A, 0x53}",
++     "new byte[] {0x52, 0x4A, 0x53}"),
++    # text written to disk
++    ("file text", (_CLI + "main/java/io/rail8/cli/Lock.java",), "written by flottila lock", "written by rail8 lock"),
++    ("file text", (_RT + "journal/JournalStart.java",), "flottila journal loss v1", "rail8 journal loss v1"),
++    # schema identity
++    ("schema URN", (_SCH + "java/io/rail8/schemas/Schemas.java", _SCH + "resources/schemas/*.schema.json",
++                    "platform/schemas/src/test/java/io/rail8/schemas/SchemasTest.java"), "urn:flottila:schema:", "urn:rail8:schema:"),
++    # Postgres, Valkey, HTTP
++    ("NOTIFY channel", (_RT + "queue/PgWorkSignals.java", _RTT + "journal/PgWorkSignalsIT.java", _RTT + "journal/TwoNodeWorkEventsIT.java",
++                        _RTT + "NodePoolWaitIT.java", "docs/ARCHITECTURE.md", ".claude/agent-memory/test-author/MEMORY.md"),
++     "flottila_work", "rail8_work"),
++    ("WAL message prefix", (_RT + "store/PgIntake.java", _RTT + "PgPromotionLedgerIT.java", "docs/ARCHITECTURE.md"),
++     "pg_logical_emit_message(true, 'flottila', '')", "pg_logical_emit_message(true, 'rail8', '')"),
++    ("Valkey key prefix", (_RT + "lease/ValkeyPollerLeases.java", _RTT + "lease/ValkeyPollerLeasesIT.java", _RTT + "NodeIT.java",
++                           _RTT + "deploy/DeploymentsPollerLeaseTest.java"), "flottila:poller:", "rail8:poller:"),
++    ("application_name", (_RT + "node/Node.java", _RTT + "node/NodeConnectOptionsTest.java"), '"flottila-" + role', '"rail8-" + role'),
++    ("application_name", (_RT + "node/Node.java", _RTT + "NodePoolRolesIT.java", _RTT + "node/NodeConnectOptionsTest.java",
++                          "docs/ARCHITECTURE.md", ".claude/agent-memory/test-author/MEMORY.md"), "flottila-<role>@", "rail8-<role>@"),
++    ("application_name", (_RTT + "NodePoolRolesIT.java", _RTT + "NodePoolWaitIT.java"), '"flottila-intake@"', '"rail8-intake@"'),
++    ("application_name", (_RTT + "NodePoolRolesIT.java", _RTT + "NodePoolWaitIT.java"), '"flottila-work@"', '"rail8-work@"'),
++    ("application_name", (_RTT + "NodePoolRolesIT.java",), '"flottila-membership@"', '"rail8-membership@"'),
++    ("application_name", (_RTT + "NodePoolRolesIT.java",), "flottila-membership@<node>", "rail8-membership@<node>"),
++    ("application_name", (_RTT + "NodePoolRolesIT.java",), '"flottila-listen@"', '"rail8-listen@"'),
++    ("application_name", (_RTT + "NodePoolRolesIT.java",), "flottila-listen@<node>", "rail8-listen@<node>"),
++    ("application_name", (_BENCH + "DbSampler.java",), '"flottila-bench-sampler"', '"rail8-bench-sampler"'),
++    ("HTTP header", (_RT + "admin/AdminServer.java", _RTT + "admin/AdminServerDiscardTest.java", _RTT + "journal/LostWorkAdminIT.java",
++                     "docs/ARCHITECTURE.md"), "X-Flottila-Actor", "X-Rail8-Actor"),
++    # JFR: event names, labels, categories, the recording name
++    ("JFR", (_STEP_EVENT, _STEP_EVENT_TEST, _RTT + "NodeIT.java", _RTT + "node/CpuSamplerIT.java", "docs/ARCHITECTURE.md"),
++     "io.flottila.Step", "io.rail8.Step"),
++    ("JFR", (_CPU,), '"io.flottila.CpuSamplerDrain"', '"io.rail8.CpuSamplerDrain"'),
++    ("JFR", (_STEP_EVENT,), '@Label("Flottila Step")', '@Label("Rail8 Step")'),
++    ("JFR", (_CPU,), '@Label("Flottila CPU Sampler Drain")', '@Label("Rail8 CPU Sampler Drain")'),
++    ("JFR", (_STEP_EVENT, _CPU), '@Category("Flottila")', '@Category("Rail8")'),
++    ("JFR", (_STEP_EVENT_TEST,), 'List.of("Flottila")', 'List.of("Rail8")'),
++    ("JFR", (_STEP_EVENT_TEST,), "category Flottila;", "category Rail8;"),
++    ("JFR", (_CPU,), 'recording.setName("flottila-cpu-sampler")', 'recording.setName("rail8-cpu-sampler")'),
++    # NodeConfig defaults and their javadoc
++    ("NodeConfig default", (_NODE_CONFIG,), '"RAIL8_PG_DATABASE", "flottila"', '"RAIL8_PG_DATABASE", "rail8"'),
++    ("NodeConfig default", (_NODE_CONFIG,), '"RAIL8_PG_USER", "flottila"', '"RAIL8_PG_USER", "rail8"'),
++    ("NodeConfig default", (_NODE_CONFIG,), '"RAIL8_S3_PREFIX", "flottila"', '"RAIL8_S3_PREFIX", "rail8"'),
++    ("NodeConfig default", (_NODE_CONFIG,), '"RAIL8_DATA_DIR", "/var/lib/flottila"', '"RAIL8_DATA_DIR", "/var/lib/rail8"'),
++    ("NodeConfig default", (_NODE_CONFIG,), "{@code RAIL8_PG_DATABASE} (flottila)", "{@code RAIL8_PG_DATABASE} (rail8)"),
++    ("NodeConfig default", (_NODE_CONFIG,), "{@code RAIL8_PG_USER} (flottila)", "{@code RAIL8_PG_USER} (rail8)"),
++    ("NodeConfig default", (_NODE_CONFIG,), "{@code RAIL8_S3_PREFIX} (flottila)", "{@code RAIL8_S3_PREFIX} (rail8)"),
++    ("NodeConfig default", (_NODE_CONFIG,), "{@code RAIL8_DATA_DIR} (/var/lib/flottila)", "{@code RAIL8_DATA_DIR} (/var/lib/rail8)"),
++    ("NodeConfig default", (_RTT + "node/NodeConfigTest.java",), "/var/lib/flottila", "/var/lib/rail8"),
++    ("NodeConfig default", (_RTT + "node/NodeConfigTest.java",),
++     'assertEquals("flottila", s3.prefix(), "RAIL8_S3_PREFIX defaults to flottila")',
++     'assertEquals("rail8", s3.prefix(), "RAIL8_S3_PREFIX defaults to rail8")'),
++    ("NodeConfig default", _PG_TESTS, '"flottila", "flottila"', '"rail8", "rail8"'),
++    ("NodeConfig default", (_RTT + "node/NodeJdbcUrlTest.java",), '5432, "flottila", "node"', '5432, "rail8", "node"'),
++    # the CLI's in-process node ids
++    ("CLI node id", (_CLI + "main/java/io/rail8/cli/FlowTests.java",), '"flottila-test"', '"rail8-test"'),
++    ("CLI node id", (_CLI + "main/java/io/rail8/cli/Validate.java",), '"flottila-validate"', '"rail8-validate"'),
++    # the quickstart image
++    ("container", ("deploy/quickstart/Dockerfile",), "--home-dir /var/lib/flottila flottila", "--home-dir /var/lib/rail8 rail8"),
++    ("container", ("deploy/quickstart/Dockerfile",), "WORKDIR /opt/flottila", "WORKDIR /opt/rail8"),
++    ("container", ("deploy/quickstart/Dockerfile",), "USER flottila", "USER rail8"),
++    ("container", ("deploy/quickstart/Dockerfile",), "RAIL8_DATA_DIR=/var/lib/flottila", "RAIL8_DATA_DIR=/var/lib/rail8"),
++    ("container", ("deploy/quickstart/Dockerfile", "deploy/compose/docker-compose.yml"), "/opt/flottila/rail8-runtime.jar",
++     "/opt/rail8/rail8-runtime.jar"),
++    ("container", ("deploy/quickstart/Dockerfile",), "docker-compose.yml service `flottila`", "docker-compose.yml service `rail8`"),
++    # both compose files: database, role, password, S3 identity and bucket, service, network alias, volumes, mounts
++    ("compose", _COMPOSE, "POSTGRES_DB: flottila", "POSTGRES_DB: rail8"),
++    ("compose", _COMPOSE, "POSTGRES_USER: flottila", "POSTGRES_USER: rail8"),
++    ("compose", ("docker-compose.yml",), "POSTGRES_PASSWORD: flottila", "POSTGRES_PASSWORD: rail8"),
++    ("compose", ("docker-compose.yml",), "RAIL8_PG_PASSWORD: flottila", "RAIL8_PG_PASSWORD: rail8"),
++    ("compose", ("deploy/compose/docker-compose.yml",), "${RAIL8_PG_PASSWORD:-flottila}", "${RAIL8_PG_PASSWORD:-rail8}"),
++    ("compose", _COMPOSE, "pg_isready -U flottila -d flottila", "pg_isready -U rail8 -d rail8"),
++    ("compose", ("deploy/compose/docker-compose.yml",), "${RAIL8_S3_ACCESS_KEY:-flottila}", "${RAIL8_S3_ACCESS_KEY:-rail8}"),
++    ("compose", ("deploy/compose/docker-compose.yml",), '"name":"flottila"', '"name":"rail8"'),
++    ("compose", ("deploy/compose/docker-compose.yml",), "RAIL8_S3_BUCKET: flottila", "RAIL8_S3_BUCKET: rail8"),
++    ("compose", ("deploy/compose/docker-compose.yml",), "--admin http://flottila:8081", "--admin http://rail8:8081"),
++    ("compose", ("docker-compose.yml",), "container_name: flottila-postgres", "container_name: rail8-postgres"),
++    ("compose", ("docker-compose.yml",), "flottila-pg:", "rail8-pg:"),
++    ("compose", _COMPOSE, "flottila-data:/var/lib/flottila", "rail8-data:/var/lib/rail8"),
++    ("compose", _COMPOSE, re.compile(r"^(  )flottila-data:$"), r"\1rail8-data:"),
++    ("compose", _COMPOSE, re.compile(r"^(\s+)flottila:$"), r"\1rail8:"),
++    ("compose", _COMPOSE, re.compile(r"^(\s+- )flottila$"), r"\1rail8"),
++    # the compose stack test: the same names as the compose file reads them
++    ("compose", (_RTT + "ComposeStackTest.java",), '"flottila"', '"rail8"'),
++    ("compose", (_RTT + "ComposeStackTest.java",), r'\"flottila\"', r'\"rail8\"'),
++    ("compose", (_RTT + "ComposeStackTest.java",), '"flottila-data"', '"rail8-data"'),
++    ("compose", (_RTT + "ComposeStackTest.java",), '"/var/lib/flottila"', '"/var/lib/rail8"'),
++    ("compose", (_RTT + "ComposeStackTest.java",), '"http://flottila:8081"', '"http://rail8:8081"'),
++    ("compose", (_RTT + "ComposeStackTest.java",), "flottila-data is a declared volume", "rail8-data is a declared volume"),
++    ("compose", (_RTT + "ComposeStackTest.java",), "Dockerfile (flottila)", "Dockerfile (rail8)"),
++    ("compose", (_RTT + "ComposeStackTest.java",), "the old pin on flottila", "the old pin on rail8"),
++    ("compose", (_RTT + "ComposeStackTest.java",), "the alias flottila on", "the alias rail8 on"),
++    # CI and the bench: role, database, password, container
++    ("CI role", (".github/workflows/ci.yml",), "the flottila_bench database", "the rail8_bench database"),
++    ("CI role", (".github/workflows/ci.yml",), "CREATE ROLE flottila LOGIN CREATEDB PASSWORD 'flottila';",
++     "CREATE ROLE rail8 LOGIN CREATEDB PASSWORD 'rail8';"),
++    ("CI role", (".github/workflows/ci.yml",), "CREATE DATABASE flottila OWNER flottila;", "CREATE DATABASE rail8 OWNER rail8;"),
++    ("bench default", ("bench/run.sh",), "PGUSER (flottila), PGPASSWORD (flottila)", "PGUSER (rail8), PGPASSWORD (rail8)"),
++    ("bench default", ("bench/run.sh",), "BENCH_DB (flottila_bench", "BENCH_DB (rail8_bench"),
++    ("bench default", ("bench/run.sh",), '"${PGUSER:=flottila}"', '"${PGUSER:=rail8}"'),
++    ("bench default", ("bench/run.sh",), '"${PGPASSWORD:=flottila}"', '"${PGPASSWORD:=rail8}"'),
++    ("bench default", ("bench/run.sh",), '"${BENCH_DB:=flottila_bench}"', '"${BENCH_DB:=rail8_bench}"'),
++    ("bench default", ("bench/run.sh",), 'name="flottila-bench-clickhouse"', 'name="rail8-bench-clickhouse"'),
++    ("bench default", ("bench/run.sh",), 'password="flottila-bench"', 'password="rail8-bench"'),
++    ("bench default", _BENCH_MAINS, '"db", "flottila_bench"', '"db", "rail8_bench"'),
++    ("bench default", _BENCH_MAINS, '"user", "flottila"', '"user", "rail8"'),
++    ("bench default", _BENCH_MAINS, '"password", "flottila"', '"password", "rail8"'),
++    ("bench default", (_BENCHT + "BenchRunScriptOpenDbTest.java", _BENCHT + "DbSamplerCasesTest.java", _BENCHT + "DbSamplerTest.java"),
++     "in flottila_bench", "in rail8_bench"),
++    ("bench default", (_BENCHT + "LedgerMainTest.java", _BENCHT + "StreamHeapMainTest.java", _BENCHT + "NodeBenchMainRunTest.java"),
++     '"--db", "flottila"', '"--db", "rail8"'),
++    ("bench default", (_BENCHT + "LedgerMainTest.java", _BENCHT + "StreamHeapMainTest.java"), 'contains("flottila")', 'contains("rail8")'),
++    ("bench default", (_BENCHT + "NodeBenchMainRunTest.java",), "contains(\"'flottila'\")", "contains(\"'rail8'\")"),
++    # the living documents that name one of these (only the name; the wording is not touched)
++    ("document", ("deploy/compose/README.md", "HANDOVER.md"), "`flottila` (the node)", "`rail8` (the node)"),
++    ("document", ("deploy/compose/README.md",), "RAIL8_S3_ACCESS_KEY defaults to flottila", "RAIL8_S3_ACCESS_KEY defaults to rail8"),
++    ("document", ("deploy/compose/README.md",), "(default `flottila`)", "(default `rail8`)"),
++    ("document", ("deploy/compose/README.md",), "bucket `flottila`", "bucket `rail8`"),
++    ("document", ("HANDOVER.md",), "compose-flottila-1", "compose-rail8-1"),
++    ("document", ("agent/BACKLOG.md",), "depends_on kafka on `flottila`", "depends_on kafka on `rail8`"),
++    ("document", ("docs/QUICKSTART.md",), "docker compose logs flottila", "docker compose logs rail8"),
++    ("document", (_NOTES,), "role flottila has CREATEDB", "role rail8 has CREATEDB"),
++    ("document", (_NOTES,), "db flottila_bench", "db rail8_bench"),
++    ("document", (_NOTES,), "create role flottila login createdb password 'flottila'", "create role rail8 login createdb password 'rail8'"),
++    # test-only names that mirror one of the literals above (ruling 3: a bucket, a data dir, a host, a user, a role, a database)
++    ("test-only name", (_RTT + "NodeIT.java", _RTT + "journal/NodeJournalIT.java", _RTT + "deploy/S3ArchiveStoreTest.java",
++                        _RTT + "deploy/S3ArchiveStoreIT.java", _RTT + "node/NodeConfigTest.java", _RTT + "node/NodeTest.java"),
++     "flottila-archives", "rail8-archives"),
++    ("test-only name", (_RTT + "NodeIT.java",), '"flottila-node-it"', '"rail8-node-it"'),
++    ("test-only name", (_RTT + "RestoreIT.java",), '"flottila-restore-it"', '"rail8-restore-it"'),
++    ("test-only name", (_BENCHT + "LedgerIT.java",), '"flottila-ledger-it"', '"rail8-ledger-it"'),
++    ("test-only name", (_RTT + "deploy/SecretsEqualityTest.java", _RTT + "deploy/SecretsTest.java", _RTT + "node/NodeConfigTest.java"),
++     '"/tmp/flottila', '"/tmp/rail8'),
++    ("test-only name", (_RTT + "journal/MasterKeySourceEnvTest.java",), "/run/secrets/flottila-master", "/run/secrets/rail8-master"),
++    ("test-only name", (_RTT + "journal/SchemaIT.java",), '"FLOTTILA-PAYLOAD-MARKER-', '"RAIL8-PAYLOAD-MARKER-'),
++    ("test-only name", (_RTT + "node/NodeConfigJournalTest.java", _RTT + "node/NodeConfigTest.java"), '"/srv/flottila', '"/srv/rail8'),
++    ("test-only name", (_RTT + "node/NodeConfigPeerTest.java",), '"flottila-1.internal"', '"rail8-1.internal"'),
++    ("test-only name", _PG_TESTS[1:3] + (_RTT + "node/NodeConnectOptionsTest.java", _RTT + "node/NodeJdbcUrlTest.java"),
++     '"/etc/flottila/', '"/etc/rail8/'),
++    ("test-only name", (_RTT + "node/NodeConfigTest.java",), '"redis://flottila:"', '"redis://rail8:"'),
++    ("test-only name", (_RTT + "node/NodeConfigTest.java",), '"http://flottila:"', '"http://rail8:"'),
++    ("test-only name", (_RTT + "node/NodeConnectOptionsTest.java", _RTT + "node/NodeConnectOptionsCacheLimitTest.java"),
++     '"flottila_orders"', '"rail8_orders"'),
++    ("test-only name", (_RTT + "node/PgDurabilityTest.java",), '"flottila_ha"', '"rail8_ha"'),
++    ("test-only name", (_RTT + "node/PgDurabilityTest.java",), 'Arbitraries.of("intake", "flottila")', 'Arbitraries.of("intake", "rail8")'),
++    ("test-only name", (_RTT + "node/PgTlsIT.java",), "db.flottila.test", "db.rail8.test"),
++    ("test-only name", (_RTT + "node/TestCertificates.java",), '"CN=Flottila ', '"CN=Rail8 '),
++    ("test-only name", (_RTT + "deploy/DeploymentsSecretsTest.java",), '.put("user", "flottila")', '.put("user", "rail8")'),
++    ("test-only name", (_RTT + "deploy/DeploymentsSecretsTest.java",), 'assertEquals("flottila", options.get("user")',
++     'assertEquals("rail8", options.get("user")'),
++    ("test-only name", ("platform/components/mock/src/test/java/io/rail8/components/mock/MockPollingContractTest.java",
++                        "platform/components/sftp/src/test/java/io/rail8/components/sftp/SftpComponentTest.java"),
++     '"user", "flottila"', '"user", "rail8"'),
++    ("test-only name", ("platform/components/sftp/src/test/java/io/rail8/components/sftp/EmbeddedSftp.java",),
++     'USER = "flottila"', 'USER = "rail8"'),
++    ("test-only name", ("platform/components/sftp/src/test/java/io/rail8/components/sftp/SftpComponentTest.java",),
++     '"sftp://flottila@', '"sftp://rail8@'),
++    ("test-only name", ("platform/components/sftp/src/test/java/io/rail8/components/sftp/SftpConsumerEdgeTest.java",),
++     'writePrivateKey(key, "flottila-test"', 'writePrivateKey(key, "rail8-test"'),
++    ("test-only name", (_CLI + "test/java/io/rail8/cli/TestCommandTest.java", _CLI + "test/resources/packages/feed/endpoints/drop.yaml",
++                        _CLI + "test/resources/packages/feed/endpoints/drop-keyed.yaml"), "user: flottila", "user: rail8"),
++    # the coverage guard's own test: synthetic module names and package paths (ruling 8, left untouched by B)
++    ("coverage fixture", ("ci/test_coverage_check.py",), '"flottila-', '"rail8-'),
++    ("coverage fixture", ("ci/test_coverage_check.py",), '"io/flottila/x', '"io/rail8/x'),
++    ("coverage fixture", ("ci/test_coverage_check.py",), '"io" / "flottila" / "x"', '"io" / "rail8" / "x"'),
++]
+ 
+ # Never rewritten, in any commit (BRAND-1 packet "Exclusions"). History keeps the old name as written (D-148).
+ EXCLUDED: list[str] = [
+@@ -346,7 +554,10 @@ def in_scope(path: str, scope: str | None) -> bool:
+ 
+ 
+ def read_text(file: Path) -> str | None:
+-    data = file.read_bytes()
++    return _decoded(file.read_bytes())
++
++
++def _decoded(data: bytes) -> str | None:
+     if b"\0" in data:
+         return None
+     try:
+@@ -358,7 +569,7 @@ def read_text(file: Path) -> str | None:
+ def _status_done(line: str) -> bool:
+     if not line.startswith("|"):
+         return False
+-    cells = re.split(r"(?<!\\)\|", line)
++    cells = re.split(r"(?<!\\)\|", re.sub(r"`[^`]*`", "``", line))   # a `|` inside a code span is not a cell border
+     return len(cells) > 4 and cells[4].strip().startswith("done") and cells[1].strip() not in ("Id", "")
+ 
+ 
+@@ -382,10 +593,10 @@ def history_lines(path: str, lines: list[str]) -> set[int]:
+     return set()
+ 
+ 
+-def _matching(entries, path: str | None) -> list[tuple[re.Pattern, str]]:
+-    """The patterns of `entries` ((globs, pattern, reason)) that apply to `path`; every one for path None."""
++def _matching(entries, path: str) -> list[tuple[re.Pattern, str]]:
++    """The patterns of `entries` ((globs, pattern, reason)) that apply to `path`."""
+     return [(_compiled(pattern), reason) for globs, pattern, reason in entries
+-            if path is None or any(g == "*" or _glob(path, g) for g in globs)]
++            if any(g == "*" or _glob(path, g) for g in globs)]
+ 
+ 
+ _COMPILED: dict[str, re.Pattern] = {}
+@@ -401,7 +612,7 @@ class Masks:
+     """What a line keeps for one file: the repository URLs and KEPT_NAMES always, WIRE_KEEP (commit C's literals) when
+     `wire` is set. Masked text is replaced by NUL-delimited placeholders that no rule matches."""
+ 
+-    def __init__(self, path: str | None, wire: bool):
++    def __init__(self, path: str, wire: bool):
+         self.always = _matching(KEPT_NAMES, path)
+         self.wire = _matching(WIRE_KEEP, path) if wire else []
+ 
+@@ -468,21 +679,17 @@ def rewrite_paths(path: str, text: str, counts: Counter) -> str:
+ IDENTIFIER_RULES: list[tuple[str, re.Pattern, object]] = [(c, re.compile(p), r) for c, p, r in IDENTIFIER_MAP]
+ 
+ 
+-def rewrite_identifiers(path: str | None, text: str, counts: Counter, paths_too: bool = False) -> str:
+-    """IDENTIFIER_MAP over `text` (and PATH_RULES first when `paths_too`), outside the masks of `path` and outside its
+-    history lines."""
++def rewrite_identifiers(path: str, text: str, counts: Counter) -> str:
++    """IDENTIFIER_MAP over `text`, outside the masks of `path` and outside its history lines."""
+     masks = Masks(path, wire=True)
+     out = []
+     lines = text.split("\n")
+-    history = history_lines(path, lines) if path else set()
++    history = history_lines(path, lines)
+     for i, line in enumerate(lines):
+         if i in history:
+             out.append(line)
+             continue
+         masked, kept, _ = masks.mask(line)
+-        if paths_too:
+-            for name, pattern, replacement in PATH_RULES:
+-                masked = _apply(name, pattern, replacement, masked, counts)
+         for name, pattern, replacement in IDENTIFIER_RULES:
+             masked = _apply(name, pattern, replacement, masked, counts)
+         out.append(_unmasked(masked, kept))
+@@ -677,54 +884,6 @@ def cmd_identifiers(root: Path, scope: str | None, dry: bool) -> int:
+     return 0
+ 
+ 
+-def _diff_path(line: str) -> str | None:
+-    """The new-side path a diff header line names, after the path map and commit B's moves; None if it names none."""
+-    m = re.match(r"diff --git a/\S+ b/(\S+)$", line) or re.match(r"\+\+\+ b/(\S+)", line)
+-    return map_identifier_path(map_path(m.group(1))) if m else None
+-
+-
+-def cmd_translate(root: Path, file: str, output: str | None, dry: bool) -> int:
+-    """PATH_RULES and IDENTIFIER_MAP over one text file (a parked diff). In a diff, each line is read as part of the file
+-    its `diff --git` header names (that file's masks apply, so commit C's literals stay); the hunks of an EXCLUDED or
+-    B_UNTOUCHED file are left as written (history keeps the old name), and a context or removed line that the tree
+-    still holds as written (a history line of a living document) is left as written too, so the hunk still applies.
+-    Outside any header (a plain text file) every mask applies."""
+-    source = Path(file)
+-    text = read_text(source)
+-    if text is None:
+-        raise SystemExit(f"refused: {file} is not a UTF-8 text file")
+-    counts: Counter = Counter()
+-    out: list[str] = []
+-    path: str | None = None
+-    on_disk: set[str] = set()
+-    for line in text.split("\n"):
+-        named = _diff_path(line)
+-        if named is not None and line.startswith("diff --git"):
+-            path = named
+-            current = root / path
+-            body = read_text(current) if current.is_file() else None
+-            on_disk = set(body.split("\n")) if body else set()
+-        header = line.startswith(("diff --git", "--- ", "+++ ", "rename from ", "rename to ", "copy from ", "copy to "))
+-        if not header and path is not None and (excluded(path) or path in B_UNTOUCHED):
+-            out.append(line)
+-            continue
+-        new = rewrite_identifiers(path, line, counts, paths_too=True)
+-        if (not header and path is not None and line[:1] in (" ", "-") and new != line and line[1:] in on_disk
+-                and new[1:] not in on_disk):
+-            new = line
+-        out.append(new)
+-    new_text = "\n".join(out)
+-    print(f"translate {file}: {_count_changes(text, new_text)} line(s); "
+-          + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())), file=sys.stderr)
+-    if dry:
+-        return 0
+-    if output:
+-        Path(output).write_text(new_text, encoding="utf-8")
+-    else:
+-        sys.stdout.write(new_text)
+-    return 0
+-
+-
+ def cmd_path_report(root: Path, scope: str | None) -> None:
+     """Every line outside the exclusion list on which a path rule would still fire: after `moves`, each is a hand edit
+     still to make, or a string that is deliberately not a repository path (say which in the hand-back)."""
+@@ -752,6 +911,7 @@ def cmd_report(root: Path, scope: str | None, summary: bool) -> int:
+     file. Each line is tagged: [C: reason] when every occurrence lies inside a WIRE_KEEP literal (commit C renames it),
+     [B untouched] in a B_UNTOUCHED file, [?] otherwise. After commit B no line is [?]; after commit C the list is empty."""
+     hits: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
++    kept_hits: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
+     tags: Counter = Counter()
+     for path in tracked(root):
+         if excluded(path) or not in_scope(path, scope) or "/target/" in f"/{path}":
+@@ -768,8 +928,7 @@ def cmd_report(root: Path, scope: str | None, summary: bool) -> int:
+         for number, line in enumerate(lines, 1):
+             if number - 1 in history:
+                 continue
+-            plain, _ = _masked(line)
+-            if not OLD_NAME.search(plain):
++            if not OLD_NAME.search(line):
+                 continue
+             masked, _, wire_hits = masks.mask(line)
+             if path in B_UNTOUCHED:
+@@ -778,13 +937,23 @@ def cmd_report(root: Path, scope: str | None, summary: bool) -> int:
+                 tag = "?"
+             elif wire_hits:
+                 tag = "C: " + "; ".join(dict.fromkeys(wire_hits))
+-            else:
+-                continue    # only KEPT_NAMES on this line
++            else:   # only kept names on this line (ruling 4: the repository URLs and KEPT_NAMES)
++                reasons = (["repository URL"] if KEPT_URL.search(line) else []) + [
++                    reason for pattern, reason in masks.always if pattern.search(line)]
++                kept_hits[path].append((number, "; ".join(dict.fromkeys(reasons)), line.strip()))
++                continue
+             tags[tag.split(":")[0]] += 1
+             hits[path].append((number, tag, line.strip()))
++    kept_total = sum(len(v) for v in kept_hits.values())
++    print(f"kept (ruling 4, never rewritten): {kept_total} line(s) in {len(kept_hits)} file(s)")
++    for path in sorted(kept_hits):
++        print(f"{path} ({len(kept_hits[path])})")
++        if not summary:
++            for number, reason, line in kept_hits[path]:
++                print(f"  {number}: [kept: {reason}] {line[:200]}")
+     total = sum(len(v) for v in hits.values())
+-    print(f"remaining occurrences of the old name outside the exclusion list: {total} line(s) in {len(hits)} file(s); "
+-          + ", ".join(f"[{k}] {v}" for k, v in sorted(tags.items())))
++    print(f"remaining occurrences of the old name outside the exclusion list: {total} line(s) in {len(hits)} file(s)"
++          + (": " if tags else "") + ", ".join(f"[{k}] {v}" for k, v in sorted(tags.items())))
+     for path in sorted(hits):
+         print(f"{path} ({len(hits[path])})")
+         if not summary:
+@@ -793,9 +962,107 @@ def cmd_report(root: Path, scope: str | None, summary: bool) -> int:
+     return 0
+ 
+ 
+-def not_implemented(name: str) -> int:
+-    print(f"rail8_rename {name}: not implemented yet (BRAND-1 commit C)", file=sys.stderr)
+-    return 2
++def _wire_entries(path: str) -> list[tuple[int, str, object, str]]:
++    """The WIRE_MAP entries (index, class, old, new) whose files cover `path`, the longest literal first (a pattern last)."""
++    entries = [(i, cls, old, new) for i, (cls, globs, old, new) in enumerate(WIRE_MAP) if any(_glob(path, g) for g in globs)]
++    return sorted(entries, key=lambda e: -len(e[2]) if isinstance(e[2], str) else 0)
++
++
++def rewrite_wire(path: str, text: str, counts: Counter, used: Counter) -> str:
++    """WIRE_MAP over `text` outside the history lines of `path` and outside KEPT_URL / KEPT_NAMES; `used[i]` counts the
++    replacements of entry i."""
++    entries = _wire_entries(path)
++    if not entries:
++        return text
++    masks = Masks(path, wire=False)
++    out = []
++    lines = text.split("\n")
++    history = history_lines(path, lines)
++    for number, line in enumerate(lines):
++        if number in history:
++            out.append(line)
++            continue
++        masked, kept, _ = masks.mask(line)
++        for i, cls, old, new in entries:
++            if isinstance(old, str):
++                hits = masked.count(old)
++                masked = masked.replace(old, new)
++            else:
++                masked, hits = old.subn(new, masked)
++            counts[cls] += hits
++            used[i] += hits
++        out.append(_unmasked(masked, kept))
++    return "\n".join(out)
++
++
++# The parent of commit C (BRAND-1): the tree before the wire pass. An entry is live when it rewrites the file as
++# this commit holds it or as the tree holds it now; an entry that rewrites neither never matched anything (stale).
++WIRE_BASE = "c017e9c"
++
++
++def _wire_files(paths, scope: str | None) -> list[str]:
++    return [p for p in sorted(paths) if not excluded(p) and in_scope(p, scope) and "/target/" not in f"/{p}"
++            and _wire_entries(p)]
++
++
++def _base_used(root: Path) -> Counter | None:
++    """`used` of rewrite_wire over every file of WIRE_BASE its entries name, read from the local object store; None
++    if the commit is not there (a shallow clone)."""
++    if subprocess.run(["git", "cat-file", "-e", WIRE_BASE + "^{commit}"], cwd=root, capture_output=True).returncode:
++        return None
++    used: Counter = Counter()
++    for path in _wire_files(git(root, "ls-tree", "-r", "-z", "--name-only", WIRE_BASE).split("\0"), None):
++        blob = subprocess.run(["git", "cat-file", "blob", f"{WIRE_BASE}:{path}"], cwd=root, capture_output=True)
++        text = _decoded(blob.stdout) if blob.returncode == 0 else None
++        if text is not None:
++            rewrite_wire(path, text, Counter(), used)
++    return used
++
++
++def cmd_wire(root: Path, scope: str | None, dry: bool) -> int:
++    """Commit C: WIRE_MAP over every tracked text file its entries name, outside EXCLUDED and the history lines. Ends with
++    a check that every entry matched something in the files it names, in the tree now or at WIRE_BASE (an entry that
++    matched in neither is stale: an error)."""
++    counts: Counter = Counter()
++    used: Counter = Counter()
++    rewritten = 0
++    for path in _wire_files(tracked(root), scope):
++        file = root / path
++        if not file.is_file():
++            continue
++        text = read_text(file)
++        if text is None:
++            continue
++        new_text = rewrite_wire(path, text, counts, used)
++        if new_text == text:
++            continue
++        lines = _count_changes(text, new_text)
++        counts["lines"] += lines
++        rewritten += 1
++        print(f"rewrite {path}: {lines} line(s)")
++        if dry:
++            for number, (a, b) in enumerate(zip(text.split("\n"), new_text.split("\n")), 1):
++                if a != b:
++                    print(f"  {number}: {_snippet(a, b)}")
++        else:
++            file.write_text(new_text, encoding="utf-8")
++    summary = (f"wire: {rewritten} file(s) rewritten, {counts['lines']} line(s); "
++               + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()) if k != "lines")
++               + f"; {sum(1 for i in range(len(WIRE_MAP)) if used[i])} of {len(WIRE_MAP)} entries applied")
++    if scope is not None:
++        print(summary)
++        return 0
++    base = _base_used(root)
++    if base is None:
++        print(summary + f"; stale check not run: commit {WIRE_BASE} is not in this clone")
++        return 1
++    stale = [i for i in range(len(WIRE_MAP)) if not used[i] and not base[i]]
++    for i in stale:
++        cls, globs, old, _ = WIRE_MAP[i]
++        print(f"stale wire entry {i} [{cls}] {old if isinstance(old, str) else old.pattern!r}: "
++              f"matches nothing in {', '.join(globs)}, neither in the tree nor at {WIRE_BASE}")
++    print(summary + f", {sum(1 for i in range(len(WIRE_MAP)) if base[i])} at {WIRE_BASE}; {len(stale)} stale")
++    return 1 if stale else 0
+ 
+ 
+ def main(argv: list[str] | None = None) -> int:
+@@ -807,24 +1074,19 @@ def main(argv: list[str] | None = None) -> int:
+         p.add_argument("--root", default=None, help="limit to this repository subtree (e.g. mapping)")
+         p.add_argument("--summary", action="store_true", help="final report: counts per file, no lines")
+         p.add_argument("--paths", action="store_true", help="also list every line where a path rule would still fire")
+-    t = sub.add_parser("translate")
+-    t.add_argument("file")
+-    t.add_argument("--output", "-o", default=None, help="write the result here (default: standard output)")
+-    t.add_argument("--dry-run", action="store_true", help="print the counts only")
+     args = ap.parse_args(argv)
+     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+-    if args.command == "wire":
+-        return not_implemented(args.command)
+-    if args.command == "translate":
+-        return cmd_translate(root, args.file, args.output, args.dry_run)
+     scope = args.root.strip("/") if args.root else None
++    status = 0
+     if args.command == "moves":
+         cmd_moves(root, scope, args.dry_run)
+     if args.command == "identifiers":
+         cmd_identifiers(root, scope, args.dry_run)
++    if args.command == "wire":
++        status = cmd_wire(root, scope, args.dry_run)
+     if args.paths:
+         cmd_path_report(root, scope)
+-    return cmd_report(root, scope, args.summary)
++    return cmd_report(root, scope, args.summary) or status
+ 
+ 
+ if __name__ == "__main__":

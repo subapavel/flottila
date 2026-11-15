@@ -93,7 +93,7 @@ final class DepsFixture {
 
     /**
      * The content digest of the package in {@code dir} as D-087 defines it (computed here, independently of the code under test):
-     * {@code sha256:} and the lower-case hex SHA-256 over the UTF-8 lines {@code flottila-package-content 1} and
+     * {@code sha256:} and the lower-case hex SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and
      * {@code file <path> <sha256 hex>} for every regular file below {@code dir}, sorted by its {@code /}-separated path, each
      * ended by {@code \n}.
      */
@@ -103,7 +103,7 @@ final class DepsFixture {
             walk.filter(Files::isRegularFile).forEach(f -> files.put(dir.relativize(f).toString().replace('\\', '/'), f));
         }
         MessageDigest all = sha256();
-        all.update("flottila-package-content 1\n".getBytes(StandardCharsets.UTF_8));
+        all.update("rail8-package-content 1\n".getBytes(StandardCharsets.UTF_8));
         for (Map.Entry<String, Path> f : files.entrySet()) {
             String line = "file " + f.getKey() + " " + HexFormat.of().formatHex(sha256().digest(Files.readAllBytes(f.getValue()))) + "\n";
             all.update(line.getBytes(StandardCharsets.UTF_8));

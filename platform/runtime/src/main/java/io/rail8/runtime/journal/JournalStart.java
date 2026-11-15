@@ -174,7 +174,7 @@ final class JournalStart {
 
     /** {@code <journal>:<digest>}'s digest: the first 64 bits of SHA-256 ({@link Hasher#sha256()}) over the node, the journal and the sorted items, in hex. */
     private String digest(UUID journal, List<String> items) {
-        byte[] text = ("flottila journal loss v1\n" + node + "\n" + journal + "\n" + String.join("\n", items)).getBytes(StandardCharsets.UTF_8);
+        byte[] text = ("rail8 journal loss v1\n" + node + "\n" + journal + "\n" + String.join("\n", items)).getBytes(StandardCharsets.UTF_8);
         return HexFormat.of().toHexDigits(Hasher.sha256().hash(text));
     }
 

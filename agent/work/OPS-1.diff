@@ -1,0 +1,957 @@
+ AGENTS.md                          |   6 +-
+ HANDOVER.md                        |   1 +
+ README.md                          |   4 +-
+ agent/NOTES.md                     |   5 +-
+ agent/patches/OPS-1-steering.patch |  45 ++++++
+ docs/ARCHITECTURE.md               | 285 ++++++++++++++++++++++++++++++-------
+ docs/CORE-REWORK.md                |   4 +
+ docs/GATE.md                       |   2 +
+ docs/PROGRESS.md                   |   4 +
+ docs/PROTOTYPE-VS-ARCHITECTURE.md  |   4 +-
+ docs/WORKFLOW.md                   |   8 +-
+ docs/findings/F-38.md              | 141 ++++++++++++++++++
+ issues/ISSUE-8.md                  |  87 +++++++++++
+ 13 files changed, 534 insertions(+), 62 deletions(-)
+
+diff --git a/AGENTS.md b/AGENTS.md
+index 7d31ea6..58308b2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -94,7 +94,7 @@ partial work, marked as such. No agent updates BACKLOG / HANDOFF / PROGRESS or c
+ 
+ The architect names the commands; the verifier runs them with output under `agent/work/<task>-*.log`
+ and reports exit codes, counts lines and the failing section. The architect reads the tail of the
+-log itself for the evidence line it writes into PROGRESS.md — a claim without observed output
++log itself for the evidence line it writes into docs/PROGRESS.md — a claim without observed output
+ behind it is not evidence.
+ 
+ ## Review (reviewer, after every task)
+@@ -103,7 +103,7 @@ Input from the architect, by path: the diff (`agent/work/<task>.diff`), the test
+ PIT mutation report for the classes the task touched. The reviewer answers, per test, "would this
+ fail if the code were wrong?" against the checklist in `docs/WORKFLOW.md` and returns `PASS` or
+ `FAIL — <reason>`, every blocking reason in one round. The architect records the verdict in
+-PROGRESS.md; `FAIL` reopens the task. After a second `FAIL` the architect rewrites the packet (the
++docs/PROGRESS.md; `FAIL` reopens the task. After a second `FAIL` the architect rewrites the packet (the
+ spec was wrong, not only the code) rather than running a third round on the same packet. The
+ reviewer is never the agent that wrote the test.
+ 
+@@ -114,6 +114,6 @@ Run once per gate row on the gate commit. Returns `gate: MET` or `gate: NOT_MET
+ 
+ ## Evidence vocabulary
+ 
+-Every check in PROGRESS.md carries one of: `VERIFIED_PASS` (ran, observed green),
++Every check in docs/PROGRESS.md carries one of: `VERIFIED_PASS` (ran, observed green),
+ `EXECUTED_FAIL` (ran, observed red), `NOT_RUN`, `ENVIRONMENT_BLOCKED` (could not run here, why).
+ A claim without the observed output behind it is not evidence. A skeleton is not the feature.
+diff --git a/HANDOVER.md b/HANDOVER.md
+index 5297a8d..76d82ba 100644
+--- a/HANDOVER.md
++++ b/HANDOVER.md
+@@ -131,3 +131,4 @@ Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent
+ 
+ P2-S1 (snapshots to the Kafka `monitoring` topic) and P2-S2 (a ClickHouse Kafka-engine table) are both pending. The ClickHouse
+ container is present under the `history` profile and nothing feeds it.
++[2026-11-15: both stretch items are superseded. Kafka is an optional add-on (D-134); ClickHouse is to be fed by the node's mover with log records (CORE-10, OPS-2, pending; D-147).]
+diff --git a/README.md b/README.md
+index 18692e9..76a8a73 100644
+--- a/README.md
++++ b/README.md
+@@ -2,8 +2,8 @@
+ 
+ Open-source enterprise integration platform where **monitoring is the product**: every message,
+ every step and every payload is captured, searchable and replayable — and the runtime also
+-delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · Apache Kafka ·
+-ClickHouse · Valkey · S3. Apache 2.0.
++delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · ClickHouse · Valkey · S3
++(Apache Kafka only as an optional add-on, D-134). Apache 2.0.
+ 
+ **Status: under construction, not usable yet.** Tag `proto-m1` is the milestone-1 state (one
+ module, Vert.x 4.5, the flow `HTTP → validate → extractKey → route → XSLT → HTTP` with snapshots,
+diff --git a/agent/NOTES.md b/agent/NOTES.md
+index 83fffd2..ac0e0a0 100644
+--- a/agent/NOTES.md
++++ b/agent/NOTES.md
+@@ -234,7 +234,8 @@ awaited on the message path. ITs: `PgMessageStoreIT`, `InvoiceSyncRecordingIT`.
+ (MigrationsIT order dependence) pending. Open from the P1-04 review: a failed snapshot write is a
+ counter (`failed()`) until P1-09 shows it; `findByKey` order is `min(ctid)` (add an insert
+ sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dry run only);
+-consider `Meter` on `Runtime`.
++consider `Meter` on `Runtime`. The snapshot path is to be replaced by the log-record stream
++(ARCHITECTURE §8; OPS-2, CORE-8, pending; D-147).
+ 
+ ## Pipeline (P1-03, D-043)
+ 
+@@ -248,6 +249,8 @@ built-ins to/route/filter/extractKey/validate; `core.pattern` Retry/Route/Filter
+ → FakeRuntime). Left for later: producer `close` (P1-06), deploy-time `configSchema` check, the
+ xslt cache keys the main file's content only — an `xsl:include` change alone is not recompiled
+ in-process (P1-07 / deploy reload), the xslt result is buffered before the body limit is enforced.
++No logging type is to be added to `StepResources`: custom code uses standard Java logging
++(ARCHITECTURE §8 Author voice and mapping trace; OPS-4, pending; D-147).
+ 
+ ## Core, runtime, testkit (Phase 0)
+ 
+diff --git a/agent/patches/OPS-1-steering.patch b/agent/patches/OPS-1-steering.patch
+new file mode 100644
+index 0000000..dadde4f
+--- /dev/null
++++ b/agent/patches/OPS-1-steering.patch
+@@ -0,0 +1,45 @@
++diff --git a/CLAUDE.md b/CLAUDE.md
++--- a/CLAUDE.md
+++++ b/CLAUDE.md
++@@ -48,7 +48,7 @@
++ - Clock, timers and id generation are injected through `Runtime`. No static singletons.
++ - Dependencies: Apache 2.0, MIT, BSD, MPL 2.0, EPL only. AGPL, GPL, BSL, SSPL → `ISSUE`, never
++   linked. SAP JCo is `provided` scope and never redistributed.
++-- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited.
+++- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited. A message's log has no per-message cap (D-147); its memory is bounded by the platform's record buffer, which stops intake when full (OPS-2, pending).
++ 
++ ## Tests (TDD from day 1)
++ 
++@@ -80,7 +80,7 @@
++   guess an API from memory.
++ - One task = one commit, Conventional Commits, direct to `main`, green before push. Format and
++   trailers in `docs/WORKFLOW.md`.
++-- After every task: PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
+++- After every task: docs/PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
++   the reviewer agent. A task is `done` only with `review: PASS`.
++ - Decisions: reversible → `docs/DECISIONS.md`; expensive-to-reverse → design it, mark it
++   `draft — review at hand-over`; money, credentials, licences, a missed gate → `issues/ISSUE-<n>.md`
++diff --git a/.claude/agents/implementer.md b/.claude/agents/implementer.md
++--- a/.claude/agents/implementer.md
+++++ b/.claude/agents/implementer.md
++@@ -38,7 +38,7 @@
++   its tail or the failing section, never the whole log. Run `mvn -B -ntp verify` (and the checks
++   the packet names) before handing back. Report observed results only, with the evidence words
++   `VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`.
++-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/ARCHITECTURE.md`,
+++- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/ARCHITECTURE.md`,
++   `docs/DECISIONS.md`, `.claude/`. Do not start other agents. Do not change ArchUnit rules or pom
++   module structure unless the packet says so.
++ - If the task cannot be completed as specified, stop and hand back what you have, marked partial,
++diff --git a/.claude/agents/test-author.md b/.claude/agents/test-author.md
++--- a/.claude/agents/test-author.md
+++++ b/.claude/agents/test-author.md
++@@ -29,7 +29,7 @@
++   the failing section. Report the observed red, never an assumed one.
++ - Library and test-framework APIs: Context7 MCP tools first, then `javap -cp <jar>` on the jar
++   under `~/.m2`. Never guess.
++-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/`, `.claude/`. Do not start other
+++- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/`, `.claude/`. Do not start other
++   agents.
++ 
++ Self-check before every hand-back (what the reviewer will check; a FAIL that repeats one of these
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 317efca..e9ecaa4 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -1,12 +1,26 @@
+ > **Status:** binding design. The body below is the v3.3 text exported from the design document on
+-> 2026-10-17, unchanged. The *Amendments* agreed in Part A on 2026-10-17 come first and override the
+-> body where they differ. During autonomous execution the coordinator edits this file on findings
+-> (`docs/WORKFLOW.md §7`) and adds a line to the changelog for every change.
++> 2026-10-17, changed since then only by the changes the changelog lists. The *Amendments* agreed in
++> Part A on 2026-10-17 come first and override the body where they differ. During autonomous execution
++> the coordinator edits this file on findings (`docs/WORKFLOW.md §7`) and adds a line to the changelog
++> for every change.
+ >
+-> **Under revision (owner, 2026-11-03):** `docs/CORE-REWORK.md` states the owner's intent for the core
+-> (bodies, queue, Kafka, ClickHouse, takeover, work pickup). Where it differs from this file, the brief
+-> wins; this file was rewritten to it in CORE-12 (changelog 3.14, F-34): what the rework built is stated as
+-> built, what it has not built yet is marked "(CORE-n, pending)" with the brief's O-/Q- id.
++> **Under revision by two briefs of the owner, each in its own scope.** Where a brief differs from this
++> file within its scope, the brief wins.
++>
++> - `docs/CORE-REWORK.md` (owner, 2026-11-03) states the owner's intent for the core (bodies, queue,
++>   Kafka, ClickHouse, takeover, work pickup). This file was rewritten to it in CORE-12 (changelog 3.14,
++>   F-34): what the rework built is stated as built, what it has not built yet is marked "(CORE-n,
++>   pending)" with the brief's O-/Q- id.
++> - `docs/OPERATIONS-BRIEF.md` (owner, 2026-11-14/15, D-147) states the owner's intent for the log,
++>   monitoring, metrics, alerts, permissions, agents and callers. This file was rewritten to it in OPS-1
++>   (changelog 3.25, F-38): a rewritten passage opens with "Today (built)" — what the code does now —
++>   and goes on with "To be (OPS-n, pending; OPERATIONS-BRIEF §x)" — only what that brief states as
++>   decided, in its terms; the design enters when the row is designed. What the brief marks [inferred],
++>   "to verify" or "not thought through" is not design: §14 lists each such item with its row, and
++>   ISSUE-8 carries them to the owner.
++> - There is no general rule between the two briefs. The operations brief is based on the core rework;
++>   it amends CORE-8, CORE-10 and CORE-13 and rejects Vector (its §1), nothing more. The four places
++>   where the two meet are open in §14, each with its row.
+ 
+ ## Changelog
+ 
+@@ -92,13 +106,28 @@
+ | 2026-11-14 | 3.22 | §3 Valkey from two nodes on (D-144) and §14 the owner's brainstorm list of 2026-10-29, recovered from an unmerged branch | — |
+ | 2026-11-15 | 3.23 | §12: the repository is laid out by area — the platform's modules under `platform/` without the product prefix, the parent pom at `platform/pom.xml`, a thin root aggregator, the benchmark module in `bench/`, the mapping engine as the area `mapping/`; no rule changes (BRAND-1, BRAND-3; D-149, D-150) | F-37 (minor) |
+ | 2026-11-15 | 3.24 | The whole document: identifiers follow the rename to Rail8 (D-145, D-149) — Maven coordinates `io.rail8:rail8-*`, the package root `io.rail8`, environment keys `RAIL8_*`, the CLI `rail8`; persisted and wire names are renamed in the following commit. Amendments item 5 and §14: Rail8 is the product's name, no longer a working name; the Maven namespace is a draft until ISSUE-7 is answered. Changelog rows above keep the names they were written with | F-37 (minor) |
++| 2026-11-15 | 3.25 | Status note and Amendments item 1: the note names both briefs of the owner with the scope of each and no general rule between them, and its "unchanged" is corrected; amendment 1 keeps the built monitoring path and appends its replacement, memory → writer → the node's journal → mover → ClickHouse (OPS-1; OPS-2, CORE-8, CORE-10, pending) | F-38 point 1 (major), D-147 |
++| 2026-11-15 | 3.25 | §2: the rejected list gains the owner's rejection of Vector and of any other new dependency for the platform's logs and metrics — no Kafka, no Prometheus as a required part (OPS-1) | F-38 point 6 (major), D-147 |
++| 2026-11-15 | 3.25 | §3: the node row no longer requires Micrometer and OTel exporters or a load balancer, the Postgres and ClickHouse rows name the log records and the platform's metrics as to be, the developer portal is to be a separate door, and the operating modes are parked (OPS-1; OPS-2, OPS-8, OPS-11, pending; CONSIDER-21) | F-38 points 2, 6, 12, 13 (major), D-147 |
++| 2026-11-15 | 3.25 | §4: one log-record buffer for the whole platform is to stand beside the per-flow admission; the `tenant` field and the trace id of `MessageContext` and the journal's per-tenant key are stated as built, with what is to replace them; the event bus and writer paragraphs mark the built monitoring path as to be replaced by the log-record path (OPS-1; OPS-2, OPS-4, OPS-8, OPS-9, CORE-8, CORE-10, pending) | F-38 points 3, 4, 8 (major), D-147 |
++| 2026-11-15 | 3.25 | §5: headers row — secrets in headers are to be replaced by a marker and never stored (OPS-1; OPS-5, pending) | F-38 point 2 (major), D-147 |
++| 2026-11-15 | 3.25 | §6: "interface" is defined as the operator's word for a deployed flow, the dispatcher case left open, and the dispatcher sentence says "PO interface"; Recording says "recording level" and "body level" and gains, as to be, the log threshold beside the body recording, the trace, the info fact and the two retention periods; the dry replay is parked (OPS-1; OPS-3, OPS-5, CORE-10, CORE-13, pending; CONSIDER-22) | F-38 points 3, 13, 14 (major), D-147 |
++| 2026-11-15 | 3.25 | §7: Persistence tables — `messages` holds the snapshot rows, and no Postgres table is to hold log records (OPS-1; OPS-2, pending) | F-38 point 2 (major), D-147 |
++| 2026-11-15 | 3.25 | §8: retitled "Monitoring: records, metrics, alerts" and rewritten under nine sub-headings, each stating what is built today (the trail, the batching, `maxWait`, the WARNING and `snapshotWriteFailures`, the stores and the screens are kept) and then what the brief decides: one log-record stream, its log levels and the trace, the author voice and the mapping trace, a write path that waits and alerts and never drops with the owner's loss contract, metrics and alerts inside the platform (OPS-1; OPS-2 to OPS-8, CORE-8, CORE-10, CORE-13, pending; CONSIDER-23) | F-38 points 2 to 8, 13 (major), D-147 |
++| 2026-11-15 | 3.25 | §9: retitled to include permissions; the tenant position of the identity and of the journal key is stated as built; v3.3's three authorization planes and its masking guardrail give way to the new sub-headings Teams and permissions, Agents, and Callers and the developer portal; team secrets, the lockout, the recording of payload views and the liveness check from outside are added as to be (OPS-1; OPS-8 to OPS-11, pending; CONSIDER-20) | F-38 points 7 to 12 (major), D-147 |
++| 2026-11-15 | 3.25 | §10: log records in place of "span, snapshot and metric"; the engines' errors as one error record; the caller and its assignment in place of the application and subscription objects; the AI guardrails rewritten — masking before a model removed, agent keys and proposals added, "PR + CI only" kept; the `ai:` provider's scope open; Service extensions marked parked and `Services.log()` removed (OPS-1; OPS-2, OPS-4, OPS-10, OPS-11, pending; CONSIDER-19, CONSIDER-20) | F-38 points 2, 3, 8, 10 to 13 (major), D-147 |
++| 2026-11-15 | 3.25 | §11: fixtures saved from monitoring — the masking by a flow's PII policy is parked (OPS-1; CONSIDER-20) | F-38 point 10 (major), D-147 |
++| 2026-11-15 | 3.25 | §13: Phase 3 builds the log-record stream and the platform's own metrics and alerts in place of "OTel spans, Micrometer, both alert layers", and its gate clause on a dropped node becomes the owner's loss contract, `draft — review at hand-over`; Phase 5 names callers, the portal as a separate door and agent keys with proposals (OPS-1; OPS-2 to OPS-8, OPS-10, OPS-11, pending) | F-38 points 5, 6, 11, 12 (major), D-147 |
++| 2026-11-15 | 3.25 | §14: item 1 follows amendment 1; the `vertx-auth-abac` item is closed; four new lists — parked by the owner (CONSIDER-19 to CONSIDER-23), the four places where the two briefs meet, the open questions of the rewrite, and the brief's [inferred] and to-verify items — each item with its row (OPS-1; ISSUE-8) | F-38 points 1, 9, 13, 14 (major), D-147 |
+ 
+ ## Amendments (Part A, 2026-10-17)
+ 
+ 1. **§14 item 1 — closed.** The §4 review replacements are final: one plain JDK virtual thread
+    per message bounded by a per-flow semaphore counting requests and bytes; objects keyed by
+    message id + step; monitoring path worker → bounded batch queue → Postgres, with ClickHouse fed
+-   by the node's mover, not by Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending); consumer contract
++   by the node's mover, not by Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending) — the built path, to
++   be replaced by memory → writer → the node's journal → mover → ClickHouse (OPERATIONS-BRIEF §3;
++   OPS-2, CORE-8, CORE-10, pending) [amended 3.25, F-38]; consumer contract
+    `Function<Envelope, Future<Ack>>`; the `/xi` door's durability does not depend on Kafka, a
+    Kafka-backed `/xi` door is the optional add-on (CORE-REWORK O-1, CORE-9) [amended 3.14, F-34].
+ 2. **§14 item 2 — closed, except one.** The body is stored by reference into the BlobStore
+@@ -162,7 +191,7 @@ The language question is closed: Java 25 on Vert.x 5.1, one runtime, no second l
+ | Kubernetes | An environment, never a requirement; systemd, Compose, K8s, cloud managed all supported from one image | Final |
+ | Native code | None in-process. Anything native runs as a separate process over HTTP/gRPC or does not exist | Final |
+ 
+-Rejected and not to be reopened: Apache Camel (embedded or otherwise), Elixir/BEAM core, Rust core, Vert.x clustering, Vert.x polyglot verticles, Keycloak, MinIO, custom DSL before real usage, event-bus hop per step, Kubernetes as prerequisite, minimal few-container stack.
++Rejected and not to be reopened: Apache Camel (embedded or otherwise), Elixir/BEAM core, Rust core, Vert.x clustering, Vert.x polyglot verticles, Keycloak, MinIO, custom DSL before real usage, event-bus hop per step, Kubernetes as prerequisite, minimal few-container stack. Rejected by the owner in the brainstorm of 2026-11-14/15 (OPERATIONS-BRIEF §1, D-147): Vector as the collector of the platform's logs and metrics (CONSIDER-11), and any other new dependency for them — no Kafka, no Prometheus as a required part (§8 Metrics and OpenTelemetry).
+ 
+ ## 3. System topology
+ 
+@@ -174,16 +203,16 @@ Runtime nodes talk to all five stores; the control plane talks only to Postgres
+ 
+ | Component | Role | HA / scale | Mandatory |
+ | --- | --- | --- | --- |
+-| Runtime node | endpoints, pipelines, workers, pollers; Micrometer + OTel exporters | N identical nodes, LB in front, SIGTERM drain | yes |
+-| PostgreSQL | state, work queues (SKIP LOCKED), ordered XI queues, flow/partner config, wallet, processed-ids, DLQ, last-N-hours monitoring | synchronous standby + failover (`ha`) or single server (`local`), `RAIL8_PG_DURABILITY` (§4, D-127); supported versions 17 and 18 (§4, D-129) | yes |
++| Runtime node | endpoints, pipelines, workers, pollers; the "Micrometer + OTel exporters" of v3.3 were never built: the node's metrics are to go to ClickHouse by the log-record path, with OpenTelemetry as an optional export (OPS-8, pending; OPERATIONS-BRIEF §4; §8 Metrics and OpenTelemetry) | N identical nodes, SIGTERM drain; a load balancer may stand in front and is not required (OPERATIONS-BRIEF §2.7; where TLS ends is not decided, §14) | yes |
++| PostgreSQL | state, work queues (SKIP LOCKED), ordered XI queues, flow/partner config, wallet, processed-ids, DLQ, last-N-hours monitoring (the snapshot rows, §8 Write path and loss contract; no Postgres table is to hold log records, OPERATIONS-BRIEF §1, and whether a short copy of the step metadata stays is decided by measurement, CORE-REWORK Q-3 — OPS-2, CORE-10, pending) | synchronous standby + failover (`ha`) or single server (`local`), `RAIL8_PG_DURABILITY` (§4, D-127); supported versions 17 and 18 (§4, D-129) | yes |
+ | Apache Kafka (KRaft) | optional event-broker add-on (CORE-REWORK O-1): `queue: kafka` and a Kafka-backed `/xi` door; no core path uses it (compose profile `kafka`) | 3 brokers; tiered storage to S3 | no (add-on) |
+-| ClickHouse | monitoring history, metrics, payload search (XPath/JSONPath via keys-as-columns + JSON projection) | replicated; hot NVMe → S3 by TTL | yes |
++| ClickHouse | monitoring history, metrics, payload search (XPath/JSONPath via keys-as-columns + JSON projection); to hold the log records and the platform's own metrics, carried there by the node's mover (OPS-2, OPS-8, CORE-10, pending; OPERATIONS-BRIEF §3, §4) | replicated; hot NVMe → S3 by TTL | yes |
+ | S3-compatible store | ClickHouse's cold tier (older parts move there by age; CORE-REWORK Q-9, CORE-13, pending) and the deployment archives (D-070); never a message body — the S3 body tier is gone, bodies live in the node's body journal (CORE-REWORK O-4, O-6; D-105, CORE-4b); Kafka's tiered storage only with the add-on | customer backend | yes |
+ | Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | from two nodes on; a single node runs on in-memory implementations behind the same API (D-144) |
+-| Control plane | Quarkus admin API + React UI, MCP server, developer portal | stateless, 1–2 instances | yes, but runtime survives without it |
++| Control plane | Quarkus admin API + React UI, MCP server, developer portal — the portal is to be a separate door for external people, with no monitoring and no account in the platform (OPS-11, pending; OPERATIONS-BRIEF §5; §9 Callers and the developer portal) | stateless, 1–2 instances | yes, but runtime survives without it |
+ | ZITADEL | optional IdP for installs without one | — | optional |
+ 
+-Runtime pools: flows are grouped into pools (e.g. `critical`, `core`, `dmz`); all flows of a pool are deployed on every node of that pool, so a pool is a scaling and isolation unit. Deployment shapes from one image: plain server (systemd), Docker Compose, Kubernetes (HPA on backlog, health endpoints), cloud managed services for the five stores.
++Runtime pools: flows are grouped into pools (e.g. `critical`, `core`, `dmz`); all flows of a pool are deployed on every node of that pool, so a pool is a scaling and isolation unit. Deployment shapes from one image: plain server (systemd), Docker Compose, Kubernetes (HPA on backlog, health endpoints), cloud managed services for the five stores. Operating modes beyond these shapes — hybrid (a cloud part for external clients and cloud integrations plus an on-premise part for internal systems), cloud only with a cloud connector, on-premise only with a web dispatcher — are parked by the owner and not thought through (CONSIDER-21; OPERATIONS-BRIEF §7).
+ 
+ ## 4. Runtime core
+ 
+@@ -192,10 +221,10 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
+ **Threading**
+ 
+ - Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves. A poller starts a round only while its node holds the endpoint's lease (D-083); a stop at a lost or lapsed lease waits for the file in flight, so a takeover may overlap it by that file: a duplicate, never a loss; a consumer that names a dedupe key (`dedupeBy`, sftp `sftp.fileKey`) turns that duplicate into an `Accepted` naming the first message (D-084).
+-- Admission per flow = a semaphore that counts **requests and bytes** (body size is known from the content hash record). Over the limit: HTTP 503 + Retry-After, SFTP poller pauses, a Kafka consumer (the optional add-on, CORE-REWORK O-1) stops polling. Memory, not thread count, is what backpressure protects.
++- Admission per flow = a semaphore that counts **requests and bytes** (body size is known from the content hash record). Over the limit: HTTP 503 + Retry-After, SFTP poller pauses, a Kafka consumer (the optional add-on, CORE-REWORK O-1) stops polling. Memory, not thread count, is what backpressure protects. To be (OPS-2, pending; OPERATIONS-BRIEF §3): beside this per-flow admission the log records get one buffer for the whole platform; when it is full, intake stops for the whole platform — every door refusing as above, HTTP 503 + Retry-After and pollers paused — and the alert names the interface that writes most (OPS-8, pending); what the stop means for one node's journal, for work in flight and for replay is OPS-2's (§8 Write path and loss contract).
+ - Concurrency per target system (D-099): every producer call to one target (`Component.target`, `scheme://host:port`) takes a node-wide permit (one `Targets` per node, shared by every package and flow version; `RAIL8_TARGET_*`, `GET /admin/targets`) that counts **requests only** (the body is already in its flow's admission) and is held only for the outbound send, inside the step's retry; a permit not granted within `maxWait` is a retryable `NackException` — sync 503 + Retry-After, at-least-once the step's retry, then a failed attempt of the flow's schedule (D-135), then park, at-most-once dropped and logged. Defaults 16 calls, 5 s, finite. A wait is bounded by the earlier of `maxWait` and the message's deadline (FIX-115, D-100).
+ - Two executors only for work: the virtual-thread executor (default for everything) and a small **platform-thread pool for JCo/JNI**, because JNI still pins carriers on JDK 25; a client library's own transport I/O threads (Vert.x event loops, the Kafka network thread of the add-on, MINA SSHD's NIO2 pool sized ≤ 2) are not executors and never run a pipeline (D-076). CPU-bound steps need no pool; the per-flow cap (default cores × 2 for CPU-heavy flows, higher for I/O flows) is the limit.
+-- `ScopedValue` carries message id, tenant, trace id and deadline through every step without threading them through signatures: FlowBuilder binds `MessageContext` at the head of every pipeline it builds, with the deadline = the run's start + the flow's `delivery.timeout` (default 30 s), fresh per run (D-100); tenant is "default" and the trace id the message id until §9 tenants and OTel land. A thin `RequestScope` (fork / join / cancel on virtual threads) is to wrap each message so a timeout or cancel stops all of its children — not yet on deployed paths: nothing cancels at the deadline (FIX-117) and steps do not see it (FIX-118). Producers do (D-113): a `to` hands the producer a live `Deadline` (`send(e, d)`), the time left until the message's deadline — on a worker run the earlier of that and the node's fence — and refuses a send with no time left (retryable Nack, nothing started); the producer cuts a send still open when the deadline, re-read, has passed (http resets the request); swap in `StructuredTaskScope` when it leaves preview.
++- `ScopedValue` carries message id, tenant, trace id and deadline through every step without threading them through signatures: FlowBuilder binds `MessageContext` at the head of every pipeline it builds, with the deadline = the run's start + the flow's `delivery.timeout` (default 30 s), fresh per run (D-100); the `tenant` field holds `default` (`MessageContext.DEFAULT_TENANT`) and the trace id is the message id. To be: there is no tenant level, and what becomes of the field goes with OPS-9 (pending; OPERATIONS-BRIEF §5; §9 Teams and permissions); the trace id is taken from the sender, stored on the message, passed to the receiver and searchable (OPS-8, pending; OPERATIONS-BRIEF §4); and the bound `MessageContext` is the brief's direction for attributing a line of standard Java logging to its message and step, the hook to be verified at design (OPS-4, pending; OPERATIONS-BRIEF §2.10; §8 Author voice and mapping trace, §14). A thin `RequestScope` (fork / join / cancel on virtual threads) is to wrap each message so a timeout or cancel stops all of its children — not yet on deployed paths: nothing cancels at the deadline (FIX-117) and steps do not see it (FIX-118). Producers do (D-113): a `to` hands the producer a live `Deadline` (`send(e, d)`), the time left until the message's deadline — on a worker run the earlier of that and the node's fence — and refuses a send with no time left (retryable Nack, nothing started); the producer cuts a send still open when the deadline, re-read, has passed (http resets the request); swap in `StructuredTaskScope` when it leaves preview.
+ - I/O goes through Vert.x clients with `Future.await()`; blocking SDKs run directly on the virtual thread (that is the point). The blocked-thread checker is not relied on: per-step wall time on the snapshot and a "slowest steps" view replace it; CPU time per step only where the JVM measures the thread, which it does not for a virtual thread on JDK 25, so `cpuNanos` is null on every step recorded since FIX-106 (F-21). CPU per flow and step comes from JFR CPU-time sampling instead: with `RAIL8_CPU_SAMPLING=<period>` the node wraps each step in a JFR event `io.flottila.Step` (without it no step is wrapped: sampling off costs nothing, owner 2026-11-03) and matches every `jdk.CPUTimeSample` of a virtual thread to the innermost step event on that thread — statistical (±10 % from 1 000 samples of a step while at most 5 % of the samples are lost — the endpoint shows both), Linux only, per node, in memory, read from completed recordings every 5 s (so 5–10 s behind; a live JFR stream loses virtual-thread constants on JDK 25, F-22), never per message (FIX-108, D-094).
+ - One JVM per node. An out-of-process worker (same Step SPI, bodies by reference, HTTP/gRPC) is an installation option for untrusted mapping jars, not the default.
+ 
+@@ -211,7 +240,7 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
+ 
+ The durable save is the consumer's responsibility, never a pipeline stage (on Postgres it also inserts the consumer's dedupe key into `processed_ids` first, in the same transaction; a key already seen writes nothing of the arrival and answers the first message's id, D-084; concurrent saves commit as a group in one transaction, a duplicate's neighbours unaffected, D-109): only the consumer knows what its ACK is and whether it is irreversible. Stage 0 "ingress" is a pure identity whose snapshot shows what arrived. For at-least-once the save *is* the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK — its body forced into the node's body journal first, then on Postgres in one transaction with its record and its work item carrying the body's journal reference, no body bytes in Postgres (D-082, D-105; CORE-REWORK O-5, O-6) — whatever the flow's recording level says: the recording level governs the steps' snapshots, never the durable save (F-2). The worker then runs the pipeline without stage 0, which was recorded at the save.
+ 
+-**Body journal** (D-105, CORE-4; CORE-REWORK O-5, O-6, §3): message bodies live on the node's local disk in its body journal — append-only segments of encrypted records (per-tenant key, D-106), written with one `fdatasync` per group of records, sealed and never rewritten — and Postgres keeps only the reference (`body_refs`, the work item's `body_*` columns, V12); a body is keyed by message id + step. A node claims only the items whose body its journal holds; a crash between the force and the commit leaves unreferenced bytes that go with their segment, and the sweeper deletes a segment once nothing pins it (no row-level delete, CORE-4d): a work item's ref and a DLQ row's kept ref pin it, a kept step body's ref only while it is younger than `RAIL8_JOURNAL_KEEP_MAX_AGE` (PT1H, PT1M..P1D) — the interim rule (D-105, CORE-3 item 14); past that age its segment may be swept. A kept ref is to pin its segment until its body has moved to ClickHouse (CORE-REWORK Q-3, Q-4; CORE-10, pending). A full journal (its disk bound) refuses new at-least-once messages with 503 and an alert (D-105, CORE-4d); riding out a ClickHouse outage on the journal, with the same 503 when it fills, comes with the mover (CORE-REWORK Q-8; CORE-10, pending). Copies per environment are the operator's choice — e.g. dev 1, test 1, production HA 2 (local + a peer node, the ACK waiting for the peer's receipt, Q-5), re-replication after a lost node and the node-to-node read (CORE-REWORK O-7; CORE-5, D-138). Since CORE-5a (F-35, D-139 draft) nodes reach each other on the internal **peer link** (`io.rail8.runtime.journal.peer`, TCP, `RAIL8_PEER_PORT` 8083): a HELLO and proof per direction under keys derived from a peer subkey of the environment master key (HKDF, D-106, D-141; the master key keys no HMAC on the link, its only use there being the input of the one HKDF that makes the subkey, under its own label), the HELLO naming its version (a link speaks the lower of the two; later fields are tolerated) and its channel (read; repl since CORE-5b1; bulk reserved for CORE-5b3), at most 64 handshakes at once and 8 per source address — the proof binds both nonces, both node ids, the epoch and the direction, the key named by fingerprint, from the current and the previous one the node holds (today only the current one is configured; FIX-178) — then frames of at most 4 MiB + 1 KiB of payload (HELLO and PROOF capped at their own size until the link is proven), each sequenced and tagged; bodies travel as the journal's AEAD ciphertext, record metadata in clear under the tag. A node publishes its peer address in its `nodes` row (V18, written at join, read back by the one renew statement). A body a node's own journal does not hold is read from its live owner by (owner, journal id, segment): READ answered by BYTES chunks or MISS, at most `RAIL8_PEER_READS` (16, 1..64) reads in flight per peer, the socket paused while a reader is slow so the heap holds no whole body — one paused reader stalls every read on that link (head-of-line, FIX-177 before CORE-5c), and a link paused with no progress for `RAIL8_PEER_TIMEOUT` while a read is in flight is closed, failing its reads (a link left paused with no read in flight fails its next read after at most two timeouts); a miss or a dead owner fails the read. `RAIL8_JOURNAL_COPIES` (1..2; unset, 1 in dev and ci, 2 when deployed) is read, and a generated journal key is refused with more than one copy; since CORE-5b1 a node holds a peer's copies: on a link of channel repl (the dialer's HELLO channel, bound by both proofs) the owner sends OPEN (the segment header), DATA and SEAL (the file's end and its crc32c), never DATA before the holder's RECEIPT OPENED; the holder writes `replicas/<owner>/<journal>/<n>.part` (byte-identical to the owner's segment), answers RECEIPT OPENED after the header and both forces, WRITTEN once its write returned (the force runs off the receipt path) and SEALED after force, rename to `<n>.seg` and directory force, or REFUSE FULL, FAILED or MISMATCH; replicas count in the journal's bytes and an OPEN is refused FULL once the replicas with it would pass half the intake edge (bytes past an OPEN's length, the footer index, are counted unchecked), a failed replica keeps its file and is counted at its size, and a repl link is closed at its proof and at every OPEN when its epoch is below the highest the holder accepted from that owner or the owner's live epoch, while one at or above it supersedes the owner's link: the old link is reset (its unsent RECEIPT and REFUSE frames are dropped and DATA its writer had not taken is never written, so the owner treats every unreceipted byte of that link as not received) and the new link's frames are taken once the old writer stopped; until CORE-5b2b a replica is never swept; the owner's side — the ACK on the peer's receipt — and takeover from a copy and re-replication are CORE-5b2..5e (pending) — until then every body has one copy and a down node's items wait for it (D-101 (5), stated at start).
++**Body journal** (D-105, CORE-4; CORE-REWORK O-5, O-6, §3): message bodies live on the node's local disk in its body journal — append-only segments of encrypted journal records (per-tenant key, D-106: the tenant position holds `default`; it goes with OPS-9, and a key per team is open, §14), written with one `fdatasync` per group of journal records, sealed and never rewritten — and Postgres keeps only the reference (`body_refs`, the work item's `body_*` columns, V12); a body is keyed by message id + step. A node claims only the items whose body its journal holds; a crash between the force and the commit leaves unreferenced bytes that go with their segment, and the sweeper deletes a segment once nothing pins it (no row-level delete, CORE-4d): a work item's ref and a DLQ row's kept ref pin it, a kept step body's ref only while it is younger than `RAIL8_JOURNAL_KEEP_MAX_AGE` (PT1H, PT1M..P1D) — the interim rule (D-105, CORE-3 item 14); past that age its segment may be swept. A kept ref is to pin its segment until its body has moved to ClickHouse (CORE-REWORK Q-3, Q-4; CORE-10, pending). A full journal (its disk bound) refuses new at-least-once messages with 503 and an alert (D-105, CORE-4d); riding out a ClickHouse outage on the journal, with the same 503 when it fills, comes with the mover (CORE-REWORK Q-8; CORE-10, pending); the stop of intake for the whole platform when the log-record buffer is full is wider than this refusal and comes with OPS-2 (pending; OPERATIONS-BRIEF §3; §8 Write path and loss contract). Copies per environment are the operator's choice — e.g. dev 1, test 1, production HA 2 (local + a peer node, the ACK waiting for the peer's receipt, Q-5), re-replication after a lost node and the node-to-node read (CORE-REWORK O-7; CORE-5, D-138). Since CORE-5a (F-35, D-139 draft) nodes reach each other on the internal **peer link** (`io.rail8.runtime.journal.peer`, TCP, `RAIL8_PEER_PORT` 8083): a HELLO and proof per direction under keys derived from a peer subkey of the environment master key (HKDF, D-106, D-141; the master key keys no HMAC on the link, its only use there being the input of the one HKDF that makes the subkey, under its own label), the HELLO naming its version (a link speaks the lower of the two; later fields are tolerated) and its channel (read; repl since CORE-5b1; bulk reserved for CORE-5b3), at most 64 handshakes at once and 8 per source address — the proof binds both nonces, both node ids, the epoch and the direction, the key named by fingerprint, from the current and the previous one the node holds (today only the current one is configured; FIX-178) — then frames of at most 4 MiB + 1 KiB of payload (HELLO and PROOF capped at their own size until the link is proven), each sequenced and tagged; bodies travel as the journal's AEAD ciphertext, record metadata in clear under the tag. A node publishes its peer address in its `nodes` row (V18, written at join, read back by the one renew statement). A body a node's own journal does not hold is read from its live owner by (owner, journal id, segment): READ answered by BYTES chunks or MISS, at most `RAIL8_PEER_READS` (16, 1..64) reads in flight per peer, the socket paused while a reader is slow so the heap holds no whole body — one paused reader stalls every read on that link (head-of-line, FIX-177 before CORE-5c), and a link paused with no progress for `RAIL8_PEER_TIMEOUT` while a read is in flight is closed, failing its reads (a link left paused with no read in flight fails its next read after at most two timeouts); a miss or a dead owner fails the read. `RAIL8_JOURNAL_COPIES` (1..2; unset, 1 in dev and ci, 2 when deployed) is read, and a generated journal key is refused with more than one copy; since CORE-5b1 a node holds a peer's copies: on a link of channel repl (the dialer's HELLO channel, bound by both proofs) the owner sends OPEN (the segment header), DATA and SEAL (the file's end and its crc32c), never DATA before the holder's RECEIPT OPENED; the holder writes `replicas/<owner>/<journal>/<n>.part` (byte-identical to the owner's segment), answers RECEIPT OPENED after the header and both forces, WRITTEN once its write returned (the force runs off the receipt path) and SEALED after force, rename to `<n>.seg` and directory force, or REFUSE FULL, FAILED or MISMATCH; replicas count in the journal's bytes and an OPEN is refused FULL once the replicas with it would pass half the intake edge (bytes past an OPEN's length, the footer index, are counted unchecked), a failed replica keeps its file and is counted at its size, and a repl link is closed at its proof and at every OPEN when its epoch is below the highest the holder accepted from that owner or the owner's live epoch, while one at or above it supersedes the owner's link: the old link is reset (its unsent RECEIPT and REFUSE frames are dropped and DATA its writer had not taken is never written, so the owner treats every unreceipted byte of that link as not received) and the new link's frames are taken once the old writer stopped; until CORE-5b2b a replica is never swept; the owner's side — the ACK on the peer's receipt — and takeover from a copy and re-replication are CORE-5b2..5e (pending) — until then every body has one copy and a down node's items wait for it (D-101 (5), stated at start).
+ 
+ **Postgres durability profiles** (D-127 draft, D-114, D-115; D-061 amended): `RAIL8_PG_DURABILITY` says what an accepted message survives on the Postgres side. `local` — a single server's commit: it survives a Postgres crash, not a promotion or the loss of its host; the node states that promise among its notices (`/health`) at every start and, when the server streams to standbys, names them and `ha`. `ha` — a commit that waited for a synchronous (or quorum) standby: it survives the promotion of such a standby too. Unset, `local` in a non-deployed environment (`dev`, `ci`) and `ha` in every deployed one, whatever the host (a proxy on loopback does not make a production node local); any other value is refused naming the key. Under both, every session of the node (intake and work pools, membership, LISTEN, on every reconnect) carries the startup parameters `synchronous_commit=on` and `statement_timeout=0`, above a database's or a role's own setting (Flyway's migration is not pinned: the next pinned commit covers its WAL). Before it migrates, the node reads in one statement what an intake pool session runs with and what the server is, and refuses to start, under both profiles, when the session's `synchronous_commit` is not `on` (a pooler dropped the parameter) or the server is in recovery (the host names a standby); under `ha` also when `synchronous_standby_names` is empty, when its role cannot read every statistic (`GRANT pg_monitor TO <user>`: without it the standbys' state is hidden), when its role may not run the duplicate's barrier below (`GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(boolean, text, text, boolean) TO <user>`, D-128) and when no sync or quorum standby is streaming; with a standby a commit does not wait for, an `ha` node names D-115 among its notices. The settings are checked at the start only (D-115): a standby lost later makes commits wait in Postgres, the save timeout bounds the caller's answer (503) and the node never cancels a commit. A duplicate (D-084) waits as a write does (D-128): under `ha` a save group with no row to write — every member's key taken — runs `select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')` and commits instead of rolling back; the transaction id and the transactional logical message (one WAL record, no row; Postgres makes a commit wait for its standby only when its transaction wrote WAL) make that commit wait for the synchronous standby, and the wait covers every earlier record, so a retry whose key names a save committed only locally (its SyncRep wait ended by a backend termination or a fast primary restart, its sender answered 503) is answered 202 only once that save is on the standby. A failed barrier statement or a refused or lost barrier commit is no answer and retryable. EXECUTE on `pg_logical_emit_message` is an `ha` precondition checked at start (owner decision 2026-11-11; PUBLIC has it by default, works at `wal_level` `replica`): the start query looks the function up by its PostgreSQL 17 signature `(boolean, text, text, boolean)` and never errors, so `ha` needs PostgreSQL ≥ 17 and `local` starts on any version; an EXECUTE revoked after the start fails every `ha` duplicate, loudly and retryably. Under `local` such a group rolls back. Accepted residuals: an operator's `pg_cancel_backend` on a commit waiting for its standby makes Postgres return success for a commit that is only local (syncrep.c), so the message survives a crash but not a promotion; the start check is the only check (D-115): a reload that empties or renames `synchronous_standby_names` later — as a failover manager's non-strict synchronous mode does — stops commits from waiting and the node does not notice (CONSIDER-18); under `local` without `pg_read_all_stats` the standbys read as unnamed, so the streaming-standby notice cannot name them; managed cloud Postgres that replicates below Postgres (RDS Multi-AZ, Cloud SQL HA) shows no synchronous standby and is refused by `ha` — such a deployment sets `local` until ISSUE-5 is decided. PG 17 does not cut a SyncRep wait at `statement_timeout`; the pin stays as a defence against other servers and poolers. **Supported versions** (D-129): PostgreSQL 17 and 18. Tested main: `postgres:18.6`, the one pinned tag of `io.rail8.testkit.PostgresImage` that every Testcontainers test and both compose stacks run; CI floor: the same `-Pit` suite on `postgres:17.11` through `-Drail8.it.postgres`; `ha` needs ≥ 17 (D-128), `local`'s start check refuses no version, yet below 17 nothing is tested; 19 joins the CI matrix after its GA (FIX-169b), never an RC image. A data volume of the 16/17 images is not reused by the 18 image (its PGDATA is `/var/lib/postgresql/18/docker`): a major upgrade is `pg_upgrade` or dump and restore.
+ 
+@@ -221,9 +250,9 @@ The durable save is the consumer's responsibility, never a pipeline stage (on Po
+ 
+ **XI quality of service** is a layer on at-least-once: exactly-once = at-least-once + `processed_ids` dedupe table; in-order = XI queue name as partition key, serial per key, parallel across keys; a keyed (`partitionBy`) flow must state `onFailure`: `park` parks a message that failed past its attempts and lets its key's next message run; `block` (the key waits for the parked message, XI behaviour) is refused at load until a durable barrier with release and discard exists (FIX-141, F-32); a keyed flow without `onFailure` and an `onFailure` without `partitionBy` are refused. Three ack states are recorded per message: transport, system, application.
+ 
+-**Event bus** carries only admin commands. The customer's message never travels on it, and after the §4 review neither does monitoring: the writer path is worker → local bounded batch queue → Postgres (the last-N-hours copy, §8); ClickHouse is to be fed by the node's own mover from the sealed journal segments and the sync recording batches, never through Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending). Vert.x clustering is not used; nodes share state only through Postgres and Valkey (and Kafka only where the add-on is installed); the one direct node-to-node channel is the journal's peer link, which carries journal frames and nothing else (§4 Body journal, F-35).
++**Event bus** carries only admin commands. The customer's message never travels on it, and after the §4 review neither does monitoring: the writer path is worker → local bounded batch queue → Postgres (the last-N-hours copy, §8); ClickHouse is to be fed by the node's own mover from the sealed journal segments and the sync recording batches, never through Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending). That built path is to be replaced by the log record in memory → writer → the node's journal → mover → ClickHouse (OPERATIONS-BRIEF §3; OPS-2, CORE-8, CORE-10, pending; §8 Write path and loss contract). Vert.x clustering is not used; nodes share state only through Postgres and Valkey (and Kafka only where the add-on is installed); the one direct node-to-node channel is the journal's peer link, which carries journal frames and nothing else (§4 Body journal, F-35).
+ 
+-**Writer (persistence batcher)**: hand-rolled, not a Mutiny operator chain (which emits on timer regardless of demand and dies on backpressure). Adaptive flush — write immediately when idle, accumulate to batchSize/batchMs under load; up to N commits in flight with per-batch completion; fixed-shape `unnest` inserts with prepared-statement cache; a small bounded admission buffer whose overflow surfaces as ingress rejection, never as a dead stream (trail rows wait FIFO for room up to `maxWait` instead, §8, D-071). The prototype measured batching at ≈ 80 % of no-persistence throughput; the serialized-commit ceiling is gone.
++**Writer (persistence batcher)**: hand-rolled, not a Mutiny operator chain (which emits on timer regardless of demand and dies on backpressure). Adaptive flush — write immediately when idle, accumulate to batchSize/batchMs under load; up to N commits in flight with per-batch completion; fixed-shape `unnest` inserts with prepared-statement cache; a small bounded admission buffer whose overflow surfaces as ingress rejection, never as a dead stream (trail rows wait FIFO for room up to `maxWait` instead, §8, D-071). The prototype measured batching at ≈ 80 % of no-persistence throughput; the serialized-commit ceiling is gone. This batcher writes today's snapshot rows; what writes the log records — where a full buffer waits and alerts and never drops — comes with OPS-2 and CORE-8 (pending; OPERATIONS-BRIEF §1, §3).
+ 
+ ## 5. Message model
+ 
+@@ -241,7 +270,7 @@ record Envelope(String id, String flow, int step,
+ 
+ | Field | What goes there | Persisted | Indexed | Reaches producers |
+ | --- | --- | --- | --- | --- |
+-| `headers` | HTTP/JMS/mail headers from ingress, `http.status` from egress | jsonb | no | only what the flow allow-lists (`forwardHeaders`); nothing propagates implicitly |
++| `headers` | HTTP/JMS/mail headers from ingress, `http.status` from egress | jsonb; secrets in headers are to be replaced by a marker and never stored (OPS-5, pending; OPERATIONS-BRIEF §2.7) | no | only what the flow allow-lists (`forwardHeaders`); nothing propagates implicitly |
+ | `props` | split index, router decision, partner, validation result, replay-of — anything a later stage decides on | jsonb, JSON-serialisable values only | no | never |
+ | `keys` | what operators search by (invoiceId, orderNo, meteringPoint); filled by `extractKey`, declared per flow | own table `message_keys(name, value, message_id, step)` / CH columns with skip index | yes | never |
+ | `attachments` | multipart parts (mail, SOAP/MTOM, AS2/AS4) | reference only; content kept per retention policy | no | yes, as parts |
+@@ -265,7 +294,7 @@ Steps declare the body kind they need — `whole` (DOM-style, size-limited), `st
+ 
+ ## 6. Pipeline
+ 
+-A flow is a composition of stages built once from its config; at runtime a stage holds only the dependencies it was given at build time, and the `Runtime` record is never looked up again. That is what makes a flow unit-testable in milliseconds with a fake `Runtime`.
++A flow is a composition of stages built once from its config; at runtime a stage holds only the dependencies it was given at build time, and the `Runtime` record is never looked up again. That is what makes a flow unit-testable in milliseconds with a fake `Runtime`. "Interface" is the operator's word for a deployed flow; which unit it names behind a dispatcher flow is open (§14; OPS-3, OPS-9, OPS-11). This document keeps "flow" and writes "PO interface" for an interface of SAP PO.
+ 
+ ```java
+ interface Step  { Envelope apply(Envelope e); }                     // runs on the message's virtual thread; may block
+@@ -290,9 +319,9 @@ Retry per step: policy from flow config, exponential backoff, only on steps mark
+ 
+ Headers always cross; the body is shared by reference. Never through the event bus.
+ 
+-**Dispatcher flows**: one endpoint (e.g. `/xi`) reads the routing key, looks up a versioned routing table in Postgres (cached per node), and forwards — a sync target is called directly on the same thread, an async target is enqueued with `target_flow`. Unknown route → error or DLQ "no route", never dropped. During a PO migration the dispatcher passes unmigrated interfaces through to the old PO, interface by interface.
++**Dispatcher flows**: one endpoint (e.g. `/xi`) reads the routing key, looks up a versioned routing table in Postgres (cached per node), and forwards — a sync target is called directly on the same thread, an async target is enqueued with `target_flow`. Unknown route → error or DLQ "no route", never dropped. During a PO migration the dispatcher passes unmigrated PO interfaces through to the old PO, PO interface by PO interface.
+ 
+-**Recording** per flow, overridable per step: today level `all | ends | errors | off`, payload `keep | metadata-only`. These are to be replaced as SAP PO does it (CORE-REWORK O-13, Q-9; CORE-13, pending): body levels `none`, `inputs` (the body as it arrived) and `changes` (every body a step changed), each combinable with the switches `errors` (also the body that entered a failing step) and `outputs` (also what was sent to the partner); the metadata of every step (time, duration, status, headers, props, keys) always; one global default for sync (`none` + `errors`) and one for async, overridable per flow; per step only `keep` or `skip` on its body (a skipped body makes replay from the next step impossible, and the UI says so). At-least-once keeps its arrived body in the journal until processed whatever the level; the level decides whether it stays after that and moves to ClickHouse. Retention: a global period for sync and one for async, overridable per flow, and a separate period for error messages (a message that ever reached a state needing a person — parked, failed — whatever its end), applied as ClickHouse TTL by flow and age, older parts to S3 by age, then deleted (CORE-REWORK Q-9; CORE-13, pending). Replay from step N needs the recorded output of step N−1 (the input step N saw); the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth. Each attempt of a same-id rerun (a scheduled retry, a takeover, `POST /admin/dlq/{id}/retry`) keeps its own step rows, keyed (id, step, attempt) since V19: the timeline lists every attempt's steps in (attempt, step) order with their `attempt`, a step's body is the latest attempt's unless `?attempt=k` names one, and a replay from step n starts from the latest attempt whose step n−1 row is OK (FIX-175, D-140). A replay (of a message or of a parked one, `/admin/dlq/{id}/replay`) or a same-id DLQ retry (`/admin/dlq/{id}/retry`, D-136) runs the flow version deployed now (both exist to rerun a parked message after a fix) and pins the versions it ran with, so each run's configuration stays visible (F-11). Replay from any recorded step works after a restart, because every kept step body is durable (D-064, D-066) — in the journal within `RAIL8_JOURNAL_KEEP_MAX_AGE`, beyond it once the mover lands (§4 Body journal; CORE-10, pending); a message or DLQ replay whose input body retention removed is refused 409 "removed by retention" before it runs, and a GET of that body is 404 (D-096).
++**Recording** per flow, overridable per step: today the recording level `all | ends | errors | off`, payload `keep | metadata-only`. These are to be replaced as SAP PO does it (CORE-REWORK O-13, Q-9; CORE-13, pending): body levels `none`, `inputs` (the body as it arrived) and `changes` (every body a step changed), each combinable with the switches `errors` (also the body that entered a failing step) and `outputs` (also what was sent to the partner); the metadata of every step (time, duration, status, headers, props, keys) always; one global default for sync (`none` + `errors`) and one for async, overridable per flow; per step only `keep` or `skip` on its body (a skipped body makes replay from the next step impossible, and the UI says so). At-least-once keeps its arrived body in the journal until processed whatever the body level; the body level decides whether it stays after that and moves to ClickHouse. Retention: a global period for sync and one for async, overridable per flow, and a separate period for error messages (a message that ever reached a state needing a person — parked, failed — whatever its end), applied as ClickHouse TTL by flow and age, older parts to S3 by age, then deleted (CORE-REWORK Q-9; CORE-13, pending). To be, by the operations brief (OPERATIONS-BRIEF §2.3, §2.8, §2.9, §3): body recording stays its own setting beside the log threshold, and a trace sets both to their maximum for a limited time (OPS-3, pending; §8 Levels and trace); the one fact a step shows at the log level info is composed at display time from the step metadata kept always (OPS-5, pending; §8 Log records); a message's log records (steps, log, errors) outlive its payload, both periods configurable (CORE-10, CORE-13, pending). How those two periods sit with Q-9's sync, async and error periods, and what "maximum" means for a `skip` step and for a body above the recording threshold of D-110, are open (§14). Replay from step N needs the recorded output of step N−1 (the input step N saw); a dry replay of a whole message — store the input and what cannot be repeated, reproduce the rest on demand — is parked by the owner (CONSIDER-22; OPERATIONS-BRIEF §7); the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth. Each attempt of a same-id rerun (a scheduled retry, a takeover, `POST /admin/dlq/{id}/retry`) keeps its own step rows, keyed (id, step, attempt) since V19: the timeline lists every attempt's steps in (attempt, step) order with their `attempt`, a step's body is the latest attempt's unless `?attempt=k` names one, and a replay from step n starts from the latest attempt whose step n−1 row is OK (FIX-175, D-140). A replay (of a message or of a parked one, `/admin/dlq/{id}/replay`) or a same-id DLQ retry (`/admin/dlq/{id}/retry`, D-136) runs the flow version deployed now (both exist to rerun a parked message after a fix) and pins the versions it ran with, so each run's configuration stays visible (F-11). Replay from any recorded step works after a restart, because every kept step body is durable (D-064, D-066) — in the journal within `RAIL8_JOURNAL_KEEP_MAX_AGE`, beyond it once the mover lands (§4 Body journal; CORE-10, pending); a message or DLQ replay whose input body retention removed is refused 409 "removed by retention" before it runs, and a GET of that body is 404 (D-096).
+ 
+ ## 7. Components, queues, persistence
+ 
+@@ -339,39 +368,114 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a
+ 
+ `WorkQueue` and `MessageStore` are interfaces. Rule (agreed Oct 17, 2026; amended by CORE-REWORK O-1, CORE-9): the core's queue is Postgres (`queue: postgres`, the default); Kafka is an optional event-broker add-on, with which a flow may move to `queue: kafka` when it needs high volume, cross-pool fan-out or replay from the log; XI EOIO ordered queues stay on Postgres always, and the /xi door's durability is the core's at-least-once save, not Kafka. A broker replaces save-before-hand-over, never the monitoring store. Per-key serial processing: a worker that finishes a message takes the next one of the same key without a new claim round-trip (hot-partition optimisation, measured at 60–200 msg/s per key in the prototype without it). The key is evaluated at the durable save from the flow's `partitionBy` (the name of its one `extractKey` step; no value = unordered; over 256 chars = final refusal); after the item it claimed, a worker takes at most `maxChain` further items of the key by the fast path (default 32; 0 = fast path off) before the key goes back to the seq-ordered claim; a key the extractKey cannot read (MALFORMED/INVALID) is saved unkeyed, any other key failure is a retryable refusal; `queue: kafka` is refused at deploy, naming Kafka as an optional add-on not in this build (D-075, CORE-9).
+ 
+-**Persistence tables (Postgres)**: `messages(id, step, attempt, flow, headers, props, keys, body_ref, versions…)`, `message_keys(name, value, message_id, step)`, `work`, `dlq(… body_ref, no FK to messages, so a park never waits on the step rows; its body's kept ref (`body_refs`, V12) and that ref's segment row must be committed first — D-062 persist → park, D-096, CORE-4c2)`, `processed_ids`, `aggregates`, `routing_table`, `partner_directory`, `flows`, `wallet`, `audit`; no message bytes — those live in the node's body journal, Postgres holds their references (CORE-REWORK O-2, O-5, O-6; D-105). The V6 `bodies` table takes no insert since CORE-4c2; its remaining rows go by age, and the table and `PgBodies` are dropped, the rows moved to the journal or ClickHouse, by CORE-11 (pending). Rule: bytes exist in the system once; everything else is a reference. Never a synchronous delete on the hot path; retention is a background job in bounded keyset batches by age — not by partition, since a partitioned `messages` must carry the partition key in its primary key and that breaks the first-wins `ON CONFLICT (id, step, attempt)` (F-20, D-088, D-140). A message goes only whole, only when no work item or DLQ row names it; its body refs (`body_refs`, scanned in one keyset with the remaining `bodies` rows) and `processed_ids` rows go with or after it, the journal's bytes later with their segment (CORE-4d) (exceptions accepted in F-20: a message can stay partial until the next run after a work item held longer than the retention; a message or DLQ replay of a removed body is refused 409, P2-07b1). A DLQ row never names a removed body: the park is one statement that holds its `body_refs` row and that ref's segment row `for key share` and writes no row when either is gone (a pre-V12 `bodies` row alone admits no park); retention locks its batch of `bodies` and `body_refs` rows `for update skip locked` and deletes it under a later snapshot that re-checks the guards (P2-07b2, D-096, CORE-4c2). So a DLQ row needs a durable body in the journal.
++**Persistence tables (Postgres)**: `messages(id, step, attempt, flow, headers, props, keys, body_ref, versions…)`, `message_keys(name, value, message_id, step)`, `work`, `dlq(… body_ref, no FK to messages, so a park never waits on the step rows; its body's kept ref (`body_refs`, V12) and that ref's segment row must be committed first — D-062 persist → park, D-096, CORE-4c2)`, `processed_ids`, `aggregates`, `routing_table`, `partner_directory`, `flows`, `wallet`, `audit`; no message bytes — those live in the node's body journal, Postgres holds their references (CORE-REWORK O-2, O-5, O-6; D-105). `messages` holds today's snapshot rows (§8 Write path and loss contract); no Postgres table is to hold log records — the `message_log` table of the superseded draft `agent/packets/CONSIDER-13-design-draft.md` was not built and is not to be (OPERATIONS-BRIEF §1, D-147; OPS-2, pending). The V6 `bodies` table takes no insert since CORE-4c2; its remaining rows go by age, and the table and `PgBodies` are dropped, the rows moved to the journal or ClickHouse, by CORE-11 (pending). Rule: bytes exist in the system once; everything else is a reference. Never a synchronous delete on the hot path; retention is a background job in bounded keyset batches by age — not by partition, since a partitioned `messages` must carry the partition key in its primary key and that breaks the first-wins `ON CONFLICT (id, step, attempt)` (F-20, D-088, D-140). A message goes only whole, only when no work item or DLQ row names it; its body refs (`body_refs`, scanned in one keyset with the remaining `bodies` rows) and `processed_ids` rows go with or after it, the journal's bytes later with their segment (CORE-4d) (exceptions accepted in F-20: a message can stay partial until the next run after a work item held longer than the retention; a message or DLQ replay of a removed body is refused 409, P2-07b1). A DLQ row never names a removed body: the park is one statement that holds its `body_refs` row and that ref's segment row `for key share` and writes no row when either is gone (a pre-V12 `bodies` row alone admits no park); retention locks its batch of `bodies` and `body_refs` rows `for update skip locked` and deletes it under a later snapshot that re-checks the guards (P2-07b2, D-096, CORE-4c2). So a DLQ row needs a durable body in the journal.
+ 
+ **Sizing**: one 8-core node is expected to carry tens of thousands of HTTP passthrough req/s, 5–20k msg/s with persistence, hundreds to low thousands/s with 100 KB XSLT. Targets to hold on native Linux: sync request/reply platform overhead < 2 ms p50 (met in the prototype), at-least-once durable ACK measured p99 8.80 ms at c=1 on a 4 vCPU cloud VM with Postgres 16 after the one-transaction save (10.58 ms before it on the same VM; F-14, F-18); a not-durable FLOOR run with pg_wal on tmpfs gave 8.04 ms, so faster storage alone cannot reach < 5 ms p99 on that machine; under load the one-transaction save is slower than the two-commit one (c=64 median 733 vs 833 msg/s, −12 %; c=8 p99 41.38 vs 31.83 ms) until FIX-95. FIX-95a/b were folded into the core rework (CORE-6a, CORE-6b, done); the new core is measured against CORE-REWORK Q-1's working targets on the 4 vCPU VM at CORE-GATE (pending; GATE.md §CORE-GATE), the 8-core figure above on a dedicated machine later (Q-1, Q-2).
+ 
+-## 8. Monitoring, tracing, alerting
++## 8. Monitoring: records, metrics, alerts
++
++Monitoring is the product. Processing waits for monitoring only at the points named below, and monitoring is not best-effort either. This section is rewritten to `docs/OPERATIONS-BRIEF.md` (D-147; changelog 3.25, F-38): each sub-heading states under "Today (built)" what the code does now and under "To be" only what the brief decides, with the row that designs it; nothing under "To be" is built, and its design enters with that row. The one hard constraint the owner set for all of it: no loss of performance.
++
++Three things in this document are called a record, and this section never uses the word alone. A **log record** is one entry of the log stream described below (to be; OPS-2). A **journal record** is one entry of a node's body journal (built; §4 Body journal). The **deployment record** is the Postgres row of a deployed package (built; §9 Deployment mechanics). An error record is a log record: the one of a failed step (to be; Log records below). What is built today where the log record is to be is the **snapshot**: one row per step and attempt in Postgres `messages` (§7).
++
++**One log-record stream**
++
++Today (built): a snapshot after every stage, searchable by business key — in under a second over a year of data is the target (§13 Phase 3) —, with the payload at each point the recording level keeps (§6 Recording, CORE-REWORK Q-9) and replay from any recorded step. The snapshot is all that is kept per message: there is no message log, no interface log and no connection log, and what the platform itself reports — the write path's WARNING below, for one — goes to the node's process log.
++
++To be (OPS-2, pending; OPERATIONS-BRIEF §1, §2.1, §2.2): one stream of log records. A step, an author line, an error, a send attempt, an operator or agent action and a channel event are log records of one shape — time, owner, log level, kind, text, fields. A message's log is its log records in order; there is no separate "snapshots" and "log". There are three logs by owner: the message; the interface (deploys and setting changes with their actor, channel events, refused contacts); the connection (TLS failures, unknown paths, malformed requests — whatever cannot be attributed to an interface, found by time and the peer's address). Code that runs outside a message logs to the narrowest owner known at that moment: the message, else the interface, else the code's own log. CORE-8, CORE-10 and CORE-13 are built to this: they carry log records, not only trail rows. The message-log draft `agent/packets/CONSIDER-13-design-draft.md` is superseded: no Postgres `message_log` table, no drop on overload, no lines-per-attempt bound, no new public logging type in `StepResources`. The ClickHouse table and its ordering key are OPS-2's to design.
++
++**Log records**
++
++Today (built): a snapshot carries the fields listed under Write path below; a failed step's snapshot adds its error text and nothing more about the failure. Of the client of a contact the platform keeps the request headers that reached the envelope (§5) and nothing else — no address, no certificate, no TLS fact; the one remote address stored anywhere is on the audit row of a lost-work discard (§9, D-126).
++
++To be (OPS-5, pending, on the shape OPS-2 designs; OPERATIONS-BRIEF §2.3 to §2.7, §5):
++
++- At the log level info, for a successful message, every step shows its start, its end and one fact — what it decided or whom it contacted (receivers chosen, mapping name and version, endpoint, attempt, status code). It is built from the step metadata that CORE-REWORK Q-9 stores always (§6 Recording; CORE-13, pending); the sentence is composed at display time.
++- A running step is visible from its start. One rule for every step: each reports start and end, and the writer merges the two when they meet in one write batch. Log records leave the node continuously, not at run end (OPS-2, pending).
++- The error record has a fixed core — step, attempt, time, the step's error text, the body that entered the failing step — plus optional fields only when the step knows them: code, place in the artefact, place in the data, the value, the contract. What a step does not know is absent; nothing is guessed. How the body in the fixed core sits with the `errors` switch of CORE-REWORK Q-9 is open (§14).
++- Connection failures (TLS, certificates, WS-Security) are recorded in full the first time, so that no reproduction tool is needed: the handshake stage, which side refused what, the peer's chain and what our trust store lacks; when the peer refuses us, the certificate we presented (or that none matched its request), the authorities it asked for and the alert it returned. An outbound failure belongs to the message and step that made the call.
++- On every contact all that is known about the client is recorded: address and port (directly, or through a trusted load balancer when one stands in front; R8 does not require one), the user name presented even when the login failed, the client certificate, TLS version, cipher and server name, method, path, headers, sizes, timings. Secrets in headers are replaced by a marker and never stored. A refused input (failed validation, failed login) is found by the same search as a message, with the reason.
++- Payload values in log records are separate fields, so that they can be hidden: payload has its own permission (OPERATIONS-BRIEF §5; OPS-9, pending; §9 Teams and permissions).
++
++**Levels and trace**
+ 
+-Monitoring is the product: a snapshot after every stage, searchable by business key in under a second over a year of data, with the payload at each point the recording level keeps (§6 Recording, CORE-REWORK Q-9) and replay from any recorded step. Processing waits for monitoring only at the points named below, and monitoring is not best-effort either. Each recorded step body is kept durably (D-064; in the journal within `RAIL8_JOURNAL_KEEP_MAX_AGE`, beyond it with CORE-10, pending — §4 Body journal) unless it is above `durableMax` or its persist fails — then its row is metadata-only, counted and logged at WARNING; a run's snapshot rows wait in a per-run trail and are written at run end, or when more than 256 are buffered, once their bodies persisted, so a trail row's `body_key` always names a durable body (the at-least-once ingress row is saved in one transaction with its work item and its body's journal reference, the body forced into the journal before, D-082, D-105). A step waits only when its snapshot is the one past 256 buffered rows (it waits for that flush, and a sync reply behind it waits too); a worker item, a sync permit, an at-most-once landing and a message or DLQ replay waits for the run's last flush (persists, then row writes); the sync reply waits for no persist except that mid-run flush, and the durable ACK waits for none of these (F-10, D-066). These waits are to go (CORE-REWORK O-8, Q-6; CORE-8, pending): at-least-once step bodies batched into the body journal, sync recordings into the mover's batches without any fsync, the pipeline and the sync answer waiting for neither, nothing dropped silently (a bounded queue that fills is an alert); a node crash may lose the last few sync records. Which bodies are recorded then follows the Q-9 levels (CORE-13, pending).
++Today (built): there is no log level, no log threshold and no trace. The one setting is the flow's recording level `all | ends | errors | off` with payload `keep | metadata-only` (§6 Recording), written in the flow file and changed by a deploy.
+ 
+-**Write path**: step → `Snapshot` (id, flow, step, attempt, stage, timestamps, wall and CPU time (CPU null where the JVM cannot measure the thread, F-21), headers, props, keys, body reference, error, extension name + version, trace id) → local bounded batch queue on the node (every snapshot but the at-least-once ingress row, which the intake's transaction writes, D-082) → the Postgres last-N-hours copy that the operator screens read for "now". ClickHouse is to be fed by the node's own mover, not by a Kafka `monitoring` topic: it reads the sealed journal segments with their Postgres references and the sync recording batches, writes batched idempotent ClickHouse inserts and marks what ClickHouse holds; whether Postgres keeps a short copy of the step metadata for the live view or the UI reads ClickHouse through pg_clickhouse is decided by measurement (CORE-REWORK Q-3, O-1; CORE-10, pending). Overload shows as a bounded queue filling, which is itself an alert; nothing is dropped silently (the event bus was removed from this path for exactly that reason). A run's trail rows that find the node writer's bounded backlog full wait for room in arrival order, holding the run's permit, so a writer that cannot keep up shows as admission refusals (503), not lost rows; a row still waiting after the writer's `maxWait` (10 s), or whose commit fails, is logged at WARNING with its message id, flow, step and cause and counted in `snapshotWriteFailures`; the at-least-once ingress row does not pass through the batch queue on Postgres: it is written in the intake's transaction with its work item and its body's journal reference (no backlog to wait on), and a failed intake is a retryable Nack, not counted in `snapshotWriteFailures` (D-082; it replaces the fail-fast row of F-13, D-071).
++To be (OPS-3, pending; OPERATIONS-BRIEF §2.8, §2.9): five log levels — error, warning, info, debug, trace. The author picks a line's log level in code. The log threshold is a per-interface setting, switched at run time without a deploy, and it applies to every writer: platform, components, engines, author code, libraries. Payload recording stays its own setting (the body levels of CORE-REWORK Q-9, §6 Recording; CORE-13, pending). A trace is not a separate mechanism: it is a time-limited override that sets the log threshold and the body recording to their maximum, always for the whole interface, expiring by itself; who switched it and when is recorded. Its main use is a message that passes but gives a wrong result; an error needs no trace, because the error record is complete the first time. The log levels info, debug and trace are to be measured against the CORE-REWORK Q-1 targets (OPS-7, pending; OPERATIONS-BRIEF §3). Open (§14): what "maximum" means for a step whose body is `skip` and for a body above the recording threshold of D-110, which stands; and which unit "interface" names behind a dispatcher flow.
++
++**Author voice and mapping trace**
++
++Today (built): a step cannot add a line to its message. `StepResources` (§6) has no logging type; code that logs through `System.Logger` writes to the node's process log, where a line belongs to a message only if its text names one. No mapping trace exists, and the PO facade `MappingTrace` of §10 — the migrated mappings' API, another thing — is not built.
++
++To be (OPS-4 for the author voice, OPS-6 for the mapping trace, both pending; OPERATIONS-BRIEF §1, §2.10, §2.11):
++
++- No new R8 logging API, and no new public logging type in `StepResources`. Custom code and its libraries use standard Java logging (`System.Logger`; SLF4J for libraries); the platform attributes each line to its message and step through the bound `MessageContext` (§4). Lines from threads the code starts itself lose the link. The brief marks this a direction, to verify at design: the hook with isolated extension classloaders (§14).
++- Mapping UDF: standard logging with the five log levels; `run.log(text)` stays as shorthand for the log level info.
++- jq: `debug` and `stderr` both map to the log level debug (`stderr` is a function an author calls, not an error).
++- The three engines' errors become the same error record: code, place in the artefact, text.
++- Mapping trace on demand: it is not stored at run time; it is produced later by re-running the mapping traced over the stored input (the mapping engine gives identical output traced and untraced). Conditions: the step's input is stored, the version that ran is used, and the results of lookups into changing tables are recorded at run time.
++
++**Write path and loss contract**
++
++Today (built; the core rework's pending parts are marked): step → `Snapshot` (id, flow, step, attempt, stage, timestamps, wall and CPU time (CPU null where the JVM cannot measure the thread, F-21), headers, props, keys, body reference, error, extension name + version, trace id) → local bounded batch queue on the node (every snapshot but the at-least-once ingress row, which the intake's transaction writes, D-082) → the Postgres last-N-hours copy that the operator screens read for "now". ClickHouse is to be fed by the node's own mover, not by a Kafka `monitoring` topic: it reads the sealed journal segments with their Postgres references and the sync recording batches, writes batched idempotent ClickHouse inserts and marks what ClickHouse holds; whether Postgres keeps a short copy of the step metadata for the live view or the UI reads ClickHouse through pg_clickhouse is decided by measurement (CORE-REWORK Q-3, O-1; CORE-10, pending). Overload shows as a bounded queue filling, which is itself an alert; nothing is dropped silently (the event bus was removed from this path for exactly that reason). A run's trail rows that find the node writer's bounded backlog full wait for room in arrival order, holding the run's permit, so a writer that cannot keep up shows as admission refusals (503), not lost rows; a row still waiting after the writer's `maxWait` (10 s), or whose commit fails, is logged at WARNING with its message id, flow, step and cause and counted in `snapshotWriteFailures`; the at-least-once ingress row does not pass through the batch queue on Postgres: it is written in the intake's transaction with its work item and its body's journal reference (no backlog to wait on), and a failed intake is a retryable Nack, not counted in `snapshotWriteFailures` (D-082; it replaces the fail-fast row of F-13, D-071).
++
++Today (built), what is kept and what waits: Each recorded step body is kept durably (D-064; in the journal within `RAIL8_JOURNAL_KEEP_MAX_AGE`, beyond it with CORE-10, pending — §4 Body journal) unless it is above `durableMax` or its persist fails — then its row is metadata-only, counted and logged at WARNING; a run's snapshot rows wait in a per-run trail and are written at run end, or when more than 256 are buffered, once their bodies persisted, so a trail row's `body_key` always names a durable body (the at-least-once ingress row is saved in one transaction with its work item and its body's journal reference, the body forced into the journal before, D-082, D-105). A step waits only when its snapshot is the one past 256 buffered rows (it waits for that flush, and a sync reply behind it waits too); a worker item, a sync permit, an at-most-once landing and a message or DLQ replay waits for the run's last flush (persists, then row writes); the sync reply waits for no persist except that mid-run flush, and the durable ACK waits for none of these (F-10, D-066). These waits are to go (CORE-REWORK O-8, Q-6; CORE-8, pending): at-least-once step bodies batched into the body journal, sync recordings into the mover's batches without any fsync, the pipeline and the sync answer waiting for neither, nothing dropped silently (a bounded queue that fills is an alert); a node crash may lose "the last few sync records" (Q-6's words). Which bodies are recorded then follows the Q-9 body levels (CORE-13, pending).
++
++To be (OPS-2, pending, with CORE-8 and CORE-10 built to it; OPERATIONS-BRIEF §1, §3):
++
++- Asynchronous, never on the message's path. The message thread puts the log record in memory and goes on; a writer takes batches to the node's journal; the mover carries them to ClickHouse — the path the rework builds for bodies. Whether a sync run's log records take the node's journal too, or the mover's batches without the durable journal path as CORE-REWORK Q-6 has it, is open (§14).
++- Nothing is dropped and nothing is truncated. No per-message line bound. One buffer for the whole platform; when it is full, intake stops for the whole platform ("ClickHouse is down — the system is not working — act at once") and the alert names the interface that writes most (OPS-8, pending). "A bounded queue that fills is an alert" means wait and alert, never drop: the built rule above — a row not written within `maxWait` is logged at WARNING, counted in `snapshotWriteFailures` and stays unwritten — is today's behaviour and no longer the design; it goes with CORE-8. The stop is every door refusing as it does today at a full admission, HTTP 503 + Retry-After and pollers paused (§4 Threading); how one node's journal stands to one buffer for the whole platform, and what the stop means for work in flight and for replay, is OPS-2's. Counted summaries for repeated identical refusals — a caller over its limit writes thousands of equal log records a second — are parked against this rule (CONSIDER-23; OPERATIONS-BRIEF §7).
++- Accepted by the owner (brainstorm of 2026-11-14/15, D-147): "a node crash may lose the last moments of that node's detail records. The message and the proof of its receipt are not lost, and the takeover record says so." What the brief's "detail records" and its "takeover record" are in the log-record stream is OPS-2's to design. This widens CORE-REWORK Q-6, which accepted the loss for sync runs only, and the Phase 3 gate follows it (§13).
++- Capacity is sizing plus reserve. The platform measures the numbers for it itself: lines, metadata bytes and compressed payload bytes per message of each interface (row to be added by the architect).
++- Unusual inputs are the author's responsibility, tested with the mock tools and with the mapping tried on the expected payload. Not everything can be guarded and it will not be tried.
++- Retention: a message's log records (steps, log, errors) outlive its payload; both periods are configurable (CORE-10, CORE-13, pending; §6 Recording). How the two periods are set is not decided (§14).
+ 
+ **Stores and query surface**
+ 
++Today (built): of the table below, Postgres holds the snapshots, the in-flight state and the DLQ, and S3 holds the deployment archives; nothing feeds ClickHouse yet — its ingest is the mover (CORE-10, pending) — and no control plane reads any of it yet: the node's admin API reads Postgres. The cells state the design as the core rework left it, pending where marked.
++
+ | Store | Holds | Read by |
+ | --- | --- | --- |
+ | Postgres | in-flight state, last N hours of snapshots, DLQ, ack states | control plane directly |
+-| ClickHouse | full history, metrics, payloads as rows of at most 8 MiB with `CODEC(ZSTD(1))` (per-tenant key), a larger payload as several ordered rows, never an S3 reference (D-108, CORE-2 done; CORE-REWORK O-3; the ingest CORE-10, pending); hot NVMe → S3 by age, its cold tier (CORE-REWORK O-4, Q-9; CORE-13, pending); retention as TTL by flow and age with sync, async and error periods (CORE-REWORK Q-9; CORE-13, pending), never row-level delete | control plane through **pg\_clickhouse** (FDW, reads only); payload-search functions wrapped in Postgres functions; every search query EXPLAIN-tested for pushdown |
++| ClickHouse | full history, metrics, payloads as rows of at most 8 MiB with `CODEC(ZSTD(1))` (per-tenant key in v3.3: there is to be no tenant level, what replaces the key goes with OPS-9, pending, and a key per team is open, §14), a larger payload as several ordered rows, never an S3 reference (D-108, CORE-2 done; CORE-REWORK O-3; the ingest CORE-10, pending); hot NVMe → S3 by age, its cold tier (CORE-REWORK O-4, Q-9; CORE-13, pending); retention as TTL by flow and age with sync, async and error periods (CORE-REWORK Q-9; CORE-13, pending), never row-level delete | control plane through **pg\_clickhouse** (FDW, reads only); payload-search functions wrapped in Postgres functions; every search query EXPLAIN-tested for pushdown |
+ | S3 | ClickHouse's cold tier only for message data — no payload of its own, no body of the hot path (CORE-REWORK O-4; the S3 body tier removed, CORE-4b); besides, the deployment archives (D-070) | CH for cold queries, labelled "archive query" in the UI; the node for the deployment archives |
+ 
+ Payload search by XPath/JSONPath = configured keys as columns + a JSON projection of the XML stored beside it; ClickHouse narrows the candidate set, Saxon finishes the exact evaluation on the runtime. CH dictionaries read dimension tables (flows, partners) from Postgres.
+ 
+-**Three screens**: per message (timeline with per-step latency, payload at each point, props and keys, ack states transport/system/application, replay or resend from any step, "save as test case"); per flow (throughput, error rate, p95, backlog, blocked ordered queues, slowest steps — by wall time from the snapshots, by CPU from the node's JFR sampling aggregate `GET /admin/flows/:flow/cpu`, FIX-108); per platform (virtual threads in flight per flow, byte budget, batcher queue depth, DB, disk and the body journal's fill (D-105), Kafka lag only with the add-on).
++To be (OPS-2, OPS-8, CORE-10, CORE-13, pending; OPERATIONS-BRIEF §1, §3, §4): ClickHouse holds the log records and the platform's own metrics, both carried there by the node's mover. Postgres gets no table for log records; whether it keeps a short copy of the step metadata for the live view stays the measurement of CORE-REWORK Q-3 (Write path above). A message's log records outlive its payload, both periods configurable.
++
++**Screens**
+ 
+-**Tracing and metrics**: OpenTelemetry via `Vertx.builder().withTracer`, one span per step, trace id on the message record and propagated through HTTP headers to backends; Micrometer → Prometheus for platform metrics.
++Today (built): no screen. The control plane is the last part of the plan (Amendments item 6); until then the node's admin API is the operator surface: the search by business key, a message's timeline with every attempt's steps, a step's body, the DLQ, held and lost work, the targets and the CPU aggregate per flow. The three screens of v3.3 stand as the design: per message (timeline with per-step latency, payload at each point, props and keys, ack states transport/system/application, replay or resend from any step, "save as test case"); per flow (throughput, error rate, p95, backlog, blocked ordered queues, slowest steps — by wall time from the snapshots, by CPU from the node's JFR sampling aggregate `GET /admin/flows/:flow/cpu`, FIX-108); per platform (virtual threads in flight per flow, byte budget, batcher queue depth, DB, disk and the body journal's fill (D-105), Kafka lag only with the add-on).
+ 
+-**Alerting, two layers**: platform (Prometheus/Alertmanager: event-loop blocking, pools, DB, disk, the body journal at its bound — new messages refused 503 (D-105, CORE-4d; with ClickHouse down, CORE-REWORK Q-8, CORE-10, pending) — and Kafka lag only with the add-on) and business (silence detection — "usually 50/h, last hour 0" from the flow's own baseline; error rate; SLA; DLQ growth; blocked queue; backlog) with email, webhook, Slack, Teams and PagerDuty channels. Grafana is AGPL and may run alongside for the operator's own use; customer dashboards are the platform's own React + ECharts over Postgres/pg\_clickhouse.
++To be (OPS-2, OPS-5, pending; OPERATIONS-BRIEF §2.1, §2.3, §2.7): the per-message screen shows the message's log — its log records in order; at the log level info each step's one fact is a sentence composed at display time; a refused input is found by the same search as a message, with the reason.
+ 
+-## 9. Configuration, partner directory, caching, security
++**Metrics and OpenTelemetry**
++
++Today (built): none of v3.3's tracing and metrics. v3.3 put OpenTelemetry in the node (`Vertx.builder().withTracer`, one span per step, the trace id on the message and propagated through HTTP headers to backends) and Micrometer → Prometheus for the platform's metrics; no module depends on OpenTelemetry, Micrometer or Prometheus, and no span exists. What a node measures today: the wall time per step on the snapshot, CPU per flow and step from its JFR sampling aggregate (§4), and the counters `/health` answers with (`snapshotWriteFailures` among them). The trace id is the message id (§4).
++
++To be (OPS-8, pending; OPERATIONS-BRIEF §1, §4): R8 is self-sufficient — metrics and alerts live inside the platform, and metrics go to ClickHouse by the same path as the log records. Prometheus and Alertmanager are no longer required. OpenTelemetry is an optional export: a step's log record is a span, so nothing is measured twice; the trace id is taken from the sender, stored on the message, passed to the receiver and searchable. Vector as the collector of the platform's logs and metrics is rejected, and so is any other new dependency for this (§2).
++
++**Alerts**
++
++Today (built): no alert layer — no rule, no inbox, no channel; Prometheus and Alertmanager, which v3.3 named for the platform layer, were never added. What stands today where an alert is to be: a line in the node's process log beside a refusal — the body journal logs a WARNING when its bytes cross 80 % of its bound and an ERROR when the refusals of a bound start (§4 Body journal) — and the answers of `/health` and `/ready` (§9). v3.3 named the conditions in two layers, none of them alerted on yet: platform (event-loop blocking, pools, DB, disk, the body journal at its bound — new messages refused 503 (D-105, CORE-4d; with ClickHouse down, CORE-REWORK Q-8, CORE-10, pending) — and Kafka lag only with the add-on) and business (silence detection — "usually 50/h, last hour 0" from the flow's own baseline; error rate; SLA; DLQ growth; blocked queue; backlog) with email, webhook, Slack, Teams and PagerDuty channels; the brief regroups them below. Grafana is AGPL and may run alongside for the operator's own use; customer dashboards are the platform's own React + ECharts over Postgres/pg\_clickhouse.
++
++To be (OPS-8, pending; OPERATIONS-BRIEF §4, §6):
++
++- Alerts live inside the platform. An alert inbox per team: new, taken over (by whom), resolved. Channels only notify and link to the inbox: email, webhook, Slack, Teams, PagerDuty.
++- One cause is one alert with a count, and the alert states the cause from the error record. An agent may attach an analysis and a proposal (configurable which alerts, what exactly; §9 Agents).
++- An alert never closes by itself: a human closes it, or an agent at a human's prompt.
++- Groups: messages (errors, silence, running or waiting too long, unusual volume); channels (cannot connect, refused inbound connections, certificate expiry including the peer's); platform (buffer filling, intake stopped, ClickHouse or the database down, node takeover, a proposal waiting too long); security (failed logins, signs of attack, unusual behaviour, sensitive changes).
++- R8 also acts by itself, configurable — e.g. N failed logins, then a block — for technical users too (§9 Security, Identity).
++- A minimal liveness check from outside is still needed: a platform that is down cannot alert (§9, the probes).
++
++## 9. Configuration, partner directory, caching, security, permissions
+ 
+ Flows are code in git; partner details are data in Postgres; secrets are references. Keeping the three apart is what makes git-first deployment, per-environment mocking and audit possible.
+ 
+-**Flow configuration**: JSON/YAML with a published JSON Schema (the first deliverable of the plan). Identity `tenant / package / kind:id @ version`; the package is the namespace and authorization unit (PO SWCV → package, ESR namespace → folder; artifact meta files carry the PO origin block). A folder is structure only: ids are unique per package and never contain the folder, an optional `folder.yaml` keeps the verbatim namespace, and a flow is addressed as `<package>/<flow>` (D-060). Artifacts are found by their `kind` anywhere in the package, at most four folders deep, every folder name a slug; a file reference in a flow or test file is a path from the package root, an include or import inside an XML file is relative to the including file, and both stay inside the package (D-052, D-078) — except that a flow names a declared dependency's file as `<dep>:<path>`, the one way out, and an include inside it stays in that dependency (D-087). `package.yaml` declares dependencies, `package.lock` pins them, so shared collections like `common` scripts are versioned per package. Deploy = CLI from CI (`rail8 validate`, `rail8 deploy`), the runtime pins the commit hash on every message, rollback is a revert. A pre-commit hook validates the schema, compiles XSLT and dry-builds the pipeline without a runtime.
++**Flow configuration**: JSON/YAML with a published JSON Schema (the first deliverable of the plan). Identity `tenant / package / kind:id @ version`, where the tenant position holds `default`; it goes with OPS-9 (pending: there is to be no tenant level, OPERATIONS-BRIEF §5; Teams and permissions below); the package is the namespace and authorization unit (PO SWCV → package, ESR namespace → folder; artifact meta files carry the PO origin block) and is to belong to a team (OPS-9, pending). A folder is structure only: ids are unique per package and never contain the folder, an optional `folder.yaml` keeps the verbatim namespace, and a flow is addressed as `<package>/<flow>` (D-060). Artifacts are found by their `kind` anywhere in the package, at most four folders deep, every folder name a slug; a file reference in a flow or test file is a path from the package root, an include or import inside an XML file is relative to the including file, and both stay inside the package (D-052, D-078) — except that a flow names a declared dependency's file as `<dep>:<path>`, the one way out, and an include inside it stays in that dependency (D-087). `package.yaml` declares dependencies, `package.lock` pins them, so shared collections like `common` scripts are versioned per package. Deploy = CLI from CI (`rail8 validate`, `rail8 deploy`), the runtime pins the commit hash on every message, rollback is a revert. A pre-commit hook validates the schema, compiles XSLT and dry-builds the pipeline without a runtime.
+ 
+-**Partner directory**: keyed by partner and interface, resolved at processing time through `${partner.…}` placeholders, versioned and exportable; the interface registry keeps PO namespace + name verbatim as the routing key. Runtime consumer entitlements (PO sender agreements) are checked by the endpoint or dispatcher.
++**Partner directory**: keyed by partner and PO interface, resolved at processing time through `${partner.…}` placeholders, versioned and exportable; the PO interface registry keeps PO namespace + name verbatim as the routing key. Runtime consumer entitlements (PO sender agreements) are checked by the endpoint or dispatcher; they are to be the assignments of a caller (OPS-11, pending; OPERATIONS-BRIEF §5; Callers and the developer portal below).
+ 
+ **Caching, two levels**
+ 
+@@ -384,13 +488,47 @@ Never cached: idempotent ids, aggregator state, ordered-queue state, DLQ.
+ 
+ **Security**
+ 
+-- Wallet: secrets, keys and certificates encrypted in Postgres (AES-GCM; master key from env, file or KMS, never in the DB), pluggable backends (Vault, Kubernetes Secrets, cloud vaults), `secret://` references only in flow config, audit log per read, certificate rotation via `updateSSLOptions` without restart.
++- Wallet: secrets, keys and certificates encrypted in Postgres (AES-GCM; master key from env, file or KMS, never in the DB), pluggable backends (Vault, Kubernetes Secrets, cloud vaults), `secret://` references only in flow config, audit log per read, certificate rotation via `updateSSLOptions` without restart. To be (OPS-9, pending; OPERATIONS-BRIEF §5): secrets belong to a team; shared ones are created only by a user with a special permission.
+ - Until the wallet exists, `secret://<name>` resolves from the node's environment (`RAIL8_SECRET_<NAME>`); runtime resolves endpoint options before a component sees them, and listings, records, the flow hash and unpacked files carry only the reference (D-081); until FIX-92, text a component or transport builds from a resolved value (an overlap problem's address, a build/start exception, a parked send failure) may show it.
+-- Identity: OIDC relying party, local users fallback (argon2 + TOTP), API keys and mTLS for machines, client-credentials for service accounts; ZITADEL optional.
+-- Three authorization planes: control-plane roles scoped tenant → package → flow with a separate view-payloads permission; runtime consumer entitlements; data-level payload visibility and masking. `vertx-auth-abac` remains a candidate, not a commitment.
+-- TLS with hostname verification everywhere; payloads encrypted per tenant at rest; per-flow PII masking policy applied before any payload reaches an AI tool or an unprivileged viewer.
++- Identity: OIDC relying party, local users fallback (argon2 + TOTP), API keys and mTLS for machines, client-credentials for service accounts; ZITADEL optional. To be (OPS-8, pending; OPERATIONS-BRIEF §6): R8 also acts by itself, configurable — e.g. N failed logins, then a block — for technical users too: the owner counts the user name as sensitive, and a lockout is a signal that it leaked.
++- Authorization. Today (built): one shared token on the node's admin API (`RAIL8_ADMIN_TOKEN`); none of v3.3's three authorization planes — control-plane roles scoped tenant → package → flow with a separate view-payloads permission; runtime consumer entitlements; data-level payload visibility and masking — is built. To be: Teams and permissions, Agents, and Callers and the developer portal below (OPS-9, OPS-10, OPS-11, pending; OPERATIONS-BRIEF §5). `vertx-auth-abac` is no longer a candidate: no policy engine now (D-147; §14). Masking of sensitive fields is parked by the owner (CONSIDER-20).
++- TLS with hostname verification everywhere; payloads encrypted per tenant at rest — built for the body journal (D-106), where the tenant position holds `default`; it goes with OPS-9, and a key per team is open (§14). v3.3's "per-flow PII masking policy applied before any payload reaches an AI tool or an unprivileged viewer" is removed (F-38): an agent's key is not masked by default, masked payloads for agent keys being an option (Agents below; OPS-10, pending); payload has its own permission (Teams and permissions below; OPS-9, pending); masking of sensitive fields, per interface and per field, is parked by the owner (CONSIDER-20).
+   Postgres (D-124, review at hand-over): `RAIL8_PG_SSL_MODE` is `disable`, `verify-ca` or `verify-full` (TLS without verification is not offered); unset, it is `disable` when `RAIL8_PG_HOST` is loopback (`localhost`, `127.0.0.1`, `::1`, as written) and `verify-full` otherwise. A verifying mode trusts only the PEM CA bundle `RAIL8_PG_SSL_ROOT_CERT`; absent or unreadable, the node refuses to start (never a fallback to plaintext or to an unverified link). Both pools (intake, work), the membership, the LISTEN connection and Flyway's JDBC URL take the same settings; a compose stack reaching Postgres by a service name sets `disable` explicitly.
+-- Actor (human / agent / model) recorded on every audit entry. Today (D-126, draft) the `audit` table (V16: `id, at, actor, action, subject, detail jsonb`, append-only — no update or delete path in code) gets one row per lost-work discard (action `work.discard`, subject `work/<seq>`, detail flow, message id, partition key, `lost_at` and the remote address); the actor is the `X-Flottila-Actor` request header (stripped, at most 128 characters, else 400; `unknown` when absent or blank) — self-declared by the caller under the shared admin token, not authenticated, until the identity planes above exist.
++- Actor (human / agent / model) recorded on every audit entry. Today (D-126, draft) the `audit` table (V16: `id, at, actor, action, subject, detail jsonb`, append-only — no update or delete path in code) gets one row per lost-work discard (action `work.discard`, subject `work/<seq>`, detail flow, message id, partition key, `lost_at` and the remote address); the actor is the `X-Flottila-Actor` request header (stripped, at most 128 characters, else 400; `unknown` when absent or blank) — self-declared by the caller under the shared admin token, not authenticated, until the identity planes above exist. To be (OPERATIONS-BRIEF §5): every payload view is recorded — who, when, which message; also a search over payloads, a mapping trace, a download —, configurable (OPS-9, pending); an agent's proposal, its approval and the action are log records in the message's log (OPS-10, pending).
++
++**Teams and permissions**
++
++Today (built): none. The node's admin API is behind one shared token, the audit actor is self-declared (Security above, D-126), and the `tenant` positions that exist — `MessageContext.tenant` (§4), the journal's `journal_keys.tenant` (D-106), the first position of the identity — hold the one value `default`.
++
++To be (OPS-9, pending; OPERATIONS-BRIEF §5):
++
++- One **installation** per customer: the tenant level of v3.3 goes. Inside an installation, optional **teams** with an enforced boundary: a package belongs to a team; interfaces, messages, logs, payloads, deployments and secrets are separated by team; no name prefixes. An installation without teams behaves as one team. The separation is enforced at the one decision point below; a key per team is open (§14).
++- Rights, roles, assignments. A role is a named bundle of rights; an assignment gives a person or a directory group a role in a scope — installation, team, package or interface — optionally for a limited time (e.g. payload in production for two hours, with a reason). No policy engine now, no third level above roles. Everything (UI, API, MCP) asks one decision point, so that conditions on data can be added later; the owner knows no case that needs them.
++- Payload has its own permission; payload values in log records are separate fields so that they can be hidden (§8 Log records).
++- Secrets belong to a team; shared ones are created only by a user with a special permission.
++- Every payload view is recorded (who, when, which message; also a search over payloads, a mapping trace, a download), configurable.
++- The list of rights in the brief is a sketch, not design (§14).
++
++**Agents**
++
++Today (built): no agent key and no proposal exist; an actor is the self-declared header of the audit row (Security above).
++
++To be (OPS-10, pending, after OPS-9; OPERATIONS-BRIEF §5):
++
++- An agent's key has the rights of the user who created it (the default, configurable).
++- It is not masked by default; "agent keys get masked payloads" is an option for customers that may not send sensitive data to a model provider. This replaces v3.3's guardrail of PII masking before any payload reaches a model (F-38).
++- Anything an agent changes is a proposal in R8 that a human approves in R8 (a message's state, closing an alert); proposal, approval and action are log records in the message's log.
++- "No direct production deploy (PR + CI only)" stands (§10; Deployment mechanics below): the proposal rule is for run-time state and settings. Two points are open with OPS-10 (§14): whether a merged PR counts as the approval in R8, and whether an agent's key inherits its user's right to build and deploy.
++
++**Callers and the developer portal**
++
++Today (built): none — no caller object, no API-management object and no portal exist, and the http consumer does not authenticate who calls it.
++
++To be (OPS-11, pending, after OPS-9; OPERATIONS-BRIEF §5):
++
++- A **caller** is an external technical user — a system or partner that calls an interface. Callers are one shared object to which interfaces are assigned, managed by the interface's team. The same object is the API manager's application; the assignment is the subscription and may carry limits (§10 API management).
++- A refused call is in the interface log with who tried (§8 One log-record stream). The check runs in memory on the hot path.
++- External people come only through the developer portal, a separate door: generate keys, try APIs through Swagger, perhaps aggregate statistics of their own calls. No monitoring, no details, no account in the platform.
+ 
+ **Deployment mechanics (git-first)**
+ 
+@@ -404,7 +542,7 @@ The control plane watches a git branch (or tag) per environment and pushes to th
+ 4. Every message pins the flow, partner-directory and routing-table versions it ran with.
+ 5. Rollback = revert in git; emergency rollback = CLI pin to a previous recorded version, audited.
+ 
+-At start a node restores before its admin API opens: per recorded package it fetches the archive, checks its sha256 and starts it; a package it cannot fetch, verify, unpack or build is listed FAILED with its problems; a flow that does not start is listed FAILED and the others run; and the `deployments` health check is DOWN while any package or flow is FAILED. S3 is thereby a start dependency of a deployed node, never of the hot path (F-12). Next to `/health`, two open probes take no token (D-123): `GET /live` answers 200 `{"status":"UP"}` while the admin server runs and reads nothing (Kubernetes startup and liveness probes); `GET /ready` answers 200 or 503 with `checks` `lifecycle` (UP only once the start finished and before the close began — the close marks it first, so a draining node is not ready while its listeners still answer), `fence` (the node lease open), `journal` (UP only when neither failed nor in outage) and `deployments` (the `/health` rule), each an in-memory read on the request, nothing awaited, so it needs no deadline.
++At start a node restores before its admin API opens: per recorded package it fetches the archive, checks its sha256 and starts it; a package it cannot fetch, verify, unpack or build is listed FAILED with its problems; a flow that does not start is listed FAILED and the others run; and the `deployments` health check is DOWN while any package or flow is FAILED. S3 is thereby a start dependency of a deployed node, never of the hot path (F-12). Next to `/health`, two open probes take no token (D-123): `GET /live` answers 200 `{"status":"UP"}` while the admin server runs and reads nothing (Kubernetes startup and liveness probes); `GET /ready` answers 200 or 503 with `checks` `lifecycle` (UP only once the start finished and before the close began — the close marks it first, so a draining node is not ready while its listeners still answer), `fence` (the node lease open), `journal` (UP only when neither failed nor in outage) and `deployments` (the `/health` rule), each an in-memory read on the request, nothing awaited, so it needs no deadline. A minimal liveness check from outside is still needed — a platform that is down cannot alert —, and what performs it is not designed (OPS-8, pending; OPERATIONS-BRIEF §4).
+ 
+ Secrets and partner data never travel through git; the flow carries only `secret://` and `${partner.…}` references resolved per environment.
+ 
+@@ -419,16 +557,18 @@ Custom code runs in-process by default on the same Step and Component SPI as the
+ | Custom component | same packaging, implements Component SPI | same | vendor SDKs, JMS providers, partner APIs |
+ | Out-of-process service | any language, HTTP/gRPC, bodies by reference | process boundary | untrusted, JNI or non-Java code; also the home for a disposable mapping JVM when a customer's jars are hostile |
+ 
+-Bad-extension policy: messages are durable before any extension runs; `-XX:+ExitOnOutOfMemoryError` with fast restart; extension name and version on every span, snapshot and metric; per-extension circuit breaker on deadline, failure rate and CPU (CPU not measurable per virtual thread, F-21: open); deploy-time bytecode scan (System.exit, thread creation, Runtime.exec, Unsafe, JNI → warn or refuse per policy). Platform-managed named datasources (`Services.datasource("crm")`: wallet credentials, pooled, metered; reactive clients for PG/MySQL/MSSQL/DB2/Oracle, JDBC on the virtual thread when the step declares blocking). No XA; idempotent-key + outbox pattern with an SDK helper.
++Bad-extension policy: messages are durable before any extension runs; `-XX:+ExitOnOutOfMemoryError` with fast restart; extension name and version on every log record and metric — v3.3 said "every span, snapshot and metric"; a step's log record is the span where OpenTelemetry is exported (OPS-2, OPS-8, pending; OPERATIONS-BRIEF §2.1, §4); per-extension circuit breaker on deadline, failure rate and CPU (CPU not measurable per virtual thread, F-21: open); deploy-time bytecode scan (System.exit, thread creation, Runtime.exec, Unsafe, JNI → warn or refuse per policy). Platform-managed named datasources (`Services.datasource("crm")`: wallet credentials, pooled, metered; reactive clients for PG/MySQL/MSSQL/DB2/Oracle, JDBC on the virtual thread when the step declares blocking). No XA; idempotent-key + outbox pattern with an SDK helper.
+ 
+-**SAP compatibility runtime** (part of the runtime, not a separate process): XSLT 3.0 (Saxon-HE; EE as plugin), XSD validation, WS-Security, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XI/IDoc simulator for tests. Its own test harness runs a migrated mapping jar against golden payloads from PO monitoring with no flow around it. **PO migration** = assessment via Directory API/ESR export → automatic ICO/channel/XSLT conversion → AI-generated XSLT for graphical mappings validated by golden tests → Java mappings as extensions → per-interface cut-over through the dispatcher.
++**SAP compatibility runtime** (part of the runtime, not a separate process): XSLT 3.0 (Saxon-HE; EE as plugin), XSD validation, WS-Security, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XI/IDoc simulator for tests. Its own test harness runs a migrated mapping jar against golden payloads from PO monitoring with no flow around it. **PO migration** = assessment via Directory API/ESR export → automatic ICO/channel/XSLT conversion → AI-generated XSLT for graphical mappings validated by golden tests → Java mappings as extensions → cut-over per PO interface through the dispatcher. The errors of the three engines — mapping, jq, XSLT — are to become the same error record: code, place in the artefact, text (OPS-4, pending; OPERATIONS-BRIEF §2.10; §8 Author voice and mapping trace).
+ 
+-**API management** is ingress policies on the same runtime (authentication, quotas, rate limits via Valkey, transformation, logging with the same monitoring) plus API, product, application and subscription objects, an own developer portal and an MCP gateway — no second runtime. Policies are transport-independent functions, so an Envoy data plane calling them through `ext_proc` is an installation option for line-rate requirements. Gateway target: JWT-validated, rate-limited, metadata-recorded passthrough ≥ 20k req/s per 8-core node, p99 < 5 ms.
++**API management** is ingress policies on the same runtime (authentication, quotas, rate limits via Valkey, transformation, logging with the same monitoring) plus API and product objects, an own developer portal and an MCP gateway — no second runtime. The application and subscription objects of v3.3 are to be the caller and its assignment: the one shared object to which interfaces are assigned is the API manager's application, the assignment is the subscription and may carry limits, and the developer portal is a separate door (OPS-11, pending; OPERATIONS-BRIEF §5; §9 Callers and the developer portal). Policies are transport-independent functions, so an Envoy data plane calling them through `ext_proc` is an installation option for line-rate requirements. Gateway target: JWT-validated, rate-limited, metadata-recorded passthrough ≥ 20k req/s per 8-core node, p99 < 5 ms.
+ 
+-**AI, three audiences**: agents building integrations (everything as text with published schemas, complete API and CLI, MCP server on the control-plane API, dry-run endpoint returning per-step snapshots, structured errors, schema registry, sample payloads from monitoring as mapping specs, XSLT 3 plus a small declarative JSON mapping format, `AGENTS.md` in the repo layout); an `ai:` step type (pluggable provider per tenant from the wallet, schema-validated output with deterministic fallback, prompt/model/cost on the snapshot); and AI building the platform. Guardrails: agent role with scoped permissions, no direct production deploy (PR + CI only), secrets never in prompts, PII masking before any payload reaches a model.
++**AI, three audiences**: agents building integrations (everything as text with published schemas, complete API and CLI, MCP server on the control-plane API, dry-run endpoint returning per-step snapshots, structured errors, schema registry, sample payloads from monitoring as mapping specs, XSLT 3 plus a small declarative JSON mapping format, `AGENTS.md` in the repo layout); an `ai:` step type (pluggable provider from the wallet — per tenant in v3.3; with no tenant level its scope is open, §14 —, schema-validated output with deterministic fallback, prompt/model/cost on the snapshot); and AI building the platform. Guardrails: no direct production deploy (PR + CI only); secrets never in prompts; and, in place of v3.3's "agent role with scoped permissions", an agent's key with the rights of the user who created it, whose changes to run-time state and settings are proposals that a human approves in R8 (OPS-10, pending; OPERATIONS-BRIEF §5; §9 Agents). v3.3's guardrail "PII masking before any payload reaches a model" is removed (F-38): an agent's key is not masked by default, masked payloads for agent keys are an option for customers that may not send sensitive data to a model provider (§9 Agents), and masking of sensitive fields is parked by the owner (CONSIDER-20).
+ 
+ **Service extensions** (what PO Java proxies + EJBs were for)
+ 
++Parked by the owner (CONSIDER-19; OPERATIONS-BRIEF §7): custom code as a whole — Java code inside the platform with database, cache and third-party libraries, as an EJB on SAP NetWeaver Java; its work outside a message; the link from a message to the table load its values came from. The text below is the v3.3 design, kept until the owner's brainstorm; none of it is built.
++
+ A service is a hosted Java component that several flows call, with its own libraries, state and resources — e.g. an ISDOC generator.
+ 
+ ```java
+@@ -452,7 +592,7 @@ One registry declaration (name, version, request/response schema, host kind) —
+ 
+ Packaging is a **bundle**: `isdoc-2.1.flx` = `manifest.json` + the extension jar + `lib/*.jar`. The classloader sees the platform API jar and everything bundled, so a service brings its own JAXB, POI or Jackson versions. Deploy path: CI build → bytecode scan → bytes to S3, metadata to Postgres → `rail8 deploy` → target pool loads the classloader, calls `start()`, advertises the service; versions load side by side and flows pin them in `package.lock`.
+ 
+-Resources only through the SDK, so every use is attributed to the service version: `Services.datasource("erp")` (wallet credentials, pooled, metered; a bundled driver allowed), `Services.cache(name, maxBytes)` (node-local Caffeine under the node budget), `Services.sharedCache(name)` (Valkey, cross-node), `Services.http()`, `Services.secret()`, `Services.blob()` (large output straight to the BlobStore), `Services.scheduler()` (leased periodic jobs), `Services.executor()`, `Services.clock()`, `Services.log()`. Local transactions only; outbox helper for write-and-emit. Services are never exposed to external callers directly; external access is always a flow with an endpoint and policies in front.
++Resources only through the SDK, so every use is attributed to the service version: `Services.datasource("erp")` (wallet credentials, pooled, metered; a bundled driver allowed), `Services.cache(name, maxBytes)` (node-local Caffeine under the node budget), `Services.sharedCache(name)` (Valkey, cross-node), `Services.http()`, `Services.secret()`, `Services.blob()` (large output straight to the BlobStore), `Services.scheduler()` (leased periodic jobs), `Services.executor()`, `Services.clock()` — and no `Services.log()`, which v3.3 listed here: custom code uses standard Java logging, there is no new R8 logging API (§8 Author voice and mapping trace; OPERATIONS-BRIEF §2.10, D-147). Local transactions only; outbox helper for write-and-emit. Services are never exposed to external callers directly; external access is always a flow with an endpoint and policies in front.
+ 
+ ## 11. Testing and AI-assisted development
+ 
+@@ -499,7 +639,7 @@ cases:
+ 
+ Behaviours, same vocabulary for every component: `reply` (fixture), `recorded` (response captured in monitoring), `script` (Groovy/JS request → response), `files` / `messages` (consumer side, feed fixtures), `fail` (503, timeout, reset, malformed; after N, every Nth), `delay`; capture is no behaviour key: every mock always records what it was sent, and a test's `expect.sent` reads that record (F-16).
+ 
+-Two execution layers run the same YAML: in-process mocks with in-memory stores (milliseconds, on save and as the CI merge gate) and protocol doubles with Testcontainers (embedded SSHD, GreenMail, Artemis, WireMock, XI/IDoc simulator, real Postgres/ClickHouse, Kafka only for the add-on) as the release gate. Fixtures come from hand-writing, from "save as test case" in monitoring (masked by the flow's PII policy), or generated from the schema registry.
++Two execution layers run the same YAML: in-process mocks with in-memory stores (milliseconds, on save and as the CI merge gate) and protocol doubles with Testcontainers (embedded SSHD, GreenMail, Artemis, WireMock, XI/IDoc simulator, real Postgres/ClickHouse, Kafka only for the add-on) as the release gate. Fixtures come from hand-writing, from "save as test case" in monitoring (v3.3: "masked by the flow's PII policy"; masking of sensitive fields is parked by the owner, CONSIDER-20), or generated from the schema registry.
+ 
+ ## 12. Repository layout and modules
+ 
+@@ -541,11 +681,11 @@ Phases 0–2 build the runtime that everything else sits on; 3 turns it into the
+ 
+ **Phase 2 — durable messaging.** The durable `/xi` door on the core's at-least-once save (the Kafka hand-over is the optional add-on, CORE-REWORK O-1, CORE-9), Postgres WorkQueue with partition keys and the same-key fast path, XI QoS (EO, EOIO block-on-failure, `processed_ids`), dispatcher with versioned routing, partner directory, wallet, Valkey cache and leases, inter-flow `call` / `flow://` / `queue://`, and the CLI `validate`, `test` (in-process, mocks, virtual time) and `deploy` (F-16). Gate: XI simulator end-to-end with ordered queues; Postgres failover during load with no loss or duplicate; node join/leave under load.
+ 
+-**Phase 3 — monitoring product.** ClickHouse ingest by the node's mover, not Kafka (CORE-REWORK Q-3, O-1; pulled into the core rework as CORE-10, pending), schema and TTL policies per CORE-REWORK Q-9 (CORE-13, pending), pg\_clickhouse query surface with pushdown tests, control plane (Quarkus API, React UI) with the three screens, replay/resend from the UI, "save as test case", OTel spans, Micrometer, both alert layers including silence detection. Gate: "invoice 4711" by key in < 1 s over 100 M synthetic snapshots; XPath search over 10 M payloads in seconds; a dropped node leaves no gap in the timeline.
++**Phase 3 — monitoring product.** ClickHouse ingest by the node's mover, not Kafka (CORE-REWORK Q-3, O-1; pulled into the core rework as CORE-10, pending), schema and TTL policies per CORE-REWORK Q-9 (CORE-13, pending), pg\_clickhouse query surface with pushdown tests, control plane (Quarkus API, React UI) with the three screens, replay/resend from the UI, "save as test case", the log-record stream with its log levels, the author voice and the mapping trace on demand (OPS-2 to OPS-7, pending; OPERATIONS-BRIEF §2, §3), metrics and alerts inside the platform, silence detection among them, with OpenTelemetry as an optional export (OPS-8, pending; OPERATIONS-BRIEF §4, §6) — in place of v3.3's "OTel spans, Micrometer, both alert layers". Gate: "invoice 4711" by key in < 1 s over 100 M synthetic snapshots; XPath search over 10 M payloads in seconds; a node crash "may lose the last moments of that node's detail records. The message and the proof of its receipt are not lost, and the takeover record says so" (the owner, brainstorm of 2026-11-14/15, D-147; OPERATIONS-BRIEF §3; it replaces "a dropped node leaves no gap in the timeline"; `draft — review at hand-over`).
+ 
+ **Phase 4 — components and SAP compatibility.** sftp producer, smb/file (the sftp consumer moved to Phase 2, D-076), jms, kafka consumer/producer (the optional add-on, CORE-REWORK O-1), mail, as2/as4, edi (EDIFACT, X12), db datasources, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XSD and WS-Security, the CLI `package` and `migrate` commands (validate, test and deploy moved to Phase 2, F-16), migration converters (ICO, channel, XSLT). Gate: one real PO interface migrated end-to-end with golden tests from PO monitor payloads, both directions.
+ 
+-**Phase 5 — extensions, API management, AI.** Extension SDK with isolated classloaders, bytecode scan and circuit breaker; sandboxed Groovy/GraalJS; API objects, developer portal, MCP server and gateway; `ai:` step; dry-run endpoint and agent tooling. Gate: an extension built in an external repo deploys through CI and shows on every span; gateway bench ≥ 20k req/s per 8-core node at p99 < 5 ms.
++**Phase 5 — extensions, API management, AI.** Extension SDK with isolated classloaders, bytecode scan and circuit breaker; sandboxed Groovy/GraalJS; API objects, callers and their assignments, the developer portal as a separate door (OPS-11, pending), MCP server and gateway; `ai:` step; dry-run endpoint and agent tooling, with agent keys and proposals (OPS-10, pending). Gate: an extension built in an external repo deploys through CI and shows on every span; gateway bench ≥ 20k req/s per 8-core node at p99 < 5 ms.
+ 
+ **Working method** (unchanged from the prototype, which it served well): Claude Code CLI executes, one commit per step, stops and reports after each step with measurements; design findings that contradict this document are raised explicitly, never worked around; `javap` on resolved jars over documentation; every benchmark native and recorded.
+ 
+@@ -553,13 +693,13 @@ Phases 0–2 build the runtime that everything else sits on; 3 turns it into the
+ 
+ Eleven items remain open; the first four block Phase 0 and are the ones to close in the next review session.
+ 
+-- [ ] Confirm the §4 review replacements formally: virtual-thread-per-message with per-flow semaphore; objects keyed by message id + step; worker → batch queue → Postgres monitoring path, ClickHouse fed by the node's mover, not Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending); consumer contract `Function<Envelope, Future<Ack>>`; the `/xi` door's durability does not depend on Kafka, a Kafka-backed door is the add-on (CORE-REWORK O-1, CORE-9).
++- [ ] Confirm the §4 review replacements formally: virtual-thread-per-message with per-flow semaphore; objects keyed by message id + step; worker → batch queue → Postgres monitoring path, ClickHouse fed by the node's mover, not Kafka (CORE-REWORK Q-3, O-1; CORE-10, pending) — the built path, to be replaced by memory → writer → the node's journal → mover → ClickHouse (OPERATIONS-BRIEF §3; OPS-2, CORE-8, CORE-10, pending); consumer contract `Function<Envelope, Future<Ack>>`; the `/xi` door's durability does not depend on Kafka, a Kafka-backed door is the add-on (CORE-REWORK O-1, CORE-9).
+ - [ ] Three questions left from the §4 session: ABAP proxy behaviour on HTTP 503 and timeout; whether the body is stored inline before ACK (this document says yes, by reference into the BlobStore before the consumer's ACK); stream-step outputs materialised node-locally (this document says yes).
+ - [ ] §5 and §10 adversarial reviews not yet run; v3.3 is held until they are.
+ - [x] Flow config JSON Schema: shape of steps, routes, delivery/recording/QoS blocks, `partitionBy`, `forwardHeaders`, mocks per environment — drafted in P0-12 (`rail8-schemas`, D-040), `draft — review at hand-over`; QoS beyond the delivery mode (EO/EOIO) stays for Phase 2.
+ - [ ] Size thresholds to be fixed by measurement: memory body tier (1 MB proposed), tree limit for `whole` steps (\~50 MB), ClickHouse payload rows (fixed: at most 8 MiB with `CODEC(ZSTD(1))`, a larger payload as ordered rows, D-108, CORE-2; measured at 100 MB and 1 GB in CORE-10, pending), per-flow byte budget defaults.
+ - [x] Hot-partition fast path semantics: how long a worker keeps a key before yielding it to other nodes — at most `maxChain` further items after the claimed one (D-075).
+-- [ ] `vertx-auth-abac` for the three authorization planes, or own policy model.
++- [x] `vertx-auth-abac` for the three authorization planes, or own policy model — closed by the owner (D-147; OPERATIONS-BRIEF §5): no policy engine now and no third level above roles; rights, roles and assignments, asked at one decision point (§9 Teams and permissions; OPS-9, pending).
+ - [ ] Brand name and domain: the name is decided, Rail8 (D-145); the domain, and with it the Maven namespace `io.rail8`, is open (ISSUE-7).
+ - [ ] Add-on boundary for later commercial modules: which control-plane plugin points exist from day one.
+ - [ ] Envoy `ext_proc` integration: designed-for only, or built in Phase 5 as a reference deployment.
+@@ -573,3 +713,48 @@ Eleven items remain open; the first four block Phase 0 and are the ones to close
+ - [ ] **Bytes exist once — runtime bodies vs ClickHouse**: when the runtime's durable body is in S3 (P2-22), does ClickHouse keep a compressed inline copy (≤ ~256 KB, §8) or only a reference? Options: (a) runtime bodies in S3, ClickHouse inline copy for search, two copies with different retention; (b) ClickHouse references S3 only, search reads S3; (c) the owner's proposal — keep the bodies in ClickHouse itself (its S3 tier and compression) instead of runtime S3 objects; (d) runtime S3 for the replay window only (days), ClickHouse the long-term compressed copy, replay after that window reads from ClickHouse. To weigh: the durable save before an irreversible ACK (synchronous, one transaction with the work item, D-082), point reads per step and per replay, bodies up to the flow's max (tens of MB), the delivery path depending on the monitoring store, the compression gain of columnar blocks over per-object zstd.
+ - [ ] **Kafka optional**: the monitoring write path Postgres / batcher → ClickHouse without Kafka (owner agrees Kafka may be optional); what then needs Kafka at all (`queue: kafka`, replay from the log, cross-pool fan-out).
+ - [ ] **`/xi` door**: "hold the request" (a longer save timeout for the xi endpoint, the Postgres client reconnecting to the new primary, duplicates dropped by `processed_ids` on the XI message id) before a Kafka door; first measure how PO Adapter Engine and ABAP proxy react to 503, a 30–60 s answer and a timeout, for EO and EOIO (§14 ABAP proxy question above).
++
++**From the operations brief (owner, 2026-11-14/15; D-147, F-38). Nothing in the four lists below is design until its row decides it; ISSUE-8 carries the open items to the owner, each with the default that holds until the answer.**
++
++Parked by the owner (OPERATIONS-BRIEF §7; nothing is built on these until the owner's brainstorm):
++
++- [ ] **Custom code as a whole** (CONSIDER-19): Java code inside the platform with database, cache and third-party libraries, as an EJB on SAP NetWeaver Java; its work outside a message; the link from a message to the table load its values came from. §10 Service extensions keeps the v3.3 text until then.
++- [ ] **Masking of sensitive fields** (CONSIDER-20): per interface, per field (the owner's example: only an employee's birth number); to be brainstormed after the operations brief runs.
++- [ ] **Operating modes of R8** (CONSIDER-21): hybrid (a cloud part for external clients and cloud integrations plus an on-premise part for internal systems); cloud only with a cloud connector; on-premise only with a web dispatcher. Not thought through; where TLS ends belongs to it.
++- [ ] **Dry replay of a whole message** (CONSIDER-22): store the input and what cannot be repeated, reproduce the rest on demand — "a good path if what really changes can always be told for certain" (owner). Two guards proposed: the step type decides, and an output fingerprint per step.
++- [ ] **Counted summaries for repeated identical refusals** (CONSIDER-23), against the rule that nothing is dropped (§8 Write path and loss contract).
++
++Where the two briefs meet (no general rule between them, see the status note; each is open until its row decides it):
++
++- [ ] **The path of a sync run's log records** (OPS-2): CORE-REWORK Q-6 sends sync step records and bodies "through the mover's batches, not the durable journal path"; OPERATIONS-BRIEF §3 has a writer take every log record's batch to the node's journal.
++- [ ] **The `errors` switch and the error record's fixed core** (OPS-5, CORE-13): in CORE-REWORK Q-9 the body that entered a failing step is kept by the switch `errors`; in OPERATIONS-BRIEF §2.5 that body is in the fixed core of every error record.
++- [ ] **A step's `skip` and D-110 against "maximum" and "nothing is truncated"** (OPS-3): Q-9 lets a step `skip` its body and D-110 carries a body above the recording threshold without recording it; OPERATIONS-BRIEF §2.9 has a trace set the body recording to its maximum and §3 says nothing is truncated. D-110 is not among the things the operations brief replaces (its §1), so it stands; what "maximum" covers is open.
++- [ ] **Retention periods** (CORE-13): Q-9 has one period for sync, one for async and one for error messages; OPERATIONS-BRIEF §3 has one period for a message's log records and one for its payload.
++
++Open questions of the rewrite (OPS-1):
++
++- [ ] **"Interface" behind a dispatcher flow** (OPS-3, OPS-9, OPS-11): an interface is a deployed flow where no dispatcher is involved (§6); which unit the log threshold, the team and the caller's assignment attach to behind one dispatcher flow that serves many PO interfaces is the owner's to say.
++- [ ] **A key per team** (OPS-9): "separated by team" is enforced at the one decision point (§9 Teams and permissions); whether a team also gets its own key — the journal's key is per tenant, with the one tenant `default` (D-106) — is open.
++- [ ] **A merged PR as the approval in R8** (OPS-10): the proposal rule is for run-time state and settings and deploy stays git-first (PR + CI only); whether a merged PR counts as the human's approval "in R8" is open.
++- [ ] **An agent's key and the right to build and deploy** (OPS-10): whether the key inherits that right from its user, beside "no direct production deploy (PR + CI only)".
++- [ ] **The scope of the `ai:` step's provider** (OPS-9): per tenant in v3.3 (§10); open now that there is no tenant level.
++
++[inferred] or to verify — confirm with the owner before building (the brief's own markers; none of these is stated as design above, and each waits in the row named):
++
++- [ ] §2.2 "A successful call has its message and is not repeated in the connection log" — [inferred] (OPS-5).
++- [ ] §2.4 "A few seconds between a step's start and its display is acceptable" — [inferred] (OPS-2).
++- [ ] §2.4 "Every send attempt is its own record, and a message waiting behind another in an ordered queue says which one it waits for" — [inferred] (OPS-2).
++- [ ] §2.7 "TLS should end in R8 so that certificates and handshake failures stay visible" — a "should", and where TLS ends is parked with the operating modes (OPS-5; CONSIDER-21).
++- [ ] §2.10 the hook that attributes standard Java logging to its message and step, with isolated extension classloaders — "Direction, to verify at design" (OPS-4).
++- [ ] §2.10 jq: R8 ships a small jq module with levelled functions (`log_info`, `log_warning`, …) built on `debug`, so jqj needs no change — "to verify" (OPS-4).
++- [ ] §2.10 XSLT: `xsl:message` is info, with `terminate="yes"` error — [inferred] (OPS-4).
++- [ ] §2.10 platform resources that custom code uses (database, cache) may record the lookups themselves: the query and row count at debug, the returned values at trace — [inferred] (OPS-4).
++- [ ] §2.12 search across messages in the log — every message with the same error, every message where author code wrote a given text — [inferred] (OPS-2).
++- [ ] §3 the retention scheme, "a default plus a per-interface override" — [scheme inferred] (CORE-13).
++- [ ] §5 the list of rights — see interfaces and messages; see payload and payload values in the log; act on messages (restart, cancel — who may act may approve an agent's proposal); change run-time settings (trace only with the payload right); build and deploy; manage the team's secrets; manage the team's members; create shared secrets; administer the installation; see across teams; rights assigned per environment — a sketch, [inferred] as a list (OPS-9).
++- [ ] §5 switching the recording of payload views off needs a special permission and is itself recorded — [inferred] (OPS-9).
++- [ ] §5 an agent's key can be narrowed, never widened, and follows that user's rights — [inferred] (OPS-10).
++- [ ] §6 an alert may also travel through an ordinary R8 interface; alerts about the platform's own health keep a direct path — [inferred] (OPS-8).
++- [ ] §6 R8 only notes on an alert that the cause has passed — [inferred] (OPS-8).
++- [ ] §6 notes on an alert stay with it; an alert nobody takes over is escalated after a set time — [inferred] (OPS-8).
++- [ ] §7 the operating modes — "Not thought through" (CONSIDER-21, parked above).
+diff --git a/docs/CORE-REWORK.md b/docs/CORE-REWORK.md
+index 27d2594..20b3d53 100644
+--- a/docs/CORE-REWORK.md
++++ b/docs/CORE-REWORK.md
+@@ -110,6 +110,7 @@ later phases. Exception: "fix main".
+   keeps a short copy of the step metadata for the live UI view or the UI reads ClickHouse through
+   pg_clickhouse is the designer's call by measurement. Vector is a candidate for the platform's
+   logs and metrics only (CONSIDER-11), not for message data.
++  [2026-11-15: Vector is rejected by the owner (`docs/OPERATIONS-BRIEF.md` §1, D-147).]
+ - **Q-4 Hot window: until processed and, where the level keeps them, in ClickHouse** (normally minutes to hours); the journal
+   disk is sized for the ClickHouse outage it must ride through.
+ - **Q-5 HA copy: the ACK waits for the peer's receipt, not its fdatasync** (a message is lost only
+@@ -118,6 +119,9 @@ later phases. Exception: "fix main".
+   records and bodies go batched to ClickHouse (through the mover's batches, not the durable
+   journal path) and the answer never waits for them; a node crash may lose the last few sync
+   records. Default for sync: bodies `none` + errors.
++  [2026-11-15: the owner widened the accepted loss beyond sync: "a node crash may lose the last
++  moments of that node's detail records. The message and the proof of its receipt are not lost,
++  and the takeover record says so" (`docs/OPERATIONS-BRIEF.md` §3, D-147).]
+ - **Q-7 Failed and in-doubt sends: as SAP PO** — retries at configurable intervals, a
+   configurable number of times, until a successful answer, then parked (error status, manual
+   restart). An in-doubt send (D-101 (4)) counts as a failed attempt and is resent with the same
+diff --git a/docs/GATE.md b/docs/GATE.md
+index 6bb14b3..eb02520 100644
+--- a/docs/GATE.md
++++ b/docs/GATE.md
+@@ -57,7 +57,9 @@ the tests; every deviation from `docs/ARCHITECTURE.md` with its finding id; deci
+ ## Stretch — only after checks 1–9 hold, never blocking
+ 
+ - Snapshots also published to the Kafka `monitoring` topic (ARCHITECTURE §8 write path).
++  [2026-11-15: superseded. Kafka is an optional add-on and no core path depends on it (D-134).]
+ - A ClickHouse Kafka-engine table consuming that topic.
++  [2026-11-15: superseded. ClickHouse is to be fed by the node's mover (CORE-10, OPS-2, pending; D-147).]
+ 
+ HANDOVER.md states which stretch items were reached.
+ 
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 4cd2a59..8b2d592 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -723,3 +723,7 @@ Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-05-verify.log); Compo
+ Review: PASS r1. Raised FIX-99 (Kafka not-wired assertion, CI up seconds, HANDOVER env note).
+ D-054 data: class A (scout ×1, test-author ×1 + 1, implementer ×1 + 1 fix, verifier ×1, reviewer ×1); review rounds 1.
+ Next: P2-06 [A].
++
++---
++
++End of this file. The older entries are in `docs/archive/PROGRESS-until-2026-11-03.md`, oldest first. Both files hold entries dated 2026-10-29 to 2026-11-03, because two branches were worked in parallel.
+diff --git a/docs/PROTOTYPE-VS-ARCHITECTURE.md b/docs/PROTOTYPE-VS-ARCHITECTURE.md
+index ffa28ec..09a7474 100644
+--- a/docs/PROTOTYPE-VS-ARCHITECTURE.md
++++ b/docs/PROTOTYPE-VS-ARCHITECTURE.md
+@@ -55,8 +55,8 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
+ | Body | sealed `Bytes` / `Spilled` / `Empty` | one final `Body` (hash, size, `open()`, `whole()`) over a `BlobStore` with memory / encrypted spool / S3 tiers; objects keyed by message id + step | Storage leaked into the domain type; content-keyed objects cannot be deleted per retention nor streamed with multipart. |
+ | Body ingress | `ctx.body().buffer()` — whole request in memory | streaming into the BlobStore while hashing | Large files (§5). |
+ | Steps | `Step` returns `Uni<Envelope>`, XSLT on a CPU pool | `Step` returns `Envelope` on the message's virtual thread; steps declare body kind `whole / stream / split-assemble` | Measured per-step wall time replaces policing (CPU per step is unknown on virtual threads, F-21). |
+-| Monitoring path | local event bus → `MonitorVerticle` | worker → bounded batch queue → Kafka → ClickHouse; Postgres last-N-hours by the same batcher | The event bus drops silently at 1,000 buffered. |
+-| Queues | Postgres only | Postgres default per flow, Kafka per flow for volume / fan-out / replay; XI EOIO always Postgres | Agreed Oct 17, 2026 (§7). |
++| Monitoring path | local event bus → `MonitorVerticle` | built: worker → bounded batch queue → Postgres last-N-hours; to be: log record in memory → writer → the node's journal → mover → ClickHouse, no Kafka (OPS-2, CORE-8, CORE-10, pending; D-134, D-147) | The event bus drops silently at 1,000 buffered. |
++| Queues | Postgres only | Postgres per flow; Kafka per flow (volume / fan-out / replay) only with the optional add-on (D-134); XI EOIO always Postgres | Agreed Oct 17, 2026 (§7); Kafka left the core on 2026-11-12 (D-134). |
+ | Runtime record | `Runtime(vertx, components, messages, monitoring, cpuPool, blockingPool, xml)` | adds BlobStore, Clock, id generator, caches, wallet, services registry; still build-time only | §6, §11. |
+ | Modules | one jar, packages `core / runtime / components / demo` | `rail8-api`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-sap`, `-testkit`, `-cli`, `-control`, `-schemas`; ArchUnit enforces direction | §12. |
+ | Flow config | ad-hoc JSON (`invoice.json`) | JSON Schema (Phase 0, done in P0-12: `rail8-schemas`, D-040); packages with `package.yaml` / `package.lock`; `*.test.yaml` beside each flow | §9, §11. |
+diff --git a/docs/WORKFLOW.md b/docs/WORKFLOW.md
+index f21dae9..e87ebed 100644
+--- a/docs/WORKFLOW.md
++++ b/docs/WORKFLOW.md
+@@ -29,7 +29,7 @@ is binding for every session working on Rail8; `CLAUDE.md` summarises it.
+    `touch agent/work/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
+    reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
+    if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.2) instead.
+-7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Append the
++7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Add the
+    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
+    commit as the code.
+ 8. Continue with the next `ready` row without asking. Stop only on `GATE_MET` (docs/GATE.md
+@@ -46,7 +46,7 @@ nothing that matters may exist only in the conversation or in an unpushed workin
+ | `agent/HANDOFF.md` | ≤ 20 lines of ≤ 160 characters: state, last commit, next exact action, open issues, pointers; rewritten after every task | coordinator |
+ | `agent/NOTES.md` | module notes (shapes, commands, open follow-ups) that HANDOFF used to carry; one section per module, read on demand | coordinator |
+ | `.claude/agent-memory/<name>/MEMORY.md` | durable facts an agent learned (build quirks, verified APIs, recurring findings); never task state | that agent |
+-| `PROGRESS.md` | append-only journal, one entry per task, ≤ 15 lines (format below) | coordinator |
++| `docs/PROGRESS.md` | the journal, newest first: one entry per task, added at the top and never changed afterwards, ≤ 15 lines (format below); the earlier journal, which ends 2026-11-03, is `docs/archive/PROGRESS-until-2026-11-03.md` (oldest first) | coordinator |
+ | `docs/DECISIONS.md` | reversible decisions, one line each | coordinator |
+ | `docs/findings/F-<n>.md` | contradictions between practice and ARCHITECTURE.md | coordinator |
+ | `issues/ISSUE-<n>.md` | things only the owner can resolve | coordinator |
+@@ -90,7 +90,7 @@ Next: P1-05
+   `Signed-off-by: <owner name> <owner email>` (DCO; the author identity is the owner's, set through
+   the environment's git variables — see `agent/cloud/README.md`).
+ - Tags cannot be pushed from the cloud session; gates are recorded as commit hashes in
+-  `bench/RESULTS.md` and `PROGRESS.md`.
++  `bench/RESULTS.md` and `docs/PROGRESS.md`.
+ 
+ ## 4. CI gates (GitHub Actions, every push to `main`)
+ 
+@@ -166,7 +166,7 @@ worked around silently:
+ ## 9. What the owner sees
+ 
+ Nothing is reported outside the repo. The owner reads `HANDOVER.md` at the gate, and
+-`agent/HANDOFF.md` + `PROGRESS.md` at any time. Chat messages per task are fine but carry nothing
++`agent/HANDOFF.md` + `docs/PROGRESS.md` at any time. Chat messages per task are fine but carry nothing
+ that is not also in the files.
+ 
+ ## 10. Turn economy (D-053)
+diff --git a/docs/findings/F-38.md b/docs/findings/F-38.md
+new file mode 100644
+index 0000000..aece197
+--- /dev/null
++++ b/docs/findings/F-38.md
+@@ -0,0 +1,141 @@
++# F-38 — ARCHITECTURE still described monitoring, metrics, alerts and permissions as v3.3 had them
++
++Date: 2026-11-15 · Task: OPS-1 · ARCHITECTURE section: status note, amendments, §2–§11, §13, §14 (version 3.25)
++
++- **Assumption in the document:** up to version 3.24 the document describes monitoring as
++  snapshots only (§8), with a write path that leaves a row unwritten after `maxWait` and counts it
++  (§8 Write path, D-071). It requires Micrometer and OpenTelemetry exporters in the node and
++  Prometheus/Alertmanager for the platform's metrics and alerts (§3, §8, §13). It has a tenant
++  level and three authorization planes with `vertx-auth-abac` as a candidate (§4, §9, §14), masks
++  PII before any payload reaches an AI tool or a model (§9, §10, §11), gives custom code a
++  `Services.log()` (§10), and closes Phase 3 on "a dropped node leaves no gap in the timeline"
++  (§13).
++- **How it fails in practice:** the owner's brief `docs/OPERATIONS-BRIEF.md` (brainstorm of
++  2026-11-14/15, D-147) decides each of these otherwise. None of what the brief decides is built;
++  what is built is the snapshot path of the core rework. A reader of ARCHITECTURE got a design the
++  owner has replaced, and the designers of OPS-2 to OPS-11 would have been bound by it.
++- **Severity:** major (documented mechanisms are replaced: the snapshot-only log, the drop-and-count
++  rule as a design, Prometheus/Alertmanager and the exporters, the tenant level and the three
++  planes, masking before a model, a gate clause. The intent is kept: monitoring is the product,
++  nothing is lost silently, and no performance is given up for it)
++- **Evidence:** the brief's sections; BACKLOG rows OPS-2 to OPS-11 and CONSIDER-19 to CONSIDER-23,
++  all pending at c017e9c. Code read at c017e9c for the lines stated as built:
++  - `platform/core/.../scope/MessageContext.java:31` (`DEFAULT_TENANT = "default"`, the trace id is
++    the message id) and `deploy/postgres/V12__journal.sql` (`journal_keys.tenant`, D-106)
++  - `platform/core/.../record/Snapshot.java`, `Trail.java` (the trail, the WARNING for an unwritten
++    row) and `platform/runtime/.../admin/AdminServer.java:228` (`snapshotWriteFailures` in
++    `/health`; the shared admin token; the remote address on the discard's audit row only)
++  - `platform/runtime/.../journal/Journal.java:71` (WARNING at 80 % of a bound, ERROR when its
++    refusals start)
++  - `platform/api/.../StepResources.java` (no logging type)
++  - no `Services` and no `MappingTrace` class under `platform/`; no Micrometer, OpenTelemetry or
++    Prometheus in any pom or source file; the http component authenticates no caller and reads no
++    address, certificate or TLS fact of its client
++- **Change made:** a thin rewrite (the architect's decisions of 2026-11-15, after the designer and
++  the opponent). Every statement of what is built stays. Each passage the brief touches opens with
++  "Today (built)" and goes on with "To be (OPS-n, pending; OPERATIONS-BRIEF §x)", which states only
++  what the brief states as decided, in the brief's words, with no mechanism beyond it. No section
++  is inserted or renumbered. No D-, F-, FIX-, CORE-, CONSIDER- or ISSUE- id cited in the body was
++  removed (137 before, 146 after). The points, each cited by its changelog row:
++  1. **Status note, Amendments item 1, §14 item 1.** The note names both briefs with the scope of
++     each; there is no general rule between the two briefs. Its "unchanged" was false since the
++     changelog's first change to the body (2026-10-18) and is corrected. Amendment 1 and §14 item 1
++     keep the built path "worker → bounded batch queue → Postgres" and append its replacement,
++     memory → writer → the node's journal → mover → ClickHouse (OPS-2, CORE-8, CORE-10, pending).
++  2. **Snapshots only → one log-record stream.** §8 One log-record stream, Log records, Stores and
++     query surface and Screens state the snapshot as built and, as to be, the brief's §1, §2.1 to
++     §2.7: one shape, three logs by owner, the info fact, the error record, connection failures
++     and client facts in full. "Log record", "journal record" and "deployment record" are defined
++     at the head of §8. Followed in §3 (Postgres and ClickHouse rows), §5 (secrets in headers
++     replaced by a marker), §7 (no Postgres table for log records; the `message_log` table of the
++     superseded draft is not to be built) and §10 ("every span, snapshot and metric" becomes every
++     log record and metric).
++  3. **Levels, trace, author voice, mapping trace.** New in §8 Levels and trace and §8 Author voice
++     and mapping trace (brief §2.8 to §2.11), with the built state before them: no log level, no
++     threshold, no trace, no line a step can add to its message. §6 Recording says "recording
++     level" for the built `all | ends | errors | off` and "body level" for Q-9's, and names the log
++     threshold beside the body recording. §4 names the bound `MessageContext` as the brief's
++     direction for attributing standard Java logging. Removed from §10: `Services.log()` — it was
++     never built, and the brief wants no new R8 logging API. Added to §10: the three engines'
++     errors as one error record.
++  4. **The write path's drop-and-count as a design — changed guardrail.** D-071's rule (a row not
++     written within `maxWait` is logged at WARNING, counted in `snapshotWriteFailures` and stays
++     unwritten) is stated in §8 Write path and loss contract as today's behaviour and no longer as
++     the design: "a bounded queue that fills is an alert" means wait and alert, never drop (brief
++     §1, §3). To be: one buffer for the whole platform; when it is full, intake stops for the whole
++     platform. §4 (admission, Body journal, Event bus, Writer) points at it. The stop is described
++     by the door behaviours built today (HTTP 503 + Retry-After, pollers paused); everything else
++     about it is OPS-2's. One sentence is proposed for CLAUDE.md's limit rule for the same reason.
++  5. **The loss contract and the Phase 3 gate clause — changed gate condition.** §8 Write path and
++     loss contract quotes the owner (brief §3): "a node crash may lose the last moments of that
++     node's detail records. The message and the proof of its receipt are not lost, and the takeover
++     record says so." It widens CORE-REWORK Q-6, which accepted the loss for sync runs only. The
++     §13 Phase 3 gate clause "a dropped node leaves no gap in the timeline" contradicts it and is
++     replaced by the owner's sentence, with no word added, `draft — review at hand-over`.
++  6. **Prometheus/Alertmanager and the exporters as required parts — removed.** §3 no longer puts
++     "Micrometer + OTel exporters" in the node; §8 Metrics and OpenTelemetry states that none of
++     v3.3's tracing and metrics is built and, as to be, that metrics and alerts live inside the
++     platform, metrics go to ClickHouse by the log-record path, and OpenTelemetry is an optional
++     export (brief §4). §2 records the owner's rejection of Vector (CONSIDER-11) and of any other
++     new dependency for the platform's logs and metrics (brief §1). §13 Phase 3 follows.
++  7. **Alerts: two layers on Alertmanager → alerts inside the platform.** §8 Alerts keeps v3.3's
++     conditions as named and not built, and states the brief's §6 as to be: an inbox per team,
++     channels that only notify, one cause one alert with a count, an alert that never closes by
++     itself, four groups. The lockout after failed logins, for technical users too, is in §9
++     Security (Identity); the liveness check from outside (brief §4) is at §9's probes.
++  8. **The tenant level — removed.** There is to be one installation per customer (brief §5). The
++     places where a tenant is built are stated as built, each holding the one value `default` and
++     going with OPS-9: `MessageContext.tenant` (§4), the journal's key (§4 Body journal, §9), the
++     first position of the identity (§9 Flow configuration). §8's ClickHouse row and §10's `ai:`
++     provider said "per tenant" as design; both now say what is open instead.
++  9. **Three authorization planes and `vertx-auth-abac` → rights, roles, assignments.** §9 states
++     that only the shared admin token is built and none of the three planes, and gains "Teams and
++     permissions": teams with an enforced boundary, a role as a bundle of rights, an assignment in
++     a scope and optionally for a limited time, one decision point, payload as its own permission,
++     team secrets, payload views recorded (brief §5). §14's abac item is closed: no policy engine
++     now (D-147).
++  10. **Masking before a payload reaches a model — removed guardrail.** §9's "per-flow PII masking
++      policy applied before any payload reaches an AI tool or an unprivileged viewer" and §10's
++      "PII masking before any payload reaches a model" are removed: an agent's key is not masked by
++      default, and masked payloads for agent keys are an option (brief §5). Masking of sensitive
++      fields as such is parked by the owner (CONSIDER-20), which §9, §10 and §11 (fixtures saved
++      from monitoring) now say.
++  11. **Agents.** New "Agents" in §9: an agent's key has the rights of the user who created it, and
++      anything it changes is a proposal that a human approves in R8, recorded in the message's log
++      (brief §5). §10's guardrail "agent role with scoped permissions" gives way to it. "No direct
++      production deploy (PR + CI only)" stays: the proposal rule is for run-time state and
++      settings. §13 Phase 5 follows.
++  12. **Callers and the developer portal.** New in §9: the caller as one shared object to which
++      interfaces are assigned, the assignment as the subscription, the check in memory on the hot
++      path, and the portal as a separate door with no monitoring and no account (brief §5). §3's
++      control-plane row, §9 Partner directory, §10 API management (application and subscription
++      become caller and assignment; API and product objects stay) and §13 Phase 5 follow.
++  13. **Parked by the owner.** CONSIDER-19 to CONSIDER-23 are listed in §14 and named where their
++      subject stands: custom code at §10 Service extensions (the v3.3 text is kept and marked as
++      not built), the operating modes at §3, the dry replay at §6 Recording, counted summaries at
++      §8 Write path and loss contract.
++  14. **What the brief does not decide.** Nothing the brief marks [inferred], "to verify" or "not
++      thought through" is stated as design. §14 lists each such item with its row, the four places
++      where the two briefs meet (D-110 stands), and the open questions of the rewrite. §6 defines
++      "interface" without binding the dispatcher case: "the operator's word for a deployed flow;
++      which unit it names behind a dispatcher flow is open". ISSUE-8 carries all of them to the
++      owner with the default the documents now state.
++- **ARCHITECTURE.md edit:** thirteen changelog rows of version 3.25 (2026-11-15), one per changed
++  section, each citing its points here. Outside ARCHITECTURE, in the same task: `docs/WORKFLOW.md`
++  and `AGENTS.md` (the journal is `docs/PROGRESS.md`), `docs/PROGRESS.md` (a closing pointer to the
++  archive), `README.md`, `HANDOVER.md`, `docs/GATE.md`, `docs/PROTOTYPE-VS-ARCHITECTURE.md` (Kafka
++  as the add-on, D-134; the monitoring path), `docs/CORE-REWORK.md` (two dated notes, at Q-3 and
++  Q-6) and `agent/NOTES.md`. The changes to `CLAUDE.md` (the limit rule's sentence of point 4; the
++  journal's path) and to the implementer's and test-author's definitions (the journal's path) are
++  in `agent/patches/OPS-1-steering.patch`, for the owner to apply (`docs/WORKFLOW.md` §10 D).
++- **PROGRESS entry:** OPS-1 marked `Deviation: F-38`
++- **For the owner's review:** four things, the first two marked draft.
++  First, the Phase 3 gate clause (point 5) is the owner's sentence in place of a gate condition,
++  `draft — review at hand-over`. Second, the sentence proposed for CLAUDE.md's limit rule (point 4):
++  "A message's log has no per-message cap (D-147); its memory is bounded by the platform's record
++  buffer, which stops intake when full (OPS-2, pending)." Third, the stop of intake for the whole
++  platform is described by the built door behaviours (point 4); the brief says only "intake stops".
++  Fourth, what was left as it is: `flow.schema.json:13` and the comment in `MessageContext.java`
++  still state the tenant identity, because both are built; a FIX row after OPS-9 changes them.
++  A full restatement of the brief's design in ARCHITECTURE was considered and rejected: it would
++  paraphrase the owner and bind before any class-C design exists.
+diff --git a/issues/ISSUE-8.md b/issues/ISSUE-8.md
+new file mode 100644
+index 0000000..437a820
+--- /dev/null
++++ b/issues/ISSUE-8.md
+@@ -0,0 +1,87 @@
++# ISSUE-8 — the operations brief's [inferred] items and the open questions of its rewrite
++Task: OPS-1
++Date: 2026-11-15
++
++## What is needed
++The owner's word on each line below: yes, no, or the rule that holds instead. Every line names the
++row that waits for it and the default the documents state until the answer. Sections are those of
++`docs/OPERATIONS-BRIEF.md`; the same lines stand in `docs/ARCHITECTURE.md` §14.
++
++A. Marked [inferred], "to verify" or "not thought through" in the brief. The default of every line
++in A: it is not stated as design anywhere, and its row builds nothing on it before the answer.
++1. §2.2 A successful call has its message and is not repeated in the connection log — OPS-5.
++2. §2.4 A few seconds between a step's start and its display is acceptable — OPS-2.
++3. §2.4 Every send attempt is its own record, and a message waiting behind another in an ordered
++   queue says which one it waits for — OPS-2. (That a send attempt is a log record is decided, §2.1.)
++4. §2.7 "TLS should end in R8" — OPS-5, CONSIDER-21. Default: no load balancer is required and
++   none is refused; where TLS ends is not stated.
++5. §2.10 The hook that attributes standard Java logging to its message and step, with isolated
++   extension classloaders ("to verify at design") — OPS-4. Default: the direction stands (no new R8
++   logging API, attribution through the bound `MessageContext`); OPS-4 verifies the hook first.
++6. §2.10 A small jq module with levelled functions built on `debug`, so that jqj needs no change
++   ("to verify") — OPS-4. Default: `debug` and `stderr` map to the log level debug; no module.
++7. §2.10 `xsl:message` is info, with `terminate="yes"` error — OPS-4.
++8. §2.10 Platform resources that custom code uses record their lookups: the query and row count at
++   debug, the returned values at trace — OPS-4.
++9. §2.12 Search across messages in the log (every message with the same error, every message where
++   author code wrote a given text) — OPS-2.
++10. §3 The retention scheme "a default plus a per-interface override" — CORE-13. Default: both
++    periods are configurable; how they are set is not stated.
++11. §5 The list of rights, with "Rights are assigned per environment" read as part of the list —
++    OPS-9. Default: rights, roles and assignments are decided; which rights exist is not stated.
++12. §5 Switching the recording of payload views off needs a special permission and is itself
++    recorded — OPS-9. Default: every payload view is recorded, configurable.
++13. §5 An agent's key "can be narrowed, never widened, and follows that user's rights" — OPS-10.
++    Default: the marker is read as covering only these words; "has the rights of the user who
++    created it (the default, configurable)" is stated as decided. Say so if the marker covers both.
++14. §6 An alert may also travel through an ordinary R8 interface; alerts about the platform's own
++    health keep a direct path — OPS-8. Default: channels only notify and link to the inbox.
++15. §6 R8 only notes on an alert that the cause has passed — OPS-8. Default: an alert never closes
++    by itself.
++16. §6 Notes on an alert stay with it; an alert nobody takes over is escalated after a set time —
++    OPS-8.
++17. §7 The operating modes of R8 ("not thought through") — CONSIDER-21, parked by the owner.
++
++B. Where the two briefs meet. The default of every line in B: there is no general rule between the
++briefs; the row's class-C design decides the point, marked `draft — review at hand-over`.
++1. The path of a sync run's log records: the mover's batches without the durable journal path
++   (CORE-REWORK Q-6), or the node's journal like every other log record (brief §3) — OPS-2.
++2. The body that entered a failing step: kept by the switch `errors` (Q-9), or in the fixed core of
++   every error record (brief §2.5) — OPS-5, CORE-13.
++3. A step's `skip` (Q-9) and a body above the recording threshold (D-110) against a trace's
++   "maximum" (brief §2.9) and "nothing is truncated" (brief §3) — OPS-3. Default: D-110 stands,
++   the brief's §1 does not replace it; what "maximum" covers is not stated.
++4. Retention: sync, async and error periods (Q-9), or one period for a message's log records and
++   one for its payload (brief §3) — CORE-13.
++
++C. Open questions of the rewrite. Each has its own default.
++1. Which unit "interface" names behind a dispatcher flow that serves many PO interfaces: the log
++   threshold, the team and the caller's assignment attach to it — OPS-3, OPS-9, OPS-11. Default:
++   an interface is a deployed flow where no dispatcher is involved; the dispatcher case is unbound.
++2. Does "separated by team" also mean a key per team — OPS-9. Default: the separation is enforced
++   at the one decision point; the key stays as built (per tenant, with the one tenant `default`).
++3. Does a merged PR count as the human's approval "in R8" — OPS-10. Default: deploy stays
++   git-first (PR + CI only); the proposal rule is for run-time state and settings.
++4. Does an agent's key inherit its user's right to build and deploy — OPS-10. Default: "no direct
++   production deploy (PR + CI only)" stands; nothing more is stated.
++5. The scope of the `ai:` step's provider, which was per tenant in v3.3 — OPS-9. Default: open;
++   the step is not built.
++
++## Why the agent cannot decide it
++The brief's own status note says of the [inferred] items: "confirm each with the owner before
++building on it", and the OPS-9 row repeats it as its acceptance. The points of B set one brief of
++the owner against the other; neither brief ranks them. The questions of C are expensive to
++reverse: C.1 binds the schema keys of OPS-3, the scope of OPS-9 and the assignment target of
++OPS-11, C.2 the journal's keys and the later SQL of OPS-9.
++
++## What was tried
++Nothing was decided. OPS-1 rewrote `docs/ARCHITECTURE.md` to the brief (changelog 3.25, F-38) and
++states none of these lines as design; §14 lists each with its row. F-38 "For the owner's review"
++names what the rewrite itself marks as draft.
++
++## Default if the owner does not answer
++Each line's default above holds, and work goes on with what the brief states as decided. Nothing
++is built on a line of A before its answer. A point of B or C is decided in its row's design, as a
++draft for the owner's review (`draft — review at hand-over`).
++
++## Owner's answer
