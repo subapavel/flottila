@@ -74,6 +74,12 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     - T1: ADR-0018:29 is reworded; CONSERVATIVE stores no tail kind.
     - T2: ADR-0047 is amended; written closures are bound without a frame at jump sites.
     - The embedded recursion-depth default stays open.
+  - #117 census (F-94), from the adviser's rulings R1–R4: three over-cap cases are refused by
+    design and named in ADR-0045 #117; the census asserts that exact set. ADR-0020 #117: the census
+    reaches the capped compile by reflection. The adviser reads the change as fixing a wrong red,
+    not a weakening; a "no" makes the census red until a cap rule changes.
+  - F-95: the provisional b = 96 does not cover a Collect-heavy descent; #113 owns b, and #114
+    merges after #113.
   - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
     - ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`.
       There is no margin beyond rounding and the 32 KiB; each cell's headroom is in the tsv.
