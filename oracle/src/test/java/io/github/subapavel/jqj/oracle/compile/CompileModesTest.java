@@ -16,6 +16,8 @@ import io.github.subapavel.jqj.value.JqNull;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,6 +25,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The compile-mode oracle's reach into jqj (ADR-0020 amendment for #60): the hook on the engine's builder, its limits,
  * and how a run through the command line or the public API ends.
+ *
+ * <p>The trampoline test (#109) assumes {@code static UnaryOperator<JqEngine.Builder> CompileModes.trampoline()}, the
+ * hook of the third run (F-58).
  */
 class CompileModesTest {
 
@@ -53,6 +58,56 @@ class CompileModesTest {
     assertThat(CompileModes.limits())
         .as("the compile-mode oracle's limits")
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 512 * 1024L));
+  }
+
+  /** jqj's F (CallRuns.F): reference jq 1.8.2 gives N on N for N up to 10^7 (F-87), 9999 on 9999 (observed 2026-11-15, #109). */
+  private static final String F = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
+
+  /** The thread of a run that must hold 9 999 levels only on the driver: DeepRuns' small stack. */
+  private static final long SMALL = 256 * 1024;
+
+  /** What {@code run} gave on a new thread of {@link #SMALL} bytes; what else it threw is rethrown in an AssertionError. */
+  private static Run onSmallStack(Supplier<Run> run) throws InterruptedException {
+    AtomicReference<Object> outcome = new AtomicReference<>();
+    Thread thread =
+        new Thread(
+            null,
+            () -> {
+              try {
+                outcome.set(run.get());
+              } catch (Throwable t) {
+                outcome.set(t);
+              }
+            },
+            "small-stack",
+            SMALL);
+    thread.start();
+    thread.join();
+    if (outcome.get() instanceof Throwable t) throw new AssertionError("the run on a 256 KiB thread threw", t);
+    return (Run) outcome.get();
+  }
+
+  /**
+   * F-58, #109: the trampoline run is the conservative compile with {@code stackBytes} 0, so main and every body run on
+   * the driver. F on 9999 through the command line then completes on a 256 KiB thread, where the conservative compile
+   * with a declared stack of 1 GiB, which S2b.5's {@code U_f} keeps on the Java stack, ends with STACK.
+   */
+  @Test
+  void theTrampolineHookIsConservativeWithStackBytesZero(@TempDir Path scratch) throws ReflectiveOperationException, InterruptedException {
+    JqEngine engine = CompileModes.trampoline().apply(JqEngine.builder()).build();
+    assertThat(CompileModes.modeOf(engine)).as("compile mode of an engine built through the trampoline hook").isEqualTo(CompileMode.CONSERVATIVE);
+    // The oracle's limits, with neither the deadline nor the regex match time (F-58), and stackBytes 0.
+    assertThat(CompileModes.trampolineLimits())
+        .as("the trampoline run's limits")
+        .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 0));
+
+    DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    assertEnded(onSmallStack(() -> CompileModes.cli(deep, scratch, CompileModes.trampoline())), "the trampoline run of F on 9999 on a 256 KiB thread", 0, "9999\n", "");
+
+    Limits l = CompileModes.limits();
+    Limits gib = new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 1L << 30);
+    UnaryOperator<JqEngine.Builder> declared = b -> CompileModes.hook(CompileMode.CONSERVATIVE).apply(b).limits(gib);
+    assertThat(onSmallStack(() -> CompileModes.cli(deep, scratch, declared))).as("the conservative run of F on 9999 with a declared stack of 1 GiB").isEqualTo(new Run.Terminated("STACK"));
   }
 
   /** The hook of {@code mode} with no steps: the read's one tick for {@code 1} ends the run (StepBudgetTest). */

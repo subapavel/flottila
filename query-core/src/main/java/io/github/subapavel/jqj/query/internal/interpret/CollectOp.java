@@ -45,6 +45,13 @@ public final class CollectOp extends Op {
     return out.emit(collector.collect(elements.values, elements.length));
   }
 
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.state.chargeBuilt(Charges.CONTAINER);
+    Gather gather = new Gather(under, new Elements(t.state), out);
+    t.start(body, gather, slots, in, gather);
+  }
+
   /**
    * The capacity after {@code length} results filled the array: twice {@code length}, at least {@link #FIRST} and at
    * most {@link #MAX_LENGTH}.
@@ -56,6 +63,36 @@ public final class CollectOp extends Op {
       throw state.overBuilt();
     }
     return (int) Math.min(MAX_LENGTH, Math.max(FIRST, 2L * length));
+  }
+
+  /**
+   * The heap form while the body runs, and the body's sink: each result is stored and answered to go on; when the body
+   * ran out, what the collector makes of them is emitted, and after a break nothing is.
+   */
+  private final class Gather extends HeapForm implements HeapSink {
+    private final Elements elements;
+    private final HeapSink out;
+
+    Gather(HeapForm under, Elements elements, HeapSink out) {
+      super(under);
+      this.elements = elements;
+      this.out = out;
+    }
+
+    @Override
+    public void accept(Trampoline t, HeapForm producer, Object v) {
+      elements.emit(v);
+      t.answer(producer, true);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      if (!more) {
+        t.answer(under, false);
+        return;
+      }
+      t.emit(out, under, collector.collect(elements.values, elements.length));
+    }
   }
 
   /** The results so far, {@code [0, length)} of {@code values}. */

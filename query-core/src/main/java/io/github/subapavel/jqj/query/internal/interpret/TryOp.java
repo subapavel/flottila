@@ -44,4 +44,67 @@ public final class TryOp extends Op {
       throw e;
     }
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Body form = new Body(under, slots, out);
+    t.start(body, form, slots, in, form);
+  }
+
+  /**
+   * The heap form while the body runs, and the body's sink: each result goes on above a {@link Downstream} of its own.
+   * An error that reaches it of depth above 0 is unwrapped and passes on; one of depth 0, the body's own, ends the body
+   * and starts the handler on its value in the Try's place.
+   */
+  private final class Body extends HeapForm implements HeapSink {
+    private final Object[] slots;
+    private final HeapSink out;
+
+    Body(HeapForm under, Object[] slots, HeapSink out) {
+      super(under);
+      this.slots = slots;
+      this.out = out;
+    }
+
+    @Override
+    public void accept(Trampoline t, HeapForm producer, Object v) {
+      t.emit(out, new Downstream(producer), v);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      t.answer(under, more);
+    }
+
+    @Override
+    void fail(Trampoline t, FilterException e) {
+      if (e.depth() > 0) {
+        e.unwrap();
+        t.raise(under, e);
+        return;
+      }
+      t.start(handler, under, slots, e.value(), out);
+    }
+  }
+
+  /**
+   * The heap form between one result of the body and what runs downstream of it: the answer passes to the form that
+   * produced the result, and an error raised downstream passes there wrapped once more.
+   */
+  private static final class Downstream extends HeapForm {
+    Downstream(HeapForm producer) {
+      super(producer);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      t.answer(under, more);
+    }
+
+    @Override
+    void fail(Trampoline t, FilterException e) {
+      e.wrap();
+      t.raise(under, e);
+    }
+  }
 }

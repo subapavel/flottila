@@ -12,7 +12,8 @@
   <name>oracle</name>
 
   <!-- The compile-mode oracle's tests (JUnit tag compile-mode) run only under -Pcompile-oracle: after every merge, in
-       the spec gate, and in the ticket gate since #89 (F-29, F-46, ADR-0020 amendment for #60). -->
+       the spec gate, and in the ticket gate since #89 (F-29, F-46, ADR-0020 amendment for #60). They hold both of its
+       runs against the optimised one, the conservative compile and, since #109, the trampoline (F-58). -->
   <properties>
     <oracle.excludedGroups>compile-mode</oracle.excludedGroups>
   </properties>
