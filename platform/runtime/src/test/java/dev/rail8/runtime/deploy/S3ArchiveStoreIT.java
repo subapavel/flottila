@@ -1,5 +1,6 @@
 package dev.rail8.runtime.deploy;
 
+import dev.rail8.testkit.Ports;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,6 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -81,9 +80,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
 
     /** A loopback port nothing listens on: bound by the kernel, then released. */
     static int closedPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     static boolean causedBySdk(Throwable t) {

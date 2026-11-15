@@ -26,6 +26,7 @@ import dev.rail8.runtime.node.PlainComponent;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
@@ -585,9 +586,7 @@ class NodeIT {
 
     /** A free loopback port: bound once and released (the demo's consumer binds it right after). */
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /**

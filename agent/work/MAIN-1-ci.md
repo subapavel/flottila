@@ -155,6 +155,19 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   300 ms between two runs of the same package: no earlier sighting; new row FIX-254. The failing case, read from the
   code and not from the log: `LauncherIT.binRail8TestDemoExit0`, the only IT that asserts that list. The cause: not
   shown (`agent/work/FIX-254-scout.md`). The other job's conclusion: not read.
-- Count of green `ci` runs in a row: 0 (224 failed; 221, 222 and 223 were green; 218, 219, 220 and 224 failed, each on
-  a different fault: FIX-183 - fixed in 6cd8f2ed, FIX-234 - fixed in 92f4b212, FIX-149 - in work, and the flow time
-  of 224).
+- `ci` run 225 (id 43744590835, a61b80cd, FIX-201): `success`, read 18:37Z from the job list. DCO green; both build jobs
+  green (Verify 18:03Z-18:29Z; in the 18.6 job the demo's validate and flow-test steps through the launcher green too); the
+  stack job green; mutation and bench skipped, as on every push.
+- Count of green `ci` runs in a row: 1 (225). Before it 224 failed on the flow time of row FIX-254; 218, 219 and 220 failed
+  on FIX-183 (fixed in 6cd8f2ed), FIX-234 (fixed in 92f4b212) and FIX-149 (fixed in the commit after a61b80cd).
+
+## Whole-reactor runs on this machine (MAIN-1's first condition)
+
+The row says "green on `main` three times in a row". The architect's reading, written here so that MAIN-1's reviewer can
+judge it: three consecutive whole-reactor runs (`clean verify -Pit`), no red run between them, each on the head of its time,
+the third on the head MAIN-1 closes on. A commit between two runs does not restart the count; a red run does, and gets a row.
+
+- Run 1 (started about 18:05Z, 25:36 min, the verifier): a61b80cd plus FIX-149 as first reviewed. Green: 17 modules, every
+  count as expected, coverage no decrease (`agent/work/FIX-149-evidence.txt`). The committed FIX-149 differs from that tree
+  by one Javadoc line and one test method of the testkit module; the testkit module ran green after them.
+- Count: 1 of 3.

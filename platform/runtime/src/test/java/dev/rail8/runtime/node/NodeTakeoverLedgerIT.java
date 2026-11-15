@@ -1,5 +1,6 @@
 package dev.rail8.runtime.node;
 
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -24,8 +25,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -479,9 +478,7 @@ class NodeTakeoverLedgerIT {
     }
 
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /** Spins (yielding, never sleeping) until {@code condition} holds; fails after {@link #BOUND} naming what never happened. */

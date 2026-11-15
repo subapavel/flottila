@@ -1,6 +1,7 @@
 package dev.rail8.runtime.deploy;
 
 import dev.rail8.runtime.node.OnVirtualThread;
+import dev.rail8.testkit.Ports;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -10,8 +11,6 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -29,9 +28,7 @@ class S3ArchiveStoreTest {
     @TempDir Path tmp;
 
     static int closedPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     @Test

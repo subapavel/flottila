@@ -367,6 +367,12 @@ assertion fired - read the failure text; PIT does not mutate string literals, so
 Nothing in this build checks a Javadoc `{@link}` or `@see` (no maven-javadoc-plugin in any pom, checked 2026-11-15; the
 note is commit 7ccbaad's): a renamed symbol leaves stale Javadoc and no build step says so.
 
+Test ports (FIX-149, 2026-11-15): a test never probes a free port by binding 0 and closing - the kernel may hand that number to
+any bind(0) or connect before the node binds it (`ci` run 220). `dev.rail8.testkit.Ports.free()` hands out ports from
+20000-32767 minus the kernel's range, so only an explicit bind can take one. Reading the range showed a JDK fact:
+`Files.readString` and `readAllBytes` of a /proc sysctl file (`/proc/sys/net/ipv4/ip_local_port_range`) return a truncated
+read - "3" here - because such a file answers only a read at offset 0; `Files.readAllLines` reads it whole.
+
 ## Reference package, fixtures, tags
 
 examples/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +

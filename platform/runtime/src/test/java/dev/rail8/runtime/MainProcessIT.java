@@ -1,6 +1,7 @@
 package dev.rail8.runtime;
 
 import dev.rail8.runtime.node.TestJournalKey;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -16,7 +17,6 @@ import java.lang.management.ManagementFactory;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.URI;
@@ -364,9 +364,7 @@ class MainProcessIT {
 
     /** A loopback port nothing listens on (bound once, released). */
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /** A loopback port nothing listens on, for a server the child must not reach. */

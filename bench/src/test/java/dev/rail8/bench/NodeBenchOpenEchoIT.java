@@ -1,12 +1,12 @@
 package dev.rail8.bench;
 
+import dev.rail8.testkit.Ports;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,10 +34,7 @@ class NodeBenchOpenEchoIT {
     @Test
     void theEchoSelfTestAchievesTwoThousandPerSecondWithinOnePercentWithEveryFieldAndValid() throws Exception {
         Path out = dir.resolve("echo.json");
-        int nothingListens;
-        try (ServerSocket s = new ServerSocket(0)) {
-            nothingListens = s.getLocalPort();
-        }
+        int nothingListens = Ports.free();
         int code = NodeBenchMain.run(new String[] {"--host", "127.0.0.1", "--port", String.valueOf(nothingListens),
                 "--scenario", "echo", "--rate", "2000", "--ramp", "PT1S", "--window", "PT5S", "--warmup", "0",
                 "--name", "it-open-echo", "--out", out.toString(), "--commit", "test"});

@@ -9,6 +9,7 @@ import dev.rail8.api.Health;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.Ports;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -205,9 +206,7 @@ class HttpComponentTest {
 
     /** A loopback port free right now: bound once and released. */
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     static Optional<InetSocketAddress> where(String host, int port) {

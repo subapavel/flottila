@@ -4,6 +4,7 @@ import dev.rail8.cli.CliRuns.Ran;
 import dev.rail8.runtime.Main;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
@@ -17,8 +18,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -141,9 +140,7 @@ class DeployCommandIT {
     }
 
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /** A copy of {@code from} whose http-in listens on a free loopback port (the demo's 0.0.0.0:8080 may be taken). */

@@ -34,6 +34,7 @@ import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -56,8 +57,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.io.UncheckedIOException;
@@ -331,9 +330,7 @@ class PartnerFailureParkIT {
 
     /** A loopback port that was bound and is closed again: a connection to it is refused. */
     static int refusingPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /** A partner that answers every request 503, recording each request's body. */

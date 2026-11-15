@@ -1,6 +1,7 @@
 package dev.rail8.cli;
 
 import dev.rail8.cli.CliRuns.Ran;
+import dev.rail8.testkit.Ports;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,8 +11,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -68,9 +67,7 @@ class DeployCommandTest {
     }
 
     static int closedPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     // --- the request

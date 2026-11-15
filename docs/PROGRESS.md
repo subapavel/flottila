@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-149 test ports come from outside the kernel's range — done, review PASS
+
+- Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
+- The fault: a probe binds port 0, closes and hands the number on; the kernel may give that number to any bind(0) or connect
+  before the node binds it (`ci` run 220). Red first: `PortsTest` did not compile - `agent/work/FIX-149-red.log:170`.
+- `dev.rail8.testkit.Ports.free()`: ports 20000-32767 minus the kernel's range, a cursor that wraps, a bind check per candidate.
+  The eight `freePort()` helpers and the nine inline probes use it; one `new ServerSocket(0)` is left - the helper's fallback.
+- The row's "no flake in 20 runs" is replaced by the construction: twenty runs cannot show the absence of a fault seen twice.
+- Found on the way: `Files.readString` of a /proc sysctl file returns a truncated "3"; `readAllLines` reads it whole.
+- Evidence (`agent/work/FIX-149-evidence.txt`): whole reactor VERIFIED_PASS, 17 modules, every count as expected, coverage no
+  decrease, 0 "Address already in use"; then two small changes the review asked for, testkit 300 green after them - the
+  whole reactor NOT_RUN on the committed tree. Review (class A): PASS, then PASS on the delta. Its remarks: row FIX-255.
+- MAIN-1: whole-reactor runs green in a row 1 of 3 (the rule is in `agent/work/MAIN-1-ci.md`); `ci` run 225 green, 1 in a
+  row. FIX-254 is in progress: stage 1 of `agent/packets/FIX-254.md`, a measurement, is running.
+
 ## 2026-11-15 — FIX-201 the side branch's audit, reviewed and corrected — done, review PASS r4
 
 - Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.

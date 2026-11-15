@@ -14,6 +14,7 @@ import dev.rail8.runtime.journal.peer.RawPeer;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
+import dev.rail8.testkit.Ports;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterEach;
@@ -572,10 +573,7 @@ class PeerProtocolTest {
     /** An owner whose address listens nowhere fails at once, retryable, naming the dial; nothing waits for a timeout. */
     @Test
     void anOwnerListeningNowhereFailsTheReadRetryable() throws Exception {
-        int closed;
-        try (ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
-            closed = s.getLocalPort();
-        }
+        int closed = Ports.free();
         RemoteBodyException refused = failedRetryable(read(reader("127.0.0.1:" + closed), KEY, ref), "a refused dial");
         assertTrue(refused.getMessage().contains("no peer link"), "names the dial: " + refused.getMessage());
     }
@@ -586,10 +584,7 @@ class PeerProtocolTest {
      */
     @Test
     void aReadWhoseDialFailedGivesItsPlaceBack() throws Exception {
-        int closed;
-        try (ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
-            closed = s.getLocalPort();
-        }
+        int closed = Ports.free();
         Map<String, String> live = new ConcurrentHashMap<>(Map.of("node-a", "127.0.0.1:" + closed));
         PeerReads r = new PeerReads(vertx, new PeerConfig(CONFIG.bind(), 0, CONFIG.host(), CONFIG.timeout(), 1), b(), this.b, timer,
                 owner -> Optional.ofNullable(live.get(owner)));

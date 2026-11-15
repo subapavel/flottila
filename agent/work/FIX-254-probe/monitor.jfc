@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration version="2.0" label="FIX-254 probe" description="contended monitors, pauses">
+  <event name="jdk.JavaMonitorEnter">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.JavaMonitorWait">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.SafepointBegin">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.SafepointEnd">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+</configuration>

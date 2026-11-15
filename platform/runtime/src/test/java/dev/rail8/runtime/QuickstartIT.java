@@ -7,6 +7,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
@@ -24,7 +25,6 @@ import java.io.UncheckedIOException;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.URI;
@@ -440,9 +440,7 @@ class QuickstartIT {
     }
 
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     static boolean refuses(int port) {

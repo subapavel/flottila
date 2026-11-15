@@ -1,5 +1,6 @@
 package dev.rail8.bench;
 
+import dev.rail8.testkit.Ports;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientOptions;
@@ -12,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -82,10 +82,7 @@ class NodeBenchMainHarnessTest {
         assertEquals(3, status.latency().count(), "a failed request's latency is recorded too");
         assertEquals(0, harness.load(server.actualPort(), "/fail", 3, 500).failed(), "the expected status is the load's to say");
 
-        int closed;
-        try (ServerSocket s = new ServerSocket(0)) {
-            closed = s.getLocalPort();
-        }
+        int closed = Ports.free();
         NodeBenchMain.Window refused = harness.load(closed, "/ok", 2, 200);
         assertEquals(2, refused.failed());
         assertTrue(refused.firstFailure().toLowerCase().contains("refused"), "the request's failure: " + refused.firstFailure());

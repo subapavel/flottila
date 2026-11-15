@@ -7,6 +7,7 @@ import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.steps.xslt.SaxonXml;
+import dev.rail8.testkit.Ports;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -28,7 +29,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -641,9 +641,7 @@ public final class NodeBenchMain {
     }
 
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0)) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     static void delete(Path dir) throws IOException {

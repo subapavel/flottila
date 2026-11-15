@@ -1,0 +1,29 @@
+FIX-149 evidence (2026-11-15). Tree: a scratch worktree at a61b80cd plus the change. The logs are under agent/work/ of
+that worktree (ignored, not in git); the line numbers are theirs.
+
+RED observed: agent/work/FIX-149-red.log:170 - PortsTest does not compile, `cannot find symbol` (class Ports).
+EXECUTED_FAIL, then fixed in the test: agent/work/FIX-149-testkit.log:217, :272 - 299 of 300. The test's own read of
+  /proc/sys/net/ipv4/ip_local_port_range with Files.readString returned "3"; it reads the file with readAllLines now.
+VERIFIED_PASS testkit: agent/work/FIX-149-testkit-2.log:198 PortsTest 14 of 14, :243 Tests run: 300, Failures: 0,
+  :263 BUILD SUCCESS.
+VERIFIED_PASS whole reactor (`clean verify -Pit -Dmaven.test.failure.ignore=true`, exit 0, the verifier):
+  agent/work/FIX-149-reactor-1.log :85484 BUILD SUCCESS, :85486 Total time 25:36 min, :85466-85482 17 modules SUCCESS.
+  Counts, each with Failures 0, Errors 0, Skipped 0: api 107 (:168), testkit 300 (:331), core 763 (:42755),
+  schemas 304 (:42847), sftp 69 (:42974), xslt 56 (:43191), validate 33 (:43285), http 52 (:43516),
+  runtime 1580 (:56890) and 3 (:56909), runtime ITs 711 (:75276), mock 67 (:75384), cli 205 (:80930) and 7 ITs (:81091),
+  sim 61 (:81223), archtest 48 (:81326), bench 239 (:81829) and 42 ITs (:85450). No `<<< FAILURE!`, no `<<< ERROR!`.
+  `python3 ci/coverage_check.py --baseline-ref HEAD`: `coverage: no decrease`, exit 0 (lowest line: sim 97.2 %,
+  testkit 97.8 %; lowest branch: http 94.8 %, testkit 95.4 %).
+  `python3 ci/name_guard.py`: clean.
+  `grep -c 'Address already in use'` on the log: 0.
+  `new ServerSocket(0)` left in the tree: 1 - Ports.java, `kernelChosen()`, the helper's fallback.
+AFTER the whole-reactor run, two changes the review asked for: the `@throws` line of `Ports.free()` (a comment), and in one
+  PortsTest method two more malformed contents and an assertion that the empty content cannot satisfy by itself. Only the
+  testkit module ran after them:
+VERIFIED_PASS testkit: agent/work/FIX-149-testkit-3.log:217 PortsTest 14 of 14, :257 Tests run: 300, Failures: 0,
+  Errors: 0, Skipped: 0, :278 BUILD SUCCESS.
+NOT_RUN: the whole reactor on the committed tree - it ran on the tree before those two changes; PIT - the testkit module is
+  outside its scope, so the two new contents are argued against their mutants by the reviewer, not run; "no flake in 20
+  runs", the row's first acceptance - replaced by the construction, the row says why.
+Review (class A): PASS, conditional on the whole-reactor run observed above; then PASS on the delta of the two changes.
+  Its remarks are row FIX-255.

@@ -4,6 +4,7 @@ import dev.rail8.api.Component;
 import dev.rail8.components.http.HttpComponent;
 import dev.rail8.components.mock.DisguisedMock;
 import dev.rail8.components.mock.nested.NestedMock;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
@@ -16,8 +17,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -51,9 +50,7 @@ class NodeTest {
 
     /** A loopback port nothing listens on: bound by the kernel, then released. */
     static int closedPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     static Stream<Arguments> mocks() {

@@ -3,6 +3,7 @@ package dev.rail8.runtime;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
+import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -26,8 +27,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -269,9 +268,7 @@ class MainIT {
     }
 
     static int freePort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
-            return s.getLocalPort();
-        }
+        return Ports.free();
     }
 
     /** Backends of the case database waiting on a lock. */
