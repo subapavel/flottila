@@ -92,7 +92,7 @@ public final class Trampoline {
    * Runs actions until the run ends or a result is handed back: true at a hand-back. A FilterException out of a start,
    * an emit or a resume is raised at that action's form, where the push form's exception goes: the form the op started
    * under, the form that produced the result, or the resumed form, whose own code threw it and which passes it on (no
-   * form that catches throws from its resume). A fail throws none: it passes the error on, or catches it.
+   * form that catches throws from its resume). A fail throws no FilterException: it passes the error on, or catches it.
    */
   private boolean drive() {
     while (action < HANDED_BACK) {
