@@ -214,3 +214,10 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   instead of the owner's identity that earlier regens (e.g. a0ac318) carry. check-trailers accepts
   it. It is pushed to the integration branch; rewriting it is a history rewrite, so it stays unless
   the owner asks. Later regens are told to sign off with the GIT_AUTHOR identity.
+
+- **#117 re-pins and #198 (spec 2b run, told not asked).** The grilling-adviser ruled V1–V5 and
+  W1–W4 for the owner. Five #116 tests were re-pinned because specialisation removes the closures
+  they were built on. The over-cap run pin moved from a pipe ladder to a comma ladder, because a
+  filter with `U_f ≤ 0` runs wholly on the driver, which holds PLAIN activations (F-100). The
+  withdrawn expectation is issue #198. It is not ready for agents and waits for grilling with you
+  or the adviser after #113 and #119.
