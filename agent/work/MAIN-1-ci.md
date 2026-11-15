@@ -160,6 +160,8 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   stack job green; mutation and bench skipped, as on every push.
 - Count of green `ci` runs in a row: 1 (225). Before it 224 failed on the flow time of row FIX-254; 218, 219 and 220 failed
   on FIX-183 (fixed in 6cd8f2ed), FIX-234 (fixed in 92f4b212) and FIX-149 (fixed in the commit after a61b80cd).
+- `ci` run 226 (id 43747912076, 750ba7b9, FIX-149): `success`, read 19:07Z from the run's conclusion (18:38Z-19:05Z); its jobs
+  were not read one by one. Count of green `ci` runs in a row: 2 (225, 226).
 
 ## Whole-reactor runs on this machine (MAIN-1's first condition)
 

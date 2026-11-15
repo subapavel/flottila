@@ -1,0 +1,3 @@
+trace run 12 DEVIATES (exit 0): > PASS sftp-invoice: partner down (flow time 2700ms) 
+trace run 32 DEVIATES (exit 0): > PASS sftp-invoice: partner down (flow time 2700ms) 
+trace: cpus=0-3 load=0 jfr=yes runs=150 deviating=2 seconds=338

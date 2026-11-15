@@ -1,0 +1,6 @@
+parked (one carrier so far)        samples=200000 idle-by-scheduler-count=200000 idle-by-carrier-states=200000 idle-by-both=200000 carriers=1 subject=WAITING 1802ns/sample
+spinning                           samples=200000 idle-by-scheduler-count=0 idle-by-carrier-states=1981 idle-by-both=0 carriers=1 subject=RUNNABLE 1357ns/sample
+blocked in a Process pipe read     samples=200000 idle-by-scheduler-count=200000 idle-by-carrier-states=0 idle-by-both=0 carriers=2 subject=RUNNABLE 734ns/sample
+writing 4337 bytes to System.err   samples=200000 idle-by-scheduler-count=77653 idle-by-carrier-states=0 idle-by-both=0 carriers=2 subject=RUNNABLE 1101ns/sample
+parked again (all carriers idle)   samples=200000 idle-by-scheduler-count=200000 idle-by-carrier-states=200000 idle-by-both=200000 carriers=2 subject=WAITING 425ns/sample
+runningCarriers alone: 440 ns/call (carriers=2)

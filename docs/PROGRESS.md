@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-254 stage 1: why a flow time differs between runs — cause measured, in progress
+
+- Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.
+- Measured, nothing under `src/` changed (`agent/work/FIX-254-evidence.txt`): the demo's report was wrong in 3 of 210 runs on
+  four idle CPUs, 0 of 300 on one CPU or under load (EXECUTED, the verifier); always one "partner down" line, 2700 or 3700 ms.
+- The cause, from six method-trace recordings and a counter agent: the worker's WARNING on the retry path is written to
+  `System.err` on the flow's virtual thread; the JDK runs that write in a compensated block, and for its length the
+  scheduler's mounted count - what the runner's quiet sample reads - leaves the thread out. When the block outlasts the
+  1 ms steady time (3.9 ms recorded), the clock steps under a running thread and the retry is computed from the stepped clock.
+- Refuted: the monitor hand-over the packet first suspected (no contended monitor enter in any window) and the row's three
+  candidates. Recorded in the invoice-async flow too: the fault is the runner's, not the sftp mock's.
+- Decided (D-155; stage 2 of the packet is with the test-author): a sample also counts carrier threads in state RUNNABLE.
+  A standalone program measured it: they show the thread in every sample the count hides. D-155 names what was not chosen.
+- `ci` run 226 (FIX-149) green: 2 in a row. Whole-reactor runs: still 1 of 3; the next ones follow the fix.
+
 ## 2026-11-15 — FIX-149 test ports come from outside the kernel's range — done, review PASS
 
 - Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.

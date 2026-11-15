@@ -1,0 +1,2 @@
+free run 52 DEVIATES (exit 0): > PASS sftp-invoice: partner down (flow time 2700ms) 
+free: cpus=0-3 load=0 jfr=no runs=60 deviating=1 seconds=135

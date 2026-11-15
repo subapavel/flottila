@@ -1,0 +1,7 @@
+PASS invoice-async: domestic invoice (flow time 20ms)
+PASS invoice-async: partner down (flow time 2400ms)
+PASS invoice-sync: domestic invoice (flow time 20ms)
+PASS invoice-sync: partner down (flow time 700ms)
+PASS sftp-invoice: invoice file (flow time 20ms)
+PASS sftp-invoice: partner down (flow time 3700ms)
+6 cases: 6 passed, 0 failed

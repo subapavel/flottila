@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration version="2.0" label="FIX-254 trace" description="named methods of the flow path, contended monitors, pauses">
+  <event name="jdk.MethodTrace">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="filter">dev.rail8.testkit.FakeClock::advance;dev.rail8.testkit.FakeTimer;dev.rail8.core.flow.FlowWorker;dev.rail8.core.flow.Delivery;dev.rail8.core.flow.Retry;dev.rail8.core.queue.InMemoryWorkQueue;dev.rail8.core.record.Trail;dev.rail8.components.mock.MockComponent$Poller;dev.rail8.components.mock.MockComponent$Drain;dev.rail8.cli.VirtualTime::flowTime;java.util.concurrent.ForkJoinPool::beginCompensatedBlock;java.util.concurrent.ForkJoinPool::endCompensatedBlock;java.lang.VirtualThread::runContinuation;java.util.logging.StreamHandler::flush;java.io.PrintStream::write;java.io.FileOutputStream::write;java.lang.VirtualThread::park;java.lang.VirtualThread::parkNanos;java.lang.VirtualThread::unpark;java.util.logging.StreamHandler::publish;java.util.logging.SimpleFormatter::format;java.util.logging.LogRecord::inferCaller;java.lang.Throwable::printStackTrace;java.lang.Throwable::getOurStackTrace;java.lang.StackTraceElement::of</setting>
+  </event>
+  <event name="jdk.JavaMonitorEnter">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.JavaMonitorWait">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.SafepointBegin">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.SafepointEnd">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.VirtualThreadStart">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.VirtualThreadEnd">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.FileWrite">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.FileRead">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.ClassLoad">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+  <event name="jdk.VirtualThreadPinned">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+</configuration>

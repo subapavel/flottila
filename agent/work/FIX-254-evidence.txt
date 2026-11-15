@@ -1,0 +1,95 @@
+FIX-254 - a flow time that differs between runs of one package: the cause, measured (2026-11-15)
+
+Tree: the scratch worktree at 750ba7b9 after its whole-reactor run (the cli jar built). Command: `bin/rail8 test examples/demo`,
+stdout compared with `agent/work/FIX-254-probe/expected.txt` (the six lines of TestCommandTest.DEMO_REPORT and the totals line).
+Machine: this container, 4 CPUs, Temurin 25. Nothing under `src/` changed for any of it. All files below are under
+`agent/work/FIX-254-probe/`.
+
+1. How often (stage 1 of the packet; the verifier, 18:34Z-19:08Z; `probe.sh`, logs `<label>.log`)
+
+   | label     | CPUs | load         | recording   | runs | deviating | the deviating line                                    |
+   | free      | 0-3  | none         | no          |  60  | 1         | PASS sftp-invoice: partner down (flow time 2700ms)    |
+   | one       | 0    | none         | no          | 100  | 0         |                                                       |
+   | one-load  | 0    | 1 busy loop  | no          | 100  | 0         |                                                       |
+   | four-load | 0-3  | 4 busy loops | no          | 100  | 0         |                                                       |
+   | trace     | 0-3  | none         | monitor.jfc | 150  | 2         | the same line, twice                                  |
+
+   3 of 210 on the idle four-CPU machine, 0 of 300 on one CPU or under load. Each deviating run differs from the expected
+   report in one line only; none failed, hung or printed anything else. EXECUTED, all five.
+   The two recordings of `trace` (`trace/run-12.monitors.txt`, `run-32.monitors.txt`): three contended monitor enters on a
+   virtual thread in all, the longest 0.131 ms (a class-loader lock at FlowWorker.java:549). The steady time is 1 ms. The
+   monitor hand-over the packet first suspected is not what these runs show.
+
+2. What happens (the architect's method traces, `method-trace/`; JFR `jdk.MethodTrace`, CPUs 1-3, `run2.sh`)
+
+   Six recordings: five in which the clock thread took a quiet sample while a flow thread was inside `FlowWorker.failed()`
+   (`hit.py` finds them), one good run. `<name>.window.txt` lists every recorded event of every thread around that call,
+   `<name>.out` is the run's report.
+
+   | name    | settings          | the report's wrong line              | failed() | clock found quiet at | the write at        | defer at  |
+   | run-dev | trace.jfc         | sftp-invoice: partner down 3700ms    | 5517 us  | +2672, +4481 us      | +5430 us            | +5543 us  |
+   | a4      | trace.jfc         | sftp-invoice: partner down 2700ms    | 3176 us  | +2239 us             | +3107 us            | +3196 us  |
+   | b4      | trace2.jfc        | sftp-invoice: partner down 2700ms    | 2724 us  | +2654 us             | +2663 us            | +2747 us  |
+   | b17     | trace2.jfc        | sftp-invoice: partner down 3700ms    | 3653 us  | +2095, +3340 us      | +1971 us, for 1551  | +3677 us  |
+   | d13     | trace3.jfc, agent | invoice-async: partner down 3700ms   | 31109 us | +28211, +29705 us    | +31032 us           | +31156 us |
+   | c0      | trace3.jfc, agent | none, the report is as expected      | 1103 us  | not inside the call  | +1044 us            | +1120 us  |
+
+   Times are from the start of the `FlowWorker.failed()` call; "failed()" is how long the call lasted, "defer" is
+   `InMemoryWorkQueue.defer`, which reads the clock. "Clock found quiet": `rail8-clock` reads `InMemoryWorkQueue.size` and
+   then `VirtualTime.flowTime` (the time given), which `VirtualTime.drive` does after a quiet sample only, and then calls
+   `FakeClock.advance`. In b4 the defer ran while that advance was still firing its timers. d13 is the invoice-async flow:
+   the fault is not the sftp flow's own.
+
+   The chain, as the recordings show it:
+   a. The node. On the retry path `FlowWorker.failed()` (FlowWorker.java:681-704) logs a WARNING with the failure through
+      `System.Logger`. java.util.logging's ConsoleHandler formats it and writes it (4337 bytes; 4735 in d13) to `System.err`,
+      all on the flow's own virtual thread. No window holds a contended monitor enter, a GC pause, a safepoint or a pinned
+      thread; none of the four whose settings trace parking (b4, b17, d13, c0) holds a park. Classes load inside the call in
+      d13 only (38: the first log call of that JVM).
+   b. The JDK (Temurin 25, read from `lib/src.zip`). `System.out` and `System.err` write through `java.lang.System$Out`
+      (System.java:1882-1916), which wraps each write in `jdk.internal.misc.Blocker.begin()` / `end()`. On a virtual thread
+      that is `CarrierThread.beginBlocking()` -> `ForkJoinPool.beginCompensatedBlock()` (`tryCompensate`, ForkJoinPool.java
+      :2186): the scheduler's pool gives the carrier's place to a spare worker until the block ends.
+      `VirtualThreadSchedulerMXBean.getMountedVirtualThreadCount()` is that pool's active count
+      (`ForkJoinPool.getActiveThreadCount()`), and for the length of the block the count leaves this carrier out.
+      c0: `beginCompensatedBlock` at +988 us, the counter agent reads mounted=0 queued=0 at +1008, the write at +1044,
+      mounted=1 again at +1081, `endCompensatedBlock` at +1094. The thread was mounted and writing while the count read 0.
+   c. The runner. `Quiescence` (Quiescence.java:64-68, :87-90) calls a sample idle when that count and the queued count are
+      0, and answers quiet after 1 ms of idle samples with one fingerprint (`STEADY`, FlowTests.java:89). In c0 the block
+      lasted 106 us and the clock thread took no quiet sample inside it. In d13 `beginCompensatedBlock` itself lasted
+      3919 us: the count read 0 from +27137, the clock thread read the queue's size at +28206 - 1069 us later - and
+      advanced the clock; it did so again at +29704; the thread's write came at +31032, the block ended at +31095, and `InMemoryWorkQueue.defer`
+      (InMemoryWorkQueue.java:113-117) computed the retry's due time from the clock as it then stood.
+   d. The report. Both flows have a mock with a poll round pending (MockComponent, 1 s), so the clock had a timer to step to:
+      700 -> 1000 -> 2000 ms. A defer of 1 s from 1000 gives tries at 2000, 2100, 2300, 2700; from 2000 it gives 3700. The
+      expected line is 2400 (the defer computed at 700).
+
+   What the counter agent is: `method-trace/CountAgent.java`, a `-javaagent` whose platform thread polls the two counts and
+   keeps every change with its time.
+
+3. The same without Rail8 (`carrier/CarrierProbe.java`, a standalone program; `carrier-probe.txt` on CPUs 1-3,
+   `carrier-probe-1cpu.txt` on one CPU; 200 000 samples per line)
+
+   | the one virtual thread is            | samples the scheduler's two counts call idle | samples with no carrier thread RUNNABLE |
+   | parked                               | 200 000                                      | 200 000                                 |
+   | spinning                             | 0                                            | 0 (one CPU: 1981, see below)            |
+   | blocked in a Process pipe read       | 200 000                                      | 0                                       |
+   | writing 4337 bytes to System.err     | 55 654 (one CPU: 77 653)                     | 0                                       |
+   | parked again, three carriers idle    | 200 000                                      | 200 000                                 |
+
+   A carrier thread is a platform thread of class `jdk.internal.misc.CarrierThread`; its `Thread.getState()` stays RUNNABLE
+   while it runs a virtual thread, compensated block or not, and is WAITING when it is parked for work. Reading the states
+   of all carriers costs about 470 ns (three carriers). No sample of any line was called idle by both readings while the
+   thread ran. On one CPU the spinner's carrier was seen not yet RUNNABLE in 1981 samples at the start: it had been
+   signalled and had not run yet; the scheduler's counts were not idle in those samples. Neither reading is enough alone.
+
+4. Not shown
+
+   - What the JDK does inside `beginCompensatedBlock` for milliseconds (d13: 3919 us; c0: 54 us). The method trace does not
+     reach inside it. In run-dev, a4, b4 and b17 the settings recorded no event for that method (trace.jfc does not name it;
+     trace2.jfc names it and recorded none, reason not found), so in those four the stretch is known only as the time
+     between the end of the formatting and the write (b4: 1.1 ms), and in b17 the write itself took 1551 us.
+   - Why no run pinned to one CPU deviated (0 of 200). The count hides the thread there too (section 3).
+   - The rate on a GitHub runner: one `ci` run (224) is known to have failed on it. This machine: 3 of 210 reports; of the
+     architect's traced runs, between 1 in 13 and 1 in 30 had the quiet sample inside the call (three hunts, one per
+     settings file; the recording changes the timing).

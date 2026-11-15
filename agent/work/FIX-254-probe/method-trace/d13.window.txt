@@ -1,0 +1,107 @@
+FlowWorker.failed calls: [('rail8-worker-rail8-test-1', 31109), ('rail8-worker-rail8-test-1', 1656), ('rail8-worker-rail8-test-1', 1096), ('rail8-worker-rail8-test-1', 137)]
+    -191 us     65 us  rail8-worker-rail8-test-1  Trail.write
+    -122 us     40 us  rail8-worker-rail8-test-1  Trail.write
+     -79 us     19 us  rail8-worker-rail8-test-1  Trail.write
+     -58 us     20 us  rail8-worker-rail8-test-1  Trail.write
+      +0 us  31109 us  rail8-worker-rail8-test-1  FlowWorker.failed
+      +1 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+    +618 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+   +8021 us     30 us  rail8-worker-rail8-test-1  FlowWorker.isFinal
+   +8056 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+  +23627 us   3429 us  rail8-worker-rail8-test-1  StreamHandler.publish
+  +23634 us   3175 us  rail8-worker-rail8-test-1  SimpleFormatter.format
+  +23667 us   1580 us  rail8-worker-rail8-test-1  LogRecord.inferCaller
+  +25368 us    585 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+  +25380 us    572 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+  +25418 us     98 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+  +25675 us     72 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+  +25776 us     84 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+  +25883 us     49 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+  +27093 us   4008 us  rail8-worker-rail8-test-1  StreamHandler.flush
+  +27098 us   4000 us  rail8-worker-rail8-test-1  PrintStream.write
+  +27109 us   3919 us  rail8-worker-rail8-test-1  ForkJoinPool.beginCompensatedBlock
+  +27137 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +28206 us      1 us  rail8-clock                InMemoryWorkQueue.size
+  +28211 us      6 us  rail8-clock                VirtualTime.flowTime
+  +28221 us      0 us  rail8-clock                FakeTimer.pending
+  +28226 us     20 us  rail8-clock                FakeTimer.nextDelay
+  +28248 us    425 us  rail8-clock                FakeClock.advance
+  +28260 us    412 us  rail8-clock                FakeTimer.fireDue
+  +28299 us    160 us  rail8-clock                MockComponent$Poller.fire
+  +28317 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +28322 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +28352 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +28389 us      0 us  mock-round                 VirtualThreadStart 
+  +28395 us     21 us  mock-round                 MockComponent$Poller.round
+  +28400 us     16 us  mock-round                 MockComponent$Poller.schedule
+  +28408 us      6 us  mock-round                 FakeTimer.schedule
+  +28421 us      0 us  mock-round                 VirtualThreadEnd 
+  +28422 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +28481 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +28485 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +28487 us     74 us  rail8-clock                MockComponent$Poller.fire
+  +28492 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +28516 us      0 us  mock-round                 VirtualThreadStart 
+  +28518 us      9 us  mock-round                 MockComponent$Poller.round
+  +28520 us      6 us  mock-round                 MockComponent$Poller.schedule
+  +28523 us      3 us  mock-round                 FakeTimer.schedule
+  +28523 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +28529 us      0 us  mock-round                 VirtualThreadEnd 
+  +28590 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +28593 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +28596 us     65 us  rail8-clock                MockComponent$Poller.fire
+  +28599 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +28623 us      0 us  mock-round                 VirtualThreadStart 
+  +28625 us      9 us  mock-round                 MockComponent$Poller.round
+  +28627 us      6 us  mock-round                 MockComponent$Poller.schedule
+  +28629 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +28629 us      3 us  mock-round                 FakeTimer.schedule
+  +28636 us      0 us  mock-round                 VirtualThreadEnd 
+  +29704 us      0 us  rail8-clock                InMemoryWorkQueue.size
+  +29705 us      4 us  rail8-clock                VirtualTime.flowTime
+  +29711 us      0 us  rail8-clock                FakeTimer.pending
+  +29713 us     11 us  rail8-clock                FakeTimer.nextDelay
+  +29726 us    380 us  rail8-clock                FakeClock.advance
+  +29732 us    373 us  rail8-clock                FakeTimer.fireDue
+  +29750 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +29752 us     73 us  rail8-clock                MockComponent$Poller.fire
+  +29752 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +29759 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +29784 us      0 us  mock-round                 VirtualThreadStart 
+  +29787 us      9 us  mock-round                 MockComponent$Poller.round
+  +29789 us      7 us  mock-round                 MockComponent$Poller.schedule
+  +29791 us      3 us  mock-round                 FakeTimer.schedule
+  +29792 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +29798 us      0 us  mock-round                 VirtualThreadEnd 
+  +29862 us     78 us  rail8-clock                MockComponent$Poller.fire
+  +29868 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +29870 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +29877 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +29901 us      0 us  mock-round                 VirtualThreadStart 
+  +29903 us      9 us  mock-round                 MockComponent$Poller.round
+  +29905 us      6 us  mock-round                 MockComponent$Poller.schedule
+  +29907 us      3 us  mock-round                 FakeTimer.schedule
+  +29907 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +29914 us      0 us  mock-round                 VirtualThreadEnd 
+  +29997 us      0 us  count-agent                COUNTERS mounted=0 queued=1
+  +30002 us     94 us  rail8-clock                MockComponent$Poller.fire
+  +30023 us      0 us  count-agent                COUNTERS mounted=1 queued=1
+  +30031 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+  +30056 us      0 us  mock-round                 VirtualThreadStart 
+  +30058 us      9 us  mock-round                 MockComponent$Poller.round
+  +30060 us      6 us  mock-round                 MockComponent$Poller.schedule
+  +30062 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+  +30062 us      3 us  mock-round                 FakeTimer.schedule
+  +30069 us      0 us  mock-round                 VirtualThreadEnd 
+  +31032 us     59 us  rail8-worker-rail8-test-1  FileOutputStream.write
+  +31036 us     27 us  rail8-worker-rail8-test-1  FileWrite 4735 bytes 
+  +31095 us      1 us  rail8-worker-rail8-test-1  ForkJoinPool.endCompensatedBlock
+  +31146 us    574 us  rail8-worker-rail8-test-1  FlowWorker.settleOrTake
+  +31150 us    564 us  rail8-worker-rail8-test-1  FlowWorker.settle
+  +31156 us     21 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.defer
+  +31163 us      0 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.current
+  +31382 us     69 us  rail8-worker-rail8-test-1  ClassLoad dev.rail8.core.flow.FlowWorker$$Lambda/0x0000000007488240
+  +31551 us    160 us  rail8-worker-rail8-test-1  FlowWorker.deferredUntil
+  +31645 us     28 us  rail8-worker-rail8-test-1  ClassLoad dev.rail8.core.flow.FlowWorker$$Lambda/0x0000000007488490
+  +31700 us      5 us  rail8-worker-rail8-test-1  FakeTimer.schedule
+inside the call: 38 class loads, 0 file reads (not listed)

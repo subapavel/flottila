@@ -1,0 +1,55 @@
+FlowWorker.failed calls: [('rail8-worker-rail8-test-1', 16174), ('rail8-worker-rail8-test-1', 3271), ('rail8-worker-rail8-test-1', 2724), ('rail8-worker-rail8-test-1', 129)]
+    -111 us     18 us  rail8-worker-rail8-test-1  Trail.write
+     -91 us     18 us  rail8-worker-rail8-test-1  Trail.write
+     -70 us     20 us  rail8-worker-rail8-test-1  Trail.write
+     -48 us      9 us  rail8-worker-rail8-test-1  Trail.write
+      +0 us   2724 us  rail8-worker-rail8-test-1  FlowWorker.failed
+      +0 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+     +11 us    112 us  rail8-worker-rail8-test-1  FlowWorker.isFinal
+     +79 us      0 us  rail8-worker-rail8-test-1  SAMPLE STATE_RUNNABLE | Collections.newSetFromMap < FlowWorker.isFinal < FlowWorker.failed < FlowWorker.verdict < FlowWorker.lambda$process$0 < 0x0000000026457338.run < Thread.runWith
+    +125 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+    +174 us   1345 us  rail8-worker-rail8-test-1  StreamHandler.publish
+    +178 us   1068 us  rail8-worker-rail8-test-1  SimpleFormatter.format
+    +204 us    222 us  rail8-worker-rail8-test-1  LogRecord.inferCaller
+    +439 us    603 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+    +441 us    600 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+    +458 us    223 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +835 us     48 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +907 us     49 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +976 us     46 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+   +2650 us      1 us  rail8-clock                InMemoryWorkQueue.size
+   +2654 us      6 us  rail8-clock                VirtualTime.flowTime
+   +2662 us      0 us  rail8-clock                FakeTimer.pending
+   +2663 us     20 us  rail8-worker-rail8-test-1  FileWrite 4337 bytes 
+   +2666 us     24 us  rail8-clock                FakeTimer.nextDelay
+   +2692 us    319 us  rail8-clock                FakeClock.advance
+   +2704 us    305 us  rail8-clock                FakeTimer.fireDue
+   +2720 us     45 us  rail8-clock                MockComponent$Poller.fire
+   +2743 us    291 us  rail8-worker-rail8-test-1  FlowWorker.settleOrTake
+   +2745 us    287 us  rail8-worker-rail8-test-1  FlowWorker.settle
+   +2747 us     12 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.defer
+   +2751 us      0 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.current
+   +2776 us    124 us  rail8-clock                MockComponent$Poller.fire
+   +2810 us      0 us  mock-round                 VirtualThreadStart 
+   +2816 us     19 us  mock-round                 MockComponent$Poller.round
+   +2821 us      0 us  mock-round                 VirtualThreadStart 
+   +2822 us     13 us  mock-round                 MockComponent$Poller.schedule
+   +2827 us     24 us  mock-round                 MockComponent$Poller.round
+   +2827 us      5 us  mock-round                 FakeTimer.schedule
+   +2831 us     19 us  mock-round                 MockComponent$Poller.schedule
+   +2836 us     12 us  mock-round                 FakeTimer.schedule
+   +2839 us      0 us  mock-round                 VirtualThreadEnd 
+   +2855 us      0 us  mock-round                 VirtualThreadEnd 
+   +2912 us     78 us  rail8-clock                MockComponent$Poller.fire
+   +2941 us      0 us  mock-round                 VirtualThreadStart 
+   +2944 us     10 us  mock-round                 MockComponent$Poller.round
+   +2946 us      6 us  mock-round                 MockComponent$Poller.schedule
+   +2948 us      3 us  mock-round                 FakeTimer.schedule
+   +2955 us      0 us  mock-round                 VirtualThreadEnd 
+   +3011 us     17 us  rail8-worker-rail8-test-1  FlowWorker.deferredUntil
+   +3021 us      4 us  rail8-worker-rail8-test-1  FakeTimer.schedule
+   +3040 us      4 us  rail8-worker-rail8-test-1  FlowWorker.finished
+   +3042 us      0 us  rail8-worker-rail8-test-1  FlowWorker.closeDue
+   +3044 us      0 us  rail8-worker-rail8-test-1  FlowWorker.closeProducers
+   +3052 us      0 us  rail8-worker-rail8-test-1  VirtualThreadEnd 
+inside the call: 0 class loads, 0 file reads (not listed)

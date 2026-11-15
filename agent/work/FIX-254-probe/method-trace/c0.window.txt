@@ -1,0 +1,43 @@
+FlowWorker.failed calls: [('rail8-worker-rail8-test-1', 11532), ('rail8-worker-rail8-test-1', 1708), ('rail8-worker-rail8-test-1', 1103), ('rail8-worker-rail8-test-1', 123)]
+    -189 us      1 us  rail8-worker-rail8-test-1  Trail.current
+    -186 us      1 us  rail8-worker-rail8-test-1  Trail.add
+    -148 us    137 us  rail8-worker-rail8-test-1  Trail.close
+    -148 us    125 us  rail8-worker-rail8-test-1  Trail.flush
+    -131 us     29 us  rail8-worker-rail8-test-1  Trail.persist
+     -87 us     13 us  rail8-worker-rail8-test-1  Trail.write
+     -73 us     16 us  rail8-worker-rail8-test-1  Trail.write
+     -56 us     17 us  rail8-worker-rail8-test-1  Trail.write
+     -37 us      7 us  rail8-worker-rail8-test-1  Trail.write
+      +0 us   1103 us  rail8-worker-rail8-test-1  FlowWorker.failed
+      +0 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+     +11 us      7 us  rail8-worker-rail8-test-1  FlowWorker.isFinal
+     +18 us      0 us  rail8-worker-rail8-test-1  FlowWorker.bound
+     +53 us    921 us  rail8-worker-rail8-test-1  StreamHandler.publish
+     +56 us    780 us  rail8-worker-rail8-test-1  SimpleFormatter.format
+     +79 us    195 us  rail8-worker-rail8-test-1  LogRecord.inferCaller
+    +287 us    418 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+    +288 us    416 us  rail8-worker-rail8-test-1  Throwable.printStackTrace
+    +301 us     82 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +553 us     36 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +608 us     32 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +656 us     34 us  rail8-worker-rail8-test-1  Throwable.getOurStackTrace
+    +975 us    124 us  rail8-worker-rail8-test-1  StreamHandler.flush
+    +979 us    118 us  rail8-worker-rail8-test-1  PrintStream.write
+    +988 us     54 us  rail8-worker-rail8-test-1  ForkJoinPool.beginCompensatedBlock
+   +1008 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+   +1044 us     47 us  rail8-worker-rail8-test-1  FileOutputStream.write
+   +1047 us     21 us  rail8-worker-rail8-test-1  FileWrite 4337 bytes 
+   +1081 us      0 us  count-agent                COUNTERS mounted=1 queued=0
+   +1094 us      1 us  rail8-worker-rail8-test-1  ForkJoinPool.endCompensatedBlock
+   +1116 us     39 us  rail8-worker-rail8-test-1  FlowWorker.settleOrTake
+   +1118 us     35 us  rail8-worker-rail8-test-1  FlowWorker.settle
+   +1120 us      8 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.defer
+   +1124 us      0 us  rail8-worker-rail8-test-1  InMemoryWorkQueue.current
+   +1139 us     12 us  rail8-worker-rail8-test-1  FlowWorker.deferredUntil
+   +1148 us      3 us  rail8-worker-rail8-test-1  FakeTimer.schedule
+   +1159 us      2 us  rail8-worker-rail8-test-1  FlowWorker.finished
+   +1161 us      0 us  rail8-worker-rail8-test-1  FlowWorker.closeDue
+   +1162 us      0 us  rail8-worker-rail8-test-1  FlowWorker.closeProducers
+   +1168 us      0 us  rail8-worker-rail8-test-1  VirtualThreadEnd 
+   +1180 us      0 us  count-agent                COUNTERS mounted=0 queued=0
+inside the call: 0 class loads, 0 file reads (not listed)

@@ -1,0 +1,264 @@
+jdk.JavaMonitorEnter {
+  startTime = 19:04:31.766 (2026-11-15)
+  duration = 0.132 ms
+  monitorClass = jdk.jfr.internal.PlatformRecorder (classLoader = bootstrap)
+  previousOwner = "main" (javaThreadId = 3)
+  address = 0x7F43AC002160
+  eventThread = "JFR Periodic Tasks" (javaThreadId = 23)
+  stackTrace = [
+    jdk.jfr.internal.PlatformRecorder.periodicTask() line: 495
+    jdk.jfr.internal.PlatformRecorder.lambda$startDiskMonitor$0() line: 428
+    java.lang.Thread.run() line: 1474
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:31.767 (2026-11-15)
+  duration = 0.00539 ms
+  monitorClass = jdk.jfr.internal.PlatformRecorder (classLoader = bootstrap)
+  previousOwner = "JFR Periodic Tasks" (javaThreadId = 23)
+  address = 0x7F43AC002160
+  eventThread = "main" (javaThreadId = 3)
+  stackTrace = [
+    jdk.jfr.internal.PlatformRecording.getId() line: 447
+    jdk.jfr.Recording.getId() line: 488
+    jdk.jfr.internal.dcmd.DCmdStart.execute(ArgumentParser) line: 219
+    jdk.jfr.internal.dcmd.AbstractDCmd.execute(String, String, char) line: 87
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.020 (2026-11-15)
+  duration = 0.0235 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.061 (2026-11-15)
+  duration = 0.0255 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.062 (2026-11-15)
+  duration = 1.15 ms
+  monitorClass = io.vertx.core.impl.future.PromiseImpl (classLoader = app)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F438C001E70
+  eventThread = "vert.x-acceptor-thread-0" (javaThreadId = 44)
+  stackTrace = [
+    io.vertx.core.impl.future.FutureImpl.completeInternal(Object, Throwable) line: 129
+    io.vertx.core.impl.future.FutureImpl.tryComplete(Object) line: 143
+    io.vertx.core.Promise.succeed(Object) line: 92
+    io.vertx.core.Promise.complete(Object, Throwable) line: 60
+    io.vertx.core.Promise.succeed() line: 98
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.063 (2026-11-15)
+  duration = 0.0210 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.064 (2026-11-15)
+  duration = 0.0469 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.067 (2026-11-15)
+  duration = 1.19 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F438C0042B0
+  eventThread = "vert.x-acceptor-thread-0" (javaThreadId = 44)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.074 (2026-11-15)
+  duration = 0.0210 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.075 (2026-11-15)
+  duration = 0.0186 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.076 (2026-11-15)
+  duration = 0.0182 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.077 (2026-11-15)
+  duration = 0.0107 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "rail8" (javaThreadId = 27, virtual)
+  address = 0x7F4384001750
+  eventThread = "vert.x-eventloop-thread-2" (javaThreadId = 38)
+  stackTrace = [
+    sun.nio.ch.EPollSelectorImpl.clearInterrupt() line: 296
+    sun.nio.ch.EPollSelectorImpl.processEvents(int, Consumer) line: 235
+    sun.nio.ch.EPollSelectorImpl.doSelect(Consumer, long) line: 135
+    sun.nio.ch.SelectorImpl.lockAndDoSelect(Consumer, long) line: 130
+    sun.nio.ch.SelectorImpl.select(long) line: 142
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.214 (2026-11-15)
+  duration = 0.131 ms
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "mock-handler" (javaThreadId = 49, virtual)
+  address = 0x7F43A4331FF0
+  eventThread = "rail8-worker-rail8-test-1" (javaThreadId = 52, virtual)
+  stackTrace = [
+    jdk.internal.loader.BuiltinClassLoader.loadClassOrNull(String, boolean) line: 590
+    jdk.internal.loader.BuiltinClassLoader.loadClass(String, boolean) line: 578
+    java.lang.ClassLoader.loadClass(String) line: 490
+    dev.rail8.core.flow.FlowWorker.lambda$process$0(WorkQueue$Item, FlowWorker$Lease, Promise) line: 549
+    java.lang.VirtualThread.run(Runnable) line: 460
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.224 (2026-11-15)
+  duration = 0.00193 ms
+  monitorClass = java.lang.ref.ReferenceQueue$Lock (classLoader = bootstrap)
+  previousOwner = "Reference Handler" (javaThreadId = 13)
+  address = 0x7F43A42F7FE0
+  eventThread = "rail8-worker-rail8-test-1" (javaThreadId = 52, virtual)
+  stackTrace = [
+    java.lang.ref.ReferenceQueue.poll() line: 164
+    jdk.internal.util.ReferencedKeyMap.removeStaleReferences() line: 332
+    jdk.internal.util.ReferencedKeyMap.get(Object) line: 201
+    jdk.internal.util.ReferencedKeySet.get(Object) line: 164
+    java.lang.invoke.MethodType.makeImpl(Class, Class[], boolean) line: 394
+    ...
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.224 (2026-11-15)
+  duration = 0.0476 ms
+  monitorClass = java.lang.ref.ReferenceQueue$Lock (classLoader = bootstrap)
+  previousOwner = "rail8-worker-rail8-test-1" (javaThreadId = 52, virtual)
+  address = 0x7F43A42F7FE0
+  eventThread = "Reference Handler" (javaThreadId = 13)
+  stackTrace = [
+    java.lang.ref.ReferenceQueue.enqueue(Reference) line: 142
+    java.lang.ref.Reference.enqueueFromPending() line: 235
+    java.lang.ref.Reference.processPendingReferences() line: 266
+    java.lang.ref.Reference$ReferenceHandler.run() line: 208
+  ]
+}
+
+jdk.JavaMonitorEnter {
+  startTime = 19:04:33.389 (2026-11-15)
+  duration = 0.00403 ms
+  monitorClass = dev.rail8.testkit.FakeTimer (classLoader = app)
+  previousOwner = "mock-round" (javaThreadId = 72, virtual)
+  address = 0x7F4388004240
+  eventThread = "rail8-clock" (javaThreadId = 60)
+  stackTrace = [
+    dev.rail8.testkit.FakeTimer.fireDue() line: 60
+    java.util.concurrent.CopyOnWriteArrayList.forEach(Consumer) line: 905
+    dev.rail8.testkit.FakeClock.advance(Duration) line: 40
+    dev.rail8.cli.VirtualTime.drive(BooleanSupplier) line: 75
+    dev.rail8.cli.VirtualTime.lambda$settle$0(BooleanSupplier) line: 58
+  ]
+}
+

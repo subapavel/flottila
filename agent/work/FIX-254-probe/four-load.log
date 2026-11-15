@@ -1,0 +1,1 @@
+four-load: cpus=0-3 load=4 jfr=no runs=100 deviating=0 seconds=458
