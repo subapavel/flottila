@@ -62,11 +62,14 @@ class BindsOpTest {
 
   /**
    * The body gives slots 0, 9 999 and 19 999, which are 0, 9 999 and 19 999; no part ticks, and a Binds charges
-   * nothing of its own (ADR-0043): 0 steps.
+   * nothing of its own (ADR-0043): 0 steps. In both compile modes (#116, C1): the optimised compile runs the parts by
+   * their value form, the conservative compile by the tail emitter's Holder, and each keeps its 512 KiB witness.
    */
   @Test
   void twentyThousandTailPartsRunOnA512KiBThread() throws IOException, InterruptedException {
-    assertThat(FreshJvm.printed(dir, Child.class, "tail")).as("what the child JVM printed").isEqualTo("20000 tail parts: [[0, 9999, 19999]] in 0 steps\n");
+    assertThat(FreshJvm.printed(dir, Child.class, "tail"))
+        .as("what the child JVM printed")
+        .isEqualTo("20000 tail parts: [[0, 9999, 19999]] in 0 steps\n" + "20000 tail parts, conservative: [[0, 9999, 19999]] in 0 steps\n");
   }
 
   /**
@@ -76,6 +79,7 @@ class BindsOpTest {
    * generator's first result comes first, as in the nested chain. The Comma at part 1 runs once, at 10 000 twice and
    * at 19 998 four times, one step each: 7 steps. Part 0, before every generator, runs once; part 5 000 once per result
    * of part 1, twice; part 15 000 once per result of part 10 000 in each of those, four times; part 19 999 eight times.
+   * In both compile modes, as {@link #twentyThousandTailPartsRunOnA512KiBThread}.
    */
   @Test
   void aGeneratorPartNestsOnlyItsRest() throws IOException, InterruptedException {
@@ -84,37 +88,51 @@ class BindsOpTest {
             + "[100001, 110000, 119999], [100001, 110000, 219999], [100001, 210000, 219999], [100001, 210000, 319999]]";
     assertThat(FreshJvm.printed(dir, Child.class, "generators"))
         .as("what the child JVM printed")
-        .isEqualTo("20000 parts, 3 of them generators: " + results + " in 7 steps; runs of parts 0, 5000, 15000 and 19999: [1, 2, 4, 8]\n");
+        .isEqualTo(
+            "20000 parts, 3 of them generators: "
+                + results
+                + " in 7 steps; runs of parts 0, 5000, 15000 and 19999: [1, 2, 4, 8]\n"
+                + "20000 parts, 3 of them generators, conservative: "
+                + results
+                + " in 7 steps; runs of parts 0, 5000, 15000 and 19999: [1, 2, 4, 8]\n");
   }
 
   /**
    * The child JVM of both tests: on a 512 KiB thread it builds the Binds of its scenario, {@code tail} or {@code
-   * generators}, compiles it and runs it, and prints its results and steps, or what the thread threw.
+   * generators}, compiles it and runs it, and prints its results and steps, or what the thread threw; first in the
+   * optimised compile, then in the conservative one, each from a Binds of its own.
    */
   static final class Child {
     private Child() {}
 
     public static void main(String[] args) throws InterruptedException {
       switch (args[0]) {
-        case "tail" -> FreshJvm.print(PARTS + " tail parts", () -> ran(chain(new int[0], null, 0, 9_999)));
+        case "tail" -> {
+          FreshJvm.print(PARTS + " tail parts", () -> ran(chain(new int[0], null, 0, 9_999), CompileMode.OPTIMISED));
+          FreshJvm.print(PARTS + " tail parts, conservative", () -> ran(chain(new int[0], null, 0, 9_999), CompileMode.CONSERVATIVE));
+        }
         case "generators" -> {
           int[] runs = new int[COUNTED.length];
           FreshJvm.print(
               PARTS + " parts, " + GENERATORS.length + " of them generators",
-              () -> ran(chain(GENERATORS, runs, 1, 10_000)) + "; runs of parts 0, 5000, 15000 and 19999: " + Arrays.toString(runs));
+              () -> ran(chain(GENERATORS, runs, 1, 10_000), CompileMode.OPTIMISED) + "; runs of parts 0, 5000, 15000 and 19999: " + Arrays.toString(runs));
+          int[] again = new int[COUNTED.length];
+          FreshJvm.print(
+              PARTS + " parts, " + GENERATORS.length + " of them generators, conservative",
+              () -> ran(chain(GENERATORS, again, 1, 10_000), CompileMode.CONSERVATIVE) + "; runs of parts 0, 5000, 15000 and 19999: " + Arrays.toString(again));
         }
         default -> throw new IllegalArgumentException("no scenario " + args[0]);
       }
     }
   }
 
-  /** The results of {@code root}, compiled here, with no budget and a sink that never stops, and its steps. */
-  private static String ran(Binds root) {
+  /** The results of {@code root}, compiled here in {@code mode}, with no budget and a sink that never stops, and its steps. */
+  private static String ran(Binds root, CompileMode mode) {
     RunState state = new RunState();
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
     List<Object> results = new ArrayList<>();
     boolean ranOut =
-        Compiler.compile(root, CompileMode.OPTIMISED)
+        Compiler.compile(root, mode)
             .run(
                 state,
                 "in",

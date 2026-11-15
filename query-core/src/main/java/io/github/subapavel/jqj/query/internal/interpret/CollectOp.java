@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Charges;
 import io.github.subapavel.jqj.query.run.Collector;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -29,11 +30,16 @@ public final class CollectOp extends Op {
   private final Op body;
   private final Collector collector;
 
-  public CollectOp(Op body, Collector collector) {
+  public CollectOp(boolean valueForm, Op body, Collector collector) {
+    super(valueForm);
     this.body = body;
     this.collector = collector;
   }
 
+  /**
+   * The body in push form: a Collect is at most one, so it is push form only where it may break out, and then so may
+   * its body (ADR-0007 #112, #115).
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     state.chargeBuilt(Charges.CONTAINER);
@@ -43,6 +49,25 @@ public final class CollectOp extends Op {
       return false;
     }
     return out.emit(collector.collect(elements.values, elements.length));
+  }
+
+  /**
+   * What the collector makes of the body's results, charged as {@link #run} charges them. The body of a value-form
+   * Collect may not break out, so a push body's run ends with true.
+   */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    state.chargeBuilt(Charges.CONTAINER);
+    Elements elements = new Elements(state);
+    if (!body.valueForm) {
+      body.run(state, slots, in, elements);
+    } else {
+      Object v = body.eval(state, slots, in);
+      if (v != CallForm.NONE) {
+        elements.emit(v);
+      }
+    }
+    return collector.collect(elements.values, elements.length);
   }
 
   @Override

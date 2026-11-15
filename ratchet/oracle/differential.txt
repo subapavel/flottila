@@ -4804,6 +4804,14 @@ syntax/try-body-operator	6cf7303d089d	interpreter
 syntax/try-body-operator-in-array	b47155d75df6	interpreter
 syntax/update-nonassoc	110fd34b8a39	interpreter
 syntax/vertical-tab-before-dot	4b7aef8239ec	interpreter
+value-form/a-label-catches-its-own-break-as-no-value	9886a719bacc	interpreter
+value-form/a-reduce-of-an-empty-init-binds-nothing	1ca258cb49a4	interpreter
+value-form/a-value-before-a-break-is-emitted	6ae171b37c87	interpreter
+value-form/a-value-form-recursion-3000-deep	4a79851889d5	interpreter
+value-form/a-value-with-no-result-binds-nothing	303ee12db3ab	interpreter
+value-form/an-inner-try-lets-a-downstream-error-through	04f272f9de78	interpreter
+value-form/try-catches-the-error-of-its-value-body	042b20bd38e8	interpreter
+value-form/x2-dot-calls-into-another-group-by-eval	785b1a916653	interpreter
 wide/computed-all-keys	447abca3fdd6	interpreter
 wide/computed-colliding-keys	295c51c228e4	interpreter
 wide/computed-escaped-key	00fb2f1e3560	interpreter

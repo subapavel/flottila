@@ -260,3 +260,41 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
 - "Half" as a 2× margin, which would halve `U_f`.
 - Fresh equality with the constants, which is flaky across JIT runs.
 - Moving the ticket column to the spec gate.
+
+**Rulings on the red (2026-11-15, grilling-adviser, delegation to 2026-11-16)**
+- Shapes: 13. F-95's `collect-descent` (a recursion through 100 Collects with no rise) joins the 12;
+  #114 adds its PLAIN-call filter as a 14th after it merges and re-runs the matrix.
+- Cold linkage is a reserve term of its own. The first switch to the trampoline loads its classes
+  (`ClassLoader.defineClass1` at depth), a fixed cost of about 17.6 KiB on T under `-Xint`, the same
+  at 512 KiB and 1 MiB, so it is not a `b` term.
+  - An `-Xint` cell's `U*` is the cold edge: each probe is a fresh child's first run, and one
+    bisection suffices, because the edge is deterministic. JIT cells keep the smallest of 3.
+  - A second column holds the linked edge, measured after two linking runs. The two slopes of a pair
+    must agree.
+  - The reserve is the largest linked intercept plus the largest cold term, rounded up to 4 KiB, plus
+    32 KiB for the natives (owner-review O1).
+- The ticket column runs one fresh child per shape and mode. `edgeIsExact` runs `U*` and `U* + 1`,
+  each as the first run of its own fresh child.
+- `b` and the reserve are the `max-b` and `reserve` rows of the full matrix, run once at #111's
+  constants. Probes declare `stackBytesFor(U)`, so `U*` does not depend on the committed
+  constants; a second run confirms them. No stand-in value is committed. `b` is published as
+  measured, even near 200 (owner-review O2).
+- Frames above units are a weight defect, not a `b`: W and collect-descent join
+  `framesStayUnderTheLimit` as named cases first.
+- Heap per activation is measured on held generators, read at the first emit with depths n and 2n
+  (F with the leaf `(0, 0)`; the same with 16 `try` per level; the closure chain with leaf
+  `(f, f)`), per held filter and mode. Runtime's used heap is acceptable; it equals MemoryMXBean's
+  after two collections.
+- The warm proof excludes the probe's `down` method from compilation, because an inlined recursion
+  makes the warm proof unstable.
+- The matrix cuts no cell. `-Xint` and C1 children run 4 in parallel (`-Xbatch` edges are the same
+  alone and in parallel); warm children run one at a time. Each search is seeded from the committed
+  record. The time is measured and recorded; above 45 minutes it is a finding (owner-review O4).
+- C1 at 512 KiB is covered by the matrix's C1 cells. There is no C1 ticket column.
+- The implementer commits no `b` or reserve other than the record's rows, never raises one to absorb
+  the other's red, does not prelink or pre-warm classes to move the cold edge, changes no unit
+  weight and does not touch the 4 194 304 default. Only CalibrationTest and DeepStackFreshJvmTest
+  leave PIT's test set; CalibrationRecordTest stays in.
+- If the warm cells give an intercept far above the linked `-Xint` one (warm W: slope 88, about
+  248 KiB), the implementer stops and hands back.
+
