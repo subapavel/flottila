@@ -46,3 +46,12 @@ arg -c
 filter [label $out | def f: if .==0 then (1,2) else (.-1|f)|. end; 10000|f|., break $out]
 stdin null\n
 end
+
+# Spike A's nested shape (ADR-0011) at n = 2 000: a recursion whose continuation starts a second one 1 000 deep
+# at every level; form A ended at 201 drivers. DeepStackFreshJvmTest runs it on a 1 MiB child JVM.
+
+case deep/nested-drivers
+arg -c
+filter def r: if .==0 then 0 else (.-1|r)+1 end; def n: if .==0 then 0 else (.-1|n)|(1000|r) end; 2000|n
+stdin null\n
+end
