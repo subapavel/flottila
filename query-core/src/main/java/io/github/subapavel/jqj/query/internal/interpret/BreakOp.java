@@ -28,4 +28,10 @@ public final class BreakOp extends Op {
     state.breakTo((Long) Frames.out(slots, level)[slot]);
     return false;
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.state.breakTo((Long) Frames.out(slots, level)[slot]);
+    t.answer(under, false);
+  }
 }

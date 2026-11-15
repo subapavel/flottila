@@ -372,6 +372,28 @@ class RunStateTest {
     assertBudget(state::enter, Budget.RECURSION_DEPTH, "a second enter under a recursion depth of 1");
   }
 
+  /**
+   * The declared stack bytes are the last begin's (ADR-0030 #109 amendment): {@code Long.MAX_VALUE} before any begin and
+   * after a begin that declares none, 0 when a begin declares 0, and no budget: a run declaring 0 still ticks, enters
+   * and ends as any other.
+   */
+  @Test
+  void stackBytesAreTheLastBeginsDeclaredStack() {
+    RunState state = new RunState();
+    assertThat(state.stackBytes()).as("stack bytes before any begin").isEqualTo(Long.MAX_VALUE);
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1, 0);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring 0").isZero();
+    state.tick();
+    state.enter();
+    state.leave();
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring none").isEqualTo(Long.MAX_VALUE);
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1, 524_288);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring 512 KiB").isEqualTo(524_288L);
+  }
+
   /** Asserts that {@code call} ends the run with {@code Termination(BUDGET, budget)} and the budget's message. */
   private static void assertBudget(ThrowingCallable call, Budget budget, String what) {
     Termination t = assertThatExceptionOfType(Termination.class).as("%s", what).isThrownBy(call).actual();

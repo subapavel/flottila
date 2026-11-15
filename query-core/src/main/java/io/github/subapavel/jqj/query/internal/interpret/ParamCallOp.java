@@ -28,4 +28,12 @@ public final class ParamCallOp extends Op {
       state.leave();
     }
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Closure closure = (Closure) Frames.out(slots, level)[cell];
+    t.state.tick();
+    t.state.enter();
+    closure.start(t, new CallOp.Active(under), in, out);
+  }
 }

@@ -29,4 +29,18 @@ public final class BindOp extends Op {
           return body.run(state, slots, in, out);
         });
   }
+
+  /** Each result of the value side sets the slot and starts the body above the form that produced it. */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(
+        value,
+        under,
+        slots,
+        in,
+        (d, producer, v) -> {
+          slots[slot] = v;
+          d.start(body, producer, slots, in, out);
+        });
+  }
 }

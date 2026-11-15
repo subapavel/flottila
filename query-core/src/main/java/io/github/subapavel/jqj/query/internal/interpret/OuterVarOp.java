@@ -20,4 +20,9 @@ public final class OuterVarOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(Frames.out(slots, level)[cell]);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, Frames.out(slots, level)[cell]);
+  }
 }
