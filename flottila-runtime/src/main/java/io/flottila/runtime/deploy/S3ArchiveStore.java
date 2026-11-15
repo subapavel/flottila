@@ -10,8 +10,10 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 /**
@@ -28,15 +30,11 @@ public final class S3ArchiveStore implements ArchiveStore {
     private final S3Client client;
     private final String bucket;
     private final String prefix;
-    private final long maxBytes;
 
-    /** @param maxBytes the most bytes a fetch copies, at least 1: a larger object is refused while it is copied */
-    public S3ArchiveStore(S3Client client, String bucket, String prefix, long maxBytes) {
+    public S3ArchiveStore(S3Client client, String bucket, String prefix) {
         this.client = Objects.requireNonNull(client, "client");
         this.bucket = Objects.requireNonNull(bucket, "bucket");
         this.prefix = Objects.requireNonNull(prefix, "prefix");
-        if (maxBytes < 1) throw new IllegalArgumentException("maxBytes must be at least 1, was " + maxBytes);
-        this.maxBytes = maxBytes;
     }
 
     @Override
@@ -59,7 +57,7 @@ public final class S3ArchiveStore implements ArchiveStore {
     public void fetch(String sha256, Path target) throws IOException {
         String key = key(sha256);
         try (InputStream in = client.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build())) {
-            DirArchiveStore.copyBounded(in, target, maxBytes);
+            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         } catch (NoSuchKeyException missing) {
             NoSuchFileException absent = new NoSuchFileException(key, null, "no archive under this key in the bucket " + bucket);
             absent.initCause(missing);
