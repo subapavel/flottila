@@ -1,7 +1,7 @@
 {
   "mapping": "mappings/sort-case-insensitive.mapping.json",
   "provenance": "decided",
-  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Flottila follows CPI; expected.xml equals corpus/observations/obs-context-functions/cpi/sort-002-spec2-sort-case-insensitive.xml (z, ﬀ, Ａ, 😀), PO 7.50 gave z, 😀, ﬀ, Ａ (po75/spec2-sort-case-insensitive-004.xml); was assumed: #48 owner decision Q4: case-insensitive is String.compareToIgnoreCase; #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Rail8 follows CPI; expected.xml equals corpus/observations/obs-context-functions/cpi/sort-002-spec2-sort-case-insensitive.xml (z, ﬀ, Ａ, 😀), PO 7.50 gave z, 😀, ﬀ, Ａ (po75/spec2-sort-case-insensitive-004.xml); was assumed: #48 owner decision Q4: case-insensitive is String.compareToIgnoreCase; #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
   "expect": "output",
   "note": "caseInsensitive over the input of fn/sort/002. compareToIgnoreCase compares by code point, not by UTF-16 code unit, so 😀 (U+1F600) comes after Ａ (folded to U+FF41): z, ﬀ, Ａ, 😀, against z, 😀, ﬀ, Ａ for lexicographic. ﬀ has no single-character upper case and stays U+FB00. R1 joins the contexts S1 keeps, so All shows each context's order in turn. Observe in SAP PO (#33)."
 }

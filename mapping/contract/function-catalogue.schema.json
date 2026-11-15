@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:flottila:function-catalogue:1",
+  "$id": "urn:rail8:function-catalogue:1",
   "title": "FunctionCatalogue",
   "description": "The published function catalogue (ADR-0025, ADR-0026): every standard function, keyed by its id. Adding a member is a schema change.",
   "type": "object",

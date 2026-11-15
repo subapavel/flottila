@@ -84,7 +84,7 @@ describe('the HTTP ApiClient', () => {
 
   test('a 409 mapping-changed answer to a save is a save conflict', async () => {
     const changed = {
-      type: 'urn:flottila:mapping:problem:mapping-changed',
+      type: 'urn:rail8:mapping:problem:mapping-changed',
       title: 'Mapping changed',
       status: 409,
       detail: 'the mapping changed on disk since the If-Match tag was read; nothing was saved',
@@ -133,7 +133,7 @@ describe('the HTTP ApiClient', () => {
 
   test('a 409 mapping-exists answer to a create is an ApiProblem with the problem', async () => {
     const exists = {
-      type: 'urn:flottila:mapping:problem:mapping-exists',
+      type: 'urn:rail8:mapping:problem:mapping-exists',
       title: 'Mapping exists',
       status: 409,
       detail: 'a mapping with this id exists',
@@ -210,7 +210,7 @@ describe('the HTTP ApiClient', () => {
 
   test('a problem+json answer becomes an ApiProblem with its type, status and diagnostics', async () => {
     const refused = {
-      type: 'urn:flottila:mapping:problem:model-refused',
+      type: 'urn:rail8:mapping:problem:model-refused',
       title: 'Model refused',
       status: 422,
       detail: 'the mapping model is refused by validation stage 1 or 2',

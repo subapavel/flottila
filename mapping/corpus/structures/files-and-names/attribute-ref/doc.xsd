@@ -4,8 +4,8 @@
      falls back to the bundle file of its namespace (US 2), and to a global attribute of this file;
      in a complex type and in an attribute group -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:attribute-ref"
-           targetNamespace="urn:flottila:corpus:attribute-ref">
+           xmlns:tns="urn:rail8:corpus:attribute-ref"
+           targetNamespace="urn:rail8:corpus:attribute-ref">
   <xs:import namespace="http://www.w3.org/XML/1998/namespace"
              schemaLocation="http://www.w3.org/2001/xml.xsd"/>
   <xs:attribute name="code" type="xs:int"/>

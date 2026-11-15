@@ -6,23 +6,23 @@
     ],
     "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     "root": {
-      "element": "Q{urn:flottila:corpus:skeleton}Order"
+      "element": "Q{urn:rail8:corpus:skeleton}Order"
     }
   },
   "target": {
     "bundle": [
       "../structures/skeleton/order.xsd"
     ],
-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
+    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
     "root": {
-      "element": "Q{urn:flottila:corpus:skeleton}Order"
+      "element": "Q{urn:rail8:corpus:skeleton}Order"
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:corpus:skeleton}Order/OrderId": {
+    "/Q{urn:rail8:corpus:skeleton}Order/OrderId": {
       "boxes": {
         "a1": {
-          "field": "/Q{urn:flottila:corpus:skeleton}Order/OrderId",
+          "field": "/Q{urn:rail8:corpus:skeleton}Order/OrderId",
           "kind": "source"
         }
       },

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { TargetFieldMapping } from '../generated/mapping-model';
 import { reachedBoxes } from './reached';
 
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 
 /** OrderId and a constant into concat, which is the result; toUpperCase reads OrderId but feeds nothing. */
 const mapping: TargetFieldMapping = {

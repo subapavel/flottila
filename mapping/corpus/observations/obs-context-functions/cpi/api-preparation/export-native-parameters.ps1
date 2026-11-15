@@ -2,7 +2,7 @@ param([string]$Label)
 $ErrorActionPreference='Stop'
 $key=(Get-Content -Raw -LiteralPath 'C:/Users/pavol/.codex/secrets/flottila-observations-key.json'|ConvertFrom-Json).oauth
 $token=Invoke-RestMethod -Method Post -Uri $key.tokenurl -Body @{grant_type='client_credentials';client_id=$key.clientid;client_secret=$key.clientsecret} -TimeoutSec 30
-$file=Join-Path ([IO.Path]::GetTempPath()) 'flottila-parameter-export.zip'
+$file=Join-Path ([IO.Path]::GetTempPath()) 'rail8-parameter-export.zip'
 Invoke-WebRequest -Uri ($key.url.TrimEnd('/')+"/api/v1/MessageMappingDesigntimeArtifacts(Id='api_ctx_1_r2',Version='Draft')/"+'$value') -Headers @{Authorization=('Bearer '+$token.access_token)} -OutFile $file -TimeoutSec 30
 $zip=[IO.Compression.ZipFile]::OpenRead($file)
 $entry=$zip.Entries|Where-Object Name -like '*.mmap'

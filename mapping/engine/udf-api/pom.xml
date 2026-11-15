@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-engine</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-udf-api</artifactId>
-  <name>Flottila Mapping udf-api</name>
+  <artifactId>rail8-mapping-udf-api</artifactId>
+  <name>Rail8 Mapping udf-api</name>
 
   <properties>
     <!-- No production code yet: PIT skips such a module, and fails "No mutations found" on a first

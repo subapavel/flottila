@@ -11,7 +11,7 @@ import type { MappingModel } from '../../generated/mapping-model';
 import { Studio, studioStore } from './Studio';
 import { StudioShell } from './StudioShell';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
 const LIST = '/?api=fake';
@@ -93,8 +93,8 @@ describe('the studio shell (ADR-0028)', () => {
     renderStudio(fakeApiClient(), 'mappings/order-id-copy');
 
     await expect.element(page.getByRole('heading', { level: 1, name: 'order-id-copy' })).toBeVisible();
-    await expect.element(page.getByRole('banner')).toHaveTextContent('FlottilaMapping studio');
-    await expect.element(page.getByRole('link', { name: 'Flottila' })).toHaveAttribute('href', LIST);
+    await expect.element(page.getByRole('banner')).toHaveTextContent('Rail8Mapping studio');
+    await expect.element(page.getByRole('link', { name: 'Rail8' })).toHaveAttribute('href', LIST);
     await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(5);
     for (const [i, name] of TABS.entries()) await expect.element(page.getByRole('tab').nth(i)).toHaveTextContent(name);
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
@@ -107,7 +107,7 @@ describe('the studio shell (ADR-0028)', () => {
     const fake = fakeApiClient();
     let answer: () => void = () => undefined;
     const answered = new Promise<void>((resolve) => (answer = resolve));
-    const refused = new ApiProblem({ type: 'urn:flottila:mapping:problem:not-found', title: 'Not found', status: 404, detail: 'no mapping mappings/gone' });
+    const refused = new ApiProblem({ type: 'urn:rail8:mapping:problem:not-found', title: 'Not found', status: 404, detail: 'no mapping mappings/gone' });
     const getMapping = vi.fn(() => answered.then(() => Promise.reject(refused)));
     renderStudio({ ...fake, getMapping }, 'mappings/gone');
 
@@ -478,7 +478,7 @@ describe('the masthead help', () => {
     await page.getByRole('button', { name: 'About Mapping studio' }).click();
 
     const about = page.getByRole('dialog', { name: 'About Mapping studio' });
-    await expect.element(about).toMatchTextContent(/^About Mapping studioOpen a mapping from its Flottila package\. Choose Edit to make changes\./);
+    await expect.element(about).toMatchTextContent(/^About Mapping studioOpen a mapping from its Rail8 package\. Choose Edit to make changes\./);
     await expect.element(about).toMatchTextContent(/Drag a source field onto a target for a direct connection\./);
     await expect.element(about).toMatchTextContent(/Lay Out Mapping arranges the expression from left to right at its fixed scale\./);
     await expect.element(about).toMatchTextContent(/Save writes the mapping file to the workspace\. Test runs the mapping on the service\.$/);
@@ -774,7 +774,7 @@ describe('Edit, Save and Discard', () => {
 
   test('a save the service refuses shows the problem and its diagnostics', async () => {
     const refused = new ApiProblem({
-      type: 'urn:flottila:mapping:problem:model-refused',
+      type: 'urn:rail8:mapping:problem:model-refused',
       title: 'Model refused',
       status: 422,
       detail: 'the mapping model is refused by validation stage 1 or 2',

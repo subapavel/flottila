@@ -2,10 +2,10 @@
 <!-- Fixture (#96): beside a file that stopped, a part element no bundle file declares, and a part
      element and a message in the stopped file's namespace -->
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
-                  xmlns:other="urn:flottila:corpus:elsewhere"
-                  xmlns:b="urn:flottila:corpus:broken"
-                  xmlns:tns="urn:flottila:corpus:user-wsdl"
-                  targetNamespace="urn:flottila:corpus:user-wsdl">
+                  xmlns:other="urn:rail8:corpus:elsewhere"
+                  xmlns:b="urn:rail8:corpus:broken"
+                  xmlns:tns="urn:rail8:corpus:user-wsdl"
+                  targetNamespace="urn:rail8:corpus:user-wsdl">
   <wsdl:message name="Lost">
     <wsdl:part name="body" element="other:Doc"/>
   </wsdl:message>

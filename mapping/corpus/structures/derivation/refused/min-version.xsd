@@ -3,7 +3,7 @@
      (ADR-0008) -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning"
-           targetNamespace="urn:flottila:corpus:refused" vc:minVersion="1.1">
+           targetNamespace="urn:rail8:corpus:refused" vc:minVersion="1.1">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

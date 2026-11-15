@@ -2,8 +2,8 @@
 <!-- Synthetic target of the orders bench mapping (ADR-0002, ADR-0021): one Order per sales order, an
      Item per line, and a Pick per line of every order, flattened. Every leaf is a string. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:bench:orders"
-           xmlns="urn:flottila:corpus:bench:orders"
+           targetNamespace="urn:rail8:corpus:bench:orders"
+           xmlns="urn:rail8:corpus:bench:orders"
            elementFormDefault="qualified">
   <xs:element name="OrderBatch">
     <xs:complexType>

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#93): the defaults opposite to a.xsd's, which a.xsd's references keep -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:forms:b"
+           targetNamespace="urn:rail8:corpus:forms:b"
            elementFormDefault="unqualified" attributeFormDefault="qualified">
   <xs:element name="Item" type="xs:int"/>
   <xs:complexType name="Part">

@@ -2,6 +2,9 @@
 
 Status: accepted (2026-10-30, grilling #13); `engine/oracle` added by ADR-0018; `engine/udf-api` and `engine/udf` added by ADR-0020; `engine/bytecode` (after milestone 1) and `bench/jmh` requires set by ADR-0021; ArchUnit rule F added by the spec-4 grilling (2026-11-05), lettered by #90
 
+Amended 2026-11-15 (D-151): the name reads `rail8`; the module names now end in a digit, so javac's `module`
+lint is suppressed (`@SuppressWarnings("module")`) on the eleven engine module declarations
+
 FOUNDING §11 sketches modules along the pipeline. ADR-0008 split structure import into two, and
 ADR-0014 took the service off the module path. This ADR fixes the modules milestone 1 builds,
 their names and the direction of their dependencies. Modules for the XPath and XSLT front ends,

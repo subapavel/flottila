@@ -18,7 +18,7 @@ import { TREE_BUNDLE, TREE_FIELDS, TREE_FILE, TREE_MAPPING, TREE_SEED, generated
 import { orderStructure } from './order-structure';
 import { sameStepStructure } from './same-step-structure';
 
-const PROBLEM = 'urn:flottila:mapping:problem:';
+const PROBLEM = 'urn:rail8:mapping:problem:';
 
 // The corpus file is a valid model: the engine's corpus case loads it.
 const orderIdCopy = JSON.parse(orderIdCopyText) as MappingModel;

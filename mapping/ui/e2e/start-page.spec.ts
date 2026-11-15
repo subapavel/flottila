@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { collectProblems } from './problems';
 import { fieldRow, fields, node, openStudio, selectTarget } from './studio';
 
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 
 test('the start page lists the mappings on the fake API, opens one in the studio, and the brand goes back to the list', async ({ page }) => {
   const problems = collectProblems(page);
@@ -16,7 +16,7 @@ test('the start page lists the mappings on the fake API, opens one in the studio
   await expect((await fieldRow(page, 'target', ORDER_ID)).getByRole('img', { name: 'Connected' })).toBeVisible();
   await expect(list).toBeHidden();
 
-  await page.getByRole('link', { name: 'Flottila' }).click();
+  await page.getByRole('link', { name: 'Rail8' }).click();
 
   await expect(list).toBeVisible();
   await expect(fields(page, 'target')).toBeHidden();

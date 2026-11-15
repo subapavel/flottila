@@ -1,0 +1,33 @@
+root Q{urn:flottila:corpus:bench:wide}WideBatch 1..1 - /Q{urn:flottila:corpus:bench:wide}WideBatch
+type /Q{urn:flottila:corpus:bench:wide}WideBatch
+field Q{urn:flottila:corpus:bench:wide}Entry 0..unbounded - /Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry
+type /Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry
+field Q{urn:flottila:corpus:bench:wide}PartyRef 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}PartyDate 1..1 xs:date -
+field Q{urn:flottila:corpus:bench:wide}Consignee 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}RouteZone 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}RouteFrom 1..1 xs:date -
+field Q{urn:flottila:corpus:bench:wide}RouteUntil 1..1 xs:date -
+field Q{urn:flottila:corpus:bench:wide}CargoUnit 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}CargoQty 1..1 xs:integer -
+field Q{urn:flottila:corpus:bench:wide}CargoMass 1..1 xs:decimal -
+field Q{urn:flottila:corpus:bench:wide}BillRef 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}BillTotal 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}BillDue 1..1 xs:date -
+field Q{urn:flottila:corpus:bench:wide}DutyRate 1..1 xs:decimal -
+field Q{urn:flottila:corpus:bench:wide}DutyFlag 1..1 xs:boolean -
+field Q{urn:flottila:corpus:bench:wide}HaulArea 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}HaulCount 1..1 xs:integer -
+field Q{urn:flottila:corpus:bench:wide}DepotCode 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}DepotLive 1..1 xs:boolean -
+field Q{urn:flottila:corpus:bench:wide}ShipVol 1..1 xs:decimal -
+field Q{urn:flottila:corpus:bench:wide}PermitRef 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}PermitUntil 1..1 xs:date -
+field Q{urn:flottila:corpus:bench:wide}ClaimSum 1..1 xs:decimal -
+field Q{urn:flottila:corpus:bench:wide}ClaimDone 1..1 xs:boolean -
+field Q{urn:flottila:corpus:bench:wide}TariffClass 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}TariffShare 1..1 xs:decimal -
+field Q{urn:flottila:corpus:bench:wide}LedgerNote 1..1 xs:string -
+field Q{urn:flottila:corpus:bench:wide}LedgerSeq 1..1 xs:integer -
+field Q{urn:flottila:corpus:bench:wide}LedgerLevel 1..1 xs:integer -
+field Q{urn:flottila:corpus:bench:wide}LedgerCap 1..1 xs:decimal -

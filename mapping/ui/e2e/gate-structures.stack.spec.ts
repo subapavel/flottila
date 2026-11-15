@@ -8,9 +8,9 @@ test.use({ viewport: { width: 1440, height: 1800 } });
 
 // GATE check 1 (#100): the gate structures of corpus/structures/gate, read by the real service from its workspace and
 // shown in the studio's message panes (Table view), each pane fully open as it opens.
-const PO = 'Q{urn:flottila:corpus:gate:po}';
-const INV = 'Q{urn:flottila:corpus:gate:invoice}';
-const PTY = 'Q{urn:flottila:corpus:gate:party}';
+const PO = 'Q{urn:rail8:corpus:gate:po}';
+const INV = 'Q{urn:rail8:corpus:gate:invoice}';
+const PTY = 'Q{urn:rail8:corpus:gate:party}';
 const PURCHASE_ORDER = `/${PO}PurchaseOrder`;
 const INVOICE = `/${INV}Invoice`;
 const corpus = (path: string) => new URL(`../../corpus/${path}`, import.meta.url);

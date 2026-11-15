@@ -2,6 +2,8 @@
 
 Status: accepted (2026-11-02, #27 design); the portable profile needs higher-order functions since #51
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 - **Input.** `engine/xslt-export` writes the unoptimised IR (`TargetDocument`) of a mapping that lowered, as one
   XSLT 3.0 stylesheet. The IR is the only input any back end takes. Unoptimised IR keeps one node per box, which
   later lets the trace mode name each box.

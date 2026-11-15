@@ -221,7 +221,7 @@ otherRootTag() {
   local module=$fixtures/po-runtime/beta.xsl
   case $1 in
     extraNamespace)
-      awk '{ print } /^    xmlns:po="urn:flottila:mapping:po"$/ { print "    xmlns:map=\"http://www.w3.org/2005/xpath-functions/map\"" }' "$module" ;;
+      awk '{ print } /^    xmlns:po="urn:rail8:mapping:po"$/ { print "    xmlns:map=\"http://www.w3.org/2005/xpath-functions/map\"" }' "$module" ;;
     otherVersion) sed 's/<xsl:stylesheet version="3.0"/<xsl:stylesheet version="2.0"/' "$module" ;;
     oneLine)
       awk '/^<xsl:stylesheet / { tag = $0; open = 1; next }

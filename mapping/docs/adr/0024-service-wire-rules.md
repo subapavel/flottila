@@ -2,6 +2,8 @@
 
 Status: accepted (2026-11-02, #28 design); refines ADR-0014 and ADR-0015; amended by the spec-4 grilling (2026-11-05): package references pass the pattern
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 ## Mapping ids and paths
 
 - A mapping id matches `^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}){0,15}$`.

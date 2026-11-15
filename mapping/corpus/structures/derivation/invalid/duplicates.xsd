@@ -5,8 +5,8 @@
      references. A restriction's redeclaration replaces the inherited attribute, an extension's
      use="prohibited" adds none, an unqualified name differs from a qualified one -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:d="urn:flottila:corpus:duplicates"
-           targetNamespace="urn:flottila:corpus:duplicates">
+           xmlns:d="urn:rail8:corpus:duplicates"
+           targetNamespace="urn:rail8:corpus:duplicates">
   <xs:include schemaLocation="duplicate-group.xsd"/>
   <xs:attribute name="code" type="xs:string"/>
   <xs:complexType name="Twice">

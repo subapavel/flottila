@@ -26,6 +26,8 @@ modules=$2
 base=${3:-}
 
 cd "$(dirname "$0")/.."
+# the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
+mvnw=${MVNW:-../mvnw}
 mkdir -p .logs ui/.logs
 # the console output, stderr included, also goes to .logs/<ticket>-gate.log under this root, whatever the caller's
 # directory (#125). On exit, close it and wait for tee, so the log is complete when the script returns.
@@ -50,7 +52,7 @@ skipped() { echo "NOT_RUN         $1  ($2)"; }
 
 # 1: touched and upstream modules, plus the oracle (which pulls in the whole engine)
 step "1 build $modules,engine/oracle" ".logs/${ticket}-build.log" \
-  ./mvnw -B -pl "${modules},engine/oracle" -am verify
+  "$mvnw" -B -pl "${modules},engine/oracle" -am verify
 
 # 1b: PIT on the class-C engine modules among <modules> (floor in ratchet/mutation.tsv, ADR-0019). test-compile first:
 # PIT needs the classes of a clean tree; -am puts upstream modules in the reactor, where pit.skip skips those without
@@ -77,7 +79,7 @@ fi
 
 # 2: the whole reactor compiles; Spotless, enforcer, licences
 step "2 compile-all" ".logs/${ticket}-compile-all.log" \
-  ./mvnw -B -q -DskipTests verify
+  "$mvnw" -B -q -DskipTests verify
 
 # 2b: every tracked file checks out byte-identical on Windows (.gitattributes, #49). Reads the index: stage new files.
 step "2b lf checkout" ".logs/${ticket}-lf-checkout.log" \

@@ -50,7 +50,7 @@ export class ApiProblem extends Error {
 
 /** Whether a failed save is a save conflict: 409 `mapping-changed`, the file changed on disk (ADR-0027). */
 export function isSaveConflict(error: unknown): boolean {
-  return error instanceof ApiProblem && error.problem.type === 'urn:flottila:mapping:problem:mapping-changed';
+  return error instanceof ApiProblem && error.problem.type === 'urn:rail8:mapping:problem:mapping-changed';
 }
 
 /** What the editor shows for a failed call: an `ApiProblem`'s title, detail and diagnostics, or another error's message. */

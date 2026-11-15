@@ -6,7 +6,7 @@ import { createWorkingCopyStore, selectUnsaved } from './working-copy';
 const order: StructureRef = {
   bundle: ['../structures/skeleton/order.xsd'],
   fingerprint: 'sha256:order',
-  root: { element: 'Q{urn:flottila:corpus:skeleton}Order' },
+  root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
 };
 
 function store(model: MappingModel) {

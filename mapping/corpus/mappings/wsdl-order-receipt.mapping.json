@@ -6,11 +6,11 @@
       "../structures/files-and-names/import-location/po/order.xsd",
       "../structures/wsdl/order-11.wsdl"
     ],
-    "fingerprint": "sha256:510d96ec830e4ad8aa2e477a6fe73640f58587cc84ce10ec68ce666ca65edd16",
+    "fingerprint": "sha256:249dfbcb6f3d5834555fa5262f198fd6a817f13c41c9526862e3ea2f4b5d3b83",
     "root": {
       "wsdl": {
         "direction": "input",
-        "interface": "Q{urn:flottila:corpus:wsdl11}OrderPort",
+        "interface": "Q{urn:rail8:corpus:wsdl11}OrderPort",
         "operation": "Submit"
       }
     }
@@ -21,17 +21,17 @@
       "../structures/files-and-names/import-location/po/order.xsd",
       "../structures/wsdl/order-11.wsdl"
     ],
-    "fingerprint": "sha256:facdda4e20e0833ad276202aa9f4c563264b3b071e5c12825ba01082ba1cbc85",
+    "fingerprint": "sha256:4650a74d0afe778155b0de5646ad556f147f12dda10096841b27881e84bebc92",
     "root": {
       "wsdl": {
         "direction": "output",
-        "interface": "Q{urn:flottila:corpus:wsdl11}OrderPort",
+        "interface": "Q{urn:rail8:corpus:wsdl11}OrderPort",
         "operation": "Submit"
       }
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:corpus:wsdl11}Receipt/Q{urn:flottila:corpus:wsdl11}Accepted": {
+    "/Q{urn:rail8:corpus:wsdl11}Receipt/Q{urn:rail8:corpus:wsdl11}Accepted": {
       "boxes": {
         "C1": {
           "fn": "constant",
@@ -44,11 +44,11 @@
       "id": "T2",
       "result": "C1"
     },
-    "/Q{urn:flottila:corpus:wsdl11}Receipt/Q{urn:flottila:corpus:wsdl11}OrderId": {
+    "/Q{urn:rail8:corpus:wsdl11}Receipt/Q{urn:rail8:corpus:wsdl11}OrderId": {
       "boxes": {
         "S1": {
-          "context": "/Q{urn:flottila:corpus:po}Order",
-          "field": "/Q{urn:flottila:corpus:po}Order/Q{urn:flottila:corpus:po}Id",
+          "context": "/Q{urn:rail8:corpus:po}Order",
+          "field": "/Q{urn:rail8:corpus:po}Order/Q{urn:rail8:corpus:po}Id",
           "kind": "source"
         }
       },

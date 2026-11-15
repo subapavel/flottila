@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<inv:Invoice xmlns:inv="urn:flottila:corpus:gate:invoice" xmlns:pty="urn:flottila:corpus:gate:party">
+<inv:Invoice xmlns:inv="urn:rail8:corpus:gate:invoice" xmlns:pty="urn:rail8:corpus:gate:party">
   <inv:Number>INV-1</inv:Number>
   <pty:Party>
     <pty:Name>Ada Lovelace</pty:Name>

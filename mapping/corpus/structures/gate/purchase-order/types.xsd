@@ -4,11 +4,11 @@
      is an abstract head whose members are Article, declared without a type so that it takes the
      head's, and Service -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:po="urn:flottila:corpus:gate:po"
-           xmlns:c="urn:flottila:corpus:gate:common"
-           targetNamespace="urn:flottila:corpus:gate:po"
+           xmlns:po="urn:rail8:corpus:gate:po"
+           xmlns:c="urn:rail8:corpus:gate:common"
+           targetNamespace="urn:rail8:corpus:gate:po"
            elementFormDefault="qualified">
-  <xs:import namespace="urn:flottila:corpus:gate:common" schemaLocation="common/common.xsd"/>
+  <xs:import namespace="urn:rail8:corpus:gate:common" schemaLocation="common/common.xsd"/>
   <xs:complexType name="Buyer">
     <xs:complexContent>
       <xs:extension base="c:Party">

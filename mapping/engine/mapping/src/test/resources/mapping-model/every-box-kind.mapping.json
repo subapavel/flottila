@@ -7,7 +7,7 @@
     ],
     "fingerprint": "sha256:eb9557e1dbe93ad203f075592afed56672eb9f5fbd742d0260e04d12a37d86fc",
     "root": {
-      "element": "Q{urn:flottila:test:order}Order"
+      "element": "Q{urn:rail8:test:order}Order"
     }
   },
   "target": {
@@ -19,17 +19,17 @@
       "wsdl": {
         "direction": "fault",
         "fault": "InvoiceRejected",
-        "interface": "Q{urn:flottila:test:invoice}InvoicePortType",
+        "interface": "Q{urn:rail8:test:invoice}InvoicePortType",
         "operation": "SendInvoice"
       }
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Amount": {
+    "/Q{urn:rail8:test:invoice}InvoiceRejection/Q{urn:rail8:test:invoice}Amount": {
       "boxes": {
         "2v9d0k5mxs": {
-          "context": "/Q{urn:flottila:test:order}Order",
-          "field": "/Q{urn:flottila:test:order}Order/Q{urn:flottila:test:order}Item/Q{urn:flottila:test:order}Price",
+          "context": "/Q{urn:rail8:test:order}Order",
+          "field": "/Q{urn:rail8:test:order}Order/Q{urn:rail8:test:order}Item/Q{urn:rail8:test:order}Price",
           "kind": "source"
         },
         "5h7b3n1qgz": {
@@ -57,10 +57,10 @@
       "id": "0a3c5e7g9j",
       "result": "8e4w6y2j0p"
     },
-    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Currency": {
+    "/Q{urn:rail8:test:invoice}InvoiceRejection/Q{urn:rail8:test:invoice}Currency": {
       "boxes": {
         "1c8kq3v7we": {
-          "field": "/Q{urn:flottila:test:order}Order/Q{urn:flottila:test:order}Header/@currency",
+          "field": "/Q{urn:rail8:test:order}Order/Q{urn:rail8:test:order}Header/@currency",
           "kind": "source"
         },
         "4m2tz9r0ha": {
@@ -83,7 +83,7 @@
       "id": "0b4d6f8h0k",
       "result": "4m2tz9r0ha"
     },
-    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Reason": {
+    "/Q{urn:rail8:test:invoice}InvoiceRejection/Q{urn:rail8:test:invoice}Reason": {
       "boxes": {
         "3r5t7v9x1z": {
           "inputs": [

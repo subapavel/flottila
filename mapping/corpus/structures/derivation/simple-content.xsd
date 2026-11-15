@@ -5,8 +5,8 @@
      value type, its facets shown and never validated (ADR-0004), and its base's attributes but
      those it marks use="prohibited" -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:simple"
-           targetNamespace="urn:flottila:corpus:simple">
+           xmlns:tns="urn:rail8:corpus:simple"
+           targetNamespace="urn:rail8:corpus:simple">
   <xs:element name="Invoice">
     <xs:complexType>
       <xs:sequence>

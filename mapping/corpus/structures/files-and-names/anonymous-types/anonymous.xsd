@@ -3,8 +3,8 @@
      Each value type comes from the built-in ancestry (US 5): a restriction gives its base's, a list
      and a union a string. default, fixed and nillable are read as on a typed element -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:anonymous"
-           targetNamespace="urn:flottila:corpus:anonymous">
+           xmlns:tns="urn:rail8:corpus:anonymous"
+           targetNamespace="urn:rail8:corpus:anonymous">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

@@ -1,6 +1,6 @@
 # Workflow
 
-How work goes from an idea to `main`. Agreed 2026-10-30 (ADR-0001). It keeps Flottila's rigour
+How work goes from an idea to `main`. Agreed 2026-10-30 (ADR-0001). It keeps Rail8's rigour
 (architect who never codes, red first, evidence words, findings, class-based model choice, gate
 reviewer) and replaces its sequential, one-writer loop with Matt Pocock's skill chain (wayfinder,
 grilling, specs, tracer-bullet tickets, parallel implementers on an integration branch, two-axis
@@ -87,9 +87,10 @@ Up to three tickets are in flight at any time (`AGENTS.md`, Concurrency).
 
 ## 6. Checks, ratchet, CI
 
-Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run from the repo root of
-the worktree. Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never
-to `target/` (`./mvnw clean` deletes it). The milestone-1 skeleton adds
+Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run in `mapping/` of
+the worktree; the Maven wrapper is at the repository's root, so from `mapping/` it is `../mvnw`.
+Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never to `target/`
+(`../mvnw clean` deletes it). The milestone-1 skeleton adds
 `scripts/gate-ticket.sh <ticket> <modules>` and `scripts/gate-spec.sh <spec>`. The verifier runs
 those scripts; until they exist it runs the steps below by hand, in this order.
 
@@ -98,9 +99,9 @@ directories, comma-separated, e.g. `engine/xdm,engine/ir`):
 
 | # | Command | Log | When |
 | --- | --- | --- | --- |
-| 1 | `./mvnw -B -pl <modules>,engine/oracle -am verify` | `.logs/<t>-build.log` | always: tests and JaCoCo floors of touched and upstream modules, the whole golden corpus and the differential oracle (ADR-0018); `service` adds ArchUnit and `@QuarkusTest` |
-| 1b | `./mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
-| 2 | `./mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
+| 1 | `../mvnw -B -pl <modules>,engine/oracle -am verify` | `.logs/<t>-build.log` | always: tests and JaCoCo floors of touched and upstream modules, the whole golden corpus and the differential oracle (ADR-0018); `service` adds ArchUnit and `@QuarkusTest` |
+| 1b | `../mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
+| 2 | `../mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
 | 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
 | 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the §11 trailers, merges of the integration tip included (spec-3 retro) |
 | 3 | `git diff --exit-code contract/` | — | the service or `contract/` changed |
@@ -116,16 +117,16 @@ most one gate that builds `service` at a time.
 
 **Spec gate** (verifier, integration branch, one at a time):
 
-1. `./mvnw -B clean verify -Pbench` (all tests, oracles, JaCoCo floors, bench compiles) and
+1. `../mvnw -B clean verify -Pbench` (all tests, oracles, JaCoCo floors, bench compiles) and
    `git diff --exit-code contract/`;
    1b. PIT on the class-C modules the spec touched:
-   `./mvnw -B -pl <class-C modules> -am test-compile org.pitest:pitest-maven:mutationCoverage`
+   `../mvnw -B -pl <class-C modules> -am test-compile org.pitest:pitest-maven:mutationCoverage`
    (`pit.skip` skips the modules without a mutation floor, F-5) (floor 80 %,
    ADR-0019) → `.logs/<spec>-pit.log`; `gate-spec.sh` ends with one line per module
    (`module killed/generated score% floor N% ok|DROP`) and the corpus and differential case counts (#67); above 10 minutes it narrows to the modules class-C tickets
    touched;
 2. in `ui/`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
-3. the stack: `./mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
+3. the stack: `../mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
 4. `java scripts/ratchet.java regen --all`: every report must be present, a drop fails, the
    verifier alone commits `ratchet/` to the integration branch;
 5. the JMH scenarios (ADR-0021):
@@ -159,7 +160,7 @@ Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1 and 1b, and step 3's 
 
 - `trailers` (PRs and `t/**` pushes, #67): `scripts/check-trailers.sh` over the PR or push range, plus the
   script tests that need no JDK;
-- `backend`: `./mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
+- `backend`: `../mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
   tests that need JDK 25 (`function-families*-test.sh`, #69);
 - `ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
   diff, `typecheck`, `lint`, `test`, `test:browser`, `e2e`, `build` → artefact;
@@ -216,7 +217,7 @@ hand-back.
 GitHub Issues replace the backlog and the progress journal: the spec, its tickets and their
 evidence comments are the record. Nothing that matters lives only in the conversation.
 
-## 10. Turn economy (lessons from Flottila, D-053/D-054 there)
+## 10. Turn economy (lessons from Rail8, D-053/D-054 there)
 
 - The architect is the most expensive context; deep design goes to a fresh designer, not into it.
 - Wait for a single agent in the foreground; background only with two or more in flight.

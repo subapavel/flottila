@@ -3,7 +3,7 @@ import type { MappingModel, TargetFieldMapping } from '../generated/mapping-mode
 import { describeRefusal } from './command';
 import { remap } from './remap';
 
-const NS = 'Q{urn:flottila:corpus:skeleton}';
+const NS = 'Q{urn:rail8:corpus:skeleton}';
 const ORDER = `/${NS}Order`;
 const ITEM = `${ORDER}/${NS}Item`;
 const LINE = `${ITEM}/${NS}Line`;
@@ -13,7 +13,7 @@ const NOTE = `${ORDER}/Note`;
 
 const structure = {
   bundle: ['../structures/skeleton/order.xsd'] as [string],
-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
+  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
   root: { element: `${NS}Order` },
 };
 

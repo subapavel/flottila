@@ -11,7 +11,7 @@ import { selectUnsaved, type WorkingCopyStore } from '../store/working-copy';
 import { studioStore } from '../shell/Studio';
 import { StudioShell } from '../shell/StudioShell';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
 const MAPPING = 'mappings/order-id-copy';
@@ -552,7 +552,7 @@ describe('the store refusals (#174)', () => {
     const withRefusal = { ...structure, types: { ...structure.types, [type]: structure.types[type]!.map((f) => (f.step === 'Note' ? { ...f, refusal: refused } : f)) } };
     return { ...fake, loadStructure: async () => withRefusal };
   }
-  const refusalAlert = () => page.getByRole('heading', { name: /The target field \/Q\{urn:flottila:corpus:skeleton\}Order\/Note is refused: unsupported-construct, declared at order.xsd:3:1/ });
+  const refusalAlert = () => page.getByRole('heading', { name: /The target field \/Q\{urn:rail8:corpus:skeleton\}Order\/Note is refused: unsupported-construct, declared at order.xsd:3:1/ });
   const dismiss = () => page.getByRole('button', { name: 'Dismiss refusal' });
 
   test('a refused drop shows why in a warning alert, which the author dismisses; the next refusal shows again', async () => {

@@ -18,7 +18,7 @@ export type ExecutionKind = (typeof EXECUTION_KINDS)[number];
 
 /** The import instructions every source starts with: the UDF API (ADR-0020) and the allow-listed JDK packages. */
 export const INITIAL_IMPORTS: readonly string[] = [
-  'io.flottila.mapping.udf.*',
+  'io.rail8.mapping.udf.*',
   'java.math.*',
   'java.text.*',
   'java.time.*',

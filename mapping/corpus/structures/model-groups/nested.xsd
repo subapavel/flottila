@@ -5,7 +5,7 @@
      inside a choice of two branches inside 1..2, so 0..2 (ADR-0008). Each repeated group holds
      one particle, so none interleaves. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:groups">
+           targetNamespace="urn:rail8:corpus:groups">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

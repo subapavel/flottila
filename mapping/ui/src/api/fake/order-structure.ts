@@ -17,19 +17,19 @@ const field = (step: string, min: number, max: number | undefined, valueType: st
  */
 export const orderStructure: StructureLoaded = {
   kind: 'loaded',
-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
+  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
   root: {
     kind: 'element',
-    step: 'Q{urn:flottila:corpus:skeleton}Order',
-    namespace: 'urn:flottila:corpus:skeleton',
+    step: 'Q{urn:rail8:corpus:skeleton}Order',
+    namespace: 'urn:rail8:corpus:skeleton',
     localName: 'Order',
     min: 1,
     max: 1,
     nillable: false,
-    type: '/Q{urn:flottila:corpus:skeleton}Order',
+    type: '/Q{urn:rail8:corpus:skeleton}Order',
   },
   types: {
-    '/Q{urn:flottila:corpus:skeleton}Order': [
+    '/Q{urn:rail8:corpus:skeleton}Order': [
       field('@channel', 0, 1, 'xs:string'),
       field('OrderId', 1, 1, 'xs:string'),
       field('Quantity', 0, 1, 'xs:integer'),

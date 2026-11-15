@@ -5,12 +5,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-engine</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-oracle</artifactId>
-  <name>Flottila Mapping oracle</name>
+  <artifactId>rail8-mapping-oracle</artifactId>
+  <name>Rail8 Mapping oracle</name>
 
   <properties>
     <!-- no main code: no coverage floor (ADR-0019) -->
@@ -21,7 +21,7 @@
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-api</artifactId>
+      <artifactId>rail8-mapping-api</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
@@ -57,8 +57,8 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <systemPropertyVariables>
-            <!-- the golden corpus at the repository root (ADR-0018) -->
-            <flottila.corpus>${maven.multiModuleProjectDirectory}/corpus</flottila.corpus>
+            <!-- the golden corpus at the mapping's root (ADR-0018) -->
+            <rail8.corpus>${mapping.root}/corpus</rail8.corpus>
           </systemPropertyVariables>
         </configuration>
       </plugin>

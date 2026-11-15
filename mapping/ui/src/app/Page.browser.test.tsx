@@ -83,7 +83,7 @@ describe('the page (ADR-0028)', () => {
 
     const row = table().getByRole('row').filter({ hasText: 'order-id-copy' });
     await expect.element(row.getByRole('link', { name: 'Open in studio' })).toHaveAttribute('href', '?api=fake&mapping=mappings%2Forder-id-copy#definition');
-    await expect.element(page.getByRole('link', { name: 'Flottila' })).toHaveAttribute('href', '?api=fake');
+    await expect.element(page.getByRole('link', { name: 'Rail8' })).toHaveAttribute('href', '?api=fake');
   });
 
   test('list, New mapping, Create: the new mapping opens in the studio in edit mode on Signature; Back returns to the list, which has it', async () => {
@@ -98,7 +98,7 @@ describe('the page (ADR-0028)', () => {
     await expect.element(page.getByRole('heading', { level: 1, name: 'order-to-invoice' })).toBeVisible();
     await expect.element(page.getByRole('tab', { name: 'Signature' })).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('button', { name: 'Save' })).toBeDisabled();
-    await expect.element(page.getByRole('link', { name: 'Flottila' })).toHaveAttribute('href', '?api=fake');
+    await expect.element(page.getByRole('link', { name: 'Rail8' })).toHaveAttribute('href', '?api=fake');
     expect(window.location.search).toBe('?api=fake&mapping=orders%2Forder-to-invoice');
     expect(window.location.hash).toBe('#signature');
 
@@ -179,7 +179,7 @@ describe('leaving the studio with unsaved changes (ADR-0028)', () => {
     await expect.element(page.getByRole('status').filter({ hasText: 'The structures changed' })).toBeVisible();
 
     // another query is another document: following the link unloads this one, and beforeunload asks
-    await expect.element(page.getByRole('link', { name: 'Flottila' })).toHaveAttribute('href', '?api=fake');
+    await expect.element(page.getByRole('link', { name: 'Rail8' })).toHaveAttribute('href', '?api=fake');
     expect(asksBeforeUnload()).toBe(true);
   });
 });

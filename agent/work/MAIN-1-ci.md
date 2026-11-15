@@ -28,3 +28,15 @@ Workflow `ci`, branch `main`. Names are the ones before commit B (`io.flottila.*
 - Runs 156-168 and 171-188 were not opened.
 - The stderr annotations "Exception in thread …" (ComponentContractSelfTest "variant-handler-failure-lost", PollingConsumerContractSelfTest
   "variant-round") are expected output of passing self-tests, not failures.
+
+## After FIX-217 (read 2026-11-15 07:12 UTC)
+- Run 201 (id 43688088414, push, head a686bcf6 - the FIX-217 commit): DCO job success (first-parent, D-150).
+- Build job "Postgres floor 17.11" (132732684892): testkit SUCCESS (1:00 min) - FIX-217's runner half is observed. The job then fails in
+  `rail8-runtime`'s unit tests after 3:17 min: `ReplicaStartTest.theStartRoomCheckCountsTheReplicas:159 ... expected: <3465> but was:
+  <3514>`, Tests run: 1563, Failures: 1 (FIX-213: 49 bytes = one segment header). Modules after runtime are skipped.
+- Build job "Postgres main 18.6" (132732684930): passed the runtime unit tests (the race of FIX-213 fell the other way) and failed in
+  the runtime ITs after 13:46 min: `StepBodiesIT.aRerunOfAStampingStep...:442->rowsOf:324->until:373 not within 20 s: fixture: 5 rows
+  of sb-rerun`, Tests run: 709, Failures: 1 (FIX-212). Modules after runtime are skipped.
+- What stops the build next, in this order: FIX-213 (runtime unit, a race), FIX-212 (runtime IT, every run seen so far). Nothing after
+  the runtime module has been reached on a runner since 2026-11-05, so cli, sim, archtest and bench are unobserved there.
+- Reading a job's log: `get_job_logs` with `tail_lines` 112-120 reaches the "[ERROR] Failures" block; 60 does not.

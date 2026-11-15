@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { MappingModel } from '../generated/mapping-model';
 import { setPositions } from './set-positions';
 
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `${ORDER}/OrderId`;
 const NOTE = `${ORDER}/Note`;
 

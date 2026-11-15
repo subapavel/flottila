@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #16)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 FOUNDING §6 says UDFs are Java, use the extension-function mechanism (annotation +
 `MethodHandle`) and declare their kind in the signature. ADR-0010 keeps the declaration in the
 model's `udfs` and the Java source in a referenced file, and ADR-0006 lifts single-value UDFs.

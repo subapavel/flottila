@@ -4,12 +4,12 @@
      output and a fault; the WSDL namespace is the default namespace. -->
 <description xmlns="http://www.w3.org/ns/wsdl"
              xmlns:xs="http://www.w3.org/2001/XMLSchema"
-             xmlns:po="urn:flottila:corpus:po"
-             xmlns:tns="urn:flottila:corpus:wsdl20"
-             targetNamespace="urn:flottila:corpus:wsdl20">
+             xmlns:po="urn:rail8:corpus:po"
+             xmlns:tns="urn:rail8:corpus:wsdl20"
+             targetNamespace="urn:rail8:corpus:wsdl20">
   <types>
-    <xs:schema targetNamespace="urn:flottila:corpus:wsdl20">
-      <xs:import namespace="urn:flottila:corpus:po"/>
+    <xs:schema targetNamespace="urn:rail8:corpus:wsdl20">
+      <xs:import namespace="urn:rail8:corpus:po"/>
       <xs:element name="Receipt">
         <xs:complexType>
           <xs:sequence>

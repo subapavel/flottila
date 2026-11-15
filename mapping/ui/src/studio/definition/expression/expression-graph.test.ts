@@ -7,7 +7,7 @@ import { arrange, layoutOf, positionsOf, shownPositions } from './expression-lay
 import { drilldown } from './function-groups';
 
 const catalogue = JSON.parse(catalogueText) as FunctionCatalogue;
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ROW = `${ORDER}/Row`;
 
 /** Row: Sku into removeContexts, the result; a concat with one input wired; a floating constant. */

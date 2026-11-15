@@ -92,6 +92,38 @@ class CoverageCheckTest(unittest.TestCase):
                          cc.compare(cc.measure(self.root), {}, self.root))
         self.assertEqual(frozenset(), cc.IGNORED, "nothing is exempt from the coverage report since P0-09")
 
+    def test_a_module_under_mapping_is_neither_measured_nor_a_stale_baseline(self):
+        # the mapping engine has its own gates (BRAND-3): its reports and its report-less classes are not this guard's
+        module(self.root, "platform/core", report=(0, 10, 0, 2))
+        module(self.root, "mapping/engine/xdm", report=(50, 50, 5, 5))
+        module(self.root, "mapping/engine/ir")  # classes, no report
+        committed = {"platform/core": {"line": 100.0, "branch": 100.0}}
+        self.assertEqual(committed, cc.measure(self.root))
+        self.assertEqual([], cc.compare(cc.measure(self.root), committed, self.root))
+        self.assertEqual([], cc.check_baseline(cc.measure(self.root), committed))
+        path = self.root / "ci" / "coverage-baseline.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps(committed))
+        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, cc.main(["--root", str(self.root), "--check-baseline"]))
+        self.assertEqual("", err.getvalue())
+
+    def test_only_the_top_level_mapping_directory_is_foreign(self):
+        # a sibling whose name starts with "mapping" and a "mapping" directory deeper down are still this guard's
+        module(self.root, "mappingx/engine", report=(0, 10, 0, 2))
+        module(self.root, "mappingx/bare")  # classes, no report
+        module(self.root, "platform/steps/mapping/rules", report=(5, 5, 1, 1))
+        module(self.root, "platform/steps/mapping/bare")  # classes, no report
+        current = cc.measure(self.root)
+        self.assertEqual({"mappingx/engine": {"line": 100.0, "branch": 100.0},
+                          "platform/steps/mapping/rules": {"line": 50.0, "branch": 50.0}}, current)
+        self.assertEqual(["mappingx/bare: has classes but no JaCoCo report (no test ran)",
+                          "platform/steps/mapping/bare: has classes but no JaCoCo report (no test ran)"],
+                         cc.compare(current, {}, self.root))
+        self.assertEqual(["mappingx/engine: not in the committed baseline — run --write",
+                          "platform/steps/mapping/rules: not in the committed baseline — run --write"],
+                         cc.check_baseline(current, {}))
+
     def test_decrease_against_baseline_fails(self):
         module(self.root, "rail8-api", report=(20, 80, 5, 15))
         baseline = {"rail8-api": {"line": 90.0, "branch": 75.0}}

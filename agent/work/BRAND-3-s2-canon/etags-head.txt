@@ -1,0 +1,9 @@
+HEAD     CORPUS_MAPPING_ETAG  sha256sum mapping/corpus/mappings/order-id-copy.mapping.json 57e4430fd26dcadc7d40f72fd4b48bb6cd48d97cf86293e77946e71e6fe8578e
+HEAD     UNWIRED_ETAG         that file with "result": "a1" -> null     1d39875e6253f99d3d01f14798a2113b4543ea72df1d1545a6257b81f7893001
+HEAD     NEW_MAPPING_ETAG     text block NEW_MAPPING                    51535d0aefaec12efa302bfb41edc0c8b157e2a40d86d35d2b206cab21832231
+HEAD     BARE_MAPPING_ETAG    BARE_MAPPING                              1fe9d6e3dbb25864055716be7631a1aff574aeae152ff231921d4048d7c57746
+HEAD     DESCRIBED_MAPPING_ETAG text block DESCRIBED_MAPPING            92a9034b851e89532b801986f75e3462af89634bcd1179d4effca7b1859c94e5
+HEAD     DESCRIBED_NEW_MAPPING_ETAG text block DESCRIBED_NEW_MAPPING    0e0870685a84d848db0743544144c1b45bd57ca02fe77f2d636a740ce78b1be1
+HEAD     STUDIO_MAPPING_ETAG  text block STUDIO_MAPPING                 c314903c366e468a4482816bde25983e7a9883734f78212e399d87a61d4e46a0
+HEAD     RENAMED_FINGERPRINT  the canonical text in its javadoc         fa26a9a97445ebd6ebb4d69c404d39990927b2225e2e81d194d1ea89ce04b5c1
+HEAD     (check) skeleton canonical text: the same with OrderId         df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d

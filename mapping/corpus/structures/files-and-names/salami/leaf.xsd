@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#93): global elements of a simple type, fields to refer to but never a root -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:leaf"
-           targetNamespace="urn:flottila:corpus:leaf">
+           xmlns:tns="urn:rail8:corpus:leaf"
+           targetNamespace="urn:rail8:corpus:leaf">
   <xs:element name="Code" type="xs:string"/>
   <xs:element name="Amount" type="tns:Money"/>
   <xs:element name="Doc" type="tns:DocType"/>

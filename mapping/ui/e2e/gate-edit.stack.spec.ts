@@ -9,7 +9,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 // GATE check 2 (#117): editing in the studio over the real service, and an attribute field mapped and run (#102).
 // Both mappings are workspace copies of order-id-copy without target field mappings, made by the server command.
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `${ORDER}/OrderId`;
 const CHANNEL = `${ORDER}/@channel`;
 const corpus = (path: string) => new URL(`../../corpus/${path}`, import.meta.url);

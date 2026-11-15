@@ -1,4 +1,4 @@
-# Flottila Mapping
+# Rail8 Mapping
 
 Open-source mapping engine and editor for enterprise integration. Draw a mapping between two
 message structures the way SAP PO graphical mappings work — queues, contexts, standard functions,
@@ -15,7 +15,8 @@ Built AI-first: agents write the code under the rules in `CLAUDE.md`, `AGENTS.md
 
 ## Run the Mapping studio and test a mapping
 
-1. Start the service: `./mvnw -pl service -am quarkus:dev`. It serves the mappings of `corpus/`.
+1. Start the service: `../mvnw -pl service -am quarkus:dev`, in `mapping/` (the Maven wrapper is at the
+   repository's root). It serves the mappings of `corpus/`.
 2. Start the UI: `npm run dev` in `ui/` (run `npm ci` there first).
 3. Open http://localhost:5173. The start page lists the mappings.
 4. Choose **Open in studio** on a mapping, for example `order-id-copy`. It opens read-only.

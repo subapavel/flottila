@@ -3,8 +3,8 @@
      fields the mapping writes from 30 of the record's 300, each of the source field's type, but
      Consignee (two names concatenated) and BillTotal (the sum formatted), which are strings. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:bench:wide"
-           xmlns="urn:flottila:corpus:bench:wide"
+           targetNamespace="urn:rail8:corpus:bench:wide"
+           xmlns="urn:rail8:corpus:bench:wide"
            elementFormDefault="qualified">
   <xs:element name="WideBatch">
     <xs:complexType>

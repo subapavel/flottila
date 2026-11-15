@@ -5,13 +5,13 @@
      without message and an output whose message no file declares -->
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
                   xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                  xmlns:s="urn:flottila:corpus:refusals11-types"
-                  xmlns:tns="urn:flottila:corpus:refusals11"
-                  targetNamespace="urn:flottila:corpus:refusals11">
-  <wsdl:import namespace="urn:flottila:corpus:nowhere" location="nowhere.wsdl"/>
+                  xmlns:s="urn:rail8:corpus:refusals11-types"
+                  xmlns:tns="urn:rail8:corpus:refusals11"
+                  targetNamespace="urn:rail8:corpus:refusals11">
+  <wsdl:import namespace="urn:rail8:corpus:nowhere" location="nowhere.wsdl"/>
   <wsdl:types>
-    <xs:schema targetNamespace="urn:flottila:corpus:refusals11-types">
-      <xs:import namespace="urn:flottila:corpus:refusals11"/>
+    <xs:schema targetNamespace="urn:rail8:corpus:refusals11-types">
+      <xs:import namespace="urn:rail8:corpus:refusals11"/>
       <xs:element name="Doc">
         <xs:complexType>
           <xs:sequence>

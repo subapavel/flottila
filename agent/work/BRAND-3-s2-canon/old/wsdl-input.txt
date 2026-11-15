@@ -1,0 +1,9 @@
+root Q{urn:flottila:corpus:po}Order 1..1 - /Q{urn:flottila:corpus:po}Order
+type /Q{urn:flottila:corpus:po}Order
+field Q{urn:flottila:corpus:po}Id 1..1 xs:string -
+field Q{urn:flottila:corpus:po}ShipTo 1..1 - Q{urn:flottila:corpus:common}Address
+field Q{urn:flottila:corpus:po}Total 1..1 xs:decimal -
+field Q{urn:flottila:corpus:common}Note 0..unbounded xs:string -
+type Q{urn:flottila:corpus:common}Address
+field Street 1..1 xs:string -
+field City 1..1 xs:string -

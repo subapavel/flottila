@@ -2,7 +2,7 @@
 <!-- Synthetic fixture for GATE check 1 (#100): xs:override is refused when the schema loads
      (ADR-0008 "XSD") -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:gate:refused">
+           targetNamespace="urn:rail8:corpus:gate:refused">
   <xs:override schemaLocation="base.xsd">
     <xs:simpleType name="Code">
       <xs:restriction base="xs:string"/>

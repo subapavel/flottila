@@ -3,8 +3,8 @@
      another namespace. Each becomes a choice of the non-abstract members, head first and then by
      QName (ADR-0008). An abstract head with no non-abstract member stays, refused in a target -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:h="urn:flottila:corpus:heads"
-           targetNamespace="urn:flottila:corpus:heads">
+           xmlns:h="urn:rail8:corpus:heads"
+           targetNamespace="urn:rail8:corpus:heads">
   <xs:element name="Catalog">
     <xs:complexType>
       <xs:sequence>

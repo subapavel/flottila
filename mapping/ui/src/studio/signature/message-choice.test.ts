@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { choiceOf, draftOf, type ChoiceDraft } from './message-choice';
 import type { MessageChoice } from '../shared/structure-names';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const empty = draftOf(undefined);
 const draft = (change: Partial<ChoiceDraft>): ChoiceDraft => ({ ...empty, ...change });
 

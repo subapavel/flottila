@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #12); amended by F-3 (no `--add-modules` under Maven) and refined by ADR-0016 (modules, ArchUnit rules); F-12 resolved by the spec-4 grilling (2026-11-05)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 FOUNDING §11 sketches JPMS modules for everything, "the service" included. The owner wants the
 service in Quarkus, the same as Flottila's future backend. Quarkus builds and runs an
 application on the class path. So the engine stays JPMS and the service does not.

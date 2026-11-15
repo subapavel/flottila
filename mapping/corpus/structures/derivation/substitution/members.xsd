@@ -3,10 +3,10 @@
      Single joins h:Product through the abstract Album, transitively; Shade, the only member of the
      abstract h:Ghost, is abstract too; Disc, with no type, takes its head's -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:h="urn:flottila:corpus:heads"
-           xmlns:m="urn:flottila:corpus:members"
-           targetNamespace="urn:flottila:corpus:members">
-  <xs:import namespace="urn:flottila:corpus:heads" schemaLocation="heads.xsd"/>
+           xmlns:h="urn:rail8:corpus:heads"
+           xmlns:m="urn:rail8:corpus:members"
+           targetNamespace="urn:rail8:corpus:members">
+  <xs:import namespace="urn:rail8:corpus:heads" schemaLocation="heads.xsd"/>
   <xs:element name="Single" type="h:ProductType" substitutionGroup="m:Album"/>
   <xs:element name="Book" type="h:ProductType" substitutionGroup="h:Product"/>
   <xs:element name="Album" type="h:ProductType" substitutionGroup="h:Product" abstract="true"/>

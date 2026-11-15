@@ -3,7 +3,7 @@
      second A's declaration (line 15), not the first's or the last's; B, their neighbour, and Line
      carry no refusal. The As differ in type so that each can be told apart in field order. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:skeleton">
+           targetNamespace="urn:rail8:corpus:skeleton">
   <xs:element name="Order">
     <xs:complexType>
       <xs:sequence>

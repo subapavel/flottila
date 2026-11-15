@@ -38,7 +38,7 @@ export type Coordinate = number;
 export type UdfParamType = "string" | "int";
 
 /**
- * A Flottila mapping model, formatVersion 1 (ADR-0010, ADR-0011, ADR-0029). Its canonical form is written by the engine's one writer. source and target are absent until the Signature tab chooses them.
+ * A Rail8 mapping model, formatVersion 1 (ADR-0010, ADR-0011, ADR-0029). Its canonical form is written by the engine's one writer. source and target are absent until the Signature tab chooses them.
  */
 export interface MappingModel {
   /**

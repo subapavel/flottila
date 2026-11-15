@@ -14,8 +14,8 @@ import { StudioShell } from '../shell/StudioShell';
 
 const MAPPING = 'mappings/order-id-copy';
 const KEY = testInstancesKey(MAPPING);
-const INPUT = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
-const OTHER = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-2</OrderId></Order>';
+const INPUT = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
+const OTHER = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-2</OrderId></Order>';
 
 function memoryBrowserState(seed: Record<string, unknown> = {}): BrowserStateStore & { values: Map<string, unknown> } {
   const values = new Map<string, unknown>(Object.entries(seed));

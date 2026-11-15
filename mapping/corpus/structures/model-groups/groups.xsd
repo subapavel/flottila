@@ -3,10 +3,10 @@
      reference's occurrence multiplied into the group's fields (ADR-0008). The groups Lines and
      Audited are declared in common.xsd, in another namespace. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:g="urn:flottila:corpus:groups"
-           xmlns:c="urn:flottila:corpus:groups:common"
-           targetNamespace="urn:flottila:corpus:groups">
-  <xs:import namespace="urn:flottila:corpus:groups:common" schemaLocation="common.xsd"/>
+           xmlns:g="urn:rail8:corpus:groups"
+           xmlns:c="urn:rail8:corpus:groups:common"
+           targetNamespace="urn:rail8:corpus:groups">
+  <xs:import namespace="urn:rail8:corpus:groups:common" schemaLocation="common.xsd"/>
   <xs:group name="Party">
     <xs:sequence>
       <xs:element name="Name" type="xs:string"/>

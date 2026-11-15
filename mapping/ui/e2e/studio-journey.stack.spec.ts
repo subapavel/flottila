@@ -6,7 +6,7 @@ import { stackWorkspace } from './stack-workspace';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const canvas = (page: Page) => page.getByRole('group', { name: 'Mapping canvas' });
 const node = (page: Page, name: RegExp) => canvas(page).getByRole('group', { name });

@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #12); refined by ADR-0020 (UDF scan endpoint, trace `messages`, `flottila:UDF-ERROR`); trace shape refined by #53; refresh result refined by the spec-4 grilling (2026-11-05)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 ADR-0013 makes the editor reach the service only through `ApiClient`, with compile and test
 on the unsaved working copy, and generated wire types only. This ADR fixes the contract and
 its type source. The owner prefers Quarkus OpenAPI → TypeScript.

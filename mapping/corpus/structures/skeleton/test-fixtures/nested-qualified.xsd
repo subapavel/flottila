@@ -2,7 +2,7 @@
 <!-- Fixture (#62): elementFormDefault="qualified" puts every local element, at any depth, in the
      target namespace -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:skeleton" elementFormDefault="qualified">
+           targetNamespace="urn:rail8:corpus:skeleton" elementFormDefault="qualified">
   <xs:element name="Order">
     <xs:complexType>
       <xs:sequence>

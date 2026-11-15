@@ -31,8 +31,8 @@ the tickets that touch them — not decisions yet unless an ADR exists):
 - Mapping speed target: at least SAP PO's compiled mappings — projection of the source,
   streamed target output, values as strings by default, compile at deploy, shape-specialised code.
 - Every mapping exports to readable XSLT 3.0; the export doubles as the differential oracle.
-- UI: React + PatternFly (it will also be Flottila's UI). Repo, packages: `io.flottila.mapping`,
-  separate from Flottila until integration.
+- UI: React + PatternFly (it will also be Rail8's UI). Repo, packages: `io.rail8.mapping`,
+  separate from Rail8 until integration.
 - Open source (Apache 2.0); synthetic corpora only; Saxon-HE at test scope only.
 - Streaming later as burst mode, not full XSLT streamability.
 - Way of working: ADR-0001; the environment is Claude Code Cloud (4 vCPU).
@@ -47,7 +47,7 @@ grilling session so the owner reacts to a concrete proposal.
 
 ### Not yet specified
 
-- How the engine is embedded in Flottila (step SPI, deployment of mappings, monitoring hooks).
+- How the engine is embedded in Rail8 (step SPI, deployment of mappings, monitoring hooks).
 - Importing SAP PO message mappings from ESR exports; porting their UDFs.
 - XSLT front end and the XPath engine beyond what the exporter needs; W3C conformance strategy.
 - Burst-mode streaming for large files.
@@ -132,7 +132,7 @@ in the cloud VM. Blocked by: 5, 9.
 
 ### 11. What does the backend service look like? [grilling]
 
-HTTP framework (Vert.x 5 for Flottila alignment vs a minimal JDK server), endpoints for
+HTTP framework (Vert.x 5 for Rail8 alignment vs a minimal JDK server), endpoints for
 structures, mappings, compile, test run and display queue, persistence of mappings for milestone 1
 (files vs database). Blocked by: 5.
 

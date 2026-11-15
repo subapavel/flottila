@@ -3,22 +3,22 @@
      namespace of a bundle XSD, each by namespace only. A prefix is declared inside a schema. -->
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
                   xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                  xmlns:a="urn:flottila:corpus:split-a"
-                  targetNamespace="urn:flottila:corpus:split-messages">
+                  xmlns:a="urn:rail8:corpus:split-a"
+                  targetNamespace="urn:rail8:corpus:split-messages">
   <wsdl:types>
-    <xs:schema targetNamespace="urn:flottila:corpus:split-a">
-      <xs:import namespace="urn:flottila:corpus:split-b"/>
+    <xs:schema targetNamespace="urn:rail8:corpus:split-a">
+      <xs:import namespace="urn:rail8:corpus:split-b"/>
       <xs:element name="Doc">
         <xs:complexType>
           <xs:sequence>
-            <xs:element xmlns:b="urn:flottila:corpus:split-b" ref="b:Item"/>
+            <xs:element xmlns:b="urn:rail8:corpus:split-b" ref="b:Item"/>
           </xs:sequence>
         </xs:complexType>
       </xs:element>
     </xs:schema>
-    <xs:schema xmlns:t="urn:flottila:corpus:split-types"
-               targetNamespace="urn:flottila:corpus:split-b">
-      <xs:import namespace="urn:flottila:corpus:split-types"/>
+    <xs:schema xmlns:t="urn:rail8:corpus:split-types"
+               targetNamespace="urn:rail8:corpus:split-b">
+      <xs:import namespace="urn:rail8:corpus:split-types"/>
       <xs:element name="Item">
         <xs:complexType>
           <xs:sequence>

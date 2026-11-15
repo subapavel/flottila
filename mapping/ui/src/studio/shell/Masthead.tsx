@@ -6,7 +6,7 @@ import './shell.css';
 const ABOUT = 'About Mapping studio';
 
 /**
- * The studio's masthead, "Flottila | Mapping studio" (ADR-0028): the brand links to the start page at `homeHref`; on the
+ * The studio's masthead, "Rail8 | Mapping studio" (ADR-0028): the brand links to the start page at `homeHref`; on the
  * right, the help button opens About Mapping studio, the prototype's help adapted to our product.
  */
 export function Masthead({ homeHref }: { homeHref: string }) {
@@ -17,7 +17,7 @@ export function Masthead({ homeHref }: { homeHref: string }) {
         <span className="brand-icon">
           <LayerGroupIcon />
         </span>
-        Flottila
+        Rail8
       </a>
       <span className="mast-divider" />
       <span className="mast-product">Mapping studio</span>
@@ -29,7 +29,7 @@ export function Masthead({ homeHref }: { homeHref: string }) {
       <Modal variant="small" isOpen={about} onClose={() => setAbout(false)} aria-label={ABOUT}>
         <ModalHeader title={ABOUT} />
         <ModalBody>
-          <p>Open a mapping from its Flottila package. Choose Edit to make changes.</p>
+          <p>Open a mapping from its Rail8 package. Choose Edit to make changes.</p>
           <p>
             Drag a source field onto a target for a direct connection. In its expression, drag from an output to an input to connect them.
             Dropping on an occupied input replaces its wire. Move either end of a wire to reconnect it, or right-click it and choose

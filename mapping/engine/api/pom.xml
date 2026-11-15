@@ -4,37 +4,37 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-engine</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-api</artifactId>
-  <name>Flottila Mapping api</name>
+  <artifactId>rail8-mapping-api</artifactId>
+  <name>Rail8 Mapping api</name>
 
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-mapping</artifactId>
+      <artifactId>rail8-mapping-mapping</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-runtime</artifactId>
+      <artifactId>rail8-mapping-runtime</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-structure-import</artifactId>
+      <artifactId>rail8-mapping-structure-import</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-xslt-export</artifactId>
+      <artifactId>rail8-mapping-xslt-export</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-udf</artifactId>
+      <artifactId>rail8-mapping-udf</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>
@@ -49,7 +49,7 @@
             <!-- PIT only; Surefire still runs it: it reads ModuleLayer.boot(), which is empty on
                  PIT's class path (docs/findings/F-10.md) -->
             <excludedTestClasses>
-              <param>io.flottila.mapping.api.DiagnosticCatalogueTest</param>
+              <param>io.rail8.mapping.api.DiagnosticCatalogueTest</param>
             </excludedTestClasses>
           </configuration>
         </plugin>
@@ -62,7 +62,7 @@
         <configuration>
           <!-- the root's @{argLine} (JaCoCo) first; EngineFacadeTraceTest's fake clock takes
                Tracer's private lock by reflection (#103) -->
-          <argLine>@{argLine} --add-opens io.flottila.mapping.runtime/io.flottila.mapping.runtime=io.flottila.mapping.api</argLine>
+          <argLine>@{argLine} --add-opens io.rail8.mapping.runtime/io.rail8.mapping.runtime=io.rail8.mapping.api</argLine>
         </configuration>
       </plugin>
     </plugins>

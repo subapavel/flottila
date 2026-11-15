@@ -52,8 +52,8 @@ describe('preview drafts: the edit session of the preview features (ADR-0028)', 
   });
 
   test('a refused save and a save conflict keep the drafts and count no commit', async () => {
-    const refused = new ApiProblem({ type: 'urn:flottila:mapping:problem:internal', title: 'Internal error', status: 500, detail: 'disk full' });
-    const conflict = new ApiProblem({ type: 'urn:flottila:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
+    const refused = new ApiProblem({ type: 'urn:rail8:mapping:problem:internal', title: 'Internal error', status: 500, detail: 'disk full' });
+    const conflict = new ApiProblem({ type: 'urn:rail8:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
     const s = store({ save: vi.fn().mockRejectedValueOnce(refused).mockRejectedValueOnce(conflict) });
     s.getState().setPreviewDraft('functions', true);
 

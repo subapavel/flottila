@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#95): derivations outside the XSD the reader reads, each refused where it stands -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:c="urn:flottila:corpus:constructs"
-           targetNamespace="urn:flottila:corpus:constructs">
+           xmlns:c="urn:rail8:corpus:constructs"
+           targetNamespace="urn:rail8:corpus:constructs">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

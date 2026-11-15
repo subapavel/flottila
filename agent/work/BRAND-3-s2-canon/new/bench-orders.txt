@@ -1,0 +1,16 @@
+root Q{urn:rail8:corpus:bench:orders}OrderBatch 1..1 - /Q{urn:rail8:corpus:bench:orders}OrderBatch
+type /Q{urn:rail8:corpus:bench:orders}OrderBatch
+field Q{urn:rail8:corpus:bench:orders}Order 0..unbounded - /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order
+field Q{urn:rail8:corpus:bench:orders}Pick 0..unbounded - /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Pick
+type /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order
+field Q{urn:rail8:corpus:bench:orders}Number 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Placed 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Customer 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Item 0..unbounded - /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item
+type /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item
+field Q{urn:rail8:corpus:bench:orders}Sku 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Quantity 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Price 1..1 xs:string -
+type /Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Pick
+field Q{urn:rail8:corpus:bench:orders}Warehouse 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:orders}Sku 1..1 xs:string -

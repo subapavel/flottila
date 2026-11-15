@@ -1,7 +1,7 @@
 {
   "mapping": "mappings/sort-by-key-case-insensitive.mapping.json",
   "provenance": "decided",
-  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Flottila follows CPI; expected.xml equals corpus/observations/obs-context-functions/cpi/sortByKey-002-spec2-sort-by-key-case-insensitive.xml (2,4,1,3,5,6), PO 7.50 gave 2,4,1,3,6,5 (po75/sortByKey-002-spec2-sort-by-key-case-insensitive.xml); was assumed: #48 owner decision Q4: case-insensitive is String.compareToIgnoreCase; #2 §4 sortByKey: like sort over (key, value) pairs, input 1 keys, input 2 values [SAP✓ STD]",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Rail8 follows CPI; expected.xml equals corpus/observations/obs-context-functions/cpi/sortByKey-002-spec2-sort-by-key-case-insensitive.xml (2,4,1,3,5,6), PO 7.50 gave 2,4,1,3,6,5 (po75/sortByKey-002-spec2-sort-by-key-case-insensitive.xml); was assumed: #48 owner decision Q4: case-insensitive is String.compareToIgnoreCase; #2 §4 sortByKey: like sort over (key, value) pairs, input 1 keys, input 2 values [SAP✓ STD]",
   "expect": "output",
   "note": "caseInsensitive keys B, a, b, A, Ａ, 😀 with values 1-6: the ties a, A and B, b keep their input order, and Ａ (U+FF41 folded) comes before 😀 (U+1F600) by code point, so the values are 2, 4, 1, 3, 5, 6. Lexicographic would give 4, 1, 2, 3, 6, 5. R1 joins the contexts K1 keeps, so All shows each order's values in turn. Observe in SAP PO (#33)."
 }

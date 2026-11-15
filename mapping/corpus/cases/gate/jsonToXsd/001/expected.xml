@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<po:PurchaseOrder xmlns:po="urn:flottila:corpus:gate:po" xmlns:c="urn:flottila:corpus:gate:common" issued="2026-04-01">
+<po:PurchaseOrder xmlns:po="urn:rail8:corpus:gate:po" xmlns:c="urn:rail8:corpus:gate:common" issued="2026-04-01">
   <po:OrderId>J-200</po:OrderId>
   <po:Buyer>
     <c:Name>Grace Hopper</c:Name>

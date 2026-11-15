@@ -4,7 +4,8 @@ Read this before your first build or commit in a worktree.
 
 - **The container can restart at any time** and drops every uncommitted change. Commit and push
   your branch after each green step, not only at hand-back.
-- **JDK**: Java 25 at `/opt/temurin-25` (`JAVA_HOME`). Build with `./mvnw -B`.
+- **JDK**: Java 25 at `/opt/temurin-25` (`JAVA_HOME`). Build in `mapping/` with `../mvnw -B`
+  (the Maven wrapper is at the repository's root).
 - **Processes**: stop a process by its pid (`kill <pid>`). `pkill -f` matches the agent's own
   command line and ends the session.
 - **Browser**: Chromium and Playwright are pre-installed and pinned; `npm run e2e*` finds them.

@@ -2,8 +2,8 @@
 <!-- Fixture (#93): named complex types, one used at two paths and one recursive, and named simple
      types whose value type comes from their built-in ancestry -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:named"
-           targetNamespace="urn:flottila:corpus:named">
+           xmlns:tns="urn:rail8:corpus:named"
+           targetNamespace="urn:rail8:corpus:named">
   <xs:element name="Deal">
     <xs:complexType>
       <xs:sequence>

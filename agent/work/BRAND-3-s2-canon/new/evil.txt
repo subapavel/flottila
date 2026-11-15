@@ -1,0 +1,3 @@
+root Q{urn:rail8:test:outside}Exfil 1..1 - /Q{urn:rail8:test:outside}Exfil
+type /Q{urn:rail8:test:outside}Exfil
+field SecretField 1..1 xs:string -

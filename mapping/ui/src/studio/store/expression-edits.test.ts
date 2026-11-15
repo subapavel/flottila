@@ -3,7 +3,7 @@ import type { Diagnostic, StoredMapping } from '../../api/client';
 import type { MappingModel } from '../../generated/mapping-model';
 import { createWorkingCopyStore, selectUnsaved } from './working-copy';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
 

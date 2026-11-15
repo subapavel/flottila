@@ -120,6 +120,35 @@ per-module counts equal to `BRAND-3-base-counts.txt`, both oracles pass with the
 `--root mapping`: 0 changes, remaining 0 outside history and the kept names. The platform's whole
 reactor is the verifier's run.
 
+### Rulings on step 2's hand-back (they bind its commit and step 3)
+
+1. **The platform's guards and CI do not read or build `mapping/`.** `ci/coverage_check.py` reads the
+   reports under `platform/` and `bench/` only (a red case in its own tests first; the committed
+   baseline is unchanged). The three Maven steps of `.github/workflows/ci.yml` take
+   `-f platform/pom.xml` in this step, not in step 3 — the root aggregator lists `mapping` from this
+   commit on, and the platform's job must not build it for one commit.
+2. **The wrapper is the repository's.** `.mvn/`, `mvnw` and `mvnw.cmd` are at the root; the root
+   `.gitattributes` carries `mvnw.cmd -text`. The mapping's living documents that state a command
+   state one that works (`../mvnw` from `mapping/`); a script test that pins such a text follows it.
+3. **Names beyond the packet's list** follow D-151, no alias: the problem-type URN, the observation
+   and test URNs, the drag MIME type, the browser storage key, the nil `$id`, the temp prefixes, the
+   glossary's term.
+4. **Recorded observations** (`mapping/corpus/observations/**`): the synthetic names are relabelled in
+   inputs and observed outputs alike; a name that exists in a SAP system (the CPI package) and a
+   binary export (`po75/attr4-str-attr-ns-export.zip`, read by nothing) stay as recorded. The
+   directory's README says so, dated.
+5. **`@SuppressWarnings("module")`** stays on the eleven module declarations (javac's `module` lint
+   flags a name component that ends in a digit; the build has `-Werror`); the reason is stated once,
+   in the amendment line of the mapping's ADR-0016. No global `-Xlint:-module`.
+6. **Column expectations.** A column in an expected load error is a position in the input text and is
+   derived from the text (new = old − 3 per rename to its left on the line), the same rule as a pin of
+   nameable bytes. The table is `agent/work/BRAND-3-s2-columns.txt`.
+7. **The tool:** `WIRE_BASES` as a map of full SHAs, each entry checked against its own base, is
+   accepted (the platform's entries at c017e9ce, the mapping's at the import merge 52e6e418).
+8. **Tests the implementer did not write** and changed — the root finders, the column expectations,
+   the script tests' `MVNW`, the hand-over text's pin — are listed with their reasons in the commit
+   body (ruling 1 after step 1's review).
+
 ## Step 3 — one CI, one set of rules, one notice (implementer for the files, architect for the root documents; one commit)
 
 - Workflows: `mapping/.github/workflows/{ci,bench,nightly}.yml` become
@@ -152,6 +181,32 @@ reactor is the verifier's run.
   step 1's review: the licence list and the pointer to `mapping/CLAUDE.md`); ARCHITECTURE §12 (the `mapping/` row is no longer "planned") with
   its changelog row; `MAP-<n>` rows in the backlog from `agent/work/BRAND-3-scout.md` block 6;
   `agent/NOTES.md`; the root `README.md` layout.
+
+### Rulings for step 3 (after step 2; they extend the list above)
+
+1. **`mapping/docs/WORKFLOW.md`.** The file is archived by `git mv` to
+   `mapping/docs/archive/WORKFLOW-until-2026-11-15.md`. A new `mapping/docs/WORKFLOW.md` holds the
+   title, three lines saying that the process is the repository's (`CLAUDE.md`, `AGENTS.md`,
+   `docs/WORKFLOW.md` at the root — D-151) and where the old text is, and the old §6 "Checks, ratchet,
+   CI" under its old number, its job names and paths corrected to the ported workflows. Every
+   reference in a living file of the mapping to another section of the old workflow (`§7` findings,
+   `§11` commits, …) is corrected to the root document's section, or dropped where the root has the
+   rule already; list them in the hand-back.
+2. **`mapping/agent/`** is archived whole by `git mv` to `mapping/docs/archive/agent/` (`HANDOFF.md`,
+   `NOTES.md`, `prompts/`): the tool left it as history, and its notes carry the old names. The
+   architect copies what still holds into the root `agent/NOTES.md`.
+3. **`mapping/docs/agents/`**: `issue-tracker.md` and `triage-labels.md` are archived (the tracker is
+   `agent/BACKLOG.md`); `domain.md` and `environment.md` stay, and `environment.md` no longer points
+   at an archived file.
+4. **The allow-list after step 3:** one entry `mapping/docs/archive/** | *` replaces the entries for
+   `mapping/CLAUDE.md`, `mapping/.claude/**`, `mapping/deploy/claude-cloud/**` and `mapping/agent/**`;
+   the new `mapping/CLAUDE.md` and `mapping/docs/WORKFLOW.md` hold the new names only.
+5. **Left from step 2:** `mapping/scripts/test/gate-log-test.sh:22` (a comment) still names the
+   wrapper's old place.
+6. **The ported workflows' triggers:** `mapping-ci.yml` runs on a push or pull request that touches
+   `mapping/**`, the root `pom.xml`, `.mvn/**`, `mvnw*` or the workflow file; the schedule and
+   dispatch triggers of the originals are kept. The platform's `ci.yml` keeps its triggers (its DCO
+   job checks every push).
 
 ## Acceptance (the verifier)
 

@@ -12,8 +12,8 @@ import { studioStore } from '../shell/Studio';
 import { StudioShell } from '../shell/StudioShell';
 
 const MAPPING = 'mappings/order-id-copy';
-const INPUT = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
-const OUTPUT = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
+const INPUT = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
+const OUTPUT = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
 const TIME = String.raw`\d{2}:\d{2}:\d{2}`;
 
 const unreachable: Diagnostic = {
@@ -212,7 +212,7 @@ describe('the Test tab (#158)', () => {
     await runButton().click();
     await expect.element(result()).toMatchTextContent(OUTPUT);
     await result().getByRole('button', { name: 'Pretty Print' }).click();
-    expect(result().element().querySelector('pre')!.textContent).toBe('<Order xmlns="urn:flottila:corpus:skeleton">\n  <OrderId>PO-1</OrderId>\n</Order>');
+    expect(result().element().querySelector('pre')!.textContent).toBe('<Order xmlns="urn:rail8:corpus:skeleton">\n  <OrderId>PO-1</OrderId>\n</Order>');
 
     await input.fill('<Order>');
     await source().getByRole('button', { name: 'Pretty Print' }).click();

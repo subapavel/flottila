@@ -1,0 +1,14 @@
+Building Flottila Mapping xdm 0.1.0-SNAPSHOT|Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0|Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping structure 0.1.0-SNAPSHOT|Tests run: 412, Failures: 0, Errors: 0, Skipped: 0|Tests run: 412, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping structure-import 0.1.0-SNAPSHOT|Tests run: 211, Failures: 0, Errors: 0, Skipped: 0|Tests run: 211, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping ir 0.1.0-SNAPSHOT|Tests run: 91, Failures: 0, Errors: 0, Skipped: 0|Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping serializer 0.1.0-SNAPSHOT|Tests run: 19, Failures: 0, Errors: 0, Skipped: 0|Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping runtime 0.1.0-SNAPSHOT|Tests run: 717, Failures: 0, Errors: 0, Skipped: 0|Tests run: 717, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping mapping 0.1.0-SNAPSHOT|Tests run: 563, Failures: 0, Errors: 0, Skipped: 0|Tests run: 563, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping xslt-export 0.1.0-SNAPSHOT|Tests run: 53, Failures: 0, Errors: 0, Skipped: 0|Tests run: 53, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping api 0.1.0-SNAPSHOT|Tests run: 409, Failures: 0, Errors: 0, Skipped: 0|Tests run: 409, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping oracle 0.1.0-SNAPSHOT|Tests run: 2910, Failures: 0, Errors: 0, Skipped: 0|Tests run: 2910, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping service 0.1.0-SNAPSHOT|Tests run: 1257, Failures: 0, Errors: 0, Skipped: 0|Tests run: 1257, Failures: 0, Errors: 0, Skipped: 0
+Building Flottila Mapping bench (JMH) 0.1.0-SNAPSHOT|Tests run: 29, Failures: 0, Errors: 0, Skipped: 0|Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+new total 17822
+oracle totals: base file holds only GRAND 17822 (no separate oracle lines)

@@ -10,13 +10,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-parent</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>flottila-mapping-bench</artifactId>
-  <name>Flottila Mapping bench (JMH)</name>
+  <artifactId>rail8-mapping-bench</artifactId>
+  <name>Rail8 Mapping bench (JMH)</name>
 
   <properties>
     <!-- benchmarks are measured in spec-gate step 5, not covered: no coverage or mutation floor (ADR-0019) -->
@@ -28,7 +28,7 @@
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-api</artifactId>
+      <artifactId>rail8-mapping-api</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -51,7 +51,7 @@
   <build>
     <resources>
       <resource>
-        <directory>${project.basedir}/../../corpus/bench</directory>
+        <directory>${mapping.root}/corpus/bench</directory>
         <excludes>
           <exclude>**/*.java</exclude>
         </excludes>
@@ -70,7 +70,7 @@
             </goals>
             <configuration>
               <sources>
-                <source>${project.basedir}/../../corpus/bench</source>
+                <source>${mapping.root}/corpus/bench</source>
               </sources>
             </configuration>
           </execution>
@@ -98,8 +98,8 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <systemPropertyVariables>
-            <!-- the golden corpus at the repository root: the committed small inputs (ADR-0018) -->
-            <flottila.corpus>${maven.multiModuleProjectDirectory}/corpus</flottila.corpus>
+            <!-- the golden corpus at the mapping's root: the committed small inputs (ADR-0018) -->
+            <rail8.corpus>${mapping.root}/corpus</rail8.corpus>
           </systemPropertyVariables>
         </configuration>
       </plugin>

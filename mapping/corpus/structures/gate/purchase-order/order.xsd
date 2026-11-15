@@ -5,12 +5,12 @@
      Delivery and Pickup are the branches of a choice. Line has an anonymous local type with a
      reference to the substitution-group head po:Product and the simple-content leaf Price -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:po="urn:flottila:corpus:gate:po"
-           xmlns:c="urn:flottila:corpus:gate:common"
-           targetNamespace="urn:flottila:corpus:gate:po"
+           xmlns:po="urn:rail8:corpus:gate:po"
+           xmlns:c="urn:rail8:corpus:gate:common"
+           targetNamespace="urn:rail8:corpus:gate:po"
            elementFormDefault="qualified">
   <xs:include schemaLocation="types.xsd"/>
-  <xs:import namespace="urn:flottila:corpus:gate:common" schemaLocation="common/common.xsd"/>
+  <xs:import namespace="urn:rail8:corpus:gate:common" schemaLocation="common/common.xsd"/>
   <xs:element name="PurchaseOrder">
     <xs:complexType>
       <xs:sequence>

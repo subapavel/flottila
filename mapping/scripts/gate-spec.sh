@@ -27,6 +27,8 @@ fi
 spec=$1
 
 cd "$(dirname "$0")/.."
+# the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
+mvnw=${MVNW:-../mvnw}
 mkdir -p .logs ui/.logs
 # the console output, stderr included, also goes to .logs/<spec>-spec-gate.log under this root, whatever the caller's
 # directory (#125). On exit, close it and wait for tee, so the log is complete when the script returns.
@@ -51,7 +53,7 @@ skipped() { echo "NOT_RUN         $1  ($2)"; }
 
 # 1: everything, oracles and JaCoCo floors included, bench compiles
 step "1 verify -Pbench" ".logs/${spec}-build.log" \
-  ./mvnw -B clean verify -Pbench
+  "$mvnw" -B clean verify -Pbench
 step "1 contract diff" ".logs/${spec}-contract.log" \
   git diff --exit-code contract/
 
@@ -156,7 +158,7 @@ if [ -f bench/jmh/target/benchmarks.jar ]; then
     fi
   fi
 else
-  skipped "5 jmh" "bench/jmh/target/benchmarks.jar is not built (./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests)"
+  skipped "5 jmh" "bench/jmh/target/benchmarks.jar is not built (../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests)"
 fi
 
 # 4: ratchet regeneration, before step 3. Needs every report; refuses a drop. The verifier commits ratchet/.
@@ -166,7 +168,7 @@ step "4 ratchet regen" ".logs/${spec}-ratchet.log" \
 
 # 3: the stack, one jar serving UI and /api. Last: its clean deletes the reports step 4 read.
 step "3 stack package -Pui" ".logs/${spec}-stack-package.log" \
-  ./mvnw -B -Pui -pl service -am clean package -DskipTests
+  "$mvnw" -B -Pui -pl service -am clean package -DskipTests
 if [ -f ui/package.json ]; then
   step "3 stack e2e" "ui/.logs/${spec}-e2e-stack.log" bash -c 'cd ui && npm run e2e:stack'
 fi

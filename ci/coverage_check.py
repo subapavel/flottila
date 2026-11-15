@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """JaCoCo no-decrease gate (CLAUDE.md "Coverage floors … No decrease on any push").
 
-Reads every module's target/site/jacoco/jacoco.xml, computes line and branch coverage in percent
+Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates), computes line and branch coverage in percent
 rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
 previous main commit in CI, HEAD locally). A module whose coverage dropped by more than TOLERANCE
 percentage points (D-029 noise band; the JaCoCo floors in the poms stay exact) fails the check; a
@@ -36,6 +36,12 @@ IGNORED: frozenset[str] = frozenset()
 # between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
 # floors in the poms stay hard.
 TOLERANCE = 2.0
+# the mapping engine (BRAND-3) has its own gates: this guard reads platform/ and bench/, never a module under mapping/
+FOREIGN = "mapping"
+
+
+def _ours(path: Path, root: Path) -> bool:
+    return path.resolve().relative_to(root.resolve()).parts[0] != FOREIGN
 
 
 def _percent(missed: int, covered: int) -> float:
@@ -52,13 +58,13 @@ def _module_name(module_dir: Path, root: Path) -> str:
 
 
 def modules_with_classes(root: Path) -> list[Path]:
-    return sorted(m for m in root.rglob(str(CLASSES)) if _has_real_classes(m))
+    return sorted(m for m in root.rglob(str(CLASSES)) if _ours(m, root) and _has_real_classes(m))
 
 
 def measure(root: Path) -> dict[str, dict[str, float]]:
     """Coverage per module name for every module that has a JaCoCo report."""
     result: dict[str, dict[str, float]] = {}
-    for report in sorted(root.rglob(str(REPORT))):
+    for report in sorted(r for r in root.rglob(str(REPORT)) if _ours(r, root)):
         counters = {c.get("type"): c for c in ET.parse(report).getroot().findall("counter")}
         line = counters.get("LINE")
         if line is None or int(line.get("missed")) + int(line.get("covered")) == 0:

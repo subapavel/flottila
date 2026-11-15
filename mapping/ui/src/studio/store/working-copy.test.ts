@@ -3,14 +3,14 @@ import { ApiProblem, type Diagnostic, type StoredMapping } from '../../api/clien
 import type { MappingModel } from '../../generated/mapping-model';
 import { createWorkingCopyStore, selectUnsaved, UNDO_DEPTH, watchUnsaved, type WorkingCopyPorts } from './working-copy';
 
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `${ORDER}/OrderId`;
 const NOTE = `${ORDER}/Note`;
 
 const structure = {
   bundle: ['../structures/skeleton/order.xsd'] as [string],
-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
-  root: { element: 'Q{urn:flottila:corpus:skeleton}Order' },
+  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+  root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
 };
 const baseline: MappingModel = { formatVersion: 1, source: structure, target: structure };
 const BASELINE_TAG = '"sha256:base"';
@@ -66,7 +66,7 @@ const canonicalLinked: MappingModel = {
 
 const mappingChanged = () =>
   new ApiProblem({
-    type: 'urn:flottila:mapping:problem:mapping-changed',
+    type: 'urn:rail8:mapping:problem:mapping-changed',
     title: 'Mapping changed',
     status: 409,
     detail: 'the mapping changed on disk',

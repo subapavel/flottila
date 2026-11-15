@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #3)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 The XSLT/XPath front end needs `format-dateTime` and `format-number` with XPath pictures anyway,
 so the engine has exactly one formatting core, the F&O one, plus one internal parsing function
 that mirrors `format-dateTime`'s picture syntax (F&O 3.1 has no general date parsing). The

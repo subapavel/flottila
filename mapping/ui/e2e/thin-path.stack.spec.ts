@@ -7,7 +7,7 @@ import { fields, link, node, openStudio, result, runTest, saveOverService } from
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 const input = readFileSync(new URL('../../corpus/cases/link/direct-copy/001/input.xml', import.meta.url), 'utf8');
 
 test('@stack the real service: open, link, save, run a test, and the saved file is canonical', async ({ page, request }) => {

@@ -2,16 +2,16 @@ import { describe, expect, test } from 'vitest';
 import type { MappingModel, TargetFieldMapping } from '../generated/mapping-model';
 import { properAncestors, setContext } from './set-context';
 
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
-const ITEM = `${ORDER}/Q{urn:flottila:corpus:skeleton}Item`;
-const SKU = `${ITEM}/Q{urn:flottila:corpus:skeleton}Sku`;
-const ORDER_ID = `${ORDER}/Q{urn:flottila:corpus:skeleton}OrderId`;
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
+const ITEM = `${ORDER}/Q{urn:rail8:corpus:skeleton}Item`;
+const SKU = `${ITEM}/Q{urn:rail8:corpus:skeleton}Sku`;
+const ORDER_ID = `${ORDER}/Q{urn:rail8:corpus:skeleton}OrderId`;
 const NOTE = `${ORDER}/Note`;
 
 const structure = {
   bundle: ['../structures/skeleton/order.xsd'] as [string],
-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
-  root: { element: 'Q{urn:flottila:corpus:skeleton}Order' },
+  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+  root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
 };
 
 /** OrderId: s1 reads Sku in its parent's context, s2 reads Sku in the Order's; f1 is a function box. Note: n1. */

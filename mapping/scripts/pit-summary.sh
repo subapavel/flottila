@@ -10,7 +10,7 @@
 #   scripts/pit-summary.sh <mutation.tsv> <module>...
 #   scripts/pit-summary.sh --run <log> <module>...    run PIT one module at a time into <log>, each section
 #                                                      preceded by `=== PIT <module> ===`; exit 1 if any failed
-#   (PIT_MVN overrides ./mvnw, for the script test)
+#   (from the mapping's root; PIT_MVN overrides ../mvnw, the repository's wrapper, for the script test)
 #
 # PIT_ROOT (default: repository root) is where <module>/target/pit-reports/mutations.xml is looked up.
 set -uo pipefail
@@ -25,7 +25,7 @@ if [ "${1:-}" = "--run" ]; then
   rc=0
   for m in "$@"; do
     echo "=== PIT $m ===" >> "$log"
-    "${PIT_MVN:-./mvnw}" -B -pl "$m" -am test-compile org.pitest:pitest-maven:mutationCoverage >> "$log" 2>&1 || rc=1
+    "${PIT_MVN:-../mvnw}" -B -pl "$m" -am test-compile org.pitest:pitest-maven:mutationCoverage >> "$log" 2>&1 || rc=1
   done
   exit "$rc"
 fi

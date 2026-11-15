@@ -2,7 +2,7 @@
 <!-- Fixture (#93): stops being well-formed after it declares Item; what it declares after that is
      unknown -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:broken">
+           targetNamespace="urn:rail8:corpus:broken">
   <xs:element name="Item" type="xs:string"/>
   <xs:element name="Open" type="xs:string">
 </xs:schema>

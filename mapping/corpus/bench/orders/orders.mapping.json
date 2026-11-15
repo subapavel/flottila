@@ -14,13 +14,13 @@
     "bundle": [
       "orders-target.xsd"
     ],
-    "fingerprint": "sha256:5fbe142e70d99a399295c6702dd7d68a32d70ce1e01d4bf10ec5d7ae19a6da98",
+    "fingerprint": "sha256:8578a5594bbe8b3683da223df2546cabf805b0e10f28df30cb2e603e88c7227c",
     "root": {
-      "element": "Q{urn:flottila:corpus:bench:orders}OrderBatch"
+      "element": "Q{urn:rail8:corpus:bench:orders}OrderBatch"
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order": {
       "boxes": {
         "S1": {
           "field": "/SalesOrders/Order",
@@ -30,7 +30,7 @@
       "id": "T1",
       "result": "S1"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Customer": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Customer": {
       "boxes": {
         "C1": {
           "fn": "constant",
@@ -67,7 +67,7 @@
       "id": "T4",
       "result": "F2"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item": {
       "boxes": {
         "S6": {
           "field": "/SalesOrders/Order/Line",
@@ -77,7 +77,7 @@
       "id": "T5",
       "result": "S6"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Price": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item/Q{urn:rail8:corpus:bench:orders}Price": {
       "boxes": {
         "N1": {
           "fn": "formatNum",
@@ -97,7 +97,7 @@
       "id": "T8",
       "result": "N1"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Quantity": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item/Q{urn:rail8:corpus:bench:orders}Quantity": {
       "boxes": {
         "S8": {
           "field": "/SalesOrders/Order/Line/Quantity",
@@ -107,7 +107,7 @@
       "id": "T7",
       "result": "S8"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Sku": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Item/Q{urn:rail8:corpus:bench:orders}Sku": {
       "boxes": {
         "S7": {
           "field": "/SalesOrders/Order/Line/Sku",
@@ -117,7 +117,7 @@
       "id": "T6",
       "result": "S7"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Number": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Number": {
       "boxes": {
         "S2": {
           "field": "/SalesOrders/Order/OrderNo",
@@ -127,7 +127,7 @@
       "id": "T2",
       "result": "S2"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Placed": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Order/Q{urn:rail8:corpus:bench:orders}Placed": {
       "boxes": {
         "D1": {
           "fn": "dateTrans",
@@ -148,7 +148,7 @@
       "id": "T3",
       "result": "D1"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Pick": {
       "boxes": {
         "R1": {
           "fn": "removeContexts",
@@ -165,7 +165,7 @@
       "id": "T9",
       "result": "R1"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick/Q{urn:flottila:corpus:bench:orders}Sku": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Pick/Q{urn:rail8:corpus:bench:orders}Sku": {
       "boxes": {
         "P2": {
           "fn": "splitByValue",
@@ -192,7 +192,7 @@
       "id": "T11",
       "result": "P2"
     },
-    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick/Q{urn:flottila:corpus:bench:orders}Warehouse": {
+    "/Q{urn:rail8:corpus:bench:orders}OrderBatch/Q{urn:rail8:corpus:bench:orders}Pick/Q{urn:rail8:corpus:bench:orders}Warehouse": {
       "boxes": {
         "P1": {
           "fn": "splitByValue",

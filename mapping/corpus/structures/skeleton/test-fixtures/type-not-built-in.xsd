@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#25): a named type is outside the flat subset -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:skeleton"
-           targetNamespace="urn:flottila:corpus:skeleton">
+           xmlns:tns="urn:rail8:corpus:skeleton"
+           targetNamespace="urn:rail8:corpus:skeleton">
   <xs:element name="Order">
     <xs:complexType>
       <xs:sequence>

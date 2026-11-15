@@ -5,9 +5,9 @@
       "../structures/gate/invoice/invoice.xsd",
       "../structures/gate/invoice/party.xsd"
     ],
-    "fingerprint": "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a",
+    "fingerprint": "sha256:dd93778417054f51b5537c1da7059f3e244ef75b56b3d72f443e6f966fd6ba9f",
     "root": {
-      "element": "Q{urn:flottila:corpus:gate:invoice}Invoice"
+      "element": "Q{urn:rail8:corpus:gate:invoice}Invoice"
     }
   },
   "target": {
@@ -23,7 +23,7 @@
     "/$/customer/name": {
       "boxes": {
         "S2": {
-          "field": "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:party}Party/Q{urn:flottila:corpus:gate:party}Name",
+          "field": "/Q{urn:rail8:corpus:gate:invoice}Invoice/Q{urn:rail8:corpus:gate:party}Party/Q{urn:rail8:corpus:gate:party}Name",
           "kind": "source"
         }
       },
@@ -33,7 +33,7 @@
     "/$/id": {
       "boxes": {
         "S1": {
-          "field": "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Number",
+          "field": "/Q{urn:rail8:corpus:gate:invoice}Invoice/Q{urn:rail8:corpus:gate:invoice}Number",
           "kind": "source"
         }
       },

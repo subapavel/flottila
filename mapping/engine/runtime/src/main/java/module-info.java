@@ -1,10 +1,12 @@
 /** Tier 0: the closure-compiled interpreter and its projection (ADR-0021). */
-module io.flottila.mapping.runtime {
-  requires transitive io.flottila.mapping.ir;
-  requires transitive io.flottila.mapping.xdm;
-  requires io.flottila.mapping.serializer;
-  requires io.flottila.mapping.udf;
+// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
+@SuppressWarnings("module")
+module io.rail8.mapping.runtime {
+  requires transitive io.rail8.mapping.ir;
+  requires transitive io.rail8.mapping.xdm;
+  requires io.rail8.mapping.serializer;
+  requires io.rail8.mapping.udf;
   requires java.xml;
 
-  exports io.flottila.mapping.runtime;
+  exports io.rail8.mapping.runtime;
 }

@@ -1,0 +1,20 @@
+root Q{urn:rail8:corpus:bench:contexts}Ledger 1..1 - /Q{urn:rail8:corpus:bench:contexts}Ledger
+type /Q{urn:rail8:corpus:bench:contexts}Ledger
+field Q{urn:rail8:corpus:bench:contexts}Account 0..unbounded - /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account
+field Q{urn:rail8:corpus:bench:contexts}Pick 0..unbounded - /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Pick
+type /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account
+field Q{urn:rail8:corpus:bench:contexts}Id 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Name 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Order 0..unbounded - /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account/Q{urn:rail8:corpus:bench:contexts}Order
+field Q{urn:rail8:corpus:bench:contexts}Item 0..unbounded - /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account/Q{urn:rail8:corpus:bench:contexts}Item
+type /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account/Q{urn:rail8:corpus:bench:contexts}Item
+field Q{urn:rail8:corpus:bench:contexts}Sku 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Quantity 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Order 1..1 xs:string -
+type /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Account/Q{urn:rail8:corpus:bench:contexts}Order
+field Q{urn:rail8:corpus:bench:contexts}Number 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Priority 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Account 1..1 xs:string -
+type /Q{urn:rail8:corpus:bench:contexts}Ledger/Q{urn:rail8:corpus:bench:contexts}Pick
+field Q{urn:rail8:corpus:bench:contexts}Customer 1..1 xs:string -
+field Q{urn:rail8:corpus:bench:contexts}Sku 1..1 xs:string -

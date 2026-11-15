@@ -2,6 +2,8 @@
 
 Status: accepted (2026-11-05, spec-5 grilling); refines ADR-0008 (refusals on the wire), ADR-0010 (the editor calls refresh), ADR-0015 (compile endpoint) and ADR-0024 (`If-Match`, a new problem slug). New rather than amended, because spec 4 is still amending those ADRs.
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 ## Conditional save
 
 - The editor sends `If-Match` with the baseline's `ETag` on every Save (`PUT /api/mappings/{id}`).

@@ -6,7 +6,7 @@ export interface BrowserStateStore {
   write(key: string, value: unknown): void;
 }
 
-const PREFIX = 'flottila-mapping:v1:';
+const PREFIX = 'rail8-mapping:v1:';
 
 /** The key of a target field mapping's canvas, its box positions and zoom, by its authoring id (ADR-0013). */
 export function canvasKey(mappingId: string, targetFieldMappingId: string): string {

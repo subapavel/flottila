@@ -70,7 +70,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       - name: Verify (unit + Testcontainers ITs, ArchUnit, JaCoCo floors incl. the ITs)
-        run: mvn -B -ntp verify -Pit ${{ matrix.image-args }}
+        # -f platform/pom.xml: the root aggregator also lists mapping/ (BRAND-3, D-150), which this job does not build.
+        run: mvn -B -ntp -f platform/pom.xml verify -Pit ${{ matrix.image-args }}
       - name: The demo package validates through the launcher (D-079)
         if: matrix.image-args == ''
         run: bin/rail8 validate examples/demo
@@ -131,7 +132,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       - name: Build the jars the node image and the deploy one-shot use
-        run: mvn -B -ntp -q package -DskipTests -pl :rail8-runtime,:rail8-cli -am
+        run: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
       - name: Start the stack and wait for /health (60 s bound)
         working-directory: deploy/compose
         run: |
@@ -209,7 +210,7 @@ jobs:
       # Scoped to api + core: -DskipTests would make pitest-maven skip silently, so tests are compiled
       # the normal way; the ≥ 80 % threshold (platform/pom.xml) fails the job below the floor.
       - name: PIT on api and core
-        run: mvn -B -ntp -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage
+        run: mvn -B -ntp -f platform/pom.xml -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage
       - uses: actions/upload-artifact@v4
         with:
           name: pit-reports

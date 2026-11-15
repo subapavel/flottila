@@ -15,13 +15,13 @@
       "../structures/gate/purchase-order/order.xsd",
       "../structures/gate/purchase-order/types.xsd"
     ],
-    "fingerprint": "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3",
+    "fingerprint": "sha256:198e3c311f7a3dedb4a03c802ac871557ecef9e06bfcce47199eabe14a7c4c60",
     "root": {
-      "element": "Q{urn:flottila:corpus:gate:po}PurchaseOrder"
+      "element": "Q{urn:rail8:corpus:gate:po}PurchaseOrder"
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/@issued": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/@issued": {
       "boxes": {
         "S1": {
           "field": "/$/issued",
@@ -31,7 +31,7 @@
       "id": "U1",
       "result": "S1"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:common}Name": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Buyer/Q{urn:rail8:corpus:gate:common}Name": {
       "boxes": {
         "S3": {
           "field": "/$/customer/name",
@@ -41,7 +41,7 @@
       "id": "U3",
       "result": "S3"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:po}CustomerNo": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Buyer/Q{urn:rail8:corpus:gate:po}CustomerNo": {
       "boxes": {
         "S4": {
           "field": "/$/customer/number",
@@ -51,7 +51,7 @@
       "id": "U4",
       "result": "S4"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Delivery": {
       "boxes": {
         "S5": {
           "field": "/$/delivery/address",
@@ -61,7 +61,7 @@
       "id": "U5",
       "result": "S5"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}City": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Delivery/Q{urn:rail8:corpus:gate:common}City": {
       "boxes": {
         "S7": {
           "field": "/$/delivery/address/city",
@@ -71,7 +71,7 @@
       "id": "U7",
       "result": "S7"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}Street": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Delivery/Q{urn:rail8:corpus:gate:common}Street": {
       "boxes": {
         "S6": {
           "field": "/$/delivery/address/street",
@@ -81,7 +81,7 @@
       "id": "U6",
       "result": "S6"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line": {
       "boxes": {
         "S9": {
           "field": "/$/lines",
@@ -91,7 +91,7 @@
       "id": "U9",
       "result": "S9"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/@no": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/@no": {
       "boxes": {
         "S10": {
           "field": "/$/lines/no",
@@ -101,7 +101,7 @@
       "id": "U10",
       "result": "S10"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Article": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/Q{urn:rail8:corpus:gate:po}Article": {
       "boxes": {
         "S11": {
           "field": "/$/lines/sku",
@@ -111,7 +111,7 @@
       "id": "U11",
       "result": "S11"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Article/Q{urn:flottila:corpus:gate:po}Sku": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/Q{urn:rail8:corpus:gate:po}Article/Q{urn:rail8:corpus:gate:po}Sku": {
       "boxes": {
         "S12": {
           "field": "/$/lines/sku",
@@ -121,7 +121,7 @@
       "id": "U12",
       "result": "S12"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/Q{urn:rail8:corpus:gate:po}Price": {
       "boxes": {
         "S14": {
           "field": "/$/lines/price",
@@ -131,7 +131,7 @@
       "id": "U14",
       "result": "S14"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price/@currency": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/Q{urn:rail8:corpus:gate:po}Price/@currency": {
       "boxes": {
         "S15": {
           "field": "/$/lines/currency",
@@ -141,7 +141,7 @@
       "id": "U15",
       "result": "S15"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Quantity": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Line/Q{urn:rail8:corpus:gate:po}Quantity": {
       "boxes": {
         "S13": {
           "field": "/$/lines/quantity",
@@ -151,7 +151,7 @@
       "id": "U13",
       "result": "S13"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}OrderId": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}OrderId": {
       "boxes": {
         "S2": {
           "field": "/$/id",
@@ -161,7 +161,7 @@
       "id": "U2",
       "result": "S2"
     },
-    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Pickup": {
+    "/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Pickup": {
       "boxes": {
         "S8": {
           "field": "/$/delivery/pickup",

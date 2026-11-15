@@ -3,7 +3,7 @@ import { collectProblems } from './problems';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const canvas = (page: Page) => page.getByRole('group', { name: 'Mapping canvas' });
 const node = (page: Page, name: RegExp) => canvas(page).getByRole('group', { name });
 const fields = (page: Page, side: 'source' | 'target') => page.getByRole('region', { name: `${side} message` }).getByRole('table', { name: `${side} fields` });
@@ -76,8 +76,8 @@ test('variables, a grouped target, value mapping, lookups and test instances wor
   await page.getByRole('tab', { name: 'Test' }).click();
   const source = page.getByRole('region', { name: 'Source', exact: true }).getByRole('textbox', { name: 'Input XML' });
   const documents = {
-    'first order': `<Order xmlns="urn:flottila:corpus:skeleton">\n  <OrderId>PO-1</OrderId>\n  <Note>first</Note>\n</Order>`,
-    'second order': `<Order xmlns="urn:flottila:corpus:skeleton">\n  <OrderId>PO-2</OrderId>\n</Order>`,
+    'first order': `<Order xmlns="urn:rail8:corpus:skeleton">\n  <OrderId>PO-1</OrderId>\n  <Note>first</Note>\n</Order>`,
+    'second order': `<Order xmlns="urn:rail8:corpus:skeleton">\n  <OrderId>PO-2</OrderId>\n</Order>`,
   };
   for (const [name, text] of Object.entries(documents)) {
     await source.fill(text);

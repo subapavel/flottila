@@ -14,6 +14,7 @@ Usage (from anywhere inside the repository):
   python3 agent/tools/rail8_rename.py moves --dry-run
   python3 agent/tools/rail8_rename.py moves
   python3 agent/tools/rail8_rename.py report --summary
+  python3 agent/tools/rail8_rename.py identifiers --root mapping   # BRAND-3 step 2 (D-151), then `wire --root mapping`
 """
 from __future__ import annotations
 
@@ -107,15 +108,24 @@ IDENTIFIER_MAP: list[tuple[str, str, str]] = [
     # build properties
     ("property", _BL + r"flottila\.(coverage\.line|coverage\.branch|mutation\.threshold|it\.postgres|coverage)" + _E,
      r"rail8.\1"),
+    # the mapping's configuration keys and its corpus system property (BRAND-3, D-151); never a package (`io.`)
+    ("property", _BL + r"(?<!io\.)flottila\.(mapping\.(?:workspace|test-timeout|trace-limit|time-zone)|corpus)" + _E,
+     r"rail8.\1"),
     # the Java package root, in code, in strings, in resource paths and in path segments
     ("package root", r'"io", "flottila"', '"io", "rail8"'),
     ("package root", _B + r"io([./])flottila" + _E, r"io\1rail8"),
+    # the mapping's JMH class pattern, as a regular expression in Java (`io\\.`) and in shell or Markdown (`io\.`)
+    ("package root", _B + r"io(\\+\.)flottila(?=\\+\.)", r"io\1rail8"),
+    # a benchmark of another package in the mapping's ratchet script test: the same root under `org.`
+    ("package root", _B + r"org\.flottila\.mapping(?=\.)", "org.rail8.mapping"),
     # environment keys, the concatenated prefix "FLOTTILA_SECRET_" and a bare FLOTTILA_ included
     ("env key", _B + r"FLOTTILA_", "RAIL8_"),
     # thread, timer and temp-file name prefixes (the node ids "flottila-test" / "flottila-validate" are masked, commit C)
     ("thread/temp prefix", _BL + r"flottila-(?=(?:holder-force-|holder-|test-close|test-|validate-|worker-|child-|clock"
                                  r"|retention|admin|stop|shutdown|superseded|peer-serve|lease-|http-|sftp-|cpu-|ledger-"
                                  r"|node-bench-|stream-heap-|blob-|setup\])|\*\.body)", "rail8-"),
+    # the mapping's temp-file and temp-directory prefixes (tests, the stack workspace, the observation kits' scripts)
+    ("thread/temp prefix", _BL + r"flottila-(?=input\b|28-|stack-workspace\b|pilot-|audit-|parameter-export\.zip|'\+\[guid\])", "rail8-"),
     ("thread/temp prefix", r'\.name\("flottila-" \+ ', '.name("rail8-" + '),
     ("thread/temp prefix", r'\.name\("flottila"\)', '.name("rail8")'),
     # the CLI: launcher, message prefix, command names in text
@@ -130,6 +140,8 @@ IDENTIFIER_MAP: list[tuple[str, str, str]] = [
     # the product name in text, in project names and inside identifiers (`binFlottilaValidatesTheDemo`)
     ("product name", r"Flottila", "Rail8"),
     ("product name", _B + r"flottila(?= jars)", "rail8"),
+    # the mapping's planned XSLT export target, named after the product (GLOSSARY "Export target")
+    ("product name", r"(?<= later, _)flottila(?=_ )", "rail8"),
 ]
 
 # The literals commit B must leave as they are (commit C renames them: the scout's lists 1 and 2, BRAND-1 packet "Not in
@@ -188,16 +200,30 @@ WIRE_KEEP: list[tuple[tuple[str, ...], str, str]] = [
      r'|sftp://flottila@|user: flottila|NodeConfig\.Pg\("[^"]*", \d+, "flottila"(?:, "flottila")?'
      r'|(?<=Arbitraries\.of\("intake", )"flottila"|writePrivateKey\(key, "flottila-test"|defaults to flottila',
      "test-only user, role, database; expectations of a NodeConfig default"),
+    # the mapping's persisted and wire names (BRAND-3 step 2, D-151): `wire --root mapping` renames them
+    (("mapping/*",), r"urn:flottila:(?:mapping-model|function-catalogue):1", "mapping: schema $id URNs"),
+    (("mapping/*",), r"urn:flottila:mapping:po", "mapping: the generated XSLT's namespace"),
+    (("mapping/*",), r"flottila:TIMEOUT", "mapping: error code"),
+    (("mapping/*",), r"urn:flottila:mapping:problem:", "mapping: the service's problem types (ADR-0024)"),
+    (("mapping/*",), r"flottila-mapping-service API", "mapping: OpenAPI title"),
+    (("mapping/*",), r"urn:flottila:(?:corpus|test|obs|fake):|urn:flottila:(?:a&|c\\\"|c&|other|gen\})",
+     "mapping: corpus, observation and test namespaces"),
+    (("mapping/*",), r"application/x-flottila-source-field", "mapping: the studio's drag MIME type"),
+    (("mapping/*",), r"flottila-mapping:v1:", "mapping: the studio's browser-storage key prefix"),
+    (("mapping/*",), r"example\.invalid/flottila/", "mapping: a corpus JSON Schema's $id"),
 ]
 
 # Never rewritten by any subcommand and not reported: names that are not ours to change (the repository and its checkout,
 # renamed by the owner) and the names of modules that no longer exist. (file globs, pattern, reason).
 KEPT_NAMES: list[tuple[tuple[str, ...], str, str]] = [
     (("*",), r"subapavel/flottila(?:-mapping)?(?![\w-])", "repository name"),
-    (("*",), r"(?<![\w-])flottila-mapping(?![\w-])", "the mapping repository's name"),
+    (("*",), r"(?<![\w-])flottila-mapping(?![\w-]|:v\d)", "the mapping repository's name"),   # not the key prefix
     (("*",), r"(?:/home/user|~)/flottila(?![\w-])", "the checkout directory (the repository's name)"),
     (("*",), r"flottila-m1|flottila-proto", "modules that no longer exist, named as they were"),
     (("agent/cloud/README.md",), r"environment `flottila`|\| Name \| `flottila` \|", "the cloud environment's name"),
+    # BRAND-3: names held by systems outside the repository, which the mapping's observation kits call or read
+    (("mapping/corpus/observations/*",), r"flottilaobservations", "the SAP CPI tenant's integration package id"),
+    (("mapping/corpus/observations/*",), r"flottila-observations-key\.json", "the owner's key file the kit scripts read"),
 ]
 
 # Files `identifiers` leaves untouched (instruction, BRAND-1 B): the coverage guard's fixtures name synthetic modules.
@@ -205,7 +231,8 @@ B_UNTOUCHED: list[str] = ["ci/test_coverage_check.py"]
 
 # Text kinds the script rewrites; any other tracked file is not classified and is never rewritten.
 TEXT_SUFFIXES = {".java", ".md", ".yaml", ".yml", ".xml", ".json", ".py", ".sh", ".txt", ".tsv", ".xsl", ".xsd", ".svg",
-                 ".sql", ".diff", ".patch", ".dockerignore"}
+                 ".sql", ".diff", ".patch", ".dockerignore",
+                 ".ts", ".tsx", ".wsdl", ".properties", ".ps1", ".html"}   # the last six: the mapping (BRAND-3)
 TEXT_NAMES = {"Dockerfile", "LICENSE", "NOTICE", ".gitignore", ".gitattributes", ".dockerignore", "flottila", "rail8"}
 
 # Commit C: (class, files, old, new), one entry per literal of the scout's wire list (agent/work/BRAND-1-scout.md lists 1
@@ -229,6 +256,8 @@ _PG_TESTS = (_RTT + "node/NodeConfigTest.java", _RTT + "node/NodeConfigPoolWaitT
              _RTT + "node/NodeConfigPoolsInProcessTest.java")
 _BENCH_MAINS = tuple(_BENCH + m for m in ("BenchMain.java", "LedgerMain.java", "NodeBenchMain.java", "StreamHeapMain.java"))
 _NOTES = "agent/NOTES.md"
+_MAP = "mapping/"
+_XSLT_TEST = _MAP + "engine/xslt-export/src/test/java/io/rail8/mapping/xslt/export/XsltExporterTest.java"
 WIRE_MAP: list[tuple[str, tuple[str, ...], object, str]] = [
     # hash and KDF inputs
     ("HKDF info label", (_RT + "journal/RecordFormat.java", _RTT + "journal/JournalRecordFormatTest.java"),
@@ -418,6 +447,34 @@ WIRE_MAP: list[tuple[str, tuple[str, ...], object, str]] = [
     ("coverage fixture", ("ci/test_coverage_check.py",), '"flottila-', '"rail8-'),
     ("coverage fixture", ("ci/test_coverage_check.py",), '"io/flottila/x', '"io/rail8/x'),
     ("coverage fixture", ("ci/test_coverage_check.py",), '"io" / "flottila" / "x"', '"io" / "rail8" / "x"'),
+    # BRAND-3 step 2 (D-151): the mapping's persisted and wire names, version digits kept. In the corpus the same
+    # string is replaced in inputs, models and expected outputs alike, so no expectation is derived from the engine.
+    ("mapping schema URN", ("mapping/contract/mapping-model.schema.json", _MAP + "engine/mapping/**"),
+     "urn:flottila:mapping-model:1", "urn:rail8:mapping-model:1"),
+    ("mapping schema URN", ("mapping/contract/function-catalogue.schema.json",),
+     "urn:flottila:function-catalogue:1", "urn:rail8:function-catalogue:1"),
+    ("XSLT namespace", ("mapping/GLOSSARY.md", _MAP + "engine/**", _MAP + "scripts/test/**"),
+     "urn:flottila:mapping:po", "urn:rail8:mapping:po"),
+    ("error code", ("mapping/GLOSSARY.md", _MAP + "engine/**", _MAP + "service/**"), "flottila:TIMEOUT", "rail8:TIMEOUT"),
+    ("OpenAPI title", ("mapping/contract/openapi.json",), "flottila-mapping-service API", "rail8-mapping-service API"),
+    ("problem type", (_MAP + "service/**", _MAP + "ui/**"), "urn:flottila:mapping:problem:", "urn:rail8:mapping:problem:"),
+    ("corpus namespace", ("mapping/HANDOVER.md", _MAP + "bench/**", _MAP + "corpus/**", _MAP + "engine/**",
+                          _MAP + "service/**", _MAP + "ui/**"), "urn:flottila:corpus:", "urn:rail8:corpus:"),
+    ("test namespace", (_MAP + "engine/mapping/**", _MAP + "service/**"), "urn:flottila:test:", "urn:rail8:test:"),
+    ("observation namespace", (_MAP + "corpus/**",), "urn:flottila:obs:", "urn:rail8:obs:"),
+    ("test namespace", (_XSLT_TEST,), "urn:flottila:a&", "urn:rail8:a&"),
+    ("test namespace", (_XSLT_TEST,), 'urn:flottila:c\\"', 'urn:rail8:c\\"'),
+    ("test namespace", (_XSLT_TEST,), "urn:flottila:c&", "urn:rail8:c&"),
+    ("test namespace", (_XSLT_TEST,), "urn:flottila:other", "urn:rail8:other"),
+    ("test namespace", (_MAP + "engine/mapping/src/test/java/io/rail8/mapping/mapping/ModelGenerator.java",),
+     "urn:flottila:gen}", "urn:rail8:gen}"),
+    ("test namespace", (_MAP + "ui/src/api/fake/generated-tree.ts",), "urn:flottila:fake:", "urn:rail8:fake:"),
+    ("drag MIME type", (_MAP + "ui/src/**",), "application/x-flottila-source-field", "application/x-rail8-source-field"),
+    ("browser-storage key", (_MAP + "ui/src/studio/browser-state/browser-state.ts",
+                             _MAP + "ui/src/studio/browser-state/browser-state.test.ts"),
+     "flottila-mapping:v1:", "rail8-mapping:v1:"),
+    ("JSON Schema $id", (_MAP + "corpus/structures/observations/nil.schema.json",),
+     "https://example.invalid/flottila/", "https://example.invalid/rail8/"),
 ]
 
 # Never rewritten, in any commit (BRAND-1 packet "Exclusions"). History keeps the old name as written (D-148).
@@ -438,6 +495,17 @@ EXCLUDED: list[str] = [
     "PROGRESS.md",                      # before commit A; it moves to docs/archive/ unedited
     "deploy/postgres/V*.sql",           # applied migrations stay byte-identical
     "agent/tools/rail8_rename.py",      # this script
+    # the mapping's history (BRAND-3, D-151): its ADRs (an ADR that fixes a renamed name gets one amendment line, by
+    # hand), findings, bench results, agent files and archive
+    "mapping/docs/adr/**",
+    "mapping/docs/findings/**",
+    "mapping/bench/RESULTS.md",
+    "mapping/agent/**",
+    "mapping/docs/archive/**",
+    # the mapping's process files, archived or removed by BRAND-3 step 3 as they are
+    "mapping/CLAUDE.md",
+    "mapping/.claude/**",
+    "mapping/deploy/claude-cloud/**",
 ]
 # In agent/BACKLOG.md every table row whose status cell (the fourth) starts with `done` is history, and so is every
 # BRAND-* row (it names the old name as the thing it renames; the architect words it).
@@ -995,9 +1063,15 @@ def rewrite_wire(path: str, text: str, counts: Counter, used: Counter) -> str:
     return "\n".join(out)
 
 
-# The parent of commit C (BRAND-1): the tree before the wire pass. An entry is live when it rewrites the file as
-# this commit holds it or as the tree holds it now; an entry that rewrites neither never matched anything (stale).
-WIRE_BASE = "c017e9c"
+# The tree before each wire pass, by the subtree it renamed; a full 40-character SHA, so that no later object can make
+# it ambiguous. An entry is live when it rewrites a file as its base holds it or as the tree holds it now; an entry that
+# rewrites neither never matched anything (stale). The repository's own pass: the parent of BRAND-1 commit C. The
+# mapping's: the import merge (BRAND-3 step 1), whose tree still has the io/flottila directories that `identifiers`
+# moves, so a base path is read under the name `identifiers` gives it.
+WIRE_BASES: dict[str | None, str] = {
+    None: "c017e9ce5109b367dd3b26f4c281593cd68719ab",
+    "mapping": "52e6e418d61f8cc650781a964a5eb1b65e8b61f9",
+}
 
 
 def _wire_files(paths, scope: str | None) -> list[str]:
@@ -1005,14 +1079,24 @@ def _wire_files(paths, scope: str | None) -> list[str]:
             and _wire_entries(p)]
 
 
-def _base_used(root: Path) -> Counter | None:
-    """`used` of rewrite_wire over every file of WIRE_BASE its entries name, read from the local object store; None
-    if the commit is not there (a shallow clone)."""
-    if subprocess.run(["git", "cat-file", "-e", WIRE_BASE + "^{commit}"], cwd=root, capture_output=True).returncode:
+def _entry_base(globs: tuple[str, ...]) -> str | None:
+    """The WIRE_BASES key an entry belongs to: the subtree that holds every file it names, else the repository."""
+    for scope in WIRE_BASES:
+        if scope is not None and all(in_scope(g, scope) for g in globs):
+            return scope
+    return None
+
+
+def _base_used(root: Path, scope: str | None) -> Counter | None:
+    """`used` of rewrite_wire over every file of the base of `scope` its entries name (in `scope`), read from the local
+    object store; None if the commit is not there (a shallow clone)."""
+    base = WIRE_BASES[scope]
+    if subprocess.run(["git", "cat-file", "-e", base + "^{commit}"], cwd=root, capture_output=True).returncode:
         return None
+    files = {map_identifier_path(p): p for p in git(root, "ls-tree", "-r", "-z", "--name-only", base).split("\0") if p}
     used: Counter = Counter()
-    for path in _wire_files(git(root, "ls-tree", "-r", "-z", "--name-only", WIRE_BASE).split("\0"), None):
-        blob = subprocess.run(["git", "cat-file", "blob", f"{WIRE_BASE}:{path}"], cwd=root, capture_output=True)
+    for path in _wire_files(files, scope):
+        blob = subprocess.run(["git", "cat-file", "blob", f"{base}:{files[path]}"], cwd=root, capture_output=True)
         text = _decoded(blob.stdout) if blob.returncode == 0 else None
         if text is not None:
             rewrite_wire(path, text, Counter(), used)
@@ -1021,8 +1105,9 @@ def _base_used(root: Path) -> Counter | None:
 
 def cmd_wire(root: Path, scope: str | None, dry: bool) -> int:
     """Commit C: WIRE_MAP over every tracked text file its entries name, outside EXCLUDED and the history lines. Ends with
-    a check that every entry matched something in the files it names, in the tree now or at WIRE_BASE (an entry that
-    matched in neither is stale: an error)."""
+    a check that every entry matched something in the files it names, in the tree now or at its base in WIRE_BASES (an
+    entry that matched in neither is stale: an error). Under a --root without a base the check does not run, and the
+    summary line says so."""
     counts: Counter = Counter()
     used: Counter = Counter()
     rewritten = 0
@@ -1049,20 +1134,31 @@ def cmd_wire(root: Path, scope: str | None, dry: bool) -> int:
     summary = (f"wire: {rewritten} file(s) rewritten, {counts['lines']} line(s); "
                + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()) if k != "lines")
                + f"; {sum(1 for i in range(len(WIRE_MAP)) if used[i])} of {len(WIRE_MAP)} entries applied")
-    if scope is not None:
-        print(summary)
+    if scope not in WIRE_BASES:
+        print(summary + f"; stale check not run: no base commit for --root {scope} (bases: "
+              + ", ".join(f"{k or 'the repository'} {v}" for k, v in WIRE_BASES.items()) + ")")
         return 0
-    base = _base_used(root)
-    if base is None:
-        print(summary + f"; stale check not run: commit {WIRE_BASE} is not in this clone")
-        return 1
-    stale = [i for i in range(len(WIRE_MAP)) if not used[i] and not base[i]]
-    for i in stale:
-        cls, globs, old, _ = WIRE_MAP[i]
-        print(f"stale wire entry {i} [{cls}] {old if isinstance(old, str) else old.pattern!r}: "
-              f"matches nothing in {', '.join(globs)}, neither in the tree nor at {WIRE_BASE}")
-    print(summary + f", {sum(1 for i in range(len(WIRE_MAP)) if base[i])} at {WIRE_BASE}; {len(stale)} stale")
-    return 1 if stale else 0
+    # the entries this run answers for: under --root, those of that subtree; without it, every entry, each at its base
+    checked = {s: [i for i, e in enumerate(WIRE_MAP) if _entry_base(e[1]) == s] for s in WIRE_BASES
+               if scope is None or s == scope}
+    stale: list[int] = []
+    notes: list[str] = []
+    status = 0
+    for s, entries in checked.items():
+        base = _base_used(root, s)
+        if base is None:
+            notes.append(f"stale check not run for {len(entries)} entries: commit {WIRE_BASES[s]} is not in this clone")
+            status = 1
+            continue
+        for i in entries:
+            if not used[i] and not base[i]:
+                stale.append(i)
+                cls, globs, old, _ = WIRE_MAP[i]
+                print(f"stale wire entry {i} [{cls}] {old if isinstance(old, str) else old.pattern!r}: "
+                      f"matches nothing in {', '.join(globs)}, neither in the tree nor at {WIRE_BASES[s]}")
+        notes.append(f"{sum(1 for i in entries if base[i])} of {len(entries)} entries apply at {WIRE_BASES[s]}")
+    print(summary + "; " + "; ".join(notes) + f"; {len(stale)} stale")
+    return 1 if stale else status
 
 
 def main(argv: list[str] | None = None) -> int:

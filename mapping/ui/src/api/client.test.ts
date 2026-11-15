@@ -5,9 +5,9 @@ describe('a save conflict', () => {
   test('is a 409 mapping-changed problem, and nothing else', () => {
     const problem = (type: string, status: number) => new ApiProblem({ type, title: 't', status, detail: '' });
 
-    expect(isSaveConflict(problem('urn:flottila:mapping:problem:mapping-changed', 409))).toBe(true);
-    expect(isSaveConflict(problem('urn:flottila:mapping:problem:mapping-exists', 409))).toBe(false);
-    expect(isSaveConflict(new Error('urn:flottila:mapping:problem:mapping-changed'))).toBe(false);
+    expect(isSaveConflict(problem('urn:rail8:mapping:problem:mapping-changed', 409))).toBe(true);
+    expect(isSaveConflict(problem('urn:rail8:mapping:problem:mapping-exists', 409))).toBe(false);
+    expect(isSaveConflict(new Error('urn:rail8:mapping:problem:mapping-changed'))).toBe(false);
   });
 });
 

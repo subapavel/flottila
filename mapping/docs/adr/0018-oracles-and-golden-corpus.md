@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #14); divergence rule amended 2026-11-13 (F-43); `decided` provenance widened 2026-11-13 (F-53); corpus layout gains `udfs/` (ADR-0020) and `bench/`; fifth variant timed (ADR-0021)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 FOUNDING §10 names three oracles: the golden corpus, the differential run against Saxon-HE and
 the W3C suites. ADR-0002 adds observed cases from SAP PO 7.5 and SAP Cloud Integration. This
 ADR fixes where the oracles run, the shape of a corpus case, how an assumed reading becomes

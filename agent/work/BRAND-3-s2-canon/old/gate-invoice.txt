@@ -1,0 +1,21 @@
+root Q{urn:flottila:corpus:gate:invoice}Invoice 1..1 - /Q{urn:flottila:corpus:gate:invoice}Invoice
+type /Q{urn:flottila:corpus:gate:invoice}Invoice
+field Q{urn:flottila:corpus:gate:invoice}Number 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:invoice}Date 0..1 xs:date -
+field Q{urn:flottila:corpus:gate:party}Party 1..1 - /Q{urn:flottila:corpus:gate:party}Party
+field Q{urn:flottila:corpus:gate:invoice}Item 1..unbounded - Q{urn:flottila:corpus:gate:invoice}Item
+field Q{urn:flottila:corpus:gate:invoice}Total 0..1 xs:decimal -
+field Q{urn:flottila:corpus:gate:invoice}Section 0..1 - Q{urn:flottila:corpus:gate:invoice}Section
+type /Q{urn:flottila:corpus:gate:party}Party
+field @role 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:party}Name 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:party}Street 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:party}City 0..1 xs:string -
+type Q{urn:flottila:corpus:gate:invoice}Item
+field @line 0..1 xs:integer -
+field @currency 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:invoice}Text 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:invoice}Amount 1..1 xs:decimal -
+type Q{urn:flottila:corpus:gate:invoice}Section
+field Q{urn:flottila:corpus:gate:invoice}Title 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:invoice}Section 0..unbounded - Q{urn:flottila:corpus:gate:invoice}Section

@@ -3,8 +3,8 @@
      with its orders by priority and its items by rank, each naming its owner, then one Pick per item
      of every customer, flattened. Every leaf is a string. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:bench:contexts"
-           xmlns="urn:flottila:corpus:bench:contexts"
+           targetNamespace="urn:rail8:corpus:bench:contexts"
+           xmlns="urn:rail8:corpus:bench:contexts"
            elementFormDefault="qualified">
   <xs:element name="Ledger">
     <xs:complexType>

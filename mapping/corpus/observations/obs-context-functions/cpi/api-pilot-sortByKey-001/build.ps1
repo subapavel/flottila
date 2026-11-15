@@ -1,7 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$TemplateZip)
 $ErrorActionPreference = 'Stop'
 $out = Join-Path $PSScriptRoot 'spec2_sort_by_key_001_api.zip'
-$temp = Join-Path ([System.IO.Path]::GetTempPath()) ('flottila-pilot-' + [guid]::NewGuid())
+$temp = Join-Path ([System.IO.Path]::GetTempPath()) ('rail8-pilot-' + [guid]::NewGuid())
 Expand-Archive -LiteralPath $TemplateZip -DestinationPath $temp
 $old = Join-Path $temp 'src/main/resources/mapping/spec2_sort.mmap'
 [xml]$map = Get-Content -Raw -LiteralPath $old

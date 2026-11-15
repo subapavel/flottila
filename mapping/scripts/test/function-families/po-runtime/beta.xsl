@@ -3,7 +3,7 @@
 <xsl:stylesheet version="3.0"
     xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
     xmlns:xs="http://www.w3.org/2001/XMLSchema"
-    xmlns:po="urn:flottila:mapping:po"
+    xmlns:po="urn:rail8:mapping:po"
     exclude-result-prefixes="#all">
 
   <xsl:function name="po:banana" as="array(item()*)">

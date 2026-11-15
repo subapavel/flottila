@@ -10,6 +10,11 @@ structures are in `../structures/observations/`. The owner adds `po75/` and `cpi
 input) and `meta.json` (both releases, the date, any divergence). A later `oracle:corpus` ticket
 turns them into cases.
 
+Renamed 2026-11-15 (D-151): the synthetic names in the recorded text files were relabelled `rail8`
+in the inputs and the observed outputs alike. Names that exist in the SAP systems (the CPI package
+`flottilaobservations`) and binary exports stay as recorded, so `obs-structures/po75/attr4-str-attr-ns-export.zip`
+holds the namespace as exported while its extracted copy carries the new name.
+
 ## Notation in a `request.md`
 
 - A box is `Function{parameter}`; the table gives its id, function and inputs (`in1`, `in2`, ...

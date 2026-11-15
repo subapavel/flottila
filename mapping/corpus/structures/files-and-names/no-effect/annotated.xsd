@@ -2,8 +2,8 @@
 <!-- Fixture (#93): constructs ADR-0008 accepts with no effect; plain.xsd is the same structure
      without them -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:no-effect"
-           targetNamespace="urn:flottila:corpus:no-effect">
+           xmlns:tns="urn:rail8:corpus:no-effect"
+           targetNamespace="urn:rail8:corpus:no-effect">
   <xs:annotation>
     <xs:documentation xml:lang="en">An order, <b xmlns="urn:x">documented</b>.</xs:documentation>
     <xs:appinfo>tooling data</xs:appinfo>

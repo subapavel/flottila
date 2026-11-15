@@ -144,7 +144,7 @@ foreach($def in $defs){
   $audit=Join-Path $dir 'initial-import';$null=New-Item -ItemType Directory $audit
   foreach($file in @('upload.zip','readback.zip','mapping.mmap','preparation.json')){Copy-Item (Join-Path $dir $file) $audit}
  }
- $work=Join-Path ([IO.Path]::GetTempPath()) ('flottila-'+[guid]::NewGuid())
+ $work=Join-Path ([IO.Path]::GetTempPath()) ('rail8-'+[guid]::NewGuid())
  Expand-Archive -LiteralPath $template -DestinationPath $work
  $old=Join-Path $work 'src/main/resources/mapping/spec2_sort_by_key_001_api.mmap'
  [xml]$map=Get-Content -Raw -LiteralPath $old

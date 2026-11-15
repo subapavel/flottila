@@ -5,12 +5,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-parent</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-service</artifactId>
-  <name>Flottila Mapping service</name>
+  <artifactId>rail8-mapping-service</artifactId>
+  <name>Rail8 Mapping service</name>
 
   <properties>
     <!-- ADR-0019: lines >= 80 %, no branch floor -->
@@ -35,7 +35,7 @@
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-api</artifactId>
+      <artifactId>rail8-mapping-api</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -88,7 +88,7 @@
       <!-- Swagger UI resolves the contract's ./mapping-model.schema.json and ./function-catalogue.schema.json
            against /q/openapi (#45, ADR-0015, ADR-0026): the contract's files, served as /q/<file> -->
       <resource>
-        <directory>${maven.multiModuleProjectDirectory}/contract</directory>
+        <directory>${mapping.root}/contract</directory>
         <targetPath>META-INF/resources/q</targetPath>
         <includes>
           <include>mapping-model.schema.json</include>
@@ -128,8 +128,8 @@
                 <argument>-classpath</argument>
                 <classpath/>
                 <argument>${project.basedir}/src/build/WriteCatalogue.java</argument>
-                <argument>io/flottila/mapping/mapping/function-catalogue.json</argument>
-                <argument>${maven.multiModuleProjectDirectory}/contract/function-catalogue.json</argument>
+                <argument>io/rail8/mapping/mapping/function-catalogue.json</argument>
+                <argument>${mapping.root}/contract/function-catalogue.json</argument>
               </arguments>
             </configuration>
           </execution>
@@ -159,7 +159,7 @@
             <directory>src/main/resources</directory>
           </resource>
           <resource>
-            <directory>${maven.multiModuleProjectDirectory}/ui/dist</directory>
+            <directory>${mapping.root}/ui/dist</directory>
             <targetPath>META-INF/resources</targetPath>
           </resource>
         </resources>

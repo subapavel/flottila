@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<po:Order xmlns:po="urn:flottila:corpus:po" xmlns:c="urn:flottila:corpus:common">
+<po:Order xmlns:po="urn:rail8:corpus:po" xmlns:c="urn:rail8:corpus:common">
   <po:Id>PO-7</po:Id>
   <po:ShipTo>
     <Street>Main 1</Street>

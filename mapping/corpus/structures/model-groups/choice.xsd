@@ -3,7 +3,7 @@
      or more branches has minimum 0, an xs:any branch among them; a choice of one branch keeps the
      branch's minimum. The choice's own occurrence multiplies into its branches (ADR-0008). -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:groups">
+           targetNamespace="urn:rail8:corpus:groups">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

@@ -11,7 +11,7 @@ export const TREE_MAPPING = 'mappings/tree-20128';
 export const TREE_BUNDLE = '../structures/generated/tree-20128.xsd';
 export const TREE_FILE = 'structures/generated/tree-20128.xsd';
 
-const NAMESPACE = 'urn:flottila:fake:tree';
+const NAMESPACE = 'urn:rail8:fake:tree';
 const ELEMENTS = ['Segment', 'Item', 'Partner', 'Address', 'Amount', 'Date', 'Text', 'Code', 'Qualifier', 'Reference'];
 const ATTRIBUTES = ['id', 'type', 'unit', 'lang', 'currency'];
 const VALUE_TYPES = ['xs:string', 'xs:decimal', 'xs:date', 'xs:integer'];

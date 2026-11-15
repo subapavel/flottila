@@ -3,7 +3,7 @@
      named complex type Pair, which a.xsd uses on two paths, declares Part twice (the second at
      line 10), and the second Part's anonymous type declares Leaf twice (the second at line 14). -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:refused:b">
+           targetNamespace="urn:rail8:corpus:refused:b">
   <xs:complexType name="Pair">
     <xs:sequence>
       <xs:element name="Part" type="xs:string"/>

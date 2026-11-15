@@ -1,4 +1,4 @@
-# Flottila Mapping
+# Rail8 Mapping
 
 Turns a source message into a target message by a mapping that a person draws in the editor or
 writes as XSLT, compiled to one intermediate representation and run on the JVM.
@@ -261,8 +261,8 @@ _Avoid_: dead box, orphaned box (orphaned is for references)
 
 **Dev host**:
 The thin standalone page that opens one mapping in the editor for development and tests, before
-Flottila embeds the editor (ADR-0013).
-_Avoid_: app, shell (reserved for Flottila's)
+Rail8 embeds the editor (ADR-0013).
+_Avoid_: app, shell (reserved for Rail8's)
 
 **Standard function**:
 A built-in function of the graphical editor (concat, if, formatDate, removeContexts …).
@@ -319,7 +319,7 @@ _Avoid_: category, group
 
 **Runtime error**:
 An error that stops a mapping run, named by a QName: from the input data (`po:MINOCCURS`, a
-context function's count mismatch) or from a test run's limit (`flottila:TIMEOUT`). The output is
+context function's count mismatch) or from a test run's limit (`rail8:TIMEOUT`). The output is
 dropped; a test run returns the code, the message and the authoring id.
 _Avoid_: exception, failure, diagnostic
 
@@ -337,12 +337,12 @@ mark, only a deviation's note in the tooltip (ADR-0028).
 _Avoid_: compatibility level
 
 **Portable function**:
-A function whose exported XSLT 3.0 runs on any conforming processor without Flottila's own Java
+A function whose exported XSLT 3.0 runs on any conforming processor without Rail8's own Java
 functions. Only portable functions are covered by the differential oracle.
 
 **Export profile**:
-The target of an XSLT export: _portable_ (pure XSLT 3.0) or, later, _flottila_ (may call
-Flottila's Java functions).
+The target of an XSLT export: _portable_ (pure XSLT 3.0) or, later, _rail8_ (may call
+Rail8's Java functions).
 
 ## Queues and contexts
 
@@ -518,7 +518,7 @@ _Avoid_: library, package (a Java package is something else)
 
 **Engine facade**:
 The one engine module the service calls to compile, test run and export a mapping. It carries no
-compatibility promise and is not the embedding API for Flottila.
+compatibility promise and is not the embedding API for Rail8.
 _Avoid_: engine API (sounds public and stable), SDK
 
 **Contract**:
@@ -555,7 +555,7 @@ _Avoid_: differential case (it is a second oracle over the same cases, not a kin
 
 **Helper module**:
 The XSLT module `po-runtime.xsl` that every portable export imports. It holds the PO queue
-semantics as `po:` functions in `urn:flottila:mapping:po` (`po:slots`, later `po:lift`,
+semantics as `po:` functions in `urn:rail8:mapping:po` (`po:slots`, later `po:lift`,
 `po:at-least`, `po:show`). The build joins `core.xsl` and one module per function family into it
 (F-15).
 _Avoid_: runtime library (that is the engine's), helper stylesheet

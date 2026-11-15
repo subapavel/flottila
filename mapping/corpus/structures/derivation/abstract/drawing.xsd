@@ -3,9 +3,9 @@
      s:Figure, refused in a target at the abstract declaration in shapes.xsd; s:Circle extends
      s:Shape and is not abstract. The two Twins are refused for their one step instead (ADR-0008) -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:s="urn:flottila:corpus:shapes"
-           targetNamespace="urn:flottila:corpus:drawing">
-  <xs:import namespace="urn:flottila:corpus:shapes" schemaLocation="shapes.xsd"/>
+           xmlns:s="urn:rail8:corpus:shapes"
+           targetNamespace="urn:rail8:corpus:drawing">
+  <xs:import namespace="urn:rail8:corpus:shapes" schemaLocation="shapes.xsd"/>
   <xs:element name="Drawing">
     <xs:complexType>
       <xs:sequence>

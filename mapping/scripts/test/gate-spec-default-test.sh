@@ -11,6 +11,7 @@ check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fail
 mkdir -p "$tmp/scripts" "$tmp/ratchet" "$tmp/bin"
 cp "$here/../gate-spec.sh" "$tmp/scripts/gate-spec.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/mvnw"
+export MVNW="$tmp/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/java"
 # the stub records its arguments, one line per call
 printf '#!/usr/bin/env bash\necho "$*" >> "$(dirname "$0")/../pit-calls"\n' > "$tmp/scripts/pit-summary.sh"

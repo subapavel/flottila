@@ -43,7 +43,7 @@ the command and the evidence it needs. A change to a check after this point is a
    Saxon-HE 12.5 on the exported XSLT, XMLUnit identical) agrees on every corpus input: every
    such case id is in `ratchet/oracle/differential.txt` (ADR-0018).
 6. **UDF.** Removed from milestone 1 (ADR-0030, F-33). User-defined functions depend on
-   Flottila's data model and wait for it. A UDF box in a mapping stays a design-time error.
+   Rail8's data model and wait for it. A UDF box in a mapping stays a design-time error.
 7. **Speed.** The seven JMH benchmarks of ADR-0021 run on the gate commit in spec-gate step 5
    on `claude-cloud-4vcpu`, in the closure-compiled interpreter (milestone 1 has no bytecode
    tier). They cover the `corpus/bench/` mappings `orders`, `wide` and `contexts`, end to end,
@@ -72,7 +72,7 @@ the command and the evidence it needs. A change to a check after this point is a
    check-7 target. No mutation testing on `ui/` in milestone 1.
 9. **Hand-over.** `HANDOVER.md` covers:
    - starting the stack from a clean clone with only JDK 25 and Node 22 installed:
-     `./mvnw -pl service -am quarkus:dev` with `npm run dev` for development, and the `-Pui` jar
+     `../mvnw -pl service -am quarkus:dev` with `npm run dev` for development, and the `-Pui` jar
      for one origin (ADR-0017). The Quarkus service runs over a workspace and is bound to
      `127.0.0.1` (ADR-0014);
    - how to draw and run a mapping;
@@ -101,7 +101,7 @@ separate export spec.
 | 5 | Editor in full | Function editor (canvas, quick insert, inspector with fidelity, display queue with occurrences per parent slot), target-tree status filter, undo, 409 on save, diagnostics in the UI, the `ui/tree-20128/scroll` p95 scenario. | 2, 3 (UI), 7 (tree) |
 | 6 | Speed | `corpus/bench/{orders,wide,contexts}` with seeded generators, the seven JMH benchmarks through `engine/api`, the bench rules in `scripts/ratchet.java`, spec-gate step 5; it opens the optional `po-owner-local` observation request (ADR-0021). Its last ticket writes `HANDOVER.md`. | 7 (engine), 9 |
 
-Spec 7 "UDFs" left milestone 1 on 2026-11-10 (ADR-0030, F-33): UDFs depend on Flottila's data model.
+Spec 7 "UDFs" left milestone 1 on 2026-11-10 (ADR-0030, F-33): UDFs depend on Rail8's data model.
 
 Observation requests never block a spec. Specs 2 and 3 implement the assumed readings with
 `provenance: assumed`; an answer turns the case `observed`, and a divergence from PO becomes a
@@ -114,13 +114,13 @@ In this order (grilling #19): **JSON output** (constructor records, serializer a
 → **bytecode tier** (`engine/bytecode` and the fifth metamorphic variant, ADR-0021) →
 **`formatVersion` 2 and the PO importer** (ADR-0010). The XSLT front end follows them.
 
-Waiting for Flottila's data model (ADR-0030), each starting with a grilling once the model exists:
+Waiting for Rail8's data model (ADR-0030), each starting with a grilling once the model exists:
 UDFs (ADR-0020 is the starting point, #169), lookups (#165), parameters, headers, properties and
 attachments (#167), several source or target messages (#168) and the test trace level (#171).
 
 ## Out of the gate
 
 XSLT front end, XPath front end beyond what the exporter needs, PO import, streaming / burst
-mode, Flottila integration, authentication, multi-user editing, shared-package references
+mode, Rail8 integration, authentication, multi-user editing, shared-package references
 (a design-time error until a host resolver exists), the transport export, an XSLT export
 endpoint (ADR-0015).

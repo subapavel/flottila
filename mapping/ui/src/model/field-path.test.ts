@@ -58,7 +58,7 @@ describe('the name of a field path’s last step', () => {
   });
 
   test("is its last step's local name, @ before an attribute's, and the path itself when it has no step", () => {
-    expect(stepName('/Q{urn:flottila:corpus:skeleton}Order/OrderId')).toBe('OrderId');
+    expect(stepName('/Q{urn:rail8:corpus:skeleton}Order/OrderId')).toBe('OrderId');
     expect(stepName('/Q{http://a/b}Order/@Q{urn:x}code')).toBe('@code');
     expect(stepName('')).toBe('');
   });
@@ -82,7 +82,7 @@ describe('the name of a field path’s last step', () => {
 });
 
 describe('the field paths found in a message', () => {
-  const PO = '/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:common}Name';
+  const PO = '/Q{urn:rail8:corpus:gate:po}PurchaseOrder/Q{urn:rail8:corpus:gate:po}Buyer/Q{urn:rail8:corpus:gate:common}Name';
 
   test('a path ends at whitespace or a parenthesis', () => {
     expect(proseSegments(`the target leaf ${PO} (1..1) has no target field mapping`)).toEqual([

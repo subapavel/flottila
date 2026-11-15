@@ -12,7 +12,7 @@ import { StudioShell } from '../../shell/StudioShell';
 import { expressionGraph } from './expression-graph';
 import { arrange, layoutOf } from './expression-layout';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
 const MAPPING = 'mappings/order-id-copy';
@@ -658,7 +658,7 @@ describe('drag-to-remap: a source row dropped on an orphaned box (GLOSSARY: Rema
    */
   const dropField = (wrapper: Element, field: string) => {
     const data = new DataTransfer();
-    data.setData('application/x-flottila-source-field', field);
+    data.setData('application/x-rail8-source-field', field);
     wrapper.querySelector('.map-node')!.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
   };
 

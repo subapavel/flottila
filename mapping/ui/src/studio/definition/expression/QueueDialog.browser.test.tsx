@@ -10,11 +10,11 @@ import { testInstancesKey, type TestInstance } from '../../mock/test-instances';
 import { studioStore } from '../../shell/Studio';
 import { StudioShell } from '../../shell/StudioShell';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const MAPPING = 'mappings/order-id-copy';
-const INPUT = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
-const OTHER = '<Order xmlns="urn:flottila:corpus:skeleton"><OrderId>PO-2</OrderId></Order>';
+const INPUT = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-1</OrderId></Order>';
+const OTHER = '<Order xmlns="urn:rail8:corpus:skeleton"><OrderId>PO-2</OrderId></Order>';
 const DEAD_END = 'No trace: run the simulation on the Test tab.';
 
 /** A run of order-id-copy: the source-field box a1 gave two contexts, the target field mapping t1 two OrderIds. */

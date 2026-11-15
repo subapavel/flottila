@@ -18,6 +18,7 @@ cp "$here/../gate-spec.sh" "$here/../ratchet.java" "$tmp/scripts/"
 : > "$tmp/ratchet/oracle/corpus.txt"; : > "$tmp/ratchet/oracle/differential.txt"
 : > "$tmp/ratchet/mutation.tsv"; : > "$tmp/ratchet/coverage.tsv"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/mvnw"
+export MVNW="$tmp/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/scripts/pit-summary.sh"
 printf '#!/usr/bin/env bash\necho "$NPROC"\n' > "$tmp/bin/nproc"
 cat > "$tmp/bin/java" <<EOF
@@ -49,7 +50,7 @@ mkdir -p "$tmp/ui"
 echo '{}' > "$tmp/ui/package.json"
 chmod +x "$tmp/mvnw" "$tmp/scripts/pit-summary.sh" "$tmp/bin/nproc" "$tmp/bin/java" "$tmp/bin/npm"
 
-B=io.flottila.mapping.bench
+B=io.rail8.mapping.bench
 M=claude-cloud-4vcpu
 # tree <p95 of run 1> <run 2> <run 3>: the canned scores of the three tree runs; a missing one makes that run fail
 tree() { rm -f "$tmp"/canned/tree-*; local i=1; for v in "$@"; do echo "$v" > "$tmp/canned/tree-$i"; i=$((i + 1)); done; }
@@ -64,7 +65,7 @@ gate() {
   (cd "$tmp" && MACHINE_LABEL=${1:-} NPROC=${2:-4} PATH="$tmp/bin:$PATH" scripts/gate-spec.sh 1 2>&1)
 }
 calls() { if [ -f "$tmp/jmh-calls" ]; then wc -l < "$tmp/jmh-calls"; else echo 0; fi; }
-regex='^(?:io\.flottila\.mapping\.bench\.OrdersBench\.smallLatency)$'
+regex='^(?:io\.rail8\.mapping\.bench\.OrdersBench\.smallLatency)$'
 
 # no label: measured and printed, nothing judged, bench.tsv and bench/RESULTS.md untouched
 latency 1 105

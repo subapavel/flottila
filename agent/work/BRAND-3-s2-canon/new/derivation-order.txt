@@ -1,0 +1,13 @@
+root Q{urn:rail8:corpus:order}Order 1..1 - /Q{urn:rail8:corpus:order}Order
+type /Q{urn:rail8:corpus:order}Order
+field Buyer 1..1 - Q{urn:rail8:corpus:order}Customer
+field Q{urn:rail8:corpus:order}Book 0..unbounded - Q{urn:rail8:corpus:order}ItemType
+field Q{urn:rail8:corpus:order}Disc 0..unbounded - Q{urn:rail8:corpus:order}ItemType
+field Total 1..1 xs:decimal Q{urn:rail8:corpus:order}Money
+type Q{urn:rail8:corpus:order}Customer
+field Name 1..1 xs:string -
+field Number 1..1 xs:string -
+type Q{urn:rail8:corpus:order}ItemType
+field Title 1..1 xs:string -
+type Q{urn:rail8:corpus:order}Money
+field @currency 1..1 xs:string -

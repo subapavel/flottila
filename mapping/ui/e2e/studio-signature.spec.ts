@@ -17,7 +17,7 @@ test('New mapping, Add source message and Add target message on Signature, Save;
     await page.getByRole('button', { name: `Add ${side} message` }).click();
     const choice = page.getByRole('dialog', { name: `Choose ${side} message` });
     await choice.getByRole('textbox', { name: 'Bundle' }).fill('../structures/skeleton/order.xsd');
-    await choice.getByRole('textbox', { name: 'Root element' }).fill('Q{urn:flottila:corpus:skeleton}Order');
+    await choice.getByRole('textbox', { name: 'Root element' }).fill('Q{urn:rail8:corpus:skeleton}Order');
     await choice.getByRole('button', { name: 'Apply' }).click();
     await expect(choice).toBeHidden();
   }

@@ -6,10 +6,12 @@ and benchmarks. It covers GATE check 9. You need only JDK 25 and Node 22 (22.12 
 
 ## Start the stack on Linux
 
-Start from a clean clone. The Maven wrapper downloads Maven; you install nothing else.
+Start from a clean clone. The commands below run in `mapping/`. The Maven wrapper is at the
+repository's root, so from `mapping/` it is `../mvnw`. It downloads Maven; you install nothing
+else.
 
 An installed Maven (`mvn`) within the enforcer's range (3.9.11 up to, not including, 4) works the
-same: replace `./mvnw` with `mvn` in any command below.
+same: replace `../mvnw` with `mvn` in any command below.
 
 ### Development: service and UI
 
@@ -17,7 +19,7 @@ The service serves the mappings of `corpus/` on port 8080. It binds to `127.0.0.
 a workspace, a directory of `*.mapping.json` files (ADR-0014). Start it:
 
 ```bash
-./mvnw -pl service -am quarkus:dev
+../mvnw -pl service -am quarkus:dev
 ```
 
 In a second terminal, start the UI. Vite serves on port 5173 and sends `/api` to the service:
@@ -53,13 +55,13 @@ cd ui
 npm ci
 npm run build
 cd ..
-./mvnw -B -Pui -pl service -am clean package -DskipTests
+../mvnw -B -Pui -pl service -am clean package -DskipTests
 ```
 
 Start it over a workspace. It binds to `127.0.0.1`:
 
 ```bash
-java -Dquarkus.http.host=127.0.0.1 -Dflottila.mapping.workspace=corpus -jar service/target/quarkus-app/quarkus-run.jar
+java -Dquarkus.http.host=127.0.0.1 -Drail8.mapping.workspace=corpus -jar service/target/quarkus-app/quarkus-run.jar
 ```
 
 Open http://127.0.0.1:8080.
@@ -114,7 +116,7 @@ copies a field of `corpus/structures/skeleton/order.xsd` to the same field of th
    message**. The "Choose source message" dialog opens. In **Bundle**, write one schema path per
    line, relative to the mapping's package (the workspace root when the Package is empty). For the
    example: `structures/skeleton/order.xsd`. Leave **Root** as "XML element" and fill **Root
-   element** (`Q{urn:flottila:corpus:skeleton}Order`). Choose **Apply**. Do the same with **Add
+   element** (`Q{urn:rail8:corpus:skeleton}Order`). Choose **Apply**. Do the same with **Add
    target message**.
 4. Open the **Definition** tab. Drag a source field onto a target field for a direct connection.
    In the expression of a target field, drag from an output to an input to connect boxes. To add
@@ -159,7 +161,7 @@ gate only (ADR-0021, Notes of 2026-11-11; F-36).
 Build and run the benchmarks yourself with `-Pbench`:
 
 ```bash
-./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
+../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
 ```
 
 ```bash
@@ -218,4 +220,4 @@ In this order (`docs/GATE.md`, "After milestone 1", grilling #19):
 The findings of #212 do not move these three specs.
 
 The XSLT front end follows them. UDFs, lookups, parameters, headers, properties, attachments and
-several messages wait for Flottila's data model (ADR-0030).
+several messages wait for Rail8's data model (ADR-0030).

@@ -13,7 +13,7 @@ import { definitionPreviewKey } from '../mock/definition-preview';
 import { studioStore } from '../shell/Studio';
 import { StudioShell } from '../shell/StudioShell';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const MAPPING = 'mappings/order-id-copy';
 const KEY = definitionPreviewKey(MAPPING);
@@ -187,7 +187,7 @@ describe('mapping variables, a preview feature (#163)', () => {
 
 describe('a field named like a variable (#163)', () => {
   test('a JSON property `$total` stays a target field: Add Variable does not take its name, and selecting it shows its own canvas', async () => {
-    const type = '/Q{urn:flottila:corpus:skeleton}Order';
+    const type = '/Q{urn:rail8:corpus:skeleton}Order';
     const dollar = { kind: 'json-property' as const, step: '$total', namespace: '', localName: '$total', min: 0, max: 1, valueType: 'xs:string', nillable: false };
     const structure: StructureLoaded = { ...orderStructure, types: { ...orderStructure.types, [type]: [...orderStructure.types[type]!, dollar] } };
     await renderDefinition({ loadStructure: () => Promise.resolve(structure) });

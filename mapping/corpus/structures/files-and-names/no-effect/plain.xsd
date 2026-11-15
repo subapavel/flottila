@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#93): annotated.xsd without the constructs accepted with no effect -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:no-effect"
-           targetNamespace="urn:flottila:corpus:no-effect">
+           xmlns:tns="urn:rail8:corpus:no-effect"
+           targetNamespace="urn:rail8:corpus:no-effect">
   <xs:element name="Order">
     <xs:complexType>
       <xs:sequence>

@@ -3,10 +3,10 @@
      "JSON Schema and WSDL") -->
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
                   xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                  xmlns:tns="urn:flottila:corpus:gate:refused"
-                  targetNamespace="urn:flottila:corpus:gate:refused">
+                  xmlns:tns="urn:rail8:corpus:gate:refused"
+                  targetNamespace="urn:rail8:corpus:gate:refused">
   <wsdl:types>
-    <xs:schema targetNamespace="urn:flottila:corpus:gate:refused">
+    <xs:schema targetNamespace="urn:rail8:corpus:gate:refused">
       <xs:element name="Doc">
         <xs:complexType>
           <xs:sequence>

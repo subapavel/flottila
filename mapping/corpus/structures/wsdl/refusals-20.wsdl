@@ -4,8 +4,8 @@
      prefix is not declared and one to no fault of the interface, and an interface that extends
      another -->
 <description xmlns="http://www.w3.org/ns/wsdl"
-             xmlns:tns="urn:flottila:corpus:refusals20"
-             targetNamespace="urn:flottila:corpus:refusals20">
+             xmlns:tns="urn:rail8:corpus:refusals20"
+             targetNamespace="urn:rail8:corpus:refusals20">
   <include location="../../../etc/passwd"/>
   <interface name="Any">
     <fault name="Other" element="#other"/>

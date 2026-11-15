@@ -1,0 +1,14 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -6,6 +6,10 @@
+ `docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
+ packet refers to them. Everything in the repo is in English.
+ 
++Work under `mapping/` (the mapping engine, imported with its history: D-150, D-151) also follows
++`mapping/CLAUDE.md` — the engine's technical rules and its licence list, which adds MIT-0, EDL 1.0,
++ISC and 0BSD for `mapping/` only (the mapping's ADR-0012 and ADR-0014). The process is this file's.
++
+ ## What this is
+ 
+ Open-source enterprise integration platform where **monitoring is the product**: every message,

@@ -1,0 +1,4 @@
+root Q{urn:flottila:corpus:wsdl11}Receipt 1..1 - /Q{urn:flottila:corpus:wsdl11}Receipt
+type /Q{urn:flottila:corpus:wsdl11}Receipt
+field Q{urn:flottila:corpus:wsdl11}OrderId 1..1 xs:string -
+field Q{urn:flottila:corpus:wsdl11}Accepted 1..1 xs:boolean -

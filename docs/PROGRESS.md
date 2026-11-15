@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-3 step 2 the mapping engine takes the Rail8 names and joins the root reactor — in progress
+
+- Context compacted before this step; re-verified with `git status`, `git log -3` and HANDOFF.
+- By the tool (`--root mapping`): identifiers 23 moves, 449 files, 2198 lines; stored and wire names 314 files, 786 lines, 18 entries
+  checked at the import commit. By hand (`agent/work/BRAND-3-s2-hand.diff`): `.mvn/` and `mvnw*` to the root, the root pom lists
+  `mapping`, `@SuppressWarnings("module")` on eleven module declarations, 14 ADR amendment lines, `../mvnw` in documents and gates.
+- Pins derived outside the engine, each first reproduced from the old bytes: 11 fingerprints, 6 ETags (`agent/work/BRAND-3-s2-canon/`);
+  20 load-error columns from the input text (`BRAND-3-s2-columns.txt`). Kept as recorded: the CPI package name, the PO export zip.
+- The platform does not see the mapping: `ci/coverage_check.py` skips `mapping/` (red first, 5 mutants killed); `ci.yml` builds with
+  `-f platform/pom.xml`. Rulings: `agent/packets/BRAND-3.md` "Rulings on step 2's hand-back" (and those for step 3).
+- VERIFIED_PASS (verifier): mapping `./mvnw -f mapping/pom.xml -Pbench clean verify` 17 822 tests 0/0/0, every module = base, twice
+  (`BRAND-3-s2-verify-counts.txt`, `-verify2-mapping.log`); ui 674 + 254 + 17; platform reactor 4580 tests, counts = BASE-1, red:
+  StepBodiesIT (FIX-212), LedgerIT (FIX-215), both in the base red set; coverage baseline current; guards green; ledger_check 9 known.
+- Review r1 FAIL (3 ADRs without the amendment line, 2 stale wrapper comments, the guard's new case too weak), r2 PASS.
+- Next: BRAND-3 step 3 (workflows, `mapping/CLAUDE.md`, archives, NOTICE; ISSUE-9 and the owner's patch; section 12; MAP rows).
+
 ## 2026-11-15 — FIX-217 the sample pipeline test no longer bounds wall-clock time — done, review PASS
 
 - Fault: `SamplePipelineTest` required the run to take under 100 ms of wall-clock time; GitHub's runners took 162-337 ms, so `ci` has

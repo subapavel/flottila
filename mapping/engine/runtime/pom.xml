@@ -4,32 +4,32 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-engine</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-runtime</artifactId>
-  <name>Flottila Mapping runtime</name>
+  <artifactId>rail8-mapping-runtime</artifactId>
+  <name>Rail8 Mapping runtime</name>
 
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-ir</artifactId>
+      <artifactId>rail8-mapping-ir</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-xdm</artifactId>
+      <artifactId>rail8-mapping-xdm</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-serializer</artifactId>
+      <artifactId>rail8-mapping-serializer</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-udf-api</artifactId>
+      <artifactId>rail8-mapping-udf-api</artifactId>
       <version>${project.version}</version>
     </dependency>
   </dependencies>
@@ -49,10 +49,10 @@
             </goals>
             <configuration>
               <arguments>
-                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
+                <argument>${mapping.root}/scripts/function-families.java</argument>
                 <argument>index</argument>
-                <argument>${project.build.directory}/generated-sources/function-families/io/flottila/mapping/runtime/FamilyIndex.java</argument>
-                <argument>${project.basedir}/src/main/java/io/flottila/mapping/runtime</argument>
+                <argument>${project.build.directory}/generated-sources/function-families/io/rail8/mapping/runtime/FamilyIndex.java</argument>
+                <argument>${project.basedir}/src/main/java/io/rail8/mapping/runtime</argument>
               </arguments>
             </configuration>
           </execution>

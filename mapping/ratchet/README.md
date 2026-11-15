@@ -27,7 +27,7 @@ and judged on the median of the three runs (ADR-0021, Notes of 2026-11-11). `reg
 A baseline comes only from the spec gate's step 4 run; every other run is informative only and never moves or judges a baseline (F-36, ADR-0021). A row with no result fails; a result with no row is a new row. `check` ignores `bench.tsv`.
 
 Scenario names come from one rule in `scripts/ratchet.java` (`SCENARIOS`): the JMH benchmark
-`io.flottila.mapping.bench.<Mapping>Bench.<method>` with `<mapping>` = `<Mapping>` with a lower-case
+`io.rail8.mapping.bench.<Mapping>Bench.<method>` with `<mapping>` = `<Mapping>` with a lower-case
 first letter, and `<method>`:
 
 | Method | Primary metric | `gc.alloc.rate.norm` (`-prof gc`) |

@@ -49,7 +49,7 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
 
-## Project conventions (Flottila Mapping)
+## Project conventions (Rail8 Mapping)
 
 These extend the upstream conventions above; `/run-spec` and `/gate` rely on them.
 
@@ -78,7 +78,7 @@ These extend the upstream conventions above; `/run-spec` and `/gate` rely on the
 
 ## Cloud VM: REST only
 
-In Flottila's Claude Code Cloud environment (2026-10-17) `gh issue …` and `gh pr …` failed because
+In Rail8's Claude Code Cloud environment (2026-10-17) `gh issue …` and `gh pr …` failed because
 the proxy blocked GraphQL, while `gh api` (REST) worked. Until a session observes `gh issue list`
 working here, use these REST forms; `{owner}/{repo}` is filled in by `gh api` inside a clone.
 

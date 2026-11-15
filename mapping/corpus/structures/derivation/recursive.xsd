@@ -2,8 +2,8 @@
 <!-- Fixture (#95): a named type that is recursive through its own extension. It is one type of the
      structure graph and loads lazily (ADR-0008) -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:recursive"
-           targetNamespace="urn:flottila:corpus:recursive">
+           xmlns:tns="urn:rail8:corpus:recursive"
+           targetNamespace="urn:rail8:corpus:recursive">
   <xs:element name="Tree" type="tns:Branch"/>
   <xs:complexType name="Node">
     <xs:sequence>

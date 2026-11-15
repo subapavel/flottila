@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #3)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 Message mappings from SAP PO and SAP Cloud Integration must migrate without changing their
 results, but the engine must not copy PO. So the **observable queue semantics** match PO/CPI
 exactly: contexts and context changes, SUPPRESS, last-value reuse, target-field creation,

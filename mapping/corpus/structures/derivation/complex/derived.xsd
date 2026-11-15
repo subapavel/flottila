@@ -4,10 +4,10 @@
      Attribute uses follow XSD: both inherit the base's; a restriction's redeclaration wins in the
      base's place and its use="prohibited" drops one, which an extension's does not -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:b="urn:flottila:corpus:base"
-           xmlns:tns="urn:flottila:corpus:derived"
-           targetNamespace="urn:flottila:corpus:derived">
-  <xs:import namespace="urn:flottila:corpus:base" schemaLocation="base.xsd"/>
+           xmlns:b="urn:rail8:corpus:base"
+           xmlns:tns="urn:rail8:corpus:derived"
+           targetNamespace="urn:rail8:corpus:derived">
+  <xs:import namespace="urn:rail8:corpus:base" schemaLocation="base.xsd"/>
   <xs:element name="Deal">
     <xs:complexType>
       <xs:sequence>

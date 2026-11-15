@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#89 review): blockDefault and finalDefault on the schema, accepted with no effect -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:skeleton"
+           targetNamespace="urn:rail8:corpus:skeleton"
            blockDefault="#all" finalDefault="extension restriction">
   <xs:element name="Order">
     <xs:complexType>

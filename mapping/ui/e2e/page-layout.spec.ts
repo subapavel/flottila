@@ -5,7 +5,7 @@ import { canvas, fields, openStudio, selectTarget } from './studio';
 // The layout contract of spec #135, on the studio (ADR-0028): on a 1440 x 900 window the page fills the window and never
 // scrolls; the Definition tab shows both message panes, the canvas with its tools and the function catalogue, and the
 // Test tab shows Run simulation, the result and the processing log.
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 

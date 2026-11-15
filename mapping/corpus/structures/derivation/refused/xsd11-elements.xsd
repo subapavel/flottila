@@ -2,7 +2,7 @@
 <!-- Fixture (#95): XSD 1.1 is refused when the schema loads (ADR-0008): each element only XSD 1.1
      has, wherever it stands -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:refused">
+           targetNamespace="urn:rail8:corpus:refused">
   <xs:defaultOpenContent>
     <xs:any/>
   </xs:defaultOpenContent>

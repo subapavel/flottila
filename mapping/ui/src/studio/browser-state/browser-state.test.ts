@@ -15,13 +15,13 @@ function fakeStorage(failing = false) {
 }
 
 describe('the browser state store over a Storage', () => {
-  test('writes JSON under the flottila-mapping:v1: prefix and reads it back', () => {
+  test('writes JSON under the rail8-mapping:v1: prefix and reads it back', () => {
     const storage = fakeStorage();
     const state = storageBrowserState(storage);
 
     state.write('mapping:m/one:expanded', { source: ['/a'] });
 
-    expect([...storage.items]).toEqual([['flottila-mapping:v1:mapping:m/one:expanded', '{"source":["/a"]}']]);
+    expect([...storage.items]).toEqual([['rail8-mapping:v1:mapping:m/one:expanded', '{"source":["/a"]}']]);
     expect(state.read('mapping:m/one:expanded')).toEqual({ source: ['/a'] });
   });
 
@@ -31,7 +31,7 @@ describe('the browser state store over a Storage', () => {
 
   test('reads undefined for a value that is no JSON', () => {
     const storage = fakeStorage();
-    storage.items.set('flottila-mapping:v1:broken', '{');
+    storage.items.set('rail8-mapping:v1:broken', '{');
 
     expect(storageBrowserState(storage).read('broken')).toBeUndefined();
   });

@@ -3,10 +3,10 @@
      stopped file's namespace (an element and a simple type), a use of a type whose declaration is
      refused, and a refused local element that declares no global name -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:b="urn:flottila:corpus:broken"
-           xmlns:u="urn:flottila:corpus:user"
-           targetNamespace="urn:flottila:corpus:user">
-  <xs:import namespace="urn:flottila:corpus:broken"/>
+           xmlns:b="urn:rail8:corpus:broken"
+           xmlns:u="urn:rail8:corpus:user"
+           targetNamespace="urn:rail8:corpus:user">
+  <xs:import namespace="urn:rail8:corpus:broken"/>
   <xs:complexType name="Refused" default="no"/>
   <xs:element name="Doc">
     <xs:complexType>

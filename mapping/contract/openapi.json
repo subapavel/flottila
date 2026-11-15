@@ -1187,7 +1187,7 @@
     }
   },
   "info" : {
-    "title" : "flottila-mapping-service API",
+    "title" : "rail8-mapping-service API",
     "version" : "0.1.0-SNAPSHOT"
   }
 }

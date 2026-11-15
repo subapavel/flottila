@@ -73,8 +73,8 @@ test('a save without a function edit since the last save writes nothing', async 
 });
 
 test('a refused save and a save conflict keep the draft and write nothing', async () => {
-  const refused = new ApiProblem({ type: 'urn:flottila:mapping:problem:internal', title: 'Internal error', status: 500, detail: 'disk full' });
-  const conflict = new ApiProblem({ type: 'urn:flottila:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
+  const refused = new ApiProblem({ type: 'urn:rail8:mapping:problem:internal', title: 'Internal error', status: 500, detail: 'disk full' });
+  const conflict = new ApiProblem({ type: 'urn:rail8:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
   const browserState = memoryBrowserState();
   const { functions, store } = following(browserState, workingCopy(vi.fn().mockRejectedValueOnce(refused).mockRejectedValueOnce(conflict)));
   functions.getState().edit(withFunction);

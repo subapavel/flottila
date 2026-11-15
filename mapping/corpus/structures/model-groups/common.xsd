@@ -3,7 +3,7 @@
      Repeated holds a repeated sequence of two elements, which interleaves in a target: its
      fields are refused at that sequence, in this file. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:groups:common">
+           targetNamespace="urn:rail8:corpus:groups:common">
   <xs:group name="Lines">
     <xs:sequence>
       <xs:element name="Line" maxOccurs="unbounded">

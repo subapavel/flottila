@@ -6,15 +6,15 @@
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
                   xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
                   xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                  xmlns:po="urn:flottila:corpus:po"
-                  xmlns:tns="urn:flottila:corpus:wsdl11"
-                  targetNamespace="urn:flottila:corpus:wsdl11">
+                  xmlns:po="urn:rail8:corpus:po"
+                  xmlns:tns="urn:rail8:corpus:wsdl11"
+                  targetNamespace="urn:rail8:corpus:wsdl11">
   <wsdl:documentation>A synthetic order service.</wsdl:documentation>
   <wsp:Policy xmlns:wsp="http://www.w3.org/ns/ws-policy"/>
   <wsdl:types>
     <wsdl:documentation>The order is the imported schema's.</wsdl:documentation>
-    <xs:schema targetNamespace="urn:flottila:corpus:wsdl11" elementFormDefault="qualified">
-      <xs:import namespace="urn:flottila:corpus:po"
+    <xs:schema targetNamespace="urn:rail8:corpus:wsdl11" elementFormDefault="qualified">
+      <xs:import namespace="urn:rail8:corpus:po"
                  schemaLocation="../files-and-names/import-location/po/order.xsd"/>
       <xs:element name="Receipt">
         <xs:complexType>

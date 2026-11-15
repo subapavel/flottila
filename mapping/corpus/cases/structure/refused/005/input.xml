@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<o:Order xmlns:o="urn:flottila:corpus:order">
+<o:Order xmlns:o="urn:rail8:corpus:order">
   <Buyer>
     <Name>Ada</Name>
     <Number>C-1</Number>

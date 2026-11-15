@@ -2,6 +2,8 @@
 
 Status: accepted (2026-11-09, owner, spec #152).
 
+Amended 2026-11-15 (D-151): the masthead reads "Rail8 | Mapping studio"
+
 This ADR supersedes the look and shape of ADR-0012:
 
 - the split view;

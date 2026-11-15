@@ -19,8 +19,9 @@ printf "$ok" > "$root/bin/java"
 printf "$ok" > "$root/bin/git"
 printf "$ok" > "$root/scripts/check-lf-checkout.sh"
 printf "$ok" > "$root/scripts/check-trailers.sh"
-# MVNW_EXIT sets the exit code of every ./mvnw step
+# MVNW_EXIT sets the exit code of every ../mvnw step
 printf '#!/usr/bin/env bash\nexit "${MVNW_EXIT:-0}"\n' > "$root/mvnw"
+export MVNW="$root/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
 # the summary call prints a warning to stderr, which the log must hold too, then one line per module; the --run call
 # prints nothing
 printf '#!/usr/bin/env bash\n[ "$1" = --run ] && exit 0\nshift\necho "pit-summary: warning" >&2\nfor m in "$@"; do echo "$m 9/9 survivors 0 floor 0 ok"; done\n' \

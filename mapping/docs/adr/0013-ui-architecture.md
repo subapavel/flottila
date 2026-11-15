@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #11); paths amended by F-34 (2026-11-10, owner): the Mapping studio (ADR-0028, #161) replaced the editor, so the public entry is `Studio` (`ui/src/studio/shell/Studio.tsx`) and the store and its coverage floor are `ui/src/studio/store/`. Every `MappingEditor` and `ui/src/editor/` below reads as these; the decisions are unchanged.
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 FOUNDING §12 says the UI is React + PatternFly and will become Flottila's mapping UI. ADR-0012
 fixed the editor's shape and its canvas, tree and layout libraries. This ADR fixes how `ui/` is
 built around them. Flottila has no UI architecture yet, so nothing here may assume its shell.

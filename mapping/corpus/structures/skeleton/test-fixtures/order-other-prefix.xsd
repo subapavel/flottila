@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Fixture (#25): ../order.xsd with the prefix xsd: and other indentation. The same structure: the same fingerprint (ADR-0009). -->
 <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-             targetNamespace="urn:flottila:corpus:skeleton">
+             targetNamespace="urn:rail8:corpus:skeleton">
     <xsd:element name="Order">
       <xsd:complexType>
         <xsd:sequence>

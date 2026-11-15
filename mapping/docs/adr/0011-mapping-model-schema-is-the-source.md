@@ -2,6 +2,8 @@
 
 Status: accepted (2026-10-30, grilling #6); amended by F-2; refined by ADR-0013 (unreachable boxes); refined by ADR-0025 (stage-3 codes for function boxes)
 
+Amended 2026-11-15 (D-151): the name reads `rail8`
+
 FOUNDING §12 says the editor's model types are generated from the mapping-model schema. This
 ADR records that and fills the gaps for the Java side and for validation.
 

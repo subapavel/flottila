@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:flottila:mapping-model:1",
+  "$id": "urn:rail8:mapping-model:1",
   "title": "MappingModel",
-  "description": "A Flottila mapping model, formatVersion 1 (ADR-0010, ADR-0011, ADR-0029). Its canonical form is written by the engine's one writer. source and target are absent until the Signature tab chooses them.",
+  "description": "A Rail8 mapping model, formatVersion 1 (ADR-0010, ADR-0011, ADR-0029). Its canonical form is written by the engine's one writer. source and target are absent until the Signature tab chooses them.",
   "type": "object",
   "required": ["formatVersion"],
   "additionalProperties": false,

@@ -57,7 +57,7 @@ describe('the start page (ADR-0028)', () => {
   test('is the masthead over a table of the mappings with Name, Package, Source, Target and Description, each with Open in studio', async () => {
     render(fakeApiClient());
 
-    await expect.element(page.getByRole('banner')).toHaveTextContent('FlottilaMapping studio');
+    await expect.element(page.getByRole('banner')).toHaveTextContent('Rail8Mapping studio');
     await expect.element(page.getByRole('heading', { level: 1, name: 'Mappings' })).toBeVisible();
     const headers = table().getByRole('columnheader');
     await expect.element(headers).toHaveLength(6);

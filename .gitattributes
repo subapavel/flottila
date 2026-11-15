@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# The Windows wrapper script is committed with CRLF and checked out as committed.
+mvnw.cmd -text

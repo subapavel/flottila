@@ -2,8 +2,8 @@
 <!-- Fixture (#95): complex types that derive from themselves, and elements in their own
      substitution group: each is schema-invalid at its derivation or declaration -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:y="urn:flottila:corpus:cycles"
-           targetNamespace="urn:flottila:corpus:cycles">
+           xmlns:y="urn:rail8:corpus:cycles"
+           targetNamespace="urn:rail8:corpus:cycles">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

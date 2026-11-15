@@ -1,0 +1,9 @@
+root Q{urn:rail8:corpus:po}Order 1..1 - /Q{urn:rail8:corpus:po}Order
+type /Q{urn:rail8:corpus:po}Order
+field Q{urn:rail8:corpus:po}Id 1..1 xs:string -
+field Q{urn:rail8:corpus:po}ShipTo 1..1 - Q{urn:rail8:corpus:common}Address
+field Q{urn:rail8:corpus:po}Total 1..1 xs:decimal -
+field Q{urn:rail8:corpus:common}Note 0..unbounded xs:string -
+type Q{urn:rail8:corpus:common}Address
+field Street 1..1 xs:string -
+field City 1..1 xs:string -

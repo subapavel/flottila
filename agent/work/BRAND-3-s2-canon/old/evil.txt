@@ -1,0 +1,3 @@
+root Q{urn:flottila:test:outside}Exfil 1..1 - /Q{urn:flottila:test:outside}Exfil
+type /Q{urn:flottila:test:outside}Exfil
+field SecretField 1..1 xs:string -

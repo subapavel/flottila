@@ -3,11 +3,11 @@
      the global element pty:Party of party.xsd, a third namespace, across files; inv:Section is a
      recursive type, whose paths a mapping uses below the recursion cap -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:inv="urn:flottila:corpus:gate:invoice"
-           xmlns:pty="urn:flottila:corpus:gate:party"
-           targetNamespace="urn:flottila:corpus:gate:invoice"
+           xmlns:inv="urn:rail8:corpus:gate:invoice"
+           xmlns:pty="urn:rail8:corpus:gate:party"
+           targetNamespace="urn:rail8:corpus:gate:invoice"
            elementFormDefault="qualified">
-  <xs:import namespace="urn:flottila:corpus:gate:party" schemaLocation="party.xsd"/>
+  <xs:import namespace="urn:rail8:corpus:gate:party" schemaLocation="party.xsd"/>
   <xs:element name="Invoice">
     <xs:complexType>
       <xs:sequence>

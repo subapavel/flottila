@@ -4,65 +4,65 @@
     "bundle": [
       "../structures/derivation/order.xsd"
     ],
-    "fingerprint": "sha256:7fa870df17665f949da9986b2036fc81a4299fe38c920afdd24b20ac29b17284",
+    "fingerprint": "sha256:389036a167ee8d62c790b176098ee58dab2844bfe08e8ce3e8c916cd9d747e75",
     "root": {
-      "element": "Q{urn:flottila:corpus:order}Order"
+      "element": "Q{urn:rail8:corpus:order}Order"
     }
   },
   "target": {
     "bundle": [
       "../structures/derivation/order.xsd"
     ],
-    "fingerprint": "sha256:f7b3d1697015e4f93e73caa19b269e7cbd44f8b19146ba6b50c49bdb7bfa5c84",
+    "fingerprint": "sha256:04f870ee678c584446315c4c36eea6b2dff38d1b9a1869694ad44f6e9aef4013",
     "root": {
-      "element": "Q{urn:flottila:corpus:order}Receipt"
+      "element": "Q{urn:rail8:corpus:order}Receipt"
     }
   },
   "targetFieldMappings": {
-    "/Q{urn:flottila:corpus:order}Receipt/Customer/Name": {
+    "/Q{urn:rail8:corpus:order}Receipt/Customer/Name": {
       "boxes": {
         "S1": {
-          "field": "/Q{urn:flottila:corpus:order}Order/Buyer/Name",
+          "field": "/Q{urn:rail8:corpus:order}Order/Buyer/Name",
           "kind": "source"
         }
       },
       "id": "T1",
       "result": "S1"
     },
-    "/Q{urn:flottila:corpus:order}Receipt/Customer/Number": {
+    "/Q{urn:rail8:corpus:order}Receipt/Customer/Number": {
       "boxes": {
         "S2": {
-          "field": "/Q{urn:flottila:corpus:order}Order/Buyer/Number",
+          "field": "/Q{urn:rail8:corpus:order}Order/Buyer/Number",
           "kind": "source"
         }
       },
       "id": "T2",
       "result": "S2"
     },
-    "/Q{urn:flottila:corpus:order}Receipt/Paid": {
+    "/Q{urn:rail8:corpus:order}Receipt/Paid": {
       "boxes": {
         "S3": {
-          "field": "/Q{urn:flottila:corpus:order}Order/Total",
+          "field": "/Q{urn:rail8:corpus:order}Order/Total",
           "kind": "source"
         }
       },
       "id": "T3",
       "result": "S3"
     },
-    "/Q{urn:flottila:corpus:order}Receipt/Paid/@currency": {
+    "/Q{urn:rail8:corpus:order}Receipt/Paid/@currency": {
       "boxes": {
         "S4": {
-          "field": "/Q{urn:flottila:corpus:order}Order/Total/@currency",
+          "field": "/Q{urn:rail8:corpus:order}Order/Total/@currency",
           "kind": "source"
         }
       },
       "id": "T4",
       "result": "S4"
     },
-    "/Q{urn:flottila:corpus:order}Receipt/Remark/Text": {
+    "/Q{urn:rail8:corpus:order}Receipt/Remark/Text": {
       "boxes": {
         "S5": {
-          "field": "/Q{urn:flottila:corpus:order}Order/Buyer/Name",
+          "field": "/Q{urn:rail8:corpus:order}Order/Buyer/Name",
           "kind": "source"
         }
       },

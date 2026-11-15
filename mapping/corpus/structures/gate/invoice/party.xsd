@@ -2,7 +2,7 @@
 <!-- Synthetic structure for GATE check 1 (#100): the global element Party, which invoice.xsd
      refers to across files -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:gate:party"
+           targetNamespace="urn:rail8:corpus:gate:party"
            elementFormDefault="qualified">
   <xs:element name="Party">
     <xs:complexType>

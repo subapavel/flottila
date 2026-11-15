@@ -15,10 +15,10 @@ referenced by the Phase 0 map's tickets.
   UDFs), edited in a React + PatternFly UI, run compiled, exported to XSLT.
 - Later: **XSLT 3.0 + XPath 3.1** on the same engine (maps, arrays, `xsl:iterate`, packages,
   JSON); XQuery 3.1 is close once XPath exists; a standalone XPath API (routing conditions, value
-  extraction) for Flottila.
+  extraction) for Rail8.
 - Target workload: integration runtimes — compile once, run thousands of times on small and
   medium messages (KB to a few MB). Large files are the exception, handled by burst mode (§9).
-- Separate repo until it is embedded in Flottila as its mapping engine and mapping UI.
+- Separate repo until it is embedded in Rail8 as its mapping engine and mapping UI.
 
 ## 2. Compiler shape — one core, several front ends and back ends ("LLVM shape")
 
@@ -206,7 +206,7 @@ streamability analysis in the static-analysis stage and IR.
 
 JPMS modules along the pipeline: `xdm`, `xpath`, `xslt-compiler`, `runtime`, `serializer`,
 `jaxp-adapter`, plus the mapping front end, structure import, the service and `ui/`. Root package
-`io.flottila.mapping`.
+`io.rail8.mapping`.
 
 Refined by ADR-0014: the engine modules are JPMS; the service is a Quarkus application on the
 class path over them, its module rules enforced by ArchUnit.
@@ -219,7 +219,7 @@ Settled by ADR-0016 (grilling #13) for milestone 1. The engine has nine JPMS mod
 
 ## 12. UI
 
-React + PatternFly (also Flottila's future UI). Editor shape decided by the prototype ticket
+React + PatternFly (also Rail8's future UI). Editor shape decided by the prototype ticket
 (three variants); the editor's model types are generated from the mapping-model schema.
 
 ## 13. Effort estimate given at the start

@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * it is ASCII, so a character is a byte.
  *
  * <p>The inputs for a comparison outside the benchmarks come from the bench jar, after {@code
- * ./mvnw -B -Pbench -pl bench/jmh -am verify}:
+ * ../mvnw -B -Pbench -pl bench/jmh -am verify}:
  *
  * <pre>
  * java -cp bench/jmh/target/benchmarks.jar wide.WideGenerator large wide-large.xml

@@ -3,7 +3,7 @@ import { collectProblems } from './problems';
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const canvas = (page: Page) => page.getByRole('group', { name: 'Mapping canvas' });
 const node = (page: Page, name: RegExp) => canvas(page).getByRole('group', { name });
 const fields = (page: Page, side: 'source' | 'target') => page.getByRole('region', { name: `${side} message` }).getByRole('table', { name: `${side} fields` });

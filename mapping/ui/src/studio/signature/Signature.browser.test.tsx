@@ -9,7 +9,7 @@ import type { MappingModel } from '../../generated/mapping-model';
 import { signatureMockKey } from '../mock/signature-mock';
 import { Studio } from '../shell/Studio';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_XSD = '../structures/skeleton/order.xsd';
 
 let root: Root | undefined;
@@ -76,7 +76,7 @@ describe('the Signature tab (the prototype Signature)', () => {
       await expect.element(row(side, 1).getByRole('combobox', { name: 'Message type' })).toHaveValue('element');
       await expect.element(row(side, 1).getByRole('button', { name: 'Choose message 1' })).toHaveTextContent('Order');
       await expect.element(row(side, 1).getByRole('button', { name: 'Choose message 1' })).toHaveAttribute('title', ORDER_XSD);
-      await expect.element(row(side, 1).getByRole('button', { name: 'Choose namespace or ID 1' })).toHaveTextContent('urn:flottila:corpus:skeleton');
+      await expect.element(row(side, 1).getByRole('button', { name: 'Choose namespace or ID 1' })).toHaveTextContent('urn:rail8:corpus:skeleton');
       await expect.element(row(side, 1).getByRole('combobox', { name: 'Occurrence' })).toHaveValue('1');
       await expect.element(tool(side, 'Insert row')).toBeDisabled();
       await expect.element(row(side, 1).getByRole('button', { name: 'Choose message 1' })).toBeDisabled();
@@ -228,7 +228,7 @@ describe('the Signature tab (the prototype Signature)', () => {
     await expect.element(choice('target').getByRole('textbox', { name: 'Bundle' })).toHaveValue(ORDER_XSD);
     await expect.element(choice('target').getByRole('textbox', { name: 'Root element' })).toHaveValue(ORDER);
 
-    await choice('target').getByRole('textbox', { name: 'Root element' }).fill('Q{urn:flottila:corpus:skeleton}Invoice');
+    await choice('target').getByRole('textbox', { name: 'Root element' }).fill('Q{urn:rail8:corpus:skeleton}Invoice');
     await choice('target').getByRole('button', { name: 'Apply' }).click();
 
     await expect.element(row('Target', 1).getByRole('button', { name: 'Choose message 1' })).toHaveTextContent('Invoice');
@@ -384,7 +384,7 @@ describe('several source or target messages, a preview feature (#168)', () => {
 
   test('a refused save and a save conflict keep the preview messages as a draft', async () => {
     const fake = fakeApiClient();
-    const problem = new ApiProblem({ type: 'urn:flottila:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
+    const problem = new ApiProblem({ type: 'urn:rail8:mapping:problem:mapping-changed', title: 'Mapping changed', status: 409, detail: 'changed on disk' });
     const failure = new ApiProblem({ type: 'about:blank', title: 'Service Unavailable', status: 503, detail: 'offline' });
     const saveMapping = vi.fn().mockRejectedValueOnce(failure).mockRejectedValueOnce(problem);
     const browserState = memoryBrowserState();

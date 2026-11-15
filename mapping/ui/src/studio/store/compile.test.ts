@@ -3,14 +3,14 @@ import { ApiProblem, type Diagnostic, type StoredMapping } from '../../api/clien
 import type { MappingModel } from '../../generated/mapping-model';
 import { COMPILE_DELAY_MS, createWorkingCopyStore } from './working-copy';
 
-const ORDER = '/Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = '/Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `${ORDER}/OrderId`;
 const NOTE = `${ORDER}/Note`;
 
 const structure = {
   bundle: ['../structures/skeleton/order.xsd'] as [string],
-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
-  root: { element: 'Q{urn:flottila:corpus:skeleton}Order' },
+  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+  root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
 };
 const baseline: MappingModel = { formatVersion: 1, source: structure, target: structure };
 
@@ -140,7 +140,7 @@ describe('the compile scheduler of the working-copy store', () => {
     const store = storeWith(port);
     store.getState().link(ORDER_ID, ORDER_ID);
     await vi.advanceTimersByTimeAsync(COMPILE_DELAY_MS);
-    port.calls[0]!.reject(new ApiProblem({ type: 'urn:flottila:mapping:problem:not-found', title: 'Not found', status: 404, detail: '' }));
+    port.calls[0]!.reject(new ApiProblem({ type: 'urn:rail8:mapping:problem:not-found', title: 'Not found', status: 404, detail: '' }));
     await settled();
     expect(store.getState().compileFailure).toBe('Not found');
 
@@ -154,7 +154,7 @@ describe('the compile scheduler of the working-copy store', () => {
 
   test("a save refused with 422 replaces the set with its diagnostics until the next compile", async () => {
     const refused = new ApiProblem({
-      type: 'urn:flottila:mapping:problem:model-refused',
+      type: 'urn:rail8:mapping:problem:model-refused',
       title: 'Model refused',
       status: 422,
       detail: 'the mapping model is refused by validation stage 1 or 2',
@@ -178,7 +178,7 @@ describe('the compile scheduler of the working-copy store', () => {
   });
 
   test('a save that fails without diagnostics leaves the set as it is', async () => {
-    const notFound = new ApiProblem({ type: 'urn:flottila:mapping:problem:not-found', title: 'Not found', status: 404, detail: '' });
+    const notFound = new ApiProblem({ type: 'urn:rail8:mapping:problem:not-found', title: 'Not found', status: 404, detail: '' });
     const port = deferredCompile();
     const store = storeWith(port, refusingSave(notFound));
     store.getState().link(ORDER_ID, ORDER_ID);
@@ -208,7 +208,7 @@ describe('the compile scheduler of the working-copy store', () => {
 
   test('a save conflict (409) is no refusal: the set stays and the conflict opens', async () => {
     const changed = new ApiProblem({
-      type: 'urn:flottila:mapping:problem:mapping-changed',
+      type: 'urn:rail8:mapping:problem:mapping-changed',
       title: 'Mapping changed',
       status: 409,
       detail: 'the mapping changed on disk',

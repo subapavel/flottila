@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { MappingModel, StructureRef } from '../generated/mapping-model';
 import { setStructure } from './set-structure';
 
-const ORDER = 'Q{urn:flottila:corpus:skeleton}Order';
+const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 
 const order: StructureRef = {

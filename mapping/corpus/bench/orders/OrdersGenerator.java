@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * a byte.
  *
  * <p>The inputs for a comparison outside the benchmarks (the {@code po-owner-local} observation,
- * ADR-0021) come from the bench jar, after {@code ./mvnw -B -Pbench -pl bench/jmh -am verify}:
+ * ADR-0021) come from the bench jar, after {@code ../mvnw -B -Pbench -pl bench/jmh -am verify}:
  *
  * <pre>
  * java -cp bench/jmh/target/benchmarks.jar orders.OrdersGenerator large orders-large.xml

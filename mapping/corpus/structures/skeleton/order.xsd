@@ -3,7 +3,7 @@
      The root is 1..1. OrderId is the one required leaf field, the one the skeleton maps.
      Every other field is optional. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:skeleton">
+           targetNamespace="urn:rail8:corpus:skeleton">
   <xs:element name="Order">
     <xs:complexType>
       <xs:sequence>

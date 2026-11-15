@@ -9,7 +9,7 @@
     xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
     xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:array="http://www.w3.org/2005/xpath-functions/array"
-    xmlns:po="urn:flottila:mapping:po"
+    xmlns:po="urn:rail8:mapping:po"
     xmlns:err="http://www.w3.org/2005/xqt-errors"
     exclude-result-prefixes="#all">
 
@@ -175,7 +175,7 @@
                      then 'a numeric key is SUPPRESS' else ())[1]"/>
     <xsl:sequence select="
         if (exists($defect))
-        then po:data-error(QName('urn:flottila:mapping:po', 'po:' || upper-case($function)), $box,
+        then po:data-error(QName('urn:rail8:mapping:po', 'po:' || upper-case($function)), $box,
                    $function || ': ' || $defect)
         else array:join(for $c in 1 to $contexts
                         return [po:sortByKey-context($keys($c), $values($c), $comparison, $order)])"/>

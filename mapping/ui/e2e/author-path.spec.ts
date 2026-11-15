@@ -8,7 +8,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 // The studio's author path on the fake API (#117, ADR-0028). The fake runs no engine: a run answers the corpus case
 // link/direct-copy/001 when the field links match it, with an empty trace, so the display queues show that nothing
 // was traced; the @stack suite shows their contents.
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 const input = readFileSync(new URL('../../corpus/cases/link/direct-copy/001/input.xml', import.meta.url), 'utf8');
 
 test('the author path: list, open, link by drag and drop, a function, a constant and a parameter, save, run, display queues', async ({ page }) => {

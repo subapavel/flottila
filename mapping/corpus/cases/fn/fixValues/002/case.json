@@ -1,7 +1,7 @@
 {
   "mapping": "mappings/fix-values-key.mapping.json",
   "provenance": "decided",
-  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Flottila follows CPI; expected.xml equals corpus/observations/obs-constant/cpi/fixValues-002-fix-values-key.xml, PO 7.50 defaults a fresh FixValues to Use Default Value and gave empty V for missing keys (po75/fixValues-002-fix-values-key.xml); was assumed: ADR-0026 \"Table params\" (#83), assumed reading: a key the table lacks gives the key itself unless the box says otherwise (missing: key, the default); obs-constant row fn/fixValues/002",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: PO 7.50 and CPI disagree, Rail8 follows CPI; expected.xml equals corpus/observations/obs-constant/cpi/fixValues-002-fix-values-key.xml, PO 7.50 defaults a fresh FixValues to Use Default Value and gave empty V for missing keys (po75/fixValues-002-fix-values-key.xml); was assumed: ADR-0026 \"Table params\" (#83), assumed reading: a key the table lacks gives the key itself unless the box says otherwise (missing: key, the default); obs-constant row fn/fixValues/002",
   "expect": "output",
   "note": "FixValues a=A, d=D, the missing-key option left as proposed: b, c, e, f are not in the table and pass as they are."
 }

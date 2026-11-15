@@ -3,10 +3,10 @@
      relative to itself -->
 <description xmlns="http://www.w3.org/ns/wsdl"
              xmlns:xs="http://www.w3.org/2001/XMLSchema"
-             targetNamespace="urn:flottila:corpus:include20">
+             targetNamespace="urn:rail8:corpus:include20">
   <include location="parts/interface.wsdl"/>
   <types>
-    <xs:schema targetNamespace="urn:flottila:corpus:include20">
+    <xs:schema targetNamespace="urn:rail8:corpus:include20">
       <xs:element name="Ping">
         <xs:complexType>
           <xs:attribute name="at" type="xs:date"/>

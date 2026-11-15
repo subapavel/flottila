@@ -1,0 +1,20 @@
+bench/jmh                Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+engine/api               Tests run: 409, Failures: 0, Errors: 0, Skipped: 0
+engine/ir                Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+engine/mapping           Tests run: 563, Failures: 0, Errors: 0, Skipped: 0
+engine/oracle            Tests run: 2910, Failures: 0, Errors: 0, Skipped: 0
+engine/runtime           Tests run: 717, Failures: 0, Errors: 0, Skipped: 0
+engine/serializer        Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+engine/structure         Tests run: 412, Failures: 0, Errors: 0, Skipped: 0
+engine/structure-import  Tests run: 211, Failures: 0, Errors: 0, Skipped: 0
+engine/xdm               Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0
+engine/xslt-export       Tests run: 53, Failures: 0, Errors: 0, Skipped: 0
+service                  Tests run: 1257, Failures: 0, Errors: 0, Skipped: 0
+GRAND Tests run: 17822, Failures: 0, Errors: 0, Skipped: 0
+oracle DifferentialOracleTest: [323, 0, 0, 0]
+oracle GoldenCorpusTest: [618, 0, 0, 0]
+oracle ObservationKitWellFormedTest: [785, 0, 0, 0]
+oracle LiftAgreementTest: [201, 0, 0, 0]
+oracle IfWithoutElseAgreementTest: [203, 0, 0, 0]
+oracle NestedSlotsAgreementTest: [402, 0, 0, 0]
+oracle EveryInputDataErrorTest: [94, 0, 0, 0]

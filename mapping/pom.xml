@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Root of the one reactor (ADR-0017, ADR-0016). Every command is ./mvnw. -->
+<!-- Root of the mapping's reactor (ADR-0017, ADR-0016), aggregated by the repository's pom and nobody's child.
+     Every command is the repository's wrapper, mvnw at the root: ../mvnw from here, or with -f mapping/pom.xml from the root. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.flottila.mapping</groupId>
-  <artifactId>flottila-mapping-parent</artifactId>
+  <groupId>io.rail8.mapping</groupId>
+  <artifactId>rail8-mapping-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
-  <name>Flottila Mapping</name>
+  <name>Rail8 Mapping</name>
 
   <licenses>
     <license>
@@ -27,6 +28,10 @@
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- The mapping's root (BRAND-3, D-150): the repository holds it as mapping/ and keeps the one .mvn/ at its own
+         root, which Maven finds from the root, from mapping/ and with -f mapping/pom.xml alike. Every path to the
+         corpus, the contract, the scripts and ui/dist goes through it. -->
+    <mapping.root>${maven.multiModuleProjectDirectory}/mapping</mapping.root>
 
     <!-- plugins (tools, not dependencies) -->
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
@@ -199,7 +204,7 @@
                     <exclude>net.sf.saxon:*:*:*:compile</exclude>
                     <exclude>net.sf.saxon:*:*:*:runtime</exclude>
                     <exclude>net.sf.saxon:*:*:*:provided</exclude>
-                    <!-- licence-excepted artifacts (.mvn/licence-filters.txt) outside test scope -->
+                    <!-- licence-excepted artifacts (licence-filters.txt) outside test scope -->
                     <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:compile</exclude>
                     <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:runtime</exclude>
                     <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:provided</exclude>
@@ -283,7 +288,7 @@
         </executions>
       </plugin>
 
-      <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in .mvn/licence-filters.txt.
+      <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in licence-filters.txt.
            npm licences (ui/): exceptions by package name in ui/scripts/licence-exceptions.json. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
@@ -388,7 +393,7 @@
   </build>
 
   <profiles>
-    <!-- licence.filters.uri: the URI of .mvn/licence-filters.txt for license-maven-plugin, which needs a well-formed
+    <!-- licence.filters.uri: the URI of licence-filters.txt (beside this pom) for license-maven-plugin, which needs a well-formed
          URI (URI.create). project.baseUri is one on every OS (drive letters, backslashes, spaces) but belongs to the
          module, so these profiles add the module's depth below the root. File activation resolves project.basedir
          to the module being built. Only jar modules run the check; they sit one or two levels deep (#42). -->
@@ -396,22 +401,22 @@
       <id>licence-filters-depth-2</id>
       <activation>
         <file>
-          <exists>${project.basedir}/../../.mvn/licence-filters.txt</exists>
+          <exists>${project.basedir}/../../licence-filters.txt</exists>
         </file>
       </activation>
       <properties>
-        <licence.filters.uri>${project.baseUri}../../.mvn/licence-filters.txt</licence.filters.uri>
+        <licence.filters.uri>${project.baseUri}../../licence-filters.txt</licence.filters.uri>
       </properties>
     </profile>
     <profile>
       <id>licence-filters-depth-1</id>
       <activation>
         <file>
-          <exists>${project.basedir}/../.mvn/licence-filters.txt</exists>
+          <exists>${project.basedir}/../licence-filters.txt</exists>
         </file>
       </activation>
       <properties>
-        <licence.filters.uri>${project.baseUri}../.mvn/licence-filters.txt</licence.filters.uri>
+        <licence.filters.uri>${project.baseUri}../licence-filters.txt</licence.filters.uri>
       </properties>
     </profile>
     <!-- JMH benchmarks (ADR-0021); CI backend and the spec gate build them -->

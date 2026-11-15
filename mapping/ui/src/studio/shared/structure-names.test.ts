@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { messageName, messageNamespace, rootKind, type MessageChoice } from './structure-names';
 
-const element: MessageChoice = { bundle: ['../structures/skeleton/order.xsd'], root: { element: 'Q{urn:flottila:corpus:skeleton}Order' } };
+const element: MessageChoice = { bundle: ['../structures/skeleton/order.xsd'], root: { element: 'Q{urn:rail8:corpus:skeleton}Order' } };
 const bareElement: MessageChoice = { bundle: ['order.xsd'], root: { element: 'Order' } };
 const emptyNamespace: MessageChoice = { bundle: ['order.xsd'], root: { element: 'Q{}Order' } };
 const wsdl: MessageChoice = {
@@ -22,7 +22,7 @@ describe('the names of a message on the Signature tab', () => {
   });
 
   test('the namespace of an element or a WSDL interface; none for JSON or a name without one', () => {
-    expect([element, wsdl].map(messageNamespace)).toEqual(['urn:flottila:corpus:skeleton', 'urn:example:orders']);
+    expect([element, wsdl].map(messageNamespace)).toEqual(['urn:rail8:corpus:skeleton', 'urn:example:orders']);
     expect([bareElement, emptyNamespace, bareWsdl, json].map(messageNamespace)).toEqual([undefined, undefined, undefined, undefined]);
   });
 });

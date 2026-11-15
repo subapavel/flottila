@@ -9,7 +9,7 @@ const corpus = (path: string) => readFileSync(new URL(`../../../../corpus/${path
 const corpusMapping = JSON.parse(corpus('mappings/order-id-copy.mapping.json')) as MappingModel;
 const caseInput = corpus('cases/link/direct-copy/001/input.xml');
 const caseOutput = corpus('cases/link/direct-copy/001/expected.xml');
-const ORDER_ID = '/Q{urn:flottila:corpus:skeleton}Order/OrderId';
+const ORDER_ID = '/Q{urn:rail8:corpus:skeleton}Order/OrderId';
 
 async function problemOf(call: Promise<unknown>): Promise<ApiProblem> {
   const error: unknown = await call.then(
@@ -45,7 +45,7 @@ describe('the fake ApiClient over the corpus', () => {
     const problem = await problemOf(fakeApiClient().getMapping('mappings/missing'));
 
     expect(problem.problem.status).toBe(404);
-    expect(problem.problem.type).toBe('urn:flottila:mapping:problem:not-found');
+    expect(problem.problem.type).toBe('urn:rail8:mapping:problem:not-found');
   });
 
   test('save keeps the model, sorts its keys as the canonical writer does, and the next open returns it', async () => {
@@ -79,7 +79,7 @@ describe('the fake ApiClient over the corpus', () => {
     const problem = await problemOf(api.saveMapping('mappings/order-id-copy', corpusMapping, opened.etag));
 
     expect(problem.problem.status).toBe(409);
-    expect(problem.problem.type).toBe('urn:flottila:mapping:problem:mapping-changed');
+    expect(problem.problem.type).toBe('urn:rail8:mapping:problem:mapping-changed');
     expect((await api.getMapping('mappings/order-id-copy')).model).toEqual(unmapped);
   });
 
@@ -101,7 +101,7 @@ describe('the fake ApiClient over the corpus', () => {
     expect(response.kind).toBe('loaded');
     if (response.kind !== 'loaded') return;
     expect(response.fingerprint).toBe(corpusMapping.source!.fingerprint);
-    expect(response.root.step).toBe('Q{urn:flottila:corpus:skeleton}Order');
+    expect(response.root.step).toBe('Q{urn:rail8:corpus:skeleton}Order');
     expect(response.types[response.root.type!]!.map((f) => f.step)).toEqual([
       '@channel',
       'OrderId',
@@ -209,7 +209,7 @@ describe('the fake ApiClient over the corpus', () => {
 
     for (const problem of [noCase, otherInput]) {
       expect(problem.problem.status).toBe(400);
-      expect(problem.problem.type).toBe('urn:flottila:mapping:problem:invalid-request');
+      expect(problem.problem.type).toBe('urn:rail8:mapping:problem:invalid-request');
     }
   });
 
@@ -230,7 +230,7 @@ describe('the fake ApiClient over the corpus', () => {
   test('lists its mappings sorted by id, each named by the last segment of its id, in the package of its folder', async () => {
     const api = fakeApiClient({ 'b/two': corpusMapping, 'a/deep/one': corpusMapping, 'b/one': corpusMapping });
 
-    // the corpus mapping's roots are the element Q{urn:flottila:corpus:skeleton}Order on both sides
+    // the corpus mapping's roots are the element Q{urn:rail8:corpus:skeleton}Order on both sides
     expect(await api.listMappings()).toStrictEqual([
       { id: 'a/deep/one', name: 'one', package: 'a/deep', source: 'Order', target: 'Order' },
       { id: 'b/one', name: 'one', package: 'b', source: 'Order', target: 'Order' },
@@ -276,7 +276,7 @@ describe('the fake ApiClient over the corpus', () => {
   test('creates a mapping with its description and the one side it is given, keys sorted as the canonical writer does', async () => {
     const api = fakeApiClient();
     const order = '../structures/skeleton/order.xsd';
-    const root = { element: 'Q{urn:flottila:corpus:skeleton}Order' };
+    const root = { element: 'Q{urn:rail8:corpus:skeleton}Order' };
 
     const described = await api.createMapping({ id: 'drafts/described', description: 'Bestellungen zu Rechnungen' });
     const half = await api.createMapping({ id: 'mappings/half', description: 'only the target', target: { bundle: [order], root } });
@@ -335,13 +335,13 @@ describe('the fake ApiClient over the corpus', () => {
     const created = await api.createMapping({
       id: 'mappings/new-one',
       source: { bundle: [order], root: { json: '$' } },
-      target: { bundle: [order], root: { element: 'Q{urn:flottila:corpus:skeleton}Order' } },
+      target: { bundle: [order], root: { element: 'Q{urn:rail8:corpus:skeleton}Order' } },
     });
 
     expect(created.model).toEqual({
       formatVersion: 1,
       source: { bundle: [order], fingerprint: corpusMapping.source!.fingerprint, root: { json: '$' } },
-      target: { bundle: [order], fingerprint: corpusMapping.target!.fingerprint, root: { element: 'Q{urn:flottila:corpus:skeleton}Order' } },
+      target: { bundle: [order], fingerprint: corpusMapping.target!.fingerprint, root: { element: 'Q{urn:rail8:corpus:skeleton}Order' } },
     });
     expect(created.etag).toMatch(/^"fake:\d+"$/);
     expect((await api.listMappings()).map((m) => m.id)).toContain('mappings/new-one');
@@ -357,7 +357,7 @@ describe('the fake ApiClient over the corpus', () => {
     );
 
     expect(problem.problem.status).toBe(409);
-    expect(problem.problem.type).toBe('urn:flottila:mapping:problem:mapping-exists');
+    expect(problem.problem.type).toBe('urn:rail8:mapping:problem:mapping-exists');
     expect(await api.getMapping('mappings/order-id-copy')).toEqual(before);
   });
 
@@ -370,7 +370,7 @@ describe('the fake ApiClient over the corpus', () => {
       const problem = await problemOf(api.createMapping({ id, source: corpusMapping.source, target: corpusMapping.target }));
 
       expect(problem.problem.status).toBe(400);
-      expect(problem.problem.type).toBe('urn:flottila:mapping:problem:invalid-workspace-path');
+      expect(problem.problem.type).toBe('urn:rail8:mapping:problem:invalid-workspace-path');
       expect(await api.listMappings()).toEqual(before);
     },
   );
@@ -388,7 +388,7 @@ describe('the fake ApiClient over the corpus', () => {
     );
 
     expect(problem.problem.status).toBe(422);
-    expect(problem.problem.type).toBe('urn:flottila:mapping:problem:model-refused');
+    expect(problem.problem.type).toBe('urn:rail8:mapping:problem:model-refused');
     expect('diagnostics' in problem.problem && problem.problem.diagnostics.map((d) => d.code)).toEqual(['schema-unreadable']);
     expect((await api.listMappings()).map((m) => m.id)).not.toContain('mappings/new-one');
   });
@@ -418,7 +418,7 @@ describe('the fake ApiClient over the corpus', () => {
     const orphaned: Diagnostic = {
       severity: 'error',
       code: 'orphaned-reference',
-      message: 'the structure has no field /Q{urn:flottila:corpus:skeleton}Order/Gone',
+      message: 'the structure has no field /Q{urn:rail8:corpus:skeleton}Order/Gone',
       location: { kind: 'authoring-id', authoringId: 'a1' },
     };
 

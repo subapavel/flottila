@@ -11,7 +11,7 @@ check "HANDOVER.md exists" "$([ -f "$doc" ] && echo yes || echo no)" yes
 # start the stack from a clean clone (JDK 25, Node 22)
 has "JDK 25" "JDK 25"
 has "Node 22" "Node 22"
-has "dev service" "./mvnw -pl service -am quarkus:dev"
+has "dev service" "../mvnw -pl service -am quarkus:dev"   # the repository's wrapper, from mapping/ (BRAND-3)
 has "dev UI" "npm run dev"
 has "one-origin jar (-Pui)" "-Pui"
 has "loopback bind" "127.0.0.1"

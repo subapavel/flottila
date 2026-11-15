@@ -2,8 +2,8 @@
 <!-- Fixture (#89 review): anonymous simple types and attributes outside the subset or invalid,
      each where it stands -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:tns="urn:flottila:corpus:anonymous"
-           targetNamespace="urn:flottila:corpus:anonymous">
+           xmlns:tns="urn:rail8:corpus:anonymous"
+           targetNamespace="urn:rail8:corpus:anonymous">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

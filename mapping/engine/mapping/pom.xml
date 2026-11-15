@@ -4,27 +4,27 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.flottila.mapping</groupId>
-    <artifactId>flottila-mapping-engine</artifactId>
+    <groupId>io.rail8.mapping</groupId>
+    <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>flottila-mapping-mapping</artifactId>
-  <name>Flottila Mapping mapping</name>
+  <artifactId>rail8-mapping-mapping</artifactId>
+  <name>Rail8 Mapping mapping</name>
 
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-ir</artifactId>
+      <artifactId>rail8-mapping-ir</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-xdm</artifactId>
+      <artifactId>rail8-mapping-xdm</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>flottila-mapping-structure</artifactId>
+      <artifactId>rail8-mapping-structure</artifactId>
       <version>${project.version}</version>
     </dependency>
     <!-- stage 1 of loading a mapping model (ADR-0011) -->
@@ -38,8 +38,8 @@
     <resources>
       <!-- the mapping-model schema is the contract's file, packed into the jar (ADR-0016) -->
       <resource>
-        <directory>${maven.multiModuleProjectDirectory}/contract</directory>
-        <targetPath>io/flottila/mapping/mapping/internal</targetPath>
+        <directory>${mapping.root}/contract</directory>
+        <targetPath>io/rail8/mapping/mapping/internal</targetPath>
         <includes>
           <include>mapping-model.schema.json</include>
         </includes>
@@ -67,9 +67,9 @@
             </goals>
             <configuration>
               <arguments>
-                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
+                <argument>${mapping.root}/scripts/function-families.java</argument>
                 <argument>catalogue</argument>
-                <argument>${project.build.directory}/generated-resources/function-families/io/flottila/mapping/mapping/function-catalogue.json</argument>
+                <argument>${project.build.directory}/generated-resources/function-families/io/rail8/mapping/mapping/function-catalogue.json</argument>
                 <argument>${project.basedir}/src/main/catalogue</argument>
               </arguments>
             </configuration>

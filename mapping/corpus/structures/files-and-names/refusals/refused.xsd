@@ -2,7 +2,7 @@
 <!-- Fixture (#93): constructs refused inside named simple types and attributes; an import with
      no namespace falls back to plain.xsd, a bundle file with no target namespace -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="urn:flottila:corpus:refusals">
+           targetNamespace="urn:rail8:corpus:refusals">
   <xs:import schemaLocation="https://example.org/plain.xsd"/>
   <xs:simpleType name="Code">
     <xs:restriction base="xs:string">

@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * {@code size} bytes; it is ASCII, so a character is a byte.
  *
  * <p>The inputs for a comparison outside the benchmarks come from the bench jar, after {@code
- * ./mvnw -B -Pbench -pl bench/jmh -am verify}:
+ * ../mvnw -B -Pbench -pl bench/jmh -am verify}:
  *
  * <pre>
  * java -cp bench/jmh/target/benchmarks.jar contexts.ContextsGenerator large contexts-large.xml

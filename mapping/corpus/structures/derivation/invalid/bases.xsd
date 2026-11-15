@@ -2,8 +2,8 @@
 <!-- Fixture (#95): bases and heads of the wrong kind or declared nowhere. A name a refused
      declaration declares (Odd) is no second error -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:b="urn:flottila:corpus:bases"
-           targetNamespace="urn:flottila:corpus:bases">
+           xmlns:b="urn:rail8:corpus:bases"
+           targetNamespace="urn:rail8:corpus:bases">
   <xs:element name="Doc">
     <xs:complexType>
       <xs:sequence>

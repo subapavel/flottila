@@ -1,0 +1,5 @@
+root $ 1..1 - ../structures/observations/nil.schema.json#
+type ../structures/observations/nil.schema.json#
+field Item 0..unbounded - ../structures/observations/nil.schema.json#/properties/Item/items array
+type ../structures/observations/nil.schema.json#/properties/Item/items
+field Val 0..1 xs:string -

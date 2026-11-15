@@ -3,11 +3,11 @@
      wsdl:imports have a URL and fall back to the bundle file with their namespace: a WSDL, and an
      XSD -->
 <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
-                  xmlns:msg="urn:flottila:corpus:split-messages"
-                  targetNamespace="urn:flottila:corpus:split">
-  <wsdl:import namespace="urn:flottila:corpus:split-messages"
+                  xmlns:msg="urn:rail8:corpus:split-messages"
+                  targetNamespace="urn:rail8:corpus:split">
+  <wsdl:import namespace="urn:rail8:corpus:split-messages"
                location="http://example.invalid/messages.wsdl"/>
-  <wsdl:import namespace="urn:flottila:corpus:split-types"
+  <wsdl:import namespace="urn:rail8:corpus:split-types"
                location="http://example.invalid/types.xsd"/>
   <wsdl:portType name="Port">
     <wsdl:operation name="Send">

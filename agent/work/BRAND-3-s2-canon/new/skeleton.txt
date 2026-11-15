@@ -1,0 +1,11 @@
+root Q{urn:rail8:corpus:skeleton}Order 1..1 - /Q{urn:rail8:corpus:skeleton}Order
+type /Q{urn:rail8:corpus:skeleton}Order
+field @channel 0..1 xs:string -
+field OrderId 1..1 xs:string -
+field Quantity 0..1 xs:integer -
+field Amount 0..1 xs:decimal -
+field Urgent 0..1 xs:boolean -
+field DeliveryDate 0..1 xs:date -
+field PickupTime 0..1 xs:time -
+field CreatedAt 0..1 xs:dateTime -
+field Note 0..unbounded xs:string -

@@ -1,0 +1,1482 @@
+# BRAND-3 step 2 (fix rounds a-h and r1): every change beyond `identifiers --root mapping` + `wire --root mapping` replayed on HEAD a686bcf6
+# (tool/ = that replay, tree/ = the working tree; Spotless reflows and google-java-format import order included)
+# not by this task, yet in the tree: mapping/docs/GATE.md:75 (`../mvnw`, another writer, 07:59 UTC)
+git mv mapping/.mvn/maven.config -> .mvn/maven.config (content unchanged)
+git mv mapping/.mvn/wrapper/maven-wrapper.properties -> .mvn/wrapper/maven-wrapper.properties (content unchanged)
+git mv mapping/mvnw -> mvnw (content unchanged)
+git mv mapping/mvnw.cmd -> mvnw.cmd (content unchanged)
+git mv mapping/.mvn/licence-filters.txt -> mapping/licence-filters.txt (content unchanged)
+.gitattributes: +3 -0
+ci/coverage_check.py: +9 -3
+ci/name-allowlist.txt: +14 -1
+ci/test_coverage_check.py: +32 -0
+mapping/.gitattributes: +0 -3
+mapping/HANDOVER.md: +7 -5
+mapping/README.md: +2 -1
+mapping/bench/jmh/pom.xml: +4 -4
+mapping/bench/jmh/src/test/java/io/rail8/mapping/bench/ContextsInputTest.java: +1 -2
+mapping/corpus/bench/contexts/ContextsGenerator.java: +1 -1
+mapping/corpus/bench/contexts/contexts.mapping.json: +1 -1
+mapping/corpus/bench/orders/OrdersGenerator.java: +1 -1
+mapping/corpus/bench/orders/orders.mapping.json: +1 -1
+mapping/corpus/bench/wide/WideGenerator.java: +1 -1
+mapping/corpus/bench/wide/wide.mapping.json: +1 -1
+mapping/corpus/mappings/derivation-abstract-remark.mapping.json: +2 -2
+mapping/corpus/mappings/derivation-order-receipt.mapping.json: +2 -2
+mapping/corpus/mappings/fingerprint-stale-source.mapping.json: +1 -1
+mapping/corpus/mappings/fingerprint-stale-target.mapping.json: +1 -1
+mapping/corpus/mappings/gate-invoice-order.mapping.json: +1 -1
+mapping/corpus/mappings/gate-order-po.mapping.json: +1 -1
+mapping/corpus/mappings/gate-po-invoice.mapping.json: +2 -2
+mapping/corpus/mappings/order-channel-note.mapping.json: +2 -2
+mapping/corpus/mappings/order-id-copy.mapping.json: +2 -2
+mapping/corpus/mappings/wsdl-order-receipt.mapping.json: +2 -2
+mapping/corpus/observations/README.md: +5 -0
+mapping/docs/GATE.md: +1 -1
+mapping/docs/WORKFLOW.md: +11 -10
+mapping/docs/adr/0002-po-cpi-compatible-semantics-on-a-modern-core.md: +2 -0
+mapping/docs/adr/0003-one-formatting-core-sap-patterns-compiled.md: +2 -0
+mapping/docs/adr/0011-mapping-model-schema-is-the-source.md: +2 -0
+mapping/docs/adr/0013-ui-architecture.md: +2 -0
+mapping/docs/adr/0014-quarkus-service-over-jpms-engine.md: +2 -0
+mapping/docs/adr/0015-service-api-contract.md: +2 -0
+mapping/docs/adr/0016-engine-modules-and-dependency-direction.md: +3 -0
+mapping/docs/adr/0018-oracles-and-golden-corpus.md: +2 -0
+mapping/docs/adr/0020-udf-authoring-compilation-and-isolation.md: +2 -0
+mapping/docs/adr/0021-interpreter-first-bytecode-after-milestone-1.md: +2 -0
+mapping/docs/adr/0023-portable-export-writes-unoptimised-ir.md: +2 -0
+mapping/docs/adr/0024-service-wire-rules.md: +2 -0
+mapping/docs/adr/0027-editor-wire-conditional-save-refusals-refresh-on-open.md: +2 -0
+mapping/docs/adr/0028-mapping-studio-replaces-the-editor-ui.md: +2 -0
+mapping/docs/agents/environment.md: +2 -1
+mapping/engine/api/src/main/java/io/rail8/mapping/api/EngineFacade.java: +2 -2
+mapping/engine/api/src/main/java/module-info.java: +2 -0
+mapping/engine/api/src/test/java/io/rail8/mapping/api/CorpusStructures.java: +1 -1
+mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeDiagnosticsTest.java: +1 -1
+mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeMissingStructureTest.java: +1 -1
+mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeRefreshTest.java: +1 -1
+mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeTest.java: +2 -4
+mapping/engine/api/src/test/java/io/rail8/mapping/api/FingerprintPinTest.java: +8 -8
+mapping/engine/api/src/test/java/io/rail8/mapping/api/StructuresTest.java: +3 -4
+mapping/engine/ir/src/main/java/module-info.java: +2 -0
+mapping/engine/mapping/pom.xml: +2 -2
+mapping/engine/mapping/src/main/java/module-info.java: +2 -0
+mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/Fixtures.java: +2 -2
+mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/MappingModelSchemaDriftTest.java: +1 -2
+mapping/engine/oracle/pom.xml: +2 -2
+mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/FamilyLocalityTest.java: +1 -2
+mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/RuntimeErrorCoverageTest.java: +2 -2
+mapping/engine/runtime/pom.xml: +1 -1
+mapping/engine/runtime/src/main/java/module-info.java: +2 -0
+mapping/engine/runtime/src/test/java/io/rail8/mapping/runtime/FunctionFamiliesTest.java: +5 -2
+mapping/engine/serializer/src/main/java/module-info.java: +2 -0
+mapping/engine/structure-import/pom.xml: +2 -2
+mapping/engine/structure-import/src/main/java/module-info.java: +2 -0
+mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/StructureReaderTest.java: +8 -9
+mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/WsdlReaderTest.java: +5 -6
+mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdDerivationTest.java: +1 -1
+mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdFilesAndNamesTest.java: +3 -3
+mapping/engine/structure/src/main/java/module-info.java: +2 -0
+mapping/engine/udf-api/src/main/java/module-info.java: +2 -0
+mapping/engine/udf/src/main/java/module-info.java: +2 -0
+mapping/engine/xdm/src/main/java/module-info.java: +2 -0
+mapping/engine/xslt-export/pom.xml: +1 -1
+mapping/engine/xslt-export/src/main/java/module-info.java: +2 -0
+mapping/engine/xslt-export/src/test/java/io/rail8/mapping/xslt/export/XsltExporterTest.java: +5 -2
+mapping/pom.xml: +13 -8
+mapping/scripts/gate-spec.sh: +5 -3
+mapping/scripts/gate-ticket.sh: +4 -2
+mapping/scripts/pit-summary.sh: +2 -2
+mapping/scripts/test/gate-log-test.sh: +2 -1
+mapping/scripts/test/gate-spec-bench-test.sh: +1 -0
+mapping/scripts/test/gate-spec-default-test.sh: +1 -0
+mapping/scripts/test/handover-test.sh: +1 -1
+mapping/service/pom.xml: +3 -3
+mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java: +1 -1
+mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java: +3 -3
+mapping/service/src/test/java/io/rail8/mapping/service/Fixtures.java: +14 -14
+mapping/service/src/test/java/io/rail8/mapping/service/GateStructuresTest.java: +2 -2
+mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java: +2 -2
+mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java: +3 -3
+mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java: +4 -4
+mapping/service/src/test/java/io/rail8/mapping/service/StructuresResourceTest.java: +2 -2
+mapping/service/src/test/java/io/rail8/mapping/service/TestRunTraceLimitTest.java: +2 -2
+mapping/service/src/test/java/io/rail8/mapping/service/TimeZoneConfigTest.java: +2 -2
+mapping/service/src/test/java/io/rail8/mapping/service/TraceLimitConfigTest.java: +4 -6
+mapping/service/src/test/java/io/rail8/mapping/service/WorkspaceEscapeTest.java: +2 -2
+mapping/service/src/test/resources/outside/evil.mapping.json: +2 -2
+mapping/ui/playwright.stack.config.ts: +3 -2
+mapping/ui/src/api/fake/order-structure.ts: +1 -1
+mapping/ui/src/model/delete-box.test.ts: +1 -1
+mapping/ui/src/model/delete-target-field-mapping.test.ts: +1 -1
+mapping/ui/src/model/insert-box.test.ts: +1 -1
+mapping/ui/src/model/link.test.ts: +1 -1
+mapping/ui/src/model/paste.test.ts: +1 -1
+mapping/ui/src/model/remap.test.ts: +1 -1
+mapping/ui/src/model/set-context.test.ts: +1 -1
+mapping/ui/src/model/set-input.test.ts: +1 -1
+mapping/ui/src/model/set-param.test.ts: +1 -1
+mapping/ui/src/model/wire.test.ts: +1 -1
+mapping/ui/src/studio/store/clipboard.test.ts: +1 -1
+mapping/ui/src/studio/store/compile.test.ts: +1 -1
+mapping/ui/src/studio/store/inspector-edits.test.ts: +1 -1
+mapping/ui/src/studio/store/test-run.test.ts: +1 -1
+mapping/ui/src/studio/store/working-copy.test.ts: +1 -1
+pom.xml: +4 -1
+
+--- tool/.gitattributes
++++ tree/.gitattributes
+@@ -2 +2,4 @@
+ 
++# The Windows wrapper script is committed with CRLF and checked out as committed.
++mvnw.cmd -text
++
+--- tool/ci/coverage_check.py
++++ tree/ci/coverage_check.py
+@@ -3,3 +3,3 @@
+ 
+-Reads every module's target/site/jacoco/jacoco.xml, computes line and branch coverage in percent
++Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates), computes line and branch coverage in percent
+ rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
+@@ -38,2 +38,8 @@
+ TOLERANCE = 2.0
++# the mapping engine (BRAND-3) has its own gates: this guard reads platform/ and bench/, never a module under mapping/
++FOREIGN = "mapping"
++
++
++def _ours(path: Path, root: Path) -> bool:
++    return path.resolve().relative_to(root.resolve()).parts[0] != FOREIGN
+ 
+@@ -54,3 +60,3 @@
+ def modules_with_classes(root: Path) -> list[Path]:
+-    return sorted(m for m in root.rglob(str(CLASSES)) if _has_real_classes(m))
++    return sorted(m for m in root.rglob(str(CLASSES)) if _ours(m, root) and _has_real_classes(m))
+ 
+@@ -60,3 +66,3 @@
+     result: dict[str, dict[str, float]] = {}
+-    for report in sorted(root.rglob(str(REPORT))):
++    for report in sorted(r for r in root.rglob(str(REPORT)) if _ours(r, root)):
+         counters = {c.get("type"): c for c in ET.parse(report).getroot().findall("counter")}
+--- tool/ci/name-allowlist.txt
++++ tree/ci/name-allowlist.txt
+@@ -76,3 +76,16 @@
+ ci/name-allowlist.txt | * | this file: its literals hold the old name
+-mapping/** | * | the mapping engine as imported (BRAND-3 step 1, D-150); step 2 renames inside it and replaces this entry by its history files
+ 
++# The mapping engine's history keeps the old name (D-151); BRAND-3 step 2 renamed everything else under mapping/.
++mapping/docs/adr/** | * | history: the mapping's ADRs; one that fixes a renamed name carries a dated amendment line (D-151)
++mapping/docs/findings/** | * | history: the mapping's findings F-1..F-53 are records of what was found (D-151)
++mapping/agent/** | * | history: the mapping's own agent notes and prompts as they were written (D-151)
++
++# The mapping's process files, kept as they are until BRAND-3 step 3 archives them under mapping/docs/archive/ or removes them.
++mapping/CLAUDE.md | * | archived by BRAND-3 step 3
++mapping/.claude/** | * | archived by BRAND-3 step 3
++mapping/deploy/claude-cloud/** | * | the mapping's cloud set-up script and its README, which BRAND-3 step 3 removes
++
++# Names held by systems outside the repository, which the mapping's observation kits call or read.
++mapping/corpus/observations/** | flottilaobservations | the integration package on the SAP CPI tenant the observation kits upload to
++mapping/corpus/observations/** | flottila-observations-key.json | the owner's service-key file the observation kits read, outside the repository
++
+--- tool/ci/test_coverage_check.py
++++ tree/ci/test_coverage_check.py
+@@ -94,2 +94,34 @@
+ 
++    def test_a_module_under_mapping_is_neither_measured_nor_a_stale_baseline(self):
++        # the mapping engine has its own gates (BRAND-3): its reports and its report-less classes are not this guard's
++        module(self.root, "platform/core", report=(0, 10, 0, 2))
++        module(self.root, "mapping/engine/xdm", report=(50, 50, 5, 5))
++        module(self.root, "mapping/engine/ir")  # classes, no report
++        committed = {"platform/core": {"line": 100.0, "branch": 100.0}}
++        self.assertEqual(committed, cc.measure(self.root))
++        self.assertEqual([], cc.compare(cc.measure(self.root), committed, self.root))
++        self.assertEqual([], cc.check_baseline(cc.measure(self.root), committed))
++        path = self.root / "ci" / "coverage-baseline.json"
++        path.parent.mkdir()
++        path.write_text(json.dumps(committed))
++        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
++            self.assertEqual(0, cc.main(["--root", str(self.root), "--check-baseline"]))
++        self.assertEqual("", err.getvalue())
++
++    def test_only_the_top_level_mapping_directory_is_foreign(self):
++        # a sibling whose name starts with "mapping" and a "mapping" directory deeper down are still this guard's
++        module(self.root, "mappingx/engine", report=(0, 10, 0, 2))
++        module(self.root, "mappingx/bare")  # classes, no report
++        module(self.root, "platform/steps/mapping/rules", report=(5, 5, 1, 1))
++        module(self.root, "platform/steps/mapping/bare")  # classes, no report
++        current = cc.measure(self.root)
++        self.assertEqual({"mappingx/engine": {"line": 100.0, "branch": 100.0},
++                          "platform/steps/mapping/rules": {"line": 50.0, "branch": 50.0}}, current)
++        self.assertEqual(["mappingx/bare: has classes but no JaCoCo report (no test ran)",
++                          "platform/steps/mapping/bare: has classes but no JaCoCo report (no test ran)"],
++                         cc.compare(current, {}, self.root))
++        self.assertEqual(["mappingx/engine: not in the committed baseline — run --write",
++                          "platform/steps/mapping/rules: not in the committed baseline — run --write"],
++                         cc.check_baseline(current, {}))
++
+     def test_decrease_against_baseline_fails(self):
+--- tool/mapping/.gitattributes
++++ tree/mapping/.gitattributes
+@@ -5,4 +5 @@
+ 
+-# The Windows wrapper script is committed with CRLF and checked out as committed.
+-mvnw.cmd -text
+-
+--- tool/mapping/HANDOVER.md
++++ tree/mapping/HANDOVER.md
+@@ -8,6 +8,8 @@
+ 
+-Start from a clean clone. The Maven wrapper downloads Maven; you install nothing else.
++Start from a clean clone. The commands below run in `mapping/`. The Maven wrapper is at the
++repository's root, so from `mapping/` it is `../mvnw`. It downloads Maven; you install nothing
++else.
+ 
+ An installed Maven (`mvn`) within the enforcer's range (3.9.11 up to, not including, 4) works the
+-same: replace `./mvnw` with `mvn` in any command below.
++same: replace `../mvnw` with `mvn` in any command below.
+ 
+@@ -19,3 +21,3 @@
+ ```bash
+-./mvnw -pl service -am quarkus:dev
++../mvnw -pl service -am quarkus:dev
+ ```
+@@ -55,3 +57,3 @@
+ cd ..
+-./mvnw -B -Pui -pl service -am clean package -DskipTests
++../mvnw -B -Pui -pl service -am clean package -DskipTests
+ ```
+@@ -161,3 +163,3 @@
+ ```bash
+-./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
++../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
+ ```
+--- tool/mapping/README.md
++++ tree/mapping/README.md
+@@ -17,3 +17,4 @@
+ 
+-1. Start the service: `./mvnw -pl service -am quarkus:dev`. It serves the mappings of `corpus/`.
++1. Start the service: `../mvnw -pl service -am quarkus:dev`, in `mapping/` (the Maven wrapper is at the
++   repository's root). It serves the mappings of `corpus/`.
+ 2. Start the UI: `npm run dev` in `ui/` (run `npm ci` there first).
+--- tool/mapping/bench/jmh/pom.xml
++++ tree/mapping/bench/jmh/pom.xml
+@@ -53,3 +53,3 @@
+       <resource>
+-        <directory>${project.basedir}/../../corpus/bench</directory>
++        <directory>${mapping.root}/corpus/bench</directory>
+         <excludes>
+@@ -72,3 +72,3 @@
+               <sources>
+-                <source>${project.basedir}/../../corpus/bench</source>
++                <source>${mapping.root}/corpus/bench</source>
+               </sources>
+@@ -100,4 +100,4 @@
+           <systemPropertyVariables>
+-            <!-- the golden corpus at the repository root: the committed small inputs (ADR-0018) -->
+-            <rail8.corpus>${maven.multiModuleProjectDirectory}/corpus</rail8.corpus>
++            <!-- the golden corpus at the mapping's root: the committed small inputs (ADR-0018) -->
++            <rail8.corpus>${mapping.root}/corpus</rail8.corpus>
+           </systemPropertyVariables>
+--- tool/mapping/bench/jmh/src/test/java/io/rail8/mapping/bench/ContextsInputTest.java
++++ tree/mapping/bench/jmh/src/test/java/io/rail8/mapping/bench/ContextsInputTest.java
+@@ -81,4 +81,3 @@
+     Path committed =
+-        Path.of(System.getProperty("rail8.corpus"))
+-            .resolve("cases/bench/contexts/001/input.xml");
++        Path.of(System.getProperty("rail8.corpus")).resolve("cases/bench/contexts/001/input.xml");
+ 
+--- tool/mapping/corpus/bench/contexts/ContextsGenerator.java
++++ tree/mapping/corpus/bench/contexts/ContextsGenerator.java
+@@ -22,3 +22,3 @@
+  * <p>The inputs for a comparison outside the benchmarks come from the bench jar, after {@code
+- * ./mvnw -B -Pbench -pl bench/jmh -am verify}:
++ * ../mvnw -B -Pbench -pl bench/jmh -am verify}:
+  *
+--- tool/mapping/corpus/bench/contexts/contexts.mapping.json
++++ tree/mapping/corpus/bench/contexts/contexts.mapping.json
+@@ -16,3 +16,3 @@
+     ],
+-    "fingerprint": "sha256:19ce6273eb060c4591317fddea6219e5847e3b87032d82f34c72376bd5b3d978",
++    "fingerprint": "sha256:35ce36b21e634444787daf7ede26ccce950de97760c717c07a2ee252d3ddaa8e",
+     "root": {
+--- tool/mapping/corpus/bench/orders/OrdersGenerator.java
++++ tree/mapping/corpus/bench/orders/OrdersGenerator.java
+@@ -24,3 +24,3 @@
+  * <p>The inputs for a comparison outside the benchmarks (the {@code po-owner-local} observation,
+- * ADR-0021) come from the bench jar, after {@code ./mvnw -B -Pbench -pl bench/jmh -am verify}:
++ * ADR-0021) come from the bench jar, after {@code ../mvnw -B -Pbench -pl bench/jmh -am verify}:
+  *
+--- tool/mapping/corpus/bench/orders/orders.mapping.json
++++ tree/mapping/corpus/bench/orders/orders.mapping.json
+@@ -16,3 +16,3 @@
+     ],
+-    "fingerprint": "sha256:5fbe142e70d99a399295c6702dd7d68a32d70ce1e01d4bf10ec5d7ae19a6da98",
++    "fingerprint": "sha256:8578a5594bbe8b3683da223df2546cabf805b0e10f28df30cb2e603e88c7227c",
+     "root": {
+--- tool/mapping/corpus/bench/wide/WideGenerator.java
++++ tree/mapping/corpus/bench/wide/WideGenerator.java
+@@ -24,3 +24,3 @@
+  * <p>The inputs for a comparison outside the benchmarks come from the bench jar, after {@code
+- * ./mvnw -B -Pbench -pl bench/jmh -am verify}:
++ * ../mvnw -B -Pbench -pl bench/jmh -am verify}:
+  *
+--- tool/mapping/corpus/bench/wide/wide.mapping.json
++++ tree/mapping/corpus/bench/wide/wide.mapping.json
+@@ -16,3 +16,3 @@
+     ],
+-    "fingerprint": "sha256:f86c88062497643172ac8aec2d2d94d5b55826a60df1f2e1c291fa61a6e49f72",
++    "fingerprint": "sha256:01b1437d824ffbe15aaffb280368314fbfa92e11f43d7a5ec8c153edf2d9be21",
+     "root": {
+--- tool/mapping/corpus/mappings/derivation-abstract-remark.mapping.json
++++ tree/mapping/corpus/mappings/derivation-abstract-remark.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:7fa870df17665f949da9986b2036fc81a4299fe38c920afdd24b20ac29b17284",
++    "fingerprint": "sha256:389036a167ee8d62c790b176098ee58dab2844bfe08e8ce3e8c916cd9d747e75",
+     "root": {
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:f7b3d1697015e4f93e73caa19b269e7cbd44f8b19146ba6b50c49bdb7bfa5c84",
++    "fingerprint": "sha256:04f870ee678c584446315c4c36eea6b2dff38d1b9a1869694ad44f6e9aef4013",
+     "root": {
+--- tool/mapping/corpus/mappings/derivation-order-receipt.mapping.json
++++ tree/mapping/corpus/mappings/derivation-order-receipt.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:7fa870df17665f949da9986b2036fc81a4299fe38c920afdd24b20ac29b17284",
++    "fingerprint": "sha256:389036a167ee8d62c790b176098ee58dab2844bfe08e8ce3e8c916cd9d747e75",
+     "root": {
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:f7b3d1697015e4f93e73caa19b269e7cbd44f8b19146ba6b50c49bdb7bfa5c84",
++    "fingerprint": "sha256:04f870ee678c584446315c4c36eea6b2dff38d1b9a1869694ad44f6e9aef4013",
+     "root": {
+--- tool/mapping/corpus/mappings/fingerprint-stale-source.mapping.json
++++ tree/mapping/corpus/mappings/fingerprint-stale-source.mapping.json
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+--- tool/mapping/corpus/mappings/fingerprint-stale-target.mapping.json
++++ tree/mapping/corpus/mappings/fingerprint-stale-target.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+--- tool/mapping/corpus/mappings/gate-invoice-order.mapping.json
++++ tree/mapping/corpus/mappings/gate-invoice-order.mapping.json
+@@ -7,3 +7,3 @@
+     ],
+-    "fingerprint": "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a",
++    "fingerprint": "sha256:dd93778417054f51b5537c1da7059f3e244ef75b56b3d72f443e6f966fd6ba9f",
+     "root": {
+--- tool/mapping/corpus/mappings/gate-order-po.mapping.json
++++ tree/mapping/corpus/mappings/gate-order-po.mapping.json
+@@ -17,3 +17,3 @@
+     ],
+-    "fingerprint": "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3",
++    "fingerprint": "sha256:198e3c311f7a3dedb4a03c802ac871557ecef9e06bfcce47199eabe14a7c4c60",
+     "root": {
+--- tool/mapping/corpus/mappings/gate-po-invoice.mapping.json
++++ tree/mapping/corpus/mappings/gate-po-invoice.mapping.json
+@@ -8,3 +8,3 @@
+     ],
+-    "fingerprint": "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3",
++    "fingerprint": "sha256:198e3c311f7a3dedb4a03c802ac871557ecef9e06bfcce47199eabe14a7c4c60",
+     "root": {
+@@ -18,3 +18,3 @@
+     ],
+-    "fingerprint": "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a",
++    "fingerprint": "sha256:dd93778417054f51b5537c1da7059f3e244ef75b56b3d72f443e6f966fd6ba9f",
+     "root": {
+--- tool/mapping/corpus/mappings/order-channel-note.mapping.json
++++ tree/mapping/corpus/mappings/order-channel-note.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+--- tool/mapping/corpus/mappings/order-id-copy.mapping.json
++++ tree/mapping/corpus/mappings/order-id-copy.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++    "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+     "root": {
+--- tool/mapping/corpus/mappings/wsdl-order-receipt.mapping.json
++++ tree/mapping/corpus/mappings/wsdl-order-receipt.mapping.json
+@@ -8,3 +8,3 @@
+     ],
+-    "fingerprint": "sha256:510d96ec830e4ad8aa2e477a6fe73640f58587cc84ce10ec68ce666ca65edd16",
++    "fingerprint": "sha256:249dfbcb6f3d5834555fa5262f198fd6a817f13c41c9526862e3ea2f4b5d3b83",
+     "root": {
+@@ -23,3 +23,3 @@
+     ],
+-    "fingerprint": "sha256:facdda4e20e0833ad276202aa9f4c563264b3b071e5c12825ba01082ba1cbc85",
++    "fingerprint": "sha256:4650a74d0afe778155b0de5646ad556f147f12dda10096841b27881e84bebc92",
+     "root": {
+--- tool/mapping/corpus/observations/README.md
++++ tree/mapping/corpus/observations/README.md
+@@ -11,2 +11,7 @@
+ turns them into cases.
++
++Renamed 2026-11-15 (D-151): the synthetic names in the recorded text files were relabelled `rail8`
++in the inputs and the observed outputs alike. Names that exist in the SAP systems (the CPI package
++`flottilaobservations`) and binary exports stay as recorded, so `obs-structures/po75/attr4-str-attr-ns-export.zip`
++holds the namespace as exported while its extracted copy carries the new name.
+ 
+--- tool/mapping/docs/GATE.md
++++ tree/mapping/docs/GATE.md
+@@ -74,3 +74,3 @@
+    - starting the stack from a clean clone with only JDK 25 and Node 22 installed:
+-     `./mvnw -pl service -am quarkus:dev` with `npm run dev` for development, and the `-Pui` jar
++     `../mvnw -pl service -am quarkus:dev` with `npm run dev` for development, and the `-Pui` jar
+      for one origin (ADR-0017). The Quarkus service runs over a workspace and is bound to
+--- tool/mapping/docs/WORKFLOW.md
++++ tree/mapping/docs/WORKFLOW.md
+@@ -89,5 +89,6 @@
+ 
+-Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run from the repo root of
+-the worktree. Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never
+-to `target/` (`./mvnw clean` deletes it). The milestone-1 skeleton adds
++Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run in `mapping/` of
++the worktree; the Maven wrapper is at the repository's root, so from `mapping/` it is `../mvnw`.
++Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never to `target/`
++(`../mvnw clean` deletes it). The milestone-1 skeleton adds
+ `scripts/gate-ticket.sh <ticket> <modules>` and `scripts/gate-spec.sh <spec>`. The verifier runs
+@@ -100,5 +101,5 @@
+ | --- | --- | --- | --- |
+-| 1 | `./mvnw -B -pl <modules>,engine/oracle -am verify` | `.logs/<t>-build.log` | always: tests and JaCoCo floors of touched and upstream modules, the whole golden corpus and the differential oracle (ADR-0018); `service` adds ArchUnit and `@QuarkusTest` |
+-| 1b | `./mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
+-| 2 | `./mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
++| 1 | `../mvnw -B -pl <modules>,engine/oracle -am verify` | `.logs/<t>-build.log` | always: tests and JaCoCo floors of touched and upstream modules, the whole golden corpus and the differential oracle (ADR-0018); `service` adds ArchUnit and `@QuarkusTest` |
++| 1b | `../mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
++| 2 | `../mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
+ | 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
+@@ -118,6 +119,6 @@
+ 
+-1. `./mvnw -B clean verify -Pbench` (all tests, oracles, JaCoCo floors, bench compiles) and
++1. `../mvnw -B clean verify -Pbench` (all tests, oracles, JaCoCo floors, bench compiles) and
+    `git diff --exit-code contract/`;
+    1b. PIT on the class-C modules the spec touched:
+-   `./mvnw -B -pl <class-C modules> -am test-compile org.pitest:pitest-maven:mutationCoverage`
++   `../mvnw -B -pl <class-C modules> -am test-compile org.pitest:pitest-maven:mutationCoverage`
+    (`pit.skip` skips the modules without a mutation floor, F-5) (floor 80 %,
+@@ -127,3 +128,3 @@
+ 2. in `ui/`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
+-3. the stack: `./mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
++3. the stack: `../mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
+ 4. `java scripts/ratchet.java regen --all`: every report must be present, a drop fails, the
+@@ -161,3 +162,3 @@
+   script tests that need no JDK;
+-- `backend`: `./mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
++- `backend`: `../mvnw -B -Pbench verify`, then `git diff --exit-code contract/`, plus the script
+   tests that need JDK 25 (`function-families*-test.sh`, #69);
+--- tool/mapping/docs/adr/0002-po-cpi-compatible-semantics-on-a-modern-core.md
++++ tree/mapping/docs/adr/0002-po-cpi-compatible-semantics-on-a-modern-core.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #3)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0003-one-formatting-core-sap-patterns-compiled.md
++++ tree/mapping/docs/adr/0003-one-formatting-core-sap-patterns-compiled.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #3)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0011-mapping-model-schema-is-the-source.md
++++ tree/mapping/docs/adr/0011-mapping-model-schema-is-the-source.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #6); amended by F-2; refined by ADR-0013 (unreachable boxes); refined by ADR-0025 (stage-3 codes for function boxes)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0013-ui-architecture.md
++++ tree/mapping/docs/adr/0013-ui-architecture.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #11); paths amended by F-34 (2026-11-10, owner): the Mapping studio (ADR-0028, #161) replaced the editor, so the public entry is `Studio` (`ui/src/studio/shell/Studio.tsx`) and the store and its coverage floor are `ui/src/studio/store/`. Every `MappingEditor` and `ui/src/editor/` below reads as these; the decisions are unchanged.
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0014-quarkus-service-over-jpms-engine.md
++++ tree/mapping/docs/adr/0014-quarkus-service-over-jpms-engine.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #12); amended by F-3 (no `--add-modules` under Maven) and refined by ADR-0016 (modules, ArchUnit rules); F-12 resolved by the spec-4 grilling (2026-11-05)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0015-service-api-contract.md
++++ tree/mapping/docs/adr/0015-service-api-contract.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #12); refined by ADR-0020 (UDF scan endpoint, trace `messages`, `flottila:UDF-ERROR`); trace shape refined by #53; refresh result refined by the spec-4 grilling (2026-11-05)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0016-engine-modules-and-dependency-direction.md
++++ tree/mapping/docs/adr/0016-engine-modules-and-dependency-direction.md
+@@ -3,2 +3,5 @@
+ Status: accepted (2026-10-30, grilling #13); `engine/oracle` added by ADR-0018; `engine/udf-api` and `engine/udf` added by ADR-0020; `engine/bytecode` (after milestone 1) and `bench/jmh` requires set by ADR-0021; ArchUnit rule F added by the spec-4 grilling (2026-11-05), lettered by #90
++
++Amended 2026-11-15 (D-151): the name reads `rail8`; the module names now end in a digit, so javac's `module`
++lint is suppressed (`@SuppressWarnings("module")`) on the eleven engine module declarations
+ 
+--- tool/mapping/docs/adr/0018-oracles-and-golden-corpus.md
++++ tree/mapping/docs/adr/0018-oracles-and-golden-corpus.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #14); divergence rule amended 2026-11-13 (F-43); `decided` provenance widened 2026-11-13 (F-53); corpus layout gains `udfs/` (ADR-0020) and `bench/`; fifth variant timed (ADR-0021)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0020-udf-authoring-compilation-and-isolation.md
++++ tree/mapping/docs/adr/0020-udf-authoring-compilation-and-isolation.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-30, grilling #16)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0021-interpreter-first-bytecode-after-milestone-1.md
++++ tree/mapping/docs/adr/0021-interpreter-first-bytecode-after-milestone-1.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-10-31, grilling #17); order after milestone 1 refined by grilling #19 (JSON output first, then this tier); refined by ADR-0025 (the binding is in runtime, the algebra in xdm); amended 2026-11-10 (tree target p95 < 33.3 ms, F-26; orders row and heap forks, see "Notes of 2026-11-10"); notes of 2026-11-11 (spec 6, owner-approved)
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0023-portable-export-writes-unoptimised-ir.md
++++ tree/mapping/docs/adr/0023-portable-export-writes-unoptimised-ir.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-11-02, #27 design); the portable profile needs higher-order functions since #51
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0024-service-wire-rules.md
++++ tree/mapping/docs/adr/0024-service-wire-rules.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-11-02, #28 design); refines ADR-0014 and ADR-0015; amended by the spec-4 grilling (2026-11-05): package references pass the pattern
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0027-editor-wire-conditional-save-refusals-refresh-on-open.md
++++ tree/mapping/docs/adr/0027-editor-wire-conditional-save-refusals-refresh-on-open.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-11-05, spec-5 grilling); refines ADR-0008 (refusals on the wire), ADR-0010 (the editor calls refresh), ADR-0015 (compile endpoint) and ADR-0024 (`If-Match`, a new problem slug). New rather than amended, because spec 4 is still amending those ADRs.
++
++Amended 2026-11-15 (D-151): the name reads `rail8`
+ 
+--- tool/mapping/docs/adr/0028-mapping-studio-replaces-the-editor-ui.md
++++ tree/mapping/docs/adr/0028-mapping-studio-replaces-the-editor-ui.md
+@@ -3,2 +3,4 @@
+ Status: accepted (2026-11-09, owner, spec #152).
++
++Amended 2026-11-15 (D-151): the masthead reads "Rail8 | Mapping studio"
+ 
+--- tool/mapping/docs/agents/environment.md
++++ tree/mapping/docs/agents/environment.md
+@@ -6,3 +6,4 @@
+   your branch after each green step, not only at hand-back.
+-- **JDK**: Java 25 at `/opt/temurin-25` (`JAVA_HOME`). Build with `./mvnw -B`.
++- **JDK**: Java 25 at `/opt/temurin-25` (`JAVA_HOME`). Build in `mapping/` with `../mvnw -B`
++  (the Maven wrapper is at the repository's root).
+ - **Processes**: stop a process by its pid (`kill <pid>`). `pkill -f` matches the agent's own
+--- tool/mapping/engine/api/src/main/java/io/rail8/mapping/api/EngineFacade.java
++++ tree/mapping/engine/api/src/main/java/io/rail8/mapping/api/EngineFacade.java
+@@ -449,4 +449,4 @@
+    * the run is interrupted, never stopped, and the result is the runtime error {@code
+-   * rail8:TIMEOUT}, with no authoring id; the run itself ends at its next interrupt check, in
+-   * the parse or a slot loop.
++   * rail8:TIMEOUT}, with no authoring id; the run itself ends at its next interrupt check, in the
++   * parse or a slot loop.
+    *
+--- tool/mapping/engine/api/src/main/java/module-info.java
++++ tree/mapping/engine/api/src/main/java/module-info.java
+@@ -1 +1,3 @@
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.api {
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/CorpusStructures.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/CorpusStructures.java
+@@ -14,3 +14,3 @@
+       Path candidate = p.resolve("corpus/structures").resolve(name);
+-      if (Files.isRegularFile(p.resolve("mvnw")) && Files.isDirectory(candidate)) {
++      if (Files.isRegularFile(p.resolve("pom.xml")) && Files.isDirectory(candidate)) {
+         return candidate;
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeDiagnosticsTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeDiagnosticsTest.java
+@@ -30,3 +30,3 @@
+   private static final String FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeMissingStructureTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeMissingStructureTest.java
+@@ -30,3 +30,3 @@
+   private static final String FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeRefreshTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeRefreshTest.java
+@@ -37,3 +37,3 @@
+   private static final String FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/EngineFacadeTest.java
+@@ -104,7 +104,5 @@
+ 
+-  /**
+-   * The real fingerprint of {@code order.xsd} under {@code Q{urn:rail8:corpus:skeleton}Order}.
+-   */
++  /** The real fingerprint of {@code order.xsd} under {@code Q{urn:rail8:corpus:skeleton}Order}. */
+   private static final String FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/FingerprintPinTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/FingerprintPinTest.java
+@@ -82,3 +82,3 @@
+               "skeleton/order.xsd Q{urn:rail8:corpus:skeleton}Order",
+-              "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d"),
++              "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a"),
+           // #92: its two Notes and two Refs are refused fields, whose canonical lines end in
+@@ -92,6 +92,6 @@
+               "derivation/order.xsd Q{urn:rail8:corpus:order}Order",
+-              "sha256:7fa870df17665f949da9986b2036fc81a4299fe38c920afdd24b20ac29b17284"),
++              "sha256:389036a167ee8d62c790b176098ee58dab2844bfe08e8ce3e8c916cd9d747e75"),
+           entry(
+               "derivation/order.xsd Q{urn:rail8:corpus:order}Receipt",
+-              "sha256:f7b3d1697015e4f93e73caa19b269e7cbd44f8b19146ba6b50c49bdb7bfa5c84"),
++              "sha256:04f870ee678c584446315c4c36eea6b2dff38d1b9a1869694ad44f6e9aef4013"),
+           // #94: a choice (str-choice-1, -2), a repeated choice of elements, and a repeated
+@@ -109,3 +109,3 @@
+           // list; SHA-256 over the canonical text written by hand, the method that reproduces
+-          // 105d98… (run-input) and 7fa870… (derivation/order.xsd Order) above
++          // 105d98… (run-input) and 389036… (derivation/order.xsd Order) above
+           entry(
+@@ -128,3 +128,3 @@
+                   + " | Q{urn:rail8:corpus:gate:po}PurchaseOrder",
+-              "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3"),
++              "sha256:198e3c311f7a3dedb4a03c802ac871557ecef9e06bfcce47199eabe14a7c4c60"),
+           // a second namespace, an element reference across files and a recursive type
+@@ -133,3 +133,3 @@
+                   + " | Q{urn:rail8:corpus:gate:invoice}Invoice",
+-              "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a"));
++              "sha256:dd93778417054f51b5537c1da7059f3e244ef75b56b3d72f443e6f966fd6ba9f"));
+ 
+@@ -148,3 +148,3 @@
+                   + " | Q{urn:rail8:corpus:wsdl11}OrderPort Submit input",
+-              "sha256:510d96ec830e4ad8aa2e477a6fe73640f58587cc84ce10ec68ce666ca65edd16"),
++              "sha256:249dfbcb6f3d5834555fa5262f198fd6a817f13c41c9526862e3ea2f4b5d3b83"),
+           entry(
+@@ -153,3 +153,3 @@
+                   + " | Q{urn:rail8:corpus:wsdl11}OrderPort Submit output",
+-              "sha256:facdda4e20e0833ad276202aa9f4c563264b3b071e5c12825ba01082ba1cbc85"));
++              "sha256:4650a74d0afe778155b0de5646ad556f147f12dda10096841b27881e84bebc92"));
+ 
+--- tool/mapping/engine/api/src/test/java/io/rail8/mapping/api/StructuresTest.java
++++ tree/mapping/engine/api/src/test/java/io/rail8/mapping/api/StructuresTest.java
+@@ -132,3 +132,3 @@
+   private static final String SKELETON_FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+@@ -336,4 +336,3 @@
+         refusedAll(
+-            Structures.load(
+-                alone, bundle("a.xsd"), new ElementRoot("Q{urn:rail8:corpus:a}Doc")));
++            Structures.load(alone, bundle("a.xsd"), new ElementRoot("Q{urn:rail8:corpus:a}Doc")));
+ 
+@@ -346,3 +345,3 @@
+                 "schema-reference-outside-bundle",
+-                new AtFilePosition("a.xsd", 6, 86),
++                new AtFilePosition("a.xsd", 6, 83),
+                 "the schemaLocation \"unlisted.xsd\" of this xs:import names no file of the schema"
+--- tool/mapping/engine/ir/src/main/java/module-info.java
++++ tree/mapping/engine/ir/src/main/java/module-info.java
+@@ -1 +1,3 @@
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.ir {
+--- tool/mapping/engine/mapping/pom.xml
++++ tree/mapping/engine/mapping/pom.xml
+@@ -40,3 +40,3 @@
+       <resource>
+-        <directory>${maven.multiModuleProjectDirectory}/contract</directory>
++        <directory>${mapping.root}/contract</directory>
+         <targetPath>io/rail8/mapping/mapping/internal</targetPath>
+@@ -69,3 +69,3 @@
+               <arguments>
+-                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
++                <argument>${mapping.root}/scripts/function-families.java</argument>
+                 <argument>catalogue</argument>
+--- tool/mapping/engine/mapping/src/main/java/module-info.java
++++ tree/mapping/engine/mapping/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** The mapping-model front end: the format, its validation and its canonical writer (ADR-0010). */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.mapping {
+--- tool/mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/Fixtures.java
++++ tree/mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/Fixtures.java
+@@ -20,3 +20,3 @@
+  * Surefire runs in the module directory, so the repository root is the nearest ancestor holding
+- * {@code mvnw} and {@code contract/}.
++ * {@code pom.xml} and {@code contract/}: the mapping's root.
+  */
+@@ -28,3 +28,3 @@
+     for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
+-      if (Files.isRegularFile(p.resolve("mvnw")) && Files.isDirectory(p.resolve("contract"))) {
++      if (Files.isRegularFile(p.resolve("pom.xml")) && Files.isDirectory(p.resolve("contract"))) {
+         return p;
+--- tool/mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/MappingModelSchemaDriftTest.java
++++ tree/mapping/engine/mapping/src/test/java/io/rail8/mapping/mapping/MappingModelSchemaDriftTest.java
+@@ -57,4 +57,3 @@
+         .isEqualTo(new Str("https://json-schema.org/draft/2020-12/schema"));
+-    assertThat(schema.root().members().get("$id"))
+-        .isEqualTo(new Str("urn:rail8:mapping-model:1"));
++    assertThat(schema.root().members().get("$id")).isEqualTo(new Str("urn:rail8:mapping-model:1"));
+   }
+--- tool/mapping/engine/oracle/pom.xml
++++ tree/mapping/engine/oracle/pom.xml
+@@ -59,4 +59,4 @@
+           <systemPropertyVariables>
+-            <!-- the golden corpus at the repository root (ADR-0018) -->
+-            <rail8.corpus>${maven.multiModuleProjectDirectory}/corpus</rail8.corpus>
++            <!-- the golden corpus at the mapping's root (ADR-0018) -->
++            <rail8.corpus>${mapping.root}/corpus</rail8.corpus>
+           </systemPropertyVariables>
+--- tool/mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/FamilyLocalityTest.java
++++ tree/mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/FamilyLocalityTest.java
+@@ -151,4 +151,3 @@
+             ownFile(
+-                "engine/xdm/src/main/java/io/rail8/mapping/xdm/ContextFunctions.java",
+-                "context"))
++                "engine/xdm/src/main/java/io/rail8/mapping/xdm/ContextFunctions.java", "context"))
+         .isTrue();
+--- tool/mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/RuntimeErrorCoverageTest.java
++++ tree/mapping/engine/oracle/src/test/java/io/rail8/mapping/oracle/RuntimeErrorCoverageTest.java
+@@ -18,4 +18,4 @@
+  * run raises from its data, the codes of {@code RuntimeErrors} in {@code engine/runtime}. {@code
+- * rail8:TIMEOUT} is a test run's limit, not a data error; the facade's tests cover it. Not a
+- * corpus class: its tests are no case ids (scripts/ratchet.java).
++ * rail8:TIMEOUT} is a test run's limit, not a data error; the facade's tests cover it. Not a corpus
++ * class: its tests are no case ids (scripts/ratchet.java).
+  */
+--- tool/mapping/engine/runtime/pom.xml
++++ tree/mapping/engine/runtime/pom.xml
+@@ -51,3 +51,3 @@
+               <arguments>
+-                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
++                <argument>${mapping.root}/scripts/function-families.java</argument>
+                 <argument>index</argument>
+--- tool/mapping/engine/runtime/src/main/java/module-info.java
++++ tree/mapping/engine/runtime/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** Tier 0: the closure-compiled interpreter and its projection (ADR-0021). */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.runtime {
+--- tool/mapping/engine/runtime/src/test/java/io/rail8/mapping/runtime/FunctionFamiliesTest.java
++++ tree/mapping/engine/runtime/src/test/java/io/rail8/mapping/runtime/FunctionFamiliesTest.java
+@@ -28,6 +28,9 @@
+ 
+-  /** Surefire runs in the module directory: the root is the nearest ancestor holding mvnw. */
++  /**
++   * Surefire runs in the module directory: the root is the nearest ancestor with pom.xml and
++   * contract/.
++   */
+   private static Path repoRoot() {
+     for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
+-      if (Files.isRegularFile(p.resolve("mvnw")) && Files.isDirectory(p.resolve("contract"))) {
++      if (Files.isRegularFile(p.resolve("pom.xml")) && Files.isDirectory(p.resolve("contract"))) {
+         return p;
+--- tool/mapping/engine/serializer/src/main/java/module-info.java
++++ tree/mapping/engine/serializer/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** Writes output documents byte for byte as ADR-0022 fixes them. */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.serializer {
+--- tool/mapping/engine/structure-import/pom.xml
++++ tree/mapping/engine/structure-import/pom.xml
+@@ -59,4 +59,4 @@
+           <systemPropertyVariables>
+-            <!-- the golden corpus at the repository root (ADR-0018): the skeleton schema bundle -->
+-            <rail8.corpus>${maven.multiModuleProjectDirectory}/corpus</rail8.corpus>
++            <!-- the golden corpus at the mapping's root (ADR-0018): the skeleton schema bundle -->
++            <rail8.corpus>${mapping.root}/corpus</rail8.corpus>
+           </systemPropertyVariables>
+--- tool/mapping/engine/structure-import/src/main/java/module-info.java
++++ tree/mapping/engine/structure-import/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** Reads schema bundles into the structure model (ADR-0008). */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.structure.importer {
+--- tool/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/StructureReaderTest.java
++++ tree/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/StructureReaderTest.java
+@@ -151,3 +151,3 @@
+     "nillable-not-true-or-false, schema-construct-unsupported,  9, 64",
+-    "foreign-element,            schema-construct-unsupported,  9, 56",
++    "foreign-element,            schema-construct-unsupported,  9, 53",
+     "redefine,                   schema-construct-unsupported,  5, 44",
+@@ -190,3 +190,3 @@
+   @CsvSource({
+-    "element-form-default-invalid,   schema-construct-unsupported,  4, 87",
++    "element-form-default-invalid,   schema-construct-unsupported,  4, 84",
+     "nested-two-sequences,           schema-construct-unsupported, 10, 55",
+@@ -211,3 +211,3 @@
+   @CsvSource({
+-    "import,             schema-reference-outside-bundle,  5, 80",
++    "import,             schema-reference-outside-bundle,  5, 77",
+     "include,            schema-reference-outside-bundle,  5, 43",
+@@ -508,4 +508,3 @@
+     for (List<String> pinned : PINNED_BEFORE_92) {
+-      Path directory =
+-          Path.of(System.getProperty("rail8.corpus"), "structures", pinned.getFirst());
++      Path directory = Path.of(System.getProperty("rail8.corpus"), "structures", pinned.getFirst());
+       Structure structure =
+@@ -623,5 +622,5 @@
+               assertThat(e.file()).isEqualTo("order.xsd");
+-              // <xs:schema …> spans lines 5 and 6 and ends at column 58 of line 6
++              // <xs:schema …> spans lines 5 and 6 and ends at column 55 of line 6
+               assertThat(e.line()).isEqualTo(6);
+-              assertThat(e.column()).isEqualTo(59);
++              assertThat(e.column()).isEqualTo(56);
+             });
+@@ -631,3 +630,3 @@
+    * #96 reads WSDL: a WSDL root over a bundle of no WSDL names an interface the bundle does not
+-   * declare, at the first file's xs:schema (6:59).
++   * declare, at the first file's xs:schema (6:56).
+    */
+@@ -648,3 +647,3 @@
+               assertThat(e.line()).isEqualTo(6);
+-              assertThat(e.column()).isEqualTo(59);
++              assertThat(e.column()).isEqualTo(56);
+             });
+--- tool/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/WsdlReaderTest.java
++++ tree/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/WsdlReaderTest.java
+@@ -35,4 +35,3 @@
+ 
+-  private static final Path STRUCTURES =
+-      Path.of(System.getProperty("rail8.corpus"), "structures");
++  private static final Path STRUCTURES = Path.of(System.getProperty("rail8.corpus"), "structures");
+ 
+@@ -144,3 +143,3 @@
+   static Stream<Arguments> notFound() {
+-    String at = "wsdl/order-11.wsdl 11:64 ";
++    String at = "wsdl/order-11.wsdl 11:61 ";
+     return Stream.of(
+@@ -180,3 +179,3 @@
+             "{wsdl11}OrderPort Submit input",
+-            "skeleton/order.xsd 6:59 no portType or interface {wsdl11}OrderPort is declared in the"
++            "skeleton/order.xsd 6:56 no portType or interface {wsdl11}OrderPort is declared in the"
+                 + " schema bundle"));
+@@ -220,4 +219,4 @@
+             List.of(
+-                outside + file11 + "11:81",
+-                outside + file11 + "14:62",
++                outside + file11 + "11:78",
++                outside + file11 + "14:59",
+                 unsupported + file11 + "20:33",
+--- tool/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdDerivationTest.java
++++ tree/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdDerivationTest.java
+@@ -247,3 +247,3 @@
+                 unsupported
+-                    + "refused/min-version.xsd 6:78 vc:minVersion=\"1.1\" asks for XSD 1.1,"
++                    + "refused/min-version.xsd 6:75 vc:minVersion=\"1.1\" asks for XSD 1.1,"
+                     + " which is refused when a schema loads (ADR-0008)")),
+--- tool/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdFilesAndNamesTest.java
++++ tree/mapping/engine/structure-import/src/test/java/io/rail8/mapping/structure/importer/XsdFilesAndNamesTest.java
+@@ -235,5 +235,5 @@
+             List.of(
+-                outside + "a.xsd 6:86",
++                outside + "a.xsd 6:83",
+                 outside + "a.xsd 7:53",
+-                outside + "a.xsd 8:55",
++                outside + "a.xsd 8:52",
+                 invalid + "a.xsd 12:49")),
+@@ -262,3 +262,3 @@
+             "{po}Order",
+-            List.of(outside + "po/order.xsd 7:91")),
++            List.of(outside + "po/order.xsd 7:88")),
+         Arguments.of(
+--- tool/mapping/engine/structure/src/main/java/module-info.java
++++ tree/mapping/engine/structure/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** The one structure model (ADR-0008): records only, no dependencies. */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.structure {
+--- tool/mapping/engine/udf-api/src/main/java/module-info.java
++++ tree/mapping/engine/udf-api/src/main/java/module-info.java
+@@ -1 +1,3 @@
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.udf {}
+--- tool/mapping/engine/udf/src/main/java/module-info.java
++++ tree/mapping/engine/udf/src/main/java/module-info.java
+@@ -1 +1,3 @@
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.udf.compiler {
+--- tool/mapping/engine/xdm/src/main/java/module-info.java
++++ tree/mapping/engine/xdm/src/main/java/module-info.java
+@@ -1,2 +1,4 @@
+ /** The XDM subset of milestone 1 and its runtime representations (ADR-0004). */
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.xdm {
+--- tool/mapping/engine/xslt-export/pom.xml
++++ tree/mapping/engine/xslt-export/pom.xml
+@@ -55,3 +55,3 @@
+               <arguments>
+-                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
++                <argument>${mapping.root}/scripts/function-families.java</argument>
+                 <argument>helper</argument>
+--- tool/mapping/engine/xslt-export/src/main/java/module-info.java
++++ tree/mapping/engine/xslt-export/src/main/java/module-info.java
+@@ -1 +1,3 @@
++// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
++@SuppressWarnings("module")
+ module io.rail8.mapping.xslt.export {
+--- tool/mapping/engine/xslt-export/src/test/java/io/rail8/mapping/xslt/export/XsltExporterTest.java
++++ tree/mapping/engine/xslt-export/src/test/java/io/rail8/mapping/xslt/export/XsltExporterTest.java
+@@ -1485,6 +1485,9 @@
+ 
+-  /** Surefire runs in the module directory: the root is the nearest ancestor holding mvnw. */
++  /**
++   * Surefire runs in the module directory: the root is the nearest ancestor with pom.xml and
++   * contract/.
++   */
+   private static Path repoRoot() {
+     for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
+-      if (Files.isRegularFile(p.resolve("mvnw")) && Files.isDirectory(p.resolve("contract"))) {
++      if (Files.isRegularFile(p.resolve("pom.xml")) && Files.isDirectory(p.resolve("contract"))) {
+         return p;
+--- tool/mapping/pom.xml
++++ tree/mapping/pom.xml
+@@ -1,3 +1,4 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+-<!-- Root of the one reactor (ADR-0017, ADR-0016). Every command is ./mvnw. -->
++<!-- Root of the mapping's reactor (ADR-0017, ADR-0016), aggregated by the repository's pom and nobody's child.
++     Every command is the repository's wrapper, mvnw at the root: ../mvnw from here, or with -f mapping/pom.xml from the root. -->
+ <project xmlns="http://maven.apache.org/POM/4.0.0"
+@@ -29,2 +30,6 @@
+     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
++    <!-- The mapping's root (BRAND-3, D-150): the repository holds it as mapping/ and keeps the one .mvn/ at its own
++         root, which Maven finds from the root, from mapping/ and with -f mapping/pom.xml alike. Every path to the
++         corpus, the contract, the scripts and ui/dist goes through it. -->
++    <mapping.root>${maven.multiModuleProjectDirectory}/mapping</mapping.root>
+ 
+@@ -201,3 +206,3 @@
+                     <exclude>net.sf.saxon:*:*:*:provided</exclude>
+-                    <!-- licence-excepted artifacts (.mvn/licence-filters.txt) outside test scope -->
++                    <!-- licence-excepted artifacts (licence-filters.txt) outside test scope -->
+                     <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:compile</exclude>
+@@ -285,3 +290,3 @@
+ 
+-      <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in .mvn/licence-filters.txt.
++      <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in licence-filters.txt.
+            npm licences (ui/): exceptions by package name in ui/scripts/licence-exceptions.json. -->
+@@ -390,3 +395,3 @@
+   <profiles>
+-    <!-- licence.filters.uri: the URI of .mvn/licence-filters.txt for license-maven-plugin, which needs a well-formed
++    <!-- licence.filters.uri: the URI of licence-filters.txt (beside this pom) for license-maven-plugin, which needs a well-formed
+          URI (URI.create). project.baseUri is one on every OS (drive letters, backslashes, spaces) but belongs to the
+@@ -398,3 +403,3 @@
+         <file>
+-          <exists>${project.basedir}/../../.mvn/licence-filters.txt</exists>
++          <exists>${project.basedir}/../../licence-filters.txt</exists>
+         </file>
+@@ -402,3 +407,3 @@
+       <properties>
+-        <licence.filters.uri>${project.baseUri}../../.mvn/licence-filters.txt</licence.filters.uri>
++        <licence.filters.uri>${project.baseUri}../../licence-filters.txt</licence.filters.uri>
+       </properties>
+@@ -409,3 +414,3 @@
+         <file>
+-          <exists>${project.basedir}/../.mvn/licence-filters.txt</exists>
++          <exists>${project.basedir}/../licence-filters.txt</exists>
+         </file>
+@@ -413,3 +418,3 @@
+       <properties>
+-        <licence.filters.uri>${project.baseUri}../.mvn/licence-filters.txt</licence.filters.uri>
++        <licence.filters.uri>${project.baseUri}../licence-filters.txt</licence.filters.uri>
+       </properties>
+--- tool/mapping/scripts/gate-spec.sh
++++ tree/mapping/scripts/gate-spec.sh
+@@ -29,2 +29,4 @@
+ cd "$(dirname "$0")/.."
++# the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
++mvnw=${MVNW:-../mvnw}
+ mkdir -p .logs ui/.logs
+@@ -53,3 +55,3 @@
+ step "1 verify -Pbench" ".logs/${spec}-build.log" \
+-  ./mvnw -B clean verify -Pbench
++  "$mvnw" -B clean verify -Pbench
+ step "1 contract diff" ".logs/${spec}-contract.log" \
+@@ -158,3 +160,3 @@
+ else
+-  skipped "5 jmh" "bench/jmh/target/benchmarks.jar is not built (./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests)"
++  skipped "5 jmh" "bench/jmh/target/benchmarks.jar is not built (../mvnw -B -Pbench -pl bench/jmh -am package -DskipTests)"
+ fi
+@@ -168,3 +170,3 @@
+ step "3 stack package -Pui" ".logs/${spec}-stack-package.log" \
+-  ./mvnw -B -Pui -pl service -am clean package -DskipTests
++  "$mvnw" -B -Pui -pl service -am clean package -DskipTests
+ if [ -f ui/package.json ]; then
+--- tool/mapping/scripts/gate-ticket.sh
++++ tree/mapping/scripts/gate-ticket.sh
+@@ -28,2 +28,4 @@
+ cd "$(dirname "$0")/.."
++# the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
++mvnw=${MVNW:-../mvnw}
+ mkdir -p .logs ui/.logs
+@@ -52,3 +54,3 @@
+ step "1 build $modules,engine/oracle" ".logs/${ticket}-build.log" \
+-  ./mvnw -B -pl "${modules},engine/oracle" -am verify
++  "$mvnw" -B -pl "${modules},engine/oracle" -am verify
+ 
+@@ -79,3 +81,3 @@
+ step "2 compile-all" ".logs/${ticket}-compile-all.log" \
+-  ./mvnw -B -q -DskipTests verify
++  "$mvnw" -B -q -DskipTests verify
+ 
+--- tool/mapping/scripts/pit-summary.sh
++++ tree/mapping/scripts/pit-summary.sh
+@@ -12,3 +12,3 @@
+ #                                                      preceded by `=== PIT <module> ===`; exit 1 if any failed
+-#   (PIT_MVN overrides ./mvnw, for the script test)
++#   (from the mapping's root; PIT_MVN overrides ../mvnw, the repository's wrapper, for the script test)
+ #
+@@ -27,3 +27,3 @@
+     echo "=== PIT $m ===" >> "$log"
+-    "${PIT_MVN:-./mvnw}" -B -pl "$m" -am test-compile org.pitest:pitest-maven:mutationCoverage >> "$log" 2>&1 || rc=1
++    "${PIT_MVN:-../mvnw}" -B -pl "$m" -am test-compile org.pitest:pitest-maven:mutationCoverage >> "$log" 2>&1 || rc=1
+   done
+--- tool/mapping/scripts/test/gate-log-test.sh
++++ tree/mapping/scripts/test/gate-log-test.sh
+@@ -21,4 +21,5 @@
+ printf "$ok" > "$root/scripts/check-trailers.sh"
+-# MVNW_EXIT sets the exit code of every ./mvnw step
++# MVNW_EXIT sets the exit code of every ../mvnw step
+ printf '#!/usr/bin/env bash\nexit "${MVNW_EXIT:-0}"\n' > "$root/mvnw"
++export MVNW="$root/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
+ # the summary call prints a warning to stderr, which the log must hold too, then one line per module; the --run call
+--- tool/mapping/scripts/test/gate-spec-bench-test.sh
++++ tree/mapping/scripts/test/gate-spec-bench-test.sh
+@@ -20,2 +20,3 @@
+ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/mvnw"
++export MVNW="$tmp/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
+ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/scripts/pit-summary.sh"
+--- tool/mapping/scripts/test/gate-spec-default-test.sh
++++ tree/mapping/scripts/test/gate-spec-default-test.sh
+@@ -13,2 +13,3 @@
+ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/mvnw"
++export MVNW="$tmp/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
+ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/java"
+--- tool/mapping/scripts/test/handover-test.sh
++++ tree/mapping/scripts/test/handover-test.sh
+@@ -13,3 +13,3 @@
+ has "Node 22" "Node 22"
+-has "dev service" "./mvnw -pl service -am quarkus:dev"
++has "dev service" "../mvnw -pl service -am quarkus:dev"   # the repository's wrapper, from mapping/ (BRAND-3)
+ has "dev UI" "npm run dev"
+--- tool/mapping/service/pom.xml
++++ tree/mapping/service/pom.xml
+@@ -90,3 +90,3 @@
+       <resource>
+-        <directory>${maven.multiModuleProjectDirectory}/contract</directory>
++        <directory>${mapping.root}/contract</directory>
+         <targetPath>META-INF/resources/q</targetPath>
+@@ -131,3 +131,3 @@
+                 <argument>io/rail8/mapping/mapping/function-catalogue.json</argument>
+-                <argument>${maven.multiModuleProjectDirectory}/contract/function-catalogue.json</argument>
++                <argument>${mapping.root}/contract/function-catalogue.json</argument>
+               </arguments>
+@@ -161,3 +161,3 @@
+           <resource>
+-            <directory>${maven.multiModuleProjectDirectory}/ui/dist</directory>
++            <directory>${mapping.root}/ui/dist</directory>
+             <targetPath>META-INF/resources</targetPath>
+--- tool/mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java
++++ tree/mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java
+@@ -9,5 +9,5 @@
+ import com.fasterxml.jackson.databind.type.LogicalType;
+-import io.rail8.mapping.api.EngineFacade;
+ import io.quarkus.jackson.ObjectMapperCustomizer;
+ import io.quarkus.runtime.StartupEvent;
++import io.rail8.mapping.api.EngineFacade;
+ import jakarta.enterprise.event.Observes;
+--- tool/mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java
++++ tree/mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java
+@@ -2,2 +2,3 @@
+ 
++import io.quarkus.runtime.Startup;
+ import io.rail8.mapping.structure.importer.ReferenceResolver;
+@@ -6,3 +7,2 @@
+ import io.rail8.mapping.structure.importer.UnresolvedReferenceException.Reason;
+-import io.quarkus.runtime.Startup;
+ import jakarta.enterprise.context.ApplicationScoped;
+@@ -80,4 +80,4 @@
+   /**
+-   * The workspace of {@code rail8.mapping.workspace}, made at startup. The property has no
+-   * default, so a service without one does not start.
++   * The workspace of {@code rail8.mapping.workspace}, made at startup. The property has no default,
++   * so a service without one does not start.
+    *
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/Fixtures.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/Fixtures.java
+@@ -29,3 +29,3 @@
+   static final String FINGERPRINT =
+-      "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d";
++      "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a";
+ 
+@@ -36,3 +36,3 @@
+   static final String CORPUS_MAPPING_ETAG =
+-      "\"sha256:57e4430fd26dcadc7d40f72fd4b48bb6cd48d97cf86293e77946e71e6fe8578e\"";
++      "\"sha256:0910d381dd49fbf87b43214ca017d0778e696c4199fe75275176b5872dde65c1\"";
+ 
+@@ -40,3 +40,3 @@
+   static final String UNWIRED_ETAG =
+-      "\"sha256:1d39875e6253f99d3d01f14798a2113b4543ea72df1d1545a6257b81f7893001\"";
++      "\"sha256:31f353153962a76305b3f8de268e07801a01d36c66b7a240639dc8dab31458d9\"";
+ 
+@@ -55,3 +55,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -64,3 +64,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -74,3 +74,3 @@
+   static final String NEW_MAPPING_ETAG =
+-      "\"sha256:51535d0aefaec12efa302bfb41edc0c8b157e2a40d86d35d2b206cab21832231\"";
++      "\"sha256:d61081eb9201f6f8f1dbf7244253666bea39716abcaf0dcec51e7ad8e59f0e04\"";
+ 
+@@ -112,3 +112,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -121,3 +121,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -131,3 +131,3 @@
+   static final String DESCRIBED_NEW_MAPPING_ETAG =
+-      "\"sha256:0e0870685a84d848db0743544144c1b45bd57ca02fe77f2d636a740ce78b1be1\"";
++      "\"sha256:03596b60713e2f9cb1be613bc17940d0c615a0d8073190cfbc8345a19d7c3f3a\"";
+ 
+@@ -146,3 +146,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -155,3 +155,3 @@
+           ],
+-          "fingerprint": "sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d",
++          "fingerprint": "sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a",
+           "root": {
+@@ -189,3 +189,3 @@
+   static final String STUDIO_MAPPING_ETAG =
+-      "\"sha256:c314903c366e468a4482816bde25983e7a9883734f78212e399d87a61d4e46a0\"";
++      "\"sha256:8ce7c2d73eb01c48362e4d9370ecbfb15dab59d0fd983178549c87d2750727d5\"";
+ 
+@@ -203,6 +203,6 @@
+ 
+-  /** The repository root: the nearest ancestor of the module directory with mvnw and corpus/. */
++  /** The mapping's root: the nearest ancestor of the module directory with pom.xml and corpus/. */
+   static Path repositoryRoot() {
+     for (Path p = Path.of("").toAbsolutePath(); p != null; p = p.getParent()) {
+-      if (Files.isRegularFile(p.resolve("mvnw")) && Files.isDirectory(p.resolve("corpus"))) {
++      if (Files.isRegularFile(p.resolve("pom.xml")) && Files.isDirectory(p.resolve("corpus"))) {
+         return p;
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/GateStructuresTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/GateStructuresTest.java
+@@ -118,3 +118,3 @@
+             "{\"element\": \"Q{urn:rail8:corpus:gate:po}PurchaseOrder\"}",
+-            "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3"),
++            "sha256:198e3c311f7a3dedb4a03c802ac871557ecef9e06bfcce47199eabe14a7c4c60"),
+         argumentSet(
+@@ -124,3 +124,3 @@
+             "{\"element\": \"Q{urn:rail8:corpus:gate:invoice}Invoice\"}",
+-            "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a"),
++            "sha256:dd93778417054f51b5537c1da7059f3e244ef75b56b3d72f443e6f966fd6ba9f"),
+         argumentSet(
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java
+@@ -24,2 +24,4 @@
+ import com.fasterxml.jackson.databind.node.ObjectNode;
++import io.quarkus.test.common.http.TestHTTPResource;
++import io.quarkus.test.junit.QuarkusTest;
+ import io.rail8.mapping.api.EngineFacade;
+@@ -30,4 +32,2 @@
+ import io.rail8.mapping.mapping.Refused;
+-import io.quarkus.test.common.http.TestHTTPResource;
+-import io.quarkus.test.junit.QuarkusTest;
+ import java.net.URI;
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java
+@@ -21,2 +21,4 @@
+ import com.fasterxml.jackson.databind.JsonNode;
++import io.quarkus.test.common.http.TestHTTPResource;
++import io.quarkus.test.junit.QuarkusTest;
+ import io.rail8.mapping.api.EngineFacade;
+@@ -24,4 +26,2 @@
+ import io.rail8.mapping.mapping.MappingModel;
+-import io.quarkus.test.common.http.TestHTTPResource;
+-import io.quarkus.test.junit.QuarkusTest;
+ import java.net.URI;
+@@ -538,3 +538,3 @@
+         .containsExactly(
+-            "error schema-root-not-found at file ../structures/skeleton/order.xsd 6:59");
++            "error schema-root-not-found at file ../structures/skeleton/order.xsd 6:56");
+     assertThat(TempWorkspace.exists("creating-root/order.mapping.json")).isFalse();
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java
+@@ -13,2 +13,4 @@
+ import com.fasterxml.jackson.databind.JsonNode;
++import io.quarkus.test.common.http.TestHTTPResource;
++import io.quarkus.test.junit.QuarkusTest;
+ import io.rail8.mapping.api.EngineFacade;
+@@ -18,4 +20,2 @@
+ import io.rail8.mapping.mapping.MappingModel;
+-import io.quarkus.test.common.http.TestHTTPResource;
+-import io.quarkus.test.junit.QuarkusTest;
+ import java.io.IOException;
+@@ -87,3 +87,3 @@
+    * Order} (ADR-0009): SHA-256 over this canonical text written by hand, the method that reproduces
+-   * {@link Fixtures#FINGERPRINT} (df1714…) from the same text with {@code OrderId}. Each line ends
++   * {@link Fixtures#FINGERPRINT} (28ec3b…) from the same text with {@code OrderId}. Each line ends
+    * in a line feed.
+@@ -105,3 +105,3 @@
+   private static final String RENAMED_FINGERPRINT =
+-      "sha256:fa26a9a97445ebd6ebb4d69c404d39990927b2225e2e81d194d1ea89ce04b5c1";
++      "sha256:b467d743f6ae3a5dc61ae97a9547cfaa06a65baa045fe73283a04319e823e92b";
+ 
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/StructuresResourceTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/StructuresResourceTest.java
+@@ -217,3 +217,3 @@
+     assertThat(described(reply.json().path("diagnostics")))
+-        .containsExactly("error schema-root-not-found at file order.xsd 6:59");
++        .containsExactly("error schema-root-not-found at file order.xsd 6:56");
+   }
+@@ -269,3 +269,3 @@
+     assertThat(loaded.path("fingerprint").textValue())
+-        .isEqualTo("sha256:510d96ec830e4ad8aa2e477a6fe73640f58587cc84ce10ec68ce666ca65edd16");
++        .isEqualTo("sha256:249dfbcb6f3d5834555fa5262f198fd6a817f13c41c9526862e3ea2f4b5d3b83");
+     JsonNode rootField = loaded.path("root");
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/TestRunTraceLimitTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/TestRunTraceLimitTest.java
+@@ -19,4 +19,4 @@
+  * The trace limit is configurable (ADR-0015, "Trace"; GLOSSARY "Trace limit"; #53): {@code
+- * rail8.mapping.trace-limit} is 2 here, so an entry above two slots is capped and keeps its
+- * totals. {@code TestRunResourceTest} runs under the default of 10,000.
++ * rail8.mapping.trace-limit} is 2 here, so an entry above two slots is capped and keeps its totals.
++ * {@code TestRunResourceTest} runs under the default of 10,000.
+  */
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/TimeZoneConfigTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/TimeZoneConfigTest.java
+@@ -15,4 +15,4 @@
+ /**
+- * The time zone of the service's runs is a configuration (#80): {@code rail8.mapping.time-zone}
+- * is a {@code ZoneId}, a region or an offset, and one that names no zone stops the startup check.
++ * The time zone of the service's runs is a configuration (#80): {@code rail8.mapping.time-zone} is
++ * a {@code ZoneId}, a region or an offset, and one that names no zone stops the startup check.
+  * {@code TimeZoneStartupTest} shows the check is wired to the startup, {@code TestRunTimeZoneTest}
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/TraceLimitConfigTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/TraceLimitConfigTest.java
+@@ -13,5 +13,5 @@
+  * A trace limit below 1 is a configuration error (ADR-0015, "Trace"; #53 ruling): the startup check
+- * refuses {@code rail8.mapping.trace-limit}, so the service does not start, Integer.MIN_VALUE
+- * too. Witness: the least limit, 1, is read as it is. {@code TraceLimitStartupTest} shows the check
+- * is wired to the startup.
++ * refuses {@code rail8.mapping.trace-limit}, so the service does not start, Integer.MIN_VALUE too.
++ * Witness: the least limit, 1, is read as it is. {@code TraceLimitStartupTest} shows the check is
++ * wired to the startup.
+  */
+@@ -20,5 +20,3 @@
+   private static Config config(String limit) {
+-    return new SmallRyeConfigBuilder()
+-        .withDefaultValue("rail8.mapping.trace-limit", limit)
+-        .build();
++    return new SmallRyeConfigBuilder().withDefaultValue("rail8.mapping.trace-limit", limit).build();
+   }
+--- tool/mapping/service/src/test/java/io/rail8/mapping/service/WorkspaceEscapeTest.java
++++ tree/mapping/service/src/test/java/io/rail8/mapping/service/WorkspaceEscapeTest.java
+@@ -46,3 +46,3 @@
+   private static final String EXFIL_FINGERPRINT =
+-      "sha256:b1e7aba69ac4f5572ccadcb28bc162f0cab8d7be4cca3a487fff96340387ad00";
++      "sha256:331813a6300adf4977747205c2b22abd882965501401582258d92ddbe1e1955a";
+   private static final String EXFIL_INPUT =
+@@ -304,3 +304,3 @@
+   @ParameterizedTest(name = "{0}")
+-  @CsvSource({"../../../outside/evil.xsd, 96", "../../../etc/passwd, 90"})
++  @CsvSource({"../../../outside/evil.xsd, 93", "../../../etc/passwd, 87"})
+   void anEscapeInASchemaLocationIsOutsideTheBundleAndNeverRead(String location, int column) {
+--- tool/mapping/service/src/test/resources/outside/evil.mapping.json
++++ tree/mapping/service/src/test/resources/outside/evil.mapping.json
+@@ -6,3 +6,3 @@
+     ],
+-    "fingerprint": "sha256:b1e7aba69ac4f5572ccadcb28bc162f0cab8d7be4cca3a487fff96340387ad00",
++    "fingerprint": "sha256:331813a6300adf4977747205c2b22abd882965501401582258d92ddbe1e1955a",
+     "root": {
+@@ -15,3 +15,3 @@
+     ],
+-    "fingerprint": "sha256:b1e7aba69ac4f5572ccadcb28bc162f0cab8d7be4cca3a487fff96340387ad00",
++    "fingerprint": "sha256:331813a6300adf4977747205c2b22abd882965501401582258d92ddbe1e1955a",
+     "root": {
+--- tool/mapping/ui/playwright.stack.config.ts
++++ tree/mapping/ui/playwright.stack.config.ts
+@@ -3,4 +3,5 @@
+ 
+-// The @stack suite runs against the real service, which serves the UI from the -Pui jar (ADR-0017):
+-//   ./mvnw -B -Pui -pl service -am clean package -DskipTests
++// The @stack suite runs against the real service, which serves the UI from the -Pui jar (ADR-0017),
++// built in mapping/ with the repository's wrapper:
++//   ../mvnw -B -Pui -pl service -am clean package -DskipTests
+ // The service answers on a fixed port over a temporary copy of corpus/ that e2e/stack-setup.mjs prepares.
+--- tool/mapping/ui/src/api/fake/order-structure.ts
++++ tree/mapping/ui/src/api/fake/order-structure.ts
+@@ -19,3 +19,3 @@
+   kind: 'loaded',
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: {
+--- tool/mapping/ui/src/model/delete-box.test.ts
++++ tree/mapping/ui/src/model/delete-box.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/delete-target-field-mapping.test.ts
++++ tree/mapping/ui/src/model/delete-target-field-mapping.test.ts
+@@ -10,3 +10,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/insert-box.test.ts
++++ tree/mapping/ui/src/model/insert-box.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/link.test.ts
++++ tree/mapping/ui/src/model/link.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/paste.test.ts
++++ tree/mapping/ui/src/model/paste.test.ts
+@@ -10,3 +10,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/remap.test.ts
++++ tree/mapping/ui/src/model/remap.test.ts
+@@ -15,3 +15,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: `${NS}Order` },
+--- tool/mapping/ui/src/model/set-context.test.ts
++++ tree/mapping/ui/src/model/set-context.test.ts
+@@ -12,3 +12,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/set-input.test.ts
++++ tree/mapping/ui/src/model/set-input.test.ts
+@@ -10,3 +10,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/set-param.test.ts
++++ tree/mapping/ui/src/model/set-param.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/model/wire.test.ts
++++ tree/mapping/ui/src/model/wire.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/studio/store/clipboard.test.ts
++++ tree/mapping/ui/src/studio/store/clipboard.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/studio/store/compile.test.ts
++++ tree/mapping/ui/src/studio/store/compile.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/studio/store/inspector-edits.test.ts
++++ tree/mapping/ui/src/studio/store/inspector-edits.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/studio/store/test-run.test.ts
++++ tree/mapping/ui/src/studio/store/test-run.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/mapping/ui/src/studio/store/working-copy.test.ts
++++ tree/mapping/ui/src/studio/store/working-copy.test.ts
+@@ -11,3 +11,3 @@
+   bundle: ['../structures/skeleton/order.xsd'] as [string],
+-  fingerprint: 'sha256:df1714b8b2e4b09e326626a2ea72780bf6298a0ca733c69f5586ea657e4bd90d',
++  fingerprint: 'sha256:28ec3b615bbf0802cad0e676d1f5cf36d57f95216448a3653cac7b722b7ca87a',
+   root: { element: 'Q{urn:rail8:corpus:skeleton}Order' },
+--- tool/pom.xml
++++ tree/pom.xml
+@@ -7,3 +7,5 @@
+   <!-- The repository's aggregator (D-149): it builds every area and is nobody's parent. The platform's parent pom is
+-       platform/pom.xml (`cd platform && mvn verify` builds the platform alone); the mapping joins as a module in BRAND-3. -->
++       platform/pom.xml (`cd platform && mvn verify` builds the platform alone); the mapping's is mapping/pom.xml
++       (rail8-mapping-parent, BRAND-3, D-150), built alone with `./mvnw -f mapping/pom.xml`. No platform module depends
++       on the mapping. -->
+   <groupId>io.rail8</groupId>
+@@ -17,2 +19,3 @@
+     <module>platform</module>
++    <module>mapping</module>
+   </modules>

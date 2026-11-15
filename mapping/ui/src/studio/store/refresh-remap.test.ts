@@ -3,7 +3,7 @@ import type { Diagnostic, RefreshResponse, StoredMapping } from '../../api/clien
 import type { MappingModel } from '../../generated/mapping-model';
 import { createWorkingCopyStore, selectUnsaved } from './working-copy';
 
-const NS = 'Q{urn:flottila:corpus:skeleton}';
+const NS = 'Q{urn:rail8:corpus:skeleton}';
 const ORDER = `/${NS}Order`;
 const ORDER_ID = `${ORDER}/OrderId`;
 const ITEM = `${ORDER}/${NS}Item`;

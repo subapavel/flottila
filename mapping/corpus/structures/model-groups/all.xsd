@@ -2,8 +2,8 @@
 <!-- Fixture (#94): xs:all keeps the declared order, and its own occurrence multiplies into its
      elements; the group Bag holds an xs:all (ADR-0008). -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:g="urn:flottila:corpus:groups"
-           targetNamespace="urn:flottila:corpus:groups">
+           xmlns:g="urn:rail8:corpus:groups"
+           targetNamespace="urn:rail8:corpus:groups">
   <xs:group name="Bag">
     <xs:all>
       <xs:element name="Sku" type="xs:string"/>

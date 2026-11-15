@@ -1,0 +1,27 @@
+root Q{urn:flottila:corpus:gate:po}PurchaseOrder 1..1 - /Q{urn:flottila:corpus:gate:po}PurchaseOrder
+type /Q{urn:flottila:corpus:gate:po}PurchaseOrder
+field @issued 0..1 xs:date -
+field Q{urn:flottila:corpus:gate:po}OrderId 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:po}Buyer 1..1 - Q{urn:flottila:corpus:gate:po}Buyer
+field Q{urn:flottila:corpus:gate:po}Delivery 0..1 - Q{urn:flottila:corpus:gate:common}Address
+field Q{urn:flottila:corpus:gate:po}Pickup 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:po}Line 1..unbounded - /Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line
+type /Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line
+field @no 1..1 xs:integer -
+field Q{urn:flottila:corpus:gate:po}Article 0..1 - Q{urn:flottila:corpus:gate:po}ProductType
+field Q{urn:flottila:corpus:gate:po}Service 0..1 - Q{urn:flottila:corpus:gate:po}ProductType
+field Q{urn:flottila:corpus:gate:po}Quantity 1..1 xs:integer -
+field Q{urn:flottila:corpus:gate:po}Price 1..1 xs:decimal Q{urn:flottila:corpus:gate:po}Money
+type Q{urn:flottila:corpus:gate:common}Address
+field @country 0..1 xs:string -
+field Q{urn:flottila:corpus:gate:common}Street 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:common}City 1..1 xs:string -
+type Q{urn:flottila:corpus:gate:po}Buyer
+field Q{urn:flottila:corpus:gate:common}Name 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:po}CustomerNo 1..1 xs:string -
+type Q{urn:flottila:corpus:gate:po}Money
+field @currency 1..1 xs:string -
+field @vatIncluded 0..1 xs:boolean -
+type Q{urn:flottila:corpus:gate:po}ProductType
+field Q{urn:flottila:corpus:gate:po}Sku 1..1 xs:string -
+field Q{urn:flottila:corpus:gate:po}Name 0..1 xs:string -
