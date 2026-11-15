@@ -1,6 +1,6 @@
 # Every body kind has a heap form on the form-B driver; U is derived per filter and run; the depth budget counts calls
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); records F-55; amends ADR-0011 (the trampoline's kinds, U, the calibration, what the depth budget counts) and ADR-0017 (what the recursion-depth budget counts; U per run); amended by spec 3 grilling round 2 (kinds 21 and 22, path variants on the driver, `stackZeroAgrees`, `D_f`)
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); records F-55; amends ADR-0011 (the trampoline's kinds, U, the calibration, what the depth budget counts) and ADR-0017 (what the recursion-depth budget counts; U per run); amended by spec 3 grilling round 2 (kinds 21 and 22, path variants on the driver, `stackZeroAgrees`, `D_f`); heap-form contract, driver and hand-back by ticket #109
 
 ADR-0011 runs recursion beyond U on a resumable form-B trampoline and makes U a constant per
 release. Building it in 2b raises three questions. Which kinds must the driver run? What is U for a
@@ -19,9 +19,9 @@ of the recursion-depth budget?
   recursion-depth budget limits the depth. `walk/1` stays red until spec 3; 2b's deep cases use
   user recursion.
 - **Form B routes downstream events back into the driver** (M4). Two things go back into the driver,
-  at the heap frame that produced the result: an error raised downstream of a result the starter
+  at the heap form that produced the result: an error raised downstream of a result the starter
   emits, and the emit's answer (a stop or a break). So a heap `AltBind` still catches the error
-  (ADR-0038), and the heap frames stop. Required cases beyond U (shapes observed on jq-ref at
+  (ADR-0038), and the heap forms stop. Required cases beyond U (shapes observed on jq-ref at
   depth 3):
   `def f: if .==0 then ([[1]]|.[] as [$a] ?// $a|$a) else (.-1|f)|. end; [3|f|if .==1 then error("x") else . end]`
   → `[[1]]`; `[label $out | def f: if .==0 then (1,2) else (.-1|f)|. end; 3|f|., break $out]` →
@@ -83,3 +83,29 @@ Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026
   default.
 - `D_f` and the unit weights cover path variants and the FIXED/WALK run; the re-run (F-30) can only
   lower `U_f`.
+
+## Amendment (ticket #109)
+
+Accepted 2026-11-15, architect under `/run-spec` #106; designer draft.
+
+- Every interpreter op has a heap form, entered by `start(Trampoline, HeapForm under, slots, in,
+  HeapSink out)`, which `Op` keeps abstract, so a kind with no heap form does not compile. The heap
+  form does what the push form does, in the same order, with the same ticks, charges, slot writes,
+  label tokens and depth counts. It differs only where the push form runs a child or emits: there
+  it sets the driver's next action instead.
+- The driver runs one action at a time (start, emit, answer, raise). Each action sets exactly one
+  next action, so no sink calls a sink and no form calls a form, and the driver's Java depth does
+  not grow with the filter. A consumer starts above its producer, so an error raised downstream
+  passes back down through the forms that produced the result, as it passes Java frames in push
+  form.
+- The starter's base sink hands each result back with the form that produced it. The starter emits
+  the result from its own Java frame, with no driver live. It then resumes the driver at that form
+  with the emit's answer or with the error the emit raised (M4). A stop or a break runs every heap
+  form out as push form does. A Termination ends the run. A tail emitter has no role on the driver.
+- In #109 the only starter is the run entry, at `stackBytes` 0. S2b.5's calls at `U_f` use the same
+  entry, and S2b.5 re-runs the M4 cases with a small forced `U_f` across a real starter.
+- Considered: continuations with a failure continuation, as Spike A had (one closure per step, and
+  a third continuation threaded through all 20 kinds); call-free subtrees in push form on the driver
+  (their consumers would run on the Java stack, which is form A again); sinks calling sinks (Java
+  depth grows with the recursion); dropping the forms on a stop (differs from push form at Label and
+  leave, and saves nothing).

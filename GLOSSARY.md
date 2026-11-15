@@ -385,8 +385,8 @@ cell 0 (ADR-0045).
 _Avoid_: environment, parent scope
 
 **Lifted function**:
-A definition of a recursive group, lowered once into the Program's function list and run by a Call
-(ADR-0045).
+A definition of a recursive group, lowered once per compile into the Program's function list and
+run by a Call, a prelude definition's included (ADR-0045, ADR-0042).
 _Avoid_: compiled def
 
 **Holder**:
@@ -449,9 +449,17 @@ label tokens and hidden slots: an owner, item paths, walk state and a suspended 
 (ADR-0045, ADR-0010). The JVM's is always a **Java frame**.
 _Avoid_: stack frame, activation record, environment, locals, heap frame, slot array.
 
+**Hand-back**:
+The trampoline's stop at a result for its starter, keeping the form that produced it so the run can resume there (ADR-0046).
+_Avoid_: yield.
+
 **Heap form**:
-The resumable state of one node kind on the trampoline, so that any body can run there (ADR-0046).
+The resumable state of one node kind on the trampoline: what the push form keeps in its Java frame across a child's run or an emit, kept on the heap instead. It ticks, charges and counts as the push form does, so any body can run there (ADR-0046).
 _Avoid_: continuation, heap frame.
+
+**Starter**:
+The call or run that starts a trampoline. It emits each handed-back result from its own frame, then resumes the trampoline with the emit's answer or error (ADR-0011, ADR-0046).
+_Avoid_: driver owner.
 
 **Unit limit**:
 The stack units one filter may use in one run, `U_f`: the declared stack bytes less the guard
@@ -479,7 +487,8 @@ _Avoid_: yield, return, push (as a noun for the call)
 
 **Short literal**:
 A literal number whose token is canonical, has no exponent and is at most 15 bytes (ADR-0012). Its
-double orders it as its decimal does, and reading it ticks nothing (#97).
+double orders it as its decimal does, and reading its double ticks nothing (#97). An exact compare
+still ticks each of its tokens (ADR-0037).
 _Avoid_: small number
 
 **Sink**:
