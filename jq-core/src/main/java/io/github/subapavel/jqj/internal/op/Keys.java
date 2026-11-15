@@ -33,6 +33,7 @@ import io.github.subapavel.jqj.internal.value.DoubleNumber;
 import io.github.subapavel.jqj.internal.value.KeyProof;
 import io.github.subapavel.jqj.internal.value.Keyed;
 import io.github.subapavel.jqj.internal.value.Members;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.internal.value.Order;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.run.Charges;
@@ -53,7 +54,7 @@ import java.lang.foreign.MemorySegment;
  * jq 1.8.2's natives of keys (#72; jq-ref, recorded: diff/natives.rec has-*, keys-*): {@code has(k)}, {@code keys} and
  * {@code keys_unsorted}, and builtin.jq's {@code to_entries} as a native (#85, ADR-0044; distinct.rec to-entries-*).
  * They tick where their loop depends on the data (ADR-0008): {@code has} as its lookup does
- * (ADR-0034), {@code keys} and {@code keys_unsorted} once per key or index, on top of a view's walk, and {@code keys}
+ * (ADR-0034) and as {@link Numbers#doubleValue} reads a number key (#97), {@code keys} and {@code keys_unsorted} once per key or index, on top of a view's walk, and {@code keys}
  * once more per compare of its sort for each started KiB of the shorter key, at least one; the arrays they build are
  * charged (ADR-0035).
  */
@@ -88,7 +89,7 @@ public final class Keys {
       return bool(object.get(state, name.value()) != null);
     }
     if (t instanceof JqArray array && k instanceof JqNumber n) {
-      return bool(element(state, array, n.doubleValue()));
+      return bool(element(state, array, Numbers.doubleValue(state, n)));
     }
     throw new FilterException(
         BuiltString.of("Cannot check whether " + NavigationErrors.kind(t) + " has a " + NavigationErrors.kind(k) + " key"));
