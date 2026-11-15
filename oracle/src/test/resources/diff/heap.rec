@@ -62,3 +62,24 @@ rc 0
 stdout [0,1,2,3]\n
 stderr
 end
+
+case heap/last-alternative-error-leaves-the-alt-bind
+def 6381c8e6d85e
+rc 0
+stdout ["Cannot index number with string (\\"a\\")"]\n
+stderr
+end
+
+case heap/downstream-error-of-the-last-alternative-leaves
+def bdcb867e1b41
+rc 0
+stdout ["d:[1]"]\n
+stderr
+end
+
+case heap/break-out-of-a-reduce-update
+def a5c995a13e0a
+rc 0
+stdout ["after"]\n
+stderr
+end

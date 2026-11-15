@@ -13,3 +13,6 @@ heap/foreach-in-a-recursion
 heap/try-in-a-recursion-catches
 heap/reduce-update-two-results
 heap/label-per-activation
+heap/last-alternative-error-leaves-the-alt-bind
+heap/downstream-error-of-the-last-alternative-leaves
+heap/break-out-of-a-reduce-update

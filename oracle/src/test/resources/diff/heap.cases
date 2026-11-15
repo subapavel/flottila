@@ -65,3 +65,25 @@ arg -c
 filter [def f: label $l | if . > 2 then . else (., (. + 1 | f), break $l, 99) end; 0 | f]
 stdin null\n
 end
+
+# the heap forms' boundaries (the #109 review): the last alternative of an AltBind runs outside any catch, both its
+# own error and one raised downstream of its result leaving the AltBind; a break out of a reduce's update ends the
+# reduce with no result
+
+case heap/last-alternative-error-leaves-the-alt-bind
+arg -c
+filter [def f: if . == 0 then (try (1 as [$a] ?// {$a} | $a) catch .) else (. - 1 | f) end; 2 | f]
+stdin null\n
+end
+
+case heap/downstream-error-of-the-last-alternative-leaves
+arg -c
+filter [def f: if . == 0 then (try (([1] as [$a] ?// $a | $a) | error("d:\\(.)")) catch .) else (. - 1 | f) end; 2 | f]
+stdin null\n
+end
+
+case heap/break-out-of-a-reduce-update
+arg -c
+filter [def f: if . == 0 then (label $out | reduce (1,2,3) as $x (0; if $x == 2 then break $out else . + $x end)), "after" else (. - 1 | f) end; 2 | f]
+stdin null\n
+end
