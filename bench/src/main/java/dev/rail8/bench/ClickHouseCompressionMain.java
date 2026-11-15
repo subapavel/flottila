@@ -28,7 +28,8 @@ import java.util.zip.CRC32C;
  * them (a result of the cell, not an abort), and single-payload reads by id ({@code FORMAT RawBLOB}, client-side, after a
  * warm-up), each checked against the inserted length and CRC32C. A cell runs {@code --runs} times when its first run took less
  * than {@code --max-run-minutes}, else once. Each run uses a fresh table, dropped after it. Exit 3 when any read failed or
- * returned other bytes than were inserted.
+ * returned other bytes than were inserted. The timed reads are counted in {@code system.query_log} ({@code readsLogged}) through
+ * {@link QueryLogCount}: {@code readsLoggedLooks} is the flushes it took to see them all.
  * <p>Arguments: {@code --url --user --password --sizes (KiB) --counts --mixes --formats --levels --runs --max-run-minutes
  * --reads --warmup-reads --batch-bytes --seed --image --out --commit}.
  *
@@ -219,14 +220,15 @@ public final class ClickHouseCompressionMain {
             sampler.join();
             LatencyStats readStats = new LatencyStats(Math.max(1, reads));
             int mismatches = read(ch, t, qid, ins.rows, reads, warmupReads, readStats, new SplittableRandom(seed + run));
-            ch.query("SYSTEM FLUSH LOGS");
+            // The log is counted before it is read: the statistics below cover the rows these counts saw, so they come after both.
+            // The reads first, the exceptions second: the bound of the exceptions leaves out refused reads (a refused read is not
+            // told from a content mismatch), and their rows are in because the exceptions' look flushes once more after the reads' looks.
+            QueryLogCount.Looked logged = countTimedReads(ch::query, qid, warmupReads, readStats);
+            long queryExceptions = countQueryExceptions(ch::query, qid, ins.failures, optimizeFailure).count();
             long[] rd = longs(ch.query("SELECT count(), quantileExact(0.5)(query_duration_ms), quantileExact(0.99)(query_duration_ms),"
-                    + " toUInt64(ifNotFinite(avg(read_bytes), 0)), max(memory_usage) FROM system.query_log WHERE query_id LIKE '" + qid
-                    + "-read-%' AND type = 'QueryFinish' AND toUInt32(splitByChar('-', query_id)[-1]) >= " + warmupReads + " FORMAT TSV"));
+                    + " toUInt64(ifNotFinite(avg(read_bytes), 0)), max(memory_usage)" + readRows(qid, warmupReads) + " FORMAT TSV"));
             long[] in = longs(ch.query("SELECT count(), sum(query_duration_ms), max(memory_usage), max(query_duration_ms) FROM system.query_log"
                     + " WHERE query_id LIKE '" + qid + "-ins-%' AND type = 'QueryFinish' FORMAT TSV"));
-            long[] errs = longs(ch.query("SELECT count() FROM system.query_log WHERE query_id LIKE '" + qid + "-%'"
-                    + " AND type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing') FORMAT TSV"));
             long[] opt = longs(ch.query("SELECT count(), sum(query_duration_ms), max(memory_usage) FROM system.query_log WHERE query_id = '"
                     + qid + "-opt' AND type = 'QueryFinish' FORMAT TSV"));
             long[] merges = longs(ch.query("SELECT count(), max(peak_memory_usage), countIf(error != 0), argMax(peak_memory_usage, event_time_microseconds),"
@@ -240,7 +242,7 @@ public final class ClickHouseCompressionMain {
                     .put("insertFailures", ins.failures).put("insertFailure", ins.firstFailure)
                     .put("generateMs", generateNanos / 1_000_000).put("insertClientMs", ins.nanos / 1_000_000)
                     .put("insertsLogged", in[0]).put("insertServerMs", in[1]).put("insertPeakMemoryBytes", in[2]).put("insertMaxMs", in[3])
-                    .put("queryExceptions", errs[0])
+                    .put("queryExceptions", queryExceptions)
                     .put("optimizeClientMs", optimizeNanos / 1_000_000).put("optimizeFailure", optimizeFailure).put("optimizeLogged", opt[0])
                     .put("optimizeServerMs", opt[1]).put("optimizeMemoryBytes", opt[2])
                     .put("merges", merges[0]).put("mergePeakMemoryBytes", merges[1]).put("mergeFailures", merges[2])
@@ -251,6 +253,7 @@ public final class ClickHouseCompressionMain {
                     .put("payloadUncompressedBytes", parts[2]).put("payloadCompressedBytes", parts[3])
                     .put("payloadRatio", ratio(parts[2], parts[3])).put("partRatio", ratio(parts[4], parts[5]))
                     .put("reads", readStats.count()).put("readMismatches", mismatches).put("readsLogged", rd[0])
+                    .put("readsLoggedLooks", logged.looks())
                     .put("readServerP50Ms", rd[1]).put("readServerP99Ms", rd[2]).put("readServerBytesAvg", rd[3]).put("readPeakMemoryBytes", rd[4]);
             if (readStats.count() > 0) {
                 result.put("readP50Ms", round(readStats.percentileMillis(50))).put("readP99Ms", round(readStats.percentileMillis(99)))
@@ -261,6 +264,36 @@ public final class ClickHouseCompressionMain {
             sampler.interrupt();
             ch.query("DROP TABLE IF EXISTS " + t + " SYNC");
         }
+    }
+
+    /** The one-argument {@code query} of {@link ClickHouseHttp}, so the count can be driven by a script. */
+    interface Sql {
+        String query(String statement) throws IOException, InterruptedException;
+    }
+
+    /** The cell's timed read rows in the log: the finished reads, warm-up (index below {@code warmupReads}) left out. */
+    private static String readRows(String qid, int warmupReads) {
+        return " FROM system.query_log WHERE query_id LIKE '" + qid + "-read-%' AND type = 'QueryFinish'"
+                + " AND toUInt32(splitByChar('-', query_id)[-1]) >= " + warmupReads;
+    }
+
+    /** Counts the timed reads in the log, expecting one row per read that returned and was timed; see {@link QueryLogCount}. */
+    static QueryLogCount.Looked countTimedReads(Sql sql, String qid, int warmupReads, LatencyStats timed)
+            throws IOException, InterruptedException {
+        String count = "SELECT count()" + readRows(qid, warmupReads) + " FORMAT TSV";
+        return QueryLogCount.await(timed.count(), () -> sql.query("SYSTEM FLUSH LOGS"), () -> longs(sql.query(count))[0]);
+    }
+
+    /**
+     * Counts the cell's exception rows in the log, expecting at least the refusals the harness saw itself: one per failed insert and
+     * one for a failed OPTIMIZE. A lower bound: refused reads are not in it, so the log may hold more.
+     */
+    static QueryLogCount.Looked countQueryExceptions(Sql sql, String qid, int failedInserts, String optimizeFailure)
+            throws IOException, InterruptedException {
+        String count = "SELECT count() FROM system.query_log WHERE query_id LIKE '" + qid + "-%'"
+                + " AND type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing') FORMAT TSV";
+        long expected = failedInserts + (optimizeFailure != null ? 1 : 0);
+        return QueryLogCount.await(expected, () -> sql.query("SYSTEM FLUSH LOGS"), () -> longs(sql.query(count))[0]);
     }
 
     /**

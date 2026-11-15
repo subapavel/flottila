@@ -91,6 +91,10 @@ class ClickHouseCompressionMainIT {
                 assertEquals(20, run.getInteger("reads"), what);
                 assertEquals(0, run.getInteger("readMismatches"), what);
                 assertEquals(20, run.getLong("readsLogged"), "the timed reads, warm-up excluded, in system.query_log: " + what);
+                Integer looks = run.getInteger("readsLoggedLooks");
+                assertNotNull(looks, "readsLoggedLooks, the looks (flush and count) it took to see the timed reads: " + what);
+                assertTrue(looks >= 1 && looks <= QueryLogCount.MAX_LOOKS,
+                        "readsLoggedLooks is 1 to " + QueryLogCount.MAX_LOOKS + ": " + looks + " " + what);
                 assertTrue(run.getDouble("readP99Ms") >= run.getDouble("readP50Ms"), what);
                 assertTrue(run.getLong("serverMemorySamples") >= 1, what);
                 assertTrue(run.getLong("merges") >= 1, "at least the OPTIMIZE FINAL merge in system.part_log: " + what);
@@ -124,6 +128,7 @@ class ClickHouseCompressionMainIT {
         assertEquals(0, run.getInteger("reads"));
         assertEquals(0.0, run.getDouble("partRatio"), "no part, no ratio");
         assertTrue(run.getLong("queryExceptions") >= 4, "the refused inserts and OPTIMIZE in system.query_log: " + run.encode());
+        assertEquals(1, run.getInteger("readsLoggedLooks"), "no read timed: zero expected, whole at the first look: " + run.encode());
     }
 
     @Test
@@ -134,6 +139,7 @@ class ClickHouseCompressionMainIT {
         assertEquals(2, run.getInteger("rows"), run.encode());
         assertEquals(4, run.getInteger("readMismatches"), "1 warm-up and 3 timed reads, all refused: " + run.encode());
         assertEquals(0, run.getInteger("reads"), "a failed read is not timed");
+        assertEquals(1, run.getInteger("readsLoggedLooks"), "no read timed: zero expected, whole at the first look: " + run.encode());
     }
 
     @Test

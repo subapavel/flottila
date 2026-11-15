@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-219 the harness looks again for a late query-log row — done, review PASS
+
+- Fault (once, whole-reactor run of BRAND-1 C): `ClickHouseCompressionMainIT` saw `readsLogged` 19 for 20 timed reads.
+- Cause shown by probes (test-author; never committed): the docs do not say when a `QueryFinish` row is queued; 200 light cells
+  and 961 real cells without load never came short; under load on both sides 1 of 44 cells counted 19 on the first look and 20
+  after a second `SYSTEM FLUSH LOGS` — the last read's row was stamped 1.1 ms before the flush (agent/work/FIX-219-cause.md).
+- Change: `QueryLogCount.await` looks (flush, count) until the count reaches the expected number, at most `MAX_LOOKS` = 3 times,
+  no sleep, no clock; the harness counts its timed reads and its exception rows through it and reports the reads' looks in one
+  new JSON field, `readsLoggedLooks`, so a late row stays visible. The IT's `readsLogged == 20` is untouched.
+- Tests, red first, in three steps: the seam (11 cases); the harness's use of it, after the implementer found the expected
+  number unpinned (7); the exception count, after review round 1 FAILED on it (8). Round 2 PASS (class A).
+- Evidence: VERIFIED_PASS bench 239 unit tests and the IT alone three times, by the implementer and by the verifier; three
+  mutants of the expected numbers killed. Inserts and optimize stay plain: at least two later flushes behind them.
+
 ## 2026-11-15 — FIX-168 a held force is its persist's own, not the first by anyone — done, review PASS
 
 - Context compacted before this entry; the state was re-read from HANDOFF, `git status` and `git log -3`.

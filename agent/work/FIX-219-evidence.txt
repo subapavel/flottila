@@ -1,0 +1,45 @@
+FIX-219 — evidence (2026-11-15)
+
+The fault: ClickHouseCompressionMainIT.aSmallMatrixStoresEveryPayloadCompressesItAndReadsEachBackUnchanged, once, in the whole-
+reactor run of BRAND-1 C: one cell (1024 KiB similar xml) had readsLogged 19 with 20 reads and no mismatch
+(agent/work/BRAND-1-C-verify.log line 84171).
+
+The cause, shown (agent/work/FIX-219-cause.md; the probes' sources agent/work/FIX-219-probe.java.txt and -probe2.java.txt are
+throw-away bench ITs, never committed):
+- the ClickHouse documentation (Context7, 2026-11-15): the log is buffered (flush_interval_milliseconds 7500) and SYSTEM FLUSH
+  LOGS writes what is buffered; it does not say when a query's QueryFinish row is queued;
+- probe 1, a light copy of the read loop: 200 cells, 4600 reads, no short count (agent/work/FIX-219-probe.out);
+- probe 2, the harness's own cell in a loop (agent/work/FIX-219-probe2.out): 961 cells without added load, no short count; with
+  4 busy threads in the client JVM and 4 CPU hogs in the server's container, cell 44 counted 19 on the first look and 20 after a
+  second flush; all 23 reads had one QueryStart and one QueryFinish row, no exception row; the last read's QueryFinish was
+  stamped 1.1 ms before the harness's flush started, and that flush ran 191 ms.
+NOT_RUN        which read's row was missing on the first look (the second look ran after the cell had returned).
+
+The reds:
+EXECUTED_FAIL  agent/work/FIX-219-red.log     the seam's unit tests before QueryLogCount existed (compile errors)
+EXECUTED_FAIL  agent/work/FIX-219-it-red.log  the IT with the seam and without the field: "readsLoggedLooks, the looks (flush
+               and count) it took to see the timed reads … expected: not <null>", Tests run: 5, Failures: 1
+EXECUTED_FAIL  agent/work/FIX-219-red2.log    ClickHouseCompressionMainTimedReadsTest before countTimedReads existed
+EXECUTED_FAIL  agent/work/FIX-219-red3.log    ClickHouseCompressionMainQueryExceptionsTest before countQueryExceptions existed
+
+The final change (worktree on e69abdd3; bench files only):
+VERIFIED_PASS  agent/work/FIX-219-unit.log         implementer: bench 239 unit tests, 0 failures, coverage check passed
+VERIFIED_PASS  agent/work/FIX-219-it-{1,2,3}.log   implementer: the IT alone three times, 5 tests, 0 failures each
+VERIFIED_PASS  agent/work/FIX-219-verify-unit.log  verifier: exit 0; bench Tests run: 239, Failures: 0 (:57666);
+               QueryLogCountTest 11, ClickHouseCompressionMainTimedReadsTest 7, ClickHouseCompressionMainQueryExceptionsTest 8;
+               no "Coverage checks have not been met"; BUILD SUCCESS (:57800)
+VERIFIED_PASS  agent/work/FIX-219-verify-it-{1,2,3}.log  verifier: the IT alone three times, exit 0, ClickHouseCompressionMainIT
+               Tests run: 5, Failures: 0, Errors: 0 (:761) each; readsLoggedLooks was 1 in all 18 cells of each run
+EXECUTED_FAIL  agent/work/FIX-219-kill.log         three mutants, each reverted: expected 0 in countTimedReads (2 cases fail),
+               expected + 1 in countTimedReads (5 cases fail), expected 0 in countQueryExceptions (3 cases fail)
+NOT_RUN        a late row inside the IT: it needs load on both sides; the unit tests script it.
+NOT_RUN        the whole reactor with this change; the row's "green in three whole-reactor runs" is MAIN-1's.
+
+review: PASS   class A. Round 1 FAIL: the count of exception rows (errs → queryExceptions) was read after the same single flush,
+               and the IT's case of refused inserts and a refused OPTIMIZE needs all four rows with no read between the last
+               refusal and the flush. Round 2 PASS: it goes through the seam with the bound failedInserts + (a failed optimize
+               ? 1 : 0), made inside countQueryExceptions; the tests catch a wrong bound, an optimize always or never counted,
+               other rows counted and a stray statement. Accepted: insertsLogged and optimizeLogged are read plainly (finish
+               rows of successful statements with the reads and at least two later flushes behind them); the order of the two
+               counts and the statistics query in run() is held by a comment only; the errors' looks are not reported.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-219.diff.
