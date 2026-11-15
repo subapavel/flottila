@@ -78,17 +78,35 @@ public final class Specialiser {
   private Specialiser() {}
 
   /**
-   * What the pass made of a program: the specialised program, the original of each function by place (its own place
-   * for an original), the nodes the built copies hold, and the keys refused.
+   * What the pass made of a program: the specialised program and its layout, the original of each function by place
+   * (its own place for an original), the nodes the built copies hold, and the keys refused.
    */
-  record Result(Program program, int[] origin, int specialised, int refused) {}
+  record Result(Program program, IrVerifier.Layout layout, int[] origin, int specialised, int refused) {}
 
   /**
-   * Specialises {@code program}, which the IR verifier accepted with {@code slots} its layout's slots by body (the main
-   * tree's first, then each function's), under the cap {@code cap}.
+   * Specialises {@code program}, whose main tree has {@code parameters} parameter slots and which the IR verifier
+   * accepted with {@code layout}, under the cap {@code cap}. A program in which some call runs a copy is rebuilt, and
+   * the verifier checks the result and lays it out again (ADR-0045); one in which none does is returned as it is, with
+   * its layout.
+   *
+   * @throws IllegalStateException when the rebuilt program breaks a rule of the IR
    */
-  static Result specialise(Program program, int[] slots, int cap) {
-    return new Pass(program, slots, cap).run();
+  static Result specialise(Program program, int parameters, IrVerifier.Layout layout, int cap) {
+    return new Pass(program, parameters, layout, cap).run();
+  }
+
+  /** What a compile that makes no copy has: {@code program} as it is, each function its own original, no count. */
+  static Result none(Program program, IrVerifier.Layout layout) {
+    return new Result(program, layout, identity(program.functions().size()), 0, 0);
+  }
+
+  /** Each of {@code functions} places its own original. */
+  private static int[] identity(int functions) {
+    int[] origin = new int[functions];
+    for (int p = 0; p < functions; p++) {
+      origin[p] = p;
+    }
+    return origin;
   }
 
   /** An outside call met in the body {@code body} (0 for main, 1 + place for a function) at freeze id {@code id}. */
@@ -112,7 +130,12 @@ public final class Specialiser {
     private final Program program;
     private final List<Function> functions;
     private final int originals;
+    private final int parameters;
+    private final IrVerifier.Layout layout;
+
+    /** The layout's slots by body: the main tree's, then each original's. */
     private final int[] slots;
+
     private final int cap;
 
     /** The recursive group of each original, by place. */
@@ -167,11 +190,13 @@ public final class Specialiser {
 
     private long spent;
 
-    Pass(Program program, int[] slots, int cap) {
+    Pass(Program program, int parameters, IrVerifier.Layout layout, int cap) {
       this.program = program;
       this.functions = program.functions();
       this.originals = functions.size();
-      this.slots = slots;
+      this.parameters = parameters;
+      this.layout = layout;
+      this.slots = layout.slots();
       this.cap = cap;
       Numbering numbering = Numbering.of(program);
       CallGraph graph = CallGraph.of(program, numbering);
@@ -335,6 +360,10 @@ public final class Specialiser {
       while (!queue.isEmpty()) {
         decide(queue.poll().call());
       }
+      if (decided.isEmpty()) {
+        // No call runs a copy, so no copy was built: the program stays as it is, with the layout already found.
+        return new Result(program, layout, identity(originals), 0, refused.size());
+      }
       Final rewrite = new Final();
       List<Function> all = new ArrayList<>();
       for (Function f : functions) {
@@ -343,17 +372,15 @@ public final class Specialiser {
       for (Function f : copies) {
         all.add(new Function(f.source(), f.closures(), f.values(), rewrite.node(f.body())));
       }
-      int[] origin = new int[all.size()];
-      for (int p = 0; p < originals; p++) {
-        origin[p] = p;
-      }
+      int[] origin = Arrays.copyOf(identity(originals), all.size());
       for (int q = 0; q < copied.size(); q++) {
         origin[originals + q] = copied.get(q);
       }
-      return new Result(new Program(rewrite.node(program.main()), all), origin, (int) spent, refused.size());
+      Program specialised = new Program(rewrite.node(program.main()), all);
+      return new Result(specialised, IrVerifier.verify(specialised, parameters), origin, (int) spent, refused.size());
     }
 
-    /** Decides the outside call {@code c}: its key built, at its first call, or refused, or already decided. */
+    /** Decides the outside call {@code c}: its key built, at its first call, or refused, or already built. */
     private void decide(Call c) {
       int g = group[c.fn()];
       if (classes.get(g).length == 0) {
@@ -362,9 +389,7 @@ public final class Specialiser {
       Tuple tuple = new Tuple(c, g);
       Integer first = built.get(tuple.key);
       if (first == null) {
-        if (refused.contains(tuple.key)) {
-          return;
-        }
+        // A key refused before is refused again: what is spent only grows.
         long nodes = cost(g, tuple);
         if (spent + nodes > cap) {
           refused.add(tuple.key);

@@ -142,12 +142,9 @@ public final class Compiler {
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
   static Executable compile(Program program, int parameters, CompileMode mode, int cap) {
-    IrVerifier.Layout layout = IrVerifier.verify(program, parameters);
-    Specialiser.Result pass = new Specialiser.Result(program, identity(program.functions().size()), 0, 0);
-    if (mode == CompileMode.OPTIMISED) {
-      pass = Specialiser.specialise(program, layout.slots(), cap);
-      layout = IrVerifier.verify(pass.program(), parameters);
-    }
+    IrVerifier.Layout verified = IrVerifier.verify(program, parameters);
+    Specialiser.Result pass = mode == CompileMode.OPTIMISED ? Specialiser.specialise(program, parameters, verified, cap) : Specialiser.none(program, verified);
+    IrVerifier.Layout layout = pass.layout();
     Program frozen = pass.program();
     Numbering numbering = Numbering.of(frozen);
     CallGraph graph = CallGraph.of(frozen, numbering);
@@ -167,15 +164,6 @@ public final class Compiler {
     compiler.region = new Region(null, null, slots[0]);
     Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
     return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, nesting, record);
-  }
-
-  /** Each of {@code functions} places its own original. */
-  private static int[] identity(int functions) {
-    int[] origin = new int[functions];
-    for (int p = 0; p < functions; p++) {
-      origin[p] = p;
-    }
-    return origin;
   }
 
   private Op interpreter(Node node) {
