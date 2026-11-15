@@ -109,6 +109,7 @@ class SpecialiseCensusTest {
           "specialise/recurse-closed",
           "specialise/repeat-closed",
           "specialise/over-inline-cap-recurse",
+          "specialise/over-inline-cap-comma-recurse",
           "specialise/range-3-free-slots-30000",
           "specialise/until-free-slot-30000",
           "specialise/free-break",
