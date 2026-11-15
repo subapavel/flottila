@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 import io.github.subapavel.jqj.query.run.Truth;
@@ -14,19 +15,52 @@ public final class AltOp extends Op {
   private final Op right;
   private final Truth truth;
 
-  public AltOp(Op left, Op right, Truth truth) {
+  public AltOp(boolean valueForm, Op left, Op right, Truth truth) {
+    super(valueForm);
     this.left = left;
     this.right = right;
     this.truth = truth;
   }
 
+  /**
+   * Each side in its run form: a value-form left side's value is emitted here when the truth holds for it, and the
+   * right side runs when it does not or there was none.
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
-    Truthy found = new Truthy(truth, out);
-    if (!left.run(state, slots, in, found)) {
-      return false;
+    if (left.valueForm) {
+      Object v = left.eval(state, slots, in);
+      if (v != CallForm.NONE && truth.test(v)) {
+        return out.emit(v);
+      }
+    } else {
+      Truthy found = new Truthy(truth, out);
+      if (!left.run(state, slots, in, found)) {
+        return false;
+      }
+      if (found.any) {
+        return true;
+      }
     }
-    return found.any || right.run(state, slots, in, out);
+    if (!right.valueForm) {
+      return right.run(state, slots, in, out);
+    }
+    Object w = right.eval(state, slots, in);
+    return w == CallForm.NONE || out.emit(w);
+  }
+
+  /**
+   * The left side's value when the truth holds for it, and the right side's otherwise. Both sides of a value-form Alt
+   * are value form wherever they run: a push left side would be many, and a push right side after a left one that may
+   * give a result would make the Alt many (ADR-0007 #112).
+   */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    Object v = left.eval(state, slots, in);
+    if (v != CallForm.NONE && truth.test(v)) {
+      return v;
+    }
+    return right.eval(state, slots, in);
   }
 
   @Override

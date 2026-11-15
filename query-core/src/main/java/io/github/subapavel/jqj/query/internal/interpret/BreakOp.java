@@ -19,6 +19,7 @@ public final class BreakOp extends Op {
 
   /** The Break of cell {@code slot} of the frame {@code level} links out from the running one. */
   public BreakOp(int level, int slot) {
+    super(false);
     this.level = level;
     this.slot = slot;
   }
@@ -27,6 +28,12 @@ public final class BreakOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     state.breakTo((Long) Frames.out(slots, level)[slot]);
     return false;
+  }
+
+  /** Never called: a Break is never eligible for the value form (ADR-0047 #116). */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    throw new IllegalStateException("A Break has no value form");
   }
 
   @Override

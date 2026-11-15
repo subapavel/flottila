@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
@@ -12,11 +13,16 @@ public final class AdvanceOp extends Op {
   private final int slot;
   private final Op update;
 
-  public AdvanceOp(int slot, Op update) {
+  public AdvanceOp(boolean valueForm, int slot, Op update) {
+    super(valueForm);
     this.slot = slot;
     this.update = update;
   }
 
+  /**
+   * The update in push form: an Advance has its update's cardinality and may break out exactly when it does
+   * (ADR-0007 #112, #115), so a push-form Advance's update is never value form.
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Object v = slots[slot];
@@ -29,6 +35,18 @@ public final class AdvanceOp extends Op {
           slots[slot] = u;
           return out.emit(u);
         });
+  }
+
+  /** The update's value on the slot's, stored in the slot; with none, the slot keeps the null the take left. */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    Object v = slots[slot];
+    slots[slot] = null;
+    Object u = update.eval(state, slots, v);
+    if (u != CallForm.NONE) {
+      slots[slot] = u;
+    }
+    return u;
   }
 
   /** Each result of the update is stored in the slot, then goes on as a result of the form that produced it. */

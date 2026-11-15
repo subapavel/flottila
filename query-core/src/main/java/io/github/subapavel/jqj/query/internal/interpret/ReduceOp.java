@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
@@ -20,27 +21,74 @@ public final class ReduceOp extends Op {
   private final int slot;
   private final Op each;
 
-  public ReduceOp(Op init, int slot, Op each) {
+  public ReduceOp(boolean valueForm, Op init, int slot, Op each) {
+    super(valueForm);
     this.init = init;
     this.slot = slot;
     this.each = each;
   }
 
+  /**
+   * Each part in its run form: a value-form init's value runs the step after it returned, and a value-form
+   * {@code each} returns its result, dropped as {@link #DROP} drops it, with no break.
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
-    return init.run(
-        state,
-        slots,
-        in,
+    Sink step =
         r -> {
           slots[slot] = r;
-          if (!each.run(state, slots, in, DROP)) {
+          if (each.valueForm) {
+            each.eval(state, slots, in);
+          } else if (!each.run(state, slots, in, DROP)) {
             return false;
           }
           Object last = slots[slot];
           slots[slot] = null;
           return out.emit(last);
-        });
+        };
+    if (!init.valueForm) {
+      return init.run(state, slots, in, step);
+    }
+    Object r = init.eval(state, slots, in);
+    return r == CallForm.NONE || step.emit(r);
+  }
+
+  /**
+   * The slot's value after {@code each} ran on the init's value. A push init of a value-form Reduce is many, so
+   * {@code each} ends no run normally (ADR-0007 #112): each result of the init runs it, for its ticks and writes, and
+   * the Reduce gives none. A push {@code each} breaks only inside itself, so its run's answer is true.
+   */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    if (!init.valueForm) {
+      init.run(
+          state,
+          slots,
+          in,
+          r -> {
+            slots[slot] = r;
+            if (each.valueForm) {
+              each.eval(state, slots, in);
+            } else {
+              each.run(state, slots, in, DROP);
+            }
+            return true;
+          });
+      return CallForm.NONE;
+    }
+    Object r = init.eval(state, slots, in);
+    if (r == CallForm.NONE) {
+      return r;
+    }
+    slots[slot] = r;
+    if (each.valueForm) {
+      each.eval(state, slots, in);
+    } else {
+      each.run(state, slots, in, DROP);
+    }
+    Object last = slots[slot];
+    slots[slot] = null;
+    return last;
   }
 
   /**

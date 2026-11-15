@@ -13,7 +13,8 @@ public final class IntrinsicNOp extends Op {
   private final FnN fn;
   private final Argument[] args;
 
-  public IntrinsicNOp(FnN fn, Argument[] args) {
+  public IntrinsicNOp(boolean valueForm, FnN fn, Argument[] args) {
+    super(valueForm);
     this.fn = fn;
     this.args = args;
   }
@@ -22,6 +23,11 @@ public final class IntrinsicNOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Object v = fn.apply(state, in, values(slots, in));
     return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return fn.apply(state, in, values(slots, in));
   }
 
   @Override
