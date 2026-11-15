@@ -13,7 +13,7 @@ import io.github.subapavel.jqj.value.JqValue;
 
 /**
  * jq 1.8.2's {@code -t} on each result, its {@code _negate} (jq-ref, recorded: diff/arith-numbers.rec): a number's
- * negation ({@link Numbers#negate(RunState, JqNumber)}, which charges a non-short view's token, #97), and jq's error
+ * negation ({@link Numbers#negate(RunState, JqNumber)}, which charges a non-short literal's token, #97), and jq's error
  * for any other kind.
  */
 final class Negate implements Fn0 {
