@@ -140,3 +140,9 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   - Architect's ruling on NOTICE: each ticket that translates `main.c` or `linker.c` code or text
     adds jq's NOTICE line itself (CLAUDE.md allows it). The owner is told, not asked.
 
+
+- **Sign-off identity on one ratchet commit (spec 2b run, told not asked).** The verifier's
+  regen commit 3746c2d ("chore(ratchet): regenerate after #107") carries `Signed-off-by: Claude`
+  instead of the owner's identity that earlier regens (e.g. a0ac318) carry. check-trailers accepts
+  it. It is pushed to the integration branch; rewriting it is a history rewrite, so it stays unless
+  the owner asks. Later regens are told to sign off with the GIT_AUTHOR identity.

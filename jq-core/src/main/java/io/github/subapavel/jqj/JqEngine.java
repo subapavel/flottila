@@ -55,7 +55,8 @@ public final class JqEngine {
   public JqFilter compile(String text, Set<String> variables) {
     // ADR-0038: the declared names, sorted, take the parameter slots.
     List<String> names = List.copyOf(new TreeSet<>(variables));
-    return new JqFilter(Compiler.compile(Resolver.resolve(Parser.parse(text), names), names.size(), compileMode), limits, names);
+    Resolver.Resolved resolved = Resolver.resolved(Parser.parse(text), names);
+    return new JqFilter(Compiler.compile(resolved.program(), names.size(), compileMode), resolved, limits, names);
   }
 
   /** A new Workspace, for one running evaluation at a time. */
