@@ -468,8 +468,14 @@ body run on the trampoline.
 _Avoid_: K.
 
 **Call-free depth**:
-The deepest nesting, in stack units, that a filter's main or any body reaches without a call,
-`D_f`; it is stored with the compiled filter, per backend (ADR-0046).
+The most frames, in stack units, that main or any body nests when each of its calls counts as a
+starter's frames, `D_f`. It is stored with the compiled filter, per backend (ADR-0046).
+
+**Leaf-emit depth**:
+The frames a function or closure body nests from its root to an emit that no call's result leads
+to. They stay live under the caller's rise, so every call into the body is charged them (ADR-0046
+#111).
+_Avoid_: hold (a Hold keeps a value).
 
 **Pending jump**:
 What a tail call leaves in the run state (callee, input, the input's path in a path variant, value
@@ -558,9 +564,19 @@ A tick's cold path when fuel runs out, every 4096 ticks: it charges the overdraf
 budget, reads the clock against the deadline, checks the thread interrupt and grants the next
 ticks.
 
+**Rise**:
+The frames a body nests above a call's results, up to its own emit; part of that call's stack
+units (ADR-0046 #111).
+_Avoid_: ascent.
+
 **Stack units**:
-The Java stack a call is charged for. A call at the filter's unit limit for the run goes to the
-trampoline (ADR-0046).
+The Java stack a call is charged for, one unit per push-form frame: its descent, its rise and its
+callee's leaf-emit depth, fixed when the tree is built. A call whose units reach the unit limit
+starts the trampoline (ADR-0046).
+
+**Starter units**:
+`T`, the units a starter adds for its own frames, from `Trampoline.run` to its emit or its driver's
+deepest heap form, natives excluded (ADR-0046 #111).
 
 **Trampoline**:
 The interpreter's resumable loop that runs recursion beyond the stack-unit limit on the heap. It

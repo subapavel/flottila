@@ -1,6 +1,6 @@
 # Every body kind has a heap form on the form-B driver; U is derived per filter and run; the depth budget counts calls
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); records F-55; amends ADR-0011 (the trampoline's kinds, U, the calibration, what the depth budget counts) and ADR-0017 (what the recursion-depth budget counts; U per run); amended by spec 3 grilling round 2 (kinds 21 and 22, path variants on the driver, `stackZeroAgrees`, `D_f`); heap-form contract, driver and hand-back by ticket #109
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); records F-55; amends ADR-0011 (the trampoline's kinds, U, the calibration, what the depth budget counts) and ADR-0017 (what the recursion-depth budget counts; U per run); amended by spec 3 grilling round 2 (kinds 21 and 22, path variants on the driver, `stackZeroAgrees`, `D_f`); heap-form contract, driver and hand-back by ticket #109; units, the switch and the starters by ticket #111
 
 ADR-0011 runs recursion beyond U on a resumable form-B trampoline and makes U a constant per
 release. Building it in 2b raises three questions. Which kinds must the driver run? What is U for a
@@ -110,3 +110,45 @@ Accepted 2026-11-15, architect under `/run-spec` #106; designer draft.
   (their consumers would run on the Java stack, which is form A again); sinks calling sinks (Java
   depth grows with the recursion); dropping the forms on a stop (differs from push form at Label and
   leave, and saves nothing).
+
+## Amendment (ticket #111)
+
+Accepted 2026-11-15, architect under `/run-spec` #106; designer draft; grilling-adviser rulings
+C1–C3 for the owner under the delegation of 2026-11-14; F-88.
+
+- A stack unit is one Java frame of the push form, lambda and proxy frames included.
+- `w(site)` is the sum of three terms:
+  - its descent: the frames from its body's root to the site's own op;
+  - its rise: the most frames its body nests above the site's results, up to the body's own emit;
+  - the callee's leaf-emit depth: the frames the callee's body nests from its root to an emit that
+    no call's result leads to. These stay live under the caller's rise. For a Call it is the
+    function's; for a ParamCall it is the closure argument's, which the closure carries.
+- On every path a call counts as a starter nests it: 1+T frames, or 2+T for a ParamCall. `D_f` is
+  the most frames main or any body (a function or a closure argument) nests with each call counted
+  that way. Every term is fixed from the IR when the tree is built, without recursion.
+- A push-form call adds its units, then compares: at `units ≥ U_f` it starts the trampoline, which
+  adds `T`, the starter units. Heap forms add no units.
+- `U_f = floorDiv(stackBytes − reserve, b) − D_f`. At `U_f ≤ 0` the run entry is the starter.
+- Invariant: every live push-form frame is charged to a live call's units or lies in the innermost
+  body. A run's frames therefore stay below `U_f − 1 + D_f` units, plus natives, which the reserve
+  covers.
+- A tail jump keeps its activation's units. A call into a group with group jumps is charged the
+  group's largest leaf-emit depth. The tail-call ticket owns that red.
+- Provisional constants until #113:
+  - `b` is the largest over `-Xint`, C1 only and warm, measured on #111's deep filters in the child
+    harness, and recorded in `bench/RESULTS.md`.
+  - The reserve is 128 KiB (96 KiB of guard pages and 32 KiB for natives), a source constant. Main
+    code reads no JVM flags; a child-JVM test reads them and asserts that the constant covers the
+    guard pages.
+- Units are `long`, as `stackBytes` and the depth count are.
+- `explain()` shows `units` on each Call line (its whole `w`) and each ParamCall line (descent and
+  rise), `emitDepth` on each function line and each closure argument's root line, and a closing
+  line with `callFreeDepth`, `starterUnits`, `bytesPerUnit` and `reserve`. The text is not stable
+  (ADR-0016).
+- In-suite oracle runners run every case on one fixed thread of `max(4 × Limits.cli().stackBytes(),
+  2 MiB)` (F-88).
+- Considered: descent alone (misses a rise repeated per level, F-55); descent and rise without the
+  leaf-emit depth (fails the adviser's witness, a recursion whose rise calls a function that emits
+  from under a hundred `try`s); comparing before adding (overshoots by w − 1); a frame counter in
+  every op (hot-path cost); one unit per IR node (frame counts differ by kind); reading the guard
+  flags in main code (needs `java.management`, and the reserve is a release constant).
