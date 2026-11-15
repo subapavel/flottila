@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # #111: the provisional bytes per unit b (ADR-0046 #111 amendment), measured on #111's deep filters.
 #
-#   bench/stack-units/measure-b.sh [mode]
+#   bench/stack-units/measure-b.sh
 #
-#   [mode]  the compile mode, OPTIMISED (the engine's default) or CONSERVATIVE; default OPTIMISED
+# The compile mode is the engine's default, OPTIMISED: the public builder sets no other (CompileMode is engine-internal).
 #
 # Needs jq-core and query-core built (target/classes), e.g. ./mvnw -o -B -q -pl jq-core -am compile.
 # Environment: JAVA_HOME (default /opt/temurin-25).
@@ -11,7 +11,8 @@
 # Each cell is one fresh JVM with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS and _JAVA_OPTIONS unset, so no agent. The case
 # runs on the launcher's main thread, sized by -Xss: the process's first thread, so glibc's stack cache cannot hand it
 # a larger stack an ended thread left. Proof per cell: a plain recursion to StackOverflowError on that thread first,
-# printed as proofFrames; a cell whose proof is missing is INVALID. Then a binary search for the largest U_f at which
+# printed as proofFrames; a cell whose proof is missing, or whose 1 MiB pair holds not 1.5 to 3.5 times its frames,
+# is INVALID and stops the run. Then a binary search for the largest U_f at which
 # the case completes on that thread (the next ends STACK), and b = ceil((S - reserve) / (U_f + D_f)).
 # Tiers: -Xint; C1 only (-Xbatch -XX:TieredStopAtLevel=1); warm (the default JIT). C1 and warm run 30 warm-ups first.
 # After the cells, the slope per tier and case between 512 KiB and 1 MiB: 512 KiB / (U_f(1 MiB) - U_f(512 KiB)).
@@ -19,7 +20,6 @@
 set -euo pipefail
 unset JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS
 cd "$(dirname "$0")/../.." || exit 2
-MODE=${1:-OPTIMISED}
 JAVA_HOME=${JAVA_HOME:-/opt/temurin-25}
 ROOT=$PWD
 WORK=$(mktemp -d)
@@ -34,14 +34,13 @@ import io.github.subapavel.jqj.JqSink;
 import io.github.subapavel.jqj.JqTermination;
 import io.github.subapavel.jqj.Limits;
 import io.github.subapavel.jqj.Workspace;
-import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.value.JqValue;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One cell. args: <thread bytes as given to -Xss> <case> <mode> [warm]. */
+/** One cell. args: <thread bytes as given to -Xss> <case> [warm]. */
 public class Probe {
   static int depth;
 
@@ -52,13 +51,11 @@ public class Probe {
 
   static final String DEEP = "[".repeat(9_999) + "]".repeat(9_999);
   static final String HOLD = "def g: if . == 0 then " + "try(".repeat(100) + "." + ")".repeat(100) + " else (. - 1 | g) end; def f: if . == 0 then 0 else (. - 1 | f) | (1 | g) end; 9999 | f";
-  static CompileMode mode;
 
   public static void main(String[] args) {
     long thread = Long.parseLong(args[0]);
     String id = args[1];
-    mode = CompileMode.valueOf(args[2]);
-    boolean warm = args.length > 3;
+    boolean warm = args.length > 2;
     // The proof of the thread's size, before any other work on it.
     try {
       recurse();
@@ -120,7 +117,6 @@ public class Probe {
   static JqEngine engine(long stackBytes) {
     Limits cli = Limits.cli();
     return JqEngine.builder()
-        .compileMode(mode)
         .limits(new Limits(cli.steps(), cli.deadline(), cli.nestingDepth(), cli.recursionDepth(), cli.bytesBuilt(), cli.bytesWritten(), cli.regexMatchTime(), stackBytes))
         .build();
   }
@@ -153,11 +149,11 @@ CP=$ROOT/jq-core/target/classes:$ROOT/query-core/target/classes
 
 echo "# commit: $(git rev-parse HEAD)"
 echo "# tracked changes: $(git status --porcelain --untracked-files=no | wc -l)"
-echo "# mode: $MODE"
+echo "# mode: OPTIMISED (the engine default)"
 echo "# java: $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
 echo "# glibc: $(ldd --version | head -1)"
 
-declare -A maxu
+declare -A maxu proof
 largest=0
 for size in 512 1024; do
   for tier in xint c1 warm; do
@@ -167,7 +163,7 @@ for size in 512 1024; do
       warm) flags=(); extra=(warm) ;;
     esac
     for c in collect reduce first-or hold; do
-      out=$("$JAVA_HOME/bin/java" "${flags[@]}" "-Xss${size}k" -cp "$WORK:$CP" Probe $((size * 1024)) "$c" "$MODE" "${extra[@]}" < /dev/null 2>&1 | tail -1)
+      out=$("$JAVA_HOME/bin/java" "${flags[@]}" "-Xss${size}k" -cp "$WORK:$CP" Probe $((size * 1024)) "$c" "${extra[@]}" < /dev/null 2>&1 | tail -1 || true)
       case $out in
         "cell $c thread="*" proofFrames="*) ;;
         *) echo "INVALID $tier $size $c: $out"; exit 1 ;;
@@ -177,12 +173,22 @@ for size in 512 1024; do
       u=${u%% *}
       b=${out##*b=}
       maxu[$tier.$c.$size]=$u
+      p=${out##*proofFrames=}
+      proof[$tier.$c.$size]=${p%% *}
       if [ "$b" -gt "$largest" ]; then largest=$b; fi
     done
   done
 done
 for tier in xint c1 warm; do
   for c in collect reduce first-or hold; do
+    # The pair's proof: a thread of twice the size holds between 1.5 and 3.5 times the frames (guard pages make it
+    # more than twice); a 512 KiB cell on a larger stack would not.
+    small=${proof[$tier.$c.512]}
+    large=${proof[$tier.$c.1024]}
+    if [ $((2 * large)) -lt $((3 * small)) ] || [ $((2 * large)) -gt $((7 * small)) ]; then
+      echo "INVALID $tier $c: proofFrames $small at 512 KiB against $large at 1 MiB"
+      exit 1
+    fi
     du=$((maxu[$tier.$c.1024] - maxu[$tier.$c.512]))
     slope=$(( (512 * 1024 + du - 1) / du ))
     echo "slope $tier $c $slope"
