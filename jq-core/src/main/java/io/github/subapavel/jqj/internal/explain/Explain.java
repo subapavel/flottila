@@ -12,9 +12,9 @@ import io.github.subapavel.jqj.query.ir.Source;
 import java.util.List;
 
 /**
- * The text of {@code JqFilter.explain()} (ADR-0016, #108, ADR-0045 #112): the main tree, then each function of the
- * program by its place, one line per node. Unstable and outside semver. The ids and the groups are query-core's
- * ({@link Numbering}, {@link CallGraph}); the printer keeps none of its own.
+ * The text of {@code JqFilter.explain()} (ADR-0016, #108, ADR-0045 #112, ADR-0007 #115): the main tree, then each
+ * function of the program by its place, one line per node. Unstable and outside semver. The ids and the groups are
+ * query-core's ({@link Numbering}, {@link CallGraph}); the printer keeps none of its own.
  *
  * <ul>
  *   <li>A node line is {@code <function> <id> <kind> <start>..<end>}, then its facts as {@code name=value}. The function
@@ -23,7 +23,8 @@ import java.util.List;
  *   <li>A Call shows {@code call=RECURSIVE} when the caller is a function and the callee is in its recursive group
  *       (GLOSSARY "Recursive group"), and {@code call=PLAIN} for every other call, each call from main among them; then
  *       {@code callee=fn<place>}. A ParamCall shows {@code param=<j>}.
- *   <li>Every node line shows its cardinality, {@code card=<NONE|ONE|AT_MOST_ONE|MANY>} (ADR-0007 #112).
+ *   <li>Every node line shows its cardinality, {@code card=<NONE|ONE|AT_MOST_ONE|MANY>} (ADR-0007 #112), then whether
+ *       it may break out, {@code breaks=<true|false>} (ADR-0007 #115).
  *   <li>Each function's lines follow its function line, {@code function fn<place> <name>/<arity> <start>..<end>
  *       closures=<n> values=<m>}.
  * </ul>
@@ -62,7 +63,8 @@ public final class Explain {
       } else if (node instanceof ParamCall p) {
         text.append(" param=").append(p.param());
       }
-      text.append(" card=").append(facts.cardinality(place, id)).append('\n');
+      text.append(" card=").append(facts.cardinality(place, id));
+      text.append(" breaks=").append(facts.mayBreakOut(place, id)).append('\n');
     }
   }
 

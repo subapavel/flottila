@@ -78,7 +78,8 @@ public final class JqFilter {
    * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
    * UTF-8 bytes, then its facts as {@code name=value}. A Call shows {@code call=PLAIN} or {@code call=RECURSIVE} and
    * {@code callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
-   * card=<NONE|ONE|AT_MOST_ONE|MANY>}, MANY everywhere in the conservative compile. Each function's lines follow a line
+   * card=<NONE|ONE|AT_MOST_ONE|MANY>}, MANY everywhere in the conservative compile, then whether it may break out,
+   * {@code breaks=<true|false>}, true everywhere in the conservative compile. Each function's lines follow a line
    * {@code function fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}. Every line ends with an LF.
    */
   public String explain() {
