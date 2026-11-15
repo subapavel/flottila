@@ -221,3 +221,14 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   filter with `U_f ≤ 0` runs wholly on the driver, which holds PLAIN activations (F-100). The
   withdrawn expectation is issue #198. It is not ready for agents and waits for grilling with you
   or the adviser after #113 and #119.
+
+- **#113 matrix rulings K1–K8 (spec 2b run; ADR-0046 #113 "Rulings on the matrix").** These amend
+  O2 and the measuring rule:
+  - Warm cells are proven (60 runs at the declared stack), not measured, because their edges are
+    junk (K1).
+  - `b` = 192 (C1 W), and the reserve is 280 KiB (K2, K3).
+  - `U_f` at 512 KiB is about 1237 − D_f, against O2's estimate of 1 850 (K4, F-102).
+  - The full matrix took 92.5 min, against the 45-minute target (O4).
+  - Open for you: whether ND OPTIMISED's large intercept is an artefact (reserve 168 KiB), bytes
+    per unit by kind, or a larger 512 KiB default.
+  - WORKFLOW §11's branch names disagree with practice (F-103), a WORKFLOW change for you.
