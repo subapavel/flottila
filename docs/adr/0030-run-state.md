@@ -1,6 +1,6 @@
 # Run state: an evaluation's budgets in query-core, owned by the Workspace
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #59; designer draft);; stack units and call activations by ADR-0046, the pending jump by ADR-0047 (spec 2b); `begin` takes the recursion depth (ADR-0045, #107)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #59; designer draft);; stack units and call activations by ADR-0046, the pending jump by ADR-0047 (spec 2b); `begin` takes the recursion depth (ADR-0045, #107); declared stack bytes (#109)
 amends ADR-0008 (`ws` in the protocol is the run state; a termination carries its budget),
 ADR-0009 (every call form takes the run state first), ADR-0013 (`…query.run` holds it) and
 ADR-0015 (when the reader's ticks reset); amended by ADR-0035 (bytes built, #64) and ADR-0044
@@ -54,3 +54,9 @@ before any loop exists. This ADR fixes where that state lives and when it counts
 ## Amendment (ADR-0044, ticket #85)
 
 - `RunState.ints(n)` is a reused `int[]` of at least `n`, format-neutral scratch for one native's tape positions within one call, never charged: the RunState keeps at most 2^20 ints (4 MiB) for as long as it lives, and a longer ask gets an array of its own for that call; the key proof asks its table's slots, at most 2^20, plus 3 n positions for n key entries (#85).
+
+## Amendment (ticket #109)
+
+- `RunState.begin` takes the run's declared stack bytes last, and `stackBytes()` reads them. They
+  are not a budget, and nothing checks against them. `Executable.run` reads them at its start: at 0,
+  main runs on the driver (ADR-0046). S2b.5 derives `U_f` from them.
