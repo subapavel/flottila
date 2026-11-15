@@ -4,8 +4,9 @@ import io.github.subapavel.jqj.query.run.Termination.Budget;
 import java.util.function.LongSupplier;
 
 /**
- * The budgets of one evaluation (ADR-0030, ADR-0008, ADR-0035): its fuel, the step budget, the deadline and the
- * bytes-built and bytes-written counts, in a phase that is idle, primed or running; its label tokens and break
+ * The budgets of one evaluation (ADR-0030, ADR-0008, ADR-0035, ADR-0045 #107): its fuel, the step budget, the deadline,
+ * the bytes-built and bytes-written counts and the live call activations, in a phase that is idle, primed or running;
+ * its label tokens and break
  * target (ADR-0039); and a reused scratch of ints (ADR-0044). The engine's Workspace owns one and hands it to each
  * run, so it is never shared between two running evaluations; it is not thread-safe.
  *
@@ -67,6 +68,12 @@ public final class RunState {
   /** The bytes charged since the last begin. */
   private long written;
 
+  /** The running run's recursion-depth budget (ADR-0045 #107, ADR-0046); unlimited outside a run. */
+  private long depthBudget = UNLIMITED;
+
+  /** The live call activations since the last begin: each {@link #enter} not yet left. */
+  private long depth;
+
   /**
    * The last label token handed out since the last begin: the tokens of a run count from 1 (ADR-0039). A long, so no
    * run reaches its wrap and a token is never 0 or one handed out before.
@@ -108,25 +115,36 @@ public final class RunState {
   }
 
   /**
-   * {@link #begin(long, long, long, long)} with the bytes built unlimited.
+   * {@link #begin(long, long, long, long, long)} with the bytes built and the recursion depth unlimited.
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
    */
   public void begin(long steps, long deadlineNanos, long bytesWritten) {
-    begin(steps, deadlineNanos, UNLIMITED, bytesWritten);
+    begin(steps, deadlineNanos, UNLIMITED, bytesWritten, UNLIMITED);
   }
 
   /**
-   * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
-   * the bytes built (ADR-0035) and the bytes written. A primed read's ticks count against it, the writer's outside a
-   * run do not; without a primed read it starts from no tick. The bytes built and written count from zero, the label
-   * tokens from 1, and no break is marked (ADR-0008).
+   * {@link #begin(long, long, long, long, long)} with the recursion depth unlimited.
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
    */
   public void begin(long steps, long deadlineNanos, long bytesBuilt, long bytesWritten) {
+    begin(steps, deadlineNanos, bytesBuilt, bytesWritten, UNLIMITED);
+  }
+
+  /**
+   * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
+   * the bytes built (ADR-0035), the bytes written and the recursion depth, the live call activations (ADR-0045 #107). A
+   * primed read's ticks count against it, the writer's outside a run do not; without a primed read it starts from no
+   * tick. The bytes built and written and the live activations count from zero, the label tokens from 1, and no break
+   * is marked (ADR-0008).
+   *
+   * @throws IllegalStateException when a run is running on this state, which then stays as it was
+   * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
+   */
+  public void begin(long steps, long deadlineNanos, long bytesBuilt, long bytesWritten, long recursionDepth) {
     if (running) {
       throw new IllegalStateException("a run is already running on this run state");
     }
@@ -142,6 +160,8 @@ public final class RunState {
     built = 0;
     writtenBudget = bytesWritten;
     written = 0;
+    depthBudget = recursionDepth;
+    depth = 0;
     labels = 0;
     breakTo = 0;
     start = clock.getAsLong();
@@ -156,7 +176,26 @@ public final class RunState {
     running = false;
     builtBudget = UNLIMITED;
     writtenBudget = UNLIMITED;
+    depthBudget = UNLIMITED;
     fill(steps(), UNLIMITED);
+  }
+
+  /**
+   * A call activation begins (ADR-0045 #107, ADR-0046): one more live activation, which {@link #leave} ends however the
+   * call ends. One over the recursion-depth budget is not counted.
+   *
+   * @throws Termination over the recursion-depth budget
+   */
+  public void enter() {
+    if (depth >= depthBudget) {
+      throw Termination.over(Budget.RECURSION_DEPTH);
+    }
+    depth++;
+  }
+
+  /** The call activation of the last {@link #enter} not left yet ends. */
+  public void leave() {
+    depth--;
   }
 
   /**

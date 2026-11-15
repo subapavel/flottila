@@ -41,7 +41,8 @@ import org.junit.jupiter.params.provider.EnumSource;
  * bytes, so {@value #PARTS} parts need 640 000 bytes or more, past the thread's 524 288. The tail form keeps a few
  * frames whatever the number of parts. Each Binds chain has parts of one tail kind only, so a classification that loses
  * any one kind nests every part of its chain. Each run first runs a copy of {@value #WARM} parts on the test thread,
- * which links every call site before the small thread runs.
+ * which links every call site before the small thread runs. An overflow ends the run with a Termination: the
+ * executable's run turns the StackOverflowError into one of cause STACK (ADR-0045 #107).
  */
 class TailDepthTest {
   private static final Source AT = new Source(0, 1);
@@ -104,7 +105,7 @@ class TailDepthTest {
       assertThat(ran(chain(WARM, TailDepthTest::comma), mode)).as("%s: %d Comma parts on the test thread", mode, WARM).isEqualTo("[[0, 50, 99]] in 99 steps");
       assertThat(onSmallThread(() -> ran(chain(PARTS, TailDepthTest::comma), mode)))
           .as("%s: %d Comma parts on a 512 KiB thread", mode, PARTS)
-          .isEqualTo("threw java.lang.StackOverflowError");
+          .isEqualTo("threw io.github.subapavel.jqj.query.run.Termination");
     }
   }
 
@@ -141,7 +142,7 @@ class TailDepthTest {
       assertThat(ran(and(0, WARM, Term.CONST, new int[] {2}), mode)).as("%s: %d and-terms in Labels on the test thread", mode, WARM).isEqualTo("[yes] in 0 steps");
       assertThat(onSmallThread(() -> ran(and(0, PARTS, Term.CONST, new int[] {2}), mode)))
           .as("%s: %d and-terms in Labels on a 512 KiB thread", mode, PARTS)
-          .isEqualTo("threw java.lang.StackOverflowError");
+          .isEqualTo("threw io.github.subapavel.jqj.query.run.Termination");
     }
   }
 
