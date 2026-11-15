@@ -8,8 +8,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.CalibrationCell.Shape;
 import io.github.subapavel.jqj.CalibrationCell.Units;
 import io.github.subapavel.jqj.query.compile.CompileMode;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -394,45 +396,125 @@ class CalibrationTest {
 
   /**
    * L1: a search repeats from its own result until two consecutive passes agree on {@code U*}; after {@value
-   * CalibrationCell#PASSES} passes without agreement it has no fixed point. A pass that fails at {@code U_f} 0 ends the
-   * search. A fake pass gives the scripted {@code U*} of each call, one more than the search may use, and records the
-   * start of each: the seed, then the {@code U*} of the pass before. A seed that is the edge still takes two passes
-   * (the steady child); 5817 to 5818 and back is a C1 edge found while C1 compiled (the adviser's L1).
+   * CalibrationCell#PASSES} passes without agreement its {@code U*} is INVALID. A pass that fails at {@code U_f} 0 ends
+   * the search. In-process, {@link CalibrationCell}'s own search over {@link ScriptedRuns}, which give each pass's
+   * scripted edge, one more than the search may use: the first run of each pass (the seed, then the {@code U*} of the
+   * pass before), the run of the end, and the row's {@code U*}, end and passes. A seed that is the edge still takes two
+   * passes (the steady child); 5817 to 5818 and back is a C1 edge found while C1 compiled (the adviser's L1).
    */
   @Test
   void aSearchRepeatsFromItsOwnResultUntilTwoPassesAgree() {
     assertThat(
             List.of(
-                passes(5818, 5818, 5818, 5818),
-                passes(5817, 5818, 5818, 5818),
-                passes(5817, 5818, 5817, 5817, 5817),
-                passes(2131, 2138, 2162, 2131, 2131, 2131),
-                passes(5113, 5114, 5121, 5152, 5113, 5113),
-                passes(4430, 4430, -1, 4430),
-                passes(0, -1, 0)))
-        .as("the starts and the U* of each pass, and whether the last two agree")
+                fixedPointOf(5818, 5818, 5818, 5818),
+                fixedPointOf(5817, 5818, 5818, 5818),
+                fixedPointOf(5817, 5818, 5817, 5817, 5817),
+                fixedPointOf(2131, 2138, 2162, 2131, 2131, 2131),
+                fixedPointOf(5113, 5114, 5121, 5152, 5113, 5113),
+                fixedPointOf(4430, 4430, -1, -1),
+                fixedPointOf(0, -1, -1)))
+        .as("the first run of each pass, the end's run, and the row's U*, end and passes")
         .isEqualTo(
             List.of(
-                "starts [5818, 5818]: 5818,5818 agreed",
-                "starts [5817, 5818]: 5818,5818 agreed",
-                "starts [5817, 5818, 5817]: 5818,5817,5817 agreed",
-                "starts [2131, 2138, 2162, 2131]: 2138,2162,2131,2131 agreed",
-                "starts [5113, 5114, 5121, 5152]: 5114,5121,5152,5113 no fixed point",
-                "starts [4430, 4430]: 4430,fails no fixed point",
-                "starts [0]: fails no fixed point"));
+                "starts [5818, 5818], end at [5819]: 5818 | [], termination STACK | 5818,5818",
+                "starts [5817, 5818], end at [5819]: 5818 | [], termination STACK | 5818,5818",
+                "starts [5817, 5818, 5817], end at [5818]: 5817 | [], termination STACK | 5818,5817,5817",
+                "starts [2131, 2138, 2162, 2131], end at [2132]: 2131 | [], termination STACK | 2138,2162,2131,2131",
+                "starts [5113, 5114, 5121, 5152], end at [5114]: INVALID | [], termination STACK | 5114,5121,5152,5113",
+                "starts [4430, 4430], end at [0]: fails | [], termination STACK | 4430,fails",
+                "starts [0], end at [0]: fails | [], termination STACK | fails"));
   }
 
-  /** {@link CalibrationCell#fixedPoint} from {@code seed} over a fake pass whose n-th call gives {@code edges[n-1]}. */
-  private static String passes(long seed, long... edges) {
-    List<Long> starts = new ArrayList<>();
-    CalibrationCell.Passes p =
-        CalibrationCell.fixedPoint(
-            seed,
-            start -> {
-              starts.add(start);
-              return edges[starts.size() - 1];
-            });
-    return "starts " + starts + ": " + p + (p.agreed() ? " agreed" : " no fixed point");
+  /**
+   * The architect's ruling (a) on t/113-fixpoint: every run of a search, each pass's and the end's at {@code U* + 1},
+   * starts at the call depth of 078dd0a's search, whose every run was a call of {@code ended} from {@code search}. So
+   * each is as deep as the control's run, which {@code search} calls first, and each is called from {@code search}. On
+   * the second case of {@link #aSearchRepeatsFromItsOwnResultUntilTwoPassesAgree} (seed 5817, edge 5818): the control at
+   * 1 GiB, pass 1 at 5817, 5818, 5820 and 5819, pass 2 at 5818 and 5819, the end at 5819.
+   */
+  @Test
+  void everyRunOfASearchStartsAtItsControlsDepth() {
+    ScriptedRuns runs = new ScriptedRuns(shape("first-or"), 5818, 5818, 5818);
+    searched(shape("first-or"), 5817, runs);
+    int control = runs.callers.getFirst().size();
+    List<String> got = new ArrayList<>();
+    for (int i = 0; i < runs.callers.size(); i++) {
+      List<String> callers = runs.callers.get(i);
+      got.add(runs.at.get(i) + ": " + (callers.size() - control) + " frames deeper than the control, " + String.join(" < ", callers.subList(0, 3)));
+    }
+    String direct = ": 0 frames deeper than the control, ended < search < searched";
+    assertThat(got)
+        .as("each run of the search: its declared stack, its depth against the control's, and its first three frames")
+        .isEqualTo(Stream.of(CalibrationCell.GIB, 5817L, 5818L, 5820L, 5819L, 5818L, 5819L, 5819L).map(at -> at + direct).toList());
+  }
+
+  /** {@link CalibrationCell}'s search of first-or from {@code seed} over {@link ScriptedRuns} of {@code edges}. */
+  private static String fixedPointOf(long seed, long... edges) {
+    Shape firstOr = shape("first-or");
+    ScriptedRuns runs = new ScriptedRuns(firstOr, edges);
+    String[] r = searched(firstOr, seed, runs);
+    List<Long> starts = runs.passes.subList(0, runs.passes.size() - 1).stream().map(List::getFirst).toList();
+    return "starts " + starts + ", end at " + runs.passes.getLast() + ": " + r[7] + " | " + r[8] + " | " + r[10];
+  }
+
+  /**
+   * The {@code cell} row of {@link CalibrationCell}'s search of {@code shape} from {@code seed}, in-process, its runs
+   * stood in for by {@code runs}, at b 1, reserve 0 and D_f 0, so a run's {@code stackBytes} is its {@code U_f}.
+   */
+  private static String[] searched(Shape shape, long seed, ScriptedRuns runs) {
+    PrintStream out = System.out;
+    ByteArrayOutputStream printed = new ByteArrayOutputStream();
+    CalibrationCell.standIn = runs;
+    try {
+      System.setOut(new PrintStream(printed, true, UTF_8));
+      CalibrationCell.search(shape, SMALL, CompileMode.CONSERVATIVE, new Units(0, 5, 1, 0), seed);
+    } finally {
+      System.setOut(out);
+      CalibrationCell.standIn = null;
+    }
+    return rows(printed.toString(UTF_8), "cell").get(shape.id());
+  }
+
+  /**
+   * A stand-in for the runs of one search ({@link CalibrationCell#standIn}). The control, at 1 GiB, ends STACK. Any
+   * other run completes when its {@code U_f} is at most the current pass's scripted edge. A pass's edge holds until the
+   * search has closed its bracket: a {@code U_f} that completed and {@code U_f + 1} that did not, or, for an edge of -1
+   * that never completes, {@code U_f} 0 after the pass's first run. A pass past the script throws. It keeps each run's
+   * declared stack and callers, and each pass's runs; the list after the last pass's holds the end's run.
+   */
+  private static final class ScriptedRuns implements CalibrationCell.Run {
+    private final Shape shape;
+    private final long[] edges;
+    final List<Long> at = new ArrayList<>();
+    final List<List<String>> callers = new ArrayList<>();
+    final List<List<Long>> passes = new ArrayList<>();
+    private long completed = Long.MIN_VALUE;
+    private long stacked = Long.MAX_VALUE;
+
+    ScriptedRuns(Shape shape, long... edges) {
+      this.shape = shape;
+      this.edges = edges;
+      passes.add(new ArrayList<>());
+    }
+
+    @Override
+    public String end(long stackBytes, List<String> frames) {
+      at.add(stackBytes);
+      callers.add(frames);
+      if (stackBytes == CalibrationCell.GIB) return STACK;
+      long edge = edges[passes.size() - 1];
+      List<Long> pass = passes.getLast();
+      pass.add(stackBytes);
+      boolean completes = stackBytes <= edge;
+      if (completes) completed = Math.max(completed, stackBytes);
+      else stacked = Math.min(stacked, stackBytes);
+      if (completed + 1 == stacked || (edge < 0 && stackBytes == 0 && pass.size() > 1)) {
+        passes.add(new ArrayList<>());
+        completed = Long.MIN_VALUE;
+        stacked = Long.MAX_VALUE;
+      }
+      return completes ? shape.completed() : STACK;
+    }
   }
 
   /**

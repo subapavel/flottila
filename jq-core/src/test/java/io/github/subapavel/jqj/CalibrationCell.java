@@ -176,8 +176,21 @@ final class CalibrationCell {
         .build();
   }
 
+  /** A run of a shape as an in-process test stands in for it: its end at {@code stackBytes}, given its callers. */
+  interface Run {
+    String end(long stackBytes, List<String> callers);
+  }
+
+  /**
+   * An in-process test's stand-in for every run of {@link #ended}, which then runs no shape and passes it the methods
+   * on the stack, {@code ended} first; null in a child. It holds no local of {@code ended}, so a run's frames start
+   * where they did without it.
+   */
+  static volatile Run standIn;
+
   /** How {@code shape} ended in {@code mode} with {@code stackBytes} declared, on the calling thread. */
   static String ended(Shape shape, long stackBytes, CompileMode mode) {
+    if (standIn != null) return standIn.end(stackBytes, StackWalker.getInstance().walk(frames -> frames.map(StackWalker.StackFrame::getMethodName).toList()));
     try {
       JqEngine engine = engine(stackBytes, mode);
       JqFilter compiled = engine.compile(shape.filter());
@@ -379,7 +392,7 @@ final class CalibrationCell {
    * from {@code floorDiv(S - reserve, b) - D_f} when it is negative, repeated to its {@link #fixedPoint} (L1). {@code
    * U*} is {@code INVALID} when no two consecutive of {@value #PASSES} passes agree; the row's last field is the passes.
    */
-  private static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
+  static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
     String control = ended(shape, GIB, mode);
     if (!control.equals(STACK)) {
       row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "-", "-", control, "-");
