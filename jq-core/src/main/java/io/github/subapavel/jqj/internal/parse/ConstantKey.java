@@ -63,7 +63,7 @@ import java.util.Map;
  * resolver lowers to a Const too; a comparison of two constants folds to its boolean (#66), which the resolver leaves
  * to the run (design approval O6). One instance holds one compile's folds (ADR-0035 amendments, #65 third and fourth
  * reviews): each node is folded at most once, its result kept, and every fold charges one run state with the
- * compile's budget; a {@link Program} carries it from the parser to the resolver.
+ * compile's budget; a {@link ParsedFilter} carries it from the parser to the resolver.
  */
 final class ConstantKey {
   /** What {@code .} alone folds to: a pipe drops it. */

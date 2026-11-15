@@ -7,6 +7,6 @@ import java.util.List;
  * and either its top-level filter, definitions before it folded into it as {@link Ast.Def}s, or only definitions, with
  * a null main. {@code folds} is the compile's fold budget, which the parser's key checks began to spend and the
  * resolver's folds go on spending (ADR-0035); {@code text} is the filter's text, which places the resolver's error
- * blocks and gives a {@code $__loc__} its line.
+ * blocks and gives a {@code $__loc__} its line. Named apart from query-core's IR {@code Program} (#107).
  */
-public record Program(Ast module, List<Ast.Import> imports, List<Ast.FuncDef> defs, Ast main, ConstantKey folds, FilterText text) {}
+public record ParsedFilter(Ast module, List<Ast.Import> imports, List<Ast.FuncDef> defs, Ast main, ConstantKey folds, FilterText text) {}

@@ -16,12 +16,12 @@ class SourceBytesTest {
   @Test
   void sourcesAreUtf8ByteOffsets() {
     // "é" | .a: the quote, é (2 bytes), the quote, " | " (3 bytes), then .a at bytes [7, 9) (chars [6, 8)).
-    Pipe piped = (Pipe) Resolver.resolve(Parser.parse("\"é\" | .a"));
+    Pipe piped = (Pipe) Resolver.resolve(Parser.parse("\"é\" | .a")).main();
     assertThat(piped.right().source()).as("source of .a in \"é\" | .a").isEqualTo(new Source(7, 9));
     assertThat(piped.left().source()).as("source of \"é\" in \"é\" | .a").isEqualTo(new Source(0, 4));
 
     // "é".a: a field after a string term (jq-ref 1.8.2, recorded: literal/access-string-term-field) at bytes [4, 6).
-    Pipe term = (Pipe) Resolver.resolve(Parser.parse("\"é\".a"));
+    Pipe term = (Pipe) Resolver.resolve(Parser.parse("\"é\".a")).main();
     assertThat(term.right().source()).as("source of .a in \"é\".a").isEqualTo(new Source(4, 6));
   }
 }

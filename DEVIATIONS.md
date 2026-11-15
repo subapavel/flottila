@@ -168,9 +168,12 @@ the mutation floors. `builtins-regex-v1` draws only constructs the matrix shows 
 
 ## Recursion depth on the command line (ADR-0017, issue #13)
 
-jq-ref completes 10⁷ levels of `def f: if .==0 then 0 else (.-1|f)+1 end`. jqj's command line
-keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶ levels) and ends deeper
-recursion with a termination. Reason: recursion depth bounded by memory, ADR-0011.
+jq-ref 1.8.2 completes 10⁷ levels of `def f: if .==0 then 0 else (.-1|f)+1 end; N | f`: N up to
+10⁷ prints N, rc 0; at 2·10⁷ and 10⁸ it prints `jq: error: cannot allocate memory`, rc 134 (F-87).
+jqj's command line keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶
+levels) and ends deeper recursion with a termination: it flushes the results so far, writes
+`jq: error: Recursion-depth budget exceeded` to stderr and exits 5 (#107, #197). Reason: recursion
+depth bounded by memory, ADR-0011.
 
 ## Parse depth (ADR-0017, issue #81)
 

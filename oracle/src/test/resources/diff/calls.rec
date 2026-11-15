@@ -1,0 +1,253 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case calls/closure-frames-nested-invocations
+def 20fb1b068af8
+rc 0
+stdout [44,54,45,55,43,45,55,46,56,44,43,53,44,54,45,55,46,56,44,46,56,47,57,45,44,54,45,55,43,53,44,54,42,44,54,45,55,43,45,55,46,56,44,46,56,47,57,45,44,54,45,55,46,56,47,57,45,47,57,48,58,46,45,55,46,56,44,54,45,55,43,45,55,46,56,44]\n
+stderr
+end
+
+case calls/closure-of-a-closure-binds-per-frame
+def 6bd4c2c284a4
+rc 0
+stdout 18\n
+stderr
+end
+
+case calls/nested-def-captures-closure-param
+def a4f18223ed12
+rc 0
+stdout [10,20]\n
+stderr
+end
+
+case calls/captures-outer-variables
+def b825cfdae523
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case calls/value-params-bind-around-the-call
+def 8f4ff2afe6d4
+rc 0
+stdout [[11,3],[11,4],[12,3],[12,4]]\n
+stderr
+end
+
+case calls/value-param-name-is-callable
+def c21edd8ee5c1
+rc 0
+stdout [0]\n
+stderr
+end
+
+case calls/mutual-recursion-through-a-nested-def
+def 0df9f1f90990
+rc 0
+stdout [true,false,true,false,true,false]\n
+stderr
+end
+
+case calls/closure-passed-to-itself-never-runs
+def 646d12e22131
+rc 0
+stdout 1\n
+stderr
+end
+
+case calls/limit-of-an-endless-recursion
+def 12bd9627bb1e
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case calls/recursion-inside-reduce
+def c0945507a395
+rc 0
+stdout 3\n
+stderr
+end
+
+case calls/break-in-closure-targets-callers-activation
+def d682bdfaed74
+rc 0
+stdout [10]\n
+stderr
+end
+
+case calls/break-out-of-a-recursion
+def ede40b07dc72
+rc 0
+stdout [5]\n
+stderr
+end
+
+case calls/captured-label-per-activation
+def 5e1b401e8368
+rc 0
+stdout [0,0,1,0,1,2]\n
+stderr
+end
+
+case calls/captured-label-through-a-closure-param
+def ee841ac36712
+rc 0
+stdout [0,2,4]\n
+stderr
+end
+
+case calls/try-in-a-recursion-lets-a-downstream-error-pass
+def f86da19c0d21
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): down\n
+end
+
+case calls/try-in-a-recursion-catches-its-body
+def 54456d7445f1
+rc 0
+stdout "caught"\n
+stderr
+end
+
+case calls/error-out-of-a-recursion-is-caught
+def 018e2f524fab
+rc 0
+stdout "x"\n
+stderr
+end
+
+case calls/depth-99
+def 6af0201d81a5
+rc 0
+stdout 99\n
+stderr
+end
+
+case calls/depth-100
+def e32778a12e2a
+rc 0
+stdout 100\n
+stderr
+end
+
+case calls/two-deep-calls-in-sequence
+def 52d39b4de027
+rc 0
+stdout [99,99]\n
+stderr
+end
+
+case calls/passed-on-closure-98
+def 53749d2ea36f
+rc 0
+stdout 0\n
+stderr
+end
+
+case calls/passed-on-closure-99
+def 49932f61621e
+rc 0
+stdout 0\n
+stderr
+end
+
+case calls/inlined-wrapper-around-a-recursive-call
+def 314a25c34a39
+rc 0
+stdout 99\n
+stderr
+end
+
+case calls/inlined-calls-only
+def bb406e407c3b
+rc 0
+stdout [2,2]\n
+stderr
+end
+
+case calls/error-leaving-deep-calls
+def 9b9b4123ac19
+rc 0
+stdout ["x","x","x"]\n
+stderr
+end
+
+case calls/break-leaving-deep-calls
+def 77f13b5d17cc
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case calls/one-call-on-0
+def c8d964cb655e
+rc 0
+stdout 0\n
+stderr
+end
+
+case calls/no-call-on-0
+def 2d24b6b3c8e5
+rc 0
+stdout 0\n
+stderr
+end
+
+case calls/three-calls-on-2
+def 1f7d936d3fc8
+rc 0
+stdout 2\n
+stderr
+end
+
+case calls/no-call-on-2
+def 2f855f560b74
+rc 0
+stdout 2\n
+stderr
+end
+
+case calls/closure-run-at-depth-0
+def 5c92ac976502
+rc 0
+stdout 5\n
+stderr
+end
+
+case calls/closure-never-run-at-depth-0
+def f1273106ea20
+rc 0
+stdout 5\n
+stderr
+end
+
+case calls/closure-run-at-depth-2
+def b98af5f1559e
+rc 0
+stdout 5\n
+stderr
+end
+
+case calls/closure-never-run-at-depth-2
+def 68c328096b0e
+rc 0
+stdout 5\n
+stderr
+end
+
+case calls/break-to-a-captured-label
+def 531b345299f5
+rc 0
+stdout []\n
+stderr
+end
+
+case calls/empty-instead-of-a-break
+def 8f6f1ca19876
+rc 0
+stdout []\n
+stderr
+end

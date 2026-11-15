@@ -26,12 +26,15 @@ public abstract sealed class Op
         BreakOp,
         ReduceOp,
         ForeachOp,
-        AdvanceOp {
+        AdvanceOp,
+        OuterVarOp,
+        CallOp,
+        ParamCallOp {
   Op() {}
 
   /**
-   * Pushes the results for {@code in} into {@code out}, in the run {@code state} belongs to (ADR-0030), with that run's
-   * {@code slots} (ADR-0034): true when they ran out, false when out stopped.
+   * Pushes the results for {@code in} into {@code out}, in the run {@code state} belongs to (ADR-0030), with the running
+   * frame's cells {@code slots} (ADR-0034, ADR-0045 #107): true when they ran out, false when out stopped.
    */
   public abstract boolean run(RunState state, Object[] slots, Object in, Sink out);
 }
