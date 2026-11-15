@@ -245,3 +245,10 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
 - **ADR-0040 lifted counts, F-106 (spec 2b run, told not asked).** The ADR said tests never pin how
   many functions are lifted. It now allows a test to pin the lifted list wherever the rule leaves only
   one answer, for example the single function a 512-deep call chain lifts. #114's `hasSize(1)` stays.
+- **#199 design rulings C1–C8 (spec 2b run, told not asked).** The calibration matrix gains 256 KiB
+  threads and #114's PLAIN-call filter as shape 14 (308 cells). The reserve comes from the lowest
+  thread pair, and `b` from the largest adjacent slope (ADR-0046 "Amendment (ticket #199)").
+  **Question for you (F-97):** the spec gate's calibration step will take about 57–65 min against the
+  45 min target. To get under it, warm children would have to run 2 at a time (the adviser keeps
+  "one at a time", because load moved warm edges once), or the target or the gate's scope changes.
+  #199 measures 1-wide against 2-wide for you.

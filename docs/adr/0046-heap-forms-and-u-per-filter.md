@@ -340,7 +340,9 @@ moved up, by +1, +7 and +31. Those are exactly the gallop's points above the see
 found while C1 was still compiling.
 - **A JIT edge is a fixed point (L1).** A JIT cell searches again from its own result until two passes
   agree. After 4 passes without agreement it is INVALID. Upward moves are not accepted, and C1 is not
-  run unseeded.
+  run unseeded where the record has the cell's row. A cell new to the matrix is searched unseeded
+  once, at its fixed point, in 3 children; the next full run, seeded from that one, must return the
+  same `U*` (K5; amended by #199 ruling C1).
   - The order: first the three cells alone, seeded from e6f4cc0, must return 5818, 2131 and 5113.
     Then one full run, seeded the same way, under K5.
   - The committed record is that run's. The e6f4cc0 and K5 records stay as evidence, and
@@ -357,5 +359,63 @@ found while C1 was still compiling.
   e.g. `[7], termination STACK` for first-or. `[7], ran out`, any other termination, or a result that
   is not a prefix stays red.
 - **UnitLimitTest's floorDiv witness (L4)** is re-pinned to −286 720/192 → −1494 (286 720 = 192·1493
-  + 64).
+  + 64). Superseded by #199: line 158 holds no constant.
 
+## Amendment (ticket #199)
+
+Accepted by the architect under `/run-spec` #106. It comes from the designer's draft and the
+grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the delegation of
+2026-11-14. It replaces #113's "Cells" and "What a cell measures" where they differ, as L2 ordered.
+
+- **Shapes: 14.** #114's PLAIN-call filter joins as `plain-descent`: IrDepthTest's `nested(30_001)`,
+  300 lifted functions over 30 000 levels of PLAIN calls past the IR bound, on `null`, giving
+  `NESTED_30001` (reference jq's `over-cap/depth-30001`). It is NEVER_FLAT. CalibrationCell builds the
+  text itself, so children load no test class.
+- **Threads.** `-Xint` and C1 run on platform 256 KiB, 512 KiB and 1 MiB, and on virtual threads
+  (`-Xss512k`); warm runs on the last three. Cells: 224 measured and 84 warm, 308 rows; the ticket
+  column has 28. Only `scripts/calibration-cells.sh` holds the counts.
+- **Slope and intercept.**
+  - Per tier, mode and shape, each adjacent platform pair has the slope s = ceilDiv(ΔS, ΔU*linked).
+  - `b_cell` is the largest s, and a virtual row takes the lowest pair's slope.
+  - The intercept S − s_low·(U*linked + D_f) is taken on the lowest pair's rows only (256 KiB, 512 KiB,
+    virtual); the 1 MiB row has none.
+  - cold = `b_cell`·(U*linked − U*cold).
+  - b = ceil8(max `b_cell`); reserve = ceil4K(max intercept + max cold) + 32 KiB, never below the
+    guard + 32 KiB.
+  - Nothing is fitted and no cell is excluded by name. This replaces the 512 KiB → 1 MiB chord.
+- **Proof.** Each platform cell proves against the next thread up; 1 MiB proves against 512 KiB, and a
+  virtual cell against 1 MiB.
+- **Order.**
+  - Run A runs at #113's constants, seeded from the record where a row exists. Its max-b and
+    reserve rows give the constants.
+  - Run B runs at those constants, seeded from A. It is committed only if:
+    - its rows equal the constants;
+    - every `-Xint` and C1 `U*` equals A's;
+    - A's old `U*` equal #113's record;
+    - every warm cell holds.
+  - Hand back before committing any constant, keeping A's record, if:
+    - reserve > 262 144;
+    - max-b > 192;
+    - a new C1 cell is INVALID or has spread ≠ 0;
+    - an old `U*` differs from the record;
+    - a warm cell ends STACK (C2).
+- **`edgeIsExact` is seeded** from the record's `U*cold`, as "each search is seeded from the record"
+  says; the assertion is unchanged (open question 5(a)).
+- **The record** gains `machine`, `cpu` and `kernel` rows. A result longer than 200 characters prints as
+  `<length> chars, sha256 <hex>`; comparisons stay on the full text (C4).
+- **Re-pins.** `warmRowsFeedNeitherBNorTheReserve` keeps its expected
+  `Maxima(189, 220_832, 29_988, 192, 286_720)` and gains each row's partners from e6f4cc0's record. A
+  move to new-rule numbers would be a weakening (C6). UnitLimitTest:158 holds no constant:
+  `unitLimit(e, reserve() − bytesPerUnit() − 1) == −2 − D_f` (C8).
+- **Warm 256 KiB cells** are not added: a slope-setting shape keeps the same headroom at the switch on
+  every size (open question 2).
+- **Time** (F-97): with seeding, the spec-gate step is about 57–65 min. Below 45 min needs the warm phase
+  cut, which is the owner's question (2-wide warm children against "one at a time").
+- **Considered:**
+  - intercepts at each cell's own S with the largest slope (the mirror artefact);
+  - a fit, or excluding ND by name (L2);
+  - a 384 KiB thread, or a virtual 256 KiB one;
+  - a persisted `b_low` column;
+  - loading IrDepthTest in children;
+  - a count row inside the tsv;
+  - a literal at line 158.
