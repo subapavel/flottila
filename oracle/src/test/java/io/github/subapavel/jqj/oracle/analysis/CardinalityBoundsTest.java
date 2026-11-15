@@ -18,6 +18,8 @@ import io.github.subapavel.jqj.query.compile.Executable;
 import io.github.subapavel.jqj.query.ir.Advance;
 import io.github.subapavel.jqj.query.ir.AltBind;
 import io.github.subapavel.jqj.query.ir.Alternative;
+import io.github.subapavel.jqj.query.ir.Bind;
+import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
@@ -52,9 +54,10 @@ import org.junit.jupiter.params.provider.MethodSource;
  *   <li>self-check: the watched run's results and error equal the plain conservative run's.
  * </ul>
  *
- * <p>The IR verifier refuses a watched node where only an atomic node may stand (an Intrinsic's argument, a Call's value),
- * a bare ParamCall a Call passes on, an Advance, which must stay its loop's own, and an AltBind alternative's match,
- * whose leaf reads the match's own slots; those are skipped and counted. Any other refusal is a failure of the probe.
+ * <p>Not watched, and counted: a node where only an atomic node may stand (an Intrinsic's argument, a Call's value) and
+ * a link of an AltBind alternative's Bind chain above the leaf that reads the chain's slots, which the IR verifier
+ * refuses; and a bare ParamCall a Call passes on or an Advance when the verifier refuses its probe (the design names
+ * both; at 9faa3bf it accepts them, and they are watched). Any other refusal is a failure of the probe.
  *
  * <p>Seam (named in the #112 hand-back): {@code Executable.facts()} returning {@code query.analysis.Facts}, {@code
  * Facts.cardinality(int function, int id)} with -1 for main and a function's place otherwise, and {@code
@@ -65,15 +68,25 @@ class CardinalityBoundsTest {
   /** The step budget of every run (design: B = 10^6). */
   static final long B = 1_000_000;
 
-  /** The most steps a plain run may take, so a run-on past B cannot hide behind a long plain run. */
+  /**
+   * The most steps a plain run may take, so a run-on past B cannot hide behind a long plain run: at 9faa3bf the largest
+   * plain run over the core-v1 seeds takes 65 steps.
+   */
   static final long BASELINE_CAP = 10_000;
 
-  /** Why a node is not watched. */
+  /** Why a node may not be watched: always for one the verifier refuses by its place, else only if it refuses. */
   enum Skip {
-    ATOMIC,
-    PASSED_PARAM_CALL,
-    ADVANCE,
-    MATCH
+    ATOMIC(true),
+    MATCH(true),
+    PASSED_PARAM_CALL(false),
+    ADVANCE(false);
+
+    /** Whether the verifier refuses every probe at such a place. */
+    final boolean refused;
+
+    Skip(boolean refused) {
+      this.refused = refused;
+    }
   }
 
   /** Counts over the seeds this class ran, printed after the last one. */
@@ -139,7 +152,7 @@ class CardinalityBoundsTest {
         violations.add(where + ": a fact keeps NEVER as NONE");
       }
       Skip skip = skips.get(n);
-      if (skip != null) {
+      if (skip != null && skip.refused) {
         count("skipped " + skip);
         continue;
       }
@@ -148,7 +161,11 @@ class CardinalityBoundsTest {
       try {
         watched = Compiler.compile(probe.wrapped(program, function, n), 0, CompileMode.CONSERVATIVE);
       } catch (IllegalStateException e) {
-        violations.add(where + ": the verifier refused the probe: " + e.getMessage());
+        if (skip != null) {
+          count("refused " + skip);
+        } else {
+          violations.add(where + ": the verifier refused the probe: " + e.getMessage());
+        }
         continue;
       }
       count("watched " + card);
@@ -204,7 +221,16 @@ class CardinalityBoundsTest {
           c.closures().stream().filter(ParamCall.class::isInstance).forEach(p -> skips.put(p, Skip.PASSED_PARAM_CALL));
         }
         case Advance a -> skips.put(a, Skip.ADVANCE);
-        case AltBind a -> a.alternatives().stream().map(Alternative::match).forEach(m -> skips.put(m, Skip.MATCH));
+        case AltBind a -> {
+          for (Alternative alternative : a.alternatives()) {
+            // The Bind and Binds chain down to the match's leaf: watched, a link would end the chain above the leaf.
+            Node link = alternative.match();
+            while (link instanceof Bind || link instanceof Binds) {
+              skips.put(link, Skip.MATCH);
+              link = link instanceof Bind b ? b.body() : ((Binds) link).body();
+            }
+          }
+        }
         default -> {
           // Every other node may be watched.
         }
