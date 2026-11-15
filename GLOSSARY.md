@@ -385,8 +385,8 @@ cell 0 (ADR-0045).
 _Avoid_: environment, parent scope
 
 **Lifted function**:
-A definition of a recursive group, lowered once into the Program's function list and run by a Call
-(ADR-0045).
+A definition of a recursive group, lowered once per compile into the Program's function list and
+run by a Call, a prelude definition's included (ADR-0045, ADR-0042).
 _Avoid_: compiled def
 
 **Holder**:
