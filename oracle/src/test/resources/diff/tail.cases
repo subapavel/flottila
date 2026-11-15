@@ -122,3 +122,12 @@ arg -c
 filter def r(f): if .>=2 then [f,9] else .+1|r(r(f)) end; 0|r(.)
 stdin null\n
 end
+
+# #118 ruling J4: f's left call of g is at most one but may break out, so it runs in push form (ADR-0008, ruling J3)
+# and f's tail call sets its jump inside g's emit; g's activation must leave that jump to f's (ForeignJumpTest's stack
+# run).
+case tail/breaking-left-call-leaves-the-callers-jump
+arg -c
+filter [label $out | def g: if . == -1 then break $out elif . > 100 then (. - 100 | g) else .+1 end; def f($n): if . >= $n then . else g | f($n) end; 0 | f(5)]
+stdin null\n
+end
