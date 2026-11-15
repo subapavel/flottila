@@ -38,7 +38,8 @@ tickets with native blocking edges. There is no backlog file.
 - Dependencies: Apache 2.0, MIT, MIT-0, BSD, EDL 1.0, ISC, 0BSD, MPL 2.0, EPL only; a dual licence
   counts under its allowed alternative. The list covers every compile, runtime and test
   dependency. Exception: JMH in the benchmark module only. Maven plugins are tools, not
-  dependencies (any OSI licence). A new exception is an ADR.
+  dependencies (any OSI licence). A new exception is an ADR. Exception: source under the
+  SunPro (fdlibm) notice, translated for 11 math builtins only (ADR-0055).
 - Files copied or translated from jq (its function library written in jq, its test files, the
   `jv_parse.c` port of ADR-0015) keep jq's copyright
   notice and are listed in `NOTICE`. The manual's prose is not copied; its examples as jq's

@@ -69,7 +69,9 @@ nightly PIT dispatched on the gate commit (`nightly.yml` has a manual trigger).
 6. **Command line.** `jqj` runs a filter over files and standard input with every option of jq
    1.8.2's `--help` except `--stream-errors`, and with jq's exit codes (ADR-0017); shown by
    differential cases that go through the command line. `-h`, `-V` and `--build-configuration`
-   print jqj's own text (`DEVIATIONS.md`); jq's rc-2 usage lines stay byte-identical. `--unbuffered`
+   print jqj's own text (`DEVIATIONS.md`); jq's rc-2 lines `Unknown option …` and `Use jq --help …` stay
+   byte-identical; jq's short usage (`usage(2,1)`) is jqj's own text under the `-h` row (owner,
+   2026-11-15). `--unbuffered`
    has a differential case for its output and a test for the flush after each result. ADR-0013's module-path cases pass on the interpreter. (ADR-0013, ADR-0015,
    ADR-0017, ADR-0020.)
 7. **Embedding.** ADR-0016's API and ADR-0017's host SPI are in place: a test checks every exported
@@ -88,7 +90,9 @@ nightly PIT dispatched on the gate commit (`nightly.yml` has a manual trigger).
    green (`java scripts/ratchet.java check`). `query-core` has no reference to JSON or jq (the word
    check `scripts/check-core-neutral.sh`, run by the ticket gate and CI, ADR-0013). `NOTICE` lists
    every copied or translated file (jq's tests and `shtest`, the `jv_parse.c` translation,
-   JSONTestSuite, the CC BY 3.0 attribution), and the `jq-core` jar carries jq's MIT text. Every spec
+   JSONTestSuite, the CC BY 3.0 attribution), and the `jq-core` jar carries the licence text or
+   notice of every copied or translated source it contains: jq's MIT text, Arm's MIT text once
+   `erf` lands (ADR-0051), and the SunPro notices of ADR-0055 (owner, 2026-11-15). Every spec
    of the milestone was merged through `/run-spec` with its review. (ADR-0013, ADR-0014, ADR-0015,
    ADR-0020, ADR-0021.)
 9. **Hand-over.** `HANDOVER.md` covers: building and running from a clean clone with only JDK 25

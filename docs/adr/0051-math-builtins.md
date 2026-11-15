@@ -1,6 +1,6 @@
 # Math builtins: 25 exact ones with jq-ref's bits, 36 computed ones with jqj's own last digits
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 4 round 1); its ticks are in ADR-0034's spec-4 amendment; findings F-65 and F-69; the licence for 11 builtins is open (issue #105, owner)
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 4 round 1); its ticks are in ADR-0034's spec-4 amendment; findings F-65 and F-69; the licence for 11 builtins is settled by ADR-0055 (owner, 2026-11-15)
 
 jq-ref facts: probes P1–P8 observed by the architect and those marked A by the adviser, on jq 1.8.2
 (spec 4 grilling round 1); Java facts on JDK 25.0.5.

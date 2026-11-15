@@ -6,6 +6,10 @@ names its record; the reasons are there. A "no" on an item reopens that record, 
 
 ## Owner-only (not decided under the delegation)
 
+Answered by the owner on 2026-11-15: item 1 yes (ADR-0055), item 2 yes (GATE check 8 amended),
+item 3 in progress by the owner, item 4 no (GATE check 6 amended to spec 7's reading), and F-103
+yes (WORKFLOW §11).
+
 1. **Licence, issue #105.** May code under the SunPro (fdlibm) notice, or CORE-MATH's once its licence
    is read, be translated for 11 math builtins (`erfc`, `gamma`, `lgamma`, `lgamma_r`, `tgamma`,
    `j0`, `j1`, `jn`, `y0`, `y1`, `yn`)? Until then the fallback is published formulas (DLMF), in
@@ -231,7 +235,8 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   - The full matrix took 92.5 min, against the 45-minute target (O4).
   - Open for you: whether ND OPTIMISED's large intercept is an artefact (reserve 168 KiB), bytes
     per unit by kind, or a larger 512 KiB default.
-  - WORKFLOW §11's branch names disagree with practice (F-103), a WORKFLOW change for you.
+  - WORKFLOW §11's branch names disagree with practice (F-103). Approved by the owner on 2026-11-15
+    and applied.
 - **#113 L1–L4 and #199 (spec 2b run, told not asked).** The seeded re-run showed C1 edges found
   mid-compile, so a JIT edge is now a fixed point (L1). The reserve stays 280 KiB in #113. The side
   probe shows the 220 KB intercept that sets it is an extrapolation artefact (about 105 KB measured at

@@ -926,7 +926,7 @@ class ResolverTest {
    * ADR-0040 #114 "Considered and rejected": an exhaustion switch would lower 2^k nodes for {@code def fi(g):
    * f(i-1)(g|g)}, since an expansion in progress and its closure chain go on past the cap. {@code def f1(g): g|g; def
    * f2(g): f1(g|g); …; f40(.)}: its text is 161 nodes (three in f1's body, four in each of the 39 others, two in the
-   * main call), so its program has at most 161 + 65 536 nodes, and the resolution ends within 20 s. jq-ref 1.8.2 runs
+   * main call), so its program has at most 161 + 65 536 nodes, and the resolution ends within 20 s. Reference jq 1.8.2 runs
    * the chain to f20 and prints null (diff/over-cap.rec {@code over-cap/closure-doubling-20}).
    */
   @Test
@@ -967,7 +967,7 @@ class ResolverTest {
    * K1 of #114: depth counts closures, so a chain that passes a closure on, one level more per call, lifts by depth
    * before 512 nested expansions. {@code def g1(f): f; def gi(f): g(i-1)(f|.+1); …; 0|g511(.)} nests 511 expansions,
    * one fewer than the nesting trigger, and its closure would be past {@code MAX_IR_DEPTH}: it was the IR depth Stub
-   * until #114 (F-54). Now some call is a PLAIN Call, every body is within 512 levels, and it gives jq-ref 1.8.2's 510
+   * until #114 (F-54). Now some call is a PLAIN Call, every body is within 512 levels, and it gives reference jq 1.8.2's 510
    * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log; 599 for g600, diff/over-cap.rec).
    */
   @Test
