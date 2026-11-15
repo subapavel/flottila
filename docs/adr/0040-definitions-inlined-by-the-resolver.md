@@ -50,3 +50,39 @@ Spec 2a compiles no recursion, so every call that compiles is inlined, as ADR-00
 - **Detecting recursion from the expansion stack**: wrongly flags `f(f(.))`.
 - **A Stub for every live recursive def**: stubs `k(r)`, which jq runs.
 - **The cap as a `Limits` field**: public API with no user yet.
+
+## Amendment (ticket #114)
+
+Accepted by the architect under `/run-spec` #106, from the designer's draft and the grilling-adviser's
+rulings K1–K4, Q1–Q4, D1 and D2, made for the owner under the delegation of 2026-11-14. It amends
+"Inline cap", "IR depth" and "Cost" (F-54). "Past the cap" means "would pass": the choice is made
+before the call is lowered.
+
+- Before it lowers a call of a live non-recursive definition, the Resolver reads the call's
+  **expansion measure**: the nodes the expansion would spend and the levels it would reach, closures
+  and nested expansions included. It inlines the call only if `inlined + nodes ≤ INLINE_CAP` and
+  `levels + reach ≤ MAX_IR_DEPTH`. A call whose expansion would pass either bound is a PLAIN `Call`,
+  and so is the 512th nested expansion.
+- A PLAIN call's definition is lifted once and lowered from the worklist. Every later call of it is a
+  Call, even one whose expansion would fit.
+- No call is expanded twice. A compile lowers at most `INLINE_CAP` nodes inside expansions, plus each
+  text once.
+- The measure is computed once per compile, callee-first, by a loop rather than by recursion. It is a
+  linear form of nodes and a max-plus form of levels over the filter parameters in scope. At each
+  call site it takes the larger of the inlined form and the lifted form: a Call plus each closure
+  argument lowered once, because `invoke` lowers a closure for every filter parameter, used or not.
+  For nodes, the sum of the two forms stands for the larger. A fold counts as unfolded.
+- The choice is greedy and top-down: the outermost call that does not fit is lifted (Q1). It may
+  lift more functions than needed. Tests pin results and the node bound, not the number of lifted
+  functions.
+- `spend()` keeps its Stub as a backstop (F-90). Any construct other than a call that goes past
+  `MAX_IR_DEPTH` stays a Stub. A PLAIN call ticks one step.
+- Considered and rejected:
+  - An exhaustion switch. Expansions already in progress and closure chains lower past the cap:
+    2^k nodes for `def fi(g): f(i-1)(g|g)`.
+  - Retrying after TOO_DEEP. It expands a call twice.
+  - Depth that ignores closures. `g600` stays a Stub.
+  - Inlining a lifted definition again where it fits. Each definition would have two shapes, and the
+    only gain is speed.
+  - Lifting as late as possible (the innermost call that overflows). It lifts fewer functions but
+    needs a second measure and a second property. Deferred to spec 6.

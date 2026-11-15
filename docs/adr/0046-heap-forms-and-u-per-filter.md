@@ -152,3 +152,31 @@ C1–C3 for the owner under the delegation of 2026-11-14; F-88.
   from under a hundred `try`s); comparing before adding (overshoots by w − 1); a frame counter in
   every op (hot-path cost); one unit per IR node (frame counts differ by kind); reading the guard
   flags in main code (needs `java.management`, and the reserve is a release constant).
+
+## Amendment (ticket #116)
+
+Accepted by the architect under `/run-spec` #106. It comes from the grilling-adviser's rulings C2 and
+R1, made for the owner under the delegation of 2026-11-14.
+
+**Activations and units of a value-form call (C2)**
+- A value-form call's activation and units end when its `eval` returns. On the driver, the call
+  stays live for as long as its consumer runs, as #109 says.
+- So in OPTIMISED a filter can count fewer live activations on the stack than beyond `U_f`, and its
+  depth verdict can depend on `stackBytes`. That is allowed: a frame that is not held is not
+  counted.
+- Hand-over to the bytecode spec: `D_f` is per backend, and the backend oracle compares the cause of
+  a termination. It can therefore disagree on RECURSION_DEPTH cases, and must leave them out or name
+  them.
+
+**The invariant (R1)**
+- The invariant of the #111 amendment reads "every live push-form or value-form frame".
+- An op's `eval` reaches each child and each starter through no more Java frames than its `run`
+  does.
+- Two properties hold it:
+  - #116's StackWalker property: value form ≤ push form.
+  - #111's `framesStayUnderTheLimit`, run in OPTIMISED on value-eligible recursion.
+
+**Calibration (R1)**
+- Compile mode becomes a dimension of the calibration cells (#113).
+- Whichever of #113 and #116 merges second re-runs the matrix.
+- #116's fresh-JVM `-Xint` 512 KiB cases run OPTIMISED on value-form recursion.

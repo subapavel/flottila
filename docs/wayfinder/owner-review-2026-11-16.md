@@ -48,6 +48,17 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
   - F-87: a termination on the command line prints `jq: error: <message>` and ends 5, ticket #197.
   - ADR-0045 (#107): a label that a lifted function captures is passed as its token, not as a Break
     closure. This is ADR-0005's "captured like a variable".
+  - #114 (over-cap calls): F-54 and the 2b record are amended. `f600` is the nesting trigger's
+    witness, `g600` the depth trigger's, and depth counts closures (K1). ADR-0040's "past the cap" is
+    read as "would pass", a choice made before lowering (K2). The greedy top-down lift is accepted,
+    with lifting as late as possible kept as a spec-6 option (Q1). The expansion measure takes the
+    larger of the inlined and lifted forms per call site (D1). Records: ADR-0040 "Amendment
+    (ticket #114)", F-54.
+  - #116 (value form): in OPTIMISED the value form comes before the tail emitter, so there the
+    Holder path serves only path variants. This amends ADR-0047 bullet 3's "replaces nothing" (C1).
+    A value-form call's activation and units end when its `eval` returns, so in OPTIMISED the
+    recursion-depth verdict can depend on `stackBytes` (C2). Compile mode becomes a calibration
+    dimension (R1). Records: ADR-0047 and ADR-0046 "Amendment (ticket #116)".
 
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 
