@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -279,11 +280,222 @@ class CalibrationTest {
 
   /** A warm child's text: its proof, {@code runs} runs of which run {@code stackAt} ends STACK (none at 0), a control. */
   private static String warmText(Shape shape, int runs, int stackAt, String control) {
+    return warmText(shape, runs, stackAt, STACK, control);
+  }
+
+  /** A warm child's text: its proof, {@code runs} runs of which run {@code badAt} ends {@code bad} (none at 0), a control. */
+  private static String warmText(Shape shape, int runs, int badAt, String bad, String control) {
     StringBuilder out = new StringBuilder("proof\tplatform\t524288\t4371\n");
     for (int run = 1; run <= runs; run++) {
-      out.append(String.join("\t", "warm", "CONSERVATIVE", shape.id(), "101", "5", "96", "131072", "3995", Integer.toString(run), run == stackAt ? STACK : shape.completed())).append('\n');
+      out.append(String.join("\t", "warm", "CONSERVATIVE", shape.id(), "101", "5", "96", "131072", "3995", Integer.toString(run), run == badAt ? bad : shape.completed())).append('\n');
     }
     return out.append(String.join("\t", "warm", "CONSERVATIVE", shape.id(), "101", "5", "96", "131072", "3995", "control", control)).append('\n').toString();
+  }
+
+  /**
+   * L3: at {@code U* + 1} a measured cell ends STACK after a prefix of its shape's reference results, in order, empty
+   * or full, in both tiers ({@code -Xint}'s cold end, each C1 child's end). For first-or that is {@code [],
+   * termination STACK} or {@code [7], termination STACK} and nothing else; for W, {@code [10000]} is the full prefix.
+   * Red: an end that is no STACK ({@code [7], ran out}, another termination, a throw) or results that are no prefix
+   * ({@code [8]}, {@code [7, 7]}, W's {@code [1000]} and {@code [7]}). Unchanged and red: a control that is not plain
+   * STACK, and any STACK in a warm cell. In-process, on rows as {@link CalibrationCell} prints them, with the numbers
+   * of the K5 run at impl/113 078dd0a ({@code .logs/113-calibration-k5.tsv}): CONSERVATIVE on 512 KiB, b 192, reserve
+   * 286 720; first-or D_f 17 ({@code U_f} 1220), {@code -Xint} cold {@code U*} 4730, linked 4790, C1 4430; W D_f 101
+   * ({@code U_f} 1136), C1 {@code U*} 2242.
+   */
+  @Test
+  void anEdgeEndsStackAfterAPrefixOfTheReferenceResults() {
+    Shape firstOr = shape("first-or");
+    Shape w = shape("W");
+    List<String> got = new ArrayList<>();
+    for (String next : List.of("[], termination STACK", "[7], termination STACK", "[7], ran out", "[], termination BUDGET", "[7], termination BUDGET", "[8], termination STACK", "[7, 7], termination STACK", "threw java.lang.StackOverflowError")) {
+      got.add("xint " + next + ": " + provenVerdict(XINT, SMALL, firstOr, List.<String[]>of(searchRow(firstOr, 17, "4790", "[], termination STACK", STACK, "4790,4790")), xintCold(firstOr, 4730, next)));
+    }
+    for (String next : List.of("[], termination STACK", "[7], termination STACK", "[7], ran out", "[7], termination BUDGET", "[8], termination STACK", "[7, 7], termination STACK")) {
+      got.add("c1 " + next + ": " + provenVerdict(C1, SMALL, firstOr, c1Rows(firstOr, 17, "4430", next), null));
+    }
+    for (String next : List.of("[10000], termination STACK", "[1000], termination STACK", "[7], termination STACK")) {
+      got.add("c1 W " + next + ": " + provenVerdict(C1, SMALL, w, c1Rows(w, 101, "2242", next), null));
+    }
+    String flatRow = String.join("\t", "cell", "CONSERVATIVE", "first-or", "17", "5", "192", "286720", "-", "-", "[7], termination STACK", "-");
+    got.add("c1 control: " + provenVerdict(C1, SMALL, firstOr, List.of(flatRow.split("\t"), flatRow.split("\t"), flatRow.split("\t")), null));
+    String good = warmText(firstOr, 60, 0, STACK);
+    got.add("warm: " + warmVerdict(firstOr, List.of(good, warmText(firstOr, 60, 5, "[7], termination STACK", STACK), good)));
+    assertThat(got)
+        .as("the verdicts of first-or and W cells by their end at U* + 1, and first-or's control and warm runs")
+        .isEqualTo(
+            List.of(
+                "xint [], termination STACK: switches",
+                "xint [7], termination STACK: switches",
+                "xint [7], ran out: U*+1 ends [7], ran out",
+                "xint [], termination BUDGET: U*+1 ends [], termination BUDGET",
+                "xint [7], termination BUDGET: U*+1 ends [7], termination BUDGET",
+                "xint [8], termination STACK: U*+1 ends [8], termination STACK",
+                "xint [7, 7], termination STACK: U*+1 ends [7, 7], termination STACK",
+                "xint threw java.lang.StackOverflowError: U*+1 ends threw java.lang.StackOverflowError",
+                "c1 [], termination STACK: switches",
+                "c1 [7], termination STACK: switches",
+                "c1 [7], ran out: U*+1 ends [[], termination STACK, [7], ran out, [], termination STACK]",
+                "c1 [7], termination BUDGET: U*+1 ends [[], termination STACK, [7], termination BUDGET, [], termination STACK]",
+                "c1 [8], termination STACK: U*+1 ends [[], termination STACK, [8], termination STACK, [], termination STACK]",
+                "c1 [7, 7], termination STACK: U*+1 ends [[], termination STACK, [7, 7], termination STACK, [], termination STACK]",
+                "c1 W [10000], termination STACK: switches",
+                "c1 W [1000], termination STACK: U*+1 ends [[], termination STACK, [1000], termination STACK, [], termination STACK]",
+                "c1 W [7], termination STACK: U*+1 ends [[], termination STACK, [7], termination STACK, [], termination STACK]",
+                "c1 control: control [7], termination STACK",
+                "warm: child 2 run 5 at U_f 3995: [7], termination STACK"));
+  }
+
+  /**
+   * L3 in {@link #edgeIsExact}: its expectation for a line accepts, after {@code U*}'s reference result, an end at
+   * {@code U* + 1} that is STACK after a prefix of the shape's reference results, and wants {@code [], termination
+   * STACK} for any other. {@code U*} must still give the reference result, a NEVER_FLAT shape may not be flat, and a
+   * flat shape's line stands. On the K5 run's {@code -Xint} cold edges: first-or 4730, W 3574 (CONSERVATIVE).
+   */
+  @Test
+  void edgeIsExactAcceptsStackAfterAPrefix() {
+    Shape firstOr = shape("first-or");
+    String at = "CONSERVATIVE first-or at U* 4730: ";
+    List<String> lines =
+        List.of(
+            at + "[7], ran out | [7], termination STACK",
+            at + "[7], ran out | [], termination STACK",
+            at + "[7], ran out | [7], ran out",
+            at + "[7], ran out | [8], termination STACK",
+            at + "[7], ran out | [7, 7], termination STACK",
+            at + "[7], ran out | [7], termination BUDGET",
+            at + "[7], termination STACK | [7], termination STACK",
+            "CONSERVATIVE first-or: flat");
+    List<String> got = new ArrayList<>();
+    for (String line : lines) got.add(exactEdgeWant(CompileMode.CONSERVATIVE, firstOr, line));
+    got.add(exactEdgeWant(CompileMode.OPTIMISED, shape("C"), "OPTIMISED C: flat"));
+    got.add(exactEdgeWant(CompileMode.CONSERVATIVE, shape("W"), "CONSERVATIVE W at U* 3574: [10000], ran out | [10000], termination STACK"));
+    got.add(exactEdgeWant(CompileMode.CONSERVATIVE, shape("W"), "CONSERVATIVE W at U* 3574: [10000], ran out | [7], termination STACK"));
+    assertThat(got)
+        .as("edgeIsExact's expectation for each line")
+        .isEqualTo(
+            List.of(
+                at + "[7], ran out | [7], termination STACK",
+                at + "[7], ran out | [], termination STACK",
+                at + "[7], ran out | [], termination STACK",
+                at + "[7], ran out | [], termination STACK",
+                at + "[7], ran out | [], termination STACK",
+                at + "[7], ran out | [], termination STACK",
+                at + "[7], ran out | [7], termination STACK",
+                "CONSERVATIVE first-or: [7], ran out | [], termination STACK",
+                "OPTIMISED C: flat",
+                "CONSERVATIVE W at U* 3574: [10000], ran out | [10000], termination STACK",
+                "CONSERVATIVE W at U* 3574: [10000], ran out | [], termination STACK"));
+  }
+
+  /**
+   * L1: a search repeats from its own result until two consecutive passes agree on {@code U*}; after {@value
+   * CalibrationCell#PASSES} passes without agreement it has no fixed point. A pass that fails at {@code U_f} 0 ends the
+   * search. A fake pass gives the scripted {@code U*} of each call, one more than the search may use, and records the
+   * start of each: the seed, then the {@code U*} of the pass before. A seed that is the edge still takes two passes
+   * (the steady child); 5817 to 5818 and back is a C1 edge found while C1 compiled (the adviser's L1).
+   */
+  @Test
+  void aSearchRepeatsFromItsOwnResultUntilTwoPassesAgree() {
+    assertThat(
+            List.of(
+                passes(5818, 5818, 5818, 5818),
+                passes(5817, 5818, 5818, 5818),
+                passes(5817, 5818, 5817, 5817, 5817),
+                passes(2131, 2138, 2162, 2131, 2131, 2131),
+                passes(5113, 5114, 5121, 5152, 5113, 5113),
+                passes(4430, 4430, -1, 4430),
+                passes(0, -1, 0)))
+        .as("the starts and the U* of each pass, and whether the last two agree")
+        .isEqualTo(
+            List.of(
+                "starts [5818, 5818]: 5818,5818 agreed",
+                "starts [5817, 5818]: 5818,5818 agreed",
+                "starts [5817, 5818, 5817]: 5818,5817,5817 agreed",
+                "starts [2131, 2138, 2162, 2131]: 2138,2162,2131,2131 agreed",
+                "starts [5113, 5114, 5121, 5152]: 5114,5121,5152,5113 no fixed point",
+                "starts [4430, 4430]: 4430,fails no fixed point",
+                "starts [0]: fails no fixed point"));
+  }
+
+  /** {@link CalibrationCell#fixedPoint} from {@code seed} over a fake pass whose n-th call gives {@code edges[n-1]}. */
+  private static String passes(long seed, long... edges) {
+    List<Long> starts = new ArrayList<>();
+    CalibrationCell.Passes p =
+        CalibrationCell.fixedPoint(
+            seed,
+            start -> {
+              starts.add(start);
+              return edges[starts.size() - 1];
+            });
+    return "starts " + starts + ": " + p + (p.agreed() ? " agreed" : " no fixed point");
+  }
+
+  /**
+   * L1 in the matrix: a C1 child whose search found no fixed point prints {@code INVALID} for {@code U*} and its passes,
+   * and the cell is INVALID, naming the child and the passes, even when the other children agree or every child is
+   * INVALID; a child that moved and then agreed counts. The {@code -Xint} linked search shares the path, so an
+   * {@code -Xint} cell whose linked search has no fixed point is INVALID too. First-or CONSERVATIVE on 512 KiB, the K5
+   * run's numbers as in {@link #anEdgeEndsStackAfterAPrefixOfTheReferenceResults}.
+   */
+  @Test
+  void aCellWithoutAFixedPointIsInvalid() {
+    Shape firstOr = shape("first-or");
+    String[] agreed = searchRow(firstOr, 17, "4430", STACK, STACK, "4430,4430");
+    String[] moved = searchRow(firstOr, 17, "4430", STACK, STACK, "4431,4430,4430");
+    String[] unstable = searchRow(firstOr, 17, "INVALID", STACK, STACK, "4431,4438,4445,4452");
+    String[] linked = searchRow(firstOr, 17, "INVALID", STACK, STACK, "4790,4797,4811,4839");
+    assertThat(
+            List.of(
+                provenVerdict(C1, SMALL, firstOr, List.of(agreed, moved, agreed), null),
+                provenVerdict(C1, SMALL, firstOr, List.of(agreed, unstable, moved), null),
+                provenVerdict(C1, SMALL, firstOr, List.of(unstable, unstable, unstable), null),
+                provenVerdict(XINT, SMALL, firstOr, List.<String[]>of(linked), xintCold(firstOr, 4730, STACK))))
+        .as("the verdicts of first-or cells whose children agree, or one or all have no fixed point, and of an -Xint cell whose linked search has none")
+        .isEqualTo(
+            List.of(
+                "switches",
+                "INVALID child 2: U* has no fixed point in passes 4431,4438,4445,4452",
+                "INVALID child 1: U* has no fixed point in passes 4431,4438,4445,4452",
+                "INVALID child 1: U* has no fixed point in passes 4790,4797,4811,4839"));
+  }
+
+  /** Each line of the progress log starts with the ISO-8601 UTC instant it was written at, then a tab. */
+  @Test
+  void progressLinesStartWithTheirInstant() {
+    Instant at = Instant.parse("2026-11-15T09:30:00.250Z");
+    assertThat(
+            List.of(
+                stamped(at, "xint platform 512KiB CONSERVATIVE first-or cold probe 4731: [7], termination STACK"),
+                stamped(at, "c1 platform 512KiB CONSERVATIVE W\nproof\tplatform\t524288\t4371\ncell\tCONSERVATIVE\tW\t101\t5\t192\t286720\t2242\t[], termination STACK\t[], termination STACK\t2242,2242")))
+        .as("the progress log's text for a cold probe line and for a child's block")
+        .isEqualTo(
+            List.of(
+                "2026-11-15T09:30:00.250Z\txint platform 512KiB CONSERVATIVE first-or cold probe 4731: [7], termination STACK\n",
+                "2026-11-15T09:30:00.250Z\tc1 platform 512KiB CONSERVATIVE W\n"
+                    + "2026-11-15T09:30:00.250Z\tproof\tplatform\t524288\t4371\n"
+                    + "2026-11-15T09:30:00.250Z\tcell\tCONSERVATIVE\tW\t101\t5\t192\t286720\t2242\t[], termination STACK\t[], termination STACK\t2242,2242\n"));
+  }
+
+  private static Shape shape(String id) {
+    return SHAPES.stream().filter(s -> s.id().equals(id)).findFirst().orElseThrow();
+  }
+
+  /** A search's {@code cell} row as {@link CalibrationCell} prints it, CONSERVATIVE, T 5, b 192, reserve 286 720. */
+  private static String[] searchRow(Shape shape, long dF, String edge, String next, String control, String passes) {
+    return new String[] {"cell", "CONSERVATIVE", shape.id(), Long.toString(dF), "5", "192", "286720", edge, next, control, passes};
+  }
+
+  /** Three C1 children that agree on {@code edge}; the second ends {@code next} at the edge + 1, the others STACK. */
+  private static List<String[]> c1Rows(Shape shape, long dF, String edge, String next) {
+    String passes = edge + "," + edge;
+    return List.of(searchRow(shape, dF, edge, STACK, STACK, passes), searchRow(shape, dF, edge, next, STACK, passes), searchRow(shape, dF, edge, STACK, STACK, passes));
+  }
+
+  /** An {@code -Xint} cold edge at 512 KiB, D_f 17: its first probe completes at the edge, which + 1 ends {@code next}. */
+  private static Cold xintCold(Shape shape, long edge, String next) {
+    String[] first = {"probe", "CONSERVATIVE", shape.id(), "17", "5", "192", "286720", Long.toString(edge), shape.completed(), STACK};
+    return new Cold(first, edge, next, List.of(4371L));
   }
 
   /**
@@ -391,16 +603,8 @@ class CalibrationTest {
               verdict = "rows from " + rs.size() + " children" + (cold == null ? "" : ", cold " + cold.next());
             } else if (!proven(proofs, tier, thread, mode, shape)) {
               verdict = invalid(proofs, tier, mode, shape, cell);
-            } else if (rs.stream().allMatch(r -> r[7].equals("-")) && (cold == null || cold.edge() == -1)) {
-              verdict = rs.getFirst()[9].equals(shape.completed()) && !NEVER_FLAT.contains(shape.id()) ? "flat" : "control " + rs.getFirst()[9];
-            } else if ((tier == XINT ? coldEdge : linked) < 0) {
-              verdict = "fails at U_f 0: " + (tier == XINT ? cold.next() : rs.getFirst()[8]);
-            } else if (tier == XINT ? !cold.next().equals(STACK) : !rs.stream().allMatch(r -> r[8].equals(STACK))) {
-              verdict = "U*+1 ends " + (tier == XINT ? cold.next() : rs.stream().map(r -> r[8]).toList());
-            } else if (unitLimit(first, thread.bytes()) > (tier == XINT ? coldEdge : linked)) {
-              verdict = "U_f " + unitLimit(first, thread.bytes()) + " past U* " + (tier == XINT ? coldEdge : linked) + ": the backstop first";
             } else {
-              verdict = "switches";
+              verdict = provenVerdict(tier, thread.bytes(), shape, rs, cold);
             }
             got.add(cell + ": " + verdict);
             want.add(cell + ": " + (verdict.equals("flat") ? "flat" : "switches"));
@@ -475,8 +679,7 @@ class CalibrationTest {
         for (Shape shape : SHAPES) {
           String line = get(lines.get(mode + " " + shape.id()));
           got.add(line);
-          String at = line.contains(" at U* ") ? line.substring(0, line.indexOf(':')) : mode + " " + shape.id();
-          want.add(line.endsWith(": flat") && !NEVER_FLAT.contains(shape.id()) ? line : at + ": " + shape.completed() + " | " + STACK);
+          want.add(exactEdgeWant(mode, shape, line));
         }
       }
     }
@@ -612,7 +815,12 @@ class CalibrationTest {
   private static synchronized void progress(String text) throws IOException {
     Path target = Path.of(System.getProperty("basedir", "."), "target");
     Files.createDirectories(target);
-    Files.writeString(target.resolve("calibration-progress.log"), text + "\n", UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    Files.writeString(target.resolve("calibration-progress.log"), stamped(Instant.now(), text), UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+  }
+
+  /** The progress log's lines for {@code text}, written at {@code at}. */
+  static String stamped(Instant at, String text) {
+    return text + "\n";
   }
 
   private static List<String> flags(Tier tier, CellThread thread) {
@@ -715,6 +923,41 @@ class CalibrationTest {
   private static String controlVerdict(Shape shape, String control) {
     if (NEVER_FLAT.contains(shape.id())) return control;
     return control.equals(STACK) || control.equals(shape.completed()) ? "STACK or flat" : control;
+  }
+
+  /**
+   * The verdict of an {@code -Xint} or C1 cell with rows from enough children, every child proven: {@code rows} are its
+   * {@code cell} rows (the linked search's for {@code -Xint}, one per C1 child), {@code cold} an {@code -Xint} cell's
+   * cold edge, null for C1. {@code switches} when {@code U_f} at {@code threadBytes} is at most the edge and the edge + 1
+   * ends as {@link #stackAfterAPrefix} allows; {@code flat} when the control completes and the shape is not {@link
+   * #NEVER_FLAT}.
+   */
+  static String provenVerdict(Tier tier, long threadBytes, Shape shape, List<String[]> rows, Cold cold) {
+    long linked = edge(rows);
+    long coldEdge = cold == null ? -1 : cold.edge();
+    String[] first = rows.getFirst();
+    if (rows.stream().allMatch(r -> r[7].equals("-")) && (cold == null || cold.edge() == -1)) {
+      return rows.getFirst()[9].equals(shape.completed()) && !NEVER_FLAT.contains(shape.id()) ? "flat" : "control " + rows.getFirst()[9];
+    }
+    if ((tier == XINT ? coldEdge : linked) < 0) return "fails at U_f 0: " + (tier == XINT ? cold.next() : rows.getFirst()[8]);
+    if (tier == XINT ? !stackAfterAPrefix(shape, cold.next()) : !rows.stream().allMatch(r -> stackAfterAPrefix(shape, r[8]))) {
+      return "U*+1 ends " + (tier == XINT ? cold.next() : rows.stream().map(r -> r[8]).toList());
+    }
+    if (unitLimit(first, threadBytes) > (tier == XINT ? coldEdge : linked)) {
+      return "U_f " + unitLimit(first, threadBytes) + " past U* " + (tier == XINT ? coldEdge : linked) + ": the backstop first";
+    }
+    return "switches";
+  }
+
+  /** Whether {@code end}, a cell's end at {@code U* + 1}, is the backstop. */
+  static boolean stackAfterAPrefix(Shape shape, String end) {
+    return end.equals(STACK);
+  }
+
+  /** {@link #edgeIsExact}'s expectation for the line it got for {@code shape} in {@code mode}. */
+  static String exactEdgeWant(CompileMode mode, Shape shape, String line) {
+    String at = line.contains(" at U* ") ? line.substring(0, line.indexOf(':')) : mode + " " + shape.id();
+    return line.endsWith(": flat") && !NEVER_FLAT.contains(shape.id()) ? line : at + ": " + shape.completed() + " | " + STACK;
   }
 
   /** The rows of {@code prefix} a child printed, by their shape id (field 2). */
