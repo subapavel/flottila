@@ -347,8 +347,17 @@ class ExpansionMeasureTest {
    * whole cap spent before (the seam), no call fits: {@code g23(f40)} is a PLAIN Call, no node is lowered inside an
    * expansion, and the program's nodes other than Calls are at most its text's 217 (f0's one, three in each of the 40
    * f bodies, six in g1's, four in each of the 22 other g bodies, two in the main filter). It kills the mutant whose
-   * product wraps: the measure is negative, g23 is inlined and the backstop fires. jq-ref 1.8.2 gives 0 (observed
+   * product wraps: the measure is negative, g23 is inlined and the backstop fires. Reference jq 1.8.2 gives 0 (observed
    * 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
+   *
+   * <p>PIT's two survivors in the guard at ExpansionMeasure.java:205. The boundary mutant ({@code >=}) changes a product
+   * only where {@code a = SATURATED / b}, to SATURATED from {@code a·b}, which is then above SATURATED - b and at least
+   * 2^39, past the cap and the depth bound, and a measure only grows: equivalent. The mutant that multiplies ({@code a >
+   * SATURATED * b}) is not shown equivalent, but no filter found kills it: under it every product of one lowering
+   * ({@code times} 1) saturates at once a factor in [2^23, 2^24) or whose low 24 bits are 0 or at least 2^23, so the
+   * doubling chains saturate as they are built (a g24 over {@code (f38, .)}, 2^25 - 2 runs of 2^39 + 1 nodes, still
+   * lifts every definition, .logs/114-edge205-probe3.log), and a wrapped product needs two factors past 2^24 whose low
+   * 24 bits stay in [1, 2^23) at every definition on the way.
    */
   @Test
   void aMeasurePastTwoToTheSixtyThreeSaturates() {

@@ -600,14 +600,21 @@ class IrDepthTest {
    *       changes only which call is lifted: {@code ..} lowers to the one call of {@code recurse/0}, whose own fit is
    *       checked with its own measure where it is lowered, so an enclosing call taken as fitting leaves {@code
    *       recurse/0} to be lifted instead, one function either way, and no assertion the pin rule allows (F-106) can
-   *       see it, so PIT's survivor there is equivalent; the row is the arm's row, its results and the added function;
+   *       see it, so the hand mutant there (the call's measure taken as a parameter's call) is equivalent; PIT's one mutant
+   *       at :438 is killed; the row is the arm's row, its results and the added function;
    *   <li>Native, two levels, or five and its arguments three down: {@code length}, {@code last(.)} (own), {@code
    *       last([[.]])} (shift), {@code range(length; 1)};
    *   <li>a call of a definition: the inlined form ({@code def g: [[.]]; g}, a closure run inside the inlined body),
    *       the lifted form's closure argument a level down ({@code g(.)} and {@code g([[[.]]])} of an unused or a run
    *       closure), a value argument its Binds down, a captured closure, a recursive call (the lifted form alone, a
    *       level), and 64 and 65 value parameters, the two sides of BIND_RUN at :95, :103 and :135, for a definition and
-   *       a recursive one: 64 put the k-th argument k Binds down and the body 64 down, 65 make one Binds;
+   *       a recursive one: 64 put the k-th argument k Binds down and the body 64 down, 65 make one Binds. The inlined
+   *       form puts each value argument where the lifted form put it (:103 then :135, levels the larger), so PIT's
+   *       boundary and increment mutants at :135, which only lower that level, are equivalent;
+   *   <li>a closure argument run in a lifted function's body, measured by {@code evaluated} (:152), its own test
+   *       below. In a lifted body a parameter is a call of no nodes, so PIT's survivor at :149 (its nodes not added)
+   *       is equivalent, and in an inlined body the enclosing call's measure already counts them; the two negated
+   *       conditionals at :143 are equivalent, as a form's uses and its levels above have the same parameters;
    *   <li>MAX_IR_DEPTH, last fitting and first passing: every row, at 512 and 513.
    * </ul>
    *
@@ -739,6 +746,28 @@ class IrDepthTest {
         Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 64, "[[.]]"), 67, "null"),
         Arguments.of(withValueParameters("def v(%s): [[.]]; v(%s)", 65, "."), 4, "[[null]]"),
         Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 65, "[[.]]"), 4, "null"));
+  }
+
+  /**
+   * In a lifted function's body a closure argument that runs the function's own closure parameter ({@code [h]} in
+   * {@code r}) is measured with that parameter taken as a call, a level of its own (ExpansionMeasure.java:152): {@code
+   * k([h])} in 108 brackets inside four {@code w}, 100 brackets each, fits the IR depth in {@code r}'s body; in 109 one
+   * more function is lifted. {@code r} is recursive, so only the count difference is pinned (F-106). Reference jq 1.8.2
+   * gives 509 and 510 brackets around null (.logs/114-jqref-edges.log, the filter texts).
+   */
+  @Test
+  void aClosureArgumentRunningALiftedFunctionsParameterMeetsTheIrDepthAtItsMeasuredLevels() throws InterruptedException {
+    String fits = inLiftedBody(108);
+    int before = functionsOnA16MiBThread(fits).size();
+    assertThat(resultsOnA16MiBThread(fits)).as("results at 512 measured levels in r").containsExactly("[".repeat(509) + "null" + "]".repeat(509));
+    String passes = inLiftedBody(109);
+    assertThat(functionsOnA16MiBThread(passes)).as("functions at 513 measured levels in r, %d at 512", before).hasSize(before + 1);
+    assertThat(resultsOnA16MiBThread(passes)).as("results at 513 measured levels in r").containsExactly("[".repeat(510) + "null" + "]".repeat(510));
+  }
+
+  /** {@code def k(x): x; def w(y): [×100 y ]×100; def r(h): if false then r(h) else w(w(w(w([×j k([h]) ]×j)))) end; r(.)}. */
+  private static String inLiftedBody(int j) {
+    return "def k(x): x; def w(y): " + "[".repeat(PER) + "y" + "]".repeat(PER) + "; def r(h): if false then r(h) else w(w(w(w(" + "[".repeat(j) + "k([h])" + "]".repeat(j) + ")))) end; r(.)";
   }
 
   /**
