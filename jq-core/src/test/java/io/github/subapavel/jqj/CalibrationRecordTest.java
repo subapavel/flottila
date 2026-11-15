@@ -24,9 +24,10 @@ import org.junit.jupiter.params.provider.EnumSource;
  * the test resource {@value #RECORD} and cited in {@code bench/RESULTS.md}. This class reads it in-process and starts
  * no child JVM, so it stays in PIT's test set.
  *
- * <p>From the rows: {@code b} is the largest {@code b_cell}, rounded up to 8 B. The reserve is the largest {@code S -
- * b_cell·(U* + D_f)}, rounded up to 4 KiB, plus 32 KiB, and never below the record's guard pages plus 32 KiB; there is
- * no {@code T} term (D1).
+ * <p>From the rows: {@code b} is the largest {@code b_cell}, rounded up to 8 B. The reserve is the largest linked
+ * intercept {@code S - b_cell·(U*linked + D_f)} plus the largest cold term {@code b_cell·(U*linked - U*cold)} of an
+ * {@code -Xint} cell (ADR-0046 #113 "Rulings on the red", O1), rounded up to 4 KiB, plus 32 KiB, and never below the
+ * record's guard pages plus 32 KiB; there is no {@code T} term (D1).
  */
 class CalibrationRecordTest {
   /** The committed record, a class-path resource of jq-core's tests. */
@@ -65,18 +66,21 @@ class CalibrationRecordTest {
     assertThat(summary).as("the record's summary rows").containsKey("guard");
     long largestSlope = 0;
     long largestIntercept = Long.MIN_VALUE;
+    long largestCold = 0;
     for (String[] r : cells) {
-      // Columns: cell tier kind thread mode shape D_f T b reserve U* spread end(U*+1) control proof b_cell intercept.
-      if (r[15].equals("-")) continue;
-      long slope = Long.parseLong(r[15]);
+      // Columns: cell tier kind thread mode shape D_f T b reserve U*cold U*linked spread end(U*+1) control proof b_cell
+      // b_cold intercept cold.
+      if (r[16].equals("-")) continue;
+      long slope = Long.parseLong(r[16]);
       largestSlope = Math.max(largestSlope, slope);
-      largestIntercept = Math.max(largestIntercept, Long.parseLong(r[3]) - slope * (Long.parseLong(r[10]) + Long.parseLong(r[6])));
+      largestIntercept = Math.max(largestIntercept, Long.parseLong(r[3]) - slope * (Long.parseLong(r[11]) + Long.parseLong(r[6])));
+      if (r[10].matches("\\d+")) largestCold = Math.max(largestCold, slope * (Long.parseLong(r[11]) - Long.parseLong(r[10])));
     }
     assertThat(largestSlope).as("the largest b_cell of the record").isPositive();
     long guard = Long.parseLong(summary.get("guard"));
     Units units = CalibrationCell.units(CallRuns.F, mode);
     assertThat(List.of(units.bytesPerUnit(), units.reserve()))
-        .as("%s: b and the reserve of explain() against the record's maxima (largest b_cell %d, largest intercept %d, guard pages %d bytes)", mode, largestSlope, largestIntercept, guard)
-        .isEqualTo(List.of(Math.ceilDiv(largestSlope, 8) * 8, Math.max(Math.ceilDiv(largestIntercept, 4 * KIB) * 4 * KIB + 32 * KIB, guard + 32 * KIB)));
+        .as("%s: b and the reserve of explain() against the record's maxima (largest b_cell %d, largest linked intercept %d, largest cold term %d, guard pages %d bytes)", mode, largestSlope, largestIntercept, largestCold, guard)
+        .isEqualTo(List.of(Math.ceilDiv(largestSlope, 8) * 8, Math.max(Math.ceilDiv(largestIntercept + largestCold, 4 * KIB) * 4 * KIB + 32 * KIB, guard + 32 * KIB)));
   }
 }

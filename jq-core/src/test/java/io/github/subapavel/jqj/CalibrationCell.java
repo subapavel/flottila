@@ -37,11 +37,16 @@ import java.util.concurrent.atomic.AtomicReference;
  *       result, from {@code floorDiv(S - reserve, b) - D_f} by gallop and bisection: {@code cell <mode> <id> <D_f> <T>
  *       <b> <reserve> <U*> <end at U*+1> <control>}, {@code U*} {@code -} for a flat shape (its control completes) and
  *       {@code fails} for one that does not complete at {@code U_f} 0;
+ *   <li>{@code probe <id> <U|-> [control]}: one run at {@code stackBytesFor(U)}, the child's first ({@code -}: at
+ *       {@code U_f(S)}), then the control if asked: {@code probe <mode> <id> <D_f> <T> <b> <reserve> <U> <end>
+ *       <control|->}; the parent's bisection over such children gives the cold edge;
+ *   <li>{@code linked <id> [seed]}: two linking runs at {@code U_f} 64, then {@code search} in the child: the linked
+ *       edge, as a {@code cell} row; {@code search <id> warm [seed]} warms up first (JIT cells);
  *   <li>{@code edge}: the ends at {@code U* - 1}, {@code U*} and {@code U* + 1}: {@code edge <mode> <id> <U*> <end>
  *       <end> <end>};
  *   <li>{@code native}: each of {@link #NATIVES} at the thread's size: {@code native <mode> <id> <end>};
- *   <li>{@code heap}: {@link CallRuns#F} on n = 10⁵ and 2·10⁵ with {@code stackBytes} 0 and 512 KiB; at the first
- *       emit, two {@code System.gc()} and the used heap: {@code heap <mode> <stackBytes> <n> <used> <end>
+ *   <li>{@code heap}: each of {@link #HELD} on n = 10⁵ and 2·10⁵ with {@code stackBytes} 0 and 512 KiB; at the first
+ *       emit, two {@code System.gc()} and the used heap: {@code heap <mode> <id> <stackBytes> <n> <used> <end>
  *       <maxMemory>}.
  * </ul>
  *
@@ -79,12 +84,14 @@ final class CalibrationCell {
    * PLAIN calls of IrDepthTest's 30 001-level filter does. That filter is a Stub until #114 lifts it (IrDepthTest
    * {@code aFilterOf30001LevelsIsAStub}); a RECURSIVE call weighs its units as a PLAIN one does (#114), so the
    * recursion is its stand-in here. As in #114's filter nothing rises above the call's result but one step, {@code |
-   * $n}.
+   * $n}. It is the 13th shape (ADR-0046 #113 "Rulings on the red"); #114 adds its PLAIN-call filter as a 14th after it
+   * merges, and re-runs the matrix.
    */
   static final String COLLECT_DESCENT = "def c: if . == 0 then 0 else . as $n | " + "[".repeat(100) + "$n - 1 | c" + "]".repeat(100) + " | $n end; 300 | c";
 
   /**
-   * The shapes of ADR-0046 #113 (K4), and F-95's Collect-heavy descent: Spike A's T, E, M and N on {@link #ONES}; the
+   * The 13 shapes of ADR-0046 #113 (K4 and "Rulings on the red"), F-95's Collect-heavy descent the 13th; #114 adds a
+   * 14th, its PLAIN-call filter of 300 calls under 100 Collects each. Spike A's T, E, M and N on {@link #ONES}; the
    * wide body W; the closure chain C; the nested drivers ND; F-30's {@code [..]|length} on DEEP; #111's collect,
    * reduce, first-or and hold; and {@link #COLLECT_DESCENT}.
    */
@@ -216,13 +223,14 @@ final class CalibrationCell {
     List<CompileMode> modes = Arrays.stream(args[3].split(",")).map(CompileMode::valueOf).toList();
     List<String> ids = args.length > 4 ? List.of(args[4].split(",")) : List.of();
     String extra = args.length > 5 ? args[5] : "";
+    String more = args.length > 6 ? args[6] : "";
     AtomicReference<Throwable> failure = new AtomicReference<>();
     Runnable work =
         () -> {
           try {
             System.out.println("proof\t" + kind + "\t" + thread + "\t" + proof());
             for (CompileMode mode : modes) {
-              run(action, thread, mode, ids, extra);
+              run(action, thread, mode, ids, extra, more);
             }
           } catch (Throwable t) {
             failure.set(t);
@@ -239,8 +247,26 @@ final class CalibrationCell {
     }
   }
 
-  private static void run(String action, long thread, CompileMode mode, List<String> ids, String extra) {
+  private static void run(String action, long thread, CompileMode mode, List<String> ids, String extra, String more) {
     switch (action) {
+      case "probe" -> {
+        // One run, the first of this child (the cold edge of ADR-0046 #113 "Rulings on the red"); "-" probes U_f(S).
+        Shape shape = shapes(SHAPES, ids).getFirst();
+        Units u = units(shape.filter(), mode);
+        long unitLimit = extra.equals("-") ? Math.max(0, u.unitLimitAt(thread)) : Long.parseLong(extra);
+        String end = ended(shape, u.stackBytesFor(unitLimit), mode);
+        String control = more.equals("control") ? ended(shape, GIB, mode) : "-";
+        row("probe", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), unitLimit, end, control);
+      }
+      case "linked" -> {
+        // The linked edge: two linking runs that switch after 64 units, then the search in this child.
+        for (Shape shape : shapes(SHAPES, ids)) {
+          Units u = units(shape.filter(), mode);
+          ended(shape, u.stackBytesFor(64), mode);
+          ended(shape, u.stackBytesFor(64), mode);
+          search(shape, thread, mode, u, extra.isEmpty() ? -1 : Long.parseLong(extra));
+        }
+      }
       case "proof" -> {
         // The proof line only.
       }
@@ -261,7 +287,7 @@ final class CalibrationCell {
               ended(shape, u.stackBytesFor(300), mode);
             }
           }
-          search(shape, thread, mode, u);
+          search(shape, thread, mode, u, more.isEmpty() ? -1 : Long.parseLong(more));
         }
       }
       case "edge" -> {
@@ -282,9 +308,11 @@ final class CalibrationCell {
         }
       }
       case "heap" -> {
-        for (long stackBytes : new long[] {0, 512 * 1024L}) {
-          for (long n : new long[] {100_000, 200_000}) {
-            heap(mode, stackBytes, n);
+        for (Map.Entry<String, String> held : HELD.entrySet()) {
+          for (long stackBytes : new long[] {0, 512 * 1024L}) {
+            for (long n : new long[] {100_000, 200_000}) {
+              heap(mode, held.getKey(), held.getValue(), stackBytes, n);
+            }
           }
         }
       }
@@ -292,14 +320,17 @@ final class CalibrationCell {
     }
   }
 
-  /** The gallop and bisection of the #113 design, from {@code floorDiv(S - reserve, b) - D_f}. */
-  private static void search(Shape shape, long thread, CompileMode mode, Units u) {
+  /**
+   * The gallop and bisection of the #113 design in this child, from {@code seed} (the committed record's edge), or
+   * from {@code floorDiv(S - reserve, b) - D_f} when it is negative.
+   */
+  private static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
     String control = ended(shape, GIB, mode);
     if (!control.equals(STACK)) {
       row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "-", "-", control);
       return;
     }
-    long start = Math.max(0, u.unitLimitAt(thread));
+    long start = seed >= 0 ? seed : Math.max(0, u.unitLimitAt(thread));
     long lo;
     long hi;
     String first = ended(shape, u.stackBytesFor(start), mode);
@@ -337,10 +368,22 @@ final class CalibrationCell {
     row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), lo, ended(shape, u.stackBytesFor(lo + 1), mode), control);
   }
 
-  /** {@link CallRuns#F} on {@code n}: the used heap after two collections at its first emit, all activations live. */
-  private static void heap(CompileMode mode, long stackBytes, long n) {
+  /**
+   * The held generators of the heap measurement (ADR-0046 #113 "Rulings on the red"): each leaf emits twice, so at the
+   * first emit every activation is still live. On n each gives n twice (jq-ref 1.8.2 at n = 100 000 and 200 000,
+   * observed 2026-11-15 with -c, .logs/113-jqref-heap.log of the test-author's run).
+   */
+  static final Map<String, String> HELD =
+      new LinkedHashMap<>(
+          Map.of(
+              "F-held", "def f: if . == 0 then (0, 0) else (. - 1 | f) + 1 end; f",
+              "F-held-try16", "def f: if . == 0 then (0, 0) else " + "try (".repeat(16) + "(. - 1 | f) + 1" + ")".repeat(16) + " end; f",
+              "C-held", "def c(f): if .==0 then (f, f) else (.-1|c(f+1)) end; c(0)"));
+
+  /** {@code filter} on {@code n}: the used heap after two collections at its first emit, every activation live. */
+  private static void heap(CompileMode mode, String id, String filter, long stackBytes, long n) {
     JqEngine engine = engine(stackBytes, mode);
-    JqFilter compiled = engine.compile(CallRuns.F);
+    JqFilter compiled = engine.compile(filter);
     Workspace workspace = engine.newWorkspace();
     JqValue root = read(workspace, Long.toString(n).getBytes(US_ASCII)).root();
     long[] used = {-1};
@@ -362,7 +405,7 @@ final class CalibrationCell {
     } catch (JqTermination t) {
       end = "termination " + t.cause();
     }
-    row("heap", mode, stackBytes, n, used[0], values + ", " + end, Runtime.getRuntime().maxMemory());
+    row("heap", mode, id, stackBytes, n, used[0], values + ", " + end, Runtime.getRuntime().maxMemory());
   }
 
   private static List<Shape> shapes(List<Shape> all, List<String> ids) {
