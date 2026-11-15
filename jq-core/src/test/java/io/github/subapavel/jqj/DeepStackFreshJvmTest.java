@@ -3,21 +3,17 @@ package io.github.subapavel.jqj;
 import static io.github.subapavel.jqj.RunBudgets.NONE;
 import static io.github.subapavel.jqj.RunBudgets.read;
 import static java.nio.charset.StandardCharsets.US_ASCII;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.subapavel.jqj.RunBudgets.Results;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.value.JqValue;
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -67,7 +63,7 @@ class DeepStackFreshJvmTest {
   }
 
   /**
-   * {@code b} is the largest over the tiers: declaring 1 MiB on a 1 MiB thread puts more units of each recursion on
+   * {@code b} is the largest over {@code -Xint} and C1, and proven in the warm default JIT (ADR-0046 #113, K1): declaring 1 MiB on a 1 MiB thread puts more units of each recursion on
    * the Java stack before the switch, and the frames per unit of every tier still fit.
    */
   @ParameterizedTest
@@ -102,7 +98,7 @@ class DeepStackFreshJvmTest {
     assertThat(reserve).as("the reserve against %s pages of %d bytes (%d bytes) and 32 KiB for natives", pages, pageSize, guard).isGreaterThanOrEqualTo(guard + 32 * KIB);
   }
 
-  /** What a fresh child JVM printed, run with {@code flags} and {@code args}; it must end within 300 s with code 0. */
+  /** What a fresh child JVM ({@link ChildJvm}) printed, run with {@code flags} and {@code args}. */
   private String runChild(List<String> flags, String... args) throws IOException, InterruptedException {
     List<String> command = new ArrayList<>();
     command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
@@ -113,21 +109,7 @@ class DeepStackFreshJvmTest {
   }
 
   private String command(List<String> command) throws IOException, InterruptedException {
-    File out = Files.createTempFile(dir, "child", ".out").toFile();
-    ProcessBuilder launch = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(out);
-    // Each would reach the child's command line, and an agent there would make it the instrumented case.
-    launch.environment().remove("JAVA_TOOL_OPTIONS");
-    launch.environment().remove("JDK_JAVA_OPTIONS");
-    launch.environment().remove("_JAVA_OPTIONS");
-    Process child = launch.start();
-    try {
-      assertThat(child.waitFor(300, TimeUnit.SECONDS)).as("%s ends within 300 s", command.getFirst()).isTrue();
-      String printed = Files.readString(out.toPath(), UTF_8);
-      assertThat(child.exitValue()).as("the exit code of %s, which printed %s", command.getFirst(), printed).isZero();
-      return printed;
-    } finally {
-      child.destroyForcibly();
-    }
+    return ChildJvm.command(dir, command);
   }
 
   /**

@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.subapavel.jqj.RunBudgets.Results;
 import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import io.github.subapavel.jqj.value.JqValue;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -73,8 +74,8 @@ class StackUnitsTest {
             Long.parseLong(facts.get("bytesPerUnit")),
             Long.parseLong(facts.get("reserve")));
     assertThat(c.bytesPerUnit()).as("%s: b", mode).isPositive();
-    // ADR-0046 #111: the provisional reserve is 128 KiB until #113 calibrates it.
-    assertThat(c.reserve()).as("%s: the reserve", mode).isEqualTo(128 * 1024L);
+    // ADR-0046 #113 (K6): the reserve explain() shows is the release constant.
+    assertThat(c.reserve()).as("%s: the reserve", mode).isEqualTo(StackUnits.reserve());
     return c;
   }
 
