@@ -82,6 +82,15 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     - A second nightly job runs, as a check only (ADR-0014's nightly sentence).
     - The 4 194 304 depth default stays open. If the heap numbers arrive after Monday morning, it is
       the owner's to decide.
+  - #119 (recursion diagnostics), from the adviser's rulings C1–C6 and O1–O4:
+    - ADR-0020 amendment (#119): one bench class reaches the compile-mode switch by reflection,
+      class path only, read back in `@Setup`.
+    - ADR-0019 amendment (#119): `walk` and `[paths]` rows are owed by spec 3; jq-ref times stand
+      beside the 2b diagnostic rows with no ratio.
+    - The ticket stays class B. Its 13 `bench/<name>.1k` ids freeze with the filters at the measured
+      caps.
+    - For information: the conservative B/op rows at 10⁶ are heap-per-level evidence for the open
+      4 194 304 depth default.
 
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 

@@ -435,6 +435,11 @@ closure for its parameter. An emit to a consumer that may read counts as a read 
 Whether a filter may read its input as the elements of one array, one at a time (ELEMENTS), or
 needs it whole (WHOLE, the safe value); ADR-0054's syntactic test.
 
+**Analyses gain**:
+A filter's conservative-compile time over its optimised-compile time, measured in the same session.
+It holds no reference time, so it is no speed factor (ADR-0019 #119).
+_Avoid_: optimisation factor.
+
 **Analysis**:
 A pass over the IR that proves a property a backend can use: cardinality, path shape, root use,
 touched fields.
