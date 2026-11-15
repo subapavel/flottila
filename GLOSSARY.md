@@ -486,7 +486,8 @@ _Avoid_: max depth.
 
 **Specialisation cap**:
 How many nodes specialisation may copy in one compile, `SPECIALISE_CAP`; a group and its argument
-tuple are copied whole or not at all (ADR-0045).
+tuple are copied whole or not at all (ADR-0045). A filter may demand more than the cap; ADR-0045 #117
+names the corpus filters refused by design.
 _Avoid_: inline cap.
 
 ## Running
