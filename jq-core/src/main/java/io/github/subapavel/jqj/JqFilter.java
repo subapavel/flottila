@@ -72,8 +72,9 @@ public final class JqFilter {
    * outside semver. Main, then each function of the frozen program, the specialised one in the optimised compile
    * (ADR-0045 #117), one line per node: its function ({@code main} or
    * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
-   * UTF-8 bytes, then its facts as {@code name=value}. A Call shows {@code call=PLAIN} or {@code call=RECURSIVE} and
-   * {@code callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
+   * UTF-8 bytes, then its facts as {@code name=value}. A Call shows its kind, {@code
+   * call=<PLAIN|RECURSIVE|TAIL_SELF|TAIL_GROUP>}, no tail kind in the conservative compile (ADR-0047 #118), and {@code
+   * callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
    * card=<NONE|ONE|AT_MOST_ONE|MANY>}, MANY everywhere in the conservative compile, then whether it may break out,
    * {@code breaks=<true|false>}, true everywhere in the conservative compile, then its run form, {@code
    * form=<push|value>}, value only where its cardinality is at most one and it may not break out. Each function's

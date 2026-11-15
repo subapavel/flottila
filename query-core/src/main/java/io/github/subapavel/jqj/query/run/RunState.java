@@ -95,6 +95,15 @@ public final class RunState {
   /** The token a Break marked and its Label has not taken back yet, or 0 for none: a false then is a stop. */
   private long breakTo;
 
+  /** The pending jump's target (ADR-0047 and its #118 amendment), or null when no jump is pending. */
+  private Object jumpTarget;
+
+  /** The pending jump's frame, or null when no jump is pending. */
+  private Object[] jumpFrame;
+
+  /** The pending jump's input, or null when no jump is pending. */
+  private Object jumpInput;
+
   /** The monotonic clock in nanoseconds that the deadline reads: {@link System#nanoTime()} outside the tests. */
   private final LongSupplier clock;
 
@@ -167,7 +176,8 @@ public final class RunState {
    * the trampoline (ADR-0046 and its #111 amendment); the stack units count from zero. A primed read's ticks count
    * against it, the
    * writer's outside a run do not; without a primed read it starts from no tick. The bytes built and written and the
-   * live activations count from zero, the label tokens from 1, and no break is marked (ADR-0008).
+   * live activations count from zero, the label tokens from 1, no break is marked (ADR-0008) and no jump is pending
+   * (ADR-0047 #118).
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
@@ -195,20 +205,57 @@ public final class RunState {
     unitLimit = UNLIMITED;
     labels = 0;
     breakTo = 0;
+    clearJump();
     start = clock.getAsLong();
     refill(kept);
   }
 
   /**
-   * Ends the running run, however it ended: every budget is unlimited until the next {@link #begin}, and
-   * {@link #steps()} goes on from the run's count.
+   * Ends the running run, however it ended: every budget is unlimited until the next {@link #begin}, {@link #steps()}
+   * goes on from the run's count, and a pending jump is cleared, so no value stays pinned between runs (ADR-0047,
+   * ADR-0034).
    */
   public void end() {
     running = false;
     builtBudget = UNLIMITED;
     writtenBudget = UNLIMITED;
     depthBudget = UNLIMITED;
+    clearJump();
     fill(steps(), UNLIMITED);
+  }
+
+  /**
+   * Sets the pending jump (ADR-0047 and its #118 amendment): a tail call's {@code target}, the {@code frame} of the
+   * activation it jumps from and its {@code in}put. The tail call then returns at once; the entry loop of that
+   * activation, the one running in {@code frame}, takes the jump with {@link #clearJump} and re-enters there, so the
+   * jump holds no Java frame and no further activation.
+   */
+  public void jump(Object target, Object[] frame, Object in) {
+    jumpTarget = target;
+    jumpFrame = frame;
+    jumpInput = in;
+  }
+
+  /** The pending jump's target, or null when no jump is pending. */
+  public Object jumpTarget() {
+    return jumpTarget;
+  }
+
+  /** The frame of the activation the pending jump jumps from, or null when no jump is pending. */
+  public Object[] jumpFrame() {
+    return jumpFrame;
+  }
+
+  /** The pending jump's input, or null when no jump is pending. */
+  public Object jumpInput() {
+    return jumpInput;
+  }
+
+  /** No jump is pending: the entry loop takes the jump, and {@link #begin} and {@link #end} clear it. */
+  public void clearJump() {
+    jumpTarget = null;
+    jumpFrame = null;
+    jumpInput = null;
   }
 
   /**

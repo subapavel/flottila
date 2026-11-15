@@ -37,6 +37,7 @@ public abstract sealed class Op
         AdvanceOp,
         OuterVarOp,
         CallOp,
+        JumpOp,
         ParamCallOp {
   /**
    * Whether this op runs by {@link #eval} (ADR-0047 #116): its cardinality is at most one and it may not break out. A

@@ -2,7 +2,7 @@ package io.github.subapavel.jqj;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.subapavel.jqj.ExplainTest.Line;
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -26,7 +26,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * caller itself and TAIL_GROUP when it calls another function of the group; {@link JqFilter#explain()} prints it as
  * {@code call=}. The conservative compile stores no tail kind.
  *
- * <p>Lines are read with ExplainTest's {@link Line}, one field at a time. A node line is one whose first field is its
+ * <p>Lines are read with ExplainLines' {@link Line}, one field at a time. A node line is one whose first field is its
  * body's column, {@code main} or {@code fn<place>}; a function line names its jq name, {@code _until/0} for until's
  * inner function, and a copy's shows {@code copyOf=}. A selection names the jq names of the caller and the callee, and
  * for the prelude loops only the copies #117 makes for main's closed arguments, whose self-calls are the jumps.
