@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj;
 
 import static io.github.subapavel.jqj.PreludeSignatures.DEFINITIONS;
+import static io.github.subapavel.jqj.PreludeSignatures.LIFTED;
 import static io.github.subapavel.jqj.PreludeSignatures.STUBS;
 import static io.github.subapavel.jqj.PreludeSignatures.call;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,10 +12,11 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Every prelude definition, called as {@code name(.;…)}, compiles or is a Stub exactly as {@link PreludeSignatures#STUBS}
- * pins it at #73 (ADR-0042: a live prelude body is bound, checked and lowered; an unbuilt native or a recursive group
- * is a Stub). Through the exported API: a resolver that stubs every prelude call fails the 52 that compile, and one
- * that lowers an unbuilt native or a recursive group fails the Stubs. The Stub text is never asserted, only its prefix
- * (GLOSSARY "Stub").
+ * pins it at #110 (ADR-0042: a live prelude body is bound, checked and lowered; an unbuilt native is a Stub; since its
+ * #110 amendment a recursive group lifts to a function). Through the exported API: a resolver that stubs every prelude
+ * call fails the 62 that compile, one that still stubs a recursive group fails the ten of {@link
+ * PreludeSignatures#LIFTED}, and one that lowers an unbuilt native fails the Stubs. The Stub text is never asserted,
+ * only its prefix (GLOSSARY "Stub").
  */
 class PreludeCompileTest {
   private static final String MARK = "jqj stub: ";
@@ -32,11 +34,15 @@ class PreludeCompileTest {
     assertThat(wrong).as("prelude calls whose compile differs from the pinned list").isEmpty();
   }
 
-  /** The pinned list itself: 54 Stubs among the 106 definitions, so 52 calls must compile (78 and 28 at #71, 60 and 46 at #72). */
+  /**
+   * The pinned list itself: 44 Stubs among the 106 definitions, so 62 calls must compile (78 and 28 at #71, 60 and 46 at
+   * #72, 54 and 52 at #73). The ten recursive definitions that left at #110 are definitions and no Stub.
+   */
   @Test
   void thePinnedStubsAreDefinitions() {
-    assertThat(DEFINITIONS).as("builtin.jq's definitions").hasSize(106).containsAll(STUBS);
-    assertThat(STUBS).as("the pinned Stubs").hasSize(54);
+    assertThat(DEFINITIONS).as("builtin.jq's definitions").hasSize(106).containsAll(STUBS).containsAll(LIFTED);
+    assertThat(STUBS).as("the pinned Stubs").hasSize(44).doesNotContainAnyElementsOf(LIFTED);
+    assertThat(LIFTED).as("the recursive definitions that lift a function").hasSize(10);
   }
 
   /** "compiles", "stub", or the class and message of any other compile error. */

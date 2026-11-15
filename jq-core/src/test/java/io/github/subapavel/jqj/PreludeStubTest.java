@@ -7,48 +7,37 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import org.junit.jupiter.api.Test;
 
 /**
- * The prelude's Stubs at #71 (spec 2a "Prelude", ADR-0042): {@code ..} and the recursive definitions until 2b, an
- * unbuilt native reached from a prelude body, and a replaced definition whose native is not built. Only the Stub
+ * The prelude's Stubs (spec 2a "Prelude", ADR-0042): an unbuilt native reached from a prelude body, a replaced
+ * definition whose native is not built, and the recursive definitions that also reach spec 3's paths. Only the Stub
  * prefix is asserted (GLOSSARY "Stub"). These cases are Stubs before #71 too; what makes them a check is the twin in
- * each test that compiles, and {@link PreludeCompileTest}. An entry leaves this class with its Stub (2b for the
- * recursive ones, #72 for {@code flatten}, spec 4 for {@code ltrimstr}); that is not a weakened test.
+ * each test that compiles, and {@link PreludeCompileTest}. An entry leaves this class with its Stub, which is not a
+ * weakened test: #72 for {@code flatten}; #110 for {@code ..}, {@code recurse} and {@code limit(3; repeat(1))}
+ * (ADR-0042 amendment for #110), which RecursivePreludeTest, PreludeLiftTest and diff/rec-prelude.cases now run;
+ * spec 4 for {@code ltrimstr}.
  */
 class PreludeStubTest {
   private static final String MARK = "jqj stub: ";
   private static final JqEngine ENGINE = JqEngine.builder().build();
 
-  /** {@code ..} is a call of recurse/0 (parser.y), which reaches recurse/1, a recursive group. */
-  @Test
-  void dotDotIsAStub() {
-    assertStub("[..]");
-  }
-
-  /** The same call by name; its non-recursive neighbour first/0 compiles. */
-  @Test
-  void recurseIsAStub() {
-    assertStub("[recurse]");
-    assertCompiles("[first]");
-  }
-
-  /** walk/1's nested {@code w} calls itself; map/1, which w also calls, compiles alone. */
+  /**
+   * walk/1's nested {@code w} calls itself, which #110 lifts; its Stub is spec 3's: w calls map_values/1, an update
+   * operator ({@code .[] |= f}). map/1, which w also calls, compiles alone.
+   */
   @Test
   void walkIsAStub() {
     assertStub("walk(.)");
     assertCompiles("map(.)");
   }
 
-  /** paths/0 reaches path/1 (spec 3) and recurse; select/1, its other callee, compiles alone. */
+  /**
+   * paths/0 calls recurse/0, which #110 lifts, inside {@code path/1}, spec 3's Stub; select/1, its other callee,
+   * compiles alone, and so does {@code [recurse]} since #110.
+   */
   @Test
   void pathsIsAStub() {
     assertStub("[paths]");
     assertCompiles("[select(true)]");
-  }
-
-  /** repeat/1 is recursive; the limit around it is not what stubs: limit over a range compiles. */
-  @Test
-  void limitOverRepeatIsAStub() {
-    assertStub("[limit(3; repeat(1))]");
-    assertCompiles("[limit(3; range(10))]");
+    assertCompiles("[recurse]");
   }
 
   /** ltrimstr/1 reaches startswith, an unbuilt native of spec 4. */

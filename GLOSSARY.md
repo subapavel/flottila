@@ -408,6 +408,11 @@ needs it whole (WHOLE, the safe value); ADR-0054's syntactic test.
 A pass over the IR that proves a property a backend can use: cardinality, path shape, root use,
 touched fields.
 
+**May break out**:
+The fact that a run of an IR node may end by a Break to a label activation it did not start: it
+holds a Break to a label outside it, any ParamCall, or a Call to a function that may. Such a node
+never runs in the value form, and its safe value is true (ADR-0007 #115).
+
 **Freeze id**:
 A node's pre-order number in its body (main or one function), from 0; the key of every fact
 (ADR-0045, ADR-0007).

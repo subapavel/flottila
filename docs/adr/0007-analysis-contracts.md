@@ -1,6 +1,6 @@
 # Analysis contracts
 
-Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0008 (issue #7); amended by ADR-0022 (issue #8); fact keys by ADR-0045 and cardinality's promise by F-56 (spec 2b); holds by F-77 and root use by ADR-0054 (spec 5); path shape's 10 000-step rule, the path-rule and P6 validity rows and bound values by spec 3 grilling (rounds 1–2; ADR-0048, F-59); may read input, hold sites, a hold's detach and path shape's read rule by spec 5 round 2 (F-79, F-80); the cardinality lattice, rules and fixpoint by ticket #112
+Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0008 (issue #7); amended by ADR-0022 (issue #8); fact keys by ADR-0045 and cardinality's promise by F-56 (spec 2b); holds by F-77 and root use by ADR-0054 (spec 5); path shape's 10 000-step rule, the path-rule and P6 validity rows and bound values by spec 3 grilling (rounds 1–2; ADR-0048, F-59); may read input, hold sites, a hold's detach and path shape's read rule by spec 5 round 2 (F-79, F-80); the cardinality lattice, rules and fixpoint by ticket #112; may-break-out by ticket #115
 
 Analyses run once on a frozen program and write an immutable side table of facts, keyed by a dense
 node id: freeze numbers each function's nodes in pre-order into an identity map, and each fact is an
@@ -154,3 +154,29 @@ Accepted 2026-11-15, architect under `/run-spec` #106; designer draft.
 - Considered: ParamCall as the join over call sites (callers would feed callees, so there is no
   callee-first order, e.g. `def k: g(k)`); NONE as the start (loses ONE in recursion); a summary
   per closure tuple (up to 5^k per function, and no 2b consumer reads it).
+
+## Amendment (ticket #115)
+
+Accepted 2026-11-15, architect under `/run-spec` #106; designer draft.
+
+- May break out is true for a node when a run of it may end by a Break to a Label activation the run
+  did not start. A function's value is its body root's. CONSERVATIVE stores true. The value form
+  needs it false.
+- Each node has a lowest target:
+  - a Break's is the freeze id of the Label that binds its slot in the body, or −1 when no Label
+    there binds it (a token passed in as a value);
+  - a ParamCall's is −1;
+  - a Call's is −1 when its callee may break out, and otherwise the lowest of its closures' and
+    values';
+  - Identity, Const and Var have none;
+  - every other kind takes the lowest of its parts, since no catch set holds a break (ADR-0008).
+
+  A node may break out when its lowest target is below its own freeze id. This is ADR-0008's rule:
+  the IrVerifier makes a Break's Label an ancestor in the same body and the only node that binds its
+  slot.
+- The fixpoint runs callee-first over the recursive groups, main last, each group from false, with a
+  body read in descending freeze id. A group shares one value, so it ends after its second round.
+- Considered: a set of label slots per node (same answer, allocates); a ParamCall joined over its
+  call sites (no callee-first order, as for cardinality); a Call that breaks only to the labels whose
+  tokens it passes (nothing reads that precision before S2b.11); fusing it into the cardinality walk
+  (ties two tested rule sets together to save one walk).

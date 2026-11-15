@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import io.github.subapavel.jqj.JqCompileException;
+import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.ir.Advance;
 import io.github.subapavel.jqj.query.ir.Alt;
 import io.github.subapavel.jqj.query.ir.AltBind;
@@ -30,6 +32,7 @@ import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.value.JqValue;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +63,24 @@ final class ParseAssertions {
         .as("resolve of %s", show(text))
         .isThrownBy(() -> ir(text))
         .withMessageStartingWith(MARK);
+  }
+
+  /**
+   * Each of {@code texts} parses, resolves with no Stub, and the Compiler accepts its program (its verifier checked it):
+   * a construct the resolver lowers whole. The entries that ended with {@code | ..} as their Stub marker assert this
+   * since #110 built {@code ..} (ADR-0042 amendment for #110). The failure lists every text that does not, with what it
+   * threw.
+   */
+  static void allCompile(List<String> texts) {
+    List<String> failed = new ArrayList<>();
+    for (String text : texts) {
+      try {
+        Compiler.compile(Resolver.resolve(Parser.parse(text)), 0, CompileMode.OPTIMISED);
+      } catch (RuntimeException e) {
+        failed.add(show(text) + " -> " + e);
+      }
+    }
+    assertThat(failed).as("texts that do not parse, resolve and compile").isEmpty();
   }
 
   /**

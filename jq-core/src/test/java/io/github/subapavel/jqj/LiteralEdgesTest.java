@@ -141,8 +141,9 @@ class LiteralEdgesTest {
       assertThat(error.getMessage()).as("message of %s", e.getKey()).isEqualTo(e.getValue() + "\njq: 1 compile error");
     }
     // jq-ref -n '@text "a"' -> "a" and '@base64' -> "bnVsbA==", rc 0. A format string and another format are not built
-    // in #61. #67 lowers a format string, so its entry ends with | .., which still stubs.
-    for (String text : new String[] {"@text \"a\" | ..", "@base64"}) {
+    // in #61. #67 lowers a format string, so its entry ended with | .., which stubbed until #110: it now compiles and
+    // runs (jq-ref 1.8.2, observed 2026-11-15: '@text "a" | ..' on null -> "a", rc 0). Another format stays a Stub.
+    for (String text : new String[] {"@base64"}) {
       assertThatExceptionOfType(JqCompileException.class)
           .as("compile of %s", text)
           .isThrownBy(() -> ENGINE.compile(text))
@@ -152,9 +153,11 @@ class LiteralEdgesTest {
     Results results = new Results();
     ENGINE.compile("true").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
     ENGINE.compile("@text").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
-    assertThat(results.values).as("results of true and @text").hasSize(2);
+    ENGINE.compile("@text \"a\" | ..").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
+    assertThat(results.values).as("results of true, @text and @text \"a\" | ..").hasSize(3);
     assertThat(results.values.getFirst()).as("result of true").isSameAs(JqBool.TRUE);
     assertThat(((JqString) results.values.get(1)).value()).as("result of @text").isEqualTo("null");
+    assertThat(((JqString) results.values.get(2)).value()).as("result of @text \"a\" | ..").isEqualTo("a");
   }
 
   @Test
