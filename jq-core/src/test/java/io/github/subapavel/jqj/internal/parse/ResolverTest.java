@@ -216,7 +216,7 @@ class ResolverTest {
   }
 
   /** The results of {@code filter} on null as compact JSON, through the exported API; asserts that the run completes. */
-  private static List<String> results(String filter) {
+  static List<String> results(String filter) {
     JqEngine engine = JqEngine.builder().build();
     List<String> out = new ArrayList<>();
     boolean ranOut =

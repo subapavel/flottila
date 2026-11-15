@@ -130,6 +130,138 @@ class ExpansionMeasureTest {
     assertThat(passes.functions()).as("functions of %s with %d spent before", filter, CAP - 2).hasSize(1);
   }
 
+  /**
+   * A comma of many terms is a balanced Comma tree about log2 of its terms deep (F-44), so the measure gives it that
+   * many levels, not one. {@code def w: 1,2,…,1024; def a1: . | w; def ai: . | a(i-1); …; [a500] | length}: inlined to
+   * the bottom it would be 513 levels (the main filter's Pipe and Collect, a Pipe for each of the 500 definitions, w's
+   * ten Comma levels and a leaf), so some call must be a PLAIN Call (ADR-0040 #114 amendment) and the filter runs. It
+   * kills the mutant that measures the comma as one level (it inlines the whole chain, and the IR depth Stub fires).
+   * jq-ref 1.8.2 gives 1024 (observed 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
+   */
+  @Test
+  void aWideCommaAtTheDepthEdgeLiftsACall() {
+    StringBuilder w = new StringBuilder("def w: 1");
+    for (int i = 2; i <= 1_024; i++) {
+      w.append(',').append(i);
+    }
+    String filter = w.append("; ").append(chain("w", 500, "[a500] | length")).toString();
+    Resolver.Resolved resolved = withinTheDepth(filter);
+    assertThat(resolved.program().functions()).as("functions of the comma chain to a500: inlined, it is 513 levels").isNotEmpty();
+    assertThat(ResolverTest.results(filter)).as("results of the comma chain to a500").containsExactly("1024");
+  }
+
+  /**
+   * The measure's products saturate rather than wrap past 2^63. {@code def f0: .; def fi: f(i-1),f(i-1); …; def g1(p):
+   * if . then p|p else 0 end; def gi(p): g(i-1)(p|p); …; g23(f40)}: f40's body measures 2^41 - 1 nodes, saturated, and
+   * g23's body measures 2^24 - 2 runs of its parameter (two in g1, and in each g(i) two for each of g(i-1)'s plus two
+   * for the lifted form's closure), so the inlined form of {@code g23(f40)} multiplies the two, past 2^63. With the
+   * whole cap spent before (the seam), no call fits: {@code g23(f40)} is a PLAIN Call, no node is lowered inside an
+   * expansion, and the program's nodes other than Calls are at most its text's 217 (f0's one, three in each of the 40
+   * f bodies, six in g1's, four in each of the 22 other g bodies, two in the main filter). It kills the mutant whose
+   * product wraps: the measure is negative, g23 is inlined and the backstop fires. jq-ref 1.8.2 gives 0 (observed
+   * 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
+   */
+  @Test
+  void aMeasurePastTwoToTheSixtyThreeSaturates() {
+    StringBuilder text = new StringBuilder("def f0: .; ");
+    for (int i = 1; i <= 40; i++) {
+      text.append("def f").append(i).append(": f").append(i - 1).append(",f").append(i - 1).append("; ");
+    }
+    text.append("def g1(p): if . then p|p else 0 end; ");
+    for (int i = 2; i <= 23; i++) {
+      text.append("def g").append(i).append("(p): g").append(i - 1).append("(p|p); ");
+    }
+    String filter = text.append("g23(f40)").toString();
+    Program program = Resolver.resolved(Parser.parse(filter), List.of(), CAP).program();
+    assertThat(program.main()).as("main tree of g23(f40) with the whole cap spent before").isInstanceOf(Call.class);
+    int built = withoutCalls(program.main());
+    for (Function f : program.functions()) {
+      built += withoutCalls(f.body());
+    }
+    assertThat(built).as("nodes other than Calls of g23(f40) with the whole cap spent before").isLessThanOrEqualTo(217);
+    assertThat(ResolverTest.results(filter)).as("results of g23(f40)").containsExactly("0");
+  }
+
+  /**
+   * The measure is computed over the live definitions only ({@link Binder#calleeFirst()}): jq drops a definition the
+   * main filter does not reach, so a call in it that binds nowhere is no error, and the Binder leaves it unbound.
+   * jq-ref 1.8.2 gives 1 for {@code def dead: nosuch; 1} and 2 for {@code def dead: nosuch(1; 2); def live: 2; live}
+   * (observed 2026-11-15, -nc, .logs/114-mut-jqref-dead.log). It kills the mutant that puts dead definitions in
+   * calleeFirst(): the measure walks the dead body and finds no binding for {@code nosuch}.
+   */
+  @Test
+  void aDeadDefinitionWithAnUnboundCallIsNotMeasured() {
+    assertThat(ResolverTest.results("def dead: nosuch; 1")).as("results of def dead: nosuch; 1").containsExactly("1");
+    assertThat(ResolverTest.results("def dead: nosuch(1; 2); def live: 2; live")).as("results of def dead: nosuch(1; 2); def live: 2; live").containsExactly("2");
+    ParsedFilter parsed = Parser.parse("def dead: nosuch(1; 2); def live: 2; live");
+    List<String> measured = new ArrayList<>();
+    for (Ast.FuncDef def : Binder.bind(parsed.main(), List.of(), parsed.text()).calleeFirst()) {
+      measured.add(def.name());
+    }
+    assertThat(measured).as("calleeFirst() of def dead: nosuch(1; 2); def live: 2; live").containsExactly("live");
+  }
+
+  static Stream<Arguments> valueBinds() {
+    return Stream.of(
+        Arguments.of("a body four levels deep", "def v($a; $b; $c): [[[.]]]; ", "v(1; 2; 3)", 506, "[[[null]]]"),
+        Arguments.of("a closure run four levels deep", "def v($a; $b; $c; f): [[[[f]]]]; ", "v(1; 2; 3; [[[[.]]]])", 501, "[[[[[[[[null]]]]]]]]"));
+  }
+
+  /**
+   * An inlined body sits below its value parameters' Binds, a level each (ADR-0043), and so does each closure it runs.
+   * {@code def v($a; $b; $c): [[[.]]]; def a1: . | v(1; 2; 3); def ai: . | a(i-1); …; a506}: inlined to the bottom it
+   * would be 506 + 3 + 4 = 513 levels; with {@code def v($a; $b; $c; f): [[[[f]]]]} and {@code v(1; 2; 3; [[[[.]]]])},
+   * a chain to a501 would be 501 + 3 + 4 + 5 = 513. Some call must be a PLAIN Call and the filter runs. It kills the
+   * mutants that leave the Binds out of the inlined form's reach, for the body (first row) or for a closure it runs
+   * (second row), where the lifted form's reach is below either: the chain is inlined and the IR depth Stub fires.
+   * jq-ref 1.8.2 gives {@code [[[null]]]} and {@code [[[[[[[[null]]]]]]]]} (observed 2026-11-15, -nc -f,
+   * .logs/114-mut-jqref.log).
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("valueBinds")
+  void valueBindsAroundAnInlinedBodyCountTowardTheDepth(String shown, String definition, String call, int chain, String expected) {
+    String filter = definition + chain(call, chain, "a" + chain);
+    Resolver.Resolved resolved = withinTheDepth(filter);
+    assertThat(resolved.program().functions()).as("functions of the chain to a%d over %s: inlined, it is 513 levels", chain, shown).isNotEmpty();
+    assertThat(ResolverTest.results(filter)).as("results of the chain to a%d over %s", chain, shown).containsExactly(expected);
+  }
+
+  /**
+   * The k-th value parameter's argument sits below k Binds around a Call of a recursive definition (ADR-0045 #107), so
+   * its levels count from k levels down. {@code def r($a; $b): if $a > 0 then r($a - 1; $b) else $b end; def a1: . |
+   * r(1; [[[[[.]]]]]); def ai: . | a(i-1); …; a505}: inlined to the bottom it would be 505 + 2 + 6 = 513 levels (a Pipe
+   * for each definition, the two Binds, and the second argument's five Collects and its leaf), so a definition of the
+   * chain must be a PLAIN Call too and the filter runs. It kills the mutant that puts every value argument of the lifted
+   * form one level down: the chain is inlined and the IR depth Stub fires. jq-ref 1.8.2 gives {@code [[[[[null]]]]]}
+   * (observed 2026-11-15, -nc -f, .logs/114-mut-jqref.log).
+   */
+  @Test
+  void theSecondValueArgumentOfARecursiveCallIsTwoBindsDown() {
+    String filter = "def r($a; $b): if $a > 0 then r($a - 1; $b) else $b end; " + chain("r(1; [[[[[.]]]]])", 505, "a505");
+    Resolver.Resolved resolved = withinTheDepth(filter);
+    assertThat(resolved.names()).as("functions of the chain to a505 over r: inlined, it is 513 levels").anyMatch(name -> name.startsWith("a"));
+    assertThat(ResolverTest.results(filter)).as("results of the chain to a505 over r").containsExactly("[[[[[null]]]]]");
+  }
+
+  /** {@code def a1: . | first; def ai: . | a(i-1); …; def an: . | a(n-1); main}: a Pipe a definition. */
+  private static String chain(String first, int n, String main) {
+    StringBuilder text = new StringBuilder("def a1: . | ").append(first).append("; ");
+    for (int i = 2; i <= n; i++) {
+      text.append("def a").append(i).append(": . | a").append(i - 1).append("; ");
+    }
+    return text.append(main).toString();
+  }
+
+  /** The resolution of {@code filter}, no Stub, with its main tree and every function body within 512 levels. */
+  private static Resolver.Resolved withinTheDepth(String filter) {
+    Resolver.Resolved resolved = Resolver.resolved(Parser.parse(filter), List.of());
+    assertThat(ResolverTest.levels(resolved.program().main())).as("levels of the main tree").isLessThanOrEqualTo(MAX_IR_DEPTH);
+    for (Function f : resolved.program().functions()) {
+      assertThat(ResolverTest.levels(f.body())).as("levels of a function body").isLessThanOrEqualTo(MAX_IR_DEPTH);
+    }
+    return resolved;
+  }
+
   /** The nodes of {@code node}'s tree but its Calls, by a loop. */
   private static int withoutCalls(Node node) {
     int count = 0;
