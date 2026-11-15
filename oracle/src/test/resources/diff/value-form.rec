@@ -1,0 +1,57 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case value-form/a-value-with-no-result-binds-nothing
+def 303ee12db3ab
+rc 0
+stdout [[2],[3]]\n
+stderr
+end
+
+case value-form/try-catches-the-error-of-its-value-body
+def 042b20bd38e8
+rc 0
+stdout [2,"bad"]\n
+stderr
+end
+
+case value-form/an-inner-try-lets-a-downstream-error-through
+def 04f272f9de78
+rc 0
+stdout ["outer"]\n
+stderr
+end
+
+case value-form/a-label-catches-its-own-break-as-no-value
+def 9886a719bacc
+rc 0
+stdout [10]\n
+stderr
+end
+
+case value-form/a-reduce-of-an-empty-init-binds-nothing
+def 1ca258cb49a4
+rc 0
+stdout []\n
+stderr
+end
+
+case value-form/a-value-before-a-break-is-emitted
+def 6ae171b37c87
+rc 0
+stdout [2]\n
+stderr
+end
+
+case value-form/a-value-form-recursion-3000-deep
+def 4a79851889d5
+rc 0
+stdout 3000\n
+stderr
+end
+
+case value-form/x2-dot-calls-into-another-group-by-eval
+def 785b1a916653
+rc 0
+stdout [4,7]\n
+stderr
+end

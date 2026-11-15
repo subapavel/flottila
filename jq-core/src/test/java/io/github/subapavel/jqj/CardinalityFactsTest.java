@@ -1,13 +1,12 @@
 package io.github.subapavel.jqj;
 
+import static io.github.subapavel.jqj.ExplainLines.lines;
+import static io.github.subapavel.jqj.ExplainLines.node;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.StringJoiner;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -29,52 +28,6 @@ class CardinalityFactsTest {
 
   /** Past {@code Resolver.BIND_RUN} (64) value parameters, the Resolver binds their arguments in one Binds (ADR-0043). */
   private static final int PAST_BIND_RUN = 65;
-
-  /** One line of the text: its fields before the first {@code name=value} one, and its facts by name. */
-  private record Line(List<String> fields, Map<String, String> facts) {
-    static Line of(String line) {
-      List<String> fields = new ArrayList<>();
-      Map<String, String> facts = new LinkedHashMap<>();
-      for (String field : line.split(" ")) {
-        int eq = field.indexOf('=');
-        if (eq < 0) {
-          fields.add(field);
-        } else {
-          facts.put(field.substring(0, eq), field.substring(eq + 1));
-        }
-      }
-      return new Line(fields, facts);
-    }
-
-    boolean isFunction() {
-      return fields.getFirst().equals("function");
-    }
-  }
-
-  private static List<Line> lines(JqEngine engine, String filter) {
-    String text = engine.compile(filter).explain();
-    assertThat(text).as("explain of %s", filter).endsWith("\n");
-    return Arrays.stream(text.split("\n")).map(Line::of).toList();
-  }
-
-  /** The column of the body {@code body}: {@code main}, or the function line's {@code fn<place>} of a jq name/arity. */
-  private static String column(List<Line> lines, String body) {
-    if (body.equals("main")) {
-      return "main";
-    }
-    List<Line> found = lines.stream().filter(l -> l.isFunction() && l.fields().get(2).equals(body)).toList();
-    assertThat(found).as("function %s in %s", body, lines).hasSize(1);
-    return found.getFirst().fields().get(1);
-  }
-
-  /** The one node line of {@code body} with the freeze id {@code id}. */
-  private static Line node(List<Line> lines, String body, int id) {
-    String column = column(lines, body);
-    List<Line> found =
-        lines.stream().filter(l -> !l.isFunction() && l.fields().get(0).equals(column) && l.fields().get(1).equals(Integer.toString(id))).toList();
-    assertThat(found).as("node %d of %s in %s", id, body, lines).hasSize(1);
-    return found.getFirst();
-  }
 
   /** The text of a recursive definition of {@code n} value parameters, and a call of it on 1 for each (LiftedFunctionsTest). */
   private static String valueParameters(int n) {
