@@ -14,6 +14,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,8 +53,12 @@ public final class RecordingComponent implements Component {
     private final AtomicInteger producersBuilt = new AtomicInteger();
     private volatile Function<Envelope, Envelope> reply = e -> e;
     private final Map<String, Function<Envelope, Future<Ack>>> handlers = new ConcurrentHashMap<>();   // by endpoint name
-    private final ConcurrentLinkedDeque<CountDownLatch> holds = new ConcurrentLinkedDeque<>();
+    // record and take are one step (FIX-229): a send takes its hold and is recorded under this lock, so a visible send has
+    // taken its hold and holds are taken in the order sends are recorded; no caller code runs under it
+    private final Object recordAndTake = new Object();
+    private final ArrayDeque<CountDownLatch> holds = new ArrayDeque<>();   // guarded by recordAndTake
     private final List<Waiter> waiters = new CopyOnWriteArrayList<>();
+    private volatile Runnable afterSendVisible;   // null: none; a test seam (FIX-229)
 
     public RecordingComponent(String scheme) {
         this.scheme = Objects.requireNonNull(scheme, "scheme");
@@ -95,14 +100,27 @@ public final class RecordingComponent implements Component {
     /**
      * The next {@code times} sends are recorded at once (they count for {@link #awaitSent(int)}) and answered only after
      * the returned latch is counted down — the way a test holds a message "at the partner". The send's future is pending
-     * meanwhile; no thread of the caller waits. A queued {@link #failNext} failure applies after the release.
+     * meanwhile; no thread of the caller waits. A queued {@link #failNext} failure applies after the release. Holds are
+     * taken in the order the sends are recorded; a send that is visible (to {@link #awaitSent(int)}, {@link #sent()},
+     * {@link #sentTo(String)}) has already taken its hold, so a hold armed after a send was seen waits for the next send.
+     * Holds are one FIFO across every producer and endpoint of this component, not keyed by endpoint.
      */
     public CountDownLatch holdNext(int times) {
         if (times < 0) throw new IllegalArgumentException("times must not be negative, was " + times);
         CountDownLatch release = new CountDownLatch(1);
-        for (int i = 0; i < times; i++) holds.addLast(release);
+        // ArrayDeque is not thread-safe: the lock excludes a concurrent take that could lose or corrupt elements, and
+        // publishes the armed hold to the sending thread
+        synchronized (recordAndTake) {
+            for (int i = 0; i < times; i++) holds.addLast(release);
+        }
         return release;
     }
+
+    /**
+     * Runs {@code hook} on the sending thread after each send is recorded, counted for {@link #awaitSent(int)} and has
+     * taken its hold, before {@code send} returns, with no lock held; {@code null} = none (the default). A test seam.
+     */
+    void afterSendVisible(Runnable hook) { this.afterSendVisible = hook; }
 
     /**
      * Waits until at least {@code n} envelopes have been sent, across endpoints, on a latch counted down by the sends
@@ -204,10 +222,15 @@ public final class RecordingComponent implements Component {
             }
 
             @Override public Future<Envelope> send(Envelope e) {
-                sent.add(e);
-                mine.add(e);
+                CountDownLatch hold;
+                synchronized (recordAndTake) {   // the hold is taken before the send is visible, in record order
+                    hold = holds.pollFirst();
+                    sent.add(e);
+                    mine.add(e);
+                }
                 for (Waiter w : waiters) if (sent.size() >= w.count()) w.latch().countDown();
-                CountDownLatch hold = holds.pollFirst();
+                Runnable hook = afterSendVisible;
+                if (hook != null) hook.run();
                 if (hold == null) return answer(e);
                 Promise<Envelope> held = Promise.promise();
                 // the caller gets a pending future; the wait for the release happens on a virtual thread of its own

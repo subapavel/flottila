@@ -1,0 +1,63 @@
+FIX-229 — evidence (2026-11-15)
+
+The fault: DeploymentsRedeployTest.everyStartWaitsForEveryStop:558 "c's held message: not within PT10S", once, on a runner
+(ci run 213, id 43715949051, job 132817394902, Postgres floor 17.11; agent/work/MAIN-1-ci.md). Row FIX-38's first flake,
+DeploymentsTest.closeStopsWorkersThenDrains… ("drained message's answer not within PT10S"), has the same shape (:869-888).
+
+The cause, shown. RecordingComponent.send (testkit) recorded the envelope (sent.add), counted the awaitSent waiters down and only
+then took its hold (holds.pollFirst(), one FIFO for every producer). A test that arms its next hold and sends again as soon as
+awaitSent returns can run inside that window: the second send takes the first latch, the first send the second.
+EXECUTED_FAIL  agent/work/FIX-229-demo.log   a throw-away variant with a hook in the old window (agent/work/FIX-229-demo.diff,
+               never committed): RecordingComponentHoldOrderTest 7 tests, 5 failures — "…:247 the latch armed before a's send
+               releases a; it released c: c's send took a's hold … (the holds were swapped) ==> expected: <a> but was: <c>" in
+               all three variants of the staged case; "…:271 a found no hold when it was recorded … a's send took the late hold
+               instead"; "…:364 latch 0 (armed i-th) releases the i-th recorded send ==> expected: <7-0> but was: <1-0>" (the
+               concurrent case, without the hook). The two keep-behaviour cases passed; RecordingComponentTest 31, 0 failures.
+The scout found no product path that leaves the answer unsettled (Delivery.java :175-185 completes it before any stop-side
+wait; cancelInFlight completes it with a Nack and needs a timer the case never advances); the reviewer confirmed it.
+
+The red and the fix:
+EXECUTED_FAIL  agent/work/FIX-229-red.log      the new test class before the hook existed: "cannot find symbol … method
+               afterSendVisible" (the only error)
+VERIFIED_PASS  agent/work/FIX-229-testkit.log  implementer: testkit 286 tests (279 + 7), 0 failures, coverage check passed
+VERIFIED_PASS  agent/work/FIX-229-runtime.log  implementer: runtime 1578 and 3, 0 failures
+EXECUTED_FAIL  agent/work/FIX-229-kill.log     the old order put back (temporary): testkit 286 tests, 5 failures — the staged
+               case ×3 (:247), the late-hold case (:271), the concurrent case (:364)
+Mutants run by the implementer (each restored): the send's block without the lock — killed by the concurrent case (by tempo);
+the hook before the count-down — killed by the staged case (one variant); the hook removed or its guard inverted — killed.
+Surviving: holdNext's lock removed (agent/work/FIX-229-M3-holdNext-unlocked.log) — see the review.
+After the review the implementer changed two comments only (holdNext's Javadoc; the reason of its lock). The run below is on
+that final tree:
+EXECUTED_FAIL  agent/work/FIX-229-reactor.log  verifier, the whole reactor (clean verify -Pit, failures ignored) on 38db0c13 plus
+               this change: BUILD SUCCESS (:85233) in 26:42, 17 modules; 4629 tests by the 18 totals lines, 0 failures, 1 error,
+               0 skipped. Unit: api 107 (:168), testkit 286 (:328), core 763, schemas 304, sftp 69, xslt 56, validate 33,
+               http 52, runtime 1578 (:56794) and 3 (:56813), mock 67, cli 205, sim 61, archtest 48, bench 239. ITs: runtime
+               709 with the one error (:75024), cli 7, bench 42. RecordingComponentHoldOrderTest 7 (:314), DeploymentsTest 47
+               (:56129), DeploymentsRedeployTest 36 (:56518), no failure. 13 JaCoCo checks met, none unmet.
+               The error, not of this change: PgIntakeHandoffGroupLogIT.aHandOffThatThrowsInACommittedGroupStillAnswersEveryMember
+               (:66697, :75022) "PoolRefused the Postgres pool refused a connection: … Connection refused: /127.0.0.1:40299".
+               Scout: the port is the case's own PgWire relay (PgIntakeHandoffGroupIT.java :122-123; PgWire.java :382), which
+               only the teardown closes (:140); the case (:217-234) does not close or cut it; the class and its parents do
+               not reference RecordingComponent; no backlog row named the class or a refused connect. Row FIX-231.
+VERIFIED_PASS  agent/work/FIX-229-verify-cov.log  python3 ci/coverage_check.py --baseline-ref HEAD: exit 0, "coverage: no
+               decrease"; testkit line 98.1 %, branch 96.2 %; runtime line 99.5 %, branch 99.4 %
+NOT_RUN        the failing IT alone after that run (row FIX-231's work). The first of MAIN-1's three green whole-reactor runs
+               is still owed; this run does not count.
+
+The survey (doubles that record and then take or arm in a second step observable through an await): runtime Doors.start()/stop()
+(the mark, the event and onStop run before the per-flow gate is taken), Ledger.delete (recorded and traced before
+holdNextDelete is read; read and null-out not atomic), LeaseLog.hold (recorded under its lock, the scripted answer polled
+outside), AdminServerReplayTest's hold step (ran() counts before armed.poll()); weaker, an order mismatch under concurrent sends
+only: core FlowBuilderTargetTest.CountingPartner, MockComponent (sent.add before the count). No window: HoldingMessageStore,
+HoldingBlobStore, RecordingWorkQueue.holdNext (one monitor), DeliveryModesTest.HeldSave, the polling-consumer and loopback
+doubles. Row FIX-230.
+
+review: PASS   class B. The cause is shown by the demo and explains the runner's message exactly (:556 passes, :558 times out).
+               The staged cases are deterministic on the fixed code and fail on the old order. No caller code runs under the
+               lock and it cannot deadlock (awaitSent takes no lock; the copy-on-write lists never take it). Accepted unpinned:
+               holdNext's lock — ArrayDeque is not thread-safe, the lock excludes a concurrent take and publishes the armed hold;
+               it can be shown only through a seam under the lock or a stress race. Pinned by tempo only: holds in record order
+               under concurrent senders (one case, 8 threads × 25 sends). Open by design: holds are one FIFO across every
+               producer, so an unrelated concurrent send can take another send's hold (now in holdNext's Javadoc). Not blocking:
+               a spin at RecordingComponentHoldOrderTest:217 is bounded only by awaitSent's 10 s.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-229.diff.

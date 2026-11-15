@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-229 a send of the recording component takes its hold before it is seen — done, review PASS
+
+- Fault (`ci` run 213, Postgres 17.11 job): `DeploymentsRedeployTest.everyStartWaitsForEveryStop:558 c's held message: not within
+  PT10S`; the first flake of row FIX-38 (`DeploymentsTest` :869-888) has the same shape.
+- Cause shown (scout's reading, then a staged demo on the old order): the testkit's `RecordingComponent.send` recorded the send
+  and counted `awaitSent` down before it took its hold; a test doing hold, send, awaitSent, hold, send had its holds swapped —
+  "the latch armed before a's send releases a; it released c". No product path drops the answer.
+- Red first (test-author, class B): `RecordingComponentHoldOrderTest`, 7 cases, staged through the package-private hook
+  `afterSendVisible`. Fix (implementer): the take and the record are one synchronized step, `holdNext` arms under the same lock;
+  nothing of a caller runs under it; public surface unchanged. The old order put back fails five cases.
+- Evidence: VERIFIED_PASS testkit 286, runtime 1578 and 3. Whole reactor (verifier): 4629 tests, coverage no decrease, EXECUTED_FAIL by
+  one IT error not of this change - `PgIntakeHandoffGroupLogIT`, a refused connect to the case's own relay: row FIX-231. The count
+  of green whole-reactor runs stays 0. `ci` run 214 (FIX-168) is green. Context compacted before this entry; state re-read.
+- Not pinned: `holdNext`'s lock (a non-thread-safe deque; only a stress race could show it). Survey: the same window in other
+  doubles (`Doors` gates, `Ledger.delete`, `LeaseLog.hold`, the replay test's hold step): row FIX-230. Review PASS (class B).
+
 ## 2026-11-15 — FIX-219 the harness looks again for a late query-log row — done, review PASS
 
 - Fault (once, whole-reactor run of BRAND-1 C): `ClickHouseCompressionMainIT` saw `readsLogged` 19 for 20 timed reads.

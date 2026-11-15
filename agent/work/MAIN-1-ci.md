@@ -117,3 +117,6 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   partner while its flow's stop was called was not answered within 10 s of its release. New here: no row and no earlier
   sighting in the ledgers (row FIX-229). In that job testkit passed (59.6 s): FIX-221's fix held on the runner where runs
   209 and 211 failed. The modules after runtime were skipped, so FIX-222's and FIX-218's ITs ran in the 18.6 job only.
+- `ci` run 214 (id 43720502718, 5365f393, FIX-168): `success`, read 14:27Z (run list only; 13:43Z-14:08Z). The first green
+  `ci` run since the fixes of MAIN-1 began to land; FIX-229's fault did not show in it (it is a race, not fixed there yet).
+- `ci` run 215 (id 43724011146, 38db0c13, FIX-219): in progress at 14:27Z; its conclusion not read.
