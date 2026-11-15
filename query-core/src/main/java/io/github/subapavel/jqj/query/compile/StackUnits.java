@@ -11,9 +11,10 @@ import io.github.subapavel.jqj.query.run.RunState;
 public final class StackUnits {
   /**
    * {@code b}, the bytes per unit: the largest over {@code -Xint}, C1 only and the warm default JIT, measured on #111's
-   * deep filters in fresh child JVMs, 94, rounded up (bench/RESULTS.md, #111).
+   * deep filters in fresh child JVMs by {@code bench/stack-units/measure-b.sh}, 96, a multiple of 8 already
+   * (bench/RESULTS.md, #111).
    */
-  static final long BYTES_PER_UNIT = 100;
+  static final long BYTES_PER_UNIT = 96;
 
   /** The reserve: 96 KiB of guard pages and 32 KiB for natives, a source constant (ADR-0046 #111 amendment). */
   static final long RESERVE = 128 * 1024;

@@ -6,19 +6,24 @@ verifier output; newest section first.
 
 ## #111: provisional bytes per unit `b` and reserve (ADR-0046 #111 amendment), 2026-11-15
 
-- Machine: the implementer's container, 4 vCPU, glibc 2.39, Temurin 25 at `/opt/temurin-25`. Branch
-  `impl/111` after `feat(query-core): stack units…`, b stand-in 200 while measuring (the result does
-  not depend on it; it sets the resolution of the declared stack only).
-- Method: one fresh JVM per cell, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS` and `_JAVA_OPTIONS` unset,
-  no agent. The case runs on the launcher's main thread, sized by `-Xss`: it is the process's first
-  thread, so glibc's stack cache cannot hand it a larger stack an ended thread left (the cache case the
-  grilling-adviser observed: a 512 KiB thread after a 1 MiB one held 10 729 frames). Proof per cell:
-  a plain `recurse()` to StackOverflowError on that thread first; under `-Xint` it holds 4 772
-  frames at 512 KiB (the adviser's fresh 512 KiB thread: 4 771) and 10 730 at 1 MiB. C1 and warm
-  counts move with the compilation of `recurse` (C1 10 194 and 23 300). Then a binary search for the
-  largest `U_f` at which the case completes on that thread (the next one ends STACK), and
-  `b = ceil((S - 128 KiB) / (U_f + D_f))`. C1: `-Xbatch -XX:TieredStopAtLevel=1`; C1 and warm: 30
-  warm-up runs first. Log `.logs/111-measure-b.log`, script in the implementer's scratchpad.
+- Machine: the implementer's container, 4 vCPU, glibc 2.39 (Ubuntu 2.39-0ubuntu8.9), Temurin
+  25.0.5 at `/opt/temurin-25`. Commit `8938e6a` on `impl/111` (spec/106 tip `d36c2a2` merged), no
+  tracked change, classes from `./mvnw -o -B -q -pl jq-core -am compile -Dchecks.skip=true`.
+  Stand-in `b` at that commit: 100 (it sets the resolution of the declared stack only).
+- Command: `bench/stack-units/measure-b.sh > .logs/111-measure-b.log`. Compile mode: OPTIMISED, the
+  engine's default (the public builder sets no other); CONSERVATIVE and virtual threads are #113's
+  (NOT_RUN here).
+- Method (in the script's header): one fresh JVM per cell, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`
+  and `_JAVA_OPTIONS` unset, no agent. The case runs on the launcher's main thread, sized by `-Xss`:
+  it is the process's first thread, so glibc's stack cache cannot hand it a larger stack an ended
+  thread left (the grilling-adviser's case: a 512 KiB thread after a 1 MiB one held 10 729 frames).
+  Proof per cell: a plain recursion to StackOverflowError on that thread first, and each 512 KiB /
+  1 MiB pair must hold 1.5 to 3.5 times the frames, or the run stops INVALID. Under `-Xint` the
+  proof is 4 772 frames at 512 KiB (the adviser's fresh 512 KiB thread: 4 771) and 10 730 at 1 MiB;
+  C1 10 194 and 23 300; warm counts move with the compilation of the recursion (6 958 to 23 300).
+  Then a binary search for the largest `U_f` at which the case completes (the next ends STACK), and
+  per cell `b = ceil((S - 128 KiB) / (U_f + D_f))`; per pair the slope `ceil(512 KiB / ΔU_f)`. C1:
+  `-Xbatch -XX:TieredStopAtLevel=1`; C1 and warm: 30 warm-up runs first. All 24 cells proven.
 
   | tier | S | collect | reduce | first-or | hold |
   |---|---|---|---|---|---|
@@ -27,11 +32,15 @@ verifier output; newest section first.
   | warm | 512 KiB | 78 | 80 | 87 | 78 |
   | -Xint | 1 MiB | 67 | 63 | 83 | 75 |
   | C1 only | 1 MiB | 80 | 82 | 94 | 80 |
-  | warm | 1 MiB | 81 | 82 | 91 | 73 |
+  | warm | 1 MiB | 81 | 82 | 92 | 61 |
+  | -Xint | slope | 69 | 65 | 85 | 77 |
+  | C1 only | slope | 82 | 85 | 96 | 83 |
+  | warm | slope | 83 | 83 | 96 | 53 |
 
-- Largest: 94 (C1, first-or, 1 MiB). Provisional `b` = 100 (94 rounded up). Reserve 128 KiB (96 KiB
-  of guard pages, 32 KiB for natives), a source constant. Virtual threads and the OPTIMISED column are
-  #113's (NOT_RUN here).
+- Largest: 96 (the C1 and warm first-or slopes; largest cell 94, C1 first-or 1 MiB). Provisional
+  `b` = 96, already a multiple of 8. Reserve 128 KiB (96 KiB of guard pages, 32 KiB for natives), a
+  source constant.
+
 
 ## #109: the compile-mode oracle's trampoline run in ticket-gate step 1 (F-58), 2026-11-15
 
