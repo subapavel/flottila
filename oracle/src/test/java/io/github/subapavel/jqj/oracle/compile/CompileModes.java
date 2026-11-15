@@ -68,6 +68,19 @@ final class CompileModes {
     };
   }
 
+  /**
+   * The hook of the trampoline run (F-58, ADR-0046): the conservative compile with this oracle's {@link #limits()} but
+   * {@code stackBytes} 0, so main and every body run on the trampoline. It is a run setting, not a compile mode.
+   *
+   * @throws IllegalStateException as {@link #hook}
+   */
+  static UnaryOperator<JqEngine.Builder> trampoline() {
+    UnaryOperator<JqEngine.Builder> conservative = hook(CompileMode.CONSERVATIVE);
+    Limits l = limits();
+    Limits zero = new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 0);
+    return b -> conservative.apply(b).limits(zero);
+  }
+
   /** The compile mode of {@code engine}, read back through the package-private {@code JqEngine.compileMode()}. */
   static CompileMode modeOf(JqEngine engine) throws ReflectiveOperationException {
     return (CompileMode) method(JqEngine.class, "compileMode").invoke(engine);
