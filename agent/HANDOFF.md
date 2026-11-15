@@ -1,20 +1,20 @@
 # Handoff
 
-owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 5a, 5a2, 5b1, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..146 (not 138b), 156, 169, 172b/c, 173, 175/6
-WIP FIX-47: git apply agent/wip/FIX-47-lane2.patch (reds + docs + partial impl, unverified) → implementer finishes → reviewer; then FIX-174, 184/185
-last commit: merge origin/main (this; sim D-143, CONSIDER-15 top priority); 4390a9b handoff; 84d6e83 wip; 3da4141 `Task: CORE-5b1`
-owner 2026-11-13 (D-142): all advisor recommendations accepted (agent/review/owner-items-2026-11-13.md) → FIX-186..191
-owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
-branch: work on claude/brave-hopper-5vwaju, every push also to main (WORKFLOW §3, owner 2026-11-14); main = branch after the merge
-next exact action: CONSIDER-15 [C] (owner top priority, flow error handling) designer; WIP CORE-5b2a1 git apply agent/wip/CORE-5b2a1-red.patch
-P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
-CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
-baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2..5 answered (ISSUE-5 by D-142 → FIX-191)
-open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,109,112,113; CONSIDER-1..3,5..9 (owner)
-pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..97, D-099, D-100
-owner at hand-over: F-18 (5 ms target; load regression until FIX-95); D-064/65B/67A/72/73
-roles (D-054): architect Opus 5.5 medium; row class sets model+effort; designer Opus xhigh (C); gate-reviewer + architecture advisor Fable 5.2 (D-131, D-137)
-notes: agent/NOTES.md by area (delivery modes, steps, components, DLQ, recording, pipeline, core, bench, VM; fixtures "FIX-10", "FIX-12")
-VM: services detached (NOTES "Build and VM"); review rule since FIX-7 in reviewer memory; lane worktrees are per machine
+state: branch MERGED with the core rework, pushed to the branch at 1fbd093 (on 5b5946d, on main's 542087b). NOT yet pushed to main.
+uncommitted (see `git status`): HANDOFF, NOTES docker lesson, DECISIONS D-144, BACKLOG CONSIDER-17, packets/FIX-196.md, the designer note.
+IN FLIGHT lane main: verifier, `clean verify -Pit` -> agent/work/push-gate3.log, then a runtime-only repeat, then coverage --check-baseline.
+IN FLIGHT lane 2: test-author on FIX-195 reds in /home/user/flottila-lane2, branch fix195, -Dmaven.repo.local=<scratchpad>/m2-lane2.
+gate run 2: 3208 tests, ONLY ReplicaStartTest:159 failed (FIX-194, a flake main already had); run 3 decides. bench needs -Pit or it fails.
+next exact action: on the verifier's hand-back, if green or FIX-194 only -> push to main (`git push origin HEAD:main`), PROGRESS, reviewer.
+FIX-195 (FIX-71's policy, lost by the rework): packet agent/packets/FIX-195.md, decision D-144 is WRITTEN in docs/DECISIONS.md.
+  Do NOT cite D-104: on main that is a different decision, and that mis-citation is the F-27 defect class.
+FIX-196 (FIX-59/60, lost): packet written, re-measured - 22 construction sites, 3 in src/main, 19 in tests. FIX-201 replays the other
+  32 branch commits against main: all three losses surfaced only because one of my own tests failed, so the check must be per commit.
+CONSIDER-15 (owner TOP PRIORITY): designer + advisor done, agent/work/CONSIDER-15-designer.md. Ids D-145<-D-102, D-146<-D-103,
+  D-147<-D-105, D-148<-D-106, F-37<-F-26, F-38<-F-27. The design exists on this branch only (a0b3f74, 585b6f4, 94fceab).
+OWNER, 3 OPEN, he is live and said "jeste nevim" at 00:30Z, so NOT handed to the advisor: (1) scoping, phases vs all at once vs
+  option C (handled still leaves a visible record); (2) N5 retention of a HANDLED message; (3) N7 D-107 vs D-136/D-142. Reminder 02:05Z.
+CONSIDER-17 new: the `dlq` name against the `park` verb, decide before /admin/dlq is public. Owner's question of 2026-11-15.
+TRAP, paid for once: `-Dtest=` on flottila-runtime overrides the heap-bounded execution's `**/*HeapTest.java` includes and runs an
+  18 MB-streaming class under -Xmx48m, which OOMs. An artefact of the command. Run the whole module. dockerd dies: see NOTES "Build and VM".
+open issues: ISSUE-1 (Context7 quota); ISSUE-2..5 answered. Ledger guard: 9 malformed rows, all pre-existing on main (FIX-197).

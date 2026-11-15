@@ -320,6 +320,24 @@ derived on the path segment, not at the string's end. This failsafe honours `-Di
 `heap-bounded-it` execution went with the S3 blob tier in CORE-4b).
 The kept `@Order` (fresh database → misconfiguration → classpath) is the one that failed in P1-04.
 
+
+### dockerd can die mid-session, and the symptom looks like 106 code failures (2026-11-15)
+
+A `clean verify -Pit` reported 128 run / 106 errors in `flottila-runtime`, every one
+`Could not find a valid Docker environment` / `Cannot connect to the Docker daemon at
+unix:///var/run/docker.sock`. Nothing was wrong with the code: an earlier `-Pit` on the same
+commit had run runtime's 1563 tests with 2 failures. The daemon had simply exited — the socket
+file was still there, `pgrep dockerd` found nothing, and disk (26 G free) and memory (14 G free)
+ruled out exhaustion. `/var/log/docker.log` was empty, so there is no record of why.
+
+`service docker start` does NOT work here: `/etc/init.d/docker:62: ulimit: error setting limit
+(Operation not permitted)`. Start it directly instead, which does work:
+
+    nohup dockerd > <scratchpad>/dockerd.log 2>&1 &
+
+Then wait a few seconds and confirm with `docker ps` before trusting any `-Pit` figure. Read
+`docker ok=` first in every verifier hand-back that runs ITs: 106 errors with one cause is an
+ENVIRONMENT_BLOCKED, and reporting it as a code failure would have condemned the merge wrongly.
 ## Reference package, fixtures, tags
 
 packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
