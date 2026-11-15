@@ -35,8 +35,11 @@ class HeapFormsTest {
   private static final Source AT = new Source(0, 1);
   private static final long UNLIMITED = Long.MAX_VALUE;
 
-  /** The push run's declared stack: these programs' calls hold far fewer units than its unit limit. */
-  private static final long PUSH = 256 * 1024;
+  /**
+   * The push run's declared stack: these programs' calls hold far fewer units than its unit limit. It is above the
+   * reserve, 280 KiB since #113, or every run, the push run too, would start on the trampoline.
+   */
+  private static final long PUSH = 512 * 1024;
 
   /** The thread of every run: four times the push run's declared stack (ADR-0046 "Where the stack is tested"). */
   private static final long THREAD = 4 * PUSH;

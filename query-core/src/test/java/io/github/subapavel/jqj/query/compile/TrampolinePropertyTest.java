@@ -25,8 +25,11 @@ import org.junit.jupiter.params.provider.MethodSource;
  * on a thread of four times that.
  */
 class TrampolinePropertyTest {
-  /** The push run's declared stack: the roots hold no call, so they never reach its unit limit. */
-  private static final long PUSH = 256 * 1024;
+  /**
+   * The push run's declared stack: the roots hold no call, so they never reach its unit limit. It is above the reserve,
+   * 280 KiB since #113, or the push run would start on the trampoline too.
+   */
+  private static final long PUSH = 512 * 1024;
 
   /** The thread of every seed: four times the push run's declared stack (ADR-0046 "Where the stack is tested"). */
   private static final long THREAD = 4 * PUSH;
