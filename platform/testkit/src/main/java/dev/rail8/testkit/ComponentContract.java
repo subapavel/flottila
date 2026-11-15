@@ -508,9 +508,21 @@ public abstract class ComponentContract {
             Future<Envelope> second = settled(producer.send(bounded, () -> Duration.ofMinutes(1)));
             assertTrue(second.succeeded(), "the bounded send is answered: " + second.cause());
             assertTrue(soon(() -> seen.size() == 2), "both delivered: " + seen);
-            assertEquals(List.of("contract-plain-1"), messageIds(seen.get(0)),
-                    "the plain send carries its message id, the forwarded one replaced: " + seen.get(0).headers());
-            assertEquals(List.of("contract-bounded-2"), messageIds(seen.get(1)), "the bounded send carries its message id: " + seen.get(1).headers());
+            // Each delivery is told by its body (its hash: what was sent), not by its place in `seen`: a partner that acknowledges before its handler answered
+            // runs the two handlers on threads of their own, and the order they record in is not what this case is about (FIX-221).
+            List<Envelope> plainOnes = seen.stream().filter(e -> e.body().hash().equals(plain.body().hash())).toList();
+            List<Envelope> boundedOnes = seen.stream().filter(e -> e.body().hash().equals(bounded.body().hash())).toList();
+            if (plainOnes.size() == 1 && boundedOnes.size() == 1) {
+                assertEquals(List.of("contract-plain-1"), messageIds(plainOnes.get(0)),
+                        "the plain send carries its message id, the forwarded one replaced: " + plainOnes.get(0).headers());
+                assertEquals(List.of("contract-bounded-2"), messageIds(boundedOnes.get(0)),
+                        "the bounded send carries its message id: " + boundedOnes.get(0).headers());
+            } else {
+                // The bodies did not arrive as sent (the body cases fail such a component): the two deliveries cannot be told
+                // apart, so what is left to say is that the two ids crossed, once each, and nothing else.
+                assertEquals(List.of("[contract-bounded-2]", "[contract-plain-1]"), seen.stream().map(e -> messageIds(e).toString()).sorted().toList(),
+                        "the two sends carry their message ids, the forwarded one replaced: " + seen);
+            }
         } finally {
             producer.close().await();
             consumer.stop().await();

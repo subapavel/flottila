@@ -101,3 +101,11 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   (the same fault as the older row FIX-170), seen here for the first time on a runner: a timing-dependent self-test, not the
   rename (the verification of BRAND-5 ran the same test green, and run 208 passed it in both jobs).
   Postgres main 18.6 (job 132788812499): Verify in progress when read (11:07Z).
+- `ci` run 210 (id 43707641617, 11108edf, FIX-216): DCO success. Postgres main 18.6 (job 132792075611): `success` — Verify
+  21.5 min, then the launcher steps (D-079, D-080), the coverage self-test, the name guard, no-decrease and the baseline, all
+  green: the namespace `dev.rail8` builds and passes on a runner. Postgres floor 17.11 (job 132792075884): in progress at
+  11:33Z; the whole run completed `success` at 11:36Z. Run 209 completed `failure` (the 17.11 job above; its 18.6 job not read).
+- `ci` run 211 (id 43709301400, ed8e4a74, FIX-214): `failure`, one failed job of six — Postgres floor 17.11 (job
+  132797179732) stopped at testkit after 63 s on `ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337`, the
+  same extra case `aSendCarriesTheMessageIdToThePartner`: FIX-221 again, the second time on a runner in three runs, both
+  times in the 17.11 job. FIX-214's own tests were not reached in that job; the 18.6 job did not fail.

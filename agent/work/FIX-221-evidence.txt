@@ -1,0 +1,36 @@
+FIX-221 — evidence (2026-11-15); closes FIX-170
+
+The fault: ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337, variant "acknowledged before the handler
+answered (the envelope sent comes back)": ten failing contract cases where nine are expected, the tenth
+aSendCarriesTheMessageIdToThePartner. Seen: FIX-169's full run (row FIX-170), once in four runs on 2026-11-15
+(agent/work/FIX-213-evidence.txt), ci run 209 and ci run 211, both in the Postgres 17.11 job (agent/work/MAIN-1-ci.md).
+
+Red, the new self-test case against the contract case as it was (the second handler forced to record first):
+EXECUTED_FAIL  agent/work/FIX-221-red.log        testkit: Tests run: 279, Failures: 1 —
+               ComponentContractSelfTest.anAckFirstPartnerWhoseSecondHandlerRunsFirstFailsOnlyWhatAnyAckFirstPartnerFails:599
+               "the ids are carried correctly: the order of the handler runs decides nothing": the nine ack-first cases
+               expected, the same nine plus aSendCarriesTheMessageIdToThePartner found
+
+After the contract case changed (testkit with its upstream module; api 107, testkit 279, ComponentContractSelfTest 28):
+VERIFIED_PASS  agent/work/FIX-221-testkit-1.log  author, exit 0
+VERIFIED_PASS  agent/work/FIX-221-testkit-2.log  verifier, exit 0
+VERIFIED_PASS  agent/work/FIX-221-testkit-3.log  verifier, exit 0
+VERIFIED_PASS  agent/work/FIX-221-testkit-4.log  verifier, exit 0
+VERIFIED_PASS  agent/work/FIX-221-onecpu-1.log   verifier, `taskset -c 0`, exit 0
+VERIFIED_PASS  agent/work/FIX-221-onecpu-2.log   verifier, `taskset -c 0`, exit 0
+VERIFIED_PASS  agent/work/FIX-221-onecpu-3.log   verifier, `taskset -c 0`, exit 0
+
+The whole reactor with -Pit, failures ignored, on ed8e4a74 plus this change:
+EXECUTED_FAIL  agent/work/FIX-221-reactor.log    exit 0, every module built, 4594 tests, ONE failure:
+               JournalDirForceOrderTest.aLaterForceThatReturnedFirstFailsWithTheEarlierOneThatFailed:98 "A's persist fails with
+               its directory force ==> Unexpected type, expected: <java.io.IOException> but was: <…JournalFailedException>"
+               — row FIX-168, its third sighting; a unit test of the runtime module that does not use the contract suite.
+               agent/work/FIX-221-reactor-counts.txt against agent/work/BRAND-1-C-counts.txt: testkit 278 -> 279, runtime
+               1563 -> 1576 (FIX-214's cases) with that one failure, runtime ITs 709 and bench ITs 42 now without a failure;
+               every other line equal. The contract tests of the sftp, http and mock components and of the runtime are green.
+
+review: PASS   class A. The red is the forced order, not tempo: the bounded send is dispatched while the plain run is held, and
+               `forced()` is asserted. The contract case is as strong as before for a correct component and for the variants
+               that must fail it; `hash()` is stored metadata and reads no body. The fallback keeps the id-to-send pairing
+               out only for a component that already fails the body cases. `ackFirstFails()` holds the same nine names.
+Not run: a PIT report for the testkit. Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-221.diff.

@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-221 a contract case tells two deliveries by their bodies, not their order — done, review PASS; closes FIX-170
+
+- Fault: testkit `ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337` — the variant "acknowledged before the
+  handler answered" failed a tenth case, `aSendCarriesTheMessageIdToThePartner`: once in four runs here, and in the 17.11 job
+  of `ci` runs 209 and 211.
+- Cause: the case read `seen.get(0)` as the plain send and `seen.get(1)` as the bounded one. Such a partner runs the two handlers
+  on threads of their own; which records first is a race.
+- Red first (test-author): a variant that holds the first handler until the second has recorded — the new self-test case fails
+  with exactly that tenth case (FIX-221-red.log: 279 run, 1 failure).
+- Change: the contract case finds each delivery by its body hash and asserts its ids as before; where the bodies did not arrive
+  as sent it compares the two id lists without their order. Every expected set unchanged; no other case has the fault (survey).
+- Evidence: VERIFIED_PASS testkit 279, seven runs (author 1, verifier 3, and 3 pinned to one CPU). Whole reactor -Pit: 4594 tests,
+  every module at its count, ONE failure — `JournalDirForceOrderTest:98` (row FIX-168; a runtime unit test, no contract suite).
+- Review PASS (class A). MAIN-1's count of green whole-reactor runs restarts; FIX-168 is next.
+
 ## 2026-11-15 — FIX-214 the frame relay names the side whose socket closed — done, review PASS
 
 - Fault: `PeerProtocolTest…:767`, "expected: <DIALER> but was: <LISTENER>" (BASE-1 run 2, `ci` run 193) — a test fixture's.

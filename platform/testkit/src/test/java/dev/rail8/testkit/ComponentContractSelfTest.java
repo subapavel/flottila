@@ -39,6 +39,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 /**
@@ -64,6 +65,28 @@ class ComponentContractSelfTest {
         final boolean nackIsSuccess;
         final UnaryOperator<Envelope> deliveredAs;
         final UnaryOperator<Envelope> repliedAs;
+        /** Holds the handler run of the message {@code first} until the run of {@code second} has returned (its delivery is recorded by then). */
+        static final class Reversal {
+            private final String first;
+            private final String second;
+            private final java.util.concurrent.CountDownLatch secondReturned = new java.util.concurrent.CountDownLatch(1);
+            private final java.util.concurrent.atomic.AtomicBoolean heldUntilTheSecond = new java.util.concurrent.atomic.AtomicBoolean();
+
+            Reversal(String first, String second) { this.first = first; this.second = second; }
+
+            boolean concerns(Envelope e) { return e.id().equals(first) || e.id().equals(second); }
+
+            /** True once the first run was held and then released by the second's return — the order was forced, not left to chance. */
+            boolean forced() { return heldUntilTheSecond.get(); }
+
+            void beforeTheRun(Envelope e) throws InterruptedException {
+                if (!e.id().equals(first)) return;
+                if (!secondReturned.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("the run of " + second + " never returned: " + first + " not held");
+                heldUntilTheSecond.set(true);
+            }
+
+            void afterTheRun(Envelope e) { if (e.id().equals(second)) secondReturned.countDown(); }
+        }
         private record Running(Function<Envelope, Future<Ack>> handler, ConsumerDrain drain) {}
         private volatile Running handler;
         /** Broken stop: completes at once and fails every send still waiting for its answer (the answer is dropped). */
@@ -74,6 +97,8 @@ class ComponentContractSelfTest {
         Executor handlerThread;
         /** Broken: the handler runs on the sender's thread, inside {@code send()}. */
         boolean handlerOnTheSendersThread;
+        /** FIX-221: when set, the handler run of the delivery with {@link Reversal#first} waits until the one of {@link Reversal#second} has returned. */
+        Reversal reversal;
         /** Broken: a handler that throws or answers null leaves the answer pending (its own thread dies with the exception). */
         boolean handlerFailureLost;
         /**
@@ -150,6 +175,17 @@ class ComponentContractSelfTest {
         /** The handler runs inside {@code send()}, on the sender's thread (the mock and RecordingComponent before D-057). */
         static Variant handlerOnTheSendersThread() { Variant v = correct(); v.handlerOnTheSendersThread = true; return v; }
 
+        /**
+         * Acknowledges before the handler answered (as {@code ackBeforeHandler}) and forces the two handler runs of
+         * {@code aSendCarriesTheMessageIdToThePartner} into the opposite order of its sends: the plain send's run is held
+         * until the bounded send's handler has returned, i.e. has recorded its delivery.
+         */
+        static Variant ackFirstWithTheHandlersReversed() {
+            Variant v = new Variant("loopback", "{\"type\":\"object\"}", false, false, true, false, e -> e, e -> e);
+            v.reversal = new Reversal("contract-plain-1", "contract-bounded-2");
+            return v;
+        }
+
         /** The handler runs on {@code where} instead of a virtual thread of its own. */
         static Variant handlerOn(Executor where) { Variant v = correct(); v.handlerThread = where; return v; }
 
@@ -193,6 +229,20 @@ class ComponentContractSelfTest {
 
         /** Calls the handler the way the variant does; the drain counts the answer before the handler runs. */
         private Future<Ack> dispatch(Running at, Envelope e) {
+            if (reversal != null && reversal.concerns(e)) {
+                Promise<Ack> answer = Promise.promise();
+                at.drain().track(answer.future());
+                Thread.ofVirtual().name("variant-reversed-handler-" + e.id()).start(() -> {
+                    try {
+                        reversal.beforeTheRun(e);
+                        at.handler().apply(e).onComplete(answer);
+                        reversal.afterTheRun(e);
+                    } catch (Throwable failed) {
+                        answer.tryFail(failed);
+                    }
+                });
+                return answer.future();
+            }
             if (handlerOnTheSendersThread) return at.drain().track(Future.future(p -> at.handler().apply(e).onComplete(p)));   // a throw fails the answer
             if (handlerFailureLost) {
                 Promise<Ack> answer = Promise.promise();
@@ -319,6 +369,12 @@ class ComponentContractSelfTest {
         assertEquals(Set.of(), failing(Variant.correct()));
     }
 
+    /** The cases a component that acknowledges before its handler answered fails — wherever its handler runs land. */
+    static Set<String> ackFirstFails() {
+        return Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT);
+    }
+
     @Test
     void eachBrokenPropertyFailsExactlyItsCases() {
         Variant ok = Variant.correct();
@@ -334,8 +390,7 @@ class ComponentContractSelfTest {
                         "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender"),
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e,
                         e -> e.withHeader("x-seen", "dropped").withHeader("x-acked", "dropped").withHeader("x-answer", "dropped"))), "reply dropped (headers replaced)");
-        assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT),
+        assertEquals(ackFirstFails(),
                 failing(new Variant("loopback", ok.schema, false, false, true, false, e -> e, e -> e)), "acknowledged before the handler answered (the envelope sent comes back)");
         assertEquals(Set.of(), failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.withId("receiver-minted"), e -> e)),
                 "a receiver that mints its own id (every real transport does) passes: the id is not what crosses");
@@ -536,6 +591,16 @@ class ComponentContractSelfTest {
     }
 
     static final String MESSAGE_ID = "aSendCarriesTheMessageIdToThePartner";
+
+    /** FIX-221: the contract case reads each delivery by what it is, not by its place — the ids it carries do not depend on which handler ran first. */
+    @Test
+    void anAckFirstPartnerWhoseSecondHandlerRunsFirstFailsOnlyWhatAnyAckFirstPartnerFails() {
+        Variant reversed = Variant.ackFirstWithTheHandlersReversed();
+        assertEquals(ackFirstFails(), failing(reversed), "the ids are carried correctly: the order of the handler runs decides nothing");
+        assertTrue(reversed.reversal.forced(),
+                "the plain send's handler run was held until the bounded send's had returned: the deliveries were recorded in the opposite order");
+        current = Variant.correct();
+    }
     static final String NO_TIME_LEFT = "aSendWithNoTimeLeftIsNotStarted";
     static final String CUT = "aSendIsCutWhenItsDeadlineRunsOutButNotWhileItIsRenewed";
 
