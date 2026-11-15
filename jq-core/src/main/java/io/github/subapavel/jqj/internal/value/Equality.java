@@ -45,7 +45,8 @@ import java.lang.foreign.MemorySegment;
  * arrays by their lengths, then element by element; an object by each of its keys, in its key order, found in the
  * other object with an equal value, and then by the two key counts. The walk keeps its open containers on a stack of
  * its own, never in Java frames, and charges one tick per member pair it compares, one per key of a built right object
- * it counts and one per started KiB of the shorter of two strings it compares (ADR-0008, ADR-0034 amendment for #65); a
+ * it counts, one per started KiB of the shorter of two strings it compares (ADR-0008, ADR-0034 amendment for #65) and
+ * what {@link Numbers#compare} charges for two numbers, one per started KiB of each token it reads whole (#97); a
  * view's own walks charge theirs, a view's key proofs included (ADR-0044): its left side's walk, and a read right
  * side's {@link KeyIndex}, which looks each left key up once (ADR-0044 as amended by #95).
  */
@@ -76,7 +77,7 @@ public final class Equality {
           switch (x) {
             case JqNull _ -> y instanceof JqNull;
             case JqBool _ -> x == y;
-            case JqNumber n -> y instanceof JqNumber m && Numbers.compare(n, m) == 0;
+            case JqNumber n -> y instanceof JqNumber m && Numbers.compare(state, n, m) == 0;
             case JqString s -> y instanceof JqString t && same(state, s, t);
             case JqArray p -> {
               if (!(y instanceof JqArray q) || length(state, p) != length(state, q)) {

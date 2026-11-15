@@ -3,6 +3,7 @@ package io.github.subapavel.jqj.internal.value;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.github.subapavel.jqj.query.run.RunState;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 
@@ -40,8 +41,8 @@ class DoubleNumberTest {
 
   @Test
   void computedNumbersCompareAsDoubles() {
-    assertThat(Numbers.compare(new DoubleNumber(1), new DoubleNumber(2))).as("1 against 2").isEqualTo(-1);
-    assertThat(Numbers.compare(new DoubleNumber(2), new DoubleNumber(1))).as("2 against 1").isEqualTo(1);
-    assertThat(Numbers.compare(new DoubleNumber(2), new DoubleNumber(2))).as("2 against 2").isZero();
+    assertThat(Numbers.compare(new RunState(), new DoubleNumber(1), new DoubleNumber(2))).as("1 against 2").isEqualTo(-1);
+    assertThat(Numbers.compare(new RunState(), new DoubleNumber(2), new DoubleNumber(1))).as("2 against 1").isEqualTo(1);
+    assertThat(Numbers.compare(new RunState(), new DoubleNumber(2), new DoubleNumber(2))).as("2 against 2").isZero();
   }
 }

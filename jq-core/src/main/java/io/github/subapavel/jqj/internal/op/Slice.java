@@ -31,6 +31,7 @@ import io.github.subapavel.jqj.internal.json.Printer;
 import io.github.subapavel.jqj.internal.value.ArrayView;
 import io.github.subapavel.jqj.internal.value.BuiltArray;
 import io.github.subapavel.jqj.internal.value.BuiltString;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Fn2;
@@ -128,11 +129,11 @@ public final class Slice implements Fn2 {
     }
     return switch (array) {
       case ArrayView view -> {
-        long range = bounds(view.length(state), from, to);
+        long range = bounds(state, view.length(state), from, to);
         yield view.slice(state, (int) (range >>> 32), (int) range);
       }
       case BuiltArray built -> {
-        long range = bounds(built.length(), from, to);
+        long range = bounds(state, built.length(), from, to);
         yield built.slice(state, (int) (range >>> 32), (int) range);
       }
     };
@@ -183,7 +184,7 @@ public final class Slice implements Fn2 {
         points++;
       }
     }
-    long range = bounds(points, from, to);
+    long range = bounds(state, points, from, to);
     long first = offset(utf8, 0, (int) (range >>> 32));
     long end = offset(utf8, first, (int) range - (int) (range >>> 32));
     return BuiltString.of(utf8.asSlice(first, end - first).toArray(JAVA_BYTE));
@@ -211,12 +212,13 @@ public final class Slice implements Fn2 {
    * start << 32 | end} with {@code 0 <= start <= end <= length}. The start is 0 for null or NaN, counts from the end
    * when negative, and is clamped to {@code [0, length]}, then cut toward zero. The end is the length for null or NaN,
    * counts from the end when negative, is the start when still negative, is clamped to the length, and rounds up a
-   * fraction below it; an end before the start is the start.
+   * fraction below it; an end before the start is the start. Each number bound's double is read as {@link
+   * Numbers#doubleValue} charges it (#97).
    */
-  static long bounds(int length, JqValue from, JqValue to) {
+  static long bounds(RunState state, int length, JqValue from, JqValue to) {
     // A NaN start takes none of the three branches below, as every comparison with NaN is false, and the cast makes
     // it 0.
-    double start = from instanceof JqNumber n ? n.doubleValue() : 0;
+    double start = from instanceof JqNumber n ? Numbers.doubleValue(state, n) : 0;
     if (start < 0) {
       start += length;
     }
@@ -227,7 +229,7 @@ public final class Slice implements Fn2 {
       start = length;
     }
     int s = (int) start;
-    double end = to instanceof JqNumber n ? n.doubleValue() : length;
+    double end = to instanceof JqNumber n ? Numbers.doubleValue(state, n) : length;
     if (Double.isNaN(end)) {
       end = length;
     }

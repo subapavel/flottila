@@ -26,6 +26,7 @@
 package io.github.subapavel.jqj.internal.op;
 
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.run.Fn0;
 import io.github.subapavel.jqj.value.JqBool;
@@ -37,7 +38,7 @@ import java.util.function.DoublePredicate;
  * nan} and {@code infinite}, computed numbers whatever the input; {@code isnan}, {@code isinfinite} and {@code
  * isnormal}, the C tests of a number's double, false for any other kind; and {@code have_decnum} and {@code
  * have_literal_numbers}, true, as jq-ref's build has decNumber (GLOSSARY "Build configuration", ADR-0012). None ticks
- * or charges.
+ * or charges, except a test's read of a non-short view's double ({@link Numbers#doubleValue}, #97).
  */
 public final class NumberTests {
   /** {@code nan}. */
@@ -70,6 +71,6 @@ public final class NumberTests {
 
   /** The operation {@code name}: whether its input is a number whose double passes {@code test}. */
   private static Operation test(String name, DoublePredicate test) {
-    return new Operation(name, (Fn0) (state, in) -> in instanceof JqNumber n && test.test(n.doubleValue()) ? JqBool.TRUE : JqBool.FALSE);
+    return new Operation(name, (Fn0) (state, in) -> in instanceof JqNumber n && test.test(Numbers.doubleValue(state, n)) ? JqBool.TRUE : JqBool.FALSE);
   }
 }

@@ -28,6 +28,7 @@ package io.github.subapavel.jqj.internal.op;
 import io.github.subapavel.jqj.internal.value.BuiltArray;
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
 import io.github.subapavel.jqj.internal.value.Members;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.internal.value.ObjectMerge;
 import io.github.subapavel.jqj.query.run.Fn2;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -52,7 +53,7 @@ final class Plus implements Fn2 {
     return switch (new Operands(l, r)) {
       case Operands(JqNull _, JqValue b) -> b;
       case Operands(JqValue a, JqNull _) -> a;
-      case Operands(JqNumber a, JqNumber b) -> new DoubleNumber(a.doubleValue() + b.doubleValue());
+      case Operands(JqNumber a, JqNumber b) -> new DoubleNumber(Numbers.doubleValue(state, a) + Numbers.doubleValue(state, b));
       case Operands(JqString a, JqString b) -> Strings.concat(state, a, b);
       case Operands(JqArray a, JqArray b) -> concat(state, a, b);
       case Operands(JqObject a, JqObject b) -> ObjectMerge.plus(state, a, b);

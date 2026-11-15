@@ -27,6 +27,7 @@ package io.github.subapavel.jqj.internal.op;
 
 import io.github.subapavel.jqj.internal.value.BuiltString;
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.Many;
@@ -37,11 +38,11 @@ import io.github.subapavel.jqj.value.JqNumber;
  * jq 1.8.2's {@code range/2} on its two bounds, start and end (ADR-0041; jq-ref, recorded: diff/reduce.rec range2-*):
  * the start itself first, so a literal keeps its form ({@code [range(1.10;3)]} gives {@code [1.10,2.1]}), then each
  * value the double before it plus 1, rounded at each step, while the value's double is below the end's; a bound that is
- * no number raises "Range bounds must be numeric" before any result. Its steps are the caller's, one per value; it
- * charges nothing.
+ * no number raises "Range bounds must be numeric" before any result. Its steps are the caller's, one per value, and
+ * each bound's read once, as {@link Numbers#doubleValue} charges it (#97); it charges nothing else.
  *
  * <p>A document's number computes its double at each read (ADR-0012), O(its token) for each, so {@link #first} reads
- * the end's double once and puts it in the arguments' place as a {@link DoubleNumber}, which each later step reads.
+ * each bound's double once and puts both in the end's argument place as {@link Doubles}, which each later step reads.
  *
  * <p>The cursor of a later value is that value's double, its bits with every NaN as the one canonical NaN; the first
  * value's is {@link #START}, another NaN's bits, so no double's cursor is it or {@link Many#END}.
@@ -55,24 +56,29 @@ public final class Range implements Many {
 
   private Range() {}
 
+  /** The two bounds' doubles, which {@link #first} read once. */
+  private record Doubles(double start, double end) {}
+
   @Override
   public long first(RunState state, Object in, Object[] args) {
     if (!(args[0] instanceof JqNumber start) || !(args[1] instanceof JqNumber end)) {
       throw new FilterException(BuiltString.of("Range bounds must be numeric"));
     }
-    double last = end.doubleValue();
-    if (start.doubleValue() >= last) {
+    double last = Numbers.doubleValue(state, end);
+    double from = Numbers.doubleValue(state, start);
+    if (from >= last) {
       return END;
     }
-    args[1] = new DoubleNumber(last);
+    args[1] = new Doubles(from, last);
     return START;
   }
 
-  /** {@link #first} gave a cursor only to two numbers, the end as its double, so only they come here. */
+  /** {@link #first} gave a cursor only to two numbers, both doubles in the end's place, so only they come here. */
   @Override
   public long next(RunState state, Object in, Object[] args, long cursor) {
-    double v = (cursor == START ? ((JqNumber) args[0]).doubleValue() : Double.longBitsToDouble(cursor)) + 1;
-    return v >= ((DoubleNumber) args[1]).doubleValue() ? END : Double.doubleToLongBits(v);
+    Doubles bounds = (Doubles) args[1];
+    double v = (cursor == START ? bounds.start() : Double.longBitsToDouble(cursor)) + 1;
+    return v >= bounds.end() ? END : Double.doubleToLongBits(v);
   }
 
   @Override
