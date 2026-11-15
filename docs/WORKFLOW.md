@@ -59,7 +59,7 @@ the glossary sharpened, `docs/GATE.md` final, and the first spec ready for `/gri
 
 The architect runs `.claude/skills/run-spec/SKILL.md`. In short, per ticket on the frontier:
 
-1. claim it (assign), cut a worktree branch `t/<ticket>-<slug>` from the integration branch;
+1. claim it (assign), cut a worktree branch from the integration branch (§11 names them);
 2. class C: designer draft → architect approves → test-author writes the red → architect reads
    the test files and approves; A/B: the implementer runs `/tdd` at the spec's seams; oracle
    tickets: the named cases are the red;
@@ -153,7 +153,9 @@ evidence comments are the record. Nothing that matters lives only in the convers
 
 ## 11. Commits and branches
 
-- `main` ← PR per spec. `spec/<issue>-<slug>` ← merger. `t/<ticket>-<slug>` ← one implementer.
+- `main` ← PR per spec. `spec/<issue>-<slug>` ← merger. `t/<ticket>-<slug>` ← the test author's
+  red (class C). `impl/<ticket>` ← one implementer, cut from the approved red or, for class A/B,
+  from the integration branch (owner, 2026-11-15, F-103).
   Throwaway: `research/<name>`, `prototype/<name>` (never merged).
 - Conventional Commits, scope = module without prefix: `feat(jq-core): …`, `test(oracle): …`,
   `fix(query-core): …`, `chore(ci): …`, `docs: …`.
