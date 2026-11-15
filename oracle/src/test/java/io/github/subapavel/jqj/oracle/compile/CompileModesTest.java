@@ -13,6 +13,7 @@ import io.github.subapavel.jqj.oracle.diff.Verdict;
 import io.github.subapavel.jqj.oracle.jqtest.JqTestCase;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.value.JqNull;
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +61,7 @@ class CompileModesTest {
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 512 * 1024L));
   }
 
-  /** jqj's F (CallRuns.F): jq-ref 1.8.2 gives N on N for N up to 10^7 (F-87), 9999 on 9999 (observed 2026-11-15, #109). */
+  /** jqj's F (CallRuns.F): reference jq 1.8.2 gives N on N for N up to 10^7 (F-87), 9999 on 9999 (observed 2026-11-15, #109). */
   private static final String F = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
 
   /** The thread of a run that must hold 9 999 levels only on the driver: DeepRuns' small stack. */
@@ -94,8 +95,15 @@ class CompileModesTest {
    */
   @Test
   void theTrampolineHookIsConservativeWithStackBytesZero(@TempDir Path scratch) throws ReflectiveOperationException, InterruptedException {
-    JqEngine engine = CompileModes.trampoline().apply(JqEngine.builder()).build();
+    JqEngine.Builder builder = CompileModes.trampoline().apply(JqEngine.builder());
+    JqEngine engine = builder.build();
     assertThat(CompileModes.modeOf(engine)).as("compile mode of an engine built through the trampoline hook").isEqualTo(CompileMode.CONSERVATIVE);
+    // The oracle's limits, with neither the deadline nor the regex match time (F-58), and stackBytes 0.
+    Field limits = JqEngine.Builder.class.getDeclaredField("limits");
+    limits.setAccessible(true);
+    assertThat(limits.get(builder))
+        .as("the limits the trampoline hook sets")
+        .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 0));
 
     DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
     assertEnded(onSmallStack(() -> CompileModes.cli(deep, scratch, CompileModes.trampoline())), "the trampoline run of F on 9999 on a 256 KiB thread", 0, "9999\n", "");

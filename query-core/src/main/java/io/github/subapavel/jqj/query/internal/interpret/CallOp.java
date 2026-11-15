@@ -7,8 +7,9 @@ import io.github.subapavel.jqj.query.run.Sink;
 /**
  * A call of a lifted function (ADR-0045 #107): a fresh frame of the function's cells, its value parameters read on the
  * Call's input and its closure cells after its slots; then one step, then one more live activation, and the body runs
- * on the input in that frame. The activation ends however the body ends: its results running out, a stop, a break,
- * an error or a termination. On the trampoline the live activation is an {@link Active} form.
+ * on the input in that frame. The activation ends when the body's results run out, at a stop or a break, or when an
+ * error leaves the body; in push form a termination ends it too. On the trampoline the live activation is an
+ * {@link Active} form, and a termination ends the run with the activation still counted.
  */
 public final class CallOp extends Op {
   private final LiftedFunction fn;

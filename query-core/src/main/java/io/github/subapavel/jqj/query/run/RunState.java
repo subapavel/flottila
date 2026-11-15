@@ -200,8 +200,10 @@ public final class RunState {
   }
 
   /**
-   * A call activation begins (ADR-0045 #107, ADR-0046): one more live activation, which {@link #leave} ends however the
-   * call ends. One over the recursion-depth budget is not counted.
+   * A call activation begins (ADR-0045 #107, ADR-0046): one more live activation, which {@link #leave} ends when the
+   * call ends, by its results running out, a stop, a break or an error, and in push form a termination too; a
+   * termination on the trampoline leaves it counted until the next {@link #begin}. One over the recursion-depth budget
+   * is not counted.
    *
    * @throws Termination over the recursion-depth budget
    */

@@ -374,8 +374,8 @@ class RunStateTest {
 
   /**
    * The declared stack bytes are the last begin's (ADR-0030 #109 amendment): {@code Long.MAX_VALUE} before any begin and
-   * after a begin that declares none, 0 when a begin declares 0, and no budget: a run declaring 0 still ticks, enters
-   * and ends as any other.
+   * after a begin that declares none, 0 when a begin declares 0, and no budget: a run declaring 0 still counts its
+   * steps, and its recursion depth of 1 takes one enter and refuses a second, as any other run's.
    */
   @Test
   void stackBytesAreTheLastBeginsDeclaredStack() {
@@ -384,8 +384,9 @@ class RunStateTest {
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1, 0);
     assertThat(state.stackBytes()).as("stack bytes of a run declaring 0").isZero();
     state.tick();
+    assertThat(state.steps()).as("steps of a run declaring 0 after one tick").isEqualTo(1);
     state.enter();
-    state.leave();
+    assertBudget(state::enter, Budget.RECURSION_DEPTH, "a second enter under a recursion depth of 1, declaring 0");
     state.end();
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
     assertThat(state.stackBytes()).as("stack bytes of a run declaring none").isEqualTo(Long.MAX_VALUE);

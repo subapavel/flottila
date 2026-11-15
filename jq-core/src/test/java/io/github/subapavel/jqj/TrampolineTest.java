@@ -35,7 +35,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * run with the default {@code stackBytes} that must complete 10^4 levels in push form, as the oracle of the step
  * count, gets a thread of {@value #BIG} bytes.
  *
- * <p>Every expected result is jq-ref 1.8.2's: the deep ones observed 2026-11-15 on the 9 999-deep array of
+ * <p>Every expected result is reference jq 1.8.2's: the deep ones observed 2026-11-15 on the 9 999-deep array of
  * {@link #DEEP} and on deep numbers ({@code .logs/109-jqref-deep.log} of #109; ADR-0046 cites the first three), F on N
  * gives N for N up to 10^7 (F-87), and the shallow ones are the recordings of diff/calls.rec and diff/heap.rec.
  */
@@ -52,16 +52,16 @@ class TrampolineTest {
   /** 9 999 {@code [} then 9 999 {@code ]}: one level under jq's parse limit of 10 000 (F-22). */
   static final String DEEP = "[".repeat(9_999) + "]".repeat(9_999);
 
-  /** A Collect per level: jq-ref gives 1 on {@link #DEEP}. */
+  /** A Collect per level: reference jq gives 1 on {@link #DEEP}. */
   static final String COLLECT = "def d: [.[]?|d]; d|length";
 
-  /** A Reduce step per level: jq-ref gives 9998 on {@link #DEEP}. */
+  /** A Reduce step per level: reference jq gives 9998 on {@link #DEEP}. */
   static final String REDUCE = "def r: reduce .[] as $x (0; .+($x|r)+1); r";
 
-  /** first's Label and an Alt per level: jq-ref gives 7 on {@link #DEEP}. */
+  /** first's Label and an Alt per level: reference jq gives 7 on {@link #DEEP}. */
   static final String FIRST_OR = "def l: first(.[]?|l)//7; l";
 
-  /** The constant-Java-depth witness, an Alt's left side per level: jq-ref gives 1 on 9999. */
+  /** The constant-Java-depth witness, an Alt's left side per level: reference jq gives 1 on 9999. */
   static final String ALT_CHAIN = "def f: if . == 0 then 1 else (. - 1 | f) // 2 end; f";
 
   /** An engine of {@link Limits#cli()} with {@code recursionDepth} and {@code stackBytes}, compiling in {@code mode}. */
@@ -113,9 +113,9 @@ class TrampolineTest {
   }
 
   /**
-   * ADR-0046: jq-ref completes these on a 9 999-deep array in about 10 ms each, and a spine-only driver would end them
-   * near 200 levels. With {@code stackBytes} 0 every kind of their bodies runs on the driver, so a 256 KiB thread holds
-   * them; the constant-Java-depth witness nests 9 999 Alts, whose left sides keep their state on the heap.
+   * ADR-0046: reference jq completes these on a 9 999-deep array in about 10 ms each, and a spine-only driver would end
+   * them near 200 levels. With {@code stackBytes} 0 every kind of their bodies runs on the driver, so a 256 KiB thread
+   * holds them; the constant-Java-depth witness nests 9 999 Alts, whose left sides keep their state on the heap.
    */
   @ParameterizedTest
   @EnumSource(CompileMode.class)

@@ -2,6 +2,8 @@ package io.github.subapavel.jqj.oracle.compile;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import io.github.subapavel.jqj.oracle.diff.DiffCase;
 import io.github.subapavel.jqj.oracle.diff.Outcome;
@@ -24,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileCorpusTest {
 
-  /** jqj's F (CallRuns.F): jq-ref 1.8.2 gives 9999 on 9999 (observed 2026-11-15, #109). */
+  /** jqj's F (CallRuns.F): reference jq 1.8.2 gives 9999 on 9999 (observed 2026-11-15, #109). */
   private static final String F = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
 
   /** The thread on which F on 9999 completes only on the trampoline: DeepRuns' small stack. */
@@ -75,6 +77,36 @@ class CompileCorpusTest {
         .as("its comparison")
         .startsWith("t/f-on-9999: FAIL, the optimised and the trampoline run disagree\n")
         .contains("  stdout  optimised    STACK\n          trampoline   9999\\n\n");
+  }
+
+  /**
+   * A mode outside {@link CompileCorpus#MODES} is refused, never run as another: a compile.txt line under it fails the
+   * required check, naming the mode, and judging a case under it fails before any run.
+   */
+  @Test
+  void aModeOutsideTheModesIsRefused(@TempDir Path dir) throws IOException {
+    Path ratchet = dir.resolve("compile.txt");
+    Files.writeString(ratchet, "a\td1\tconservative\na\td1\tcopy-only\n", UTF_8);
+    Map<String, Set<String>> required = CompileCorpus.required(ratchet);
+    AtomicInteger runs = new AtomicInteger();
+    CompileCorpus.Case c =
+        new CompileCorpus.Case(
+            "a",
+            "d1",
+            hook -> {
+              runs.incrementAndGet();
+              return new Run.Ended(new Outcome(0, new byte[0], new byte[0]));
+            });
+
+    assertThatIllegalStateException()
+        .as("the required check of a line under copy-only")
+        .isThrownBy(() -> CompileCorpus.requireKnown(required, List.of(c)))
+        .withMessage("compile oracle: required modes that are none of [conservative, trampoline]: [copy-only]");
+    assertThatIllegalArgumentException()
+        .as("judging a case under copy-only")
+        .isThrownBy(() -> CompileCorpus.judge(c, List.of("copy-only")))
+        .withMessage("compile oracle: no mode copy-only, only [conservative, trampoline]");
+    assertThat(runs).as("the runs started for copy-only").hasValue(0);
   }
 
   /** A termination as an end with exit code 0 and its cause on stdout, so the runs are compared rather than left out. */

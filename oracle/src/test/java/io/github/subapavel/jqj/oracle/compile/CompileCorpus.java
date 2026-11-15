@@ -68,20 +68,30 @@ final class CompileCorpus {
     return all;
   }
 
-  /** The hook of the run of {@code mode}, one of {@link #MODES}. */
+  /**
+   * The hook of the run of {@code mode}.
+   *
+   * @throws IllegalArgumentException when {@code mode} is none of {@link #MODES}
+   */
   private static UnaryOperator<JqEngine.Builder> hook(String mode) {
-    return mode.equals("trampoline") ? CompileModes.trampoline() : CompileModes.hook(CompileMode.CONSERVATIVE);
+    return switch (mode) {
+      case "conservative" -> CompileModes.hook(CompileMode.CONSERVATIVE);
+      case "trampoline" -> CompileModes.trampoline();
+      default -> throw new IllegalArgumentException("compile oracle: no mode " + mode + ", only " + MODES);
+    };
   }
 
   /**
    * The case's verdict under each of {@code modes}, in their order: its run of that mode against one optimised run.
+   *
+   * @throws IllegalArgumentException before any run, when a mode is none of {@link #MODES}
    */
   static Map<String, Verdict> judge(Case c, List<String> modes) {
+    Map<String, UnaryOperator<JqEngine.Builder>> hooks = new LinkedHashMap<>();
+    for (String mode : modes) hooks.put(mode, hook(mode));
     Run optimised = c.run().apply(CompileModes.hook(CompileMode.OPTIMISED));
     Map<String, Verdict> verdicts = new LinkedHashMap<>();
-    for (String mode : modes) {
-      verdicts.put(mode, CompileModeRunner.judge(c.id(), optimised, mode, c.run().apply(hook(mode))));
-    }
+    hooks.forEach((mode, hook) -> verdicts.put(mode, CompileModeRunner.judge(c.id(), optimised, mode, c.run().apply(hook))));
     return verdicts;
   }
 
@@ -122,11 +132,16 @@ final class CompileCorpus {
   }
 
   /**
-   * Checks that every required id names a case, so a typo or a renamed case cannot pass by producing no test.
+   * Checks that every required mode is one of {@link #MODES} and every required id names a case, so a typo, a renamed
+   * case or a mode no run has cannot pass by producing no test.
    *
-   * @throws IllegalStateException listing every required id, sorted, that names no case
+   * @throws IllegalStateException listing every required mode, sorted, that is none of {@link #MODES}, or else every
+   *     required id, sorted, that names no case
    */
   static void requireKnown(Map<String, Set<String>> required, List<Case> cases) {
+    Set<String> strange = new TreeSet<>(required.keySet());
+    MODES.forEach(strange::remove);
+    if (!strange.isEmpty()) throw new IllegalStateException("compile oracle: required modes that are none of " + MODES + ": " + strange);
     Set<String> unknown = new TreeSet<>();
     required.values().forEach(unknown::addAll);
     for (Case c : cases) unknown.remove(c.id());
