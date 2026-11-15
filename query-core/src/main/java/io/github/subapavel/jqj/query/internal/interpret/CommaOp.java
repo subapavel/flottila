@@ -24,4 +24,34 @@ public final class CommaOp extends Op {
     state.tick();
     return right.run(state, slots, in, out);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(left, new Left(under, slots, in, out), slots, in, out);
+  }
+
+  /** The heap form while the left side runs: what the right side then runs on. */
+  private final class Left extends HeapForm {
+    private final Object[] slots;
+    private final Object in;
+    private final HeapSink out;
+
+    Left(HeapForm under, Object[] slots, Object in, HeapSink out) {
+      super(under);
+      this.slots = slots;
+      this.in = in;
+      this.out = out;
+    }
+
+    /** The left side ran out: one step, then the right side in its place; a false passes at once, without the step. */
+    @Override
+    void resume(Trampoline t, boolean more) {
+      if (!more) {
+        t.answer(under, false);
+        return;
+      }
+      t.state.tick();
+      t.start(right, under, slots, in, out);
+    }
+  }
 }

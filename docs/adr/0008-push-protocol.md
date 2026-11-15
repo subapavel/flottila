@@ -1,11 +1,11 @@
 # Push protocol: emit's false stops, a break is a Workspace token, two exception classes
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amends ADR-0004, ADR-0005 and ADR-0007; amended by ADR-0015 (issue #11) and ADR-0017 (issue #13); amended by F-32 (two more tick sites); amended by ADR-0030 (run state, #59); amended by ADR-0034 (`run` takes the slots, #63); catch set and label tokens amended by ADR-0039 (#68); reduce and foreach tick at their producer, ADR-0041 (#69); the key proof's ticks, ADR-0044 (#85); Equality's key index, ADR-0044 (#95); a number token's re-scan is uncharged until #97, F-50; a PLAIN call's tick by F-54, the value form's cardinality by F-56 and its compile mode by ADR-0047 (spec 2b); a number token's read charges, #97 (F-50)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amends ADR-0004, ADR-0005 and ADR-0007; amended by ADR-0015 (issue #11) and ADR-0017 (issue #13); amended by F-32 (two more tick sites); amended by ADR-0030 (run state, #59); amended by ADR-0034 (`run` takes the slots, #63); catch set and label tokens amended by ADR-0039 (#68); reduce and foreach tick at their producer, ADR-0041 (#69); the key proof's ticks, ADR-0044 (#85); Equality's key index, ADR-0044 (#95); a number token's re-scan is uncharged until #97, F-50; a PLAIN call's tick by F-54, the value form's cardinality by F-56 and its compile mode by ADR-0047 (spec 2b); a number token's read charges, #97 (F-50); the two signatures reworded to ADR-0034's, #116
 
 Results are pushed. `interface Sink { boolean emit(Object v); }` lives in `query-core`. If emit
 returns `false`, that is a stop: the producer emits nothing more and returns `false` at once. The
-interpreter has two forms, `boolean run(Frame, Object in, Sink)` and a value form `Object
-eval(Frame, Object in)` for cardinality one or at most one (nothing runs after the result, F-56; the
+interpreter has two forms, `boolean run(RunState, Object[] slots, Object in, Sink)` and a value form
+`Object eval(RunState, Object[] slots, Object in)` for cardinality one or at most one (nothing runs after the result, F-56; the
 optimised compile only, ADR-0047), which returns `NONE` for no result. The bytecode backend fuses `a
 | b`, and a `Sink` object exists only where results cross
 into separately compiled code.

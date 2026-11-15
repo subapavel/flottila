@@ -15,4 +15,9 @@ public final class VarOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(slots[slot]);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, slots[slot]);
+  }
 }

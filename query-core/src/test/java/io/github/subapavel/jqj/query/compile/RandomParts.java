@@ -455,8 +455,13 @@ final class RandomParts {
 
   /** Compiles {@code root} in {@code mode} and runs it on {@link #IN} with a step budget of {@code steps}, the sink stopping at its {@code stopAt}th result. */
   static Outcome outcome(Node root, CompileMode mode, long steps, int stopAt) {
+    return outcome(root, mode, steps, stopAt, Long.MAX_VALUE);
+  }
+
+  /** {@link #outcome(Node, CompileMode, long, int)} in a run declaring {@code stackBytes}: at 0, on the trampoline (ADR-0046). */
+  static Outcome outcome(Node root, CompileMode mode, long steps, int stopAt, long stackBytes) {
     RunState state = new RunState();
-    state.begin(steps, Long.MAX_VALUE, Long.MAX_VALUE);
+    state.begin(steps, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, stackBytes);
     List<Object> emitted = new ArrayList<>();
     Boolean answer = null;
     Object thrown = null;

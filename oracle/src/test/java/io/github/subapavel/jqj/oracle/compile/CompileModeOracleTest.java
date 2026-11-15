@@ -11,7 +11,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
@@ -23,16 +25,16 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The compile-mode oracle (ADR-0020 amendment for #60): one dynamic test per id of {@code ratchet/oracle/compile.txt},
- * sorted by id, which must PASS, its optimised and conservative runs agreeing. Every verdict goes into the compile
- * report. It runs only under the Maven profile {@code compile-oracle} (tag {@value CompileCorpus#TAG}), and PIT
- * excludes it (oracle/pom.xml).
+ * The compile-mode oracle (ADR-0020 amendment for #60, F-58): one dynamic test per id of
+ * {@code ratchet/oracle/compile.txt}, sorted by id, which must PASS under each mode its lines name, its run of that
+ * mode agreeing with one optimised run. Every verdict goes into its mode's compile report. It runs only under the
+ * Maven profile {@code compile-oracle} (tag {@value CompileCorpus#TAG}), and PIT excludes it (oracle/pom.xml).
  */
 @Tag(CompileCorpus.TAG)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CompileModeOracleTest {
 
-  private final List<DiffReport.Row> rows = new ArrayList<>();
+  private final Map<String, List<DiffReport.Row>> rows = new HashMap<>();
 
   @TestFactory
   Stream<DynamicTest> requiredCases(@TempDir Path scratch) {
@@ -41,19 +43,24 @@ class CompileModeOracleTest {
 
   /** The tests of the ids of {@code ratchet}; throws, listing them, if any of those ids names no case. */
   Stream<DynamicTest> requiredCases(Path scratch, Path ratchet) {
-    Set<String> required = CompileCorpus.required(ratchet);
+    Map<String, Set<String>> required = CompileCorpus.required(ratchet);
     List<CompileCorpus.Case> cases = CompileCorpus.cases(scratch);
     CompileCorpus.requireKnown(required, cases);
     return cases.stream()
-        .filter(c -> required.contains(c.id()))
+        .filter(c -> !CompileCorpus.modes(c.id(), required, true).isEmpty())
         .map(
             c ->
                 dynamicTest(
                     c.id(),
                     () -> {
-                      Verdict v = CompileCorpus.judge(c);
-                      rows.add(new DiffReport.Row(c.id(), v, c.def()));
-                      if (v.kind() != Verdict.Kind.PASS) fail(v.diff());
+                      StringBuilder failed = new StringBuilder();
+                      CompileCorpus.judge(c, CompileCorpus.modes(c.id(), required, true))
+                          .forEach(
+                              (mode, v) -> {
+                                rows.computeIfAbsent(mode, m -> new ArrayList<>()).add(new DiffReport.Row(c.id(), v, c.def()));
+                                if (v.kind() != Verdict.Kind.PASS) failed.append(v.diff());
+                              });
+                      if (!failed.isEmpty()) fail(failed.toString());
                     }));
   }
 

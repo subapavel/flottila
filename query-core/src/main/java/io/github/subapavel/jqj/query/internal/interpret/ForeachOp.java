@@ -29,4 +29,18 @@ public final class ForeachOp extends Op {
           return each.run(state, slots, in, out);
         });
   }
+
+  /** Each result of the init sets the slot and starts {@code each} above the form that produced it. */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(
+        init,
+        under,
+        slots,
+        in,
+        (d, producer, r) -> {
+          slots[slot] = r;
+          d.start(each, producer, slots, in, out);
+        });
+  }
 }

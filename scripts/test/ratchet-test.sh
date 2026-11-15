@@ -103,6 +103,20 @@ fresh
 report compile-conservative "w${T}FAIL\nx${T}PASS${T}${T}d1\ny${T}FAIL${T}left out: the conservative run ended with BUDGET STEPS${T}d2\njq.test#abc${T}FAIL${T}stub: the optimised run reached a Stub: s${T}abc\n"
 check "regen writes compile.txt" "$(run regen --oracles)" 0
 check "compile.txt holds the conservative line of every passing case" "$(printf 'x\td1\tconservative\n' | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0
+# the trampoline run (F-58, #109): its lines come from its own report, beside the conservative ones
+fresh
+printf 'x\td1\tconservative\n' > "$root/ratchet/oracle/compile.txt"
+report compile-conservative "x${T}PASS${T}${T}d1\ny${T}PASS${T}${T}d2\n"
+report compile-trampoline "x${T}PASS${T}${T}d1\ny${T}FAIL${T}left out: the trampoline run ended with BUDGET STEPS${T}d2\n"
+check "regen writes the trampoline lines" "$(run regen --oracles)" 0
+check "compile.txt holds the trampoline line of every case passing on the trampoline" "$(printf 'x\td1\tconservative\nx\td1\ttrampoline\ny\td2\tconservative\n' | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0
+report compile-trampoline "x${T}PASS${T}${T}d1\ny${T}FAIL${T}disagree: stdout differs at byte 0${T}d2\n"
+check "regen refuses a trampoline Disagreement" "$(run regen --oracles)" 1
+has "the trampoline Disagreement named against the trampoline run" 'compile: y trampoline disagrees between the optimised and the trampoline run (disagree: stdout differs at byte 0)'
+report compile-trampoline "x${T}PASS${T}${T}d1\ny${T}PASS${T}${T}d2\n"
+report compile-conservative "x${T}PASS${T}${T}d1\ny${T}FAIL${T}disagree: stdout differs at byte 0${T}d2\n"
+check "regen refuses a conservative Disagreement" "$(run regen --oracles)" 1
+has "the conservative Disagreement named against the conservative compile" 'compile: y conservative disagrees between the optimised and the conservative compile (disagree: stdout differs at byte 0)'
 
 # --- drop compile <file> (F-46, #88): only listed ids leave, and only as FAIL stub: rows; else nothing is written ---
 fresh

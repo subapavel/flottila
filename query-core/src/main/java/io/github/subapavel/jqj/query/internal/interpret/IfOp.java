@@ -42,6 +42,16 @@ public final class IfOp extends Op {
     return branch(holder.take()).run(state, slots, in, out);
   }
 
+  /**
+   * Each result of the condition starts its branch above the form that produced it. A tail emitter has no role on the
+   * driver: a tail condition starts no form of its own, so its one result's branch runs where the push form runs it,
+   * on the If's own form, and nothing runs in it after its result.
+   */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(cond, under, slots, in, (d, producer, v) -> d.start(branch(v), producer, slots, in, out));
+  }
+
   private Op branch(Object v) {
     return truth.test(v) ? then : otherwise;
   }

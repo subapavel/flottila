@@ -54,6 +54,22 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     with lifting as late as possible kept as a spec-6 option (Q1). The expansion measure takes the
     larger of the inlined and lifted forms per call site (D1). Records: ADR-0040 "Amendment
     (ticket #114)", F-54.
+  - #116 (value form): in OPTIMISED the value form comes before the tail emitter, so there the
+    Holder path serves only path variants. This amends ADR-0047 bullet 3's "replaces nothing" (C1).
+    A value-form call's activation and units end when its `eval` returns, so in OPTIMISED the
+    recursion-depth verdict can depend on `stackBytes` (C2). Compile mode becomes a calibration
+    dimension (R1). Records: ADR-0047 and ADR-0046 "Amendment (ticket #116)".
+  - #117 (specialisation), with records to follow:
+    - S1: the lifted functions of PLAIN calls get copies too (GLOSSARY, F-54).
+    - S2: copies are ordered by the Source of the placing call, then by discovery (ADR-0045).
+    - S3: in 2b, arguments that carry literals do not share a copy; a hook for Const equality is
+      deferred to spec 6.
+    - S4: free refs become trailing parameters of the copy.
+    - S5: if the census shows refusals, the cap becomes the next power of two, up to `INLINE_CAP`.
+  - #118 (tail calls), with records to follow:
+    - T1: ADR-0018:29 is reworded; CONSERVATIVE stores no tail kind.
+    - T2: ADR-0047 is amended; written closures are bound without a frame at jump sites.
+    - The embedded recursion-depth default stays open.
 
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 

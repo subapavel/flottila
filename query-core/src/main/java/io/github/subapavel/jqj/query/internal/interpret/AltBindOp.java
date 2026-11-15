@@ -67,10 +67,81 @@ public final class AltBindOp extends Op {
         slots,
         in,
         m -> {
-          for (int g = 0; g < groups.length; g++) {
-            slots[groups[g]] = own[g].read(slots, in);
-          }
+          groups(own, slots, in);
           return body.run(state, slots, in, out);
         });
+  }
+
+  /** Each group slot from the alternative's own entry in {@code own}. */
+  private void groups(Argument[] own, Object[] slots, Object in) {
+    for (int g = 0; g < groups.length; g++) {
+      slots[groups[g]] = own[g].read(slots, in);
+    }
+  }
+
+  /**
+   * The value runs under the AltBind's own form, so its errors pass no catch; each of its results sets the slot and
+   * starts the first alternative above the form that produced it.
+   */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(
+        value,
+        under,
+        slots,
+        in,
+        (d, producer, v) -> {
+          slots[slot] = v;
+          alternative(0, d, producer, slots, in, out);
+        });
+  }
+
+  /**
+   * Alternative {@code k} on the value in the slot, above {@code producer}: each but the last under its own
+   * {@link Alternatives}, which catches; the last right on {@code producer}, outside any catch. At each result of its
+   * match, the group slots are set and the body starts above the form that produced it.
+   */
+  private void alternative(int k, Trampoline t, HeapForm producer, Object[] slots, Object in, HeapSink out) {
+    HeapForm form = k < matches.length - 1 ? new Alternatives(producer, k, slots, in, out) : producer;
+    Argument[] own = from[k];
+    t.start(
+        matches[k],
+        form,
+        slots,
+        in,
+        (d, match, m) -> {
+          groups(own, slots, in);
+          d.start(body, match, slots, in, out);
+        });
+  }
+
+  /**
+   * The heap form of alternative {@code k} while one remains after it: an error from its match, the body or downstream
+   * starts the next alternative after one step (ADR-0038, F-32), and its run's answer is the value's result's.
+   */
+  private final class Alternatives extends HeapForm {
+    private final int k;
+    private final Object[] slots;
+    private final Object in;
+    private final HeapSink out;
+
+    Alternatives(HeapForm under, int k, Object[] slots, Object in, HeapSink out) {
+      super(under);
+      this.k = k;
+      this.slots = slots;
+      this.in = in;
+      this.out = out;
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      t.answer(under, more);
+    }
+
+    @Override
+    void fail(Trampoline t, FilterException e) {
+      t.state.tick();
+      alternative(k + 1, t, under, slots, in, out);
+    }
   }
 }

@@ -1,0 +1,89 @@
+# Differential cases (ADR-0020) of #109 "S2b.4 Heap forms of all 20 kinds and the trampoline oracle run" (ADR-0046
+# and its #109 amendment, ADR-0030 #109 amendment, F-58): shallow recursions whose bodies hold a kind that keeps state
+# across a child's run or an emit, so the compile-mode oracle's trampoline run (the conservative compile with
+# stackBytes 0) checks its heap form against the optimised run. The first two are ADR-0046's M4 cases: an error raised
+# downstream of a result goes back to the heap AltBind that produced it, and a break downstream of a result stops the
+# heap forms. Every case is required at #109 (oracle/src/test/resources/require/109.txt); jq-core's TrampolineTest
+# runs each filter with stackBytes 0 and with the default and compares the steps. Format: oracle/src/main/java/io/
+# github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in heap.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable.
+
+# M4 (ADR-0046 "Form B routes downstream events back into the driver")
+
+case heap/downstream-error-reenters-the-alt-bind
+arg -c
+filter def f: if .==0 then ([[1]]|.[] as [$a] ?// $a|$a) else (.-1|f)|. end; [3|f|if .==1 then error("x") else . end]
+stdin null\n
+end
+
+case heap/downstream-break-stops-the-forms
+arg -c
+filter [label $out | def f: if .==0 then (1,2) else (.-1|f)|. end; 3|f|., break $out]
+stdin null\n
+end
+
+# one shallow recursion per kind no case covered yet (the #109 design)
+
+case heap/alt-in-a-recursion
+arg -c
+filter def l: first(.[]?|l)//7; l
+stdin [[[]]]\n
+end
+
+case heap/alt-chain
+arg -c
+filter def f: if . == 0 then 1 else (. - 1 | f) // 2 end; f
+stdin 3\n
+end
+
+case heap/collect-in-a-recursion
+arg -c
+filter def d: [.[]?|d]; d
+stdin [[[],[]],[]]\n
+end
+
+case heap/foreach-in-a-recursion
+arg -c
+filter [def f: if . == 0 then "z" else foreach range(.) as $i (null; $i; f) end; 3 | f]
+stdin null\n
+end
+
+case heap/try-in-a-recursion-catches
+arg -c
+filter [def f: if . == 0 then error("e") else try (. - 1 | f) catch "c:\\(.)" end; 2 | f]
+stdin null\n
+end
+
+case heap/reduce-update-two-results
+arg -c
+filter def r: reduce .[] as $x (0; ., 1 | . + ($x | r)); [[],[[]]] | r
+stdin null\n
+end
+
+case heap/label-per-activation
+arg -c
+filter [def f: label $l | if . > 2 then . else (., (. + 1 | f), break $l, 99) end; 0 | f]
+stdin null\n
+end
+
+# the heap forms' boundaries (the #109 review): the last alternative of an AltBind runs outside any catch, both its
+# own error and one raised downstream of its result leaving the AltBind; a break out of a reduce's update ends the
+# reduce with no result
+
+case heap/last-alternative-error-leaves-the-alt-bind
+arg -c
+filter [def f: if . == 0 then (try (1 as [$a] ?// {$a} | $a) catch .) else (. - 1 | f) end; 2 | f]
+stdin null\n
+end
+
+case heap/downstream-error-of-the-last-alternative-leaves
+arg -c
+filter [def f: if . == 0 then (try (([1] as [$a] ?// $a | $a) | error("d:\\(.)")) catch .) else (. - 1 | f) end; 2 | f]
+stdin null\n
+end
+
+case heap/break-out-of-a-reduce-update
+arg -c
+filter [def f: if . == 0 then (label $out | reduce (1,2,3) as $x (0; if $x == 2 then break $out else . + $x end)), "after" else (. - 1 | f) end; 2 | f]
+stdin null\n
+end

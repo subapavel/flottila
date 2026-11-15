@@ -52,7 +52,8 @@ pending jump carrying closures (records round, 3) and a public `stackBytes` 0 (r
 9. **Value form in OPTIMISED** where cardinality ≤ 1 (M1) and may-break-out is false. CONSERVATIVE
    never calls `eval` and keeps the Holder path, so the compile-mode oracle stays an independent
    second opinion. The tail emitter stays in both modes as the kind-only floor (ADR-0043's "may
-   subsume" closed).
+   subsume" closed). In OPTIMISED the value form comes first, so there the tail emitter serves only
+   path variants (ADR-0047 #116, C1).
 10. **No IR fold pass.** jq folds only while parsing (`--debug-dump-disasm`: `1+2` is `LOADK 3`,
     `def f: 1; f+2` keeps `CALL_JQ f:0`), which 2a built. Spec 6 may add one on a measured win.
 11. **`explain()` in 2b**, right after the Call ticket; each analysis ticket adds its column and its

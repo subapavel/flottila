@@ -335,12 +335,33 @@ _Avoid_: lambda, callback
 The functions that can reach each other through calls.
 
 **Specialisation**:
-Making a copy of a recursive function for one closure argument that every call in its group passes
-on unchanged, so the closure disappears.
+Making a copy of a lifted function's group, PLAIN ones included, for one outside argument tuple of
+its invariant parameters, so those closures disappear. A lifted function is lowered once by the
+Resolver; specialisation may copy it (ADR-0045 #117).
+
+**Outside call**:
+A Call into a lifted function's group from a body outside it: main, another function or a copy. Its
+arguments for the invariant parameters are the tuple that specialisation copies for (ADR-0045 #117).
+_Avoid_: entry call, external call.
+
+**Invariant parameter**:
+A closure parameter that every call inside its group passes on as a bare ParamCall of the matching
+parameter, one per function. Every closure parameter of a PLAIN function is one. Specialisation
+replaces it (ADR-0045 #117).
+_Avoid_: unchanged closure.
 
 **Tail call**:
-A call inside a recursive group with nothing left to do after it and at most one result in
-progress to its left; it runs as a jump.
+A call in a tail position of a function body, into the caller's recursive group. Every left context
+on the way to it has at most one result (F-56). Each closure argument is either a closure parameter
+passed on bare, or holds no free slot, free Break or ParamCall. It runs as a pending jump. A call
+from main, or from inside a closure argument's body, never is one (ADR-0006, ADR-0047 #118).
+_Avoid_: tail position (the place, not the call).
+
+**Call kind**:
+A Call's fact: PLAIN, RECURSIVE, TAIL_SELF (a tail call of the caller itself) or TAIL_GROUP (a tail
+call of another function in its group). The conservative compile stores no tail kind. `explain()`
+prints it as `call=` (ADR-0047 #118).
+_Avoid_: call type.
 
 **Binds**:
 One IR node for a run of binds: `Binds(source, values, slots, body)`, n ≥ 2, means
@@ -385,8 +406,8 @@ cell 0 (ADR-0045).
 _Avoid_: environment, parent scope
 
 **Lifted function**:
-A definition lowered once per compile into the Program's function list and run by a Call. It is one
-of:
+A definition lowered once by the Resolver into the Program's function list and run by a Call;
+specialisation may copy it (ADR-0045 #117). It is one of:
 - a definition of a recursive group, a prelude definition's included;
 - a definition whose call would pass the inline cap or the IR depth bound;
 - a definition whose call would be the 512th nested expansion.
@@ -507,6 +528,12 @@ for its function's entry loop to take and re-enter with (ADR-0047).
 Running a node as `eval`, which returns its one result or none; only the optimised compile uses it,
 where cardinality is at most one and the node may not break out (ADR-0047).
 _Avoid_: tail emitter.
+
+**Run form**:
+Which of the two forms a node runs by, push or value. `Executable.form` reports it, and `explain()`
+prints it as `form=`. It is fixed per node from the facts. The tail emitter is part of the push form,
+not a form of its own (ADR-0047 #116).
+_Avoid_: form (a generator's command line), tail form.
 
 **Emit**:
 To hand one result to the next stage. The answer says whether to keep going.
