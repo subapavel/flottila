@@ -13,6 +13,7 @@ import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.ir.Pipe;
+import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.query.run.CallForm;
@@ -460,14 +461,22 @@ final class RandomParts {
 
   /** {@link #outcome(Node, CompileMode, long, int)} in a run declaring {@code stackBytes}: at 0, on the trampoline (ADR-0046). */
   static Outcome outcome(Node root, CompileMode mode, long steps, int stopAt, long stackBytes) {
+    return outcome(new Program(root, List.of()), mode, steps, stopAt, Long.MAX_VALUE, stackBytes);
+  }
+
+  /**
+   * {@link #outcome(Node, CompileMode, long, int, long)} of {@code program}, which has no parameter slot, with a
+   * recursion-depth budget of {@code depth} live call activations (ADR-0045 #107).
+   */
+  static Outcome outcome(Program program, CompileMode mode, long steps, int stopAt, long depth, long stackBytes) {
     RunState state = new RunState();
-    state.begin(steps, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, stackBytes);
+    state.begin(steps, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, depth, stackBytes);
     List<Object> emitted = new ArrayList<>();
     Boolean answer = null;
     Object thrown = null;
     try {
       answer =
-          Compiler.compile(root, mode)
+          Compiler.compile(program, 0, mode)
               .run(
                   state,
                   IN,

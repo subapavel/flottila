@@ -292,7 +292,9 @@ class IfTailPropertyTest {
   /**
    * {@code a and b} is {@code if a then (if b then true else false) else false} and {@code a or b} is {@code if a then
    * true else (if b then true else false)} (ADR-0037), here over balanced halves. Every term true gives true, the last
-   * term false gives false, and every term false gives false for {@code or}; none of it ticks.
+   * term false gives false, and every term false gives false for {@code or}; none of it ticks. In both compile modes
+   * (#116, C1): the optimised compile runs the conditions by their value form, the conservative compile by the tail
+   * emitter's Holder, and each keeps its 512 KiB witness.
    */
   @Test
   void aBalancedRunOfTailConditionsRunsOnA512KiBThread() throws IOException, InterruptedException {
@@ -301,31 +303,40 @@ class IfTailPropertyTest {
         .isEqualTo(
             "20000 and-terms: [yes] in 0 steps\n"
                 + "20000 and-terms, the last one false: [no] in 0 steps\n"
-                + "20000 or-terms, all false: [no] in 0 steps\n");
+                + "20000 or-terms, all false: [no] in 0 steps\n"
+                + "20000 and-terms, conservative: [yes] in 0 steps\n"
+                + "20000 and-terms, the last one false, conservative: [no] in 0 steps\n"
+                + "20000 or-terms, all false, conservative: [no] in 0 steps\n");
   }
 
-  /** The child JVM of {@link #aBalancedRunOfTailConditionsRunsOnA512KiBThread}: each run on a 512 KiB thread. */
+  /**
+   * The child JVM of {@link #aBalancedRunOfTailConditionsRunsOnA512KiBThread}: each run on a 512 KiB thread, first in
+   * the optimised compile, then in the conservative one.
+   */
   static final class Child {
     private Child() {}
 
     public static void main(String[] args) throws InterruptedException {
-      FreshJvm.print(TERMS + " and-terms", () -> ran(and(0, TERMS, -1)));
-      FreshJvm.print(TERMS + " and-terms, the last one false", () -> ran(and(0, TERMS, TERMS - 1)));
-      FreshJvm.print(TERMS + " or-terms, all false", () -> ran(or(0, TERMS)));
+      FreshJvm.print(TERMS + " and-terms", () -> ran(and(0, TERMS, -1), CompileMode.OPTIMISED));
+      FreshJvm.print(TERMS + " and-terms, the last one false", () -> ran(and(0, TERMS, TERMS - 1), CompileMode.OPTIMISED));
+      FreshJvm.print(TERMS + " or-terms, all false", () -> ran(or(0, TERMS), CompileMode.OPTIMISED));
+      FreshJvm.print(TERMS + " and-terms, conservative", () -> ran(and(0, TERMS, -1), CompileMode.CONSERVATIVE));
+      FreshJvm.print(TERMS + " and-terms, the last one false, conservative", () -> ran(and(0, TERMS, TERMS - 1), CompileMode.CONSERVATIVE));
+      FreshJvm.print(TERMS + " or-terms, all false, conservative", () -> ran(or(0, TERMS), CompileMode.CONSERVATIVE));
     }
   }
 
   /**
-   * The results of {@code run}, compiled here, inside {@code yes as $0 | no as $1 | …}, with no budget and a sink that
-   * never stops, and its steps.
+   * The results of {@code run}, compiled here in {@code mode}, inside {@code yes as $0 | no as $1 | …}, with no budget
+   * and a sink that never stops, and its steps.
    */
-  private static String ran(Node run) {
+  private static String ran(Node run, CompileMode mode) {
     Node root = new Bind(AT, new Const(AT, YES), 0, new Bind(AT, new Const(AT, NO), 1, run));
     RunState state = new RunState();
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
     List<Object> results = new ArrayList<>();
     boolean ranOut =
-        Compiler.compile(root, CompileMode.OPTIMISED)
+        Compiler.compile(root, mode)
             .run(
                 state,
                 "in",

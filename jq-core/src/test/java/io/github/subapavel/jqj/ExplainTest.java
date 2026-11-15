@@ -2,11 +2,10 @@ package io.github.subapavel.jqj;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -27,31 +26,8 @@ class ExplainTest {
 
   private final JqEngine engine = JqEngine.builder().build();
 
-  /** One line of the text: its fields before the first {@code name=value} one, and its facts by name. */
-  private record Line(List<String> fields, Map<String, String> facts) {
-    static Line of(String line) {
-      List<String> fields = new ArrayList<>();
-      Map<String, String> facts = new LinkedHashMap<>();
-      for (String field : line.split(" ")) {
-        int eq = field.indexOf('=');
-        if (eq < 0) {
-          fields.add(field);
-        } else {
-          facts.put(field.substring(0, eq), field.substring(eq + 1));
-        }
-      }
-      return new Line(fields, facts);
-    }
-
-    boolean isFunction() {
-      return fields.getFirst().equals("function");
-    }
-  }
-
   private List<Line> lines(String filter) {
-    String text = engine.compile(filter).explain();
-    assertThat(text).as("explain of %s", filter).endsWith("\n");
-    return Arrays.stream(text.split("\n")).map(Line::of).toList();
+    return ExplainLines.lines(engine, filter);
   }
 
   /** The node lines of {@code function}, in text order. */
