@@ -18,13 +18,16 @@ public enum Cardinality {
   /** Any number of results; the safe value. */
   MANY;
 
+  /** The constants by their ordinal. */
+  private static final Cardinality[] BY_ORDINAL = values();
+
   /** The least value at or above both {@code a} and {@code b}. */
   public static Cardinality join(Cardinality a, Cardinality b) {
     if (a == NONE && b == ONE || a == ONE && b == NONE) {
       return AT_MOST_ONE;
     }
     // Every other pair is comparable, and on comparable values the constants' order is the lattice's.
-    return a.compareTo(b) >= 0 ? a : b;
+    return BY_ORDINAL[Math.max(a.ordinal(), b.ordinal())];
   }
 
   /**

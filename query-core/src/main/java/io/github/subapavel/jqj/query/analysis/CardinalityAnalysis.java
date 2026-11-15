@@ -160,8 +160,11 @@ final class CardinalityAnalysis {
     return left == NONE ? right : join(ONE, right);
   }
 
-  /** {@code try body catch handler}: MANY for a MANY body, which may raise after a result; {@code join(body, handler)} otherwise. */
+  /**
+   * {@code try body catch handler}: {@code join(body, handler)}. So a MANY body, which may raise after a result, gives
+   * MANY, the top, as the rule says, with no test of its own.
+   */
   static Cardinality tryCatch(Cardinality body, Cardinality handler) {
-    return body == MANY ? MANY : join(body, handler);
+    return join(body, handler);
   }
 }
