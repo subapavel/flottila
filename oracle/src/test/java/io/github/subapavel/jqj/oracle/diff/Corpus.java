@@ -1,10 +1,13 @@
 package io.github.subapavel.jqj.oracle.diff;
 
+import io.github.subapavel.jqj.cli.Invocation;
+import io.github.subapavel.jqj.oracle.RunnerThread;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * Where the differential corpus and the ratchet are, found from the class path so any working directory works. Public
@@ -43,6 +46,19 @@ public final class Corpus {
   /** The repository root: four levels above {@code oracle/target/test-classes/diff}. */
   public static Path root() {
     return casesDir().getParent().getParent().getParent().getParent();
+  }
+
+  /**
+   * The runner of the differential oracle and its survey over {@code entry}, {@code Main::run}, which runs on the
+   * {@link RunnerThread} (F-88).
+   */
+  static DiffRunner runner(Path scratch, ToIntFunction<Invocation> entry) {
+    return new DiffRunner(onRunnerThread(entry), scratch, deviations());
+  }
+
+  /** {@code entry} on the {@link RunnerThread} (F-88): the differential and the json runners' entry. */
+  public static ToIntFunction<Invocation> onRunnerThread(ToIntFunction<Invocation> entry) {
+    return invocation -> RunnerThread.call(() -> entry.applyAsInt(invocation));
   }
 
   /** The deviation slugs of the repository's {@code DEVIATIONS.md}. */

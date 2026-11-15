@@ -2,6 +2,7 @@ package io.github.subapavel.jqj.oracle.jqtest;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import io.github.subapavel.jqj.oracle.RunnerThread;
 import io.github.subapavel.jqj.oracle.diff.DiffReport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -94,7 +95,29 @@ public final class JqTestCorpus {
 
   /** The runner over the public API, {@link ApiJqj}'s host for every file (ADR-0020:50). */
   static JqTestRunner runner() {
-    return new JqTestRunner(new ApiJqj());
+    return runner(new ApiJqj());
+  }
+
+  /** The runner of the jqtest oracle and its survey over {@code jqj}, every call of which runs on the {@link RunnerThread} (F-88). */
+  static JqTestRunner runner(Jqj jqj) {
+    return new JqTestRunner(
+        new Jqj() {
+          @Override
+          public Filter compile(String program) {
+            Filter filter = RunnerThread.call(() -> jqj.compile(program));
+            return (input, sink) -> RunnerThread.run(() -> filter.run(input, sink));
+          }
+
+          @Override
+          public JvValue read(String json) {
+            return RunnerThread.call(() -> jqj.read(json));
+          }
+
+          @Override
+          public JvValue reread(String json) {
+            return RunnerThread.call(() -> jqj.reread(json));
+          }
+        });
   }
 
   /** The number of cases per file name. */
