@@ -47,11 +47,14 @@ import org.junit.jupiter.api.Test;
  * left out; a throw from the Compiler, which runs the pass and the IrVerifier after it, fails the census.
  *
  * <p>Each filter is compiled twice. Under {@link Specialiser#SPECIALISE_CAP} its {@link Frozen#refused()} must be 0.
- * Under a lifted cap, the package-private {@code Compiler.compile(Program, int, CompileMode, int cap)} with {@link
- * #LIFTED}, every key is built, so {@link Frozen#specialised()} is the filter's demand: the nodes its copies hold when
- * nothing is refused. The largest demand must be at most the cap, and a filter that refuses nothing under the cap has
- * spent exactly its demand there. If anything is refused, S5 applies: the cap becomes the next power of two at or above
- * the largest demand, up to INLINE_CAP; the failure and the log name it.
+ * Under the lifted cap {@link #INLINE_CAP}, S5's ceiling, through the package-private {@code Compiler.compile(Program,
+ * int, CompileMode, int cap)}: when that compile refuses nothing, every key is built and {@link Frozen#specialised()} is
+ * the filter's demand, the nodes its copies hold; when it refuses a key, the demand is above INLINE_CAP (keys are spent
+ * whole in order, so a refused key did not fit what was spent before it). The cap bounds the census's own compile: a
+ * filter of #114's over-cap family may demand far more. No filter may demand more than the cap, and a filter that
+ * refuses nothing under the cap has spent exactly its demand there. If anything is refused, S5 applies: the cap becomes
+ * the next power of two at or above the largest demand, up to INLINE_CAP, and a demand above INLINE_CAP is a finding;
+ * the failure and the log name it.
  *
  * <p>Witness that the census sees copies: each of #117's {@link #COPYING} cases, whose outside calls run copies by
  * design (SpecialiseExplainTest), compiles with a demand above 0. Without it a pass that copies nothing would pass with
@@ -67,10 +70,10 @@ class SpecialiseCensusTest {
   /** The census log, below the repository root (#117 design comment). */
   static final String LOG = ".logs/117-specialise-census.log";
 
-  /** The lifted cap of the demand compile: no corpus filter's copies come near it, so every key is built. */
-  static final int LIFTED = Integer.MAX_VALUE;
-
-  /** ADR-0040's inline cap ({@code Resolver.INLINE_CAP}, package-private there): S5's ceiling for a raised cap. */
+  /**
+   * ADR-0040's inline cap ({@code Resolver.INLINE_CAP}, package-private there): S5's ceiling for a raised cap, and the
+   * lifted cap of the demand compile.
+   */
   static final int INLINE_CAP = 65_536;
 
   /** The top of the log: how many distinct filters it lists by demand. */
@@ -105,8 +108,16 @@ class SpecialiseCensusTest {
   /** One filter of the census: where it comes from and its text. */
   record Filter(String id, String text) {}
 
-  /** One compiled filter: its demand under {@link #LIFTED}, and what it spent and refused under the cap. */
-  record Count(Filter filter, int demand, int spent, int refused) {}
+  /**
+   * One compiled filter: under the lifted cap its demand, exact when {@code above} is false and above INLINE_CAP when it
+   * is true; under SPECIALISE_CAP the nodes it spent and the keys it refused.
+   */
+  record Count(Filter filter, int demand, boolean above, int spent, int refused) {
+    /** The demand for sorting and showing: above INLINE_CAP counts as INLINE_CAP + 1. */
+    int ranked() {
+      return above ? INLINE_CAP + 1 : demand;
+    }
+  }
 
   @Test
   void largestSpecialisedNodeCount() {
@@ -142,16 +153,18 @@ class SpecialiseCensusTest {
       }
       try {
         Frozen capped = Compiler.compile(forCap, 0, CompileMode.OPTIMISED).frozen();
-        Frozen lifted = compile(forDemand, LIFTED).frozen();
-        counts.add(new Count(f, lifted.specialised(), capped.specialised(), capped.refused()));
+        Frozen lifted = compile(forDemand, INLINE_CAP).frozen();
+        counts.add(new Count(f, lifted.specialised(), lifted.refused() != 0, capped.specialised(), capped.refused()));
       } catch (RuntimeException e) {
         threw.add(f.id() + ": " + e);
       }
     }
+    counts.sort(Comparator.comparingInt(Count::ranked).reversed().thenComparing(c -> c.filter().id()));
 
-    int largest = counts.stream().mapToInt(Count::demand).max().orElse(0);
+    String s5 = s5(counts.isEmpty() ? 0 : counts.getFirst().ranked());
     List<Count> refusing = counts.stream().filter(c -> c.refused() != 0).toList();
-    log(filters.size(), differential.size(), prelude.size(), left, notCompiled, threw, counts, refusing, largest);
+    List<Count> overCap = counts.stream().filter(c -> c.ranked() > Specialiser.SPECIALISE_CAP).toList();
+    log(filters.size(), differential.size(), prelude.size(), left, notCompiled, threw, counts, refusing, s5);
 
     Map<String, Count> byId = new LinkedHashMap<>();
     counts.forEach(c -> byId.put(c.filter().id(), c));
@@ -159,16 +172,18 @@ class SpecialiseCensusTest {
     soft.assertThat(threw).as("filters whose OPTIMISED compile threw (the pass or the IrVerifier after it)").isEmpty();
     for (String id : COPYING) {
       Count c = byId.get(id);
-      soft.assertThat(c).as("witness: %s compiles", id).isNotNull();
+      soft.assertThat(c).as("witness: %s compiles, and its compiles do not throw", id).isNotNull();
       if (c != null) {
-        soft.assertThat(c.demand()).as("witness: the demand of %s, whose outside calls run copies (%s)", id, c.filter().text()).isPositive();
+        soft.assertThat(c.ranked()).as("witness: the demand of %s, whose outside calls run copies (%s)", id, c.filter().text()).isPositive();
       }
     }
     soft.assertThat(refusing.stream().map(SpecialiseCensusTest::shown).toList())
-        .as("filters with a key refused under SPECIALISE_CAP %d; S5: the cap becomes %s", Specialiser.SPECIALISE_CAP, s5(largest))
+        .as("filters with a key refused under SPECIALISE_CAP %d; S5: %s (log %s)", Specialiser.SPECIALISE_CAP, s5, LOG)
         .isEmpty();
-    soft.assertThat(largest).as("the largest demand, against SPECIALISE_CAP; S5 on a refusal: %s (log %s)", s5(largest), LOG).isLessThanOrEqualTo(Specialiser.SPECIALISE_CAP);
-    soft.assertThat(counts.stream().filter(c -> c.refused() == 0 && c.spent() != c.demand()).map(SpecialiseCensusTest::shown).toList())
+    soft.assertThat(overCap.stream().map(SpecialiseCensusTest::shown).toList())
+        .as("the largest demand is at most SPECIALISE_CAP %d: the filters that demand more, largest first; S5: %s", Specialiser.SPECIALISE_CAP, s5)
+        .isEmpty();
+    soft.assertThat(counts.stream().filter(c -> c.refused() == 0 && (c.above() || c.spent() != c.demand())).map(SpecialiseCensusTest::shown).toList())
         .as("filters that refuse nothing under the cap but spend other than their demand")
         .isEmpty();
     soft.assertAll();
@@ -241,20 +256,28 @@ class SpecialiseCensusTest {
     return out;
   }
 
-  /** S5 (ADR-0045 "Amendment (ticket #117)"): the next power of two at or above {@code demand}, up to INLINE_CAP. */
-  private static String s5(int demand) {
-    if (demand > INLINE_CAP) {
-      return "none: the largest demand " + demand + " is above INLINE_CAP " + INLINE_CAP + ", a finding";
+  /**
+   * S5 (ADR-0045 "Amendment (ticket #117)") for the largest demand {@code ranked} ({@link Count#ranked()}): the next
+   * power of two at or above it, up to INLINE_CAP; above INLINE_CAP, a finding.
+   */
+  private static String s5(int ranked) {
+    if (ranked > INLINE_CAP) {
+      return "a finding: the largest demand is above INLINE_CAP " + INLINE_CAP;
     }
     int cap = 1;
-    while (cap < demand) {
+    while (cap < ranked) {
       cap <<= 1;
     }
-    return cap + " (the next power of two at or above the largest demand " + demand + ")";
+    return "the cap becomes " + cap + ", the next power of two at or above the largest demand " + ranked;
+  }
+
+  /** A demand as the log and the failures show it: the count, or {@code >65536} above INLINE_CAP. */
+  private static String demand(Count c) {
+    return c.above() ? ">" + INLINE_CAP : Integer.toString(c.demand());
   }
 
   private static String shown(Count c) {
-    return c.filter().id() + " demand=" + c.demand() + " spent=" + c.spent() + " refused=" + c.refused() + " " + abbreviated(c.filter().text());
+    return c.filter().id() + " demand=" + demand(c) + " spent=" + c.spent() + " refused=" + c.refused() + " " + abbreviated(c.filter().text());
   }
 
   /** {@code text} on one line, at most 100 characters. */
@@ -272,7 +295,7 @@ class SpecialiseCensusTest {
       List<String> threw,
       List<Count> counts,
       List<Count> refusing,
-      int largest) {
+      String s5) {
     List<String> lines = new ArrayList<>();
     lines.add("# SpecialiseCensusTest (#117): every CompileCorpus filter and each prelude definition called as name(.; ...), compiled OPTIMISED");
     lines.add("SPECIALISE_CAP\t" + Specialiser.SPECIALISE_CAP);
@@ -282,19 +305,20 @@ class SpecialiseCensusTest {
     lines.add("compile threw\t" + threw.size());
     threw.forEach(t -> lines.add("  " + t));
     lines.add("compiled\t" + counts.size());
-    lines.add("specialised (demand > 0)\t" + counts.stream().filter(c -> c.demand() > 0).count());
+    lines.add("specialised (demand > 0)\t" + counts.stream().filter(c -> c.ranked() > 0).count());
+    lines.add("demand above INLINE_CAP " + INLINE_CAP + "\t" + counts.stream().filter(Count::above).count());
     lines.add("refusing under the cap\t" + refusing.size());
     refusing.forEach(c -> lines.add("  " + shown(c)));
-    lines.add("largest demand\t" + largest);
-    lines.add("S5 cap on a refusal\t" + s5(largest));
+    lines.add("largest demand\t" + (counts.isEmpty() ? "0" : demand(counts.getFirst())));
+    lines.add("S5 on a refusal\t" + s5);
     lines.add("top " + TOP + " distinct filters by demand: demand, spent, refused, id, filter");
     Set<String> listed = new HashSet<>();
-    for (Count c : counts.stream().sorted(Comparator.comparingInt(Count::demand).reversed().thenComparing(c -> c.filter().id())).toList()) {
+    for (Count c : counts) {
       if (listed.size() == TOP) {
         break;
       }
       if (listed.add(c.filter().text())) {
-        lines.add(c.demand() + "\t" + c.spent() + "\t" + c.refused() + "\t" + c.filter().id() + "\t" + abbreviated(c.filter().text()));
+        lines.add(demand(c) + "\t" + c.spent() + "\t" + c.refused() + "\t" + c.filter().id() + "\t" + abbreviated(c.filter().text()));
       }
     }
     Path log = Corpus.root().resolve(LOG);
@@ -304,6 +328,7 @@ class SpecialiseCensusTest {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
-    System.out.println("SpecialiseCensusTest: largest demand " + largest + " over " + counts.size() + " compiled filters; " + refusing.size() + " refusing; log " + log);
+    System.out.println(
+        "SpecialiseCensusTest: largest demand " + (counts.isEmpty() ? "0" : demand(counts.getFirst())) + " over " + counts.size() + " compiled filters; " + refusing.size() + " refusing; log " + log);
   }
 }
