@@ -28,8 +28,8 @@ stdout 1\n
 stderr
 end
 
-case cardinality/reduce-over-no-item-never-runs-its-break
-def 7bec553e9bb5
+case cardinality/reduce-of-a-source-with-no-result-never-runs-its-break
+def 1d6502066531
 rc 0
 stdout [0]\n
 stderr

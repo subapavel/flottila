@@ -207,6 +207,7 @@ class CardinalityAnalysisTest {
         Arguments.argumentSet("a Comma after a NONE left side is its right side's", (Supplier<Node>) () -> comma(label(0, brk(0)), c()), ONE),
         Arguments.argumentSet("an Alt after an AT_MOST_ONE left side is join(ONE, right)", (Supplier<Node>) () -> new Alt(AT, fn0(), c(), v -> true), ONE),
         Arguments.argumentSet("an Alt after a ONE left side is join(ONE, right)", (Supplier<Node>) () -> new Alt(AT, c(), fn0(), v -> true), AT_MOST_ONE),
+        Arguments.argumentSet("an Alt after a MANY left side is MANY", (Supplier<Node>) () -> new Alt(AT, many(), c(), v -> true), MANY),
         Arguments.argumentSet("a Try of an AT_MOST_ONE body is join(body, handler)", (Supplier<Node>) () -> new Try(AT, fn0(), c()), AT_MOST_ONE),
         Arguments.argumentSet("a Try of a MANY body is MANY", (Supplier<Node>) () -> new Try(AT, many(), c()), MANY),
         Arguments.argumentSet("a Label is join(body, NONE)", (Supplier<Node>) () -> label(0, c()), AT_MOST_ONE));
