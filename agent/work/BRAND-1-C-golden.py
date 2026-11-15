@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""BRAND-1 commit C: the golden constants of PeerKnownAnswerTest and ReplFramesTest, recomputed outside the code under test.
+"""BRAND-1 commit C (+ FIX-226): the golden constants of PeerKnownAnswerTest and ReplFramesTest, recomputed outside the code under test.
 
 Standard library only: HMAC-SHA256 from `hmac`/`hashlib`, HKDF written out per RFC 5869 (extract, then expand T(1)..T(n)),
 CRC32C (Castagnoli, reflected polynomial 0x82F63B78) written out bit by bit. Inputs are the ones the tests document
 (PeerKnownAnswerTest class comment and the python3 block at bothProofFramesOfAFixedExchangeAreTheKnownBytes; ReplFramesTest's
-constants OWNER, JOURNAL, N, CREATED_MS, LENGTH, END, DATA_BYTES and the segment header layout of SegmentFormat's comment).
+constants OWNER, JOURNAL, N, CREATED_MS, LENGTH, POS, END, DATA_BYTES, DETAIL and the segment header layout of SegmentFormat's
+comment). FIX-226: DATA, RECEIPT and REFUSE are written out the same way, from the layout ReplFramesTest documents
+(DATA = A . pos u64 . bytes, RECEIPT = A . end u64 . state u8, REFUSE = A . reason u8 . u16 len . detail UTF-8) and its
+assertion inputs (state 2 = WRITTEN, reason 1 = FULL). None of the three frames carries the name or the magic: the old and
+the new run print them identical.
 
 Usage: python3 -I agent/work/BRAND-1-C-golden.py <name> <magic>   e.g. `flottila FJS1` (old: must reproduce the tests' constants)
        or `rail8 RJS1` (new).
@@ -80,7 +84,11 @@ def repl(magic: str) -> dict:
     owner = b"node-b"
     journal = uuid.UUID("0b0b0b0b-0000-4000-8000-00000000000b").bytes
     n, created, length, end = 7, 1767225600850, 1048576, 57
-    data = b"ABCDEFGH"
+    pos = 49                      # ReplFramesTest.POS (the first byte after the 49-byte header)
+    data = b"ABCDEFGH"            # ReplFramesTest.DATA_BYTES
+    state = 2                     # RECEIPT's state, WRITTEN (ReplFramesTest.receiptIsItsGoldenBytes...)
+    reason = 1                    # REFUSE's reason, FULL (ReplFramesTest.refuseIsItsGoldenBytes...)
+    detail = "journal full".encode("utf-8")  # ReplFramesTest.DETAIL
     # header: magic · version u8 1 · journal id · u16 owner length · owner · n u64 · created ms u64 · crc32c u32 of the rest
     body = magic.encode("ascii") + bytes([1]) + journal + struct.pack(">H", len(owner)) + owner + struct.pack(">qq", n, created)
     header = body + struct.pack(">I", crc32c(body))
@@ -91,6 +99,9 @@ def repl(magic: str) -> dict:
         "OPEN": (address + struct.pack(">q", length) + header).hex(),
         "FILE_CRC": f"0x{file_crc:08x}",
         "SEAL": (address + struct.pack(">q", end) + struct.pack(">I", file_crc)).hex(),
+        "DATA": (address + struct.pack(">q", pos) + data).hex(),
+        "RECEIPT": (address + struct.pack(">q", end) + bytes([state])).hex(),
+        "REFUSE": (address + bytes([reason]) + struct.pack(">H", len(detail)) + detail).hex(),
     }
 
 

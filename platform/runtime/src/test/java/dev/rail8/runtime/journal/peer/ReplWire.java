@@ -12,8 +12,7 @@ import java.util.zip.CRC32C;
  * crc32c of the file's bytes [0, end)), never by {@code ReplFrames}: what an owner sends a holder and what it reads back.
  * {@code ReplFramesTest#theWireFixtureWritesTheGoldenBytes} checks these encoders against the payloads computed outside the
  * code ({@code agent/work/BRAND-1-C-golden.py}, outputs {@code BRAND-1-C-golden-old.txt} / {@code -new.txt}, reproduces HEADER, OPEN,
- * FILE_CRC and SEAL; DATA, RECEIPT and REFUSE were computed by the CORE-5b1 script, which was not kept, and have no derivation in the
- * tree, row FIX-226). Big-endian throughout.
+ * FILE_CRC, SEAL, DATA, RECEIPT and REFUSE, all seven constants). Big-endian throughout.
  *
  * <pre>
  * A       = u16 L · owner UTF-8 (1..63) · journal id (u64 msb, u64 lsb) · n u64 (≥ 1)

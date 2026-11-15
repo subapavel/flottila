@@ -1,4 +1,16 @@
 
+## 2026-11-15 — FIX-226 DATA, RECEIPT and REFUSE have a derivation outside the code — done, review PASS
+
+- Gap: `ReplFramesTest` holds seven golden frames; the tracked script `agent/work/BRAND-1-C-golden.py` recomputed four. DATA,
+  RECEIPT and REFUSE came from a CORE-5b1 script nobody kept: a known answer that cannot be told from a copy of the code's output.
+- Change (test-author, class A, test material only): the script writes the three frames out with `struct` from the layout the test
+  documents and the inputs it names (POS 49, state 2 = WRITTEN, reason 1 = FULL, DETAIL). The Java encoder was not read.
+- Shown: the three lines equal the constants at `ReplFramesTest` :48, :50, :51 byte for byte; both tracked outputs gain three
+  lines and change none - the frames carry neither the name nor the magic. Kill by the script: one input changed per frame,
+  three differing lines. The comments of `ReplFramesTest` and `ReplWire` (a test file) cite the script for all seven.
+- Evidence: VERIFIED_PASS the script against its outputs and the test's constants, the runtime module 1578 and 3, by the author
+  and by the verifier. Review PASS (class A): every byte is fixed by the documents; a wrong encoder would disagree.
+
 ## 2026-11-15 — FIX-229 a send of the recording component takes its hold before it is seen — done, review PASS
 
 - Fault (`ci` run 213, Postgres 17.11 job): `DeploymentsRedeployTest.everyStartWaitsForEveryStop:558 c's held message: not within

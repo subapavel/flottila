@@ -1,0 +1,42 @@
+FIX-226 — evidence (2026-11-15)
+
+The gap: ReplFramesTest (runtime, journal/peer) holds seven golden constants. The tracked script
+agent/work/BRAND-1-C-golden.py recomputed HEADER, OPEN, FILE_CRC and SEAL; DATA, RECEIPT and REFUSE (:48, :50, :51) came from
+a CORE-5b1 script that was not kept.
+
+The change (test material only; no constant, no assertion, no file under src/main):
+- the script builds the three frames with struct, big-endian, from the layout the test's assertion messages and ReplWire's
+  comment document: DATA = A · pos u64 · bytes; RECEIPT = A · end u64 · state u8; REFUSE = A · reason u8 · u16 len · detail
+  (UTF-8), with the address A it already built for OPEN and SEAL. Inputs: POS 49, END 57, DATA_BYTES "ABCDEFGH", state 2
+  (WRITTEN), reason 1 (FULL), DETAIL "journal full" — all named by the test. The Java encoder was not read;
+- agent/work/BRAND-1-C-golden-new.txt and -old.txt regenerated: three lines added to each, none changed; the three frames
+  carry neither the name nor the magic, so the two files have the same three lines;
+- comments: ReplFramesTest (class comment, :36) and ReplWire (a file under src/test) cite the script for all seven and no
+  longer point to this row. PeerKnownAnswerTest never said a derivation was missing and is unchanged.
+
+The author:
+VERIFIED_PASS  agent/work/FIX-226-golden-diff.txt  the script's output against the outputs as committed before: one hunk
+               16a17,19 for `rail8 RJS1` and one for `flottila FJS1` — three added lines, no changed line
+VERIFIED_PASS  agent/work/FIX-226-run-1.log        runtime module: 1578 and 3, 0 failures, BUILD SUCCESS
+EXECUTED_FAIL  (throw-away copies, not kept)       the kill by the script: pos 49 → 50 prints …00324142… for the constant's
+               …00314142…; state 2 → 3 ends …3903 for …3902; reason 1 → 2 prints …0702000c6a… for …0701000c6a…
+
+The verifier, on the final tree:
+VERIFIED_PASS  agent/work/FIX-226-verify-golden.txt  the script against the tracked outputs: `rail8 RJS1` against -new.txt and
+               `flottila FJS1` against -old.txt, no difference, exit 0; the outputs against their committed versions: one hunk
+               16a17,19 each (DATA, RECEIPT, REFUSE), no changed line, the two hunks identical
+VERIFIED_PASS  (throw-away comparison, not kept)    the constants of ReplFramesTest against the script's lines: DATA equal (96
+               hex characters), RECEIPT equal (82), REFUSE equal (94)
+VERIFIED_PASS  git diff -- platform/               every changed line of the two Java files is a comment line
+VERIFIED_PASS  agent/work/FIX-226-verify-run.log   runtime module, exit 0: api 107 (:117), testkit 286 (:230), core 763 (:42452),
+               schemas 304, sftp 69, xslt 56, validate 33, http 52, runtime 1578 (:56049) and 3 (:56068), 0 failures, 0 errors,
+               0 skipped; no "Coverage checks have not been met"; BUILD SUCCESS (:56198)
+VERIFIED_PASS  python3 ci/name_guard.py            exit 0, "name guard: clean, 5932 tracked files scanned"
+
+review: PASS   class A. Field order, widths and byte order match the assertion messages (ReplFramesTest :101, :119, :128) and
+               ReplWire's layout block (:18-23); every byte is fixed by the documents — the state and the reason are inputs
+               the test passes in and ReplWire documents, the detail's length is its byte length. The script reads no Java
+               output; an encoder with another field order, width or byte order would disagree with it. Not blocking:
+               ReplFramesTest :21 says "the wire layout below" and the layout is in the assertion messages and in ReplWire;
+               the script packs the u64 fields signed (`>q`), which is the same bytes for these inputs.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-226.diff.
