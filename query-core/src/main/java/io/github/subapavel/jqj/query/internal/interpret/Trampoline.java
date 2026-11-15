@@ -89,19 +89,23 @@ public final class Trampoline {
   }
 
   /**
-   * Runs actions until the run ends or a result is handed back: true at a hand-back. A FilterException out of an
-   * action is raised where the push form's exception would go: a start's at the form the op started under, an emit's
-   * at the form that produced the result, and a resume's or a fail's at the form below the one that threw.
+   * Runs actions until the run ends or a result is handed back: true at a hand-back. A FilterException out of a start,
+   * an emit or a resume is raised at that action's form, where the push form's exception goes: the form the op started
+   * under, the form that produced the result, or the resumed form, whose own code threw it and which passes it on (no
+   * form that catches throws from its resume). A fail throws none: it passes the error on, or catches it.
    */
   private boolean drive() {
     while (action < HANDED_BACK) {
-      HeapForm at = action <= EMIT ? form : form.under;
+      if (action == RAISE) {
+        form.fail(this, error);
+        continue;
+      }
+      HeapForm at = form;
       try {
         switch (action) {
-          case START -> op.start(this, form, slots, value, sink);
-          case EMIT -> sink.accept(this, form, value);
-          case ANSWER -> form.resume(this, more);
-          default -> form.fail(this, error);
+          case START -> op.start(this, at, slots, value, sink);
+          case EMIT -> sink.accept(this, at, value);
+          default -> at.resume(this, more);
         }
       } catch (FilterException e) {
         raise(at, e);
