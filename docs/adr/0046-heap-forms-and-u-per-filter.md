@@ -333,3 +333,29 @@ The warm intercept was far above the linked one, so the implementer stopped.
   a formula change for the owner, not the implementer's choice. The re-run probes it at 256 KiB and
   384 KiB.
 
+**Rulings on the seeded re-run (2026-11-15, grilling-adviser L1–L4)**
+
+The K5 run (impl/113 078dd0a, 48.7 min) gave the K2/K3 rows, and every warm cell held. Three C1 edges
+moved up, by +1, +7 and +31. Those are exactly the gallop's points above the seed: the edges were
+found while C1 was still compiling.
+- **A JIT edge is a fixed point (L1).** A JIT cell searches again from its own result until two passes
+  agree. After 4 passes without agreement it is INVALID. Upward moves are not accepted, and C1 is not
+  run unseeded.
+  - The order: first the three cells alone, seeded from e6f4cc0, must return 5818, 2131 and 5113.
+    Then one full run, seeded the same way, under K5.
+  - The committed record is that run's. The e6f4cc0 and K5 records stay as evidence, and
+    `bench/RESULTS.md` cites all three. Later runs assert only as above (fresh ≤ constants, each cell
+    switches).
+- **The reserve stays 286 720 here (L2).** The side probe puts ND OPTIMISED's `-Xint` intercept at
+  about 105 K at 256, 384 and 512 KiB, against 220 832 on the 512 KiB → 1 MiB chord. So today's
+  intercept is an extrapolation artefact. The rule changes with the next owed re-run (#199):
+  - a 256 KiB platform thread;
+  - each intercept taken on its lowest pair;
+  - `b_cell` the largest adjacent slope;
+  - no cell excluded by name, and no fit.
+- **An edge at `U*+1` (L3)** may end `, termination STACK` with a prefix of the reference results,
+  e.g. `[7], termination STACK` for first-or. `[7], ran out`, any other termination, or a result that
+  is not a prefix stays red.
+- **UnitLimitTest's floorDiv witness (L4)** is re-pinned to −286 720/192 → −1494 (286 720 = 192·1493
+  + 64).
+
