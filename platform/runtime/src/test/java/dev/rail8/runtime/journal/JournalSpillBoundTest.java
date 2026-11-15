@@ -49,6 +49,7 @@ class JournalSpillBoundTest {
     @TempDir Path tmp;
     Path dir;
     HeldFiles files;
+    SegmentFilesSeen seen;
     Journal journal;
     TieredBlobStore store;
     int next;
@@ -57,9 +58,10 @@ class JournalSpillBoundTest {
     void open() throws Exception {
         dir = Files.createDirectories(tmp.resolve("journal"));
         files = new HeldFiles();
+        seen = new SegmentFilesSeen(files);
         FakeClock clock = FakeClock.at(JournalFixture.START);
         JournalConfig config = settings(dir).recordMax(4096).pendingBytes(512L << 10).maxBytes(MAX).segmentBytes(MAX).config();
-        journal = OnVirtualThread.call(() -> Journal.open(config, clock, new FakeTimer(clock), keys(KEY), files));
+        journal = OnVirtualThread.call(() -> Journal.open(config, clock, new FakeTimer(clock), keys(KEY), seen));
         store = new TieredBlobStore(new TieredBlobStore.Config(1L << 20, 4096, 8L << 20, 1L << 20), Hasher.sha256(), journal, KEY);
     }
 
@@ -98,7 +100,10 @@ class JournalSpillBoundTest {
         while (target - journal.bytes() - overhead > 3_000) OnVirtualThread.call(() -> reserve(3_000));
         long last = target - journal.bytes() - overhead;
         assertTrue(last > 0, "fixture: a last record that ends at the target: " + last);
-        OnVirtualThread.call(() -> reserve(Math.toIntExact(last)));
+        JournalRef lastRef = OnVirtualThread.call(() -> reserve(Math.toIntExact(last)));
+        // the journal counts the header of the pre-opened segment after the one its last record is in from the pre-open's start,
+        // before that file is on disk: wait until that file was created and every segment file seen created has had its directory forced
+        seen.awaitSegment(lastRef.segment() + 1);
         assertEquals(target, journal.bytes(), "fixture: the journal holds the target bytes");
         assertEquals(target, onDisk(), "fixture: at rest the bytes are its files");
     }

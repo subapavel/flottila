@@ -108,7 +108,7 @@ class LargeBodyCrashTest {
         }
     }
 
-    Journal open(Path dir, HeldFiles files, KeptRows rows, FakeClock clock) throws Exception {
+    Journal open(Path dir, JournalFiles files, KeptRows rows, FakeClock clock) throws Exception {
         JournalConfig config = settings(dir).recordMax(4096).pendingBytes(1L << 20).config();
         Journal j = OnVirtualThread.call(() -> Journal.open(config, clock, new FakeTimer(clock), keys(KEY), files, rows));
         journals.add(j);
@@ -157,7 +157,10 @@ class LargeBodyCrashTest {
         assertFalse(files(image, "segments").contains(n), "fixture: and not in segments/");
 
         KeptRows restartRows = new KeptRows(rowsAtCrash.get(), rows.journal);
-        Journal restarted = open(image, new HeldFiles(), restartRows, FakeClock.at(JournalFixture.START.plusSeconds(60)));
+        SegmentFilesSeen restartSeen = new SegmentFilesSeen(new HeldFiles());
+        Journal restarted = open(image, restartSeen, restartRows, FakeClock.at(JournalFixture.START.plusSeconds(60)));
+        // the start's pre-open (the segment after its own first) inserts its row before its file exists: wait for the file and its directory force
+        restartSeen.awaitSegment(restartSeen.first() + 1);
 
         assertEquals(List.of(n), restartRows.dropped.stream().filter(x -> x == n).toList(), "the row whose file was never moved is dropped at start, once");
         assertFalse(restartRows.rows.contains(n), "it is gone");

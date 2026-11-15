@@ -1,0 +1,47 @@
+FIX-225 — evidence (2026-11-15)
+
+The fault (the race of FIX-213 and FIX-222, in two more classes; never seen failing by chance): the journal counts the 49-byte
+header of the pre-opened next segment, and inserts its row, from the moment the pre-open starts on its journal-open-N thread,
+before the file exists on disk. JournalSpillBoundTest.fillTo (:103, "fixture: at rest the bytes are its files") and
+LargeBodyCrashTest.aRowWhoseFileWasNeverMovedIsDroppedAtStart (:166, "witness: the rows with a file stay") compared the
+journal's count or rows with the disk without waiting for that pre-open.
+
+The red (test-author; a temporary Thread.sleep(500) before the pre-open's createFile, agent/work/FIX-222-demo.diff — production
+code, never committed, reverted before hand-back):
+EXECUTED_FAIL  agent/work/FIX-225-red.log      old tests + the delay: Tests run: 1578, Failures: 3 (:54473-54478) —
+               JournalSpillBoundTest.aSpillStartedAtMaxIsRefusedAndTheFilesStayAtMax:108->fillTo:103 "expected: <1048576> but
+               was: <1048527>"; …anIntakeSpillPastTheEdgeWritesNoChunk:120->fillTo:103 "expected: <984040> but was: <983991>";
+               LargeBodyCrashTest.aRowWhoseFileWasNeverMovedIsDroppedAtStart:166 "witness: the rows with a file stay: [4, 5]"
+VERIFIED_PASS  agent/work/FIX-225-delayed.log  new tests + the same delay: 1578 tests, 0 failures (:57769); no other failure
+VERIFIED_PASS  agent/work/FIX-225-run-1.log    the clean tree: 1578 tests, 0 failures (:53143), BUILD SUCCESS
+
+The change (tests only): a new package-private fixture, SegmentFilesSeen, wraps the JournalFiles a test gives the journal. It
+notes every segment file created (CREATE_NEW of <n>.seg under segments/) and every force of that directory (the read-open of
+the directory, as JournalIo.forceDir does it — a force clears only the files noted before it began). awaitSegment(n) waits on
+a condition, bounded by JournalFixture.BOUND, until segment n's file was seen created and no created segment file is without a
+directory force since; its timeout names the segments created and those not forced. fillTo waits for the segment after the one
+its last record is in; the restart of LargeBodyCrashTest for the segment after its own first. Every assertion and every exact
+equality stays. ReplicaStartTest and its PreopenSeen are untouched.
+
+After the review the author changed two lines of the fixture (only files under segments/ count; the package's bound instead of
+30 s). The verifier's runs are on that final tree, on e4ee8e81:
+VERIFIED_PASS  agent/work/FIX-225-verify-delayed.log  the delay applied (Journal.java, 1 insertion), new tests: exit 0, BUILD
+               SUCCESS (:54803); runtime 1578 (:54653) and 3 (:54672), 0 failures, 0 errors; no failing test in the run;
+               LargeBodyCrashTest 2 tests in 1.054 s, JournalSpillBoundTest 2 in 1.033 s, ReplicaStartTest 2 in 6.053 s.
+               The delay reverted after the run: no difference under src/main, the three test files only
+VERIFIED_PASS  agent/work/FIX-225-verify-run.log      the clean final tree: exit 0, BUILD SUCCESS (:55071); api 107, testkit
+               286, core 763, schemas 304, sftp 69, xslt 56, validate 33, http 52, runtime 1578 (:54921) and 3 (:54940),
+               0 failures, 0 errors, 0 skipped; no "Coverage checks have not been met"; the three classes 2 tests each in
+               0.060 s, 0.356 s and 0.043 s
+VERIFIED_PASS  python3 ci/name_guard.py               exit 0, "name guard: clean, 5934 tracked files scanned"
+
+review: PASS   class A. The red is the row's fault and nothing else (the two classes take 1.03 s with the delay against
+               0.04-0.33 s without). At most one pre-open is in flight (moveOn joins the running one before it starts the next,
+               Journal.java :893, :897); reserve awaits its force, so the pre-open of the next segment has started when the
+               wait begins; nothing reserves between the wait and the equalities. No other thread forces segments/ at these
+               two call sites, so no force can clear an entry early. Set.of(READ) on the directory is forceDir's own open
+               (JournalIo :51); no other read-open goes to a directory. The wait depends on the files, never on the counts:
+               bytes counted that never reach the disk still fail fillTo; a pre-open that never creates its file times out
+               with its message. Taken: only files under segments/ count; the package's bound. Open, new row FIX-232:
+               ReplicaStartTest.PreopenSeen (:185-207) now duplicates awaitSegment(first() + 1).
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-225.diff.

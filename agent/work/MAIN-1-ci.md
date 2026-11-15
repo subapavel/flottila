@@ -119,4 +119,6 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   209 and 211 failed. The modules after runtime were skipped, so FIX-222's and FIX-218's ITs ran in the 18.6 job only.
 - `ci` run 214 (id 43720502718, 5365f393, FIX-168): `success`, read 14:27Z (run list only; 13:43Z-14:08Z). The first green
   `ci` run since the fixes of MAIN-1 began to land; FIX-229's fault did not show in it (it is a race, not fixed there yet).
-- `ci` run 215 (id 43724011146, 38db0c13, FIX-219): in progress at 14:27Z; its conclusion not read.
+- `ci` run 215 (id 43724011146, 38db0c13, FIX-219): every job `success`, read 15:08Z (job list): Postgres floor 17.11
+  (Verify 14:22Z-14:47Z), Postgres main 18.6 (Verify and every later step), DCO, stack; bench and mutation skipped as
+  on every push. Two green `ci` runs in a row (214, 215). Runs of 31a4724f (FIX-229) and e4ee8e81 (FIX-226): not read.

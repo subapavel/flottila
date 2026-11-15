@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-225 two more comparisons with the disk wait for the pre-open — done, review PASS
+
+- Fault (never seen by chance; the race of FIX-213 and FIX-222): the journal counts the 49-byte header of the pre-opened next
+  segment, and inserts its row, from the pre-open's start - before the file exists. `JournalSpillBoundTest.fillTo` :103 and
+  `LargeBodyCrashTest` :166 compared with the disk without waiting for it.
+- Red first (test-author, class A): with FIX-222's temporary 500 ms delay before the pre-open's `createFile`, three cases fail -
+  `fillTo` twice, 49 bytes short, and "the rows with a file stay".
+- Change, tests only: a fixture `SegmentFilesSeen` wraps the journal's files, notes every segment file created and every force of
+  its directory; `awaitSegment(n)` waits, bounded, on a condition, until segment n's file was created and none created is without
+  its directory force - by identity, no sleep. `fillTo` waits for the segment after its last record's, the restart for the one
+  after its first. Every assertion and exact equality stays; `ReplicaStartTest` untouched.
+- Evidence: VERIFIED_PASS the same delay with the new tests, 1578 tests, no failure (author; verifier), and the clean tree.
+  Review PASS (class A); two robustness points taken (only files under `segments/` count; the package's bound). Follow-up: FIX-232.
+
 ## 2026-11-15 — FIX-226 DATA, RECEIPT and REFUSE have a derivation outside the code — done, review PASS
 
 - Gap: `ReplFramesTest` holds seven golden frames; the tracked script `agent/work/BRAND-1-C-golden.py` recomputed four. DATA,
