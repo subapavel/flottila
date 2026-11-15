@@ -168,6 +168,10 @@ class CardinalityAnalysisTest {
             (Supplier<Node>) () -> label(2, comma(new Binds(AT, List.of(many(), c()), List.of(0, 1), brk(2)), c())),
             AT_MOST_ONE),
         Arguments.argumentSet(
+            "a Binds of a MANY value, then a NEVER one, is NONE",
+            (Supplier<Node>) () -> label(2, comma(new Binds(AT, List.of(many(), brk(2)), List.of(0, 1), c()), c())),
+            AT_MOST_ONE),
+        Arguments.argumentSet(
             "an If of a MANY cond and NEVER branches is NONE", (Supplier<Node>) () -> label(0, comma(new If(AT, many(), brk(0), brk(0), v -> true), c())), AT_MOST_ONE),
         Arguments.argumentSet(
             "a Foreach of a MANY init and a NEVER each is NONE",
