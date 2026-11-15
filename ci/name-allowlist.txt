@@ -51,6 +51,8 @@ docs/ARCHITECTURE.md | flottila-sim | changelog row: a module as it was then nam
 docs/ARCHITECTURE.md | flottila-testkit | changelog row: a module as it was then named
 docs/ARCHITECTURE.md | flottila_work | changelog row: a LISTEN/NOTIFY channel as it was then named
 docs/ARCHITECTURE.md | io.flottila.Step | changelog row: a JFR event name as it was then named
+docs/ARCHITECTURE.md | `io.rail8:rail8-*` | changelog row: the Maven coordinates as they were then named (D-154)
+docs/ARCHITECTURE.md | `io.rail8` | changelog row: the package root as it was then named (D-154)
 
 # Applied migrations are byte-identical forever (Flyway checksums); the name stands in their comments only.
 deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's checksum on every deployed database
@@ -67,7 +69,7 @@ docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as
 ci/coverage_check.py | flottila-m1 | a comment names the prototype module P0-09 removed
 docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
 docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
-platform/archtest/src/test/java/io/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
+platform/archtest/src/test/java/dev/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
 
 # The rename's own files hold the name as their subject or test data.
 agent/tools/rail8_rename.py | * | the rename tool: the old name is what it translates

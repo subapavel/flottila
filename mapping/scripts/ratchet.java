@@ -515,12 +515,12 @@ public final class Ratchet {
   /** Scenario names with %s for the mapping; alloc null: the benchmark has no alloc scenario. */
   private record Naming(String primary, String alloc, Kind kind) {}
 
-  // The naming rule, the only one: the JMH benchmark io.rail8.mapping.bench.<Mapping>Bench.<method> gives the
+  // The naming rule, the only one: the JMH benchmark dev.rail8.mapping.bench.<Mapping>Bench.<method> gives the
   // scenarios of SCENARIOS[<method>], where <mapping> is <Mapping> with a lower-case first letter
   // (OrdersBench.smallLatency: orders/small/latency). The primary metric gives the primary scenario, the
   // gc.alloc.rate.norm secondary metric (-prof gc) the alloc scenario. The heap fork (-Xmx128m) only has to
   // complete, so it has no row. Any other benchmark name fails.
-  private static final Pattern BENCHMARK = Pattern.compile("io\\.rail8\\.mapping\\.bench\\.(\\w+)Bench\\.(\\w+)");
+  private static final Pattern BENCHMARK = Pattern.compile("dev\\.rail8\\.mapping\\.bench\\.(\\w+)Bench\\.(\\w+)");
   private static final Map<String, Naming> SCENARIOS =
       Map.of(
           "smallLatency", new Naming("%s/small/latency", "%s/small/alloc", Kind.SCORE),

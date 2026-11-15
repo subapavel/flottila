@@ -1,0 +1,169 @@
+package dev.rail8.testkit;
+
+import dev.rail8.api.Hasher;
+import io.vertx.core.buffer.Buffer;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class GeneratedReadStreamTest {
+
+    @Test
+    void deliversExactlySizeBytesInChunksAndEndsOnce() {
+        GeneratedReadStream s = new GeneratedReadStream(10, 4);
+        Buffer all = Buffer.buffer();
+        List<Integer> sizes = new ArrayList<>();
+        int[] ends = {0};
+        s.endHandler(v -> ends[0]++);
+        s.handler(c -> { sizes.add(c.length()); all.appendBuffer(c); });
+        assertEquals(List.of(4, 4, 2), sizes);
+        assertEquals(10, all.length());
+        for (int i = 0; i < 10; i++) assertEquals(GeneratedReadStream.byteAt(i), all.getByte(i));
+        assertEquals(1, ends[0]);
+        assertEquals(10, s.delivered());
+    }
+
+    @Test
+    void pauseStopsDeliveryFetchHandsOutThatManyChunksResumeFinishes() {
+        GeneratedReadStream s = new GeneratedReadStream(10, 2);
+        List<Integer> seen = new ArrayList<>();
+        s.pause();
+        s.handler(c -> seen.add(c.length()));
+        assertTrue(seen.isEmpty(), "paused before the handler: nothing flows");
+        s.fetch(2);
+        assertEquals(2, seen.size());
+        s.resume();
+        assertEquals(5, seen.size());
+        assertEquals(10, s.delivered());
+    }
+
+    @Test
+    void expectedHashEqualsTheHashOfTheDeliveredBytes() {
+        Hasher h = Hasher.sha256();
+        GeneratedReadStream s = new GeneratedReadStream(200_000, 777);
+        Hasher.Session session = h.begin();
+        s.handler(session::update);
+        assertEquals(GeneratedReadStream.expectedHash(h, 200_000), session.finish());
+        assertEquals(h.hashOf(Buffer.buffer()), GeneratedReadStream.expectedHash(h, 0), "the empty body");
+    }
+
+    @Test
+    void fetchCreditSaturatesInsteadOfOverflowing() {
+        GeneratedReadStream s = new GeneratedReadStream(6, 2);
+        List<Integer> seen = new ArrayList<>();
+        s.pause();
+        s.handler(c -> seen.add(c.length()));
+        s.fetch(Long.MAX_VALUE);
+        assertEquals(3, seen.size(), "unbounded credit drains everything");
+        GeneratedReadStream t = new GeneratedReadStream(6, 2);
+        t.pause();
+        t.fetch(Long.MAX_VALUE - 1);
+        t.fetch(5);                       // would overflow: saturates at Long.MAX_VALUE
+        List<Integer> late = new ArrayList<>();
+        t.handler(c -> late.add(c.length()));
+        assertEquals(3, late.size());
+    }
+
+    @Test
+    void aHandlerThatResumesFromInsideDoesNotReenterTheDrainLoop() {
+        GeneratedReadStream s = new GeneratedReadStream(6, 2);
+        List<Integer> seen = new ArrayList<>();
+        int[] ends = {0};
+        s.pause();
+        s.endHandler(v -> ends[0]++);
+        s.handler(c -> { seen.add(c.length()); s.resume(); });   // re-entrant resume: the guard defers, nothing is delivered twice
+        s.fetch(1);
+        assertEquals(List.of(2, 2, 2), seen);
+        assertEquals(1, ends[0]);
+    }
+
+    @Test
+    void endFiresOnceEvenWhenPausedAtTheEndOrWithoutAnEndHandler() {
+        GeneratedReadStream s = new GeneratedReadStream(4, 2);
+        int[] ends = {0};
+        s.pause();
+        s.handler(c -> {});
+        s.fetch(2);                       // all data out, credit spent: end waits
+        assertEquals(4, s.delivered());
+        s.endHandler(v -> ends[0]++);
+        assertEquals(0, ends[0], "still paused without credit");
+        s.resume();
+        s.resume();
+        assertEquals(1, ends[0]);
+        GeneratedReadStream noEnd = new GeneratedReadStream(2, 2);
+        noEnd.handler(c -> {});           // no endHandler: nothing to call, no failure
+        assertEquals(2, noEnd.delivered());
+    }
+
+    @Test
+    void anEmptyStreamWithTheEndHandlerSetFirstEndsOnceWhenTheDataHandlerArrives() {
+        GeneratedReadStream s = new GeneratedReadStream(0, 4);
+        boolean[] dataHandlerAttached = {false};
+        List<Boolean> endsSeenWithDataHandlerAttached = new ArrayList<>();
+        List<Buffer> chunks = new ArrayList<>();
+        s.endHandler(v -> endsSeenWithDataHandlerAttached.add(dataHandlerAttached[0]));
+        assertEquals(List.of(), endsSeenWithDataHandlerAttached,
+                "no data handler yet: the end must wait for the consumer");
+        dataHandlerAttached[0] = true;
+        s.handler(chunks::add);
+        assertEquals(List.of(true), endsSeenWithDataHandlerAttached,
+                "the end fires exactly once, inside handler(), with the data handler attached");
+        assertEquals(List.of(), chunks, "an empty body delivers no chunk");
+        assertEquals(0, s.delivered());
+        s.resume();
+        s.fetch(1);
+        assertEquals(1, endsSeenWithDataHandlerAttached.size(), "a later resume / fetch does not end again");
+        assertEquals(List.of(), chunks);
+    }
+
+    @Test
+    void argumentsAreValidated() {
+        assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(-1, 4));
+        assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(4, 0));
+        assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(4, 1).fetch(-1));
+    }
+
+    // ---- FIX-53 ---------------------------------------------------------------------------------------------------
+
+    @Test
+    void byteIIsIMultipliedBy31Plus7AsTheJavadocSays() {
+        assertEquals((byte) 7, GeneratedReadStream.byteAt(0));
+        assertEquals((byte) 38, GeneratedReadStream.byteAt(1));
+        assertEquals((byte) 100, GeneratedReadStream.byteAt(3));
+        assertEquals((byte) (1000L * 31 + 7), GeneratedReadStream.byteAt(1000));
+        GeneratedReadStream s = new GeneratedReadStream(3, 3);
+        List<Buffer> got = new ArrayList<>();
+        s.handler(got::add);
+        assertEquals(Buffer.buffer(new byte[] {7, 38, 69}), got.getFirst(), "the stream delivers those bytes");
+    }
+
+    @Test
+    void aFetchOfNothingIsAllowedAndDeliversNothing() {
+        GeneratedReadStream s = new GeneratedReadStream(4, 1);
+        List<Buffer> got = new ArrayList<>();
+        s.pause().handler(got::add);
+        assertSame(s, s.fetch(0), "fetch(0) is no error: it adds no demand");
+        assertEquals(0, s.delivered());
+        s.fetch(1);
+        assertEquals(1, s.delivered(), "and demand still works after it");
+        assertThrows(IllegalArgumentException.class, () -> s.fetch(-1));
+    }
+
+    @Test
+    void everyStreamCallReturnsTheStreamItself() {
+        GeneratedReadStream s = new GeneratedReadStream(3, 1);
+        assertSame(s, s.exceptionHandler(t -> { }));
+        assertSame(s, s.pause());
+        assertSame(s, s.handler(b -> { }));
+        assertSame(s, s.fetch(1));
+        assertSame(s, s.endHandler(v -> { }));
+        assertSame(s, s.resume());
+        assertEquals(3, s.delivered(), "the chained calls drove the stream to its end");
+    }
+}

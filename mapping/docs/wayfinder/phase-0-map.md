@@ -31,7 +31,7 @@ the tickets that touch them — not decisions yet unless an ADR exists):
 - Mapping speed target: at least SAP PO's compiled mappings — projection of the source,
   streamed target output, values as strings by default, compile at deploy, shape-specialised code.
 - Every mapping exports to readable XSLT 3.0; the export doubles as the differential oracle.
-- UI: React + PatternFly (it will also be Rail8's UI). Repo, packages: `io.rail8.mapping`,
+- UI: React + PatternFly (it will also be Rail8's UI). Repo, packages: `dev.rail8.mapping`,
   separate from Rail8 until integration.
 - Open source (Apache 2.0); synthetic corpora only; Saxon-HE at test scope only.
 - Streaming later as burst mode, not full XSLT streamability.

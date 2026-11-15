@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.rail8</groupId>
+  <groupId>dev.rail8</groupId>
   <artifactId>rail8-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
@@ -77,67 +77,67 @@
     <dependencies>
       <!-- reactor modules -->
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-api</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-runtime</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-component-http</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-component-mock</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-component-sftp</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-step-xslt</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-step-validate</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-testkit</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-cli</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-sim</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-schemas</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.rail8</groupId>
+        <groupId>dev.rail8</groupId>
         <artifactId>rail8-bench</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -348,8 +348,8 @@
             </dependency>
           </dependencies>
           <configuration>
-            <targetClasses><param>io.rail8.*</param></targetClasses>
-            <targetTests><param>io.rail8.*</param></targetTests>
+            <targetClasses><param>dev.rail8.*</param></targetClasses>
+            <targetTests><param>dev.rail8.*</param></targetTests>
             <mutationThreshold>${rail8.mutation.threshold}</mutationThreshold>
             <outputFormats><param>XML</param><param>HTML</param></outputFormats>
             <timestampedReports>false</timestampedReports>

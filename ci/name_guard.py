@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Old-name guard (BRAND-4, D-148, D-149): the product's old name, `flottila`, does not come back.
+"""Old-name guard (BRAND-4, D-148, D-149, D-154): the product's old name, `flottila`, and its old namespace,
+`io.rail8`, do not come back.
 
 Scans every file git tracks (`git ls-files -z` at the top level of the working directory; untracked and
-ignored files are never read) for the name in any letter case, in the file's path and in its content.
+ignored files are never read) for the name in any letter case, in the file's path and in its content. The
+old namespace counts as the name: `io.rail8`, `io/rail8` and the regex-escaped `io\\.rail8` and `io\\\\.rail8`,
+in that letter case, unless a letter, digit or `_` stands directly before `io` (`studio.rail8` is another
+word); `dev.rail8` and `rail8.io` are not the name.
 Every occurrence must be allowed by an entry of ci/name-allowlist.txt, read from disk at the same top level
 whether it is tracked or not. One entry per line, `#` comments and blank lines ignored:
 
@@ -34,8 +38,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-NAME = re.compile("flottila", re.IGNORECASE | re.ASCII)
-NAME_BYTES = re.compile(b"flottila", re.IGNORECASE)
+# the old name in any letter case, or the old namespace (D-154) not inside a longer word
+_NAMESPACE = r"(?<![A-Za-z0-9_])io(?:\.|/|\\\.|\\\\\.)rail8"
+NAME = re.compile("(?i:flottila)|" + _NAMESPACE, re.ASCII)
+NAME_BYTES = re.compile(b"(?i:flottila)|" + _NAMESPACE.encode("ascii"))
 ALLOWLIST = "ci/name-allowlist.txt"
 STAR = "*"
 WIDTH = 160

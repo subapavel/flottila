@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.rail8</groupId>
+    <groupId>dev.rail8</groupId>
     <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
@@ -17,53 +17,53 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-api</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-core</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-runtime</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-mock</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-xslt</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-validate</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-cli</artifactId>
       <scope>test</scope>
     </dependency>
     <!-- the simulation harness (F-36, D-143): its src/main is checked by SIM_DEPENDS_ON_API_CORE_TESTKIT and NOTHING_DEPENDS_ON_SIM -->
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-sim</artifactId>
       <scope>test</scope>
     </dependency>

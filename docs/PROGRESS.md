@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-5 the namespace is `dev.rail8` — done, review PASS
+
+- The owner's answer to ISSUE-7 carried out (D-154): groupId, package root, the mapping's modules, every operator-visible name. No alias (D-148).
+- Red first: 13 new cases of `ci/test_name_guard.py` (test-author; 12 red, agent/work/BRAND-5-guard-red.log), then the extended
+  guard on the tree: 9614 findings. Deviation from "existing cases untouched": one old case's clean-path fixture is now
+  `src/dev/rail8/` — the old path is no longer clean data; its assertions are unchanged.
+- Implementer: `ci/name_guard.py` (one pattern); `agent/tools/rail8_rename.py namespace` (51 directories by `git mv`, 1398 files,
+  8285 lines, idempotent); `spotless:apply` in the mapping (imports of 5 files); allow-list (one moved path, two literals for
+  ARCHITECTURE's changelog row 3.24). No constant or pin depended on the namespace. Architect: ARCHITECTURE 3.27, pending packets.
+- Pure rename shown by agent/work/BRAND-5-pure.py: 1399 changed files compared; the two that differ are an agent's memory note
+  and the CI notes; 5 hold the same lines in another order (the formatter); none added or removed.
+- Evidence (verifier): VERIFIED_PASS platform reactor `-Pit`, 4580 tests, counts equal to the baseline, NO failure in any module
+  (agent/work/BRAND-5-verify-platform-counts.txt); mapping 17 822, equal to its base; guard clean, 5891 files; coverage current.
+- Review PASS (class B); letter case and a word character after `rail8` are not pinned. `ci` run 208 (FIX-215's commit): the first
+  green build of main on a runner since 2026-11-05 (agent/work/MAIN-1-ci.md).
+
 ## 2026-11-15 — FIX-215 the takeover check allows a re-run and bounds it — done, review PASS; closes FIX-184
 
 - Red first: `LedgerIT.aKilledNodeLosesNoAckedMessage` as it was — EXECUTED_FAIL "only what was unfinished at the kill is finished

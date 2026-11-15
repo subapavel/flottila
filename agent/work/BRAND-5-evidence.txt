@@ -1,0 +1,34 @@
+BRAND-5 — evidence (2026-11-15)
+
+Red:
+EXECUTED_FAIL  agent/work/BRAND-5-guard-red.log        ci.test_name_guard with the new cases on the old guard: Ran 32,
+               failures=15 (12 cases, one with 3 subtests and a final run); every old case green
+EXECUTED_FAIL  agent/work/BRAND-5-guard-before.txt     the extended guard on the tree before the rename: 9614 findings
+               (file not committed: 9614 lines)
+
+The rename (implementer):
+agent/work/BRAND-5-tool-run.txt         51 git mv; 1398 files rewritten, 8285 lines; by spelling io.rail8 8334, io/rail8 19,
+                                        escaped 7, path segments 3; import blocks re-sorted in platform/ and bench/: 0
+agent/work/BRAND-5-tool-dry-final.txt   on the final tree: "namespace: nothing left to do"; kept: 44 history files, 3 history
+                                        lines in living files, 3 files of the guard
+agent/work/BRAND-5-pure-final.txt       1399 changed files compared; 2 differ (.claude/agent-memory/implementer/MEMORY.md,
+                                        agent/work/MAIN-1-ci.md); 5 re-ordered (mapping/service, the formatter); 0 added, 0 removed
+agent/work/BRAND-5-rest.diff            everything that is not a pure rename: guard, allow-list, tool, memory notes, 5 files
+
+Verification (verifier, on the renamed tree; ~/.m2 held no build output of either namespace):
+VERIFIED_PASS  python3 -m unittest ci.test_name_guard ci.test_coverage_check   Ran 59, OK
+VERIFIED_PASS  python3 ci/name_guard.py                                        clean, 5891 tracked files scanned
+VERIFIED_PASS  agent/work/BRAND-5-verify-mapping.log    mapping clean verify -Pbench: BUILD SUCCESS, 17 822 tests, 0 failures,
+               12 module counts equal to agent/work/BRAND-3-base-counts.txt; mapping/contract unchanged by the build
+VERIFIED_PASS  agent/work/BRAND-5-verify-platform.log   platform clean verify -Pit: exit 0, 25:55 min, 17 modules SUCCESS,
+               4580 tests, 0 failures, 0 errors, 0 skipped; `Tests run` equal line by line to agent/work/BRAND-1-C-counts.txt
+               (the two lines that differ: runtime and bench failsafe, Failures 1 -> 0 — FIX-212 and FIX-215)
+VERIFIED_PASS  python3 ci/coverage_check.py --check-baseline   "baseline: current"
+VERIFIED_PASS  python3 ci/coverage_check.py --baseline-ref HEAD   "coverage: no decrease"
+Implementer's own runs: mapping 17 822 green (agent/work/BRAND-5-mapping.log); platform unit reactor 3822 tests, 0 failures
+(agent/work/BRAND-5-unit.log; exit 1 only on the bench module's coverage floor without the ITs, the same at HEAD).
+
+review: PASS   class B. Guard: the four spellings, the smallest change; the 13 cases are real. Tool: idempotent, history kept,
+               no other split spelling found. 15 files checked by eye. Not pinned: letter case of the namespace, a word
+               character after rail8; an uppercase letter directly before io is refused (refuses more than the packet says).
+Logs are not committed (agent/work is ignored).

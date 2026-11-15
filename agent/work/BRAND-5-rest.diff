@@ -1,0 +1,500 @@
+diff --git a/.claude/agent-memory/implementer/MEMORY.md b/.claude/agent-memory/implementer/MEMORY.md
+index b217afed..1840c07b 100644
+--- a/.claude/agent-memory/implementer/MEMORY.md
++++ b/.claude/agent-memory/implementer/MEMORY.md
+@@ -110,7 +110,7 @@
+ - Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1), PgIntakeJournalIT open-save (FIX-159), NodeTakeoverLedgerIT.aStoppedNode…:247 admission 4/4 (2 in 6 alone on base AND on CORE-17, P2-16b; 2 of 3 full reactors FIX-137 r3; CORE-17 r2: 2 of 2 full, 1 of 3 alone; r3: 1 full + 4 of 4 alone, one at r2's code; every node sets POOL_SIZE 4), JournalDirForceOrderTest:98 under reactor load (FIX-137, 5/5 alone). PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270 (Serving acquires its permit inside each READ's vthread: order races; 1 of 2 runs, 0 of 5 alone, CORE-5a2 r1), PeerReadHeapTest:281 (1 of 7). LedgerIT:132 "only what was unfinished" fails in the main tree whatever the runtime code (CORE-5a2: 5/5, HEAD main files too) yet passes in a `git archive HEAD` copy (4/4, with the change too): compare trees before blaming a change. Testkit ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337 (extra aSendCarriesTheMessageIdToThePartner, 1 of 4 core runs, CORE-14b r1). ReplicaStartTest.theStartRoomCheckCountsTheReplicas:159 bytes 3514 vs 3465 (1 of 3 alone, 1 full reactor; MERGE-main 2026-11-14).
+ - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
+   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
+-- mapping/ (BRAND-3 s2): javac -Werror `[module]` lint flags the terminal digit of `rail8` → `@SuppressWarnings("module")` on module-info; license-maven-plugin `artifactFiltersUrl` must be a URI (javap UrlRequester), not a path; ci/coverage_check.py rglobs from the root, so mapping/ jacoco reports count; check-lf-checkout needs a staged (temp GIT_INDEX_FILE) index; some surefire XML breaks ElementTree (regex the `<testsuite>` tag); Python hand mutants: a same-size mutant (`!=`→`==`) restored in the same second leaves a valid stale .pyc: run with `-B` and rm `__pycache__` after restoring. | Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*` default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch leaves a synthetic default missed (P2-07).
++- mapping/ (BRAND-3 s2): javac -Werror `[module]` lint flags the terminal digit of `rail8` → `@SuppressWarnings("module")` on module-info; license-maven-plugin `artifactFiltersUrl` must be a URI (javap UrlRequester), not a path; ci/coverage_check.py rglobs from the root, so mapping/ jacoco reports count; check-lf-checkout needs a staged (temp GIT_INDEX_FILE) index; some surefire XML breaks ElementTree (regex the `<testsuite>` tag); Python hand mutants: a same-size mutant (`!=`→`==`) restored in the same second leaves a valid stale .pyc: run with `-B` and rm `__pycache__` after restoring. | Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*` default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch leaves a synthetic default missed (P2-07). A package rename (BRAND-5): `git mv` needs the new parent dir made first; under mapping/ `spotless:apply -Pbench` re-sorts the imports, the build only checks.
+ - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
+   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
+ - Compose (P2-05a/06): native PG holds :5432 → `RAIL8_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn. | JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07). | Sim (P2-10a): FlowWorker.process's VT may end before its starter composes (sim gates each run); InMemoryMessageStore.timeline scans all rows.
+diff --git a/agent/tools/rail8_rename.py b/agent/tools/rail8_rename.py
+index 2de68cc5..8d73738b 100644
+--- a/agent/tools/rail8_rename.py
++++ b/agent/tools/rail8_rename.py
+@@ -1,11 +1,14 @@
+ #!/usr/bin/env python3
+-"""The Flottila -> Rail8 rename (BRAND-1, D-148, D-149), as one repeatable tool.
++"""The Flottila -> Rail8 rename (BRAND-1, D-148, D-149) and the namespace io.rail8 -> dev.rail8 (BRAND-5, D-154), as one
++repeatable tool.
+ 
+ Subcommands, each idempotent (a second run changes nothing) and each with --dry-run:
+   moves        commit A: `git mv` of every directory in PATH_MAP, then the path strings in the living documents
+   identifiers  commit B: `git mv` of the io/flottila package directories and bin/flottila, then IDENTIFIER_MAP
+   wire         commit C: persisted and wire names, one entry per literal (WIRE_MAP)
+   report       only the final report: every remaining occurrence of the old name outside EXCLUDED, tagged
++  namespace    BRAND-5 (D-154): `git mv` of every io/rail8 package directory to dev/rail8, then `io.rail8` -> `dev.rail8`
++               in every spelling ci/name_guard.py refuses, history kept; sorted import blocks stay sorted
+ 
+ --root <dir> limits a subcommand to a subtree of the repository (BRAND-3 runs it on mapping/).
+ The tool never touches .git/, target/ or a file git does not track. Python 3 standard library only.
+@@ -15,6 +18,7 @@ Usage (from anywhere inside the repository):
+   python3 agent/tools/rail8_rename.py moves
+   python3 agent/tools/rail8_rename.py report --summary
+   python3 agent/tools/rail8_rename.py identifiers --root mapping   # BRAND-3 step 2 (D-151), then `wire --root mapping`
++  python3 agent/tools/rail8_rename.py namespace --dry-run          # BRAND-5
+ """
+ from __future__ import annotations
+ 
+@@ -1157,10 +1161,160 @@ def cmd_wire(root: Path, scope: str | None, dry: bool) -> int:
+     return 1 if stale else status
+ 
+ 
++# ---------------------------------------------------------------------------------------------------------------------
++# BRAND-5 (D-154): the namespace `io.rail8` becomes `dev.rail8`. An occurrence is what ci/name_guard.py refuses as the
++# old namespace: `io`, not after a letter, digit or `_`, then `.`, `/`, `\.` or `\\.`, then `rail8`; the separator is
++# kept, so `io\\.rail8` becomes `dev\\.rail8`. Two path-segment spellings the guard cannot see as one word follow too.
++# ---------------------------------------------------------------------------------------------------------------------
++
++NAMESPACE_DIR = re.compile(r"^(.*/src/[^/]+/(?:java|resources))/io/rail8/")
++NAMESPACE_DIR_NEW = "dev/rail8"
++NAMESPACE = re.compile(r"(?<![A-Za-z0-9_])io(\.|/|\\\.|\\\\\.)rail8")
++NAMESPACE_BYTES = re.compile(NAMESPACE.pattern.encode("ascii"))
++NAMESPACE_SPELLING = {".": "io.rail8", "/": "io/rail8", "\\.": "io\\.rail8", "\\\\.": "io\\\\.rail8"}
++# Path.of(..., "io", "rail8", ...) in Java and m / "io" / "rail8" in Python: the package root as path segments
++NAMESPACE_SEGMENTS = re.compile(r'"io"(, | / )"rail8"')
++# Never touched by `namespace` (BRAND-5 packet): the root rules, the agents' definitions and every settings file; one
++# that holds the namespace is reported. The guard, its tests and its allow-list hold it as their subject (the allow-list's
++# changelog literals): kept, like EXCLUDED.
++NAMESPACE_UNTOUCHED: list[str] = ["CLAUDE.md", ".claude/agents/**"]
++NAMESPACE_SUBJECT: list[str] = ["ci/name_guard.py", "ci/test_name_guard.py", "ci/name-allowlist.txt"]
++_SETTINGS = re.compile(r"settings(?:\.[\w-]+)?\.json")
++# Where a sorted import block stays sorted after the replacement; under mapping/ the engine's formatter decides.
++NAMESPACE_SORTED_IMPORTS = ("platform/", "bench/")
++
++
++def namespace_untouched(path: str) -> bool:
++    return any(_glob(path, p) for p in NAMESPACE_UNTOUCHED) or bool(_SETTINGS.fullmatch(path.rsplit("/", 1)[-1]))
++
++
++def namespace_moves(files: set[str]) -> list[tuple[str, str]]:
++    """Every `.../src/<set>/{java,resources}/io/rail8` -> `.../dev/rail8`."""
++    dirs = sorted({m.group(1) for f in files if (m := NAMESPACE_DIR.match(f))})
++    return [(f"{d}/io/rail8", f"{d}/{NAMESPACE_DIR_NEW}") for d in dirs]
++
++
++def map_namespace_path(path: str) -> str:
++    m = NAMESPACE_DIR.match(path)
++    return f"{m.group(1)}/{NAMESPACE_DIR_NEW}/" + path[m.end():] if m else path
++
++
++def _import_blocks(lines: list[str]) -> list[tuple[int, int]]:
++    """(start, end) of every maximal run of lines that start with `import `."""
++    blocks, i = [], 0
++    while i < len(lines):
++        if lines[i].startswith("import "):
++            j = i
++            while j < len(lines) and lines[j].startswith("import "):
++                j += 1
++            blocks.append((i, j))
++            i = j
++        else:
++            i += 1
++    return blocks
++
++
++def rewrite_namespace(path: str, text: str, counts: Counter) -> str:
++    """Every occurrence of the old namespace in `text` outside the history lines of `path`, then, under
++    NAMESPACE_SORTED_IMPORTS, every import block that was in ASCII order before put back in ASCII order."""
++    def one(m: re.Match) -> str:
++        counts[NAMESPACE_SPELLING[m.group(1)]] += 1
++        return "dev" + m.group(1) + "rail8"
++
++    def segments(m: re.Match) -> str:
++        counts["path segments"] += 1
++        return '"dev"' + m.group(1) + '"rail8"'
++    lines = text.split("\n")
++    history = history_lines(path, lines)
++    out = [line if i in history else NAMESPACE_SEGMENTS.sub(segments, NAMESPACE.sub(one, line))
++           for i, line in enumerate(lines)]
++    if path.startswith(NAMESPACE_SORTED_IMPORTS) and path.endswith(".java"):
++        for start, end in _import_blocks(lines):
++            before, after = lines[start:end], out[start:end]
++            if after != before and before == sorted(before) and after != sorted(after):
++                out[start:end] = sorted(after)
++                counts["import blocks re-sorted"] += 1
++    return "\n".join(out)
++
++
++def cmd_namespace(root: Path, scope: str | None, dry: bool) -> int:
++    """BRAND-5: `git mv` of every io/rail8 package directory to dev/rail8, then the old namespace -> `dev` in every
++    tracked UTF-8 file outside EXCLUDED, NAMESPACE_UNTOUCHED and the history lines. Reports, never changes: a tracked
++    path with the namespace outside a package directory, an untouched file or a file that is not UTF-8 holding it."""
++    files = set(tracked(root))
++    exists = lambda p: p in files or any(f.startswith(p + "/") for f in files)  # noqa: E731
++    plan: list[tuple[str, str]] = []
++    for old, new in namespace_moves({f for f in files if in_scope(f, scope) and not excluded(f)}):
++        if exists(new):
++            raise SystemExit(f"refused: {old} -> {new}: both exist")
++        plan.append((old, new))
++    stray = sorted(f for f in files if in_scope(f, scope) and not excluded(f) and NAMESPACE.search(f)
++                   and not NAMESPACE_DIR.match(f))
++    for old, new in plan:
++        print(f"git mv {old} {new}")
++        if not dry:
++            (root / new).parent.mkdir(parents=True, exist_ok=True)
++            git(root, "mv", old, new)
++            left = (root / old).parent    # `.../io`, empty on disk once rail8 has moved
++            if left.is_dir() and not any(left.iterdir()):
++                left.rmdir()
++    counts: Counter = Counter()
++    rewritten = 0
++    reported: list[str] = [f"path holds the namespace outside a package directory (not moved): {p}" for p in stray]
++    kept: Counter = Counter()
++    current = sorted(tracked(root)) if not dry else sorted(files)
++    for source in current:
++        path = source if not dry else map_namespace_path(source)
++        if not in_scope(path, scope) or "/target/" in f"/{path}":
++            continue
++        file = root / source
++        if not file.is_file():
++            continue
++        data = file.read_bytes()
++        if not NAMESPACE_BYTES.search(data) and not NAMESPACE_SEGMENTS.search(data.decode("latin-1")):
++            continue
++        if excluded(path) or path in NAMESPACE_SUBJECT:
++            kept["history file" if excluded(path) else "subject file"] += 1
++            continue
++        text = _decoded(data)
++        if text is None:
++            reported.append(f"not UTF-8, holds the namespace (not rewritten): {path}")
++            continue
++        if namespace_untouched(path):
++            reported.append(f"never touched, holds the namespace: {path}")
++            continue
++        per_file: Counter = Counter()
++        new_text = rewrite_namespace(path, text, per_file)
++        history = history_lines(path, text.split("\n"))
++        kept["history line"] += sum(1 for i, line in enumerate(text.split("\n")) if i in history and NAMESPACE.search(line))
++        if new_text == text:
++            continue
++        lines = _count_changes(text, new_text)
++        counts.update(per_file)
++        counts["lines"] += lines
++        rewritten += 1
++        print(f"rewrite {path}: {lines} line(s)" + ("" if text_kind(path) else " (a kind `identifiers` does not classify)"))
++        if dry:
++            for number, (a, b) in enumerate(zip(text.split("\n"), new_text.split("\n")), 1):
++                if a != b:
++                    print(f"  {number}: {_snippet(a, b)}")
++        else:
++            file.write_text(new_text, encoding="utf-8")
++    for line in reported:
++        print(line)
++    print(f"kept: {kept['history file']} history file(s) under EXCLUDED, {kept['history line']} history line(s) "
++          f"in living files, {kept['subject file']} file(s) of the guard that hold the namespace as its subject")
++    print(f"namespace: {len(plan)} git mv, {rewritten} file(s) rewritten, {counts['lines']} line(s)"
++          + "".join(f", {k} {v}" for k, v in sorted(counts.items()) if k != "lines") + f"; {len(reported)} reported")
++    if not plan and not rewritten and not reported:
++        print("namespace: nothing left to do")
++    return 1 if reported else 0
++
++
+ def main(argv: list[str] | None = None) -> int:
+     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+     sub = ap.add_subparsers(dest="command", required=True)
+-    for name in ("moves", "identifiers", "wire", "report"):
++    for name in ("moves", "identifiers", "wire", "report", "namespace"):
+         p = sub.add_parser(name)
+         p.add_argument("--dry-run", action="store_true", help="print what would change, change nothing")
+         p.add_argument("--root", default=None, help="limit to this repository subtree (e.g. mapping)")
+@@ -1170,6 +1324,8 @@ def main(argv: list[str] | None = None) -> int:
+     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+     scope = args.root.strip("/") if args.root else None
+     status = 0
++    if args.command == "namespace":   # its own report; the old name's report is the other subcommands'
++        return cmd_namespace(root, scope, args.dry_run)
+     if args.command == "moves":
+         cmd_moves(root, scope, args.dry_run)
+     if args.command == "identifiers":
+diff --git a/ci/name-allowlist.txt b/ci/name-allowlist.txt
+index bdc5ee3a..1316f72f 100644
+--- a/ci/name-allowlist.txt
++++ b/ci/name-allowlist.txt
+@@ -51,6 +51,8 @@ docs/ARCHITECTURE.md | flottila-sim | changelog row: a module as it was then nam
+ docs/ARCHITECTURE.md | flottila-testkit | changelog row: a module as it was then named
+ docs/ARCHITECTURE.md | flottila_work | changelog row: a LISTEN/NOTIFY channel as it was then named
+ docs/ARCHITECTURE.md | io.flottila.Step | changelog row: a JFR event name as it was then named
++docs/ARCHITECTURE.md | `io.rail8:rail8-*` | changelog row: the Maven coordinates as they were then named (D-154)
++docs/ARCHITECTURE.md | `io.rail8` | changelog row: the package root as it was then named (D-154)
+ 
+ # Applied migrations are byte-identical forever (Flyway checksums); the name stands in their comments only.
+ deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's checksum on every deployed database
+@@ -67,7 +69,7 @@ docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as
+ ci/coverage_check.py | flottila-m1 | a comment names the prototype module P0-09 removed
+ docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
+ docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
+-platform/archtest/src/test/java/io/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
++platform/archtest/src/test/java/dev/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
+ 
+ # The rename's own files hold the name as their subject or test data.
+ agent/tools/rail8_rename.py | * | the rename tool: the old name is what it translates
+diff --git a/ci/name_guard.py b/ci/name_guard.py
+index da597f7c..8b6ebd73 100644
+--- a/ci/name_guard.py
++++ b/ci/name_guard.py
+@@ -1,8 +1,12 @@
+ #!/usr/bin/env python3
+-"""Old-name guard (BRAND-4, D-148, D-149): the product's old name, `flottila`, does not come back.
++"""Old-name guard (BRAND-4, D-148, D-149, D-154): the product's old name, `flottila`, and its old namespace,
++`io.rail8`, do not come back.
+ 
+ Scans every file git tracks (`git ls-files -z` at the top level of the working directory; untracked and
+-ignored files are never read) for the name in any letter case, in the file's path and in its content.
++ignored files are never read) for the name in any letter case, in the file's path and in its content. The
++old namespace counts as the name: `io.rail8`, `io/rail8` and the regex-escaped `io\\.rail8` and `io\\\\.rail8`,
++in that letter case, unless a letter, digit or `_` stands directly before `io` (`studio.rail8` is another
++word); `dev.rail8` and `rail8.io` are not the name.
+ Every occurrence must be allowed by an entry of ci/name-allowlist.txt, read from disk at the same top level
+ whether it is tracked or not. One entry per line, `#` comments and blank lines ignored:
+ 
+@@ -34,8 +38,10 @@ import subprocess
+ import sys
+ from pathlib import Path
+ 
+-NAME = re.compile("flottila", re.IGNORECASE | re.ASCII)
+-NAME_BYTES = re.compile(b"flottila", re.IGNORECASE)
++# the old name in any letter case, or the old namespace (D-154) not inside a longer word
++_NAMESPACE = r"(?<![A-Za-z0-9_])io(?:\.|/|\\\.|\\\\\.)rail8"
++NAME = re.compile("(?i:flottila)|" + _NAMESPACE, re.ASCII)
++NAME_BYTES = re.compile(b"(?i:flottila)|" + _NAMESPACE.encode("ascii"))
+ ALLOWLIST = "ci/name-allowlist.txt"
+ STAR = "*"
+ WIDTH = 160
+diff --git a/mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java b/mapping/service/src/main/java/dev/rail8/mapping/service/ServiceConfig.java
+similarity index 98%
+rename from mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java
+rename to mapping/service/src/main/java/dev/rail8/mapping/service/ServiceConfig.java
+index b232cdc8..53135630 100644
+--- a/mapping/service/src/main/java/io/rail8/mapping/service/ServiceConfig.java
++++ b/mapping/service/src/main/java/dev/rail8/mapping/service/ServiceConfig.java
+@@ -1,4 +1,4 @@
+-package io.rail8.mapping.service;
++package dev.rail8.mapping.service;
+ 
+ import com.fasterxml.jackson.annotation.JsonSetter;
+ import com.fasterxml.jackson.annotation.Nulls;
+@@ -7,9 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
+ import com.fasterxml.jackson.databind.cfg.CoercionAction;
+ import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+ import com.fasterxml.jackson.databind.type.LogicalType;
++import dev.rail8.mapping.api.EngineFacade;
+ import io.quarkus.jackson.ObjectMapperCustomizer;
+ import io.quarkus.runtime.StartupEvent;
+-import io.rail8.mapping.api.EngineFacade;
+ import jakarta.enterprise.event.Observes;
+ import jakarta.enterprise.inject.Produces;
+ import jakarta.inject.Singleton;
+diff --git a/mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java b/mapping/service/src/main/java/dev/rail8/mapping/service/Workspace.java
+similarity index 97%
+rename from mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java
+rename to mapping/service/src/main/java/dev/rail8/mapping/service/Workspace.java
+index 0f6f29b6..b062123e 100644
+--- a/mapping/service/src/main/java/io/rail8/mapping/service/Workspace.java
++++ b/mapping/service/src/main/java/dev/rail8/mapping/service/Workspace.java
+@@ -1,10 +1,10 @@
+-package io.rail8.mapping.service;
++package dev.rail8.mapping.service;
+ 
++import dev.rail8.mapping.structure.importer.ReferenceResolver;
++import dev.rail8.mapping.structure.importer.ResolvedFile;
++import dev.rail8.mapping.structure.importer.UnresolvedReferenceException;
++import dev.rail8.mapping.structure.importer.UnresolvedReferenceException.Reason;
+ import io.quarkus.runtime.Startup;
+-import io.rail8.mapping.structure.importer.ReferenceResolver;
+-import io.rail8.mapping.structure.importer.ResolvedFile;
+-import io.rail8.mapping.structure.importer.UnresolvedReferenceException;
+-import io.rail8.mapping.structure.importer.UnresolvedReferenceException.Reason;
+ import jakarta.enterprise.context.ApplicationScoped;
+ import jakarta.inject.Inject;
+ import java.io.IOException;
+diff --git a/mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java b/mapping/service/src/test/java/dev/rail8/mapping/service/InvalidRequestBodyTest.java
+similarity index 94%
+rename from mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java
+rename to mapping/service/src/test/java/dev/rail8/mapping/service/InvalidRequestBodyTest.java
+index 0ad1fcbf..8e49f912 100644
+--- a/mapping/service/src/test/java/io/rail8/mapping/service/InvalidRequestBodyTest.java
++++ b/mapping/service/src/test/java/dev/rail8/mapping/service/InvalidRequestBodyTest.java
+@@ -1,20 +1,20 @@
+-package io.rail8.mapping.service;
+-
+-import static io.rail8.mapping.service.Fixtures.FINGERPRINT;
+-import static io.rail8.mapping.service.Fixtures.INPUT;
+-import static io.rail8.mapping.service.Fixtures.NEW_MAPPING;
+-import static io.rail8.mapping.service.Fixtures.ORDER;
+-import static io.rail8.mapping.service.Fixtures.OUTPUT;
+-import static io.rail8.mapping.service.Fixtures.assertBytes;
+-import static io.rail8.mapping.service.Fixtures.bytes;
+-import static io.rail8.mapping.service.Fixtures.corpusMapping;
+-import static io.rail8.mapping.service.Fixtures.unwired;
+-import static io.rail8.mapping.service.Fixtures.workingCopy;
+-import static io.rail8.mapping.service.Wire.assertProblem;
+-import static io.rail8.mapping.service.Wire.createRequest;
+-import static io.rail8.mapping.service.Wire.described;
+-import static io.rail8.mapping.service.Wire.structureRequest;
+-import static io.rail8.mapping.service.Wire.testRequest;
++package dev.rail8.mapping.service;
++
++import static dev.rail8.mapping.service.Fixtures.FINGERPRINT;
++import static dev.rail8.mapping.service.Fixtures.INPUT;
++import static dev.rail8.mapping.service.Fixtures.NEW_MAPPING;
++import static dev.rail8.mapping.service.Fixtures.ORDER;
++import static dev.rail8.mapping.service.Fixtures.OUTPUT;
++import static dev.rail8.mapping.service.Fixtures.assertBytes;
++import static dev.rail8.mapping.service.Fixtures.bytes;
++import static dev.rail8.mapping.service.Fixtures.corpusMapping;
++import static dev.rail8.mapping.service.Fixtures.unwired;
++import static dev.rail8.mapping.service.Fixtures.workingCopy;
++import static dev.rail8.mapping.service.Wire.assertProblem;
++import static dev.rail8.mapping.service.Wire.createRequest;
++import static dev.rail8.mapping.service.Wire.described;
++import static dev.rail8.mapping.service.Wire.structureRequest;
++import static dev.rail8.mapping.service.Wire.testRequest;
+ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ import com.fasterxml.jackson.core.JsonProcessingException;
+@@ -22,14 +22,14 @@ import com.fasterxml.jackson.databind.JsonNode;
+ import com.fasterxml.jackson.databind.json.JsonMapper;
+ import com.fasterxml.jackson.databind.node.ArrayNode;
+ import com.fasterxml.jackson.databind.node.ObjectNode;
++import dev.rail8.mapping.api.EngineFacade;
++import dev.rail8.mapping.mapping.AtAuthoringId;
++import dev.rail8.mapping.mapping.AtFilePosition;
++import dev.rail8.mapping.mapping.AtPointer;
++import dev.rail8.mapping.mapping.Diagnostic;
++import dev.rail8.mapping.mapping.Refused;
+ import io.quarkus.test.common.http.TestHTTPResource;
+ import io.quarkus.test.junit.QuarkusTest;
+-import io.rail8.mapping.api.EngineFacade;
+-import io.rail8.mapping.mapping.AtAuthoringId;
+-import io.rail8.mapping.mapping.AtFilePosition;
+-import io.rail8.mapping.mapping.AtPointer;
+-import io.rail8.mapping.mapping.Diagnostic;
+-import io.rail8.mapping.mapping.Refused;
+ import java.net.URI;
+ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+diff --git a/mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java b/mapping/service/src/test/java/dev/rail8/mapping/service/MappingsResourceTest.java
+similarity index 96%
+rename from mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java
+rename to mapping/service/src/test/java/dev/rail8/mapping/service/MappingsResourceTest.java
+index 41ad92d4..389f80f2 100644
+--- a/mapping/service/src/test/java/io/rail8/mapping/service/MappingsResourceTest.java
++++ b/mapping/service/src/test/java/dev/rail8/mapping/service/MappingsResourceTest.java
+@@ -1,29 +1,29 @@
+-package io.rail8.mapping.service;
+-
+-import static io.rail8.mapping.service.Fixtures.CORPUS_MAPPING_ETAG;
+-import static io.rail8.mapping.service.Fixtures.FINGERPRINT;
+-import static io.rail8.mapping.service.Fixtures.INPUT;
+-import static io.rail8.mapping.service.Fixtures.NEW_MAPPING;
+-import static io.rail8.mapping.service.Fixtures.NEW_MAPPING_ETAG;
+-import static io.rail8.mapping.service.Fixtures.ORDER;
+-import static io.rail8.mapping.service.Fixtures.UNWIRED_ETAG;
+-import static io.rail8.mapping.service.Fixtures.assertBytes;
+-import static io.rail8.mapping.service.Fixtures.bytes;
+-import static io.rail8.mapping.service.Fixtures.corpusMapping;
+-import static io.rail8.mapping.service.Fixtures.unwired;
+-import static io.rail8.mapping.service.Fixtures.workingCopy;
+-import static io.rail8.mapping.service.Wire.assertProblem;
+-import static io.rail8.mapping.service.Wire.createRequest;
+-import static io.rail8.mapping.service.Wire.described;
+-import static io.rail8.mapping.service.Wire.testRequest;
++package dev.rail8.mapping.service;
++
++import static dev.rail8.mapping.service.Fixtures.CORPUS_MAPPING_ETAG;
++import static dev.rail8.mapping.service.Fixtures.FINGERPRINT;
++import static dev.rail8.mapping.service.Fixtures.INPUT;
++import static dev.rail8.mapping.service.Fixtures.NEW_MAPPING;
++import static dev.rail8.mapping.service.Fixtures.NEW_MAPPING_ETAG;
++import static dev.rail8.mapping.service.Fixtures.ORDER;
++import static dev.rail8.mapping.service.Fixtures.UNWIRED_ETAG;
++import static dev.rail8.mapping.service.Fixtures.assertBytes;
++import static dev.rail8.mapping.service.Fixtures.bytes;
++import static dev.rail8.mapping.service.Fixtures.corpusMapping;
++import static dev.rail8.mapping.service.Fixtures.unwired;
++import static dev.rail8.mapping.service.Fixtures.workingCopy;
++import static dev.rail8.mapping.service.Wire.assertProblem;
++import static dev.rail8.mapping.service.Wire.createRequest;
++import static dev.rail8.mapping.service.Wire.described;
++import static dev.rail8.mapping.service.Wire.testRequest;
+ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ import com.fasterxml.jackson.databind.JsonNode;
++import dev.rail8.mapping.api.EngineFacade;
++import dev.rail8.mapping.mapping.Loaded;
++import dev.rail8.mapping.mapping.MappingModel;
+ import io.quarkus.test.common.http.TestHTTPResource;
+ import io.quarkus.test.junit.QuarkusTest;
+-import io.rail8.mapping.api.EngineFacade;
+-import io.rail8.mapping.mapping.Loaded;
+-import io.rail8.mapping.mapping.MappingModel;
+ import java.net.URI;
+ import java.nio.file.Files;
+ import java.nio.file.Path;
+@@ -520,7 +520,7 @@ class MappingsResourceTest {
+    * model-refused}, never 400 {@code invalid-request}. Only the source has the shape.
+    */
+   @ParameterizedTest(name = "{0}")
+-  @MethodSource("io.rail8.mapping.service.RootShapes#wsdlAllowed")
++  @MethodSource("dev.rail8.mapping.service.RootShapes#wsdlAllowed")
+   void createWithAWsdlRootIsTheWsdlReadersRefusal(String rootShape) {
+     TempWorkspace.mkdirs("creating-root");
+     String target = createRequest("creating-root/order", "../structures/skeleton/order.xsd", ORDER);
+@@ -545,7 +545,7 @@ class MappingsResourceTest {
+    * {@code POST /api/structures}: 400 {@code invalid-request}, before any structure is read.
+    */
+   @ParameterizedTest(name = "{0}")
+-  @MethodSource("io.rail8.mapping.service.RootShapes#wsdlForbidden")
++  @MethodSource("dev.rail8.mapping.service.RootShapes#wsdlForbidden")
+   void createWithAWsdlRootTheModelSchemaForbidsIsAnInvalidRequest(String rootShape) {
+     TempWorkspace.mkdirs("creating-root");
+     String target = createRequest("creating-root/order", "../structures/skeleton/order.xsd", ORDER);
+diff --git a/mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java b/mapping/service/src/test/java/dev/rail8/mapping/service/RefreshResourceTest.java
+similarity index 93%
+rename from mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java
+rename to mapping/service/src/test/java/dev/rail8/mapping/service/RefreshResourceTest.java
+index 3dcc220b..6b8ec02a 100644
+--- a/mapping/service/src/test/java/io/rail8/mapping/service/RefreshResourceTest.java
++++ b/mapping/service/src/test/java/dev/rail8/mapping/service/RefreshResourceTest.java
+@@ -1,23 +1,23 @@
+-package io.rail8.mapping.service;
+-
+-import static io.rail8.mapping.service.Fixtures.FINGERPRINT;
+-import static io.rail8.mapping.service.Fixtures.assertBytes;
+-import static io.rail8.mapping.service.Fixtures.bytes;
+-import static io.rail8.mapping.service.Fixtures.corpusMapping;
+-import static io.rail8.mapping.service.Fixtures.workingCopy;
+-import static io.rail8.mapping.service.Wire.assertProblem;
+-import static io.rail8.mapping.service.Wire.described;
++package dev.rail8.mapping.service;
++
++import static dev.rail8.mapping.service.Fixtures.FINGERPRINT;
++import static dev.rail8.mapping.service.Fixtures.assertBytes;
++import static dev.rail8.mapping.service.Fixtures.bytes;
++import static dev.rail8.mapping.service.Fixtures.corpusMapping;
++import static dev.rail8.mapping.service.Fixtures.workingCopy;
++import static dev.rail8.mapping.service.Wire.assertProblem;
++import static dev.rail8.mapping.service.Wire.described;
+ import static java.nio.charset.StandardCharsets.UTF_8;
+ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ import com.fasterxml.jackson.databind.JsonNode;
++import dev.rail8.mapping.api.EngineFacade;
++import dev.rail8.mapping.mapping.LoadResult;
++import dev.rail8.mapping.mapping.Loaded;
++import dev.rail8.mapping.mapping.MalformedJsonException;
++import dev.rail8.mapping.mapping.MappingModel;
+ import io.quarkus.test.common.http.TestHTTPResource;
+ import io.quarkus.test.junit.QuarkusTest;
+-import io.rail8.mapping.api.EngineFacade;
+-import io.rail8.mapping.mapping.LoadResult;
+-import io.rail8.mapping.mapping.Loaded;
+-import io.rail8.mapping.mapping.MalformedJsonException;
+-import io.rail8.mapping.mapping.MappingModel;
+ import java.io.IOException;
+ import java.net.URI;
+ import java.nio.file.Files;

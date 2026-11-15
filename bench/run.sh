@@ -112,7 +112,7 @@ clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the 
   done
   curl -sf "http://127.0.0.1:$port/ping" > /dev/null || { echo "ClickHouse ($image) did not answer on port $port" >&2; exit 5; }
   # shellcheck disable=SC2086 # BENCH_CH_ARGS is a list of harness arguments, split on purpose
-  java -Xmx2g -cp "$cp" io.rail8.bench.ClickHouseCompressionMain --url "http://127.0.0.1:$port" --password "$password" --image "$image" \
+  java -Xmx2g -cp "$cp" dev.rail8.bench.ClickHouseCompressionMain --url "http://127.0.0.1:$port" --password "$password" --image "$image" \
     --out bench/out/clickhouse-compression.json --commit "$commit" ${BENCH_CH_ARGS:-} > bench/out/clickhouse-compression.log
   grep '^|' bench/out/clickhouse-compression.log
 }
@@ -157,7 +157,7 @@ summary() { # name
 }
 
 run() { # name sync-commit
-  java -cp "$cp" io.rail8.bench.BenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
+  java -cp "$cp" dev.rail8.bench.BenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
     --messages "$BENCH_MESSAGES" --warmup "$BENCH_WARMUP" --concurrency "$BENCH_CONCURRENCY" \
     --batch-size 100 --window-ms 10 --commit-concurrency 4 --sync-commit "$2" --name "$1" --out "bench/out/$1.json" --commit "$commit" \
     > "bench/out/$1.log"
@@ -168,7 +168,7 @@ run_node() { # name, then NodeBenchMain's own arguments (--scenario ...); a late
   # refusals_ok=1 (the cpu scenario) lets an exit 3 stand when the record counts no error, only refusals (header, FIX-113)
   local name="$1"; shift
   local code=0
-  java -cp "$cp" io.rail8.bench.NodeBenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
+  java -cp "$cp" dev.rail8.bench.NodeBenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
     --messages "$BENCH_MESSAGES" --warmup "$BENCH_WARMUP" --concurrency "$BENCH_CONCURRENCY" \
     --name "$name" --out "bench/out/$name.json" --commit "$commit" "$@" > "bench/out/$name.log" || code=$?
   if (( code != 0 )); then

@@ -1,0 +1,258 @@
+package dev.rail8.core.queue;
+
+import dev.rail8.testkit.FakeClock;
+import net.jqwik.api.Arbitraries;
+import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.Provide;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * CLAUDE.md: property test for WorkQueue ordering — per-key order holds under any claim
+ * interleaving. Workers claim, complete (plainly or through the same-key fast path), renew and hold
+ * what they were handed, and leases expire, in any order; whenever a row is handed out it must be
+ * the oldest remaining row of its key, its key must hold no live lease, it must not be held, and its
+ * attempts count every hand-out of the row, this one included; a renew, a hold, a complete or a fast
+ * path takes effect exactly when the row exists, is not held and the attempts are the row's (D-055,
+ * Q-1 / D-074): a worker completes its oldest item whether it still holds it or not, and a stale
+ * fast path completes nothing and takes nothing. After every action no key has two holders and no
+ * row is lost; null keys carry no ordering; at the end every row has been handed out at least once
+ * (at-least-once) and the queue holds only the held rows and the rows of their keys behind them.
+ */
+class WorkQueueOrderingPropertyTest {
+
+    static final Duration LEASE = Duration.ofSeconds(10);
+    static final List<String> KEYS = java.util.Arrays.asList("A", "B", "C", null);
+    static final List<String> WORKERS = List.of("w1", "w2", "w3");
+
+    sealed interface Action permits Claim, Complete, FastPath, Expire, Renew, Hold {}
+    record Claim(int worker, int max) implements Action {}
+    /** The worker completes the oldest item it was handed and has not settled, live or stale (Q-1). */
+    record Complete(int worker) implements Action {}
+    /** The worker fast-paths the oldest item it was handed and has not settled, live or stale (Q-1). */
+    record FastPath(int worker) implements Action {}
+    record Expire() implements Action {}
+    /** The worker renews the last item it was handed, whatever became of it since. */
+    record Renew(int worker) implements Action {}
+    /** The worker gives up the last item it was handed by holding it (D-055: past the bound and unparkable). */
+    record Hold(int worker) implements Action {}
+
+    @Provide
+    Arbitrary<List<Action>> actions() {
+        Arbitrary<Action> claim = Combinators.combine(Arbitraries.integers().between(0, 2), Arbitraries.integers().between(1, 3)).as(Claim::new);
+        Arbitrary<Action> complete = Arbitraries.integers().between(0, 2).map(Complete::new);
+        Arbitrary<Action> fast = Arbitraries.integers().between(0, 2).map(FastPath::new);
+        Arbitrary<Action> expire = Arbitraries.just(new Expire());
+        Arbitrary<Action> renew = Arbitraries.integers().between(0, 2).map(Renew::new);
+        Arbitrary<Action> hold = Arbitraries.integers().between(0, 2).map(Hold::new);
+        return Arbitraries.frequencyOf(net.jqwik.api.Tuple.of(4, claim), net.jqwik.api.Tuple.of(3, complete),
+                net.jqwik.api.Tuple.of(3, fast), net.jqwik.api.Tuple.of(1, expire), net.jqwik.api.Tuple.of(2, renew),
+                net.jqwik.api.Tuple.of(1, hold)).list().ofMinSize(1).ofMaxSize(80);
+    }
+
+    @Provide
+    Arbitrary<List<Integer>> keyIndexes() {
+        return Arbitraries.integers().between(0, 3).list().ofMinSize(1).ofMaxSize(15);
+    }
+
+    @Property(tries = 500)
+    void perKeyOrderHoldsUnderAnyClaimInterleaving(@ForAll("keyIndexes") List<Integer> keyIndexes, @ForAll("actions") List<Action> actions) {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        InMemoryWorkQueue q = new InMemoryWorkQueue(clock);
+        Map<Long, String> keyOf = new HashMap<>();
+        List<Long> seqs = new ArrayList<>();
+        for (int i = 0; i < keyIndexes.size(); i++) {
+            String key = KEYS.get(keyIndexes.get(i));
+            q.enqueue("m" + i, "f", 1, key).await();
+        }
+        for (WorkQueue.Item it : q.snapshot()) { keyOf.put(it.seq(), it.partitionKey()); seqs.add(it.seq()); }
+        Set<Long> remaining = new HashSet<>(seqs);                 // enqueued, not completed
+        Map<Integer, Deque<WorkQueue.Item>> held = new HashMap<>();  // worker → items it holds
+        Map<Long, Instant> leaseUntil = new HashMap<>();
+        Set<Long> handedOut = new HashSet<>();
+        Map<Long, Integer> attemptsOf = new HashMap<>();             // hand-outs per row: what its attempts must say
+        Set<Long> heldRows = new HashSet<>();
+
+        for (Action a : actions) {
+            Instant now = clock.instant();
+            switch (a) {
+                case Claim c -> {
+                    List<WorkQueue.Item> got = q.claim(WORKERS.get(c.worker()), "f", c.max(), LEASE).await();
+                    assertTrue(got.size() <= c.max());
+                    for (WorkQueue.Item it : got) {
+                        check(it, remaining, keyOf, leaseUntil, now);
+                        counted(it, attemptsOf, heldRows);
+                        leaseUntil.put(it.seq(), now.plus(LEASE));
+                        held.computeIfAbsent(c.worker(), k -> new ArrayDeque<>()).add(it);
+                        handedOut.add(it.seq());
+                    }
+                }
+                case Complete c -> {
+                    WorkQueue.Item it = oldest(held, c.worker());
+                    if (it != null) {
+                        boolean expected = current(it, remaining, heldRows, attemptsOf);
+                        assertEquals(expected, q.complete(it.seq(), it.attempts()).await(),
+                                "complete of " + it + " (row's attempts " + attemptsOf.get(it.seq()) + ", held " + heldRows.contains(it.seq()) + ", remaining " + remaining.contains(it.seq()) + ")");
+                        if (expected) { remaining.remove(it.seq()); leaseUntil.remove(it.seq()); }
+                    }
+                }
+                case FastPath f -> {
+                    WorkQueue.Item it = oldest(held, f.worker());
+                    if (it != null) {
+                        boolean expected = current(it, remaining, heldRows, attemptsOf);
+                        List<WorkQueue.Item> snapshot = q.snapshot();
+                        Map<Long, Optional<String>> holders = holders(q, seqs);
+                        WorkQueue.Completion done = q.completeAndTakeNext(it.seq(), it.attempts(), WORKERS.get(f.worker()), LEASE).await();
+                        String what = "fast path of " + it + " (row's attempts " + attemptsOf.get(it.seq()) + ", held " + heldRows.contains(it.seq())
+                                + ", remaining " + remaining.contains(it.seq()) + "): " + done;
+                        if (!expected) {
+                            assertEquals(WorkQueue.Completion.STALE, done, what);
+                            assertEquals(snapshot, q.snapshot(), "a stale fast path completes nothing and takes nothing: " + what);
+                            assertEquals(holders, holders(q, seqs), "and leases nothing: " + what);
+                        } else {
+                            assertTrue(done.completed(), what);
+                            remaining.remove(it.seq()); leaseUntil.remove(it.seq());
+                            Optional<WorkQueue.Item> next = done.next();
+                            Optional<Long> due = it.partitionKey() == null ? Optional.empty()
+                                    : remaining.stream().filter(s -> it.partitionKey().equals(keyOf.get(s))).min(Long::compare);
+                            assertEquals(due, next.map(WorkQueue.Item::seq), "the fast path takes the next remaining row of the key, if any: " + what);
+                            if (next.isPresent()) {
+                                assertEquals(it.partitionKey(), next.get().partitionKey(), "the fast path stays on the same key");
+                                assertTrue(it.partitionKey() != null, "no fast path without a key");
+                                check(next.get(), remaining, keyOf, leaseUntil, now);
+                                counted(next.get(), attemptsOf, heldRows);
+                                leaseUntil.put(next.get().seq(), now.plus(LEASE));
+                                held.get(f.worker()).add(next.get());
+                                handedOut.add(next.get().seq());
+                            }
+                        }
+                    }
+                }
+                case Expire e -> clock.advance(LEASE.plusMillis(1));
+                case Renew r -> {
+                    Deque<WorkQueue.Item> d = held.get(r.worker());
+                    WorkQueue.Item it = d == null ? null : d.peekLast();
+                    if (it != null) {
+                        boolean expected = current(it, remaining, heldRows, attemptsOf);
+                        assertEquals(expected, q.renew(it.seq(), it.attempts(), LEASE).await(),
+                                "renew of " + it + " (row's attempts " + attemptsOf.get(it.seq()) + ", held " + heldRows.contains(it.seq()) + ")");
+                        if (expected) leaseUntil.put(it.seq(), now.plus(LEASE));   // extended, or revived when it had run out
+                    }
+                }
+                case Hold h -> {
+                    Deque<WorkQueue.Item> d = held.get(h.worker());
+                    WorkQueue.Item it = d == null ? null : d.pollLast();
+                    if (it != null) {
+                        boolean expected = current(it, remaining, heldRows, attemptsOf);
+                        assertEquals(expected, q.hold(it.seq(), it.attempts()).await(),
+                                "hold of " + it + " (row's attempts " + attemptsOf.get(it.seq()) + ", held " + heldRows.contains(it.seq()) + ")");
+                        if (expected) heldRows.add(it.seq());
+                    }
+                }
+            }
+            invariants(a, q, held, remaining, heldRows, attemptsOf, leaseUntil, keyOf, clock.instant());
+        }
+        // drain: expire everything, one worker claims and completes until only the held rows and the rows behind them are left
+        Set<Long> stuck = new HashSet<>(heldRows);
+        for (long s : remaining) {
+            String key = keyOf.get(s);
+            if (key != null && heldRows.stream().anyMatch(h -> h < s && key.equals(keyOf.get(h)))) stuck.add(s);
+        }
+        clock.advance(LEASE.plusMillis(1));
+        for (int guard = 0; guard < 1_000 && q.size() > stuck.size(); guard++) {
+            Instant now = clock.instant();
+            for (WorkQueue.Item it : q.claim("drain", "f", 5, LEASE).await()) {
+                check(it, remaining, keyOf, leaseUntil, now);
+                counted(it, attemptsOf, heldRows);
+                handedOut.add(it.seq());
+                assertTrue(q.complete(it.seq(), it.attempts()).await(), "the drain completes what it was handed: " + it);
+                remaining.remove(it.seq());
+            }
+        }
+        assertEquals(stuck, q.snapshot().stream().map(WorkQueue.Item::seq).collect(java.util.stream.Collectors.toSet()),
+                "every row was completed but the held ones and those behind them on their key");
+        Set<Long> reachable = new HashSet<>(seqs);
+        reachable.removeIf(s -> stuck.contains(s) && !heldRows.contains(s));
+        assertEquals(reachable, handedOut, "every row not blocked behind a held one was handed out at least once");
+    }
+
+    /** A hand-out: never of a held row, and its attempts count every hand-out of the row, this one included. */
+    private static void counted(WorkQueue.Item it, Map<Long, Integer> attemptsOf, Set<Long> heldRows) {
+        assertTrue(!heldRows.contains(it.seq()), "a held row was handed out: " + it);
+        int n = attemptsOf.merge(it.seq(), 1, Integer::sum);
+        assertEquals(n, it.attempts(), "attempts of " + it + " after " + n + " hand-outs");
+    }
+
+    /** Oldest remaining row of its key, and no live lease on the key at this moment. */
+    private static void check(WorkQueue.Item it, Set<Long> remaining, Map<Long, String> keyOf, Map<Long, Instant> leaseUntil, Instant now) {
+        assertTrue(remaining.contains(it.seq()), "a completed row must never be handed out again: " + it);
+        String key = it.partitionKey();
+        if (key == null) return;
+        for (long s : remaining) {
+            if (key.equals(keyOf.get(s))) {
+                assertTrue(s >= it.seq(), "row " + it.seq() + " of key " + key + " handed out before older row " + s);
+                Instant until = leaseUntil.get(s);
+                assertTrue(s == it.seq() || until == null || !until.isAfter(now), "key " + key + " already has a live lease on row " + s);
+            }
+        }
+    }
+
+    /** The oldest item the worker was handed and has not settled, whether it still holds it or not (Q-1): taken off its list. */
+    private static WorkQueue.Item oldest(Map<Integer, Deque<WorkQueue.Item>> held, int worker) {
+        Deque<WorkQueue.Item> d = held.get(worker);
+        return d == null ? null : d.poll();
+    }
+
+    /** The holder's claim is the row's current one: the row remains, is not held, and has been handed out exactly {@code it.attempts()} times. */
+    private static boolean current(WorkQueue.Item it, Set<Long> remaining, Set<Long> heldRows, Map<Long, Integer> attemptsOf) {
+        return remaining.contains(it.seq()) && !heldRows.contains(it.seq()) && attemptsOf.get(it.seq()) == it.attempts();
+    }
+
+    private static Map<Long, Optional<String>> holders(InMemoryWorkQueue q, List<Long> seqs) {
+        Map<Long, Optional<String>> holders = new HashMap<>();
+        for (long s : seqs) holders.put(s, q.leaseHolder(s));
+        return holders;
+    }
+
+    /**
+     * After every action: no row lost (the queue holds exactly the rows not completed); never two holders of a key — at most one
+     * worker holds a current claim with a live lease on a row of the key, and at most one row of the key has a live lease in the
+     * queue, its oldest remaining row.
+     */
+    private static void invariants(Action a, InMemoryWorkQueue q, Map<Integer, Deque<WorkQueue.Item>> held, Set<Long> remaining, Set<Long> heldRows,
+                                   Map<Long, Integer> attemptsOf, Map<Long, Instant> leaseUntil, Map<Long, String> keyOf, Instant now) {
+        assertEquals(remaining, q.snapshot().stream().map(WorkQueue.Item::seq).collect(java.util.stream.Collectors.toSet()), "after " + a + ": no row lost, none left behind");
+        Map<String, List<String>> holding = new HashMap<>();
+        held.forEach((worker, items) -> {
+            for (WorkQueue.Item it : items) {
+                Instant until = leaseUntil.get(it.seq());
+                if (it.partitionKey() != null && current(it, remaining, heldRows, attemptsOf) && until != null && until.isAfter(now)) {
+                    holding.computeIfAbsent(it.partitionKey(), k -> new ArrayList<>()).add(WORKERS.get(worker) + " " + it);
+                }
+            }
+        });
+        holding.forEach((key, holders) -> assertTrue(holders.size() <= 1, "after " + a + ": key " + key + " has two holders: " + holders));
+        for (String key : KEYS) {
+            if (key == null) continue;
+            List<Long> ofKey = remaining.stream().filter(s -> key.equals(keyOf.get(s))).sorted().toList();
+            List<Long> leased = ofKey.stream().filter(s -> q.leaseHolder(s).isPresent()).toList();
+            assertTrue(leased.isEmpty() || leased.equals(List.of(ofKey.get(0))), "after " + a + ": key " + key + " leased on " + leased + " of " + ofKey);
+        }
+    }
+}

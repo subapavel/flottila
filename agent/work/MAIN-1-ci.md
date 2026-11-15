@@ -70,3 +70,22 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
 - `mapping · windows`: success ("Whole reactor compiles; Spotless, enforcer, licences") — 2.5 min.
 - `mapping · stack`: success (jar with the UI inside, Playwright, the `@stack` suite against the jar) — 1.5 min.
 - `mapping-bench` and `mapping-nightly` have no run yet (dispatch and cron); MAP-6 stays open for those two.
+
+## `ci` run 207 (id 43701701542, head df76c64e, FIX-212) — read 2026-11-15
+
+- Postgres floor 17.11 (job 132774043232): the Verify step SUCCEEDS — the whole platform reactor with `-Pit` is green on a
+  runner for the first time since 2026-11-05. (The launcher, guard and coverage steps are skipped in this job by design of the matrix.)
+- Postgres main 18.6 (job 132774043195): every module up to archtest SUCCESS (runtime 11:51 min, cli, sim, archtest reached for
+  the first time since 2026-11-05); bench fails on one of its 42 ITs:
+  `LedgerIT.aKilledNodeLosesNoAckedMessage:132 only what was unfinished at the kill is finished after it: 57 vs 56` — the old
+  check, FIX-215 (fixed in ed48e723; run 208 is its proof). Bench's coverage floor was met. Total 20:37 min.
+- The jobs `stack`, `mutation`, `bench` were skipped (they need the build job of main 18.6).
+
+## `ci` run 208 (id 43702451971, head ed48e723, FIX-215) — read 2026-11-15 10:33 UTC
+
+- Both build jobs SUCCEED — the first green build of main on a runner since 2026-11-05:
+  Postgres main 18.6 (job 132776319111): Verify 23 min, then every later step green for the first time — the demo package
+  validates and its flow tests pass through the launcher (D-079, D-080), the coverage gate's self-test, the name guard, coverage
+  no-decrease against the previous main commit, the committed baseline describes the commit.
+  Postgres floor 17.11 (job 132776319339): Verify 24.5 min, success.
+- DCO: success. `stack` (job 132782427887): started after the build, in progress when read. `mutation` and `bench`: skipped.

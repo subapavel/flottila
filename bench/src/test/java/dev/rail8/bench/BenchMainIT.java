@@ -1,0 +1,59 @@
+package dev.rail8.bench;
+
+import dev.rail8.testkit.PostgresImage;
+import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** The harness end to end on a container (numbers are not recorded from here — only native runs count, CLAUDE.md). */
+class BenchMainIT {
+
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+
+    @BeforeAll static void start() { pg.start(); }
+
+    @AfterAll static void stop() { pg.stop(); }
+
+    @Test
+    void runsMigratesWritesEveryMessageAndReportsItsJson() throws Exception {
+        Path out = Files.createTempDirectory("bench").resolve("it.json");
+        int code = BenchMain.run(new String[] {"--host", pg.getHost(), "--port", String.valueOf(pg.getMappedPort(5432)),
+                "--db", pg.getDatabaseName(), "--user", pg.getUsername(), "--password", pg.getPassword(),
+                "--messages", "500", "--warmup", "50", "--concurrency", "8", "--batch-size", "50", "--window-ms", "5",
+                "--commit-concurrency", "2", "--sync-commit", "off", "--name", "it", "--out", out.toString(), "--commit", "test"});
+        assertEquals(0, code);
+        JsonObject json = new JsonObject(Files.readString(out));
+        assertEquals(500, json.getInteger("saved"));
+        assertEquals(0, json.getInteger("failed"));
+        assertEquals(500L, json.getLong("rowsInMessages"));
+        assertEquals("19", json.getString("schemaVersion"), "V1 m1 schema + V2 snapshot columns (P1-04) + V3 DLQ by reference (P1-05) + V4 work attempts (P1-08b) + V5 admin paging (P1-09a) + V6 bodies (P1-09h) + V7 deployments (P1-09c3a) + V8 processed_ids (P2-02D) + V9 deployment dependencies (P2-02b) + V10 retention indexes (P2-07) + V11 payloads dropped (P2-07c) + V12 body journal (CORE-4c1) + V13 journal losses (CORE-4c3) + V14 node lease (P2-15a) + V15 work key index (P2-16a) + V16 audit (FIX-141) + V17 work.max_attempts, dlq.partition_key (CORE-14b) + V18 nodes.peer_address (CORE-5a) + V19 messages.attempt (FIX-175)");
+        assertEquals(false, json.getBoolean("syncCommit"), "observed with show synchronous_commit on a pooled connection, not echoed from the flag");
+        // the major of the image this run started (PostgresImage, D-129), not a literal: the record reads it from the server
+        String major = PostgresImage.name().replaceFirst("^.*:(\\d+).*$", "$1") + ".";
+        assertTrue(json.getString("postgres").startsWith(major), "server_version of the container: " + json.getString("postgres"));
+        assertEquals("test", json.getString("commit"));
+        assertTrue(json.getDouble("p99Ms") >= json.getDouble("p50Ms"));
+        assertTrue(json.getDouble("throughputPerSecond") > 0);
+        assertTrue(json.getJsonObject("machine").getInteger("cpus") > 0);
+    }
+
+    @Test
+    void aSecondRunOnTheSameDatabaseStartsFromEmptyTables() throws Exception {
+        Path out = Files.createTempDirectory("bench").resolve("again.json");
+        int code = BenchMain.run(new String[] {"--host", pg.getHost(), "--port", String.valueOf(pg.getMappedPort(5432)),
+                "--db", pg.getDatabaseName(), "--user", pg.getUsername(), "--password", pg.getPassword(),
+                "--messages", "100", "--warmup", "0", "--concurrency", "4", "--name", "again", "--out", out.toString()});
+        assertEquals(0, code);
+        JsonObject json = new JsonObject(Files.readString(out));
+        assertEquals(100L, json.getLong("rowsInMessages"), "truncated before the run, no leftovers");
+        assertEquals(true, json.getBoolean("syncCommit"), "default is synchronous_commit=on, observed on the server");
+    }
+}

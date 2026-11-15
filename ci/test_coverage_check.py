@@ -15,7 +15,7 @@ from ci import coverage_check as cc
 JACOCO_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
 <report name="{name}">
-  <package name="io/rail8/x"><class name="io/rail8/x/A" sourcefilename="A.java"/></package>
+  <package name="dev/rail8/x"><class name="dev/rail8/x/A" sourcefilename="A.java"/></package>
   <counter type="INSTRUCTION" missed="1" covered="9"/>
   <counter type="LINE" missed="{lm}" covered="{lc}"/>
   <counter type="BRANCH" missed="{bm}" covered="{bc}"/>
@@ -24,7 +24,7 @@ JACOCO_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 
 
 JACOCO_XML_NO_COUNTERS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<report name="{name}"><package name="io/rail8/x"/></report>
+<report name="{name}"><package name="dev/rail8/x"/></report>
 """
 
 
@@ -36,9 +36,9 @@ def git(root: Path, *args: str) -> str:
 
 def module(root: Path, name: str, *, classes=("A.class",), report=None):
     m = root / name
-    (m / "target" / "classes" / "io" / "rail8" / "x").mkdir(parents=True)
+    (m / "target" / "classes" / "dev" / "rail8" / "x").mkdir(parents=True)
     for c in classes:
-        (m / "target" / "classes" / "io" / "rail8" / "x" / c).write_bytes(b"\xca\xfe")
+        (m / "target" / "classes" / "dev" / "rail8" / "x" / c).write_bytes(b"\xca\xfe")
     if report is not None:
         lm, lc, bm, bc = report
         (m / "target" / "site" / "jacoco").mkdir(parents=True)

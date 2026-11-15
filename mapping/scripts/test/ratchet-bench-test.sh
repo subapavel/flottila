@@ -11,7 +11,7 @@ check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fail
 run() { (cd "$tmp" && java "$java_src" "$@" 2>&1); }
 lines() { echo "$1" | grep -cF -- "$2"; }
 
-B=io.rail8.mapping.bench
+B=dev.rail8.mapping.bench
 M=claude-cloud-4vcpu
 # bm <benchmark> <unit> <rawData> [<alloc rawData> [<params object>]]: one JMH result; primaryMetric.score is 999
 # on purpose, the judgement reads rawData
@@ -72,7 +72,7 @@ check "regression: latency" "$(lines "$out" 'FAIL bench orders/small/latency: 13
 check "regression: alloc" "$(lines "$out" 'FAIL bench orders/small/alloc: 9000 B/op is worse than the baseline 8000 B/op beyond 10 %')" 1
 check "regression: throughput" "$(lines "$out" 'FAIL bench orders/large/throughput: 25 MB/s is worse than the baseline 32 MB/s beyond 20 %')" 1
 check "regression: re-run regex" "$(echo "$out" | grep '^RERUN ')" \
-  'RERUN ^(?:io\.rail8\.mapping\.bench\.OrdersBench\.largeThroughput|io\.rail8\.mapping\.bench\.OrdersBench\.smallLatency)$'
+  'RERUN ^(?:dev\.rail8\.mapping\.bench\.OrdersBench\.largeThroughput|dev\.rail8\.mapping\.bench\.OrdersBench\.smallLatency)$'
 jmh second.json \
   "$(bm $B.OrdersBench.smallLatency us/op '[[110],[110],[110]]' '[[8100],[8100],[8100]]')" \
   "$(bm $B.OrdersBench.largeThroughput ms/op '[[330],[330],[330]]' '[[5.0E7],[5.0E7],[5.0E7]]' "$ten_mib")"
@@ -142,7 +142,7 @@ check "targets: only these four" "$(lines "$out" 'misses the target')" 4
 check "targets: new scenarios" "$(lines "$out" 'NEW  wide/large/throughput 20 MB/s')" 1
 # a missed target re-runs its JMH benchmark like a regression (#193); the tree result is no JMH benchmark
 check "targets: re-run regex" "$(echo "$out" | grep '^RERUN ')" \
-  'RERUN ^(?:io\.rail8\.mapping\.bench\.OrdersBench\.compile|io\.rail8\.mapping\.bench\.OrdersBench\.largeThroughput|io\.rail8\.mapping\.bench\.OrdersBench\.smallLatency)$'
+  'RERUN ^(?:dev\.rail8\.mapping\.bench\.OrdersBench\.compile|dev\.rail8\.mapping\.bench\.OrdersBench\.largeThroughput|dev\.rail8\.mapping\.bench\.OrdersBench\.smallLatency)$'
 
 # missing row: a bench.tsv row with no result fails (no tree file here), and so does another machine's row
 rows "${base_rows[@]}" "wide/small/latency	$M	100	us/op" "contexts/small/latency	other-machine	100	us/op"

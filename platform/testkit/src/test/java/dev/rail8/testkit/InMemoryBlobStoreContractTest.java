@@ -1,0 +1,8 @@
+package dev.rail8.testkit;
+
+import dev.rail8.api.BlobStore;
+
+/** The fake passes the same suite as every real tier (CLAUDE.md), the durable cases included (D-061). */
+class InMemoryBlobStoreContractTest extends DurableBlobStoreContract {
+    @Override protected BlobStore store() { return new InMemoryBlobStore(hasher(), TREE_LIMIT); }
+}

@@ -36,3 +36,8 @@ already holds.
 the Java package root and the mapping's module names (D-154); row BRAND-5 renames `io.rail8` in both
 areas. Still the owner's, before the first public artifact: registering the domain `rail8.dev`. No
 session registers a domain or publishes anything.
+
+## Closed for the code
+2026-11-15, BRAND-5: the groupId, the package root and the mapping's module names are `dev.rail8`; the
+guard (`ci/name_guard.py`) refuses the old namespace outside history. Open, and the owner's only:
+registering the domain `rail8.dev` before the first public artifact.

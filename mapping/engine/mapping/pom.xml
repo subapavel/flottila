@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.rail8.mapping</groupId>
+    <groupId>dev.rail8.mapping</groupId>
     <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
@@ -39,7 +39,7 @@
       <!-- the mapping-model schema is the contract's file, packed into the jar (ADR-0016) -->
       <resource>
         <directory>${mapping.root}/contract</directory>
-        <targetPath>io/rail8/mapping/mapping/internal</targetPath>
+        <targetPath>dev/rail8/mapping/mapping/internal</targetPath>
         <includes>
           <include>mapping-model.schema.json</include>
         </includes>
@@ -69,7 +69,7 @@
               <arguments>
                 <argument>${mapping.root}/scripts/function-families.java</argument>
                 <argument>catalogue</argument>
-                <argument>${project.build.directory}/generated-resources/function-families/io/rail8/mapping/mapping/function-catalogue.json</argument>
+                <argument>${project.build.directory}/generated-resources/function-families/dev/rail8/mapping/mapping/function-catalogue.json</argument>
                 <argument>${project.basedir}/src/main/catalogue</argument>
               </arguments>
             </configuration>

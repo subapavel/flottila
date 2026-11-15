@@ -1,4 +1,4 @@
-package io.rail8.mapping.runtime;
+package dev.rail8.mapping.runtime;
 
 /** A runtime source that is no family file, for scripts/test/function-families-test.sh only. */
 final class Projection {

@@ -1,0 +1,192 @@
+diff --git a/ci/test_name_guard.py b/ci/test_name_guard.py
+index 45edd55e..2930f023 100644
+--- a/ci/test_name_guard.py
++++ b/ci/test_name_guard.py
+@@ -139,7 +139,7 @@ class NameGuardTest(unittest.TestCase):
+ 
+     def test_a_tracked_path_holding_the_name_is_a_finding_even_with_clean_content(self):
+         self.repo.write("bin/rail8", "#!/bin/sh\necho hi\n")
+-        self.repo.write("src/io/rail8/A.java", "class A {}\n")
++        self.repo.write("src/dev/rail8/A.java", "class A {}\n")
+         self.assertClean(*self.repo.run(self), files=2)
+ 
+         self.repo.git("mv", "bin/rail8", "bin/flottila")
+@@ -151,7 +151,7 @@ class NameGuardTest(unittest.TestCase):
+         self.assertNotIn("UTF-8", findings[0], "a path finding is not worded as a not-UTF-8 finding")
+ 
+         (self.repo.root / "src/io/flottila").mkdir(parents=True)
+-        self.repo.git("mv", "src/io/rail8/A.java", "src/io/flottila/A.java")
++        self.repo.git("mv", "src/dev/rail8/A.java", "src/io/flottila/A.java")
+         findings = self.assertFindings(*self.repo.run(self), count=2)
+         self.assertEqual(1, sum("bin/flottila" in f for f in findings), findings)
+         self.assertEqual(1, sum("src/io/flottila/A.java" in f for f in findings), findings)
+@@ -360,6 +360,169 @@ class NameGuardTest(unittest.TestCase):
+         out = done.stdout.decode("utf-8", errors="replace")
+         self.assertEqual(0, done.returncode, out[-4000:])
+ 
++    # 11 ------------------------------------------------------------------------------------------
++    # BRAND-5 (D-154): the old namespace, `io.rail8` / `io/rail8` and its regex-escaped spellings, is refused
++    # exactly as the old name is. A letter, digit or `_` directly before `io` makes it another word
++    # (`studio.rail8`); any other character before it, `.` included, leaves it the old namespace.
++
++    def test_the_old_namespace_in_a_line_is_a_finding_naming_file_and_line(self):
++        self.repo.write("src/A.java", "package io.rail8.api;\n")
++        self.repo.write("docs/x.md", "intro\nthe classes under io/rail8/core\n")
++        self.repo.write("pom.xml", "<project>\n  <groupId>io.rail8</groupId>\n</project>\n")
++        self.repo.write("clean.md", "dev.rail8 and dev/rail8 and rail8.io\n")
++        findings = self.assertFindings(*self.repo.run(self), count=3)
++        self.assertEqual({"src/A.java:1: package io.rail8.api;",
++                          "docs/x.md:2: the classes under io/rail8/core",
++                          "pom.xml:2:   <groupId>io.rail8</groupId>"}, set(findings))
++
++    def test_the_regex_escaped_spellings_of_the_old_namespace_are_findings(self):
++        self.repo.write("src/Guard.java", "class Guard {\n" + r'  Pattern P = Pattern.compile("io\\.rail8\\..*");' + "\n}\n")
++        self.repo.write("tools/check.py", "import re\n" + r'NS = re.compile(r"io\.rail8")' + "\n")
++        self.repo.write("src/Dev.java", r'Pattern D = Pattern.compile("dev\\.rail8");' + "\n")
++        self.repo.write("tools/dev.py", r'DEV = re.compile(r"dev\.rail8")' + "\n")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"src/Guard.java:2: " + r'  Pattern P = Pattern.compile("io\\.rail8\\..*");',
++                          "tools/check.py:2: " + r'NS = re.compile(r"io\.rail8")'}, set(findings),
++                         "the escaped spellings of the new namespace are not findings")
++
++    def test_a_longer_word_ending_in_io_the_new_namespace_and_rail8_io_are_not_the_old_namespace(self):
++        self.repo.write("words.txt", "\n".join([
++            "studio.rail8",
++            "radio/rail8",
++            "Studio.rail8 and RADIO/rail8",
++            "2io.rail8 and _io.rail8 and x9io/rail8",
++            r"studio\.rail8 and radio\\.rail8",
++            "dev.rail8 and dev/rail8",
++            r"dev\.rail8 and dev\\.rail8",
++            "rail8.io and https://rail8.io/docs",
++            "the old flottila",                       # line 9: the file is scanned line by line
++        ]) + "\n")
++        self.repo.write("src/radio/rail8/A.java", "class A {}\n")
++        self.repo.write("src/dev/rail8/B.java", "class B {}\n")
++        self.repo.write("web/studio.rail8/c.txt", "c\n")
++        self.repo.write("site/rail8.io/d.txt", "d\n")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertEqual(["words.txt:9: the old flottila"], findings)
++
++    def test_a_boundary_character_before_io_leaves_it_the_old_namespace(self):
++        lines = ["io.rail8 at the line start",
++                 "a space io.rail8",
++                 'a quote "io.rail8"',
++                 "a single quote 'io/rail8'",
++                 "a call (io.rail8)",
++                 "a path java.base/io.rail8",
++                 "a dot com.io.rail8",                 # `.` is not a letter, digit or `_`: still the old namespace
++                 "a dash x-io.rail8",
++                 "a tick `io/rail8`",
++                 "a tag <groupId>io.rail8</groupId>",
++                 "a colon jar:io/rail8",
++                 "a tab\tio.rail8",
++                 "studio.rail8 then io.rail8",         # another word first, the old namespace after it
++                 "studio.rail8 only",
++                 "dev.rail8 only"]
++        self.repo.write("b.txt", "\n".join(lines) + "\n")
++        findings = self.assertFindings(*self.repo.run(self), count=13)
++        self.assertEqual({f"b.txt:{n}: {line}" for n, line in enumerate(lines[:13], start=1)}, set(findings))
++
++    def test_the_old_namespace_in_a_tracked_path_is_a_path_finding(self):
++        reported = ("src/io/rail8/api/A.java", "io/rail8/B.java", "lib/io.rail8-api.txt")
++        for path in reported:
++            self.repo.write(path, "clean\n")
++        for path in ("src/dev/rail8/C.java", "src/radio/rail8/D.java", "web/studio.rail8/e.txt", "site/rail8.io/f.txt"):
++            self.repo.write(path, "clean\n")
++        findings = self.assertFindings(*self.repo.run(self), count=3)
++        self.assertEqual({f"{path}: the path holds the name" for path in reported}, set(findings),
++                         "a path finding, no line number, the content is clean")
++
++    def test_the_old_namespace_in_a_file_that_is_not_utf8_is_one_finding_by_path(self):
++        jar = self.repo.root / "lib" / "x.jar"
++        jar.parent.mkdir(parents=True)
++        with zipfile.ZipFile(jar, "w", compression=zipfile.ZIP_STORED) as z:     # stored: the namespace in the entry's bytes
++            z.writestr("A.class", b"\xca\xfe\xba\xbe\xff\xfe\x80\x07Lio/rail8/api/Envelope;\x00\xffio.rail8.api\x00")
++        self.repo.git("add", "--", "lib/x.jar")
++        self.repo.write("img/a.bin", b"\xff\xfe io.rail8 \x80")
++        self.repo.write("img/esc.bin", b"\xff\xfe \"io\\.rail8\" \x80")             # the bytes `io\.rail8`
++        self.repo.write("img/both.bin", b"\xff flottila \x00 io/rail8 \x80")
++        self.repo.write("img/clean.bin", b"\xff\xfeLdev/rail8/api;\x00studio.rail8\x00rail8.io\x80")
++        code, lines, out = self.repo.run(self)
++        findings = self.assertFindings(code, lines, out, count=4)
++        self.assertEqual({f"{path}: not UTF-8, the content holds the name"
++                          for path in ("lib/x.jar", "img/a.bin", "img/esc.bin", "img/both.bin")}, set(findings),
++                         "one finding per file that is not UTF-8, by path alone")
++        self.assertNotIn("img/clean.bin", out, "a binary file with only the new namespace is not a finding")
++
++    def test_one_finding_per_line_holding_both_the_old_name_and_the_old_namespace(self):
++        self.repo.write("src/Mixed.java", "import io.flottila.api.Envelope; // becomes io.rail8.api.Envelope\n"
++                                          "import io.rail8.api.Step;\n"
++                                          "import dev.rail8.api.Stage;\n")
++        self.repo.write("tools/flottila/io/rail8/x.md", "clean\n")
++        findings = self.assertFindings(*self.repo.run(self), count=3)
++        self.assertEqual({"src/Mixed.java:1: import io.flottila.api.Envelope; // becomes io.rail8.api.Envelope",
++                          "src/Mixed.java:2: import io.rail8.api.Step;",
++                          "tools/flottila/io/rail8/x.md: the path holds the name"}, set(findings))
++
++    def test_a_star_entry_allows_the_old_namespace_in_matched_files_path_included(self):
++        self.repo.write("docs/archive/a.md", "x\nthe package was io.rail8\n")
++        self.repo.write("docs/archive/io/rail8/b.md", "clean line\n")
++        self.repo.write("README.md", "Rail8\n")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"docs/archive/a.md:2: the package was io.rail8",
++                          "docs/archive/io/rail8/b.md: the path holds the name"}, set(findings))
++
++        self.repo.allow("docs/archive/** | * | history keeps the old namespace (D-154)")
++        self.assertClean(*self.repo.run(self), files=3)   # the namespace alone credits the * entry: it is not unused
++
++    def test_a_literal_entry_allows_only_the_old_namespace_occurrences_it_covers(self):
++        self.repo.write("docs/ARCHITECTURE.md", "intro\n| 2026-11-01 | the root package `io.rail8` |\n"
++                                                "the sources under io/rail8/api\n")
++        self.repo.write("docs/other.md", "the root package io.rail8\n")
++        self.repo.allow("docs/ARCHITECTURE.md | io.rail8 | the changelog keeps the old namespace (D-154)")
++        findings = self.assertFindings(*self.repo.run(self), count=2)
++        self.assertEqual({"docs/ARCHITECTURE.md:3: the sources under io/rail8/api",
++                          "docs/other.md:1: the root package io.rail8"}, set(findings),
++                         "the literal allows `io.rail8` in its file; not `io/rail8`, not a file outside its glob")
++
++    def test_a_literal_covering_the_old_namespace_does_not_allow_a_different_one_sharing_its_prefix(self):
++        self.repo.write("x.md", "one\nuses io.rail8.mapping here\nthree\nuses io.rail8.api here\n")
++        self.repo.allow("*.md | io.rail8.mapping | the engine's old groupId")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertEqual(["x.md:4: uses io.rail8.api here"], findings)
++
++    def test_an_old_name_literal_does_not_allow_the_old_namespace_on_its_line(self):
++        self.repo.write("README.md", "see github.com/subapavel/flottila and io.rail8.api\n")
++        self.repo.allow("*.md | github.com/subapavel/flottila | the repository's address until the owner renames it")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        self.assertEqual(["README.md:1: see github.com/subapavel/flottila and io.rail8.api"], findings,
++                         "the URL's literal is credited (not unused); the namespace on its line is not allowed")
++
++    def test_an_entry_credited_with_no_old_namespace_occurrence_is_an_unused_allow_list_entry(self):
++        self.repo.write("README.md", "the old io.rail8 next to studio.rail8\n")
++        self.repo.write("src/A.java", "package dev.rail8;\n")
++        used = "*.md | io.rail8 | the changelog keeps the old namespace"
++        cases = {"a glob matching only files with the new namespace": "src/*.java | * | old sources",
++                 "a literal of the new namespace": "*.md | dev.rail8 | the new namespace",
++                 "a literal of a longer word ending in io": "*.md | studio.rail8 | another word"}
++        for what, entry in cases.items():
++            with self.subTest(what):
++                self.repo.allow(used, entry)
++                findings = self.assertFindings(*self.repo.run(self), count=1)
++                self.assertTrue(findings[0].startswith("ci/name-allowlist.txt:2: unused allow-list entry: ")
++                                and findings[0].endswith(entry), findings[0])
++
++        self.repo.allow(used)
++        self.assertClean(*self.repo.run(self), files=2)
++
++    def test_a_finding_on_a_long_line_carries_the_old_namespace_where_it_stands(self):
++        line = "x" * 250 + " io.rail8.api " + "y" * 100
++        self.repo.write("long.txt", "first\n" + line + "\n")
++        findings = self.assertFindings(*self.repo.run(self), count=1)
++        prefix = "long.txt:2: "
++        self.assertTrue(findings[0].startswith(prefix), findings[0])
++        text = findings[0][len(prefix):]
++        self.assertTrue(0 < len(text) <= 160, f"{len(text)} characters of the line printed")
++        self.assertIn(text, line)
++        self.assertIn("io.rail8", text, "the excerpt is cut around the first occurrence not allowed")
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

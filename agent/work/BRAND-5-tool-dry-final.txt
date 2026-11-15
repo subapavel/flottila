@@ -1,0 +1,3 @@
+kept: 44 history file(s) under EXCLUDED, 3 history line(s) in living files, 3 file(s) of the guard that hold the namespace as its subject
+namespace: 0 git mv, 0 file(s) rewritten, 0 line(s); 0 reported
+namespace: nothing left to do

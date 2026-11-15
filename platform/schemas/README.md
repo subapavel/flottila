@@ -10,7 +10,7 @@ Published JSON Schemas (draft 2020-12) for the v1 file model, each carrying `sch
 | `flow` | `flows/<id>.yaml` | `src/main/resources/schemas/flow.schema.json` |
 | `test` | `flows/<id>.test.yaml` | `src/main/resources/schemas/test.schema.json` |
 
-The jar packages them under `schemas/`; `io.rail8.schemas.Schemas` validates a document
+The jar packages them under `schemas/`; `dev.rail8.schemas.Schemas` validates a document
 (`Schemas.forKind(doc.getString("kind")).validate(doc)` → `Report` with JSON-pointer paths),
 `Documents` reads YAML or JSON into the `JsonObject` the validator takes, and `Package.load(dir)`
 plus `crossCheck()` says what one file cannot: dangling endpoints, tests of unknown flows, missing

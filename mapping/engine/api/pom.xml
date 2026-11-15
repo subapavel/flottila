@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.rail8.mapping</groupId>
+    <groupId>dev.rail8.mapping</groupId>
     <artifactId>rail8-mapping-engine</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
@@ -49,7 +49,7 @@
             <!-- PIT only; Surefire still runs it: it reads ModuleLayer.boot(), which is empty on
                  PIT's class path (docs/findings/F-10.md) -->
             <excludedTestClasses>
-              <param>io.rail8.mapping.api.DiagnosticCatalogueTest</param>
+              <param>dev.rail8.mapping.api.DiagnosticCatalogueTest</param>
             </excludedTestClasses>
           </configuration>
         </plugin>
@@ -62,7 +62,7 @@
         <configuration>
           <!-- the root's @{argLine} (JaCoCo) first; EngineFacadeTraceTest's fake clock takes
                Tracer's private lock by reflection (#103) -->
-          <argLine>@{argLine} --add-opens io.rail8.mapping.runtime/io.rail8.mapping.runtime=io.rail8.mapping.api</argLine>
+          <argLine>@{argLine} --add-opens dev.rail8.mapping.runtime/dev.rail8.mapping.runtime=dev.rail8.mapping.api</argLine>
         </configuration>
       </plugin>
     </plugins>

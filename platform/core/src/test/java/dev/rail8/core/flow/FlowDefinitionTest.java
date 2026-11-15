@@ -1,0 +1,288 @@
+package dev.rail8.core.flow;
+
+import dev.rail8.api.StepConfig;
+import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** The flow file (schema v1, D-040) as core sees it: a plain map in, a typed definition out, step numbers kept. */
+class FlowDefinitionTest {
+
+    static Map<String, Object> demo() {
+        return Map.ofEntries(
+                Map.entry("schemaVersion", 1), Map.entry("kind", "flow"), Map.entry("id", "invoice-sync"), Map.entry("version", "0.1.0"),
+                Map.entry("from", Map.of("endpoint", "http-in")),
+                Map.entry("delivery", Map.of("mode", "sync")),
+                Map.entry("limits", Map.of("maxBodyBytes", 1048576, "maxInFlight", 16)),
+                Map.entry("partitionBy", "invoiceId"),
+                Map.entry("onFailure", "park"),
+                Map.entry("forwardHeaders", List.of("Content-Type")),
+                Map.entry("retry", Map.of("attempts", 3, "initial", "100ms", "max", "2s")),
+                Map.entry("steps", List.of(
+                        Map.of("type", "validate", "name", "validate", "required", "/Invoice/Id"),
+                        Map.of("type", "xslt", "name", "toPartner", "stylesheet", "invoice-to-partner.xsl"),
+                        Map.of("type", "to", "name", "partner", "retryable", true, "byProp", "PARTNER", "endpoints", Map.of("domestic", "partner-domestic")))));
+    }
+
+    @Test
+    void parsesTheDemoShapeWithStepNumbersFromOne() {
+        FlowDefinition f = FlowDefinition.from(demo());
+        assertEquals("invoice-sync", f.id());
+        assertEquals("0.1.0", f.version());
+        assertEquals("http-in", f.fromEndpoint());
+        assertEquals("sync", f.deliveryMode());
+        assertEquals(1048576L, f.maxBodyBytes());
+        assertEquals(Optional.of(16L), f.maxInFlight());
+        assertEquals(Optional.empty(), f.maxInFlightBytes());
+        assertEquals(Optional.of("invoiceId"), f.partitionBy());
+        assertEquals(Optional.of("park"), f.onFailure());
+        assertEquals(List.of("Content-Type"), f.forwardHeaders());
+        assertEquals(new RetryPolicy(3, Duration.ofMillis(100), Duration.ofSeconds(2), 2.0), f.retry());
+        assertEquals(3, f.steps().size());
+        StepConfig to = f.steps().get(2);
+        assertEquals(3, to.index(), "ingress is step 0; the n-th configured step is step n");
+        assertEquals("to", to.type());
+        assertEquals("partner", to.name());
+        assertTrue(to.retryable());
+        assertEquals("PARTNER", to.config().get("byProp"));
+        assertEquals(List.of("partner-domestic"), f.referencedEndpoints(), "endpoints a producer is needed for (from is a consumer)");
+        assertEquals(false, f.steps().get(0).retryable(), "retryable defaults to false");
+    }
+
+    /** A flow document in {@code mode} keyed by {@code invoiceId} (or unkeyed when null), with {@code onFailure} when not null. */
+    static Map<String, Object> keyed(String mode, String partitionBy, Object onFailure) {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", mode));
+        doc.remove("partitionBy");
+        doc.remove("onFailure");
+        if (partitionBy != null) doc.put("partitionBy", partitionBy);
+        if (onFailure != null) doc.put("onFailure", onFailure);
+        return doc;
+    }
+
+    /** FIX-143 O5 (F-32): {@code onFailure: park} on a keyed flow loads and is readable; an unkeyed flow states none. */
+    @Test
+    void aKeyedFlowThatParksOnFailureLoadsWithTheValueReadable() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            FlowDefinition f = FlowDefinition.from(keyed(mode, "invoiceId", "park"));
+            assertEquals(Optional.of("invoiceId"), f.partitionBy(), mode);
+            assertEquals(Optional.of("park"), f.onFailure(), mode + ": the flow's stated failure behaviour");
+        }
+        assertEquals(Optional.empty(), FlowDefinition.from(keyed("at-least-once", null, null)).onFailure(), "no key, no failure behaviour");
+    }
+
+    /** FIX-143 O2: a keyed flow that does not state its failure behaviour is refused, so nobody gets park by accident. */
+    @Test
+    void aKeyedFlowWithoutOnFailureIsRefusedNamingTheKeyAndItsChoices() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, "invoiceId", null)),
+                    mode + ": partitionBy without onFailure");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the missing key: " + m);
+            assertTrue(m.contains("partitionBy"), mode + ": names why it is needed: " + m);
+            assertTrue(m.contains("park"), mode + ": names park, which continues the key after a parked item: " + m);
+            assertTrue(m.contains("block"), mode + ": says block is not available yet: " + m);
+        }
+    }
+
+    /** FIX-143 O3: {@code onFailure: block} is refused until a durable barrier exists (FIX-141), never silently parked. */
+    @Test
+    void blockOnFailureIsRefusedUntilTheDurableBarrierExists() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, "invoiceId", "block")),
+                    mode + ": onFailure block");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the key: " + m);
+            assertTrue(m.contains("block"), mode + ": names the refused value: " + m);
+            assertTrue(m.contains("FIX-141"), mode + ": names the durable barrier it waits for: " + m);
+        }
+    }
+
+    /** FIX-143 O4: {@code onFailure} on a flow without {@code partitionBy} has no key to block or continue: refused. */
+    @Test
+    void onFailureWithoutPartitionByIsRefused() {
+        for (String mode : List.of("sync", "at-least-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, null, "park")),
+                    mode + ": onFailure park without partitionBy");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the key: " + m);
+            assertTrue(m.contains("partitionBy"), mode + ": names what it needs: " + m);
+        }
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed("at-least-once", null, "block")),
+                "onFailure block without partitionBy: refused whichever rule answers first");
+        assertTrue(e.getMessage().contains("onFailure"), e.getMessage());
+    }
+
+    /** FIX-143 O1: the value is one of park and block; anything else is refused naming the key, never taken for park. */
+    @Test
+    void anOnFailureValueOutsideParkAndBlockIsRefused() {
+        for (Object value : List.<Object>of("stop", "Park", "", true)) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed("at-least-once", "invoiceId", value)),
+                    "onFailure " + value);
+            assertTrue(e.getMessage().contains("onFailure"), value + ": names the key: " + e.getMessage());
+        }
+    }
+
+    @Test
+    void durationsAreTheSchemaStringsAndRetryIsOptional() {
+        assertEquals(Duration.ofMillis(100), RetryPolicy.parseDuration("100ms"));
+        assertEquals(Duration.ofSeconds(2), RetryPolicy.parseDuration("2s"));
+        assertEquals(Duration.ofMinutes(3), RetryPolicy.parseDuration("3m"));
+        assertEquals(Duration.ofHours(1), RetryPolicy.parseDuration("1h"));
+        assertThrows(IllegalArgumentException.class, () -> RetryPolicy.parseDuration("100"));
+        assertThrows(IllegalArgumentException.class, () -> RetryPolicy.parseDuration("1d"));
+        Map<String, Object> noRetry = new java.util.HashMap<>(demo());
+        noRetry.remove("retry");
+        assertEquals(RetryPolicy.NONE, FlowDefinition.from(noRetry).retry());
+        assertEquals(0, RetryPolicy.NONE.attempts());
+        assertEquals(0, new RetryPolicy(0, Duration.ofMillis(1), Duration.ofMillis(1), 1.0).attempts(), "zero retries is a valid policy, not an error");
+    }
+
+    @Test
+    void retryDelaysGrowExponentiallyAndCapAtMax() {
+        RetryPolicy p = new RetryPolicy(5, Duration.ofMillis(100), Duration.ofMillis(350), 2.0);
+        assertEquals(Duration.ofMillis(100), p.delayBefore(1));
+        assertEquals(Duration.ofMillis(200), p.delayBefore(2));
+        assertEquals(Duration.ofMillis(350), p.delayBefore(3), "capped");
+        assertEquals(Duration.ofMillis(350), p.delayBefore(4));
+        assertThrows(IllegalArgumentException.class, () -> p.delayBefore(0));
+        assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(-1, Duration.ofMillis(1), Duration.ofMillis(2), 2.0));
+        assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(1, Duration.ofMillis(5), Duration.ofMillis(2), 2.0), "max below initial");
+        assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(1, Duration.ofMillis(1), Duration.ofMillis(2), 0.5), "multiplier below 1");
+        assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(1, Duration.ofMillis(1), Duration.ofMillis(2), Double.NaN), "multiplier NaN");
+        assertThrows(IllegalArgumentException.class, () -> new RetryPolicy(1, Duration.ofMillis(-1), Duration.ofMillis(2), 2.0), "negative initial");
+        assertEquals(Duration.ofMillis(100), new RetryPolicy(2, Duration.ofMillis(100), Duration.ofMillis(100), 1.0).delayBefore(2), "multiplier 1: constant");
+        assertEquals(Duration.ofMillis(150), new RetryPolicy(2, Duration.ofMillis(100), Duration.ofSeconds(1), 1.5).delayBefore(2), "fractional growth");
+    }
+
+    @Test
+    void referencedEndpointsListsEveryEndpointOnceAndSkipsWhatIsNotAName() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        Map<String, Object> withNull = new java.util.HashMap<>(Map.of("type", "to", "name", "again", "endpoint", "partner-domestic"));
+        withNull.put("recording", null);
+        doc.put("steps", List.of(
+                Map.of("type", "to", "name", "a", "endpoint", "partner-domestic"),
+                Map.of("type", "to", "name", "b", "endpoint", 7),
+                Map.of("type", "to", "name", "c", "byProp", "P", "endpoints", Map.of("x", "partner-foreign", "y", "partner-domestic", "z", 9)),
+                withNull));
+        FlowDefinition f = FlowDefinition.from(doc);
+        assertEquals(List.of("partner-domestic", "partner-foreign"), f.referencedEndpoints());
+        assertEquals(Map.of("endpoint", "partner-domestic"), f.steps().get(3).config(), "a null value is dropped from the step's config");
+        assertThrows(IllegalArgumentException.class, () -> new FlowDefinition("id", "1", "in", "sync", Duration.ofSeconds(5), 1, Optional.empty(), Optional.empty(),
+                Optional.empty(), List.of(), RetryPolicy.NONE, dev.rail8.core.record.RecordingPolicy.DEFAULT, List.of()), "the record itself refuses an empty step list");
+    }
+
+    @Test
+    void aBodyLimitAboveTheInFlightByteLimitIsRefused() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("limits", Map.of("maxBodyBytes", 2000, "maxInFlightBytes", 1000));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(doc), "one body could never be admitted");
+        assertTrue(e.getMessage().contains("maxBodyBytes") && e.getMessage().contains("maxInFlightBytes"), e.getMessage());
+        doc.put("limits", Map.of("maxBodyBytes", 1000, "maxInFlightBytes", 1000));
+        assertEquals(Optional.of(1000L), FlowDefinition.from(doc).maxInFlightBytes(), "equal limits admit one body at a time: accepted");
+    }
+
+    @Test
+    void saveTimeoutIsReadFromDeliveryWithFiveSecondsAsTheDefault() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", "2s"));
+        assertEquals(Duration.ofSeconds(2), FlowDefinition.from(doc).saveTimeout());
+        assertEquals(Duration.ofSeconds(5), FlowDefinition.from(demo()).saveTimeout(), "absent: PT5S");
+    }
+
+    @Test
+    void aNonPositiveSaveTimeoutIsRefused() {
+        for (String timeout : List.of("0s", "-1s")) {
+            Map<String, Object> doc = new java.util.HashMap<>(demo());
+            doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", timeout));
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(doc),
+                    "a save that may never take time would NACK every message: " + timeout);
+            assertTrue(e.getMessage().contains("saveTimeout"), timeout + " -> " + e.getMessage());
+        }
+    }
+
+    /**
+     * D-100: {@code delivery.timeout} is the time each run of a message has (its deadline = the run's start + it), in any delivery
+     * mode; 30 s when the flow names none, also through the old constructor without it; zero or less is refused naming the key.
+     */
+    @Test
+    void deliveryTimeoutIsReadAndANonPositiveOneRefused() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", "sync", "timeout", "1500ms"));
+        assertEquals(Duration.ofMillis(1500), FlowDefinition.from(doc).timeout());
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "2m"));
+        assertEquals(Duration.ofMinutes(2), FlowDefinition.from(doc).timeout(), "any delivery mode");
+        assertEquals(Duration.ofSeconds(30), FlowDefinition.from(demo()).timeout(), "absent: PT30S");
+        FlowDefinition built = new FlowDefinition("f", "1.0.0", "in", "sync", Duration.ofSeconds(5), 1024L, Optional.empty(), Optional.empty(),
+                Optional.empty(), List.of(), RetryPolicy.NONE, dev.rail8.core.record.RecordingPolicy.DEFAULT,
+                List.of(new StepConfig(1, "to", "out", false, Map.of("endpoint", "e"))));
+        assertEquals(Duration.ofSeconds(30), built.timeout(), "the constructor without a timeout gives PT30S");
+        for (String timeout : List.of("0s", "0ms", "-1s")) {
+            Map<String, Object> refused = new java.util.HashMap<>(demo());
+            refused.put("delivery", Map.of("mode", "sync", "timeout", timeout));
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(refused),
+                    "a message that may never take time would fail every send that waits: " + timeout);
+            assertTrue(e.getMessage().contains("delivery.timeout"), timeout + " -> " + e.getMessage());
+        }
+    }
+
+    @Test
+    void missingOrWrongPartsAreNamed() {
+        Map<String, Object> noSteps = new java.util.HashMap<>(demo());
+        noSteps.put("steps", List.of());
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(noSteps));
+        assertTrue(e.getMessage().contains("steps"), e.getMessage());
+        Map<String, Object> noLimit = new java.util.HashMap<>(demo());
+        noLimit.put("limits", Map.of());
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(noLimit)).getMessage().contains("maxBodyBytes"));
+        Map<String, Object> badStep = new java.util.HashMap<>(demo());
+        badStep.put("steps", List.of(Map.of("name", "x")));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badStep)).getMessage().contains("steps[0]"));
+        Map<String, Object> badNumber = new java.util.HashMap<>(demo());
+        badNumber.put("limits", Map.of("maxBodyBytes", 1.5));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badNumber)).getMessage().contains("maxBodyBytes"), "a fraction is not a size");
+        badNumber.put("limits", Map.of("maxBodyBytes", -1));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badNumber)).getMessage().contains("maxBodyBytes"));
+        badNumber.put("limits", Map.of("maxBodyBytes", 1.5f));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badNumber)).getMessage().contains("maxBodyBytes"), "nor a float");
+        Map<String, Object> emptyId = new java.util.HashMap<>(demo());
+        emptyId.put("id", "");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(emptyId)).getMessage().contains("id"), "an empty string is no id");
+        badNumber.put("limits", Map.of("maxBodyBytes", "big"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badNumber)).getMessage().contains("maxBodyBytes"));
+        badNumber.put("limits", Map.of("maxBodyBytes", 0));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badNumber)).getMessage().contains("maxBodyBytes"), "zero: never unlimited, never empty");
+        Map<String, Object> noFrom = new java.util.HashMap<>(demo());
+        noFrom.remove("from");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(noFrom)).getMessage().contains("from"));
+        noFrom.put("from", Map.of("endpoint", 7));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(noFrom)).getMessage().contains("from.endpoint"));
+        Map<String, Object> badRetry = new java.util.HashMap<>(demo());
+        badRetry.put("retry", "soon");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badRetry)).getMessage().contains("retry"));
+        badRetry.put("retry", Map.of("initial", "1s", "max", "2s"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badRetry)).getMessage().contains("retry.attempts"));
+        badRetry.put("retry", Map.of("attempts", 1, "initial", "1s", "max", "2s", "multiplier", 3));
+        assertEquals(3.0, FlowDefinition.from(badRetry).retry().multiplier(), "multiplier is read when present, default 2");
+        Map<String, Object> badHeaders = new java.util.HashMap<>(demo());
+        badHeaders.put("forwardHeaders", "Content-Type");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(badHeaders)).getMessage().contains("forwardHeaders"));
+        badHeaders.remove("forwardHeaders");
+        assertEquals(List.of(), FlowDefinition.from(badHeaders).forwardHeaders());
+        Map<String, Object> listStep = new java.util.HashMap<>(demo());
+        listStep.put("steps", List.of("validate"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(listStep)).getMessage().contains("steps[0]"));
+        listStep.put("steps", "validate");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(listStep)).getMessage().contains("steps"));
+        Map<String, Object> dupNames = new java.util.HashMap<>(demo());
+        dupNames.put("steps", List.of(Map.of("type", "a", "name", "same"), Map.of("type", "b", "name", "same")));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(dupNames)).getMessage().contains("same"), "step names are the labels of the timeline: unique");
+    }
+}

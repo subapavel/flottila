@@ -1,8 +1,0 @@
-/**
- * The XML steps on Saxon-HE (ARCHITECTURE §7, §13): the {@code xslt} step ({@link io.rail8.steps.xslt.XsltStepFactory},
- * compiled by content hash) and the {@code xpath} expression language ({@link io.rail8.steps.xslt.XPathExpressions}),
- * both over the body's document view memoized by {@link io.rail8.steps.xslt.SaxonXml}. Depends on rail8-api only.
- *
- * @since 0.1
- */
-package io.rail8.steps.xslt;

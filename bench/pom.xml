@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.rail8</groupId>
+    <groupId>dev.rail8</groupId>
     <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>../platform/pom.xml</relativePath>
@@ -18,20 +18,20 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-runtime</artifactId>
     </dependency>
     <dependency>
       <!-- the node bench (NodeBenchMain) builds the node's components and steps itself, as Main does -->
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-step-xslt</artifactId>
     </dependency>
     <dependency>
@@ -40,7 +40,7 @@
       <scope>runtime</scope>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <!-- compile scope since P1-01: the tier benchmark streams a GeneratedReadStream body (the bench is a tool, never shipped) -->
       <artifactId>rail8-testkit</artifactId>
     </dependency>
@@ -63,7 +63,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
         <configuration>
-          <archive><manifest><mainClass>io.rail8.bench.BenchMain</mainClass></manifest></archive>
+          <archive><manifest><mainClass>dev.rail8.bench.BenchMain</mainClass></manifest></archive>
         </configuration>
       </plugin>
       <plugin>

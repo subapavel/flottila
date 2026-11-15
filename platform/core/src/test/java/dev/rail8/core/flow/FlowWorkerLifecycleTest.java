@@ -1,0 +1,290 @@
+package dev.rail8.core.flow;
+
+import dev.rail8.api.Envelope;
+import dev.rail8.api.Timer;
+import dev.rail8.core.flow.FlowWorkerTest.Logs;
+import dev.rail8.core.flow.FlowWorkerTest.World;
+import dev.rail8.core.queue.WorkQueue;
+import dev.rail8.core.record.Meter;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Level;
+
+import static dev.rail8.core.flow.FlowWorkerTest.LEASE;
+import static dev.rail8.core.flow.FlowWorkerTest.NO_FILES;
+import static dev.rail8.core.flow.FlowWorkerTest.TICK;
+import static dev.rail8.core.flow.FlowWorkerTest.TO_PARTNER;
+import static dev.rail8.core.flow.FlowWorkerTest.flow;
+import static dev.rail8.core.flow.FlowWorkerTest.policy;
+import static dev.rail8.core.flow.FlowWorkerTest.until;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * P1-08b, D-055: the worker's lifecycle edges the acceptance cases leave open — starting twice, starting after stop, a full
+ * worker, and the races where a timer task or a renewal's answer arrives after what it served has ended. A timer task that
+ * already fired cannot be cancelled: {@link ManualTimer} hands the test such tasks to run when it chooses.
+ */
+@Timeout(30)
+class FlowWorkerLifecycleTest {
+
+    World w;
+    Logs logs;
+
+    @BeforeEach
+    void setUp() {
+        w = new World();
+        logs = Logs.attach();
+    }
+
+    @AfterEach
+    void tearDown() {
+        logs.detach();
+        w.close();
+    }
+
+    /** Records every task and never runs one; its handles report the task as already fired, so a cancelled task still runs when the test runs it. */
+    static final class ManualTimer implements Timer {
+        final List<Runnable> tasks = new CopyOnWriteArrayList<>();
+
+        @Override public Cancellable schedule(Duration delay, Runnable task) {
+            tasks.add(task);
+            return () -> false;
+        }
+    }
+
+    /** {@link WorkQueue} over the world's recording queue whose renewals stay open until the test answers them; each one asked in {@link #asked}. */
+    static final class DeferredRenewals implements WorkQueue {
+        /** One renewal asked: its seq and the attempts it is fenced by. */
+        record Asked(long seq, int attempts) {}
+
+        final WorkQueue delegate;
+        final List<Promise<Boolean>> open = new CopyOnWriteArrayList<>();
+        final List<Asked> asked = new CopyOnWriteArrayList<>();
+
+        DeferredRenewals(WorkQueue delegate) { this.delegate = delegate; }
+
+        @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return delegate.enqueue(messageId, flow, step, partitionKey); }
+        @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) { return delegate.claim(workerId, flow, max, lease); }
+        @Override public Future<Boolean> complete(long seq, int attempts) { return delegate.complete(seq, attempts); }
+        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+            return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
+        }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return delegate.restart(messageId, flow, partitionKey, attempt); }
+        @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
+        @Override public Future<dev.rail8.core.record.Page<Held>> held(Optional<String> after, int limit) { return delegate.held(after, limit); }
+        @Override public Future<Boolean> release(long seq) { return delegate.release(seq); }
+        @Override public Future<Boolean> hasItems(String flow) { return delegate.hasItems(flow); }
+
+        @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
+            Promise<Boolean> answer = Promise.promise();
+            asked.add(new Asked(seq, attempts));
+            open.add(answer);
+            return answer.future();
+        }
+    }
+
+    @Test
+    void aWorkerNeedsADlqToParkAnItemPastTheBound() {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder noDlq = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
+                .recording(w.store, Meter.system()).queue(w.queue);
+        String refused = assertThrows(IllegalStateException.class, () -> policy(LEASE, 5).worker(noDlq, def, "w1")).getMessage();
+        assertTrue(refused.contains("DLQ") && refused.contains("dlq(...)"), refused);
+    }
+
+    @Test
+    void aHoldThatFailsFailsTheRoundAndLeavesTheItemToItsLease() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        w.accept(b.delivery(def, NO_FILES));
+        w.rows.claim("crashed", "orders", 1, LEASE).await();   // attempt 1: a worker claimed it and died at once
+        w.rt.clock().advance(LEASE);
+        w.dlq.failParks(new IllegalStateException("dlq down"));
+        IllegalStateException holdDown = new IllegalStateException("pg away");
+        w.queue.failHolds(1, holdDown);
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 1));
+
+        Future<Integer> round = w1.poll();
+        until(round::isComplete, () -> "the round of the unparkable item");
+        assertTrue(round.failed(), "a hold that fails fails the round");
+        assertEquals(holdDown, round.cause());
+        assertEquals(1, w.rows.size(), "nothing completed, nothing held");
+        w.rt.clock().advance(LEASE);
+        w1.poll().otherwiseEmpty().await(5, SECONDS);
+        assertEquals(List.of(2, 3), w.claimedAttempts(), "its slot freed, the item is claimed again after its lease");
+    }
+
+    @Test
+    void startingTwiceTicksOnce() {
+        FlowWorker w1 = w.worker(FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER))), "w1", policy(LEASE, 5));
+        w1.start();
+        w1.start();
+        assertEquals(1, w.rt.timer().pending(), "one tick, however often the worker is started");
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6), however often it is called: " + w.queue.claims());
+        // P2-16b B5: the one pending task is the reconciliation, first due an interval plus the flow's offset after the start
+        w.rt.clock().advance(w.rt.timer().nextDelay());
+        assertEquals(2, w.queue.claims().size(), "then one claim per interval: " + w.queue.claims());
+        assertEquals(1, w.rt.timer().pending());
+    }
+
+    @Test
+    void aStoppedWorkerDoesNotStartAgain() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowWorker never = w.worker(def, "never", policy(LEASE, 5));
+        never.stop();
+        never.start();
+        assertEquals(0, w.rt.timer().pending(), "stopped before it was ever started: start does nothing");
+
+        FlowWorker w1 = w.worker(def, "w1", policy(LEASE, 5));
+        w1.start();
+        w1.stop();
+        w1.start();
+        assertEquals(0, w.rt.timer().pending(), "stopped after a start: a second start does nothing");
+        for (int i = 0; i < 3; i++) w.rt.clock().advance(TICK);
+        assertEquals(0, w1.poll().await(5, SECONDS), "a stopped worker starts no round, not even on an explicit poll");
+        assertEquals(0, never.poll().await(5, SECONDS));
+        assertEquals(List.of(), w.queue.claimsBy("never"), "never started: no claim");
+        assertEquals(1, w.queue.claimsBy("w1").size(), "w1's one start claim (D-121 A6), nothing after its stop: " + w.queue.claims());
+    }
+
+    @Test
+    void aWorkerRunningItsLimitClaimsNothing() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(1, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
+        Envelope first = w.accept(delivery);
+        Envelope second = w.accept(delivery);
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> round = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.queue.claimsInFlight() == 0, () -> "the first item at the gate");
+        assertEquals(0, w1.poll().await(5, SECONDS), "running its limit of 1: no room");
+        assertEquals(1, w.queue.claims().size(), "and no claim was issued: " + w.queue.claims());
+
+        RunGate.Run run = w.gate.runs().get(0);
+        run.release();
+        assertEquals(1, round.await(5, SECONDS));
+        run.joined();
+        assertEquals(2, w.queue.claims().size(), "the finished item made room and polled");
+        until(() -> w.gate.entered() == 2, () -> "the second item at the gate");
+        assertEquals(List.of(first.id(), second.id()), w.gate.runs().stream().map(r -> r.messageId).toList());
+    }
+
+    @Test
+    void aTickThatFiresAsTheWorkerStopsPollsNoMore() {
+        ManualTimer timer = new ManualTimer();
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowWorker w1 = w.worker(w.builder(w.runtimeWith(timer)), def, "w1", policy(LEASE, 5));
+        w1.start();
+        assertEquals(1, timer.tasks.size(), "the first tick");
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6)");
+        w1.stop();
+
+        timer.tasks.get(0).run();   // it had fired already when stop cancelled it
+        assertEquals(1, w.queue.claims().size(), "no round after stop: " + w.queue.claims());
+        assertEquals(1, timer.tasks.size(), "and no further tick");
+    }
+
+    @Test
+    void aRenewalThatFiresAsTheRunEndsRenewsNothing() {
+        ManualTimer timer = new ManualTimer();
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        Envelope in = w.accept(w.builder().delivery(def, NO_FILES));   // its save timeout on the fake timer, not on this one
+        FlowWorker w1 = w.worker(w.builder(w.runtimeWith(timer)), def, "w1", policy(LEASE, 5));
+
+        w1.poll();
+        until(() -> w.gate.entered() == 1 && timer.tasks.size() == 1, () -> "the run at the gate with its renewal scheduled");
+        RunGate.Run run = w.gate.runs().get(0);
+        run.release();
+        run.joined();
+        assertEquals(List.of(in.id()), w.sentIds());
+
+        timer.tasks.get(0).run();   // it had fired already when the run's end cancelled it
+        assertEquals(List.of(), w.queue.renews(), "a run that ended renews nothing");
+        assertEquals(1, timer.tasks.size(), "and schedules nothing");
+    }
+
+    @Test
+    void aRenewalAnsweredAfterTheRunEndedIsIgnored() throws Exception {
+        DeferredRenewals queue = new DeferredRenewals(w.queue);
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
+                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq);
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> round = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        assertEquals(1, queue.open.size(), "the renewal is in flight");
+        assertEquals(0, w.rt.timer().pending());
+
+        RunGate.Run run = w.gate.runs().get(0);
+        run.release();
+        assertEquals(1, round.await(5, SECONDS));
+        run.joined();
+        queue.open.get(0).complete(true);
+        assertEquals(0, w.rt.timer().pending(), "the answer of a renewal for a run that ended schedules no further renewal");
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "nor is it logged: " + logs.all());
+        assertEquals(0, w.rows.size(), "the item completed");
+    }
+
+    /**
+     * Q-1 (D-074): a renewal fenced by attempt 1 is in flight when the claim's lease runs out and w1 claims its own item again
+     * (attempt 2), adopting the claim. The renewal then answers false — for a superseded claim, not a lost lease: nothing is
+     * logged, one renewal is scheduled a third of the lease later, fenced by attempt 2, and the item completes under attempt 2.
+     */
+    @Test
+    void aRenewalAnsweredForASupersededClaimIsNotALoss() throws Exception {
+        DeferredRenewals queue = new DeferredRenewals(w.queue);
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
+                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq);
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> round = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        long seq = w.queue.claimsBy("w1").get(0).items.get(0).seq();
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        assertEquals(List.of(new DeferredRenewals.Asked(seq, 1)), queue.asked, "fixture: the renewal is in flight, fenced by attempt 1");
+        assertEquals(0, w.rt.timer().pending(), "fixture: nothing scheduled while it is in flight");
+        w.rt.clock().advance(LEASE.minus(LEASE.dividedBy(3)));   // nobody extended the claim's lease: it ran out
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "w1's re-claim: " + w.queue.claims());
+        assertEquals(List.of(seq), w.queue.claimsBy("w1").get(1).items.stream().map(WorkQueue.Item::seq).toList(), "fixture: w1 claims its own item again");
+        assertEquals(2, w.queue.claimsBy("w1").get(1).items.get(0).attempts(), "fixture: attempt 2");
+
+        queue.open.get(0).complete(false);   // fenced by attempt 1, which w1's own claim superseded
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "a renewal refused for a superseded claim is no lost lease: " + logs.all());
+        assertEquals(1, w.rt.timer().pending(), "renewing goes on: one renewal scheduled");
+        assertEquals(LEASE.dividedBy(3), w.rt.timer().nextDelay(), "a third of the lease on");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        assertEquals(List.of(new DeferredRenewals.Asked(seq, 1), new DeferredRenewals.Asked(seq, 2)), queue.asked,
+                "the next renewal is fenced by the adopted attempt 2");
+        queue.open.get(1).complete(true);
+        assertEquals(1, w.rt.timer().pending(), "and renewing goes on after it");
+
+        RunGate.Run run = w.gate.runs().get(0);
+        run.release();
+        assertEquals(1, round.await(5, SECONDS));
+        run.joined();
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(seq, 2, true)), w.queue.completeCalls(), "completed under the adopted attempt 2");
+        assertEquals(0, w.rows.size());
+        assertEquals(0, w1.staleSettles(), "nothing stale");
+        assertEquals(1, w.gate.entered(), "one run: the re-claim started none");
+    }
+}

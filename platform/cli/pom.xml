@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.rail8</groupId>
+    <groupId>dev.rail8</groupId>
     <artifactId>rail8-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>..</relativePath>
@@ -25,7 +25,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>io.rail8.cli.Cli</mainClass>
+              <mainClass>dev.rail8.cli.Cli</mainClass>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
               <useUniqueVersions>false</useUniqueVersions>
@@ -55,25 +55,25 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
     </dependency>
     <!-- cli is the outermost module (F-16, D-079): the node's Deployments and what Main.shipped() wires (components, steps) -->
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-runtime</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-schemas</artifactId>
     </dependency>
     <!-- the mock component, for the flow-test runner (P2-03b); a node never loads it (runtime does not depend on it) -->
     <dependency>
-      <groupId>io.rail8</groupId>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-mock</artifactId>
     </dependency>
     <!-- DeployCommandIT: a node in this JVM on a Testcontainers Postgres (-Pit) -->

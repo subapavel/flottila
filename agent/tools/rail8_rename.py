@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""The Flottila -> Rail8 rename (BRAND-1, D-148, D-149), as one repeatable tool.
+"""The Flottila -> Rail8 rename (BRAND-1, D-148, D-149) and the namespace io.rail8 -> dev.rail8 (BRAND-5, D-154), as one
+repeatable tool.
 
 Subcommands, each idempotent (a second run changes nothing) and each with --dry-run:
   moves        commit A: `git mv` of every directory in PATH_MAP, then the path strings in the living documents
   identifiers  commit B: `git mv` of the io/flottila package directories and bin/flottila, then IDENTIFIER_MAP
   wire         commit C: persisted and wire names, one entry per literal (WIRE_MAP)
   report       only the final report: every remaining occurrence of the old name outside EXCLUDED, tagged
+  namespace    BRAND-5 (D-154): `git mv` of every io/rail8 package directory to dev/rail8, then `io.rail8` -> `dev.rail8`
+               in every spelling ci/name_guard.py refuses, history kept; sorted import blocks stay sorted
 
 --root <dir> limits a subcommand to a subtree of the repository (BRAND-3 runs it on mapping/).
 The tool never touches .git/, target/ or a file git does not track. Python 3 standard library only.
@@ -15,6 +18,7 @@ Usage (from anywhere inside the repository):
   python3 agent/tools/rail8_rename.py moves
   python3 agent/tools/rail8_rename.py report --summary
   python3 agent/tools/rail8_rename.py identifiers --root mapping   # BRAND-3 step 2 (D-151), then `wire --root mapping`
+  python3 agent/tools/rail8_rename.py namespace --dry-run          # BRAND-5
 """
 from __future__ import annotations
 
@@ -1157,10 +1161,160 @@ def cmd_wire(root: Path, scope: str | None, dry: bool) -> int:
     return 1 if stale else status
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# BRAND-5 (D-154): the namespace `io.rail8` becomes `dev.rail8`. An occurrence is what ci/name_guard.py refuses as the
+# old namespace: `io`, not after a letter, digit or `_`, then `.`, `/`, `\.` or `\\.`, then `rail8`; the separator is
+# kept, so `io\\.rail8` becomes `dev\\.rail8`. Two path-segment spellings the guard cannot see as one word follow too.
+# ---------------------------------------------------------------------------------------------------------------------
+
+NAMESPACE_DIR = re.compile(r"^(.*/src/[^/]+/(?:java|resources))/io/rail8/")
+NAMESPACE_DIR_NEW = "dev/rail8"
+NAMESPACE = re.compile(r"(?<![A-Za-z0-9_])io(\.|/|\\\.|\\\\\.)rail8")
+NAMESPACE_BYTES = re.compile(NAMESPACE.pattern.encode("ascii"))
+NAMESPACE_SPELLING = {".": "io.rail8", "/": "io/rail8", "\\.": "io\\.rail8", "\\\\.": "io\\\\.rail8"}
+# Path.of(..., "io", "rail8", ...) in Java and m / "io" / "rail8" in Python: the package root as path segments
+NAMESPACE_SEGMENTS = re.compile(r'"io"(, | / )"rail8"')
+# Never touched by `namespace` (BRAND-5 packet): the root rules, the agents' definitions and every settings file; one
+# that holds the namespace is reported. The guard, its tests and its allow-list hold it as their subject (the allow-list's
+# changelog literals): kept, like EXCLUDED.
+NAMESPACE_UNTOUCHED: list[str] = ["CLAUDE.md", ".claude/agents/**"]
+NAMESPACE_SUBJECT: list[str] = ["ci/name_guard.py", "ci/test_name_guard.py", "ci/name-allowlist.txt"]
+_SETTINGS = re.compile(r"settings(?:\.[\w-]+)?\.json")
+# Where a sorted import block stays sorted after the replacement; under mapping/ the engine's formatter decides.
+NAMESPACE_SORTED_IMPORTS = ("platform/", "bench/")
+
+
+def namespace_untouched(path: str) -> bool:
+    return any(_glob(path, p) for p in NAMESPACE_UNTOUCHED) or bool(_SETTINGS.fullmatch(path.rsplit("/", 1)[-1]))
+
+
+def namespace_moves(files: set[str]) -> list[tuple[str, str]]:
+    """Every `.../src/<set>/{java,resources}/io/rail8` -> `.../dev/rail8`."""
+    dirs = sorted({m.group(1) for f in files if (m := NAMESPACE_DIR.match(f))})
+    return [(f"{d}/io/rail8", f"{d}/{NAMESPACE_DIR_NEW}") for d in dirs]
+
+
+def map_namespace_path(path: str) -> str:
+    m = NAMESPACE_DIR.match(path)
+    return f"{m.group(1)}/{NAMESPACE_DIR_NEW}/" + path[m.end():] if m else path
+
+
+def _import_blocks(lines: list[str]) -> list[tuple[int, int]]:
+    """(start, end) of every maximal run of lines that start with `import `."""
+    blocks, i = [], 0
+    while i < len(lines):
+        if lines[i].startswith("import "):
+            j = i
+            while j < len(lines) and lines[j].startswith("import "):
+                j += 1
+            blocks.append((i, j))
+            i = j
+        else:
+            i += 1
+    return blocks
+
+
+def rewrite_namespace(path: str, text: str, counts: Counter) -> str:
+    """Every occurrence of the old namespace in `text` outside the history lines of `path`, then, under
+    NAMESPACE_SORTED_IMPORTS, every import block that was in ASCII order before put back in ASCII order."""
+    def one(m: re.Match) -> str:
+        counts[NAMESPACE_SPELLING[m.group(1)]] += 1
+        return "dev" + m.group(1) + "rail8"
+
+    def segments(m: re.Match) -> str:
+        counts["path segments"] += 1
+        return '"dev"' + m.group(1) + '"rail8"'
+    lines = text.split("\n")
+    history = history_lines(path, lines)
+    out = [line if i in history else NAMESPACE_SEGMENTS.sub(segments, NAMESPACE.sub(one, line))
+           for i, line in enumerate(lines)]
+    if path.startswith(NAMESPACE_SORTED_IMPORTS) and path.endswith(".java"):
+        for start, end in _import_blocks(lines):
+            before, after = lines[start:end], out[start:end]
+            if after != before and before == sorted(before) and after != sorted(after):
+                out[start:end] = sorted(after)
+                counts["import blocks re-sorted"] += 1
+    return "\n".join(out)
+
+
+def cmd_namespace(root: Path, scope: str | None, dry: bool) -> int:
+    """BRAND-5: `git mv` of every io/rail8 package directory to dev/rail8, then the old namespace -> `dev` in every
+    tracked UTF-8 file outside EXCLUDED, NAMESPACE_UNTOUCHED and the history lines. Reports, never changes: a tracked
+    path with the namespace outside a package directory, an untouched file or a file that is not UTF-8 holding it."""
+    files = set(tracked(root))
+    exists = lambda p: p in files or any(f.startswith(p + "/") for f in files)  # noqa: E731
+    plan: list[tuple[str, str]] = []
+    for old, new in namespace_moves({f for f in files if in_scope(f, scope) and not excluded(f)}):
+        if exists(new):
+            raise SystemExit(f"refused: {old} -> {new}: both exist")
+        plan.append((old, new))
+    stray = sorted(f for f in files if in_scope(f, scope) and not excluded(f) and NAMESPACE.search(f)
+                   and not NAMESPACE_DIR.match(f))
+    for old, new in plan:
+        print(f"git mv {old} {new}")
+        if not dry:
+            (root / new).parent.mkdir(parents=True, exist_ok=True)
+            git(root, "mv", old, new)
+            left = (root / old).parent    # `.../io`, empty on disk once rail8 has moved
+            if left.is_dir() and not any(left.iterdir()):
+                left.rmdir()
+    counts: Counter = Counter()
+    rewritten = 0
+    reported: list[str] = [f"path holds the namespace outside a package directory (not moved): {p}" for p in stray]
+    kept: Counter = Counter()
+    current = sorted(tracked(root)) if not dry else sorted(files)
+    for source in current:
+        path = source if not dry else map_namespace_path(source)
+        if not in_scope(path, scope) or "/target/" in f"/{path}":
+            continue
+        file = root / source
+        if not file.is_file():
+            continue
+        data = file.read_bytes()
+        if not NAMESPACE_BYTES.search(data) and not NAMESPACE_SEGMENTS.search(data.decode("latin-1")):
+            continue
+        if excluded(path) or path in NAMESPACE_SUBJECT:
+            kept["history file" if excluded(path) else "subject file"] += 1
+            continue
+        text = _decoded(data)
+        if text is None:
+            reported.append(f"not UTF-8, holds the namespace (not rewritten): {path}")
+            continue
+        if namespace_untouched(path):
+            reported.append(f"never touched, holds the namespace: {path}")
+            continue
+        per_file: Counter = Counter()
+        new_text = rewrite_namespace(path, text, per_file)
+        history = history_lines(path, text.split("\n"))
+        kept["history line"] += sum(1 for i, line in enumerate(text.split("\n")) if i in history and NAMESPACE.search(line))
+        if new_text == text:
+            continue
+        lines = _count_changes(text, new_text)
+        counts.update(per_file)
+        counts["lines"] += lines
+        rewritten += 1
+        print(f"rewrite {path}: {lines} line(s)" + ("" if text_kind(path) else " (a kind `identifiers` does not classify)"))
+        if dry:
+            for number, (a, b) in enumerate(zip(text.split("\n"), new_text.split("\n")), 1):
+                if a != b:
+                    print(f"  {number}: {_snippet(a, b)}")
+        else:
+            file.write_text(new_text, encoding="utf-8")
+    for line in reported:
+        print(line)
+    print(f"kept: {kept['history file']} history file(s) under EXCLUDED, {kept['history line']} history line(s) "
+          f"in living files, {kept['subject file']} file(s) of the guard that hold the namespace as its subject")
+    print(f"namespace: {len(plan)} git mv, {rewritten} file(s) rewritten, {counts['lines']} line(s)"
+          + "".join(f", {k} {v}" for k, v in sorted(counts.items()) if k != "lines") + f"; {len(reported)} reported")
+    if not plan and not rewritten and not reported:
+        print("namespace: nothing left to do")
+    return 1 if reported else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
-    for name in ("moves", "identifiers", "wire", "report"):
+    for name in ("moves", "identifiers", "wire", "report", "namespace"):
         p = sub.add_parser(name)
         p.add_argument("--dry-run", action="store_true", help="print what would change, change nothing")
         p.add_argument("--root", default=None, help="limit to this repository subtree (e.g. mapping)")
@@ -1170,6 +1324,8 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
     scope = args.root.strip("/") if args.root else None
     status = 0
+    if args.command == "namespace":   # its own report; the old name's report is the other subcommands'
+        return cmd_namespace(root, scope, args.dry_run)
     if args.command == "moves":
         cmd_moves(root, scope, args.dry_run)
     if args.command == "identifiers":
