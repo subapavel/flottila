@@ -62,10 +62,14 @@ final class ExplainLines {
 
   /** The one node line of {@code body} with the freeze id {@code id}. */
   static Line node(List<Line> lines, String body, int id) {
-    String column = column(lines, body);
+    return at(lines, column(lines, body), id);
+  }
+
+  /** The one node line of the column {@code column} ({@code main} or {@code fn<place>}) with the freeze id {@code id}. */
+  static Line at(List<Line> lines, String column, int id) {
     List<Line> found =
         lines.stream().filter(l -> !l.isFunction() && l.fields().get(0).equals(column) && l.fields().get(1).equals(Integer.toString(id))).toList();
-    assertThat(found).as("node %d of %s in %s", id, body, lines).hasSize(1);
+    assertThat(found).as("node %d of %s in %s", id, column, lines).hasSize(1);
     return found.getFirst();
   }
 }
