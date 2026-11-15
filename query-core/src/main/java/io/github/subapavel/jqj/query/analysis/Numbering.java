@@ -103,7 +103,7 @@ public final class Numbering {
   }
 
   /** The parts of {@code node} in their order: the order of its record's components, each list in its order. */
-  private static List<Node> parts(Node node) {
+  static List<Node> parts(Node node) {
     // One arm per kind: javac compiles a case of two patterns to a second dispatch no node can take.
     return switch (node) {
       case Identity _ -> List.of();
