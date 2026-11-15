@@ -89,3 +89,15 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   no-decrease against the previous main commit, the committed baseline describes the commit.
   Postgres floor 17.11 (job 132776319339): Verify 24.5 min, success.
 - DCO: success. `stack` (job 132782427887): started after the build, in progress when read. `mutation` and `bench`: skipped.
+
+## 2026-11-15, after BRAND-5 (627afa86)
+
+- `ci` run 208 (ed48e723): the whole run completed `success` (10:32Z), the `stack` job included.
+- `mapping-ci` run 2 (id 43706558942, 627afa86): `success`, 6 min — the mapping builds under `dev.rail8.mapping` on a runner.
+- `ci` run 209 (id 43706558940, 627afa86): DCO success. Postgres floor 17.11 (job 132788812396): Verify FAILED after 68 s,
+  in testkit: `ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337` — the variant "acknowledged before the
+  handler answered (the envelope sent comes back)" failed ten contract cases where nine are expected; the extra one is
+  `aSendCarriesTheMessageIdToThePartner`. Tests run 278, Failures 1; the reactor stopped at testkit. This is row FIX-221
+  (the same fault as the older row FIX-170), seen here for the first time on a runner: a timing-dependent self-test, not the
+  rename (the verification of BRAND-5 ran the same test green, and run 208 passed it in both jobs).
+  Postgres main 18.6 (job 132788812499): Verify in progress when read (11:07Z).

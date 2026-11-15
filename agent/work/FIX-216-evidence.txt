@@ -1,0 +1,21 @@
+FIX-216 — evidence (2026-11-15)
+
+The fault, once, in the verification of BRAND-1 A (agent/work/BRAND-1-A-verify.log):
+  "the journal delta 2538251.9999999995 B holds the 2538252 B of records"
+
+The class alone (NodeBenchMainWarmupIT), in a second worktree at 627afa86:
+VERIFIED_PASS  agent/work/FIX-216-before.log   before the edit: Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+EXECUTED_FAIL  agent/work/FIX-216-red.log      the edit with `recorded + 1` in the comparison (temporary, restored):
+               Tests run: 5, Failures: 1 — NodeBenchMainWarmupIT.java:114, "the journal delta 2538252 B holds the 2538252 B"
+VERIFIED_PASS  agent/work/FIX-216-it.log       after the edit (author): Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+VERIFIED_PASS  agent/work/FIX-216-verify.log   after the edit (verifier): Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+
+Maven exits 1 in every one of these runs, on one goal only: "jacoco-maven-plugin:0.8.15:check (check-floors) on project
+rail8-bench: Coverage checks have not been met" — the module's floor needs all its tests, and one IT ran alone. The packet's
+"exit 0" is therefore NOT_RUN for this task alone; the whole-reactor run (MAIN-1's green runs) is that check.
+
+review: PASS   class A. NodeBenchMain :858-859 computes the rate as the whole long delta over elapsedNanos / 1e9, :672 writes
+               elapsedMs = elapsedNanos / 1e6; the product back is the byte count after five correctly rounded double operations,
+               an error of at most ~6e-8 B for 1e8 B over minutes — Math.round cannot hide a shortfall of one byte. `recorded + 1`
+               is a fair stand-in for a journal one byte short. Only the delta line and a two-line comment changed.
+The worktree's diff equals agent/work/FIX-216.diff (checked with diff). Logs are not committed (agent/work is ignored).

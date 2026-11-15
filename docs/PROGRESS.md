@@ -1,4 +1,18 @@
 
+## 2026-11-15 — FIX-216 the journal-rate check compares whole bytes — done, review PASS
+
+- Context compacted before this entry; state re-read from HANDOFF, `git status`, `git log -3` (HEAD 627afa86, clean but FIX-214's WIP).
+- Fault (BRAND-1 A's verification, once): "the journal delta 2538251.9999999995 B holds the 2538252 B of records" — the report's rate
+  is a whole byte count over the elapsed seconds; the test multiplied it back in doubles and compared the product with a whole number.
+- Change (test-author, test only, +3/-1): `NodeBenchMainWarmupIT` rounds the product with `Math.round` to whole bytes; the assertion
+  is unchanged. The rounding error is at most ~6e-8 B for 100 MB over minutes (reviewer), so no shortfall of a byte can hide.
+- Red shown: with `recorded + 1` in the comparison the case fails, "the journal delta 2538252 B holds the 2538252 B" (FIX-216-red.log).
+- Evidence: the IT alone, 5 tests, 0 failures — before, after (author) and once more by the verifier (FIX-216-verify.log). Maven
+  exits 1 in each on the bench module's coverage floor (one IT alone); the whole-reactor run is the exit-0 check, still owed here.
+- Review PASS (class A). Done in a second worktree beside FIX-214; the diff applied to the main tree byte for byte.
+- `ci` run 209 (BRAND-5): the 17.11 job red after 68 s on testkit `ComponentContractSelfTest:337` — row FIX-221, first seen on a
+  runner; the 18.6 job was still running. `mapping-ci` run 2 green; run 208's `stack` job green (agent/work/MAIN-1-ci.md).
+
 ## 2026-11-15 — BRAND-5 the namespace is `dev.rail8` — done, review PASS
 
 - The owner's answer to ISSUE-7 carried out (D-154): groupId, package root, the mapping's modules, every operator-visible name. No alias (D-148).
