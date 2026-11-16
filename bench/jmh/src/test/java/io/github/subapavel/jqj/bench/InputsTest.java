@@ -165,6 +165,18 @@ class InputsTest {
     assertThat(new String(Inputs.ints(0), US_ASCII)).isEqualTo("[]\n");
   }
 
+  /** #119's `deep`: n `[`, then n `]` and the LF; the 1 KB document holds 511 levels and one space of padding. */
+  @Test
+  void deepIsNestedArrays() {
+    assertThat(new String(Inputs.deep(3), US_ASCII)).isEqualTo("[[[]]]\n");
+    assertThat(new String(Inputs.deep(0), US_ASCII)).isEqualTo("\n");
+    assertThat(Inputs.deep(9_999)).hasSize(19_999);
+    assertThat(new String(Inputs.deep(9_999), US_ASCII)).isEqualTo("[".repeat(9_999) + "]".repeat(9_999) + "\n");
+    assertThat(Inputs.deep(Size.K1)).hasSize(1_024);
+    assertThat(new String(Inputs.deep(Size.K1), US_ASCII)).isEqualTo("[".repeat(511) + "]".repeat(511) + " \n");
+    assertThat(new String(Inputs.deep(Size.K100), US_ASCII)).isEqualTo("[".repeat(51_199) + "]".repeat(51_199) + " \n");
+  }
+
   private static String sha256(byte[] bytes) {
     try {
       return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
