@@ -1,6 +1,10 @@
 // The ratchet (ADR-0019, format in ratchet/README.md). Single-file program, no dependencies:
 //
 //   java scripts/ratchet.java check        ticket-gate step 5: fail on a drop; unbuilt reports print NOT_RUN
+//   java scripts/ratchet.java check --baseline <dir>
+//                                          check, and hold ratchet/ against <dir>, a copy of an earlier commit's
+//                                          ratchet/ (MAP-12a, D-164): no case or row removed, no figure lower, and
+//                                          the backend's reports are required; writes nothing
 //   java scripts/ratchet.java regen --all [<bench result>...]
 //                                          spec-gate step 4: require every report, refuse a drop, write ratchet/;
 //                                          with bench results also judge them and write bench.tsv
@@ -36,9 +40,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -71,20 +78,37 @@ public final class Ratchet {
 
   private static int failures = 0;
 
+  /**
+   * Per module whose JaCoCo csv measureCoverage summed: {lines covered, lines total, branches covered, branches total},
+   * in the order the script lists its modules. Printed only by check --baseline (MEASURED lines).
+   */
+  private static final Map<String, long[]> MEASURED = new LinkedHashMap<>();
+
   public static void main(String[] args) throws Exception {
     String verdict;
     if (args.length == 1 && args[0].equals("check")) {
-      run(false, List.of());
+      run(false, null, List.of());
+      verdict = "RATCHET CHECK OK";
+    } else if (args.length == 3 && args[0].equals("check") && args[1].equals("--baseline")) {
+      Path baseline = ROOT.resolve(args[2]);
+      String refused = baselineRefused(args[2], baseline);
+      if (refused != null) {
+        System.err.println(refused);
+        System.exit(2);
+        return;
+      }
+      run(false, baseline, List.of());
       verdict = "RATCHET CHECK OK";
     } else if (args.length >= 2 && args[0].equals("regen") && args[1].equals("--all")) {
-      run(true, paths(args, 2));
+      run(true, null, paths(args, 2));
       verdict = "RATCHET REGEN OK";
     } else if (args.length >= 2 && args[0].equals("bench")) {
       judgeBench(paths(args, 1));
       verdict = "RATCHET BENCH OK";
     } else {
       System.err.println(
-          "usage: java scripts/ratchet.java check | regen --all [<bench result>...] | bench <bench result>...");
+          "usage: java scripts/ratchet.java check [--baseline <dir>] | regen --all [<bench result>...]"
+              + " | bench <bench result>...");
       System.exit(2);
       return;
     }
@@ -103,8 +127,11 @@ public final class Ratchet {
     return paths;
   }
 
-  /** benchResults empty: bench.tsv is neither judged nor written (off the VM, or check). */
-  private static void run(boolean regen, List<Path> benchResults) throws Exception {
+  /**
+   * benchResults empty: bench.tsv is neither judged nor written (off the VM, or check). baseline: the directory of
+   * check --baseline, validated by baselineRefused; null for plain check and regen.
+   */
+  private static void run(boolean regen, Path baseline, List<Path> benchResults) throws Exception {
     // current = what this build measured; null = report absent
     Map<String, List<String>> oracle = readOracle();
     Map<String, int[]> coverage = measureCoverage();
@@ -116,7 +143,7 @@ public final class Ratchet {
       String name = "oracle/" + file + ".txt";
       List<String> listed = readLines(RATCHET.resolve(name));
       List<String> passing = oracle == null ? null : oracle.get(file);
-      checkOracle(name, listed, passing, regen);
+      checkOracle(name, listed, passing, regen, baseline != null);
       TreeSet<String> merged = new TreeSet<>(listed);
       if (passing != null) {
         merged.addAll(passing);
@@ -139,7 +166,13 @@ public final class Ratchet {
       int branches = Integer.parseInt(c[2]);
       int[] now = coverage.get(module);
       if (now == null) {
-        notRun("coverage " + module, regen);
+        if (baseline != null && !module.startsWith("ui/")) {
+          // the mode requires a row's report; a ui/ row keeps NOT_RUN (the backend job builds no UI report)
+          fail("baseline report coverage " + module + ": "
+              + (Files.isRegularFile(jacocoCsv(module)) ? "the report has no figures for its row" : "no JaCoCo report"));
+        } else {
+          notRun("coverage " + module, regen);
+        }
         coverageRows.put(module, moved == null ? row : module + "\t" + lines + "\t" + branches);
         continue;
       }
@@ -152,6 +185,9 @@ public final class Ratchet {
         coverageRows.put(e.getKey(), e.getKey() + "\t" + e.getValue()[0] + "\t" + e.getValue()[1]);
         System.out.println("NEW  coverage " + e.getKey() + " " + e.getValue()[0] + "/" + e.getValue()[1]);
       }
+    }
+    if (baseline != null) {
+      requireCodeReportsAndPrintMeasured(coverageRows.keySet());
     }
     coverageLines.addAll(coverageRows.values());
     newFiles.put("coverage.tsv", coverageLines);
@@ -194,6 +230,10 @@ public final class Ratchet {
 
     if (!benchResults.isEmpty()) {
       newFiles.put("bench.tsv", judgeBench(benchResults));
+    }
+
+    if (baseline != null) {
+      compareWithBaseline(baseline);
     }
 
     if (regen) {
@@ -275,10 +315,16 @@ public final class Ratchet {
     return space < 0 ? name : name.substring(space + 1);
   }
 
-  private static void checkOracle(String file, List<String> listed, List<String> passing, boolean regen) {
+  /** baseline: check --baseline, where a listed file with no surefire report fails in place of NOT_RUN. */
+  private static void checkOracle(
+      String file, List<String> listed, List<String> passing, boolean regen, boolean baseline) {
     if (passing == null) {
       if (!listed.isEmpty()) {
-        notRun(file + " (" + listed.size() + " cases)", regen);
+        if (baseline) {
+          fail("baseline report " + file + ": no surefire reports");
+        } else {
+          notRun(file + " (" + listed.size() + " cases)", regen);
+        }
       }
       return;
     }
@@ -328,6 +374,9 @@ public final class Ratchet {
         branchesMissed += Long.parseLong(c[bm]);
         branchesCovered += Long.parseLong(c[bc]);
       }
+      MEASURED.put(
+          module,
+          new long[] {linesCovered, linesCovered + linesMissed, branchesCovered, branchesCovered + branchesMissed});
       result.put(module, new int[] {percent(linesCovered, linesMissed), percent(branchesCovered, branchesMissed)});
     }
     Path summary = ROOT.resolve("ui/coverage/coverage-summary.json");
@@ -365,6 +414,30 @@ public final class Ratchet {
     modules.add("service");
     modules.removeIf(m -> !Files.isRegularFile(ROOT.resolve(m).resolve("target/site/jacoco/jacoco.csv")));
     return modules;
+  }
+
+  /** The engine modules in name order, then service: the order the script lists its modules. */
+  private static List<String> modules() throws IOException {
+    List<String> modules = new ArrayList<>();
+    try (Stream<Path> engine = Files.list(ROOT.resolve("engine"))) {
+      engine.sorted().forEach(p -> modules.add("engine/" + p.getFileName()));
+    }
+    modules.add("service");
+    return modules;
+  }
+
+  /**
+   * Production code, which requires a JaCoCo report in regen and in check --baseline (the mode also requires one for
+   * every row that is not a ui/ row): a .java under src/main/java other than module-info.java, engine/oracle
+   * excepted. A csv that holds only its header is that report: the module has no classes to measure yet (its first
+   * code is interfaces).
+   */
+  private static boolean hasCode(String module) throws IOException {
+    return !module.equals("engine/oracle") && hasProductionCode(ROOT.resolve(module));
+  }
+
+  private static Path jacocoCsv(String module) {
+    return ROOT.resolve(module).resolve("target/site/jacoco/jacoco.csv");
   }
 
   private static int percent(long covered, long missed) {
@@ -412,16 +485,9 @@ public final class Ratchet {
     } else if (!oracle.get("failing").isEmpty()) {
       System.out.println("note: failing oracle cases are not written: " + oracle.get("failing"));
     }
-    List<String> modules = new ArrayList<>();
-    try (Stream<Path> engine = Files.list(ROOT.resolve("engine"))) {
-      engine.sorted().forEach(p -> modules.add("engine/" + p.getFileName()));
-    }
-    modules.add("service");
-    for (String module : modules) {
-      if (module.equals("engine/oracle") || !hasProductionCode(ROOT.resolve(module))) {
-        continue;
-      }
-      if (!coverage.containsKey(module)) {
+    for (String module : modules()) {
+      // the csv file is the report, even one that holds only its header (regen writes no row for it, MAP-12a)
+      if (hasCode(module) && !Files.isRegularFile(jacocoCsv(module))) {
         fail("regen: no JaCoCo report for " + module + " (it has production code)");
       }
     }
@@ -481,6 +547,127 @@ public final class Ratchet {
         if (!before.contains(line)) {
           System.out.println("+ " + line);
         }
+      }
+    }
+  }
+
+  // ---- check --baseline <dir> (MAP-12a, D-164 (2)): the commit's ratchet/ held against an earlier commit's ----
+
+  /**
+   * The command line's last check, before any line goes to stdout: why the baseline cannot be compared, or null.
+   * Missing files are refused here because readLines reads a missing file as empty, which would pass.
+   */
+  private static String baselineRefused(String given, Path baseline) throws IOException {
+    if (!Files.isDirectory(baseline)) {
+      return "baseline " + given + ": not a directory";
+    }
+    for (String name : List.of("coverage.tsv", "mutation.tsv", "bench.tsv")) {
+      if (!Files.isRegularFile(baseline.resolve(name))) {
+        return "baseline " + given + ": no " + name;
+      }
+    }
+    if (!Files.isDirectory(baseline.resolve("oracle"))) {
+      return "baseline " + given + ": no oracle/";
+    }
+    // a two-column row holds a percentage, not a survivor count: the two cannot be compared
+    for (Path mutation : List.of(baseline.resolve("mutation.tsv"), RATCHET.resolve("mutation.tsv"))) {
+      for (String row : readLines(mutation)) {
+        if (row.split("\t").length < 3) {
+          return "baseline mode needs three-column mutation rows: " + row;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * After the coverage block: a module with production code and no row needs its csv file (a row's report is
+   * required in the row loop), then the sums of every csv measured, in the order the script lists its modules.
+   */
+  private static void requireCodeReportsAndPrintMeasured(Set<String> rows) throws IOException {
+    for (String module : modules()) {
+      if (!rows.contains(module) && hasCode(module) && !Files.isRegularFile(jacocoCsv(module))) {
+        fail("baseline report coverage " + module + ": no JaCoCo report");
+      }
+    }
+    for (Map.Entry<String, long[]> e : MEASURED.entrySet()) {
+      long[] s = e.getValue();
+      System.out.println(
+          "MEASURED coverage " + e.getKey() + " lines " + s[0] + "/" + s[1] + " branches " + s[2] + "/" + s[3]);
+    }
+  }
+
+  /**
+   * Every case and row of the baseline is in the commit's ratchet/, no coverage figure is lower and no survivor
+   * count higher; a case or row the commit adds and an equal value are no problem, bench scores are not compared
+   * (ADR-0019). Prints the oracle files by name, then the coverage, mutation and bench rows, each in the baseline's
+   * order. Coverage keys of both files are read through MOVED_COVERAGE_MODULES; a subject names the new key.
+   */
+  private static void compareWithBaseline(Path baseline) throws IOException {
+    List<Path> oracleFiles; // an entry that is no file reads as no lines
+    try (Stream<Path> s = Files.list(baseline.resolve("oracle"))) {
+      oracleFiles = s.sorted().toList();
+    }
+    for (Path file : oracleFiles) {
+      String name = "oracle/" + file.getFileName();
+      Set<String> kept = new HashSet<>(readLines(RATCHET.resolve(name)));
+      for (String id : readLines(file)) {
+        if (!kept.contains(id)) {
+          fail("baseline " + name + " " + id + " removed");
+        }
+      }
+    }
+
+    Map<String, int[]> coverage = new HashMap<>();
+    for (String row : readLines(RATCHET.resolve("coverage.tsv"))) {
+      String[] c = row.split("\t");
+      coverage.put(
+          MOVED_COVERAGE_MODULES.getOrDefault(c[0], c[0]),
+          new int[] {Integer.parseInt(c[1]), Integer.parseInt(c[2])});
+    }
+    for (String row : readLines(baseline.resolve("coverage.tsv"))) {
+      String[] c = row.split("\t");
+      String module = MOVED_COVERAGE_MODULES.getOrDefault(c[0], c[0]);
+      int[] now = coverage.get(module);
+      if (now == null) {
+        fail("baseline coverage " + module + " removed");
+        continue;
+      }
+      int lines = Integer.parseInt(c[1]);
+      int branches = Integer.parseInt(c[2]);
+      if (now[0] < lines) {
+        fail("baseline coverage " + module + " lines " + lines + " -> " + now[0]);
+      }
+      if (now[1] < branches) {
+        fail("baseline coverage " + module + " branches " + branches + " -> " + now[1]);
+      }
+    }
+
+    Map<String, Integer> survivors = new HashMap<>();
+    for (String row : readLines(RATCHET.resolve("mutation.tsv"))) {
+      String[] c = row.split("\t");
+      survivors.put(c[0], Integer.parseInt(c[1]));
+    }
+    for (String row : readLines(baseline.resolve("mutation.tsv"))) {
+      String[] c = row.split("\t");
+      Integer now = survivors.get(c[0]);
+      int listed = Integer.parseInt(c[1]);
+      if (now == null) {
+        fail("baseline mutation " + c[0] + " removed");
+      } else if (now > listed) {
+        fail("baseline mutation " + c[0] + " survivors " + listed + " -> " + now);
+      }
+    }
+
+    Set<String> benchRows = new HashSet<>();
+    for (String row : readLines(RATCHET.resolve("bench.tsv"))) {
+      String[] c = row.split("\t");
+      benchRows.add(c[0] + "\t" + c[1]);
+    }
+    for (String row : readLines(baseline.resolve("bench.tsv"))) {
+      String[] c = row.split("\t");
+      if (!benchRows.contains(c[0] + "\t" + c[1])) {
+        fail("baseline bench " + c[0] + " " + c[1] + " removed");
       }
     }
   }

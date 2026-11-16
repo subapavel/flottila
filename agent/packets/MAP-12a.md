@@ -32,8 +32,8 @@ Order: (0) the command line and `<dir>` are validated, and both `mutation.tsv` f
 before any line goes to stdout - an exit 2 prints to stderr only. (1) Everything plain `check` does, in its order
 and with its lines, except the NOT_RUN lines that point 2 replaces; after the coverage block (the last plain
 coverage line) come the report failures of modules that have no row, then the MEASURED lines of point 3, in the
-order the script lists its modules. (2) The baseline comparison of point 1, after the last plain line. (3) The
-verdict.
+order the script lists its modules. (2) The baseline comparison of point 1, after the last plain line; the order
+of its own lines is not fixed by this part. (3) The verdict. With exit 0 or 1 nothing goes to stderr.
 
 1. The commit's rows against the baseline's. Each difference is one problem, printed as `FAIL baseline <subject>`:
    - every line of every `<dir>/oracle/<file>` is in the commit's `ratchet/oracle/<file>`: else
@@ -59,8 +59,8 @@ verdict.
      is its report (a module whose first code is interfaces);
    - one of the two oracle lists plain `check` reads (`corpus.txt`, `differential.txt`, :115-125) with no surefire
      report under `engine/oracle/target/surefire-reports`: `FAIL baseline report oracle/<file>: no surefire
-     reports`, in place of `NOT_RUN oracle/<file> (<n> cases)`. (Point 1 compares every file under `<dir>/oracle/`;
-     this point covers the two lists that have a report.)
+     reports`, in place of `NOT_RUN oracle/<file> (<n> cases)` wherever plain `check` prints that line. (Point 1
+     compares every file under `<dir>/oracle/`; this point covers the two lists that have a report.)
    - `ui/` coverage rows and mutation rows keep their `NOT_RUN` lines and are no problem (the backend job builds no
      UI report; a push runs no mutation testing). That gap is named in the ADR, not closed here.
 3. For every module whose csv it measured it prints

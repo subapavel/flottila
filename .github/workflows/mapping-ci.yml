@@ -74,6 +74,7 @@ jobs:
           scripts/test/ratchet-mutation-test.sh
           scripts/test/ratchet-moved-test.sh
           scripts/test/ratchet-bench-test.sh
+          scripts/test/ratchet-baseline-test.sh
           scripts/test/gate-spec-bench-test.sh
       # From the dropped trailers job (BRAND-3): the script tests that need no JDK, every one the old CI ran. The
       # old-process scripts (check-trailers.sh, clean-worktrees.sh, push-retry.sh) are adapted or archived by MAP-7.

@@ -1,4 +1,19 @@
 
+## 2026-11-16 — MAP-12a the ratchet check is handed a baseline (`check --baseline <dir>`) — done, review PASS [C]
+
+- `java scripts/ratchet.java check --baseline <dir>` does what `check` does, then holds the commit's `ratchet/` rows against the
+  copy in `<dir>`: a removed row or listed case, a lower percentage, a higher survivor count, a missing required report fail it.
+- Red first: `mapping/scripts/test/ratchet-baseline-test.sh` - 43 of its 46 cases red on the old script for the reason each
+  names, 3 green by design (`agent/work/MAP-12a-red.log`); all green after, the three sibling tests unchanged (`-green.log`).
+- `regen --all` changes in one point (a JaCoCo csv file without figures is a report); plain `check` and `bench` do not.
+- VERIFIED_PASS on the real tree after the mapping's build (`agent/work/MAP-12a-evidence.txt`): plain `check` byte-identical old
+  against new; the mode exits 0 against HEAD's rows with ten MEASURED lines; a raised coverage row and a lowered survivor count
+  each exit 1 on that row; the 15 script tests of the workflow exit 0. The implementer's 37 hand mutants: all killed.
+- The test joins the script step of `mapping-ci.yml`. Documents: the mapping's ADR-0019 (the mode; what still passes it while a
+  figure falls) and `mapping/ratchet/README.md`. `draft — review at hand-over`: the command line and the exit codes.
+- Review [C]: FAIL (6: two behaviours no case pinned - each got a case shown red against a hand mutant, 47 cases now - and four
+  sentences of the documents), then PASS. Not here: which commit is the baseline and where the mode runs (MAP-12b, ready).
+
 ## 2026-11-16 — FIX-264 replay leaves the platform's code (D-156) — done, review PASS [B]
 
 - Gone: `Replay`, `ReplayRefusedException`, `RowNotRemovedException`, `FlowBuilder.replay`, the producers a deployment opened

@@ -1,0 +1,29 @@
+STEP 1 VERIFIED_PASS mvnw -f mapping/pom.xml -Pbench clean verify: exit 0, BUILD SUCCESS; agent/work/MAP-12a-build.log
+STEP 2 VERIFIED_PASS check HEAD script exit 0; new script exit 0; .out identical; .err identical; last line RATCHET CHECK OK
+  log agent/work/MAP-12a-check-plain.txt
+STEP 3 git status --short mapping/ratchet printed " M mapping/ratchet/README.md" (6 lines added, not by this run)
+  so base taken by git archive HEAD into scratch base0
+STEP 3 VERIFIED_PASS check --baseline base0/mapping/ratchet: exit 0; last line RATCHET CHECK OK; MEASURED coverage 10;
+  FAIL baseline 0; stderr 789 bytes (only the JAVA_TOOL_OPTIONS "Picked up" line, first run too)
+  diff vs plain stdout: only 10 added MEASURED lines; log agent/work/MAP-12a-check-baseline.txt
+  MEASURED coverage engine/api lines 274/276 branches 83/83
+  MEASURED coverage engine/ir lines 181/181 branches 79/79
+  MEASURED coverage engine/mapping lines 1157/1162 branches 456/461
+  MEASURED coverage engine/runtime lines 1142/1142 branches 452/452
+  MEASURED coverage engine/serializer lines 117/117 branches 58/58
+  MEASURED coverage engine/structure lines 110/118 branches 33/33
+  MEASURED coverage engine/structure-import lines 1722/1727 branches 891/891
+  MEASURED coverage engine/xdm lines 743/743 branches 432/432
+  MEASURED coverage engine/xslt-export lines 192/194 branches 88/88
+  MEASURED coverage service lines 410/416 branches 103/107
+STEP 4 VERIFIED_PASS coverage raised: engine/api lines 99 -> 100 (row before "engine/api 99 100", after "engine/api 100 100")
+  exit 1; FAIL baseline coverage engine/api lines 100 -> 99; last RATCHET FAIL: 1 problem(s); stderr 789 bytes
+  log agent/work/MAP-12a-check-raised.txt
+STEP 4 VERIFIED_PASS mutation: engine/mapping survivors 11 -> 10 (row "engine/mapping 11 525" -> "engine/mapping 10 525")
+  exit 1; FAIL baseline mutation engine/mapping survivors 10 -> 11; last RATCHET FAIL: 1 problem(s)
+  log agent/work/MAP-12a-check-mut.txt (first mutation attempt had a failed sed edit, exit 0; rerun with edit applied)
+STEP 5 VERIFIED_PASS all 15 scripts exit 0; log agent/work/MAP-12a-scripts.log
+  ratchet-baseline-test.sh last line: ratchet-baseline-test: 46 case(s), 0 failed
+STEP 6 git status --short mapping/ratchet: " M mapping/ratchet/README.md"
+  git status mapping: M docs/adr/0019-ratchet-and-floors.md, M ratchet/README.md, M scripts/ratchet.java,
+  A scripts/test/ratchet-baseline-test.sh

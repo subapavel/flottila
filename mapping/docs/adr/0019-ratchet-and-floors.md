@@ -1,6 +1,6 @@
 # The ratchet is line-based text checked per ticket and regenerated per spec; fixed floors sit under it
 
-Status: accepted (2026-10-30, grilling #14); floor table extended by ADR-0020 (`udf-api`, `udf`) and ADR-0021 (`bytecode`); `bench.tsv` rules set by ADR-0021; mutation measure amended by #87 (2026-11-05): surviving mutants; paths amended by F-34 (2026-11-10, owner): the UI store moved to `ui/src/studio/store` (#161), so its coverage row and 90 % floor below read `ui/src/studio/store`; the decisions are unchanged
+Status: accepted (2026-10-30, grilling #14); floor table extended by ADR-0020 (`udf-api`, `udf`) and ADR-0021 (`bytecode`); `bench.tsv` rules set by ADR-0021; mutation measure amended by #87 (2026-11-05): surviving mutants; paths amended by F-34 (2026-11-10, owner): the UI store moved to `ui/src/studio/store` (#161), so its coverage row and 90 % floor below read `ui/src/studio/store`; the decisions are unchanged; a baseline mode of `check` added by MAP-12a (2026-11-16, D-164 (2), draft)
 
 FOUNDING §10 says the ratchet holds committed pass lists, coverage and benchmark baselines, and a
 merge may only keep or raise them. ADR-0017 makes the ratchet check ticket-gate step 5 and the
@@ -32,7 +32,8 @@ without conflicts on unrelated lines.
     twice before the gate fails;
   - `regen` moves a baseline only on a gain beyond the tolerance, and lowering one takes a
     finding.
-  `check` (ticket gate) ignores `bench.tsv`. Benchmarks run only in spec-gate step 5.
+  Plain `check` (ticket gate) ignores `bench.tsv`; `check --baseline` holds only that no row
+  of it is gone. Benchmarks run only in spec-gate step 5.
   `bench/RESULTS.md` stays the log of every measurement.
 
 ## Commands
@@ -54,10 +55,47 @@ source launcher. It reads:
   A module or report that the gate did not build prints `NOT_RUN` and does not fail. A rise
   prints and does not fail. The check compares with `ratchet/` on the integration branch, which
   does not move during a spec, so it is `main`'s ratchet.
+- **Check against a baseline** (MAP-12a, the repository's D-164 (2); `draft — review at
+  hand-over`): `java scripts/ratchet.java check --baseline <dir>`, where `<dir>` is a copy of
+  an earlier commit's `ratchet/`. Plain `check` reads the rows of the commit it judges, so a
+  commit that lowers a row together with its code, removes a row or drops a listed case
+  passes it. The mode does what `check` does and then holds the commit's rows against the
+  baseline's. It exits 1 also when:
+  - a case of any `oracle/*.txt` of the baseline is not in the commit's list;
+  - a coverage row of the baseline is gone or a percentage of it is lower; the keys of both
+    `coverage.tsv` files are read through the map of moved directories;
+  - a mutation row of the baseline is gone or its count of surviving mutants is higher;
+  - a `bench.tsv` row of the baseline (scenario and machine) is gone. Presence only: the
+    scores stay the spec gate's;
+  - a report the commit must have is missing: the JaCoCo csv of a module that has a coverage
+    row or production code, the figures for a row, the surefire reports of an oracle list
+    that lists a case (`corpus.txt`, `differential.txt`). A `ui/` row and a mutation row with
+    no report still print `NOT_RUN` and do not fail; an empty oracle list asks for no report.
+
+  It prints `MEASURED coverage <module> lines <covered>/<total> branches <covered>/<total>`
+  for every module whose csv has figures, after `check`'s coverage lines. The baseline's
+  lines come after `check`'s last line, before the verdict. It exits 2, with its message on
+  stderr and nothing on stdout, on a wrong command line, a `<dir>` that lacks one of its four
+  names or a two-column mutation row in either tree. It writes nothing. There is no
+  tolerance and no way to excuse a decrease: `regen` refuses every drop and nobody edits a
+  row of `ratchet/` by hand, so a lowered or removed row can only come from breaking a rule.
+  Which commit is the baseline and where the mode runs is MAP-12b's.
+
+  What still passes it while a figure falls:
+  - a fall inside one whole percent (the rounding above);
+  - UI coverage between its 90 % floor and its row: the job that runs the mode builds no UI
+    report;
+  - a count of surviving mutants that rises on a push: a push runs no mutation testing, so
+    the row prints `NOT_RUN` (the nightly comparison is MAP-12b's);
+  - a benchmark score: only the row's presence is held;
+  - a PIT exclusion that removes the classes holding survivors: the count falls with them;
+  - a gain made and lost between two baselines: the baseline is an earlier commit that
+    passed, not the previous commit (D-164 (2)).
 - **Regeneration**, spec-gate step 4: `java scripts/ratchet.java regen --all`. It requires every
-  report, refuses any drop exactly as `check` does, writes the files and prints the diff. The
-  verifier commits it to the integration branch, and it reaches `main` with the spec's PR.
-  Nobody else writes `ratchet/`.
+  report (a module's JaCoCo csv file is its report also when it holds no figures: regen then
+  writes no row for it, MAP-12a), refuses any drop exactly as `check` does, writes the files and
+  prints the diff. The verifier commits it to the integration branch, and it reaches `main` with
+  the spec's PR. Nobody else writes a row of `ratchet/`.
 
 A gain made by one ticket can be lost by a later ticket of the same spec. Only a drop below
 `main` fails. "A merge may only keep or raise" applies to merges into `main`.

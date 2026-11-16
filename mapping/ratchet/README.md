@@ -24,7 +24,7 @@ significant digits. Direction by unit:
 `us/op`, `ms/op`, `B/op`, `ms` lower is better, `MB/s` higher is better, any other unit fails.
 Tolerance 20 % (time, throughput) and 10 % (B/op); a worse score or a missed target is run twice more
 and judged on the median of the three runs (ADR-0021, Notes of 2026-11-11). `regen` moves a baseline only on a gain beyond the tolerance; lowering one takes a finding.
-A baseline comes only from the spec gate's step 4 run; every other run is informative only and never moves or judges a baseline (F-36, ADR-0021). A row with no result fails; a result with no row is a new row. `check` ignores `bench.tsv`.
+A baseline comes only from the spec gate's step 4 run; every other run is informative only and never moves or judges a baseline (F-36, ADR-0021). A row with no result fails; a result with no row is a new row. Plain `check` ignores `bench.tsv`; `check --baseline` fails on a removed row and compares no score.
 
 Scenario names come from one rule in `scripts/ratchet.java` (`SCENARIOS`): the JMH benchmark
 `dev.rail8.mapping.bench.<Mapping>Bench.<method>` with `<mapping>` = `<Mapping>` with a lower-case
@@ -53,6 +53,13 @@ still read, compared as a percent, and rewritten by `regen --all`. Module names 
 - `java scripts/ratchet.java check` (ticket-gate step 5): exit 1 if a listed case fails, is
   skipped or is missing, or a percentage is below its line. A module the gate did not build
   prints `NOT_RUN`. A rise only prints.
+- `java scripts/ratchet.java check --baseline <dir>` (MAP-12a): `check`, then the commit's rows held
+  against a copy of an earlier commit's `ratchet/` in `<dir>`. Exit 1 also if a row or a listed case
+  of the baseline is gone, a percentage is lower, a survivor count is higher, or a report the commit
+  must have is missing (a module with a row, except a `ui/` row, or with production code; an oracle
+  list that lists a case). Prints `MEASURED coverage <module> lines c/t branches c/t`; exit 2 on a
+  wrong command line, an incomplete `<dir>` or a two-column mutation row; writes nothing. ADR-0019
+  "Commands".
 - `java scripts/ratchet.java regen --all [<bench result>...]` (spec-gate step 4): requires every
   report, refuses any drop, writes the files, prints the diff. With bench results it also judges
   them like `bench` and writes `bench.tsv`; without them (off the VM) `bench.tsv` is untouched.

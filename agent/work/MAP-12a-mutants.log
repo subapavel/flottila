@@ -1,0 +1,44 @@
+MAP-12a - the implementer's hand mutants of mapping/scripts/ratchet.java (on scratch copies; the real file untouched)
+Each line: mutant, verdict, how many of the 46 cases of ratchet-baseline-test.sh failed, the first killing case.
+38 lines in the two logs: 37 mutants run, all killed. M11's first line is an attempt that was not applied (its pattern
+matched twice) and is run again below; the implementer's numbering has no M32 and no M37.
+
+M01 oracle NOT_RUN replacement dropped: KILLED, 2 failed; first: f1-oracle-lists-without-surefire-reports-fail-without-not-
+    run
+M02 ui/ exemption dropped: KILLED, 7 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M03 no-figures/no-report swapped: KILLED, 4 failed; first: f2-row-without-csv-fails-without-not-run
+M04 row-loop guard always on: KILLED, 5 failed; first: f2-row-without-csv-fails-without-not-run
+M05 post-coverage block in plain check: KILLED, 6 failed; first: characterization-plain-check-on-the-a-tree-is-unchanged
+M06 no-row guard dropped: KILLED, 2 failed; first: f2-row-and-code-without-csv-fail-once
+M07 hasCode dropped (mode): KILLED, 32 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M08 csv-file test dropped (mode): KILLED, 1 failed; first: f5-code-without-row-with-header-only-csv-passes-silently
+M09 lines < to <=: KILLED, 31 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M10 branches < to <=: KILLED, 31 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M11 survivors > to >=: SKIP pattern count 2
+M12 oracle kept test dropped: KILLED, 32 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M13 bench keyed by scenario only (commit): KILLED, 32 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M14 MOVED dropped on the baseline side: KILLED, 5 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M15 MOVED dropped on the commit side: KILLED, 3 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M16 commit mutation.tsv shape not read: KILLED, 1 failed; first: h9-two-column-mutation-row-in-the-commit
+M17 baseline mutation.tsv shape not read: KILLED, 1 failed; first: h8-two-column-mutation-row-in-the-baseline
+M18 shape < 3 to < 2: KILLED, 2 failed; first: h8-two-column-mutation-row-in-the-baseline
+M19 oracle dir check dropped: KILLED, 1 failed; first: h7-dir-without-oracle
+M20 not-a-directory check dropped: KILLED, 2 failed; first: h3-missing-dir-is-not-a-directory
+M21 bench.tsv not required: KILLED, 1 failed; first: h6-dir-without-bench-tsv
+M22 args == 3 to >= 3: KILLED, 1 failed; first: h2-argument-after-dir-is-the-usage-line
+M23 regen: old condition back: KILLED, 1 failed; first: i1-regen-code-module-with-header-only-csv-is-no-failure
+M24 regen: guard dropped: KILLED, 1 failed; first: i2-regen-code-module-without-csv-still-fails
+M25 hasCode: engine/oracle not excepted: KILLED, 1 failed; first: f4-oracle-module-code-is-not-required
+M26 MEASURED not recorded: KILLED, 3 failed; first: b1-equal-rows-pass-with-measured-and-verdict-only
+M27 coverage removed not reported: KILLED, 2 failed; first: c1-coverage-row-removed-while-measured-fails
+M28 mutation removed not reported: KILLED, 1 failed; first: c2-mutation-row-removed-while-reported-fails
+M29 comparison not run: KILLED, 15 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M11 survivors > to >=: KILLED, 31 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M13b bench keyed by scenario only (both): KILLED, 1 failed; first: c3-bench-row-only-on-another-machine-is-removed
+M30 coverage.tsv not required: KILLED, 1 failed; first: h4-dir-without-coverage-tsv
+M31 mutation.tsv not required: KILLED, 1 failed; first: h5-dir-without-mutation-tsv
+M33 survivors check dropped: KILLED, 1 failed; first: d1-mutation-survivors-raised-0-to-1-fail
+M34 lines check dropped: KILLED, 3 failed; first: a1-coverage-lines-lowered-with-the-report-fail
+M35 branches check dropped: KILLED, 1 failed; first: a2-coverage-branches-lowered-with-the-report-fail
+M36 oracle FAIL in plain check: KILLED, 3 failed; first: f1-oracle-lists-without-surefire-reports-fail-without-not-run
+M38 bench removal not reported: KILLED, 4 failed; first: c3-bench-row-removed-fails
