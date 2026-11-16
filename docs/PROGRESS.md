@@ -1,4 +1,21 @@
 
+## 2026-11-16 — FIX-267 cancel and the record of a retry, designed — done, review PASS [C]; Deviation: F-57
+
+- Context compacted before this entry; state re-read from HANDOFF, `git status` and `git log -3`. A design row: no code,
+  no test - the red tests are named in the rows it wrote.
+- D-162 (draft - review at hand-over): `POST /admin/dlq/{id}/cancel`, actor and reason required; one audited delete; both
+  acts recorded in `audit` (`message.retry`, `message.cancel`), no new table or status; a cancelled id answers 410 on both
+  routes, any other id that is not parked 404 with its last event; `events` in the timeline; core type `FailedMessages`.
+- F-57 (major; read in the code by designer, advisor and architect, not staged): a `/retry` before a park has settled
+  inserts a second work row - delivered twice, or delivered and parked again. Both acts are to answer 409 while a work row
+  of the id exists; an act's statements get a bound (`RAIL8_ADMIN_ACT_TIMEOUT`), its commit never.
+- ARCHITECTURE 3.31: section 6 *The operator's acts on a failed message*; sections 4, 7, 8, 9. ISSUE-12: six questions.
+- Rows: FIX-275 [C] (the guard, before FIX-268), 276 [C] (the type, retry's record, the bound), 277 [C] (cancel, events,
+  `Dlq.remove` out), 278 [B] (routes), 279 [A] (HANDOVER's lists); CONSIDER-28 (the parked row reruns), CONSIDER-29 (audit's
+  bound); brackets on D-126, D-127, D-135, D-136, D-156. Also: FIX-275's packet, FIX-264's scout file; ci 241, 242 green.
+- Path: designer, advisor (ten changes), designer again, advisor again (eight), the architect; where D-162 departs from
+  the drafts is in `agent/work/FIX-267-evidence.txt`. Review [C]: three rounds (FAIL 10, FAIL 1, PASS). Name guard clean; ledger check: the 9 old.
+
 ## 2026-11-16 — FIX-263 the two replay routes leave the admin API — done, review PASS [B]
 
 - D-156, F-55: `POST /admin/messages/{id}/replay` and `POST /admin/dlq/{id}/replay` are gone - both answer as an unregistered

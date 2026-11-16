@@ -1,0 +1,116 @@
+FIX-267 [C] - the operator's acts on a failed message: cancel, and the record of a retry - evidence (2026-11-16)
+
+A design row: no code, no test, no Maven. Nothing under any src/ changed (git diff --stat names documents only).
+
+PRODUCED
+- docs/findings/F-57.md (new) - an operator's retry before a park has settled runs the message twice; major.
+- docs/ARCHITECTURE.md - changelog 3.31: section 6 gains "The operator's acts on a failed message" (a lead paragraph and
+  seven list items); section 4's lease paragraph states the defect and the guard to be; section 4's durability paragraph
+  names the one exception to statement_timeout=0; section 7 (the restart), section 8 (events in the timeline), section 9
+  (the two audit actions); the three sentences that said "cancel is FIX-267, pending" point at D-162 and its rows.
+- docs/DECISIONS.md - D-162 (draft - review at hand-over); a bracket "[D-162, 2026-11-16: ...]" on each row it changes:
+  D-126, D-127, D-135, D-136, and inside D-156's amendment sentence.
+- issues/ISSUE-12.md (new) - six questions for the owner, each with the default the design uses.
+- issues/ISSUE-10.md - item 3 points at D-162 and ISSUE-12.
+- agent/BACKLOG.md - new rows FIX-275 [C], FIX-276 [C], FIX-277 [C], FIX-278 [B], FIX-279 [A], CONSIDER-28, CONSIDER-29;
+  amended FIX-264 (the scout's file), FIX-268 (depends on FIX-275; a note), FIX-269 (Dlq.remove is FIX-277's), FIX-274,
+  CONSIDER-17 (FIX-278 waits for it), OPS-2 and OPS-8 (what D-162 leaves to their designs).
+- agent/NOTES.md - the DLQ section names the design and its rows.
+- agent/packets/FIX-275.md - the next row's packet (class C; three ITs that stage the defect and both outcomes).
+- agent/work/FIX-264-scout.md - the scout's reading for the row after it, saved as delivered, with the architect's.
+
+THE DESIGN'S PATH (the four hand-backs are committed: agent/work/FIX-267-designer.md, -designer-2.md, -advisor.md,
+-advisor-2.md; packet agent/packets/FIX-267.md)
+designer's draft -> advisor: SOUND WITH CHANGES (ten) -> designer's second pass (the guard on /retry, the probe's bounds,
+one core type) -> advisor's second pass: SOUND WITH CHANGES (eight) -> the architect's decision, D-162.
+
+WHERE D-162 DEPARTS FROM THE DRAFTS (the architect's, each with its reason in D-162's second cell)
+- An act on an id that left the failed list by a retry answers 404 with the last event as `last`; the designer drafted
+  409 "lost a race to a retry". 410 for a cancelled id stays, on both routes.
+- The `events` entry is the brief's record cut down to time, kind ("action") and fields (action, auditId, actor, reason,
+  attempt); the advisor asked for "a subset of the brief's record" and left the members open.
+- The unsettled 409 carries a member `unsettled: {seq, node, state, leasedUntil}`, so a client tells it from /retry's
+  two older 409s; the draft had the four values at the top level.
+- The audit index goes with its first reader (FIX-276, NotParked's last event), not with cancel.
+- The rule for keeping the work row's seq on the DLQ row has a number, computed: 2 700 000 rows = 15 minutes in `work`
+  (FlowBuilder.DEFAULT_RETRIES, 3 retries PT5M apart) x about 3 000 messages a second (bench/RESULTS.md:128, "the ceiling
+  on this host is now above 3 000 msg/s").
+- The outcome the guard does not close is a row to weigh (CONSIDER-28), not an acceptance under D-160.
+- CONSIDER-29 (the audit table has no bound) is new; the advisor named the matter, no row existed.
+- A cancel body above 8 KiB answers 413; the designer's draft said 400 for "a bad body".
+- The four build rows are FIX-275 to FIX-278 (the advisor's 267a0, 267a, 267b, 267c), in that order; FIX-275 goes before
+  the gate's check 7 is measured again (FIX-268). FIX-276 to FIX-278 come after FIX-269 by the hand-off's order, not by
+  a dependency: FIX-276 depends on FIX-265 and FIX-275, FIX-277 on FIX-276 and FIX-264, FIX-278 on FIX-277 and
+  CONSIDER-17.
+
+REVIEW ROUND 1 (reviewer [C]): FAIL, ten reasons. What changed, by reason
+ 1. 413 beside 400: D-162 (1) and section 6's Cancel item say "400 without the actor or the reason, 413 for a body above
+    8 KiB"; D-162's Why gives the reason for 413, for CONSIDER-29 and for where the audit index goes.
+ 2. The reset before the commit: "the same defence as the session pin (D-127)" - PG 17 does not cut a commit's wait at
+    statement_timeout, another server or a pooler may (section 4's own sentence); FIX-276's trigger test pins it.
+ 3. The row rule: 1 000 000 "an estimate" is gone; 2 700 000 with its derivation in D-162 (6) and its Why, in section
+    6's "The act's bound" and in FIX-276's acceptance.
+ 4. Values stated: a retry event's `attempt` is the attempt it starts, k + 1 (D-140); the 409's `node` is the node whose
+    journal holds the row's body; /retry's optional reason has cancel's bounds and a body that is not such JSON is 400;
+    a timeline with only events is "200 with `steps: []` and the flow its events name".
+ 5. Red tests added: FIX-278 - a 413 case, a 404 without `last` (an unknown id, a sync flow's message), the reason's
+    bound after stripping, the 503 naming the key, a bad /retry body's 400; FIX-276 - NodeConfigTest cases for the key.
+ 6. FIX-277 keeps what `remove`'s tests pin beyond the method: the DLQ cursor cases (PgDlqIT :183-193, :163-165,
+    InMemoryDlqTest :91-92) stay with the row leaving by a cancel; FlowWorkerTest:1001 and FlowWorkerRetryTest:670 go
+    through InMemoryFailedMessages; both the test-author's.
+ 7. Design in no row: OPS-8's row carries the count of a cancelled message, OPS-2's the `events` field; section 6 says
+    "no count of failures per flow exists today (OPS-8, pending)".
+ 8. Brackets on D-126, D-127, D-135, D-136 and in D-156's sentence.
+ 9. Classes: FIX-275, FIX-276, FIX-277 are [C] (the lease path and concurrency), each noting that the design is
+    D-162's; FIX-278 stays [B] (the admin API).
+10. "Staged by FIX-275" is gone: ARCHITECTURE (the lease paragraph, the changelog's finding cell) and F-57 say "read in
+    the code, not staged: FIX-275's red cases are to stage the second work row and both outcomes"; FIX-275's row and
+    packet gain the two outcome ITs.
+Remarks taken: the `events` entry's kind is "action"; the `unsettled` member; "an act has up to five statements, the read
+of the last event among them"; FIX-278 depends on "FIX-277, CONSIDER-17"; FIX-279 [A] (HANDOVER.md's lists); ISSUE-12's
+wording (the gap lasts up to one work lease when the second write fails; "never deleted today"); section 9 "the parked
+step and its name"; the order sentence above.
+
+REVIEW ROUND 2: FAIL, one new reason, in the FIX-275 packet; the ten of round 1 confirmed as answered. What changed
+ 1. The packet passed W1's lease on the fake clock; a Postgres lease runs on the database clock (PgWorkQueue.java:150,
+    `locked_until < now()`; PgWorkQueueContractIT:49-50, read by the architect), so the two outcome ITs could have come
+    out green on today's code. The packet has a paragraph "The lease's clock": the lease is moved past on the database
+    clock, as expireLeases does, and each outcome case first asserts that W1 was claimed again. The three "fake clock"
+    sentences are gone. Acceptance 6 (a lost body beside an unsettled row answers the unsettled refusal) has a case:
+    PgWorkQueueRestartIT.aRowWhoseKeptRefIsGoneBesideAnUnsettledWorkRowIsRefusedAsUnsettled, named in acceptance 3 and
+    in FIX-275's row.
+Remarks taken: FIX-275's row words its third case as the packet does (a second retry only if the first was refused) and
+names the database clock; D-162 (1) says "400 without the actor, or with no reason or one outside those bounds", section
+6 "400 without the actor or without such a reason"; D-162's Why says the unsettled 409 is told apart by text only
+between FIX-275 and FIX-278; agent/NOTES.md keeps the lesson for packets (a Postgres lease passes on the database
+clock). Not done: the reviewer's two lines for its own memory - that file is at its 120-line limit and is not a
+session's to edit (a patch for the owner would have to drop lines); the lesson for packets is in NOTES.
+
+REVIEW ROUND 3: PASS. The reviewer traced both outcome cases against FlowWorker.java :637, :687-697 and PgDlq.java:61-62:
+red on today's code for the reason the packet gives. One observation taken after the PASS: the packet's step 1 asks the
+test-author to say whether the three ITs ran an unkeyed or a keyed flow. Owed when FIX-275 lands: its observed red lines
+go into F-57's Evidence (FIX-275's row says so).
+
+EVIDENCE WORDS
+- NOT_RUN: the defect of F-57. Read in the code by the designer, the advisor and the architect; FIX-275's red cases
+  are to stage it, and F-57 says it is corrected if they are green as written.
+- NOT_RUN: Postgres's behaviour of a transaction-local statement_timeout and of a commit under it; the Vert.x body APIs;
+  the probe's cost. Each is named as unverified in D-162 and carried by a test or a measurement of FIX-276 or FIX-278.
+- VERIFIED_PASS: python3 ci/name_guard.py - "name guard: clean, 6094 tracked files scanned".
+- python3 ci/ledger_check.py - "ledgers: 9 problem(s)": the nine rows that failed before this change (BACKLOG 277, 289,
+  313, 383 - two lines lower than before, below the two new CONSIDER rows; DECISIONS 49, 53, 62, 66, 89); none is a row
+  of this change.
+- Shape, asserted by the edit script (scratchpad docsFIX267.py): every new or amended BACKLOG row has 6 cells, D-162,
+  the bracketed D rows and the changelog row 4; F-57 and ISSUE-12 wrap at 100 characters, the packet at 125.
+
+READ BY THE ARCHITECT IN THE CODE (2026-11-16)
+- platform/core/src/main/java/dev/rail8/core/flow/FlowWorker.java:633-656 (the bound check, the park past it), :685-704
+  (a final failure parks before the bound; a failed park leaves the item to its lease), :742-750 (a failed settle).
+- platform/runtime/src/main/java/dev/rail8/runtime/queue/PgWorkQueue.java:283-302 (the restart statement: `d` locks the
+  DLQ row, nothing reads `work`).
+- platform/runtime/src/main/java/dev/rail8/runtime/journal/JournalStart.java:111, :138 and PgSegmentRows.java:85 (a
+  journal given up at a start marks its work rows lost); AdminServer.java:358-380 (the routes registered today).
+- platform/core/src/main/java/dev/rail8/core/flow/FlowBuilder.java:127 (DEFAULT_RETRIES); bench/RESULTS.md:128;
+  docs/ARCHITECTURE.md section 4 (the session pin's sentence on PG 17 and SyncRep).
+Not read by the architect: the tests the designer cites as not pinning the behaviour, and the DLQ cursor tests and the
+two worker tests named in FIX-277 (the reviewer's line numbers); Retention; PgIntake.

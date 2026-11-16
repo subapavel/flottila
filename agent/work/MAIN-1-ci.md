@@ -219,3 +219,6 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
   a57a146f (the owner's answer, documents only): success, 11:05Z to 11:31Z. Run 240 (id 43857063800) on b04e336a (the
   agreed order, documents only): success, 11:21Z to 11:48Z. Each read from its conclusion. Run 236 (the push run on
   28e7ff9a) was not read. Green `ci` runs read in a row: 237 to 240.
+- 2026-11-16, 13:40Z: `ci` run 241 (id 43864341902) on ea75ea70 (FIX-270, documents only): success, 12:11Z to 12:38Z.
+  Run 242 (id 43869494326) on db41bb92 (FIX-263: the two replay routes leave the admin API - code and tests): success,
+  12:45Z to 13:10Z. Each read from its conclusion. Green `ci` runs read in a row: 237 to 242.

@@ -230,6 +230,13 @@ name no other route, `AdminServer` takes no id source. Admin ITs over Postgres s
 does not go whole - `agent/work/FIX-263-cases.md` section C); `Envelope.REPLAY_OF` and the words
 ", a replay" in `/retry`'s refusal (FIX-265). A keyed flow's row parked without its key is refused
 by `/retry` for ever (FIX-274).
+Cancel and the record of both acts are designed, not built (D-162; ARCHITECTURE section 6, *The
+operator's acts on a failed message*). F-57: a `/retry` before a park has settled inserts a second
+work row of the id. Rows: FIX-275 the guard on `/retry`; FIX-276 `core.dlq.FailedMessages` with
+retry's audit row and the act's timeout; FIX-277 cancel and events, `Dlq.remove` goes; FIX-278 the
+routes. The design's four hand-backs: `agent/work/FIX-267-designer*.md`, `-advisor*.md`.
+A packet for a Postgres IT passes a lease on the database clock (`expireLeases`, `locked_until`
+moved into the past): `claim` compares with `now()`, so the fake clock never frees a leased row.
 
 ## Recording (P1-04, D-044)
 
