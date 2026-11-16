@@ -11,7 +11,7 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; desig
 - **`Intrinsic(op, args)`** takes atomic arguments (Identity, Var or Const), as many as its form's arity. `Operation(name, CallForm)`, with `sealed CallForm permits Fn0, Fn1, Fn2, Many`; `CallForm.NONE` means no result, and `Many.END` is −1. A Many loop charges one tick per element before its emit.
 - **jq's lowering order** (jq 1.8.2 `parser.y`, `gen_index` and `gen_slice_index`): `t[e]` binds `e` outside `t`, so the key is the outer loop; `t[a:b]` binds `a` outside `b` outside `t`. Constant keys and bounds are passed as Const arguments.
 - **A navigation `?`** (`.a?`, `.[e]?`, `.[]?`, `.[a:b]?`) selects the step's quiet variant when it is lowered, not a Try (ADR-0008, ADR-0009, F-11). The quiet variant drops only the step's own error; errors from its target or key propagate.
-- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008).
+- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008). A loop of indexed reads is therefore quadratic in ticks and time; the fix is a spec 6 ticket (F-111, owner 2026-11-16).
 - `Many.key`, an Operation's cardinality, path rule and quiet flag, and the other ADR-0005/0009 facts join with their first user, not before.
 
 ## Considered options
