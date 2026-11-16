@@ -1,4 +1,19 @@
 
+## 2026-11-16 — CONSIDER-24 the second delivery at a node's death: cause, size, options — done, review PASS [C]
+
+- Cause, pinned by 8 green characterization cases (`FlowWorkerRerunWindowTest`, `RerunWindowIT`): a run commits its rows, then
+  deletes its work row in another store call; a death between runs the message again from the ingress under the same id. A
+  death after the partner answered and before the rows commit does too, and the history then shows one finished run.
+- Other sources named or ruled out (`agent/work/CONSIDER-24-scout-3.md`). A dead node's items wait for that node's restart.
+- Measured, 3 runs per load (`bench/RESULTS.md`, `bench/sql/settle-gap.sql`): ledger load 4.2-4.5 ms to the rows' commit, then
+  2.4-2.5 ms to the delete; the part between the two commits is 36 % of the window (29 % at one message at a time).
+- Designer, then advisor (SOUND WITH CHANGES, eight, all taken): D-160 - nothing in the code changes by this row; no single
+  transaction; no skip decided from the recorder's rows (it is CONSIDER-13's last-step case); no attempt number on the wire.
+- The owner decides: ISSUE-11, five questions with defaults. Rows: FIX-270 [C] documents, FIX-271 [B] and FIX-273 [C] stage
+  what was read but not shown, FIX-272 [B] the ledger counts both kinds. Whole reactor green with the two classes; coverage ok.
+- Evidence: `agent/work/CONSIDER-24-evidence.txt`. A usage limit and a container restart interrupted the task; resumed.
+- The owner, 2026-11-16: finish what is in flight, start nothing else. Nothing is in flight now; no new row is started.
+
 ## 2026-11-16 — FIX-266 replay leaves the other documents — done, review PASS [A]
 
 - Context compacted before this entry: HANDOFF, `git status`, `git log -3` (8cfd066e) and the fetch re-read before any change.

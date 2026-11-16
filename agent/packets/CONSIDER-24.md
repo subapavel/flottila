@@ -156,3 +156,56 @@ writers and the measured path; would a check "an earlier attempt recorded its fi
 sound, and what it closes (the sub-window between the two commits only - a death before the rows commit still
 delivers twice); what a partner could be told (an attempt number on the wire) and what that changes for a partner
 that dedupes on the id. The owner decides; the session writes the question in plain words.
+
+## Step 2 - done (2026-11-16)
+
+`bench/sql/settle-gap.sql` (the implementer; `agent/work/CONSIDER-24-step2.md`), exact by commit timestamps; no Java
+changed. The verifier ran each load three times; the entry is `bench/RESULTS.md`, "CONSIDER-24". Under the ledger's
+load: 4.2-4.5 ms on average from the final step's end to the commit of the rows ("record"), then 2.4-2.5 ms to the
+delete of the work row ("settle"); settle is 36 % of the two together (29 % at one message at a time).
+
+## Step 3 - done (2026-11-16): the sources, the draft, the advisor, and what the architect takes
+
+Inputs: `agent/work/CONSIDER-24-scout-3.md`, `agent/work/CONSIDER-24-designer.md`, `agent/work/CONSIDER-24-advisor.md`
+(SOUND WITH CHANGES, eight required).
+
+The other sources of a second run, each named or ruled out:
+- A dead node's items are run by that node after its restart: a journaled body is never a peer's before CORE-5b2..5e.
+  They become eligible when the work lease (30 s) and the node's lease (30 s) have both passed. The ledger exercises
+  exactly this (its node 2 is node 1's id on node 1's journal).
+- A stop that passes `RAIL8_STOP_DEADLINE` (10 s) leaves its claimed rows to run again after the lease: the same
+  second run, without a death.
+- A scheduled retry after a failure runs from the ingress and sends the earlier `to` steps again (D-135): the routine
+  source, CONSIDER-13's. The operator's retry: by design.
+- A poller's change of owner: the file's dedupe key catches the duplicate while its `processed_ids` row lives.
+  Intake: one accepted request never makes two work rows. Sync and at-most-once: no work row, never sent again.
+- A repeat under another id - inferred by the scout (`PgIntake.java:80-83`), not staged: a sender whose answer was
+  lost (a commit whose reply did not arrive) and that sends again without a dedupe key makes a second message. The
+  partner cannot recognise it by `x-message-id`; the sender's dedupe key is its cure (D-084). FIX-270 says so.
+- A second run beside a living, slow one: not shown. The scout inferred it; the advisor read that a worker adopts a
+  claim of a seq it still runs and that a peer is eligible only after the holder's fence closed. Staged first: FIX-273.
+- Read by the advisor, not staged: a death in the gap on the message's last allowed attempt parks a delivered message
+  as exhausted, and an operator's retry sends it a third time. Staged by FIX-271.
+
+What the architect takes (D-160; the owner's part is ISSUE-11):
+1. Nothing under `src/main` changes by this row.
+2. One transaction for the rows and the delete: rejected, as the draft and the advisor both say - although it is the
+   only shape that cannot skip a run wrongly (the advisor's change 6, taken whole). Why all the same: a keyed item
+   would keep two commits or lose its fast path (D-075); a form for unkeyed items only keeps the two stores coupled
+   for half the items; both measured writers are rebuilt; and it closes only the part between the two commits.
+   Settle-first is rejected too: a death between leaves a delivered message with no history of its run. ISSUE-11
+   item 1 tells the owner that this shape exists and what it costs.
+3. The draft's check "an earlier attempt recorded its final step OK - complete, do not run" is not built: the advisor's
+   changes 1 to 3 are taken whole. Its safe form - a mark the worker writes only when the run returned normally - is
+   CONSIDER-13's last-step case (change 4), noted on that row. By the advisor's rule (build it alone at about half the
+   window or more) the measured 36 % says: not alone.
+4. No attempt number on the wire (the draft's D).
+5. The documents (the draft's E with the advisor's change 8): FIX-270, class C because it changes ARCHITECTURE; the
+   draft and the pass exist.
+6. The draft's row for the living holder (C) is not written as a fix: FIX-273 stages it first (change 7).
+7. The ledger reports both kinds of second delivery: FIX-272 (change 5).
+8. The eight characterization cases stay as they are: they are the cases a later decision would turn red.
+
+Not taken: nothing of the advisor's eight is refused. The draft's test list (its section 2) and its property are not
+carried into a row - they belong to the check that is not built; CONSIDER-13's packet starts from the advisor's list
+of what they missed.

@@ -208,3 +208,6 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
   decrease (`agent/work/MAIN-1-run3.log`, `MAIN-1-run3-coverage.log`, not committed). The log does not record the commit
   or the tree's state; the commit is the verifier's word, and the run began (20:19:01Z) after the commit was made (20:18:38Z).
 - Count: 3 of 3. The conditions of the row, one by one: `agent/work/MAIN-1-evidence.txt`. The close's review [B]: PASS.
+- 2026-11-16: `ci` run 235 (id 43774288165) on 8cfd066e (FIX-262, documents only): success, 23:20Z to 23:47Z on
+  2026-11-15, read from its conclusion. Green `ci` runs in a row: 6 (230 to 235). The run on 28e7ff9a (FIX-266,
+  documents only) was not read when this line was written.

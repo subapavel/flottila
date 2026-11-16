@@ -1,5 +1,66 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CONSIDER-24 — the re-run window at a run's end: the two commits measured — cloud VM, 4 vCPU @ 2.10 GHz (NOT CORE-GATE)
+
+Date 2026-11-16. Commit 28e7ff9a (its code is 616ee25b's: the commits since are documents and the website). Machine: cloud VM,
+4 vCPU Intel Xeon @ 2.10 GHz, 15 GB, Linux 6.18, Java 25.0.5; PostgreSQL 16.15 native on the same host (fsync on,
+synchronous_commit on, full_page_writes on, wal_sync_method fdatasync), `track_commit_timestamp = on` for these runs only. No
+Maven running (checked before the first run). Reports, does not gate.
+
+Per completed message, two spans, by `bench/sql/settle-gap.sql`. A node that dies inside either one delivers the message again
+from the ingress after its restart, under the same id:
+- **record** — from the final step's end on the node (the partner has answered) to the commit of the run's final row. After a
+  death here the history shows one finished run. Start: the node's clock (`started_at + wall_ns` of the final row); end:
+  Postgres' commit timestamp — one host and one clock here, on two hosts their offset would be in it.
+- **settle** — from that commit to the commit of the work row's delete. After a death here the history shows two finished runs
+  (what `LedgerIT` counts as a re-run). Exact: both ends are `pg_xact_commit_timestamp(xmin)`; a statement-level AFTER DELETE
+  trigger on `work` copies the deleted ids into a side table inside the deleting transaction.
+
+Loads: `NodeBenchMain`, the node in-process, 20 000 messages after 1 000 warm-up (the main's defaults; the report leaves the
+first 1 000 deletes out), body 132 B, passthrough, recording keep at level all, pool 21 (5 intake).
+- **ledger** — `--scenario ack --concurrency 8`: the options of the kill -9 ledger (`LedgerMain.bench`) without the kill. The
+  ledger itself runs the node as a child process.
+- **floor** — `--scenario ack --concurrency 1`: one message at a time.
+Three runs of each in a row, by the verifier. Every run: exit 0, failed 0, 20 000 pairs in the figures (21 000 with the
+warm-up), no final row without a delete, no delete without a final row, no missing commit timestamp, `work` empty.
+
+| run | span | p50 ms | p95 ms | p99 ms | max ms | mean ms | settle ÷ (record + settle), by means | ACK msg/s |
+|---|---|---|---|---|---|---|---|---|
+| ledger 1 | record | 3.631 | 8.495 | 11.604 | 49.788 | 4.203 | | |
+| ledger 1 | settle | 2.009 | 5.174 | 7.800 | 53.446 | 2.402 | 36.4 % | 1 063 |
+| ledger 2 | record | 3.856 | 8.549 | 11.643 | 43.027 | 4.372 | | |
+| ledger 2 | settle | 2.108 | 5.443 | 7.814 | 44.407 | 2.500 | 36.4 % | 1 034 |
+| ledger 3 | record | 3.830 | 8.978 | 12.251 | 51.059 | 4.479 | | |
+| ledger 3 | settle | 1.972 | 5.603 | 8.214 | 40.621 | 2.465 | 35.5 % | 982 |
+| floor 1 | record | 1.703 | 2.429 | 3.280 | 24.489 | 1.766 | | |
+| floor 1 | settle | 0.688 | 1.053 | 1.401 | 21.841 | 0.725 | 29.1 % | 469 |
+| floor 2 | record | 1.800 | 2.585 | 3.690 | 53.596 | 1.881 | | |
+| floor 2 | settle | 0.716 | 1.093 | 1.455 | 21.971 | 0.754 | 28.6 % | 454 |
+| floor 3 | record | 1.834 | 2.621 | 3.635 | 62.035 | 1.910 | | |
+| floor 3 | settle | 0.735 | 1.123 | 1.532 | 22.181 | 0.778 | 28.9 % | 441 |
+
+Reading.
+- Under the ledger's load a delivered message waits 6.6 to 6.9 ms on average until its work row is gone: 4.2–4.5 ms to the
+  commit of its rows, then 2.4–2.5 ms to the delete. p99 is 12 ms and 8 ms; the largest single values are 40 to 53 ms.
+- The part between the two commits is 36 % of that time (35.5–36.4 %); 29 % at one message at a time. A death falls into a
+  window as often as the window is long, so about a third of the second deliveries at a node's death are of the kind that
+  leaves two finished runs in the history, and two thirds leave one. A partner on a slower network adds its answer's travel
+  to the first part, so the third is an upper figure.
+- Derived, not measured (throughput × mean span): at about 1 000 msg/s some 2.4–2.6 messages would be between the two commits
+  at any instant and some 4.4–4.5 before them. The kill -9 ledger counted fewer of the first kind: 1, 6 and 2 messages with two
+  final rows in 3 of 10 kills and none in the other seven (FIX-215) — about 0.9 a kill, a third of the derived figure. The two
+  are not reconciled: the ledger's rate at its kills was not measured here, and its node is a child process. The ledger cannot
+  count the second kind (one final row) at all: FIX-272.
+- `settle` is an upper figure of its part: it ends at the delete's commit and holds the trigger's insert. Whether a delete the
+  server already holds still commits when the node dies is not settled — in step 1's one probe (the node's sockets cut while
+  its delete waited) the row stayed, cause unknown (`agent/work/CONSIDER-24-step1.md`).
+- The trigger's cost is not visible at three runs each: ACK throughput 1 063, 1 034, 982 msg/s with it and 1 133, 1 044, 977
+  without it (three runs after, the same setting). `track_commit_timestamp` was on in all nine runs; its own cost is not
+  measured.
+
+Commands: `agent/work/CONSIDER-24-step2.md`. Raw: `agent/work/CONSIDER-24-s2v/` (not committed); the implementer's dry runs
+(two ledger, one floor) gave the same picture.
+
 ## CORE-17 indicative — one shared pool vs pools by role, A/B/A/B + diagnostics — cloud VM, 4 vCPU @ 2.10 GHz (NOT CORE-GATE)
 
 Date 2026-11-11. Same host and PostgreSQL 16.15 cluster as the FIX-169 entry below (fsync on, synchronous_commit on), the same

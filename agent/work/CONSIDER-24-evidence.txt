@@ -1,0 +1,91 @@
+CONSIDER-24 - evidence (2026-11-16). Two new test classes, one SQL file for the bench, documents. Nothing under any
+src/main changed.
+
+1. The cause shown (step 1, the test-author; agent/work/CONSIDER-24-step1.md)
+   platform/core/src/test/java/dev/rail8/core/flow/FlowWorkerRerunWindowTest.java   5 cases, in memory, fake clock
+   platform/runtime/src/test/java/dev/rail8/runtime/flow/RerunWindowIT.java         3 cases, Postgres (Testcontainers)
+   Characterization: green as written. They pin what the code does today; a later decision would turn them red.
+   VERIFIED_PASS (the test-author's runs, 2026-11-15, in its worktree; the architect read the totals line of the
+   third IT run): core tests=5, the IT tests=3 three times in a row. The whole reactor with both classes: section 5.
+   What they show: a death between the commit of a run's rows and the delete of its work row runs the message again
+   from the ingress as attempt 2 (keyed and unkeyed); a death after the partner answered and before the rows are
+   written does too, and the history then holds one finished run; a death after the delete does not; the second run
+   differs for a component only by the prop Envelope.ATTEMPT, and on the wire by nothing.
+   The IT's death is "the node loses its database sessions", not a kill; why is in the hand-back.
+
+2. Every other source of a second run (the scout; agent/work/CONSIDER-24-scout-3.md; nothing run)
+   Named: the same node's restart runs a dead node's items (a journaled body is never a peer's before CORE-5b2..5e);
+   a stop past RAIL8_STOP_DEADLINE; a scheduled retry (D-135); the operator's retry. Ruled out by a dedupe key or by
+   having no work row: a poller's change of owner, intake, sync, at-most-once. NOT shown either way: a second run
+   beside a living, slow holder - the scout inferred it, the advisor read against it (FIX-273 stages it).
+   Inferred by the scout, not staged: a sender whose answer was lost and that sends again without a dedupe key
+   makes a second message with its own id (PgIntake.java:80-83) - a repeat no x-message-id shows; FIX-270 names it.
+
+3. The window measured (step 2; agent/work/CONSIDER-24-step2.md; bench/RESULTS.md, "CONSIDER-24")
+   bench/sql/settle-gap.sql - exact, by commit timestamps (track_commit_timestamp on for the runs, off again after).
+   VERIFIED_PASS (the verifier, 2026-11-16 09:45Z onward, HEAD 28e7ff9a, native PostgreSQL 16.15, no Maven running at
+   the start): nine runs, all exit 0 and failed 0; six with the report, each 20 000 pairs, no unpaired row, work empty.
+     ledger (ack, concurrency 8)   record mean 4.203 / 4.372 / 4.479 ms   settle mean 2.402 / 2.500 / 2.465 ms
+                                   settle share 36.4 / 36.4 / 35.5 %      ACK 1 063 / 1 034 / 982 msg/s
+     floor (ack, concurrency 1)    record mean 1.766 / 1.881 / 1.910 ms   settle mean 0.725 / 0.754 / 0.778 ms
+                                   settle share 29.1 / 28.6 / 28.9 %      ACK 469 / 454 / 441 msg/s
+     without the trigger (ledger)  ACK 1 133 / 1 044 / 977 msg/s - overlaps the runs with it
+   The architect read the six report files and the nine json records again; the shares are recomputed by the script
+   that wrote the entry. Raw files: agent/work/CONSIDER-24-s2v/ (not committed). The verifier ran the six measured
+   runs twice: the first time without a report between runs (each next run truncates), discarded; the entry holds
+   the second set.
+   Not measured: the cost of track_commit_timestamp itself; the ledger as it runs (a child-process node); two hosts.
+   Not reconciled: the derived 2.4-2.6 messages between the two commits at an instant against the ledger's direct
+   count (about 0.9 a kill, FIX-215). "settle" is an upper figure of its part: it holds the trigger's insert, and
+   whether a delete the server already holds commits after the node's death is not settled (step 1's probe).
+   The IT holds no `nodes` rows, so the holder-lease condition of the claim is vacuous there (the review's remark).
+
+4. The draft and its opponent (step 3)
+   agent/work/CONSIDER-24-designer.md   the designer's draft: a check at a run's start plus documents
+   agent/work/CONSIDER-24-advisor.md    the advisor: SOUND WITH CHANGES, eight required - all eight taken
+   agent/packets/CONSIDER-24.md, "Step 3 - done": how each was taken. D-160. ISSUE-11: the owner's five questions.
+   Rows written: FIX-270 [C] (ARCHITECTURE's sentences), FIX-271 [C] (stage the park of a delivered message),
+   FIX-272 [B] (the ledger counts both kinds), FIX-273 [C] (stage the second run beside a living one); a note on
+   CONSIDER-13 (its last-step case).
+   Read by the advisor and not staged by any test, marked so wherever it is said: a death in the gap on a message's
+   last allowed attempt parks a delivered message (FlowWorker.java:637, :648-654).
+
+5. The whole reactor and the coverage check
+   VERIFIED_PASS (the verifier, 2026-11-16 10:09Z to 10:36Z, HEAD 28e7ff9a plus this task's files, Docker up):
+   `mvn -B -ntp -f platform/pom.xml clean verify -Pit -Dmaven.test.failure.ignore=true` - BUILD SUCCESS, exit 0, all
+   17 modules. Totals as expected: api 107, testkit 300, core 789 (784 + 5), schemas 304, sftp 69, xslt 56,
+   validate 33, http 52, mock 67, runtime 1583 unit (1580 + 3 in the heap-bounded execution) and 719 ITs (716 + 3),
+   cli 208 and 7 ITs, sim 61, archtest 48, bench 239 and 42 ITs; failures 0, errors 0, skipped 0; no flake, no
+   blocked platform thread. FlowWorkerRerunWindowTest: Tests run: 5 (log line 34402); RerunWindowIT: Tests run: 3
+   (line 57027). The architect read BUILD SUCCESS, the exit line and those two lines in the log.
+   VERIFIED_PASS - `python3 ci/coverage_check.py --baseline-ref HEAD`: "coverage: no decrease", exit 0.
+   Logs: agent/work/CONSIDER-24-reactor.log, agent/work/CONSIDER-24-coverage.log (not committed).
+   NOT_RUN - PIT: no production code changed. NOT_RUN - the mapping's build: nothing under mapping/ changed.
+
+6. Guards
+   python3 ci/name_guard.py     VERIFIED_PASS - clean.
+   python3 ci/ledger_check.py   EXECUTED_FAIL as before the task: 9 problems, all older rows (BACKLOG 274, 286, 310,
+                                380; DECISIONS 49, 53, 62, 66, 89).
+
+7. Interruptions
+   A usage limit stopped the implementer and the designer on 2026-11-15 at 23:29Z; the container then restarted
+   (Docker's daemon and every started process gone; the tree and the worktree intact). Both were resumed from their
+   transcripts on 2026-11-16 and delivered. GitHub's `ci` run 235 on 8cfd066e: success (agent/work/MAIN-1-ci.md).
+
+8. Review (class C)
+   Round 1 FAIL, four findings, all in the documents; the tests and the measurement were found sound (every table
+   cell, throughput and share equal to the report files). Fixed:
+   (1) the note on CONSIDER-13 stated the park of a delivered message as fact, turned the 36 % time share into
+       "36 % of second deliveries" and wrote ISSUE-11 item 1's default into a row the owner accepted - now marked
+       read-not-staged, "at most about a third", and "if the owner answers item 1 yes";
+   (2) the advisor's change 6 was taken in part - the packet, D-160 and ISSUE-11 item 1 now say that one transaction
+       is the only shape that cannot skip wrongly, why it is rejected all the same, and that the choice is the owner's;
+   (3) a repeat under another id (a sender's resend without a dedupe key; inferred, not staged) was named nowhere -
+       now in the packet, FIX-270, ISSUE-11 item 2 and section 2 above;
+   (4) the derived figure stood beside the ledger's direct count without saying they differ threefold - the results
+       entry says so and ISSUE-11 gives the owner the direct count first.
+   Remarks taken: FIX-271 is class C (the claim and lease path) and carries the IT's head comment; D-160 (a) says
+   "keep two commits or lose the fast path"; ISSUE-11 item 2 names the transport without headers; the results
+   entry says what "settle" bounds. Remark left: FIX-272 stays class B - it changes the bench's kill test, existing code.
+   Round 2 PASS. Its three wording remarks are taken: D-160 names (a) among what the owner is asked; ISSUE-11 says
+   "about three times as many"; this file's row list says FIX-271 [C].
