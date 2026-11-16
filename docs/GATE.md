@@ -24,9 +24,11 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
    step and `cpuNanos` present, null where the JVM cannot measure a virtual thread (F-21; ISSUE-3 option 2,
    2026-10-30 — CPU per flow and step by JFR sampling follows as FIX-108); `GET /admin/messages/{id}/steps/{n}/body` returns the payload as it was after step n;
    `GET /admin/messages?key=invoiceId:4711` finds the message by business key.
-7. **Replay and DLQ.** `POST /admin/messages/{id}/replay?from=3` runs steps 3..n as a new message
-   marked `REPLAY_OF`. Partner down → retries per flow policy → DLQ row at `GET /admin/dlq`;
+7. **DLQ and retry.** Partner down → retries per flow policy → DLQ row at `GET /admin/dlq`;
    `POST /admin/dlq/{id}/retry` delivers once the partner is back.
+   [2026-11-16: the check began with a replay from step 3 as a new message. Replay left Rail8 on
+   2026-11-15 (D-156, F-55): that sentence is struck and the title, "Replay and DLQ" before, follows —
+   `draft — review at hand-over`, ISSUE-10 item 1. FIX-268 measures the check again.]
 8. **Tests.** `rail8 test examples/demo` runs the `*.test.yaml` cases next to each flow — happy
    path, partner 503 → DLQ, SFTP fixture files — in-process in seconds; CI runs the same command.
 9. **Evidence.** `bench/RESULTS.md` holds, measured on native Linux: kill -9 ledger 2000/2000
@@ -95,9 +97,11 @@ is the owner's and goes into this section with its date.
    of conditions 1–2 is measured and recorded beside them; it reports, it does not gate.
 5. **No body in Postgres.** A schema test: no `bytea` or large-object column outside a named
    allow-list; and a `pg_dump` taken after a condition-4 run contains no body marker of that run.
-6. **No Kafka in the core.** With the compose `kafka` profile off: sync, async, replay and DLQ retry
-   pass their end-to-end tests; nothing the `/xi` door will need (hand-over, ingest, replay)
+6. **No Kafka in the core.** With the compose `kafka` profile off: sync, async and DLQ retry
+   pass their end-to-end tests; nothing the `/xi` door will need (hand-over, ingest)
    depends on Kafka; no core module has a Kafka client on its
    classpath (ArchUnit or dependency test).
+   [2026-11-16: both lists named replay. The word is out with D-156 and F-55 (2026-11-15):
+   `draft — review at hand-over`, ISSUE-10 item 1. FIX-268 measures the condition again.]
 7. **Floors and rows.** Coverage and PIT floors of CLAUDE.md on the gate commit; CORE-0..CORE-15,
    P2-15 and P2-16 `done` with `review: PASS`; for 4b, CORE-5a..5e `done` with `review: PASS`.

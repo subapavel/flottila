@@ -1,4 +1,18 @@
 
+## 2026-11-16 — FIX-266 replay leaves the other documents — done, review PASS [A]
+
+- Context compacted before this entry: HANDOFF, `git status`, `git log -3` (8cfd066e) and the fetch re-read before any change.
+- The word is out of `README.md`, `docs/GATE.md` (check 7; the core gate's condition 6), `HANDOVER.md`,
+  `docs/PROTOTYPE-VS-ARCHITECTURE.md` and `agent/NOTES.md`; `agent/packets/GATE.md` carries a note. Documents only, no build.
+- The gate: both changes are `draft — review at hand-over`, asked in ISSUE-10 item 1. `HANDOVER.md` says GATE_MET on 2026-10-30
+  and check 7 not measured since D-156; whether the verdict stands until FIX-268 is the owner's (a sentence added to the issue).
+- Review: round 1 FAIL - the hand-over's first line still said "Checks 1–9 hold" beside the new row 7. Fixed; round 2 PASS.
+- Evidence: `agent/work/FIX-266-evidence.txt` (what stays of the word and why). Name guard clean; ledger check the same 9.
+- In flight, CONSIDER-24: the cause is shown by eight staged-death cases (in the worktree); the other sources are read
+  (`agent/work/CONSIDER-24-scout-3.md`); the designer's draft is in (`agent/work/CONSIDER-24-designer.md`); the measurement runs.
+- A usage limit stopped two agents on 2026-11-15 at 23:29Z and the container restarted; both were resumed on 2026-11-16.
+- The owner, 2026-11-16: finish what is in flight, start nothing else, then agree the next steps. No new row is started.
+
 ## 2026-11-15 — FIX-262 replay leaves the architecture (F-55, 3.28) — done, review PASS [C]; Deviation: F-55
 
 - Context compacted before this entry: HANDOFF, `git status`, `git log -3` (baa089c9) and the fetch re-read before any change.

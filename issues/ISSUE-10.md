@@ -15,7 +15,10 @@ documents. Each item states the default that holds until the answer, so no work 
    Default: FIX-266 strikes the replay sentence (forced by D-156) and keeps the rest of the check as
    it is, marked `draft — review at hand-over`; FIX-268 measures the stronger form above anyway and
    records it. `HANDOVER.md` recorded check 7 as met on evidence of the removed route; it will say
-   "not measured since D-156" until FIX-268.
+   "not measured since D-156" until FIX-268. Its first line read "GATE_MET. Checks 1–9 hold."; since
+   FIX-266 it reads "GATE_MET on 2026-10-30 ... check 7 is not measured since 2026-11-15". Whether
+   the verdict stands in between is yours to say. Default: it stands as the record of 2026-10-30,
+   with that note.
    The core gate's condition 6 ("No Kafka in the core", `docs/GATE.md`) names replay in both of
    its lists - what must pass with the `kafka` profile off, and what must not depend on Kafka. A
    change of a target there is the owner's. Default: FIX-266 takes the word out of both lists

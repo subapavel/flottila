@@ -1,5 +1,9 @@
 # GATE — hand-over gate (docs/GATE.md checks 1–9)
 
+Note 2026-11-16 (FIX-266): check 7 below opens with a replay from step 3. Replay has left Rail8 (D-156, F-55): that
+clause is void, and the retry of that day was a new copy under a new id. FIX-268 measures check 7 and the core
+gate's condition 6 again. The packet below stands as it was written.
+
 Class G. Architect packet 2026-10-30, gate commit 5505b0f (code); CI workflow_dispatch on main queued for build + stack + bench +
 mutation. HANDOVER.md and the RESULTS gate section are written by the architect from the evidence below; the gate-reviewer judges.
 

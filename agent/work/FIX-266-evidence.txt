@@ -1,0 +1,65 @@
+FIX-266 - evidence (2026-11-16). Documents only; nothing under platform/, bench/, mapping/ or site/ changed.
+
+1. What changed (the diff: agent/work/FIX-266.diff, seven files)
+   README.md:4      "captured, searchable and replayable" -> "captured and searchable". Nothing is said of cancel.
+   README.md:10     the list of what tag proto-m1 holds no longer names replay (the tag had it; the list is shorter).
+   docs/GATE.md     check 7: the replay sentence is out, the title is "DLQ and retry", the rest is as it was; a dated
+                    note says what was struck and why. The core gate's condition 6: the word is out of both lists; a
+                    dated note. Both notes say `draft - review at hand-over`, ISSUE-10 item 1, and name FIX-268.
+   HANDOVER.md      the state line (:8): "GATE_MET. Checks 1-9 hold." -> GATE_MET on 2026-10-30, check 7 not
+                    measured since D-156, the verdict in between the owner's (ISSUE-10 item 1, one sentence added
+                    there). The curl block: the two replay calls are out, the heading is "DLQ and retry"; the check-by-check
+                    row 7 reads "not measured since D-156" and says what of the gate's run stands; D-136's summary; the
+                    P2-07b line of "Next three tasks".
+   docs/PROTOTYPE-VS-ARCHITECTURE.md:40   "Kept verbatim" -> kept until 2026-11-15, the numbering stays.
+   agent/NOTES.md   "DLQ and replay" -> "DLQ ...; replay is leaving": what is still in the code and which row takes it.
+   agent/packets/GATE.md   a note at the head; the packet's own text is not rewritten.
+
+2. Read for the claims the new text makes
+   docs/DECISIONS.md D-136: "`POST /admin/dlq/{id}/replay` is the former retry unchanged - a new copy with a new id";
+     `/retry` is the same-id restart, 202 {id, attempt}. So the retry the gate recorded on 2026-10-30 (HANDOVER row 7,
+     GATE3-stack.log:66-81) was a new copy under a new id. Not read again by the architect: the two logs themselves;
+     the advisor read `AdminServer.java:801` and `:841` for the two answers (agent/work/FIX-262-advisor.md, change 7).
+   The row's acceptance asks only for the P2-07b line to lose the word; that its 409 for a payload read still holds was
+     not checked here (FIX-263's list covers `LostBodyAdminIT`).
+
+3. What stays of the word, and why (a grep of every tracked file that is not Java or under a src/ directory)
+   Another meaning
+     docs/ARCHITECTURE.md 368, 373, 720 (Kafka's log), 613 (a seed's command), 730 (the open point, reworded by F-55)
+     docs/PROTOTYPE-VS-ARCHITECTURE.md:59   Kafka per flow "(volume / fan-out / replay)"
+     .claude/agent-memory/implementer/MEMORY.md:57   jqwik replays a failing sample
+     .claude/agent-memory/reviewer/MEMORY.md:70      a path reference "replayed" in another directory
+   This change itself (a note that says what left, or a row that takes it out)
+     docs/GATE.md 29, 104; HANDOVER.md 76, 106, 124; docs/PROTOTYPE-VS-ARCHITECTURE.md:40; agent/NOTES.md 219-228;
+     agent/packets/GATE.md:3; agent/HANDOFF.md; the open rows FIX-263 to FIX-269 and the notes of the swept rows in
+     agent/BACKLOG.md; issues/ISSUE-10.md; docs/findings/F-55.md; agent/packets/FIX-262.md;
+     agent/patches/FIX-262-claude-replayable.patch
+   History, never rewritten
+     docs/PROGRESS.md and its archive; docs/DECISIONS.md; docs/findings F-6, F-8, F-10, F-11, F-20, F-24, F-34, F-36,
+     F-38; docs/ARCHITECTURE.md's changelog rows (to line 126); docs/archive/**; docs/review/**; agent/archive/**;
+     agent/review/**; closed rows of agent/BACKLOG.md; every other file under agent/packets/, agent/patches/,
+     agent/wip/ and agent/work/; issues/ISSUE-2.md; HANDOVER.md 89-90 (the titles of F-8 and F-11);
+     docs/PROTOTYPE-VS-ARCHITECTURE.md 17, 28 (what the prototype had); agent/packets/GATE.md:29 (the packet as run)
+   The owner's, no session edits them
+     CLAUDE.md (agent/patches/FIX-262-claude-replayable.patch waits); docs/CORE-REWORK.md 34, 151 and
+     docs/OPERATIONS-BRIEF.md:181 (ISSUE-10 item 7); .claude/skills/diagnosing-bugs/SKILL.md:33 ("Replay of a captured
+     message ... replay it" - a way to reproduce a bug from recorded bodies; under .claude/, so the owner's: named
+     here, not changed); .claude/agent-memory/reviewer/MEMORY.md 105, 114 and test-author/MEMORY.md:93 (the agents'
+     own notes on closed tasks)
+   Left on purpose
+     ci/site_check.py and ci/test_site.py: the website's rule against the word - the row says it stays.
+     deploy/postgres/V1__m1_schema.sql:37: an applied migration's comment (its checksum).
+     Java sources and tests: FIX-263, FIX-264, FIX-265.
+
+4. Checks
+   python3 ci/name_guard.py     VERIFIED_PASS - "name guard: clean, 6071 tracked files scanned" (before the new files).
+   python3 ci/ledger_check.py   EXECUTED_FAIL as before the task: 9 problems, all older rows (BACKLOG 274, 286, 310,
+                                380; DECISIONS 49, 53, 62, 66, 89).
+   NOT_RUN - Maven, the reactor, the coverage check, the website's checks: no file they read changed.
+
+5. Review (class A)
+   Round 1 FAIL, one finding: HANDOVER.md:8 still said "GATE_MET. Checks 1-9 hold." while its row 7 now says the
+   check is not measured - the document contradicted itself. Fixed: the state line says what held on 2026-10-30,
+   what is not measured since D-156, and that the verdict in between is the owner's; ISSUE-10 item 1 asks it.
+   Remarks taken: the gate note names the changed title; the prototype table's sentence is reworded.
+   Round 2 PASS. Its remark is taken: the state line says "part of the check's evidence" and points at row 7.

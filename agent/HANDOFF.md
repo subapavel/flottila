@@ -1,13 +1,13 @@
 # Handoff
 
 state: D-148's plan is complete. The owner's answers of 2026-11-15 are on main (D-156 to D-159). The repository is renamed
-  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: FIX-262.
-WIP: CONSIDER-24 [C] (re-delivery at a node's death; packet agent/packets/CONSIDER-24.md, scout files agent/work/CONSIDER-24-*):
-  step 1 (staged-death cases) is with the test-author in the worktree <scratchpad>/w24 - gone after a restart.
-  `site` workflow red until the owner switches Pages on. ARCHITECTURE 3.28 (F-55) is ahead of the code until FIX-265.
-next exact action: CONSIDER-24 step 1's hand-back to its review, then steps 2-3. Then FIX-263 [B] (the per-case test list first),
-  FIX-266 [A], FIX-267 [C] (cancel: designer, advisor), FIX-264, 265, 268, MAP-9 [C], MAP-1 first step, BRAND-7 [A], FIX-236, 237, 228,
-  230, 232, 233, 223 (list), 205, 196, 255, 256, 257-259, 261, 269, then FIX-238 to 253. Whole reactor green before a code commit.
+  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: FIX-266.
+WIP: CONSIDER-24 [C] (re-delivery at a node's death; packet agent/packets/CONSIDER-24.md; agent/work/CONSIDER-24-*): step 1 done -
+  8 green cases in the worktree <scratchpad>/w24 and in agent/work/CONSIDER-24.diff; scout 3 and the designer's draft are in;
+  step 2 (the gap measured, `bench/sql/settle-gap.sql`) is with the implementer. Left: verifier's runs, advisor, review, reactor.
+next exact action: THE OWNER (2026-11-16): finish what is in flight, start NO new row, then agree the next steps with the owner.
+  So: CONSIDER-24 to the owner's decision, then stop. Queue for after that talk: FIX-263 [B] (the per-case test list first),
+  FIX-267 [C], FIX-264, 265, 268, MAP-9 [C], MAP-1, BRAND-7 [A], FIX-236, 237, 228, 230, 232, 233, 223, 205, 196, 255-259, 261, 269.
 MAPPING: D-153 stands until MAP-1's design is accepted - root Design rules do not bind mapping/; Tests, Working rules, Context
   hygiene do; nothing outside mapping/ depends on it; only closes, fixes, observes. Licences: D-159 (one list).
 Build: mapping `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min, 17 822 tests); platform `mvn -B -ntp -f

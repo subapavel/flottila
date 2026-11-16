@@ -1,0 +1,862 @@
+diff --git a/platform/core/src/test/java/dev/rail8/core/flow/FlowWorkerRerunWindowTest.java b/platform/core/src/test/java/dev/rail8/core/flow/FlowWorkerRerunWindowTest.java
+new file mode 100644
+index 00000000..9b90a334
+--- /dev/null
++++ b/platform/core/src/test/java/dev/rail8/core/flow/FlowWorkerRerunWindowTest.java
+@@ -0,0 +1,432 @@
++package dev.rail8.core.flow;
++
++import dev.rail8.api.Ack;
++import dev.rail8.api.EndpointConfig;
++import dev.rail8.api.Envelope;
++import dev.rail8.api.Headers;
++import dev.rail8.api.Runtime;
++import dev.rail8.core.dlq.InMemoryDlq;
++import dev.rail8.core.queue.InMemoryWorkQueue;
++import dev.rail8.core.queue.WorkQueue;
++import dev.rail8.core.record.InMemoryMessageStore;
++import dev.rail8.core.record.MessageStore;
++import dev.rail8.core.record.Meter;
++import dev.rail8.core.record.Page;
++import dev.rail8.testkit.FakeRuntime;
++import dev.rail8.testkit.RecordingComponent;
++import io.vertx.core.Future;
++import io.vertx.core.Promise;
++import io.vertx.core.buffer.Buffer;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.Timeout;
++
++import java.net.URI;
++import java.time.Duration;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.function.Consumer;
++
++import static dev.rail8.core.flow.FlowWorkerTest.NO_FILES;
++import static dev.rail8.core.flow.FlowWorkerTest.until;
++import static java.util.concurrent.TimeUnit.SECONDS;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNull;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * CONSIDER-24 step 1 (the staged death), cases 1 to 5: these pin today's behaviour, they do not ask for a change. A run's rows —
++ * its final step's included — are written when its trail closes; only then is its work row completed, by another call. A node that
++ * dies between the two leaves the row leased; at the lease's end another node takes it as the next attempt and runs the message
++ * again from its ingress: the partner gets the same id twice, the store keeps a final row per attempt. A later decision (a run
++ * skipped when an earlier attempt recorded its final step; one transaction for the rows and the settle) would turn cases 1 to 3 red.
++ *
++ * <p>One in-memory database — a message store, a work queue, a DLQ — and a {@link RecordingComponent} partner; nodes are workers
++ * built over it, each through a {@link NodeQueue} (its connection to the queue, the store boundary) and a {@link HoldingMessageStore}
++ * (its connection to the store), each on a {@link FlowWorkerTest.KillableTimer}. A node's death is staged at the seam each case
++ * names: its timers silenced and nothing it asks reaching the queue from then on — no settle, no renewal, no claim; a call it made
++ * is never answered. The fake clock ends the lease; nothing sleeps. The flow is at-least-once, one partner step (case 2: a key step
++ * before it, for the partition key).
++ */
++@Timeout(30)
++class FlowWorkerRerunWindowTest {
++
++    static final Duration LEASE = Duration.ofSeconds(30);
++    static final Duration TICK = Duration.ofSeconds(1);
++    static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
++    /** The flow's final step: the partner's {@code to}. */
++    static final String FINAL = "partner";
++
++    final World w = new World();
++
++    @AfterEach
++    void tearDown() {
++        w.close();
++    }
++
++    // --- fixtures
++
++    /** Where a node dies: at the call that would settle its item, or once the queue answered that call. */
++    enum Death {
++        /** The unkeyed complete ({@code completeUnkeyed}) never reaches the queue. */
++        AT_THE_UNKEYED_COMPLETE,
++        /** The keyed fast path ({@code completeAndTakeNext}) never reaches the queue. */
++        AT_THE_FAST_PATH,
++        /** The unkeyed complete reaches the queue and completes the row; its answer never reaches the node. */
++        AFTER_THE_UNKEYED_COMPLETE,
++        /** Not at a queue call: the test stages the death itself ({@link Node#die}). */
++        STAGED_BY_THE_TEST
++    }
++
++    /** What the one database held, and what the partner had received, when a node died. */
++    record AtDeath(String where, List<String> finalRows, int workRows, int sends) {}
++
++    static <T> Future<T> unanswered() {
++        return Promise.<T>promise().future();
++    }
++
++    /**
++     * A node's connection to the one work queue: every call goes to {@code rows} until the node dies; its {@link Death} seam kills it
++     * there; from then on nothing it asks reaches {@code rows} and nothing is answered. Records the items handed out to it.
++     */
++    static final class NodeQueue implements WorkQueue {
++        final InMemoryWorkQueue rows;
++        final Death death;
++        final Consumer<String> dies;
++        volatile boolean dead;
++        final List<Item> handedOut = new CopyOnWriteArrayList<>();
++
++        NodeQueue(InMemoryWorkQueue rows, Death death, Consumer<String> dies) {
++            this.rows = rows;
++            this.death = death;
++            this.dies = dies;
++        }
++
++        @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
++            return dead ? unanswered() : rows.enqueue(messageId, flow, step, partitionKey);
++        }
++        @Override public Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
++            return dead ? unanswered() : rows.enqueueLeased(messageId, flow, step, partitionKey, workerId, lease);
++        }
++        @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
++            return dead ? unanswered() : rows.claim(workerId, flow, max, lease).onSuccess(handedOut::addAll);
++        }
++        @Override public Future<Boolean> complete(long seq, int attempts) {
++            return dead ? unanswered() : rows.complete(seq, attempts);
++        }
++        @Override public Future<Completion> completeRow(long seq, int attempts) {
++            return dead ? unanswered() : rows.completeRow(seq, attempts);
++        }
++        @Override public Future<Completion> completeUnkeyed(long seq, int attempts) {
++            if (dead) return unanswered();
++            if (death == Death.AT_THE_UNKEYED_COMPLETE) {
++                dies.accept("completeUnkeyed@" + attempts + ", not sent");
++                return unanswered();
++            }
++            Future<Completion> done = rows.completeUnkeyed(seq, attempts);
++            if (death == Death.AFTER_THE_UNKEYED_COMPLETE) {
++                assertTrue(done.isComplete(), "fixture: the in-memory queue answers at once");
++                dies.accept("completeUnkeyed@" + attempts + ", completed " + done.result().completed() + ", the answer lost");
++                return unanswered();
++            }
++            return done;
++        }
++        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
++            if (dead) return unanswered();
++            if (death == Death.AT_THE_FAST_PATH) {
++                dies.accept("completeAndTakeNext@" + attempts + ", not sent");
++                return unanswered();
++            }
++            return rows.completeAndTakeNext(seq, attempts, workerId, lease);
++        }
++        @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
++            return dead ? unanswered() : rows.renew(seq, attempts, lease);
++        }
++        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
++            return dead ? unanswered() : rows.defer(seq, attempts, delay);
++        }
++        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
++            return dead ? unanswered() : rows.restart(messageId, flow, partitionKey, attempt);
++        }
++        @Override public Future<Boolean> hold(long seq, int attempts) {
++            return dead ? unanswered() : rows.hold(seq, attempts);
++        }
++        @Override public Future<Page<Held>> held(Optional<String> after, int limit) {
++            return dead ? unanswered() : rows.held(after, limit);
++        }
++        @Override public Future<Boolean> release(long seq) {
++            return dead ? unanswered() : rows.release(seq);
++        }
++        @Override public Future<Optional<Released>> releaseRow(long seq) {
++            return dead ? unanswered() : rows.releaseRow(seq);
++        }
++        @Override public Future<Boolean> hasItems(String flow) {
++            return dead ? unanswered() : rows.hasItems(flow);
++        }
++    }
++
++    /** The one database (messages, work, DLQ), the partner, and the nodes built over them. */
++    static final class World {
++        final FakeRuntime rt = FakeRuntime.create();
++        final RecordingComponent partner = new RecordingComponent("mock");
++        final InMemoryMessageStore messages = new InMemoryMessageStore();
++        final InMemoryWorkQueue work = new InMemoryWorkQueue(rt.clock());
++        final InMemoryDlq dlq = new InMemoryDlq();
++        final Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
++        final List<Node> nodes = new CopyOnWriteArrayList<>();
++        /** The message the case runs: what {@link AtDeath} reads the rows of. */
++        volatile String id;
++
++        World() {
++            rt.withComponent(partner);
++        }
++
++        FlowBuilder builder(Runtime runtime, MessageStore store, WorkQueue queue) {
++            return new FlowBuilder(runtime, List.of(), List.of(BuiltInStepsTest.HEADERS), endpoints)
++                    .recording(store, Meter.system()).queue(queue).dlq(dlq);
++        }
++
++        /** A fresh message through the flow's at-least-once delivery (its intake straight on the database): saved and queued, nothing run. */
++        Envelope accept(FlowDefinition def, Headers headers) throws Exception {
++            Envelope in = rt.ingress("orders", headers.with(Envelope.H_CONTENT_TYPE, "application/xml"), ORDER);
++            Delivery delivery = builder(rt.runtime(), messages, work).delivery(def, NO_FILES);
++            assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await(5, SECONDS));
++            assertEquals(1, work.size(), "fixture: one work row queued");
++            id = in.id();
++            return in;
++        }
++
++        Node node(String name, FlowDefinition def, Death death) {
++            Node n = new Node(name, def, death);
++            nodes.add(n);
++            return n;
++        }
++
++        /** "attempt k OUTCOME" of each of the message's rows of the final step, in the timeline's order (attempt, step). */
++        List<String> finalRows(String messageId) {
++            return messages.timeline(messageId).await().stream().filter(s -> FINAL.equals(s.stepName()))
++                    .map(s -> "attempt " + s.attempt() + " " + s.outcome()).toList();
++        }
++
++        List<String> sentIds() {
++            return partner.sentTo("partner").stream().map(Envelope::id).toList();
++        }
++
++        void close() {
++            for (Node n : nodes) {
++                n.worker.stop();
++                n.store.fail(new IllegalStateException("the case is over"));   // a run held at its rows ends (its settle reaches nothing)
++            }
++        }
++
++        /** A node: a worker over its own connections to the one database, on a timer of its own. */
++        final class Node {
++            final String name;
++            final FlowWorkerTest.KillableTimer timer = new FlowWorkerTest.KillableTimer(rt.timer());
++            final HoldingMessageStore store = new HoldingMessageStore(messages);
++            final NodeQueue queue;
++            final FlowWorker worker;
++            volatile AtDeath atDeath;
++
++            Node(String name, FlowDefinition def, Death death) {
++                this.name = name;
++                this.queue = new NodeQueue(work, death, this::die);
++                Runtime r = rt.runtime();
++                Runtime own = new Runtime(r.clock(), timer, r.ids(), r.blobs(), r.hasher(), r.components());
++                this.worker = builder(own, store, queue).worker(def, NO_FILES, name, new WorkerPolicy(LEASE, TICK));
++            }
++
++            /** Dies now: its timers silenced, nothing it asks reaches the queue; what the database held then is kept. */
++            void die(String where) {
++                timer.kill();
++                queue.dead = true;
++                atDeath = new AtDeath(where, finalRows(id), work.size(), partner.sentTo("partner").size());
++            }
++        }
++    }
++
++    static FlowDefinition unkeyed() {
++        return FlowDefinition.from(FlowWorkerTest.flow(4, List.of(FlowWorkerTest.TO_PARTNER)));
++    }
++
++    /** Partitioned by {@code orderId}, the header {@code x-order} ({@link DeliveryTest#ORDER_KEY}), then the partner. */
++    static FlowDefinition keyed() {
++        Map<String, Object> doc = FlowWorkerTest.flow(4, List.of(DeliveryTest.ORDER_KEY, FlowWorkerTest.TO_PARTNER));
++        doc.put("partitionBy", "orderId");
++        doc.put("onFailure", "park");
++        return FlowDefinition.from(doc);
++    }
++
++    /** {@code dead}'s first claim of the one row: its run starts, and the case waits for the death the seam stages. */
++    static WorkQueue.Item claimedBy(World.Node dead) {
++        dead.worker.poll();   // its round never ends: the node dies in it
++        until(() -> dead.atDeath != null, () -> dead.name + " reached its death seam; handed out " + dead.queue.handedOut + ", work rows " + dead.queue.rows.size());
++        assertEquals(1, dead.queue.handedOut.size(), "fixture: " + dead.name + " was handed the row once");
++        WorkQueue.Item first = dead.queue.handedOut.get(0);
++        assertEquals(1, first.attempts(), "fixture: its first hand-out");
++        return first;
++    }
++
++    /**
++     * The second worker polls 1 ms before the dead node's lease ends — and takes nothing, the row still the dead node's — and again
++     * at its end, when it takes the row and runs it to its settle. Returns the item it was handed.
++     */
++    WorkQueue.Item takenOverAtTheLeaseEnd(World.Node second, WorkQueue.Item left, String deadName) throws Exception {
++        w.rt.clock().advance(LEASE.minusMillis(1));
++        assertEquals(0, second.worker.poll().await(5, SECONDS), "1 ms before the lease's end the second worker's poll takes nothing");
++        assertEquals(Optional.of(deadName), w.work.leaseHolder(left.seq()), "the row is still leased to the dead node");
++        w.rt.clock().advance(Duration.ofMillis(1));
++        assertEquals(1, second.worker.poll().await(5, SECONDS), "at the lease's end the second worker takes the row and runs it");
++        until(() -> second.worker.unsettled() == 0, () -> "the second worker's run settled");
++        assertEquals(1, second.queue.handedOut.size(), "the second worker was handed the row once: " + second.queue.handedOut);
++        return second.queue.handedOut.get(0);
++    }
++
++    // --- case 1
++
++    /**
++     * Case 1: death after the final row is recorded and before the work row is completed, an item without a key. The row is the
++     * dead node's until its lease ends; then the second worker takes it as attempt 2 (in doubt) and runs it from the ingress: the
++     * partner receives the same id twice, the store keeps an OK final row for attempt 1 and for attempt 2, and the queue is empty.
++     */
++    @Test
++    void aNodeDeadBetweenItsFinalRowAndItsUnkeyedCompleteIsRunAgainAtTheLeaseEndAndThePartnerGetsTheIdTwice() throws Exception {
++        FlowDefinition def = unkeyed();
++        Envelope in = w.accept(def, Headers.empty());
++        World.Node n1 = w.node("n1", def, Death.AT_THE_UNKEYED_COMPLETE);
++        World.Node n2 = w.node("n2", def, Death.STAGED_BY_THE_TEST);
++
++        WorkQueue.Item first = claimedBy(n1);
++        assertNull(first.partitionKey(), "fixture: an item without a key");
++        assertEquals(new AtDeath("completeUnkeyed@1, not sent", List.of("attempt 1 OK"), 1, 1), n1.atDeath,
++                "n1 died at its settle: the final row of attempt 1 recorded, the work row still there, the partner called once");
++
++        WorkQueue.Item second = takenOverAtTheLeaseEnd(n2, first, "n1");
++        assertEquals(first.seq(), second.seq(), "the same row");
++        assertEquals(2, second.attempts(), "taken as attempt 2");
++        assertEquals(1, second.doubts(), "in doubt: n1 left it unsettled");
++        assertEquals(List.of(in.id(), in.id()), w.sentIds(), "the partner received the same id twice");
++        Envelope rerun = w.partner.sentTo("partner").get(1);
++        assertEquals(in.body().hash(), rerun.body().hash(), "the second run started from the ingress: the arrived body");
++        assertEquals(Optional.of(2), rerun.get(Envelope.ATTEMPT), "as attempt 2");
++        assertEquals(List.of("attempt 1 OK", "attempt 2 OK"), w.finalRows(in.id()), "an OK final row for attempt 1 and for attempt 2 under the one id");
++        assertEquals(0, w.work.size(), "after the second settle the queue is empty: " + w.work.snapshot());
++    }
++
++    // --- case 2
++
++    /** Case 2: case 1 for an item with a partition key, whose settle is the fast path ({@code completeAndTakeNext}). */
++    @Test
++    void aNodeDeadBetweenItsFinalRowAndItsFastPathCompleteIsRunAgainAtTheLeaseEndAndThePartnerGetsTheIdTwice() throws Exception {
++        FlowDefinition def = keyed();
++        Envelope in = w.accept(def, Headers.empty().with("x-order", "K-7"));
++        World.Node n1 = w.node("n1", def, Death.AT_THE_FAST_PATH);
++        World.Node n2 = w.node("n2", def, Death.STAGED_BY_THE_TEST);
++
++        WorkQueue.Item first = claimedBy(n1);
++        assertEquals("K-7", first.partitionKey(), "fixture: an item with a partition key");
++        assertEquals(new AtDeath("completeAndTakeNext@1, not sent", List.of("attempt 1 OK"), 1, 1), n1.atDeath,
++                "n1 died at its fast path: the final row of attempt 1 recorded, the work row still there, the partner called once");
++
++        WorkQueue.Item second = takenOverAtTheLeaseEnd(n2, first, "n1");
++        assertEquals(first.seq(), second.seq(), "the same row");
++        assertEquals(2, second.attempts(), "taken as attempt 2");
++        assertEquals(1, second.doubts(), "in doubt: n1 left it unsettled");
++        assertEquals(List.of(in.id(), in.id()), w.sentIds(), "the partner received the same id twice");
++        Envelope rerun = w.partner.sentTo("partner").get(1);
++        assertEquals(in.body().hash(), rerun.body().hash(), "the second run started from the ingress: the arrived body");
++        assertEquals(Optional.of(2), rerun.get(Envelope.ATTEMPT), "as attempt 2");
++        assertEquals(List.of("attempt 1 OK", "attempt 2 OK"), w.finalRows(in.id()), "an OK final row for attempt 1 and for attempt 2 under the one id");
++        assertEquals(0, w.work.size(), "after the second settle the queue is empty: " + w.work.snapshot());
++    }
++
++    // --- case 3
++
++    /**
++     * Case 3: death after the partner answered and before any row of the run is recorded — n1's store holds the run's rows. The
++     * second worker runs the message again: the partner received the id twice, and the store holds an OK final row for attempt 2
++     * only — the history shows one finished run although the partner was called twice.
++     */
++    @Test
++    void aNodeDeadAfterThePartnerAnsweredAndBeforeItsRowsAreRecordedIsRunAgainAndTheHistoryShowsOnlyTheSecondRun() throws Exception {
++        FlowDefinition def = unkeyed();
++        Envelope in = w.accept(def, Headers.empty());
++        World.Node n1 = w.node("n1", def, Death.STAGED_BY_THE_TEST);
++        World.Node n2 = w.node("n2", def, Death.STAGED_BY_THE_TEST);
++
++        n1.store.hold();
++        n1.worker.poll();   // its round never ends: the node dies in it
++        until(() -> n1.store.held() > 0, () -> "n1's run reached its rows' write; held " + n1.store.held());
++        assertEquals(List.of(in.id()), w.sentIds(), "fixture: the partner was called, and answered, before the rows' write");
++        n1.die("its rows' write, held");
++        assertEquals(new AtDeath("its rows' write, held", List.of(), 1, 1), n1.atDeath,
++                "n1 died with no row of its run recorded, the work row still there, the partner called once");
++        assertEquals(1, n1.queue.handedOut.size(), "fixture: n1 was handed the row once");
++        WorkQueue.Item first = n1.queue.handedOut.get(0);
++
++        WorkQueue.Item second = takenOverAtTheLeaseEnd(n2, first, "n1");
++        assertEquals(2, second.attempts(), "taken as attempt 2");
++        assertEquals(List.of(in.id(), in.id()), w.sentIds(), "the partner received the same id twice");
++        assertEquals(List.of("attempt 2 OK"), w.finalRows(in.id()), "a final OK row for attempt 2 only: one finished run in the history");
++        assertEquals(0, w.work.size(), "the queue is empty: " + w.work.snapshot());
++    }
++
++    // --- case 4
++
++    /** Case 4, the control: death after the work row is completed. Past the lease nobody takes anything; one send, one final row. */
++    @Test
++    void aNodeDeadAfterItsCompleteIsNotRunAgainAndThePartnerGetsTheIdOnce() throws Exception {
++        FlowDefinition def = unkeyed();
++        Envelope in = w.accept(def, Headers.empty());
++        World.Node n1 = w.node("n1", def, Death.AFTER_THE_UNKEYED_COMPLETE);
++        World.Node n2 = w.node("n2", def, Death.STAGED_BY_THE_TEST);
++
++        claimedBy(n1);
++        assertEquals(new AtDeath("completeUnkeyed@1, completed true, the answer lost", List.of("attempt 1 OK"), 0, 1),
++                n1.atDeath, "n1 died once the queue completed the row: the final row recorded, the work row gone, the partner called once");
++
++        w.rt.clock().advance(LEASE.plusMillis(1));
++        assertEquals(0, n2.worker.poll().await(5, SECONDS), "past the lease the second worker takes nothing");
++        assertEquals(List.of(), n2.queue.handedOut, "nothing handed out to it");
++        assertEquals(List.of(in.id()), w.sentIds(), "the partner received the id once");
++        assertEquals(List.of("attempt 1 OK"), w.finalRows(in.id()), "one final row");
++        assertEquals(0, w.work.size(), "the queue is empty");
++    }
++
++    // --- case 5
++
++    /**
++     * Case 5: what a component can tell the second run by. Of the two envelopes the partner's component received in case 1 — id,
++     * flow, step, headers, keys, body, attachments, props — only the props differ, by {@link Envelope#ATTEMPT} alone: absent on the
++     * first, 2 on the second.
++     */
++    @Test
++    void theRerunsEnvelopeDiffersFromTheFirstRunsOnlyByTheAttemptProp() throws Exception {
++        FlowDefinition def = unkeyed();
++        Envelope in = w.accept(def, Headers.empty());
++        World.Node n1 = w.node("n1", def, Death.AT_THE_UNKEYED_COMPLETE);
++        World.Node n2 = w.node("n2", def, Death.STAGED_BY_THE_TEST);
++        takenOverAtTheLeaseEnd(n2, claimedBy(n1), "n1");
++
++        List<Envelope> received = w.partner.sentTo("partner");
++        assertEquals(2, received.size(), "fixture: two deliveries");
++        Envelope first = received.get(0);
++        Envelope second = received.get(1);
++        assertEquals(in.id(), first.id());
++        assertEquals(first.id(), second.id(), "the same id");
++        assertEquals(first.flow(), second.flow(), "the same flow");
++        assertEquals(first.step(), second.step(), "the same step");
++        assertEquals(first.headers(), second.headers(), "the same headers");
++        assertEquals(first.keys(), second.keys(), "the same keys");
++        assertEquals(first.body().hash(), second.body().hash(), "the same body hash");
++        assertEquals(first.body().size(), second.body().size(), "the same body size");
++        assertEquals(first.body().key(), second.body().key(), "the same body: the ingress's, read where it arrived");
++        assertEquals(first.attachments(), second.attachments(), "the same attachments");
++        assertEquals(Optional.empty(), first.get(Envelope.ATTEMPT), "the first run carries no attempt");
++        assertEquals(Optional.of(2), second.get(Envelope.ATTEMPT), "the second carries attempt 2");
++        assertEquals(first.props().with(Envelope.ATTEMPT, 2), second.props(), "and its props are the first's with the attempt, nothing else");
++        assertEquals(first.withOutboundId().headers(), second.withOutboundId().headers(), "what a producer sends as headers is the same: x-message-id included");
++    }
++}
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/flow/RerunWindowIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/flow/RerunWindowIT.java
+new file mode 100644
+index 00000000..24aa0850
+--- /dev/null
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/flow/RerunWindowIT.java
+@@ -0,0 +1,418 @@
++package dev.rail8.runtime.flow;
++
++import dev.rail8.api.Ack;
++import dev.rail8.api.EndpointConfig;
++import dev.rail8.api.Envelope;
++import dev.rail8.api.Headers;
++import dev.rail8.api.Runtime;
++import dev.rail8.components.http.HttpComponent;
++import dev.rail8.core.batch.BatchingWriter;
++import dev.rail8.core.flow.FlowBuilder;
++import dev.rail8.core.flow.FlowDefinition;
++import dev.rail8.core.flow.FlowWorker;
++import dev.rail8.core.flow.WorkerPolicy;
++import dev.rail8.core.record.Meter;
++import dev.rail8.runtime.db.Migrations;
++import dev.rail8.runtime.queue.PgWorkQueue;
++import dev.rail8.runtime.store.PgDlq;
++import dev.rail8.runtime.store.PgMessageStore;
++import dev.rail8.runtime.time.VertxTimer;
++import dev.rail8.testkit.FakeRuntime;
++import dev.rail8.testkit.PostgresImage;
++import io.vertx.core.Context;
++import io.vertx.core.Future;
++import io.vertx.core.Handler;
++import io.vertx.core.Vertx;
++import io.vertx.core.buffer.Buffer;
++import io.vertx.core.http.HttpServer;
++import io.vertx.core.http.HttpServerRequest;
++import io.vertx.pgclient.PgBuilder;
++import io.vertx.pgclient.PgConnectOptions;
++import io.vertx.sqlclient.Pool;
++import io.vertx.sqlclient.PoolOptions;
++import io.vertx.sqlclient.Row;
++import io.vertx.sqlclient.SqlConnection;
++import io.vertx.sqlclient.Transaction;
++import io.vertx.sqlclient.Tuple;
++import org.junit.jupiter.api.AfterAll;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeAll;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.Timeout;
++import org.testcontainers.postgresql.PostgreSQLContainer;
++
++import java.net.URI;
++import java.nio.file.Path;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.TimeUnit;
++import java.util.function.BooleanSupplier;
++import java.util.function.Supplier;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.junit.jupiter.api.Assertions.fail;
++
++/**
++ * CONSIDER-24 step 1 (the staged death), cases 6 to 8, on Postgres: these pin today's behaviour, they do not ask for a change. A
++ * run's final row commits in the message store's batch; the delete of its work row is another statement of another writer, later.
++ * Between the two, the row is committed and visible while the work row stays; a node that dies there is run again by another node
++ * once the lease ends, and the partner gets a second request with the same headers — nothing on the wire says "again". A later
++ * decision (a run skipped when an earlier attempt recorded its final step; one transaction for the rows and the settle) would turn
++ * case 7 red.
++ *
++ * <p>The real {@link PgMessageStore} and {@link PgWorkQueue} (its unkeyed completions batched, as a node builds it) over one
++ * Postgres; nodes are in-process workers, each over a pool of its own whose sessions are named {@code rerun@<node>}; the bodies in
++ * the test's in-memory store (both nodes read it: no journal). The partner is a real HTTP server in this JVM, reached through the
++ * real {@link HttpComponent}; it records each request's headers and body and answers or holds it. Staging, without sleeps:
++ * a session of the test's own holds {@code lock table work in share mode} (the seam of {@code PgWorkQueueBatchedCompletionIT}), so
++ * the node's DELETE of the work row waits in Postgres; the node's death is the loss of its database — every session of its pool
++ * terminated while the DELETE waits, its pool closed, its worker abandoned — so the DELETE never runs; the lease's end is
++ * {@code update work set locked_until = now() - interval '1 second'}, as the queue ITs end one. Waits spin on observed state.
++ */
++@Timeout(value = 5, unit = TimeUnit.MINUTES)
++class RerunWindowIT {
++
++    static final Path NO_FILES = Path.of("");
++    static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
++    static final Duration LEASE = Duration.ofSeconds(30);
++    static final Duration BOUND = Duration.ofSeconds(20);
++    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
++    static Vertx vertx;
++    static Pool admin;   // the test's own sessions: fixtures, and the rows as another session sees them
++
++    final FakeRuntime rt = FakeRuntime.create();
++    final Partner partner = new Partner();
++    final List<Node> nodes = new CopyOnWriteArrayList<>();
++    final List<Stall> stalls = new CopyOnWriteArrayList<>();
++    HttpServer partnerServer;
++    Map<String, EndpointConfig> endpoints;
++    FlowDefinition def;
++
++    @BeforeAll
++    static void start() {
++        pg.start();
++        vertx = Vertx.vertx();
++        admin = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
++        Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
++    }
++
++    @AfterAll
++    static void stop() {
++        admin.close().await();
++        vertx.close().await();
++        pg.stop();
++    }
++
++    @BeforeEach
++    void empty() {
++        admin.query("truncate message_keys, messages, dlq, work, nodes").execute().await();
++        partnerServer = vertx.createHttpServer().requestHandler(partner).listen(0, "127.0.0.1").await();
++        endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("http://127.0.0.1:" + partnerServer.actualPort() + "/partner"),
++                Map.of("maxBodyBytes", 65_536L)));
++        Map<String, Object> doc = new HashMap<>();
++        doc.put("schemaVersion", 1);
++        doc.put("kind", "flow");
++        doc.put("id", "orders");
++        doc.put("version", "0.1.0");
++        doc.put("from", Map.of("endpoint", "http-in"));
++        doc.put("delivery", Map.of("mode", "at-least-once"));
++        doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 4));
++        doc.put("steps", List.of(Map.of("type", "to", "name", "partner", "endpoint", "partner")));
++        def = FlowDefinition.from(doc);
++    }
++
++    @AfterEach
++    void close() {
++        stalls.forEach(Stall::release);
++        partner.releaseHeld();
++        nodes.forEach(Node::close);
++        if (partnerServer != null) partnerServer.close().await();
++    }
++
++    // --- fixtures
++
++    static PgConnectOptions connectOptions() {
++        return new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432)).setDatabase(pg.getDatabaseName())
++                .setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
++    }
++
++    static String session(String node) {
++        return "rerun@" + node;
++    }
++
++    /** Spins (never sleeping) on real I/O until {@code condition} holds; fails after {@link #BOUND} naming what never happened. */
++    static void until(BooleanSupplier condition, Supplier<String> what) {
++        long deadline = System.nanoTime() + BOUND.toNanos();
++        while (!condition.getAsBoolean()) {
++            if (System.nanoTime() - deadline > 0) fail("not within " + BOUND + ": " + what.get());
++            Thread.onSpinWait();
++        }
++    }
++
++    static <T> T await(Future<T> f) {
++        try {
++            return f.await(BOUND.toSeconds(), TimeUnit.SECONDS);
++        } catch (java.util.concurrent.TimeoutException e) {
++            throw new AssertionError("still pending after " + BOUND + ": " + f, e);
++        }
++    }
++
++    static long count(String sql, Object... args) {
++        return admin.preparedQuery(sql).execute(Tuple.from(args)).await().iterator().next().getLong(0);
++    }
++
++    /** "attempt k outcome" of each {@code messages} row of the final step of {@code id}, by attempt, as the test's own session reads them. */
++    static List<String> finalRows(String id) {
++        List<String> out = new ArrayList<>();
++        for (Row r : admin.preparedQuery("select attempt, outcome from messages where id = $1 and step_name = 'partner' order by attempt")
++                .execute(Tuple.of(id)).await()) {
++            out.add("attempt " + r.getInteger(0) + " " + r.getString(1));
++        }
++        return out;
++    }
++
++    /** "attempts locked_by" of the work row of {@code id}, or "gone". */
++    static String workRow(String id) {
++        for (Row r : admin.preparedQuery("select attempts, locked_by from work where id = $1").execute(Tuple.of(id)).await()) {
++            return r.getInteger(0) + " " + r.getString(1);
++        }
++        return "gone";
++    }
++
++    /** Sessions of {@code node}'s pool waiting on a lock in a DELETE of work. */
++    static long deletesWaiting(String node) {
++        return count("select count(*) from pg_stat_activity where application_name = $1 and wait_event_type = 'Lock' and query ilike 'delete from work%'",
++                session(node));
++    }
++
++    static long sessionsOf(String node) {
++        return count("select count(*) from pg_stat_activity where application_name = $1", session(node));
++    }
++
++    /** The lease of {@code id}'s work row ends now, on the database's clock. */
++    static void endTheLease(String id) {
++        assertEquals(1, admin.preparedQuery("update work set locked_until = now() - interval '1 second' where id = $1").execute(Tuple.of(id)).await().rowCount(),
++                "fixture: the lease of " + id + " ended");
++    }
++
++    /** A request as the partner received it: its headers in arrival order (names lower-cased), its body. */
++    record Call(List<String> headers, String body) {
++        List<String> valuesOf(String name) {
++            String prefix = name.toLowerCase(Locale.ROOT) + ": ";
++            return headers.stream().filter(h -> h.startsWith(prefix)).map(h -> h.substring(prefix.length())).toList();
++        }
++    }
++
++    /** The partner: records every request once its body arrived; answers it 200 with the body, or holds it until {@link #releaseHeld}. */
++    static final class Partner implements Handler<HttpServerRequest> {
++        private final List<Call> calls = new ArrayList<>();                  // guarded by this
++        private final List<Runnable> held = new ArrayList<>();               // guarded by this: the answers of the held requests
++        private int toHold;                                                  // guarded by this
++
++        synchronized void holdNext() {
++            toHold++;
++        }
++
++        @Override
++        public void handle(HttpServerRequest req) {
++            Context ctx = Vertx.currentContext();
++            req.body().onSuccess(bytes -> {
++                List<String> headers = req.headers().entries().stream().map(e -> e.getKey().toLowerCase(Locale.ROOT) + ": " + e.getValue()).toList();
++                Runnable answer = () -> req.response().setStatusCode(200).putHeader("content-type", "application/xml").end(bytes);
++                boolean hold;
++                synchronized (this) {
++                    calls.add(new Call(headers, bytes.toString()));
++                    hold = toHold > 0;
++                    if (hold) {
++                        toHold--;
++                        held.add(() -> ctx.runOnContext(v -> answer.run()));
++                    }
++                }
++                if (!hold) answer.run();
++            });
++        }
++
++        synchronized List<Call> calls() {
++            return List.copyOf(calls);
++        }
++
++        List<String> ids() {
++            return calls().stream().flatMap(c -> c.valuesOf(Envelope.H_MESSAGE_ID).stream()).toList();
++        }
++
++        void releaseHeld() {
++            List<Runnable> answers;
++            synchronized (this) {
++                answers = List.copyOf(held);
++                held.clear();
++            }
++            answers.forEach(Runnable::run);
++        }
++    }
++
++    /** A session of the test's own holding {@code lock table work in share mode}: every DELETE of work waits until {@link #release}. */
++    final class Stall {
++        final SqlConnection conn;
++        final Transaction tx;
++        boolean released;
++
++        Stall() {
++            conn = await(admin.getConnection());
++            tx = await(conn.begin());
++            await(conn.query("lock table work in share mode").execute());
++            stalls.add(this);
++        }
++
++        synchronized void release() {
++            if (released) return;
++            released = true;
++            await(tx.rollback());
++            await(conn.close());
++        }
++    }
++
++    /** A node: the real stores over a pool of its own, the http partner through the real component, a worker of flow {@code orders}. */
++    final class Node {
++        final String name;
++        final Pool pool;
++        final PgMessageStore messages;
++        final PgWorkQueue work;
++        final FlowBuilder builder;
++        final FlowWorker worker;
++        boolean closed;
++
++        Node(String name) {
++            this.name = name;
++            pool = PgBuilder.pool().connectingTo(connectOptions().addProperty("application_name", session(name))).with(new PoolOptions().setMaxSize(4))
++                    .using(vertx).build();
++            VertxTimer timer = new VertxTimer(vertx);
++            messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());   // as Node builds it
++            work = new PgWorkQueue(pool, name, null, timer);                                  // unkeyed completions batched, as Node builds it
++            HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids(), rt.timer());
++            Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(http.scheme(), http));
++            builder = new FlowBuilder(runtime, List.of(), List.of(), endpoints).recording(messages, Meter.system()).queue(work).dlq(new PgDlq(pool));
++            worker = builder.worker(def, NO_FILES, name, new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
++            nodes.add(this);
++        }
++
++        /** A fresh message through the flow's at-least-once delivery on this node: its ingress row and work row committed, nothing run. */
++        String accept() {
++            Envelope in = rt.ingress(def.id(), Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), ORDER);
++            assertEquals(new Ack.Accepted(in.id()), await(builder.delivery(def, NO_FILES).apply(in)), "fixture: accepted");
++            return in.id();
++        }
++
++        /**
++         * The node loses its database while its round is in {@code round}: every session of its pool terminated — its DELETE waiting
++         * on the stall among them, so it never runs — its round ended by that failure, its worker stopped, its pool closed.
++         */
++        void losesItsDatabase(Future<Integer> round) {
++            assertTrue(count("select count(*) from (select pg_terminate_backend(pid) from pg_stat_activity where application_name = $1) t", session(name)) >= 1,
++                    "fixture: " + name + " had sessions to terminate");
++            until(() -> sessionsOf(name) == 0, () -> "every session of " + name + " gone");
++            until(round::isComplete, () -> name + "'s round ends with its lost settle");
++            assertTrue(round.failed(), "fixture: " + name + "'s settle failed with its sessions: " + round.result());
++            close();
++            assertEquals(0, sessionsOf(name), "fixture: " + name + " has no session left");
++        }
++
++        void close() {
++            if (closed) return;
++            closed = true;
++            worker.stop();
++            messages.close();
++            await(work.close());
++            await(pool.close());
++        }
++    }
++
++    /** Case 6's state: node-a's run finished — the partner answered, its rows committed — and its DELETE of the work row waits on a stall. */
++    record Gap(Node a, String id, Future<Integer> round, Stall stall) {}
++
++    Gap stalledBetweenTheTwoCommits() {
++        Node a = new Node("node-a");
++        String id = a.accept();
++        assertEquals("0 null", workRow(id), "fixture: queued, never handed out");
++        partner.holdNext();   // the run waits at the partner, its claim committed, while the stall is taken
++        Future<Integer> round = a.worker.poll();
++        until(() -> partner.calls().size() == 1, () -> "node-a's request reached the partner");
++        assertEquals("1 node-a", workRow(id), "fixture: claimed by node-a, attempt 1");
++        Stall stall = new Stall();
++        partner.releaseHeld();
++        until(() -> deletesWaiting("node-a") == 1, () -> "node-a's run finished and its DELETE of the work row waits on the stall; work row "
++                + workRow(id) + ", final rows " + finalRows(id) + ", round " + round);
++        return new Gap(a, id, round, stall);
++    }
++
++    /** Case 7's staging: from case 6's state node-a dies, the stall is released, the lease ends, node-b takes the row and runs it. */
++    String runAgainByAnotherNodeAfterADeathBetweenTheTwoCommits() {
++        Gap g = stalledBetweenTheTwoCommits();
++        g.a().losesItsDatabase(g.round());
++        g.stall().release();
++        assertEquals("1 node-a", workRow(g.id()), "the DELETE died with node-a's session: the work row stays, attempt 1, node-a's");
++        assertEquals(List.of("attempt 1 ok"), finalRows(g.id()), "the final row of attempt 1 stays");
++
++        Node b = new Node("node-b");
++        assertEquals(0, await(b.worker.poll()), "before the lease's end node-b takes nothing");
++        assertEquals("1 node-a", workRow(g.id()), "the row still node-a's");
++        endTheLease(g.id());
++        assertEquals(1, await(b.worker.poll()), "at the lease's end node-b takes the row and runs it");
++        return g.id();
++    }
++
++    // --- the cases
++
++    /**
++     * Case 6: the two commits are apart. With node-a's DELETE of the work row stalled and its run finished, the test's own session
++     * reads the final step's row, ok, attempt 1 — committed and visible — while {@code work} still holds the item's row. Witness:
++     * released, the same DELETE runs, the round ends and the row is gone.
++     */
++    @Test
++    void theFinalRowIsCommittedAndVisibleWhileTheDeleteOfTheWorkRowStillWaits() {
++        Gap g = stalledBetweenTheTwoCommits();
++        assertEquals(List.of("attempt 1 ok"), finalRows(g.id()), "messages holds the final step's row, ok, attempt 1: committed, read by another session");
++        assertEquals("1 node-a", workRow(g.id()), "while work still holds the item's row: attempt 1, leased to node-a");
++        assertFalse(g.round().isComplete(), "node-a's round has not ended: its settle waits");
++
++        g.stall().release();
++        assertEquals(1, await(g.round()), "released, node-a's settle answers and its round ends");
++        assertEquals("gone", workRow(g.id()), "the DELETE ran: the work row is gone");
++        assertEquals(List.of("attempt 1 ok"), finalRows(g.id()), "one final row");
++        assertEquals(1, partner.calls().size(), "the partner called once");
++    }
++
++    /**
++     * Case 7: a death between the two commits delivers again. From case 6's state node-a loses its database before its DELETE runs;
++     * the stall released, the row stays; the lease ends and node-b takes it. Then the partner has received two calls with the same
++     * id, {@code messages} holds final OK rows for attempts 1 and 2 of the one id, and {@code work} is empty.
++     */
++    @Test
++    void aNodeThatDiesBetweenTheTwoCommitsIsRunAgainByAnotherNodeAndThePartnerGetsTheIdTwice() {
++        String id = runAgainByAnotherNodeAfterADeathBetweenTheTwoCommits();
++        assertEquals(List.of(id, id), partner.ids(), "the partner received two calls with the same x-message-id");
++        assertEquals(List.of("attempt 1 ok", "attempt 2 ok"), finalRows(id), "final OK rows for attempts 1 and 2 of the one id");
++        assertEquals(0, count("select count(*) from work"), "work is empty");
++    }
++
++    /**
++     * Case 8: what the partner is told, on the wire. The second request of case 7 carries exactly the first's headers — names,
++     * values, order; nothing excluded — and the same body: no header says "again".
++     */
++    @Test
++    void theSecondRequestCarriesTheFirstRequestsHeadersAndNothingSaysAgain() {
++        String id = runAgainByAnotherNodeAfterADeathBetweenTheTwoCommits();
++        List<Call> calls = partner.calls();
++        assertEquals(2, calls.size(), "fixture: two requests");
++        assertEquals(List.of(id), calls.get(0).valuesOf(Envelope.H_MESSAGE_ID), "the first carries the message id once");
++        assertEquals(calls.get(0).headers(), calls.get(1).headers(), "the second request's headers are the first's");
++        assertEquals(calls.get(0).body(), calls.get(1).body(), "and its body");
++    }
++}

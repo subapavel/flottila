@@ -89,8 +89,10 @@ worktree; read its tail or the failing section only.
   -Dtest='FlowWorkerRerunWindowTest' -Dsurefire.failIfNoSpecifiedTests=false > agent/work/CONSIDER-24-core.log 2>&1`
 - Runtime, this IT (about 4 minutes after the first build): `flock /tmp/rail8-maven.lock mvn -B -ntp -f
   platform/pom.xml -Pit verify -pl :rail8-runtime -am -DskipTests -Dit.test='RerunWindowIT'
-  -Dfailsafe.failIfNoSpecifiedTests=false -Dsurefire.failIfNoSpecifiedTests=false > agent/work/CONSIDER-24-it.log
-  2>&1`. Delete `platform/runtime/target/failsafe-reports` before each run. Never `-Dtest=` on the runtime module.
+  -Dfailsafe.failIfNoSpecifiedTests=false -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.haltOnFailure=false >
+  agent/work/CONSIDER-24-it.log 2>&1` (without the last flag the run stops at core's coverage floor, because
+  `-DskipTests` leaves core uncovered). Delete `platform/runtime/target/failsafe-reports` before each run. Never
+  `-Dtest=` on the runtime module.
 - A core test run rewrites the tracked `platform/core/.jqwik-database`: `git checkout -- platform/core/.jqwik-database`
   afterwards.
 - Library APIs: Context7 first, `javap` on the resolved jar decides; never from memory.
@@ -106,18 +108,48 @@ worktree; read its tail or the failing section only.
 - Anything of this packet that could not be staged, and why. `git diff --stat`; the diff saved as
   `agent/work/CONSIDER-24.diff` in the worktree (`git add -N` the new files first).
 
-## Step 2 - the window measured (after step 1; its own call)
+## Step 1 - done (2026-11-15)
 
-Per message, the time from the final row's insert to the work row's delete, under `LedgerMain`'s load: triggers that
-stamp both with `clock_timestamp()` (as `NodeTakeoverLedgerIT`'s ledger triggers), no change under `platform/*/src/main`.
-An insert's stamp precedes its batch's commit, so the figure bounds the window from above; say so. Run natively,
-recorded in `bench/RESULTS.md` with machine, date, configuration and commit: p50, p99, max, and the count.
+Eight cases, all green as written; the reading holds, case 3 included: `agent/work/CONSIDER-24-step1.md`. The IT
+stages the death as "the node loses its database", not as a kill, and says why. One fact found on the way, for the
+scout and the draft: on a journaled node another node never claims a dead node's items (the eligibility condition on
+the body's node), so there the second run is the same node's after its restart.
+
+## Step 2 - the window measured (implementer, then the verifier)
+
+Per completed message: the time between the commit of its final rows and the delete of its work row. On this machine,
+natively, under two loads; recorded in `bench/RESULTS.md` with machine, date, configuration and commit.
+
+The method, with the least code:
+- Exact, if the bench's Postgres can run with `track_commit_timestamp = on`: one trigger on `work`, after delete,
+  writes the message's id into a side table in the deleting transaction. A message's gap is
+  `pg_xact_commit_timestamp(side.xmin) - pg_xact_commit_timestamp(m.xmin)`, `m` its final-step row of attempt 1 in
+  `messages`. No trigger on `messages`.
+- Otherwise an upper bound: a trigger on `messages` and one on `work` stamp `clock_timestamp()`. An insert's stamp
+  precedes its batch's commit, so the figure bounds the window from above - the entry says so.
+- Prefer an SQL file - `bench/sql/settle-gap.sql`: install; and a report of count, p50, p95, p99, max, and how many
+  completed messages have no pair - with the existing bench mains and their flags. Bench Java changes only if the
+  mains leave no moment between the node's migration and the load to install a trigger: then stop and hand back the
+  design first (a flag such as `--after-migration-sql <file>`; a test-author goes first).
+- Nothing under `platform/*/src/main` changes. The trigger adds an insert per delete: say what that costs (the same
+  load with and without it, throughput compared).
+
+The loads: (a) the ledger's load without the kill - what `LedgerIT`'s kills saw 1, 6 and 2 re-runs under; (b) one
+message at a time, closed loop: the floor. At least 20 000 messages each after a warm-up, or the main's defaults - say
+which. How the native Postgres is run for a bench: the latest entries of `bench/RESULTS.md` and the bench notes of
+`agent/NOTES.md`; find it, do not guess.
+
+Paths: `bench/sql/**`. Hand-back (at most 40 lines): the files; the exact commands; one dry run of each load with the
+report's numbers and the output's path; what `track_commit_timestamp` needed; which method; `git diff --stat`.
+Then the verifier runs each load three times and hands back the numbers and the log paths; the architect writes the
+entry.
 
 ## Step 3 - the other sources (scout), then the draft (designer, then the advisor)
 
 Named by the first scout, to be confirmed or ruled out in one line each: a lease that ends during a slow run; a retry
 after a step's failure (by design, D-135); a DLQ retry (the operator's, by design); intake's dedupe claim; a poller's
-change of owner (not read); shutdown and drain (not read in detail).
+change of owner (not read); shutdown and drain (not read in detail). And who runs a dead node's items: on a journaled
+node the body is on the dead node's disk - another node, or the same node after its restart, and after how long.
 
 The draft answers: can the final rows and the work row's delete share a transaction, at what cost to the two batching
 writers and the measured path; would a check "an earlier attempt recorded its final step OK" at the run's start be

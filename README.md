@@ -1,13 +1,13 @@
 # Rail8
 
 Open-source enterprise integration platform where **monitoring is the product**: every message,
-every step and every payload is captured, searchable and replayable — and the runtime also
+every step and every payload is captured and searchable — and the runtime also
 delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · ClickHouse · Valkey · S3
 (Apache Kafka only as an optional add-on, D-134). Apache 2.0.
 
 **Status: under construction, not usable yet.** Tag `proto-m1` is the milestone-1 state (one
 module, Vert.x 4.5, the flow `HTTP → validate → extractKey → route → XSLT → HTTP` with snapshots,
-DLQ, replay and a Postgres work queue). The tree is being restructured in place to the v3.3
+DLQ and a Postgres work queue). The tree is being restructured in place to the v3.3
 architecture by an autonomous engineering session; the first thing worth trying by hand arrives at
 the hand-over gate described in `docs/GATE.md`.
 

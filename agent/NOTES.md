@@ -216,13 +216,16 @@ Open from the P1-06 review: an http reply above the limit leaves the client resp
 the store resumes it once attached and never resumes one it paused or failed itself
 (`resumeOwed` / `attached` in `StreamingWrite`).
 
-## DLQ and replay (P1-05, D-045)
+## DLQ (P1-05, D-045); replay is leaving (D-156, F-55)
 
 `core.dlq` Parked / Dlq / InMemoryDlq / Parking / ParkedException; `FlowBuilder.dlq(dlq)`
-(at-least-once flows park per step, awaited; sync and at-most-once never) and
-`FlowBuilder.replay(def, baseDir)` → `Replay.from(id, n)` / `retry(id)`; runtime `store.PgDlq`
-over V1 `dlq` + V3. ITs: `PgDlqIT`, `InvoiceSyncReplayIT`. Migrations are at V3 (`MigrationsIT`,
+(at-least-once flows park per step, awaited; sync and at-most-once never); runtime `store.PgDlq`
+over V1 `dlq` + V3. ITs: `PgDlqIT`. Migrations are at V3 (`MigrationsIT`,
 `BenchMainIT` expect "3").
+The operator's retry is the same-id restart, `POST /admin/dlq/{id}/retry` (D-136). Still in the code
+until its row lands: the two replay routes (FIX-263); `FlowBuilder.replay(def, baseDir)` →
+`Replay.from(id, n)` / `retry(id)` (FIX-264, `Replay.rebuild` moves into `FlowWorker`);
+`Envelope.REPLAY_OF` (FIX-265); `InvoiceSyncReplayIT` goes or moves by FIX-263's per-case list.
 
 ## Recording (P1-04, D-044)
 

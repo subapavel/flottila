@@ -5,7 +5,9 @@ Gate: `docs/GATE.md` (agreed 2026-10-17). Gate commit: `fea6c5c` (2026-10-30). E
 session's verifier logs (`target/GATE2-*.log`, `target/GATE3-stack.log` for the evidence re-run, named per check below). Verdict: the gate-reviewer's, in `docs/archive/PROGRESS-until-2026-11-03.md`
 (GATE entry).
 
-**State in one line:** GATE_MET. Checks 1–9 hold. Check 6 reads "wall time per step, `cpuNanos` null where the JVM cannot
+**State in one line:** GATE_MET on 2026-10-30: checks 1–9 held on the gate commit. Check 7 is not measured since
+2026-11-15: replay left Rail8 (D-156) and part of the check's evidence was that operation's (row 7 in section 4 says what stands). FIX-268 measures
+it again; whether the verdict stands until then is the owner's to say (ISSUE-10 item 1). Check 6 reads "wall time per step, `cpuNanos` null where the JVM cannot
 measure a virtual thread" since the owner answered ISSUE-3 with option 2 (2026-10-30); CPU per flow and step by JFR sampling is FIX-108.
 
 ## 1. Start the stack
@@ -46,12 +48,10 @@ docker compose logs echo
 curl -H "$A" 'localhost:8081/admin/messages?key=invoiceId:4711'             # find by business key
 curl -H "$A" localhost:8081/admin/messages/<id>                             # timeline: steps, wallNanos, cpuNanos (null, F-21), versions
 curl -H "$A" localhost:8081/admin/messages/<id>/steps/3/body                # the payload after step 3
-# Replay and DLQ
-curl -X POST -H "$A" 'localhost:8081/admin/messages/<id>/replay?from=3'     # a new message, replayOf=<id>
+# DLQ and retry
 docker compose stop echo; curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8082/invoice/async
 curl -H "$A" localhost:8081/admin/dlq                                       # the row appears (gate run: 1.1 s, step 5 `partner`; since CORE-14a after one scheduled retry, at step 1)
 docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/retry    # 202, the same id once more (D-136)
-curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                           # instead of the line above: a new copy, new id, replayOf
 # Kill test (check 5): drop files, then `docker kill -s KILL compose-rail8-1` and `docker compose up -d`
 ```
 
@@ -75,7 +75,7 @@ bench/run.sh                               # the bench harness (native Postgres)
 | 4 | invoice-async | 202, final step `partner` OK, work 0 | met |
 | 5 | sftp-invoice + kill | one file: inbox empty in ~6 s, sftp-invoice steps 0–4 OK, echo received it (GATE3-stack.log:49-65). Kill: 5 rounds × 50 files, node killed mid-round: 50/50 distinct ingress per round, DLQ 0, work 0, inbox empty, echo never restarted; outbound resends seen only as echo totals (at-least-once). No kill landed in the save-to-delete window (no dedupe line in run 2; run 1 on 5505b0f logged one); that window rests on SftpIngressDedupeIT (GATE2-stack.log:257-363) | met |
 | 6 | timeline, body per step, search by key | `?key=invoiceId:4711` finds the message; timeline steps 0–5 with wallNanos; `/steps/3/body` and `/steps/5/body` 200 with the payload as it was after each step (GATE3-stack.log:17-48). `cpuNanos` null on every step, as the check now reads (F-21, ISSUE-3 option 2) | met |
-| 7 | replay from 3, DLQ, retry | replay COMPLETE, replayOf set (GATE2-stack.log:198); DLQ row at step 5 `partner` after 1.11 s (GATE2:367) / ~3 s (GATE3:66-81) (FIX-107); retry COMPLETE, the echo logs the delivery, DLQ empty after (GATE3-stack.log:66-81) | met |
+| 7 | DLQ, retry | not measured since D-156 (2026-11-15). The gate's run showed a replay from step 3 (GATE2-stack.log:198), an operation that has left Rail8 (F-55), and a retry that was then a new copy under a new id (GATE3-stack.log:66-81); since D-136 `/retry` restarts the message under its own id. What stands of that run: the DLQ row at step 5 `partner` after 1.11 s (GATE2:367) / ~3 s (GATE3:66-81) (FIX-107). FIX-268 measures the check again | not measured since D-156 |
 | 8 | `rail8 test examples/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
 | 9 | evidence | bench/RESULTS.md GATE section: ledger 2000×3, sync overhead, durable ACK, 50 MB, CI coverage + PIT | met (ACK p99 recorded, target missed: F-18) |
 
@@ -105,7 +105,7 @@ D-055 – D-063 (worker lease and attempts, stop/cancel, admin API, durable bodi
 durable DLQ bodies, redeploy), D-066, D-067 (durable step bodies, admin write routes), D-070 (deployment record and archive
 store), D-074 – D-076 (WorkQueue fencing, Postgres WorkQueue, sftp consumer), D-078 – D-084 (package folders, CLI, test runner,
 `secret://` from env, one-transaction ACK, poller leases, ingress dedupe), D-085 (gate compose stack), D-086 – D-088 (demo package and sftp options, package dependencies, retention), D-089
-(off-node package dependencies: `rail8 lock`, `--deps`), D-090 (the compose network-namespace holder), D-134 (Kafka under compose profile `kafka`, off by default), D-135 (scheduled retries, then park), D-136 (`/retry` keeps the id, `/replay` a new copy), D-139 (the journal's peer link between nodes: keys, wire format, key rotation; F-35). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
+(off-node package dependencies: `rail8 lock`, `--deps`), D-090 (the compose network-namespace holder), D-134 (Kafka under compose profile `kafka`, off by default), D-135 (scheduled retries, then park), D-136 (`/retry` keeps the id; its `/replay` copy left with D-156), D-139 (the journal's peer link between nodes: keys, wire format, key rotation; F-35). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
 licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and the CONSIDER-1..3, 5..8 rows in agent/BACKLOG.md.
 
 ## 7. Open issues
@@ -123,7 +123,7 @@ is done as well.
 
 1. **FIX-108**: CPU per flow and step by JFR sampling (ISSUE-3 option 2).
 2. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
-3. **P2-07b**: replay and payload reads of a body removed by retention answer 409.
+3. **P2-07b**: payload reads of a body removed by retention answer 409 (the row's replay half left with D-156).
 
 Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent/BACKLOG.md).
 
