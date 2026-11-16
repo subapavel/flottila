@@ -437,6 +437,28 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   equal the 28 values of the C3 edge check (`199-c3-edge.log`)", and "an old `U*` differs from the
   record" becomes "differs from that log". The other C2 stops stay.
 
+**Owner's rulings on #199's run A stop (2026-11-16, on the grilling-adviser's recommendation)**
+- **Compile on a helper thread.** Run A (unseeded, 2 h 02 min) failed on six more cells: C1 at
+  256 KiB for W, hold and collect-descent, both modes. After the C1 search's 30 warm-up runs the
+  Parser is C1-compiled and its frames no longer fit 256 KiB, so `compile` overflows inside
+  `ended()` (F-109). `b` and the reserve govern the run, not the compile (`stackBytes` enters only at
+  `JqFilter.run`), and a pinned set that depends on JIT state can differ by JDK or machine. So the
+  calibration child compiles every cell's filter on one long-lived helper thread with a large stack,
+  started after the cell's thread and living as long as the child, and runs it on the cell's
+  thread. This replaces "Compiling stays on the cell's thread" and the `compile STACK` set above:
+  all ten edgeless 256 KiB cells (these six and plain-descent's four) are measured, and a
+  `compile STACK` row anywhere fails the matrix, with its own red test. The counts stay 308 and 28.
+  The 512 KiB → 1 MiB fallback is not accepted for `b`: the four largest slopes sat in groups
+  without a lowest pair.
+- **Before the long run.** A hand probe of the ten cells at `-Xss256k` with the helper compile (3
+  children), which also observes whether plain-descent runs to `NESTED_30001` at `stackBytes` 0 on
+  256 KiB; then the 28-cell edge check on the new commit.
+- **The second run A is seeded** from run A's record. The ten cells are searched unseeded as new
+  cells. It stops if the 28 `-Xint` 512 KiB `U*cold` differ from `199-c3-edge.log`, or if any other
+  `U*` differs from run A. Then run B. A real 256 KiB row for W CONSERVATIVE C1 may give `b` 200
+  (C2's stop "max b > 192") or a reserve of 184 320 (adviser's inference); either goes to the owner.
+- **The compile overflow is F-109, widened.** It is not a new finding.
+
 ## Amendment (ticket #198, owner 2026-11-16)
 
 Owner's rulings on the #198 grilling round, on the grilling-adviser's recommendations (designer
