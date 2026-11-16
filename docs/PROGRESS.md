@@ -1,4 +1,19 @@
 
+## 2026-11-16 — FIX-240 the polling suite's self-test fails the same cases in every run — done, review PASS [B]
+
+- The flaky test `aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile` failed 1 run of 3 on 2026-11-16 (red on record:
+  `agent/work/FIX-280-before-run2.log`): its broken variant removed the file on the round's thread after it had started the
+  handler's thread, and the contract's stop case reads the directory once it saw the handler's call - two unordered acts.
+- Change, test code only (+6/-2, the test-author): the variant removes before it starts the handler. All eight expected cases
+  fail in every run (`agent/work/FIX-240-evidence.txt`); `PollingConsumerContract.java` is untouched.
+- VERIFIED_PASS: the class 20 times in a row, 10 under load - 22 tests, 0 failures each (`agent/work/FIX-240-20runs.log`);
+  `clean verify` of `:rail8-testkit` - 300 tests, 0 failures. NOT_RUN: the whole reactor (test code of a leaf module).
+- F-59: the suites' `soon` is a real-time bounded wait for an event of the component under test, not a timer; only a failing
+  case pays the patience. Measured: sixteen waits of 2 s and two joins of 4 s are 40.25 of the class's 40.93 s.
+- F-60 and CONSIDER-30: two reads of the contract are one instant. FIX-281: two leftovers in other variants.
+- Review [B]: FAIL, FAIL, PASS - every reason in the architect's findings, none in the test: F-60 named a case that does catch
+  the fault; F-59's count of waits was read, twice wrong, and is now measured. `ci` 250 and `mapping-ci` 4 read green.
+
 ## 2026-11-16 — MAP-10 mutation testing measured on `structure` and `structure-import` — done, review PASS [A]
 
 - A measurement: no file under `mapping/` or `.github/` changes. One PIT run per module by the verifier, upstream installed

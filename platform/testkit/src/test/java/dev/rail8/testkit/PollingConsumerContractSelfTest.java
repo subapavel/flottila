@@ -95,7 +95,11 @@ class PollingConsumerContractSelfTest {
         boolean healthAlwaysUp;
         /** Broken: files taken in name order, not oldest first. */
         boolean byName;
-        /** Broken: the file is removed right after the handler was called, before its answer is awaited. */
+        /**
+         * Broken: the file is removed before its answer is awaited — on the round's thread before it starts the handler's, so
+         * the removal happens-before the handler records its call and every look a case takes once it saw that call. Removed
+         * after the start, the removal raced the case's look: a slow round thread let the pending-answer checks see the file.
+         */
         boolean removedBeforeTheAnswer;
         /** Broken: the file is removed after any answer, a Nack and a failure included. */
         boolean removedOnAnyAnswer;
@@ -227,9 +231,9 @@ class PollingConsumerContractSelfTest {
                 if (dedupeBy != null && !dedupeKeyUnset) {
                     in = in.with(dedupeBy, dedupeKeyShared ? "every-file" : f.name() + "@" + f.mtime() + (dedupeKeyPerDelivery ? "#" + id : ""));
                 }
+                if (removedBeforeTheAnswer) dir.remove(f.name());   // before the handler's thread starts: see the flag
                 deliver(in, promised);
                 Future<Ack> answer = promised.future();
-                if (removedBeforeTheAnswer) dir.remove(f.name());
                 Ack ack;
                 try {
                     ack = answer.await();

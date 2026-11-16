@@ -1,0 +1,1 @@
+run 1 loaded=0 exit=0 wall=44s time="40.033" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.06" log=agent/work/FIX-240-before-run1.log

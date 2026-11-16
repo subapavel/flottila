@@ -1,0 +1,21 @@
+FIX-240: mvn -B -ntp -q -f platform/pom.xml -pl :rail8-testkit -am -Dtest=PollingConsumerContractSelfTest -Dsurefire.failIfNoSpecifiedTests=false test; counts from the surefire XML; loaded=1: 4 x 'yes > /dev/null' for the run's length
+run 1 loaded=0 exit=0 wall=44s time="38.025" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.057" log=agent/work/FIX-240-run1.log
+run 2 loaded=0 exit=0 wall=44s time="40.166" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.074" log=agent/work/FIX-240-run2.log
+run 3 loaded=0 exit=0 wall=41s time="37.973" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.067" log=agent/work/FIX-240-run3.log
+run 4 loaded=0 exit=0 wall=41s time="37.906" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.054" log=agent/work/FIX-240-run4.log
+run 5 loaded=0 exit=0 wall=41s time="37.795" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.058" log=agent/work/FIX-240-run5.log
+run 6 loaded=0 exit=0 wall=42s time="38.0" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.055" log=agent/work/FIX-240-run6.log
+run 7 loaded=0 exit=0 wall=45s time="42.029" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.066" log=agent/work/FIX-240-run7.log
+run 8 loaded=0 exit=0 wall=42s time="37.907" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.063" log=agent/work/FIX-240-run8.log
+run 9 loaded=0 exit=0 wall=42s time="38.071" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.058" log=agent/work/FIX-240-run9.log
+run 10 loaded=0 exit=0 wall=43s time="40.193" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.067" log=agent/work/FIX-240-run10.log
+run 11 loaded=1 exit=0 wall=55s time="46.278" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.204" log=agent/work/FIX-240-run11.log
+run 12 loaded=1 exit=0 wall=55s time="46.164" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.192" log=agent/work/FIX-240-run12.log
+run 13 loaded=1 exit=0 wall=54s time="46.262" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.226" log=agent/work/FIX-240-run13.log
+run 14 loaded=1 exit=0 wall=55s time="46.586" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.213" log=agent/work/FIX-240-run14.log
+run 15 loaded=1 exit=0 wall=53s time="44.283" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.205" log=agent/work/FIX-240-run15.log
+run 16 loaded=1 exit=0 wall=53s time="45.947" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.211" log=agent/work/FIX-240-run16.log
+run 17 loaded=1 exit=0 wall=54s time="46.413" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.19" log=agent/work/FIX-240-run17.log
+run 18 loaded=1 exit=0 wall=55s time="46.41" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.208" log=agent/work/FIX-240-run18.log
+run 19 loaded=1 exit=0 wall=54s time="45.836" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.175" log=agent/work/FIX-240-run19.log
+run 20 loaded=1 exit=0 wall=53s time="46.021" tests="22" errors="0" skipped="0" failures="0"  removalCase:time="10.206" log=agent/work/FIX-240-run20.log

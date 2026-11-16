@@ -1,0 +1,47 @@
+FIX-240 - evidence (2026-11-16, at 71c3b69e plus the change; 4 cores)
+
+Change: platform/testkit/src/test/java/dev/rail8/testkit/PollingConsumerContractSelfTest.java, +6/-2 (test code only):
+ Variant.Poller.take removes the file before deliver(in, promised) when removedBeforeTheAnswer is set; the flag's Javadoc.
+ PollingConsumerContract.java (testkit's main code) is untouched.
+
+EXECUTED_FAIL  before, on record: agent/work/FIX-280-before-run2.log:16-32 - STOP_WAITS missing from the failing set
+               (1 run of 3 on 2026-11-16; not reproduced on demand).
+VERIFIED_PASS  the class 20 times in a row, runs 11 to 20 under 4 x `yes > /dev/null`: every run exit 0, tests 22,
+               failures 0, errors 0, skipped 0 (from the surefire XML) - agent/work/FIX-240-20runs.log, one Maven log per
+               run in agent/work/FIX-240-run<N>.log.
+VERIFIED_PASS  `clean verify` of :rail8-testkit: exit 0, tests 300, failures 0, errors 0, skipped 0 -
+               agent/work/FIX-240-testkit.log.
+NOT_RUN        the whole reactor: no main code and no other module's test changes; FIX-280 runs it next.
+
+Time of the class ("Time elapsed"): before 40.03 s green (agent/work/FIX-240-before.log) and 41.74 s in the failing run;
+after 37.8 to 42.0 s unloaded, 44.3 to 46.6 s loaded, 40.93 s in the module's verify. The removal test: 10.06 s before,
+10.05 to 10.07 s after.
+
+Where the time goes. Measured: the time of each test in the module's verify run (surefire's
+TEST-dev.rail8.testkit.PollingConsumerContractSelfTest.xml of the run in agent/work/FIX-240-testkit.log; class 40.927 s):
+ 12.046 s  aRemovalOnAnyAnswerFailsEveryCaseWhoseAnswerKeepsTheFile            6 x 2 s
+ 10.031 s  aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile        5 x 2 s
+  8.035 s  aRoundOnTheTimersThreadFailsTheCasesThatHoldAnAnswer                2 joins of 4 s
+  4.053 s  aSmallBodyThatLosesItsLastByteFailsTheIntactCaseAtItsBodyCheck      2 x 2 s
+  2.029 s  aRoundThatGoesOnAfterAFailedAnswerFailsOnlyTheBrokenHandlerCase     1 x 2 s
+  2.027 s  aStopThatLeavesTheRoundsRunningFailsTheStoppedAndTheStopCases       1 x 2 s
+  2.027 s  aReplyThatKeepsTheFileFailsOnlyTheReplyCase                         1 x 2 s
+  0.663 s  the other fifteen tests together (0.000 to 0.174 s each)
+ Sum 40.911 s: sixteen waits of the 2 s patience() (self-test :323) and two joins of twice the patience are 40.25 s.
+Read from the contract's lines, not measured (the test-author; corrected by the reviewer in rounds 1 and 2): a case
+ stops at its first failed soon(), so it waits at most once. Fourteen waits are in every run - 5 in
+ removedBeforeTheAnswer (:281, :303, :335, :495, :546 of PollingConsumerContract.java), 6 in removedOnAnyAnswer (:258,
+ :281, :303, :335, :495, :546), 1 each in failureGoesOn (:331 or later), replyKeepsTheFile (:398) and the small-body
+ variant's BROKEN_HANDLER. Two depend on the run - stopLeavesTheRounds (:493 or :495, or no wait when the case fails at
+ :496) and the small-body variant's stop case (:465); both occurred in the run above.
+ The ten unloaded single-class runs fit that: 37.8 to 38.1 s (seven runs), 40.2 s (two), 42.0 s (one).
+
+The expected set of the removal variant, case by case, is unchanged (all eight fail): PENDING fails at :255 with no wait;
+NACK_KEEPS :281, NACK_ENDS :303, BROKEN_HANDLER :335, STOPPED :495 and DEDUPE :546 time out; FINAL_NACK fails at :364;
+STOP_WAITS fails at :468 in every run (the case that raced).
+
+The other flags, read by the test-author for the same fault: ordered, but two leftovers (row FIX-281) -
+ stopLeavesTheRounds: aStoppedConsumerDeliversNothing reads stoppedOne.count() == 0 once (:496) while the stopped
+ consumer's round runs on its own thread; not seen failing in these 20 runs;
+ stopBeforeTheRemoval: a latch wait of 10 s (self-test :260) outlives its case and prints
+ "IllegalStateException: nobody looked after the stop" on a variant-round thread (tail of agent/work/FIX-240-run1.log).
