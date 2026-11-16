@@ -48,7 +48,6 @@ class CompileCorpusTest {
    */
   @Test
   void everyCaseRunsOnTheRunnersOneThread(@TempDir Path scratch) {
-    StackProbe.warm(RUNNER_STACK);
     List<Thread> threads = new CopyOnWriteArrayList<>();
     List<Integer> frames = new CopyOnWriteArrayList<>();
     UnaryOperator<JqEngine.Builder> probe =
@@ -66,8 +65,20 @@ class CompileCorpusTest {
 
     assertThat(threads).as("the threads the hook ran on, one per case").hasSize(2);
     assertThat(threads.get(0)).as("the thread of the API case").isNotSameAs(Thread.currentThread()).isSameAs(threads.get(1));
-    StackProbe.assertHolds(frames.get(0), RUNNER_STACK, "the compile-mode oracle's API case");
-    StackProbe.assertHolds(frames.get(1), RUNNER_STACK, "the compile-mode oracle's command-line case");
+    StackProbe.assertHolds(
+        () -> {
+          api.run().apply(probe);
+          return frames.getLast();
+        },
+        RUNNER_STACK,
+        "the compile-mode oracle's API case");
+    StackProbe.assertHolds(
+        () -> {
+          cli.run().apply(probe);
+          return frames.getLast();
+        },
+        RUNNER_STACK,
+        "the compile-mode oracle's command-line case");
   }
 
   @Test
