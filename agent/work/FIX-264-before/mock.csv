@@ -1,0 +1,12 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.Poller,0,282,0,29,0,46,0,28,0,12
+Rail8 :: component :: mock,dev.rail8.components.mock,Behaviour.Fault,0,28,0,2,0,3,0,3,0,2
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent,0,697,0,29,0,102,0,56,0,41
+Rail8 :: component :: mock,dev.rail8.components.mock,Behaviour.Status,0,30,0,8,0,4,0,6,0,2
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.Dropped,0,15,0,0,0,6,0,3,0,3
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.new Producer() {...},0,130,0,6,0,14,0,10,0,7
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.new Consumer() {...},0,89,0,0,0,10,0,3,0,3
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.Drain,0,115,0,4,0,17,0,11,0,9
+Rail8 :: component :: mock,dev.rail8.components.mock,Behaviour,0,323,1,43,0,41,1,30,0,7
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.Inbox,0,55,0,0,0,13,0,6,0,6
+Rail8 :: component :: mock,dev.rail8.components.mock,MockComponent.Running,0,66,0,6,0,5,0,6,0,3

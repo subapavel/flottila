@@ -1,0 +1,13 @@
+scope	metric	covered	total	%
+total	lines	1153	3186	36.19
+total	branches	978	2816	34.73
+total	functions	476	1530	31.11
+total	statements	1461	4049	36.08
+src/model	lines	283	283	100.00
+src/model	branches	266	266	100.00
+src/model	functions	79	79	100.00
+src/model	statements	363	363	100.00
+src/studio/store	lines	113	113	100.00
+src/studio/store	branches	70	70	100.00
+src/studio/store	functions	69	69	100.00
+src/studio/store	statements	141	141	100.00

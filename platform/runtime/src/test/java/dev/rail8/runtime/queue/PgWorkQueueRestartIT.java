@@ -97,6 +97,28 @@ class PgWorkQueueRestartIT {
         unchanged(p);
     }
 
+    /**
+     * FIX-275 (D-162 (5), acceptance 6): the guard is read before the lost body — a DLQ row whose kept ref is gone, beside a work row
+     * of its id whose settle has not landed (leased), is refused as unsettled naming that row, not as {@link BlobNotFoundException},
+     * and nothing changes. The refusal is read by name ({@link DlqRestartIT#unsettledSeq}): the type is new.
+     */
+    @Test
+    void aRowWhoseKeptRefIsGoneBesideAnUnsettledWorkRowIsRefusedAsUnsettled() throws Exception {
+        Parked p = parked("m-1", "t");
+        rows.enqueue("m-1", "t", 1, null).await();
+        java.util.List<dev.rail8.core.queue.WorkQueue.Item> taken = rows.claim(NODE, "t", 1, Duration.ofSeconds(30)).await();
+        assertEquals(1, taken.size(), "fixture: the id's work row handed out, its settle not landed: " + taken);
+        long unsettled = taken.get(0).seq();
+        pool.preparedQuery("delete from body_refs where message_id = $1").execute(Tuple.of("m-1")).await();
+
+        Throwable failed = assertThrows(Throwable.class, () -> rows.restart("m-1", "t", null, 2).await(20, TimeUnit.SECONDS));
+        assertEquals(unsettled, DlqRestartIT.unsettledSeq(failed, "m-1"), "refused as unsettled, naming the work row");
+        assertEquals(Optional.of(p), new PgDlq(pool).get("m-1").await(), "the DLQ row stays as it was");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work"), "no work row written");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work where seq = $1 and attempts = 1 and locked_by = $2", unsettled, NODE),
+                "the unsettled row as it was");
+    }
+
     @Test
     void aRowWhoseKeptRefWasGivenUpFailsBodyLostAndChangesNothing() {
         Parked p = parked("m-1", "t");

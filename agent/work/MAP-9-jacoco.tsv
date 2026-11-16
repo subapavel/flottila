@@ -1,0 +1,11 @@
+module	lines_cov	lines_total	line%	br_cov	br_total	br%
+mapping/engine/api	274	276	99.28	83	83	100.00
+mapping/engine/ir	181	181	100.00	79	79	100.00
+mapping/engine/mapping	1157	1162	99.57	456	461	98.92
+mapping/engine/runtime	1142	1142	100.00	452	452	100.00
+mapping/engine/serializer	117	117	100.00	58	58	100.00
+mapping/engine/structure-import	1722	1727	99.71	891	891	100.00
+mapping/engine/structure	110	118	93.22	33	33	100.00
+mapping/engine/xdm	743	743	100.00	432	432	100.00
+mapping/engine/xslt-export	192	194	98.97	88	88	100.00
+mapping/service	410	416	98.56	103	107	96.26

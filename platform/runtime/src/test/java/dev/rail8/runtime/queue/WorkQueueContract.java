@@ -1,5 +1,6 @@
 package dev.rail8.runtime.queue;
 
+import dev.rail8.core.queue.UnsettledException;
 import dev.rail8.core.queue.WorkQueue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -33,6 +37,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>CORE-14b P8 (D-135): {@code Future<Boolean> WorkQueue.restart(String messageId, String flow, String partitionKey, int attempt)} and
  * {@code int WorkQueue.Item.maxAttempts()} (0 = the flow's bound; Postgres: V17 {@code work.max_attempts}, null = 0). The Postgres
  * queue restarts only a message with a DLQ row, deleting it in the same transaction ({@code DlqRestartIT}).
+ *
+ * <p>FIX-275 (F-57, D-162 (5)): a restart while a work row of the id and the flow is there — with the key when one is given, by id and
+ * flow only when none is — fails {@code dev.rail8.core.queue.UnsettledException} ({@code extends RuntimeException}, {@code String
+ * messageId()}, {@code long seq()}: that row's) and writes nothing, on every queue.
  */
 @Timeout(60)
 public abstract class WorkQueueContract {
@@ -304,5 +312,89 @@ public abstract class WorkQueueContract {
         assertTrue(r1.seq() > k2.seq(), "a new seq behind k2: " + r1.seq() + " vs " + k2.seq());
         assertEquals("K", r1.partitionKey(), "it keeps its key");
         assertEquals(List.of(2, 2), List.of(r1.attempts(), r1.maxAttempts()), "attempt k + 1 = 2 of its bound 2");
+    }
+
+    // --- FIX-275 (F-57, D-162 (5)): a restart beside a work row of its id
+
+    /** {@code restart} fails as unsettled: its refusal. */
+    static UnsettledException refusedAsUnsettled(io.vertx.core.Future<Boolean> restart, String what) {
+        Throwable failed = assertThrows(Throwable.class, () -> restart.await(20, TimeUnit.SECONDS), what + ": refused, not restarted");
+        return assertInstanceOf(UnsettledException.class, failed, what + ": refused as unsettled: " + failed);
+    }
+
+    static List<Long> seqs(List<WorkQueue.Item> items) {
+        return items.stream().map(WorkQueue.Item::seq).toList();
+    }
+
+    /**
+     * FIX-275: {@code restart(id, flow, key, k)} while a work row of {@code id} and {@code flow} is there — the park's settle has not
+     * landed, its row still leased — fails {@link UnsettledException} naming the message and that row's seq, and writes nothing: the
+     * id keeps its one row, and (Postgres) its DLQ row, which the restart finds once that row settled. A row of the id in another
+     * flow refuses nothing.
+     */
+    @Test
+    void aRestartBesideAWorkRowOfItsIdIsRefusedAsUnsettledAndWritesNothing() {
+        await(queue.enqueue("r1", "t", 1, null));
+        WorkQueue.Item w1 = claimedOne(NODE, "t");
+        parked("r1", "t", 1);
+
+        UnsettledException refused = refusedAsUnsettled(queue.restart("r1", "t", null, 1), "a restart beside W1");
+        assertEquals("r1", refused.messageId(), "it names the message");
+        assertEquals(w1.seq(), refused.seq(), "it names the unsettled row");
+        expireLeases();
+        List<WorkQueue.Item> again = await(queue.claim(NODE, "t", 10, LEASE));
+        assertEquals(List.of(w1.seq()), seqs(again), "nothing written: the id's one row, W1, and no restarted row beside it");
+        assertTrue(await(queue.complete(w1.seq(), again.get(0).attempts())), "fixture: W1 settles");
+
+        await(queue.enqueue("r1", "u", 1, null));
+        assertTrue(await(queue.restart("r1", "t", null, 1)), "no row of r1 in flow t left (one in flow u): restarted — Postgres: its DLQ row was kept");
+        List<WorkQueue.Item> restarted = await(queue.claim(NODE, "t", 10, LEASE));
+        assertEquals(1, restarted.size(), "one row: the restart's: " + restarted);
+        assertEquals(List.of(2, 2), List.of(restarted.get(0).attempts(), restarted.get(0).maxAttempts()), "attempt k + 1 = 2 of its bound 2");
+    }
+
+    /**
+     * FIX-275: given no key — a DLQ row parked before its key was kept (V17) — the restart probes by id and flow only, never for a row
+     * without a key: beside a keyed work row of the id, whose lease ran out (its holder gone; the row is there all the same), it is
+     * refused as unsettled naming that row; so is the restart under that row's key. Nothing written by either.
+     */
+    @Test
+    void aRestartWithoutAKeyBesideAKeyedWorkRowOfItsIdIsRefusedAsUnsettled() {
+        await(queue.enqueue("r1", "t", 1, "K"));
+        WorkQueue.Item w1 = claimedOne(NODE, "t");
+        expireLeases();
+        parked("r1", "t", 1);
+
+        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "given no key").seq(), "it names the keyed row");
+        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", "K", 1), "under the row's key").seq(), "it names the keyed row");
+        List<WorkQueue.Item> again = await(queue.claim(NODE, "t", 10, LEASE));
+        assertEquals(List.of(w1.seq()), seqs(again), "nothing written beside it: W1 alone, claimed again");
+        assertTrue(await(queue.complete(w1.seq(), again.get(0).attempts())), "fixture: W1 settles");
+
+        assertTrue(await(queue.restart("r1", "t", null, 1)), "then restarted — Postgres: its DLQ row was kept");
+        List<WorkQueue.Item> restarted = await(queue.claim(NODE, "t", 10, LEASE));
+        assertEquals(1, restarted.size(), "one row of r1, the restart's: none under K from the refusals: " + restarted);
+        assertNull(restarted.get(0).partitionKey(), "the restart's row, given no key");
+    }
+
+    /**
+     * FIX-275 (M9): beside two work rows of the id in the flow — W1 handed out, then W2 enqueued and handed out beside it — the
+     * refusal names the older, W1; once W1 settled, the one left, W2. Neither refusal writes anything: W2 alone is claimed again.
+     */
+    @Test
+    void besideTwoWorkRowsOfItsIdInItsFlowTheRefusalNamesTheOlder() {
+        await(queue.enqueue("r1", "t", 1, null));
+        WorkQueue.Item w1 = claimedOne(NODE, "t");
+        await(queue.enqueue("r1", "t", 1, null));
+        WorkQueue.Item w2 = claimedOne(NODE, "t");
+        assertEquals(List.of("r1", "r1"), List.of(w1.messageId(), w2.messageId()), "fixture: two work rows of r1 in flow t, W1 enqueued first");
+        parked("r1", "t", 1);
+
+        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "beside W1 and W2").seq(),
+                "it names the older, W1 (" + w1.seq() + "), not W2 (" + w2.seq() + ")");
+        assertTrue(await(queue.complete(w1.seq(), w1.attempts())), "fixture: W1 settles");
+        assertEquals(w2.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "beside W2").seq(), "then the one left, W2");
+        expireLeases();
+        assertEquals(List.of(w2.seq()), seqs(await(queue.claim(NODE, "t", 10, LEASE))), "nothing written by either refusal: W2 alone, claimed again");
     }
 }

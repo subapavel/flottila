@@ -270,11 +270,15 @@ public interface WorkQueue {
      * under {@code partitionKey} (null: none) at the tail of that key — a new seq behind the key's rows queued meanwhile —, due at once,
      * unleased, as handed out {@code attempt} times (k, the attempts it was parked after) with no doubt and its own bound
      * {@link Item#maxAttempts()} k + 1: its next hand-out is attempt k + 1, its last; a takeover of that hand-out is past it.
-     * {@code true} when appended. A queue with a DLQ in its store (Postgres) restarts only a message with the DLQ row of {@code flow}
+     * {@code true} when appended. A restart while a work row of {@code messageId} in {@code flow} is still there — a park whose settle
+     * has not landed (F-57, D-162 (5)) — is refused: it fails {@link UnsettledException} naming that row's seq — the oldest when there
+     * are several — and writes nothing. A queue with a DLQ in its store (Postgres) restarts only a message with the DLQ row of {@code flow}
      * at step 1 with attempt k and no replayOf (a replay's row is none), deleting that row and copying its ingress body's kept ref in
-     * the same transaction: {@code false} otherwise, nothing written;
-     * a row whose kept ref is gone fails {@code BlobNotFoundException} ({@code BodyLostException} when an accepted loss gave it up),
-     * nothing changed. A queue without one (in memory) always appends.
+     * the same transaction, and answers in this order: {@code false} without that row, nothing written; then the refusal, its work row
+     * read under {@code partitionKey} when one is given and of any key when none is, the DLQ row kept whatever became of the body;
+     * then a row whose kept ref is gone fails {@code BlobNotFoundException} ({@code BodyLostException} when an accepted loss gave it
+     * up), nothing changed. A queue without one (in memory) reads the id's rows in {@code flow} whatever their key and appends when
+     * there is none.
      *
      * @since 0.1
      */

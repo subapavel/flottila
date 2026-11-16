@@ -1,0 +1,37 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Rail8 :: api,dev.rail8.api,StepResources,0,302,0,24,0,52,0,24,0,12
+Rail8 :: api,dev.rail8.api,BlobStore,0,23,0,4,0,4,0,4,0,2
+Rail8 :: api,dev.rail8.api,Sha256Hasher,7,45,0,2,2,9,0,7,0,6
+Rail8 :: api,dev.rail8.api,Envelope,0,424,0,8,0,39,0,25,0,21
+Rail8 :: api,dev.rail8.api,BlobKey,0,41,0,2,0,7,0,4,0,3
+Rail8 :: api,dev.rail8.api,InputStreamReadStream,0,214,0,30,0,37,0,26,0,11
+Rail8 :: api,dev.rail8.api,Ack.Accepted,0,10,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,Body,0,146,0,12,0,19,0,17,0,11
+Rail8 :: api,dev.rail8.api,BlobNotFoundException,0,12,0,0,0,4,0,2,0,2
+Rail8 :: api,dev.rail8.api,Component,0,8,0,0,0,4,0,4,0,4
+Rail8 :: api,dev.rail8.api,StepConfig,0,84,0,6,0,9,0,8,0,5
+Rail8 :: api,dev.rail8.api,Ack.Reply,0,10,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,Views,0,18,0,0,0,3,0,3,0,3
+Rail8 :: api,dev.rail8.api,Ack.Nack,0,13,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,BodyLostException,0,12,0,0,0,4,0,2,0,2
+Rail8 :: api,dev.rail8.api,Health,0,31,0,0,0,4,0,4,0,4
+Rail8 :: api,dev.rail8.api,Key,0,6,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,Hash,0,30,0,4,0,4,0,4,0,2
+Rail8 :: api,dev.rail8.api,Producer,0,17,0,2,0,3,0,2,0,1
+Rail8 :: api,dev.rail8.api,Sha256Hasher.new Hasher.Session() {...},0,26,0,0,0,3,0,3,0,3
+Rail8 :: api,dev.rail8.api,Fault.Kind,0,27,0,0,0,5,0,1,0,1
+Rail8 :: api,dev.rail8.api,Pipeline,0,34,0,2,0,7,0,5,0,4
+Rail8 :: api,dev.rail8.api,Runtime,0,60,0,2,0,11,0,3,0,2
+Rail8 :: api,dev.rail8.api,Props,0,38,0,0,0,4,0,4,0,4
+Rail8 :: api,dev.rail8.api,StepFactory,0,2,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,Health.Status,0,21,0,0,0,1,0,1,0,1
+Rail8 :: api,dev.rail8.api,BodyTooLargeException,0,28,0,0,0,9,0,5,0,5
+Rail8 :: api,dev.rail8.api,BodyKind,0,21,0,0,0,4,0,1,0,1
+Rail8 :: api,dev.rail8.api,Hasher,0,12,0,0,0,2,0,2,0,2
+Rail8 :: api,dev.rail8.api,NackException,0,27,0,2,0,7,0,5,0,4
+Rail8 :: api,dev.rail8.api,Headers,0,57,0,0,0,6,0,6,0,6
+Rail8 :: api,dev.rail8.api,Part,0,20,0,0,0,4,0,1,0,1
+Rail8 :: api,dev.rail8.api,Keys,0,36,0,0,0,4,0,4,0,4
+Rail8 :: api,dev.rail8.api,EndpointConfig,0,27,0,0,0,6,0,2,0,2
+Rail8 :: api,dev.rail8.api,Expressions,0,9,0,0,0,2,0,2,0,2
+Rail8 :: api,dev.rail8.api,Stage,0,13,0,0,0,2,0,2,0,2

@@ -1,0 +1,13 @@
+module	tests	failures	errors	skipped
+mapping/bench/jmh	29	0	0	0
+mapping/engine/api	409	0	0	0
+mapping/engine/ir	91	0	0	0
+mapping/engine/mapping	563	0	0	0
+mapping/engine/oracle	2910	0	0	0
+mapping/engine/runtime	717	0	0	0
+mapping/engine/serializer	19	0	0	0
+mapping/engine/structure-import	211	0	0	0
+mapping/engine/structure	412	0	0	0
+mapping/engine/xdm	11151	0	0	0
+mapping/engine/xslt-export	53	0	0	0
+mapping/service	1257	0	0	0

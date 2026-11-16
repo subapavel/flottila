@@ -1,0 +1,10 @@
+module	generated	killed	survived	no_coverage	timed_out	other	score%	strength%	wall
+xdm	509	498	0	0	11	0	100	100	92s
+ir	66	66	0	0	0	0	100	100	110s
+runtime	597	587	5	0	5	0	99	99	200s
+serializer	103	103	0	0	0	0	100	100	110s
+mapping	525	513	11	0	1	0	98	98	222s
+xslt-export	95	95	0	0	0	0	100	100	200s
+api	109	108	0	0	1	0	100	100	884s (incl. lock wait; rerun after kill)
+udf-api	-	-	-	-	-	-	-	-	8s (skipped: no tests or no production code)
+udf	-	-	-	-	-	-	-	-	4s (skipped: same)

@@ -1,0 +1,6 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Rail8 :: component :: sftp,dev.rail8.components.sftp,Download,0,125,0,8,0,30,0,13,0,9
+Rail8 :: component :: sftp,dev.rail8.components.sftp,SftpComponent.SftpConsumer,3,874,1,68,0,156,1,56,0,21
+Rail8 :: component :: sftp,dev.rail8.components.sftp,SftpComponent.Remote,0,24,0,0,0,2,0,2,0,2
+Rail8 :: component :: sftp,dev.rail8.components.sftp,SftpComponent,0,213,0,20,0,33,0,28,0,18
+Rail8 :: component :: sftp,dev.rail8.components.sftp,Download.new FilterInputStream() {...},0,34,0,2,0,6,0,4,0,3

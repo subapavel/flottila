@@ -19,6 +19,7 @@ import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.InMemoryWorkQueue;
+import dev.rail8.core.queue.UnsettledException;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Meter;
@@ -57,6 +58,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -96,6 +98,8 @@ class AdminDlqRestartTest {
     final Doors doors = new Doors();
     /** What the queue's restart answers instead of the in-memory one's; null: the in-memory one. */
     volatile Supplier<Future<Boolean>> restartAnswer;
+    /** The claims the test's queue was asked for: the worker of {@code shop/orders} claims at its start and at each wake. */
+    final AtomicInteger claims = new AtomicInteger();
     final StepFactory probe = new StepFactory() {
         @Override public String type() { return "probe"; }
         @Override public String configSchema() { return "{}"; }
@@ -170,7 +174,10 @@ class AdminDlqRestartTest {
     /** The in-memory queue, its restart answered by {@link #restartAnswer} when set. */
     final WorkQueue queue = new WorkQueue() {
         @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return rows.enqueue(messageId, flow, step, partitionKey); }
-        @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) { return rows.claim(workerId, flow, max, lease); }
+        @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
+            claims.incrementAndGet();
+            return rows.claim(workerId, flow, max, lease);
+        }
         @Override public Future<Boolean> complete(long seq, int attempts) { return rows.complete(seq, attempts); }
         @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
             return rows.completeAndTakeNext(seq, attempts, workerId, lease);
@@ -365,6 +372,24 @@ class AdminDlqRestartTest {
         Parked lost = parked("m-2", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
         restartAnswer = () -> Future.failedFuture(new BodyLostException(BlobKey.body("m-2", 0)));
         refused("m-2", lost, 409, "its ingress body is no longer kept");
+    }
+
+    /**
+     * FIX-275 (F-57, D-162 (5)): a restart the queue refuses because a work row of the message is still there — its park's settle has
+     * not landed — is 409: the error names the message and the work item's seq, says it is not settled yet and names no other route;
+     * nothing is woken (the worker claims nothing more than its start claim) or announced, the DLQ row is kept.
+     */
+    @Test
+    void aRetryBesideAnUnsettledWorkRowIs409() throws Exception {
+        Parked p = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
+        restartAnswer = () -> Future.failedFuture(new UnsettledException("m-1", 918_273_645L));
+        int claimed = claims.get();
+        assertEquals(1, claimed, "fixture: the worker's start claim, nothing since");
+
+        Answer a = refused("m-1", p, 409, "not settled yet");
+        assertTrue(a.json().getString("error").contains("918273645"), "it names the work item's seq: " + a.json());
+        namesNoOtherRoute(a);
+        assertEquals(claimed, claims.get(), "nothing woken: the worker of shop/orders claimed nothing since");
     }
 
     @Test

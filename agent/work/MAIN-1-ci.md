@@ -222,3 +222,6 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
 - 2026-11-16, 13:40Z: `ci` run 241 (id 43864341902) on ea75ea70 (FIX-270, documents only): success, 12:11Z to 12:38Z.
   Run 242 (id 43869494326) on db41bb92 (FIX-263: the two replay routes leave the admin API - code and tests): success,
   12:45Z to 13:10Z. Each read from its conclusion. Green `ci` runs read in a row: 237 to 242.
+- 2026-11-16, 15:19Z: `ci` run 243 (id 43876465429) on e1bd35f8 (FIX-267: cancel designed, documents only): success,
+  13:30Z to 13:57Z. Run 244 (id 43881909665) on f1be875c (ISSUE-12: the owner's answers, documents only): success,
+  14:04Z to 14:32Z. Each read from its conclusion. Green `ci` runs read in a row: 237 to 244.

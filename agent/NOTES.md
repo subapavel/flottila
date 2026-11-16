@@ -310,6 +310,14 @@ step-xslt, step-validate and component-http) → components → cli → archtest
 commit: `mvn -B -ntp verify -Pit`, then `python3 ci/coverage_check.py --write`. Scoped PIT:
 `mvn -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage`
 (floor 80 %). New code must be covered to the module's level (FIX-3) — the band bit once.
+Scoped to classes of one module: `-pl :rail8-core -am ... -DtargetClasses=<globs>
+-DfailWhenNoMutations=false` — with `-am` PIT also runs on the upstream modules, where the
+filter matches nothing and the run stops at the first of them (FIX-275). Core's own JaCoCo
+report does not count `WorkQueueContract`'s runners (they live in runtime): a change to a core
+queue needs a case in core's tree, or core's report misses the new lines (FIX-275, step 2b).
+A CTE that probes beside a `for update` CTE reads the statement's snapshot, taken before the
+lock wait: check what every holder of that lock can write. A class Javadoc's list of a route's
+answers follows every new answer (`AdminServer`'s class text) — both FIX-275's review.
 In the cloud session the services die with the tool call that started them unless detached:
 `sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &` and
 `sudo -n setsid pg_ctlcluster 16 main start`. A container restart kills both and every background agent; the working tree survives.

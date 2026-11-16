@@ -1,0 +1,36 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Rail8 :: sim,dev.rail8.sim,Trace,0,84,0,2,0,11,0,4,0,3
+Rail8 :: sim,dev.rail8.sim,SimSteps,0,42,0,2,0,8,0,4,0,3
+Rail8 :: sim,dev.rail8.sim,SimIntake,0,50,0,4,0,9,0,4,0,2
+Rail8 :: sim,dev.rail8.sim,SimConfig,0,335,0,8,0,28,0,12,0,8
+Rail8 :: sim,dev.rail8.sim,Action,0,42,0,0,0,9,0,3,0,3
+Rail8 :: sim,dev.rail8.sim,Trace.Event,0,15,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Runs.Run,0,20,0,0,0,7,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimStore,8,63,0,0,1,12,1,5,1,5
+Rail8 :: sim,dev.rail8.sim,FaultKind,0,35,0,0,0,8,0,3,0,3
+Rail8 :: sim,dev.rail8.sim,ClaimCap,32,99,0,2,5,13,5,12,5,11
+Rail8 :: sim,dev.rail8.sim,SimRun,0,1204,0,52,0,154,0,57,0,31
+Rail8 :: sim,dev.rail8.sim,Mix,0,78,0,4,0,10,0,6,0,4
+Rail8 :: sim,dev.rail8.sim,World.Unit,0,12,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimSeed,0,51,0,2,0,6,0,6,0,5
+Rail8 :: sim,dev.rail8.sim,Runs.State,0,21,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Runs,35,436,6,16,5,91,6,33,1,27
+Rail8 :: sim,dev.rail8.sim,Verdict.Failure,0,12,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Oracle.Send,0,29,0,0,0,10,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Check,0,57,0,0,0,3,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Oracle,5,903,2,90,0,121,3,66,1,22
+Rail8 :: sim,dev.rail8.sim,Oracle.Pending,0,15,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimPartner,14,187,0,4,5,29,5,5,5,3
+Rail8 :: sim,dev.rail8.sim,Runs.new FutureTask() {...},7,18,1,1,0,3,1,2,0,2
+Rail8 :: sim,dev.rail8.sim,World,0,17,0,0,0,7,0,8,0,8
+Rail8 :: sim,dev.rail8.sim,Stream,0,35,0,0,0,8,0,3,0,3
+Rail8 :: sim,dev.rail8.sim,Runs.Held,0,12,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimSteps.new Expressions() {...},8,14,0,0,1,4,2,5,2,5
+Rail8 :: sim,dev.rail8.sim,SimTimer.Wake,0,9,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimSteps.new StepFactory() {...},2,35,0,0,1,6,1,4,1,4
+Rail8 :: sim,dev.rail8.sim,Simulation,0,69,0,0,0,13,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,World.Draw,0,21,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,Faults,0,112,0,4,0,16,0,8,0,6
+Rail8 :: sim,dev.rail8.sim,Verdict,0,215,0,16,0,24,0,13,0,5
+Rail8 :: sim,dev.rail8.sim,World.Unit.Kind,0,33,0,0,0,1,0,1,0,1
+Rail8 :: sim,dev.rail8.sim,SimTimer,0,73,0,4,0,12,0,9,0,7

@@ -13,6 +13,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.Workers;
+import dev.rail8.core.queue.UnsettledException;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.record.Page;
@@ -139,8 +140,9 @@ import java.util.function.Supplier;
  * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft; FIX-138a), {@code POST /admin/dlq/{id}/retry} runs a
  * message its flow's worker parked once more under its own id (D-156: a message keeps one id): the DLQ row out and the work
  * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
- * not deployed here, its ingress body no longer kept), 422 saying why (a flow that is not at-least-once, a row its worker did not
- * park, or a keyed flow's row parked before its key was kept). There is no {@code /restart} route and no replay route (404).
+ * not deployed here, a work row of the message not settled yet (F-57), its ingress body no longer kept), 422 saying why (a flow
+ * that is not at-least-once, a row its worker did not park, or a keyed flow's row parked before its key was kept). There is no
+ * {@code /restart} route and no replay route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -687,9 +689,10 @@ public final class AdminServer {
      * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one
      * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
      * before V17, O7); nothing written for any of them; each 422 says why and names no other route. Then {@link WorkQueue#restart}: the DLQ row
-     * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, an ingress body no
-     * longer kept 409, nothing changed. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to
-     * every node (the row's body node claims it).
+     * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, a work row of the
+     * message still there ({@link UnsettledException}: its park has not settled, F-57) 409 naming that work item, an ingress body no
+     * longer kept 409, nothing changed, nothing woken or announced. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken
+     * here and announced to every node (the row's body node claims it).
      */
     private Reply retry(RoutingContext ctx, Deployments deployments, WorkQueue work) {
         String id = ctx.pathParam("id");
@@ -714,6 +717,8 @@ public final class AdminServer {
         boolean restarted;
         try {
             restarted = work.restart(id, flow, row.partitionKey().orElse(null), k).await();
+        } catch (UnsettledException unsettled) {
+            return Json.of(409, error("message " + id + " is not restarted: its work item " + unsettled.seq() + " is not settled yet"));
         } catch (BlobNotFoundException | BodyLostException gone) {
             return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));
         }

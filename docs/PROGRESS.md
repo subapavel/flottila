@@ -1,4 +1,20 @@
 
+## 2026-11-16 — FIX-275 `/retry` refuses while a work row of its id is unsettled (F-57) — done, review PASS [C]
+
+- Context compacted before the implementer's hand-back; HANDOFF, `git status` and `git log -3` were re-read first.
+- Red first, observed on the code before the guard (`agent/work/FIX-275-red-its.log`): `DlqRestartIT` 3 of 5 failed - a second
+  work row of the id ([8, 9]); the partner accepted twice; delivered and back in the failed list. F-57's Evidence has the lines.
+- The guard: RESTART probes `work` under the DLQ row lock (by the row's key when it holds one) and writes only when the probe
+  is empty; `UnsettledException(messageId, seq)` in core; the in-memory queue refuses likewise; `/retry` answers 409 with id and seq.
+- Answer order kept: `false` without the DLQ row, then unsettled, then the lost body. The refusal names the id's oldest row.
+- Step 2b (added on the hand-back): core's own report missed the new code - the contract runs from runtime. Four cases in core, one
+  in the contract (two rows of one id). Green on arrival; evidence: scoped PIT 93 of 94 (the survivor is `eligible` :213) and mutants.
+- Verified: whole reactor `-Pit` green - 17 modules, 4 679 tests, 0 failures, errors or skips; coverage no decrease (core 99.7 / 99.4).
+- Not pinned: the probe's plan, its time bound (FIX-276), a node's death as the cause, what the snapshot relies on. ARCHITECTURE 3.33.
+- Also: FIX-264's coverage 'before' (`agent/work/FIX-264-before/`); ci runs 243, 244 read green. MAP-9 measured alongside, at the
+  owner's question: `agent/work/MAP-9-numbers.md` - every measured mapping module is above 90 % line and branch; its row stays open.
+- Review [C]: four rounds - 1 FAIL a Javadoc answer list; 2, 3 FAIL stale 'pending' sentences in documents; 4 PASS. Name guard clean; ledger check: the 9 old.
+
 ## 2026-11-16 — ISSUE-12 the owner's answers on cancelling a message — recorded, review PASS [C]; Deviation: F-58
 
 - The owner answered ISSUE-12's six items in the session; D-163 records them and amends D-162; ISSUE-12 is closed.

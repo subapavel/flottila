@@ -1,0 +1,110 @@
+FIX-275 evidence (2026-11-16) - `/retry` refuses while a work row of its id is unsettled (F-57, D-162 (5))
+
+Red, observed on the code before the change (test-author, step 1; the tests approved by the architect)
+- EXECUTED_FAIL agent/work/FIX-275-red-its.log - DlqRestartIT 5 run, 3 failed; PgWorkQueueRestartIT 9 run, 1 failed:
+  - DlqRestartIT.aRetryBeforeTheParksSettleLandedIsRefused (:421): "refused as unsettled ... but was: <no failure>";
+    "the DLQ row is kept ... but was: <Optional.empty>"; "the id has exactly one work row, W1 ==> expected: <[8]> but
+    was: <[8, 9]>" - the second work row of the id, as F-57 read it.
+  - DlqRestartIT.aMessageRetriedBeforeItsParkSettledIsAcceptedByThePartnerOnce (:442): "the partner accepted the message
+    exactly once; sent [m-1@1, m-1@2, m-1@2] ==> expected: <1> but was: <2>" - F-57's first outcome.
+  - DlqRestartIT.aMessageRetriedBeforeItsParkSettledDoesNotComeBackAfterItsDelivery (:467): "the failed list has no row
+    of the delivered message ==> expected: <Optional.empty> but was: <Optional[Parked[..AttemptsExhaustedException..
+    props={attempt=2}..]]>" - F-57's second outcome.
+  - PgWorkQueueRestartIT.aRowWhoseKeptRefIsGoneBesideAnUnsettledWorkRowIsRefusedAsUnsettled (:115): "expected:
+    <...UnsettledException> but was: <...BlobNotFoundException>".
+- EXECUTED_FAIL agent/work/FIX-275-red-compile.log - six "cannot find symbol: class UnsettledException" (the contract's
+  two cases and the admin route's case name the type).
+- EXECUTED_FAIL agent/work/FIX-275-red-stub.log - with the type stubbed in a scratch directory: found=7 failed=7.
+- Baseline before the tests: agent/work/FIX-275-red-baseline.log. The three ITs ran an unkeyed flow.
+
+Green, the implementer (step 2)
+- VERIFIED_PASS agent/work/FIX-275-green-units.log - InMemoryWorkQueueContractTest, AdminDlqRestartTest,
+  InMemoryWorkQueueRestartTest, FlowWorkerRetryTest: 0 failures.
+- VERIFIED_PASS agent/work/FIX-275-green-its.log, -its2.log - DlqRestartIT 5, PgWorkQueueRestartIT 9, the two Postgres
+  contract runners, AdminDlqRestartIT 6, NodeIT 40: 0 failures.
+- No test changed by the implementer.
+
+Step 2b, the test-author again (cases that meet existing code: green on arrival, by the packet)
+- VERIFIED_PASS agent/work/FIX-275-2b-core.log - InMemoryWorkQueueRestartTest 6 run, 0 failed (four new cases).
+- VERIFIED_PASS agent/work/FIX-275-2b-units.log - InMemoryWorkQueueContractTest 12 run, 0 failed (one new case).
+- VERIFIED_PASS agent/work/FIX-275-2b-its.log - PgWorkQueueContractIT 12, PgBatchedWorkQueueContractIT 12, 0 failed.
+- agent/work/FIX-275-2b-scratch-mutants.log - eleven mutants of core compiled into a scratch directory ahead on the
+  class path (the tree untouched), all killed by core's own cases; `max(seq)` for `min(seq)` in RESTART killed on both
+  Postgres runners by the new contract case ("expected: <8> but was: <9>").
+- One sentence of `WorkQueue.restart`'s Javadoc followed (the implementer): the refusal names the oldest row when
+  there are several. VERIFIED_PASS agent/work/FIX-275-fix-compile.log.
+
+The verifier, on the tree as committed (step 3)
+- VERIFIED_PASS agent/work/FIX-275-verify.log - whole reactor `clean verify -Pit`: exit 0, BUILD SUCCESS in 26:56,
+  17 modules SUCCESS, 4 679 tests by the log's result lines, 0 failures, 0 errors, 0 skipped, no `[ERROR]` line.
+  (The verifier counted 4 398 in 492 report files: that count leaves out bench's 281 - the reviewer's correction.)
+  DlqRestartIT 5, PgWorkQueueRestartIT 9, PgWorkQueueContractIT 12, PgBatchedWorkQueueContractIT 12,
+  InMemoryWorkQueueContractTest 12, AdminDlqRestartTest 10, AdminDlqRestartIT 6, InMemoryWorkQueueRestartTest 6,
+  NodeIT 40 - each 0 failures, 0 errors.
+- VERIFIED_PASS agent/work/FIX-275-coverage.log - "coverage: no decrease" against HEAD; core 99.7 % line / 99.4 %
+  branch, runtime 99.5 / 99.4, api 99.3 / 100.0. (Before step 2b core's own report missed 9 of the 10 new lines.)
+- EXECUTED_FAIL agent/work/FIX-275-pit.log - the scoped PIT as first written stopped at rail8-api ("No mutations
+  found": the class filter matches nothing there). Not a result about the change.
+- VERIFIED_PASS agent/work/FIX-275-pit2.log - the same with `-DfailWhenNoMutations=false`: core, classes
+  `InMemoryWorkQueue*` and `UnsettledException`: 94 generated, 93 killed. `UnsettledException` 2 of 2;
+  `InMemoryWorkQueue` 91 of 92. The one survivor is `InMemoryWorkQueue.eligible` :213, a conditional boundary - a line
+  this change does not touch; `restart` has no mutant that is not killed.
+- The diff: agent/work/FIX-275.diff (12 files, 522 insertions, 29 deletions, and the new type).
+- FIX-264's coverage "before": agent/work/FIX-264-before/<module>.csv, twelve files, from this run.
+
+Hand mutants, the implementer (agent/work/FIX-275-mutants.log; each restored, `cmp` the same)
+- 12 of 15 killed at hand-back. M9 (the newest row for the oldest) survived then and is killed since step 2b.
+- M4 (the `$3 is null` gate dropped) and M5 (the key term dropped from the keyed branch) survive: they change the plan
+  only, for as long as every work row of a message carries the message's one key. The key a restart is given is the
+  DLQ row's own (`AdminServer.java:718`), never the caller's. The reviewer checked the claim: the DLQ row's key is the
+  parked item's (`FlowWorker.java:653`, `:697`), the first park wins (`PgDlq.java:62`), no statement updates
+  `work.partition_key`.
+- The log prints `killers=[]` for M7 and M8: its parser misses the `» Unsettled` lines. Both are kills (their own logs,
+  :177). The log has no baseline line; the unmutated runs are the green logs above.
+
+What is not pinned, and stays so
+- The plan of the probe (M4, M5 above). Read once by the implementer on a scratch table of 200 000 rows: the keyed
+  branch uses `work_flow_key_seq`; with no key the probe scans the flow's rows.
+- The probe has no time bound of its own: the bound on an act's statements is FIX-276's (`RAIL8_ADMIN_ACT_TIMEOUT`).
+- Only the failed settle is staged, not a node's death between the park's two writes: the same rows, reached another way.
+- The in-memory queue matches on id and flow; Postgres adds the key when the DLQ row holds one. No case tells the two
+  apart, for the reason given with M4 and M5.
+- The old row, alone and within its bound, still reruns and can deliver: CONSIDER-28, not this row.
+- The keyed branch's `o.flow = $2` (`PgWorkQueue.java:300`) has no case and no mutant: it matters only if one id were
+  in two flows under one key (the reviewer).
+- The probe reads the statement's snapshot, taken before the wait for the DLQ row lock. It is safe because every holder
+  of that lock - another restart, the DLQ's removal - deletes the row or writes nothing. RESTART's Javadoc and
+  ARCHITECTURE section 6 now say so; FIX-277's cancel must keep it (its row carries the note). No test stages it.
+- The route's 409 is tested against a stubbed queue answer; no `AdminDlqRestartIT` case runs it over Postgres. The
+  queue's refusal over Postgres is `DlqRestartIT`, `PgWorkQueueRestartIT` and the contract's two runners.
+
+Review [C], round 1: FAIL, one reason - the class Javadoc of `AdminServer` lists every answer of `/retry` and the new
+409 was missing (:142-143). Fixed by the implementer, with two more Javadoc sentences the reviewer suggested
+(`PgWorkQueue`'s class text; what the probe relies on). agent/work/FIX-275-fix2-compile.log: no `[ERROR]` line; the
+exit code 0 is the implementer's word, the log has no exit line. Remarks
+taken: the test count above; the mutant log's parser; the three unpinned items above; ARCHITECTURE 3.33 - sections 4
+and 6 said "today" and "not built"; F-57's Evidence has the red lines. The reviewer's memory file has no writer in
+that run: its lesson is in `agent/NOTES.md`.
+
+Hypotheses (the implementer): confirmed - RESTART never read `work` (the red shows rows [8, 9] and the DLQ row gone).
+Rejected by that red: the park's `on conflict` as the cause; a settle that should be retried.
+
+ci: runs 243 (e1bd35f8) and 244 (f1be875c) read green before this commit (agent/work/MAIN-1-ci.md).
+
+Round 2: FAIL, the code closed; two sentences of the binding documents still said the guard was pending - ARCHITECTURE
+section 7 ("to be ... FIX-275, pending") and D-136's bracket in DECISIONS. Both corrected; D-162's row carries a
+bracket for what is built; changelog 3.33 names section 7; F-57 names 3.33. The same bracket of D-136 said "an optional
+reason" on a retry, which D-163 had replaced: corrected in the same edit. One clause added to RESTART's Javadoc and to
+section 6 (the reviewer's remark): the probe also relies on nothing but a restart writing a work row of a parked id.
+The reactor was not re-run after the Javadoc-only edits (the reviewer: not needed, the bytecode is the same).
+The clause was checked before it was written (the implementer): of the four `insert into work` only RESTART writes an
+id that has a DLQ row - the three enqueue statements are an intake's step 1 under an id minted at its ingress, and a
+run keeps its one row. agent/work/FIX-275-fix3-compile.log: exit=0.
+
+Round 3: FAIL, one more stale bracket - D-135's in DECISIONS ("is to refuse ... pending"). Corrected, with D-156's
+("to be built by FIX-275 to FIX-278 - FIX-275 is done"). The architect then swept every mention of FIX-275, F-57,
+"unsettled" and "work row of the id" in ARCHITECTURE, DECISIONS, NOTES, the issues and F-55 to F-58 for a word of the
+future. What is left on purpose: ARCHITECTURE's changelog row 3.31 (history) and the body of D-162's row, which its
+bracket amends. The sweep found one error of the architect's own in the round-1 and round-2 edits: they said the 409
+is a text "until FIX-276"; the `unsettled` member is FIX-278's (D-162; FIX-278's row) - FIX-276 gives the core type
+its `Act.Unsettled`. Five places corrected (ARCHITECTURE sections 4 and 6 and row 3.33; D-136's and D-162's brackets).

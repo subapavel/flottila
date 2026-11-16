@@ -120,10 +120,19 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
-    /** Appends the row whatever was parked: this queue has no DLQ (the Postgres one deletes its row in the same transaction). */
+    /**
+     * Appends the row whatever was parked — this queue has no DLQ (the Postgres one deletes its row in the same transaction) —
+     * unless a row of {@code messageId} in {@code flow} is still there, held or not, whatever its key: then {@link UnsettledException}
+     * naming the oldest such row, nothing appended. The check and the append are one step under this queue's monitor.
+     */
     @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
         Objects.requireNonNull(messageId, "messageId");
         Objects.requireNonNull(flow, "flow");
+        for (Row r : rows.values()) {   // seq order: the first match is the oldest
+            if (r.item.messageId().equals(messageId) && r.item.flow().equals(flow)) {
+                return Future.failedFuture(new UnsettledException(messageId, r.item.seq()));
+            }
+        }
         long seq = nextSeq++;
         rows.put(seq, new Row(new Item(seq, messageId, flow, 1, partitionKey, attempt, 0, attempt + 1)));
         return Future.succeededFuture(true);
