@@ -486,6 +486,14 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   - max `b` is not 192 or the reserve is not 184 320;
   - any other C2 stop fires.
   Then run B, at 192 and 184 320.
+- **Outcome (owner, 2026-11-16).** The spin fix passed the probe and the edge check, then the third
+  run A and run B. Run B reproduced `b` 192 and the reserve 184 320, so the reserve holds. Two old
+  virtual 512 KiB C1 cells had a spread in one run and spread 0 in the other: CONSERVATIVE first-or
+  had 20 in the third run A, and OPTIMISED collect had 12 in run B. Their `U*` equal run A's. The
+  stray children went higher, which is the safe side, and the two intercepts (102 629 and 105 557)
+  are below the 118 064 that sets the reserve. The owner accepts them without a re-run. So "every
+  C1 cell has spread 0" (K2 above) holds for platform cells, while a virtual C1 cell may have a
+  spread above its `U*`. The oracle's stack pin failed with #199's edits; that is F-113.
 
 ## Amendment (ticket #198, owner 2026-11-16)
 
