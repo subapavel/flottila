@@ -1,0 +1,73 @@
+ISSUE-12 - the owner's answers on cancelling a failed message - evidence (2026-11-16)
+
+Documents only: no code, no test, no Maven by this change. (FIX-275 is in flight in the same tree: its tests and its
+main code are another change and are not part of this one.)
+
+THE OWNER'S ANSWERS (in the session, 2026-11-16; Czech, translated in ISSUE-12 "Owner's answer" and in D-163's Why)
+ 1. A sender's resend over SFTP is another message under another id; the item mixed two unrelated things. Withdrawn.
+ 2. Who the operator is: solved together with roles and authorization.
+ 3. The error text in the record of a cancel: yes - "we need to trace it".
+ 4. A cancelled message's history: the default (by age).
+ 5. A reason: none ("permissions solve it, let us not complicate it"); then, told that this would be applied to a cancel
+    too: a reason for a cancel may optionally be there.
+ 6. Undoing a cancel: no.
+
+READ BY THE ARCHITECT IN THE CODE (for item 1 and F-58)
+- platform/components/sftp/src/main/java/dev/rail8/components/sftp/SftpComponent.java:399 - the key is
+  "sftp://" + host + ":" + port + file.path() + "@" + file.mtime() + "#" + body.hash().hex(); :95-96 and :158-163 - the
+  Javadoc names what it is for: "the same file delivered again - its removal refused after the save, another node polling
+  it after a takeover".
+- platform/components/sftp/src/test/java/dev/rail8/components/sftp/SftpComponentTest.java:530 pins the key's shape.
+- platform/runtime/src/test/java/dev/rail8/runtime/flow/SftpIngressDedupeIT.java:70-73 (Javadoc): the staged case is the
+  same file delivered twice after a refused removal.
+- NOT_RUN, and not looked for: a test that uploads a file again with a new mtime and counts two messages. F-58 says so.
+- platform/core/src/main/java/dev/rail8/core/dlq/Parked.java:59 - `error` is the failure's toString(), stored whole;
+  PgDlq.java:153 reads it back as stored. The copy into the audit detail is therefore cut: 4 096 characters, marked.
+
+PRODUCED
+- docs/DECISIONS.md - D-163 (the six answers and what each changes in D-162); a bracket at the start of D-162.
+- docs/ARCHITECTURE.md - changelog 3.32: section 6's paragraph (cancel requires neither a name nor a reason; an optional
+  reason in an optional JSON body; /retry takes none; the cancel's record and its `events` entry carry the error text;
+  the sentence on a sender's resend), section 9 (the audit detail; reading audit rows belongs to the payload permission),
+  section 4 (two sentences on what a dedupe key recognises).
+- docs/findings/F-58.md (new, minor) - sftp's dedupe key recognises a file picked up twice, not a sender's resend.
+- issues/ISSUE-12.md - "Owner's answer", closed; item 1 withdrawn. issues/ISSUE-11.md - item 2 corrected (dated).
+  issues/ISSUE-10.md - item 3 answered in part.
+- agent/BACKLOG.md - FIX-276, FIX-277, FIX-278 amended (no reason on /retry, an optional one on cancel, no required
+  name, the error text copied; FIX-278's cases changed with it); notes on CONSIDER-27, CONSIDER-29, OPS-9.
+- agent/NOTES.md - the DLQ section.
+
+THE ARCHITECT'S READINGS (each told to the owner in the session; D-163's Why lists them)
+- Item 2 is read as: no name is required on either act now; the header's name is recorded, "unknown" when absent.
+- The error text is also served in the cancel's `events` entry - a record nothing reads traces nothing.
+- The optional reason travels as D-162 (3) designed /retry's optional reason: a JSON body {"reason"}, 1 to 1024
+  characters stripped, the body at most 8 KiB, 400 for a body that is not such JSON, 413 above.
+- Stated consequence: an audit row can now quote payload values and outlives the payload: OPS-9 (who reads it) and
+  CONSIDER-29 (the table's bound) carry it.
+
+REVIEW ROUND 1 (reviewer [C]): FAIL, one reason. What changed
+ 1. The error text was copied "as the DLQ row holds it" - unbounded (Parked.java:59), into a table that is never
+    deleted and into `events`. Now: cut to its first 4 096 characters and marked `errorCut` when cut - D-163 (3) and its
+    Why, section 6 "The record", section 9, the changelog row, FIX-277's detail; FIX-277 names the case
+    aCancelsRecordCutsAnErrorAboveItsBound (4 097 cut and marked; exactly 4 096 whole). The number is the architect's.
+Remarks taken: FIX-277 names aCancelWithAReasonOutsideItsBoundsIsRefusedAndWritesNothing; a body sent to /retry is not
+read, as today (section 6, D-163 (5), FIX-278 with aRetryDoesNotReadABody); an empty object and a null reason on a
+cancel are 400 - to give no reason, send no body (section 6, D-163 (5), FIX-278); D-163 (2) says "D-162 (1) said 400";
+D-163's Why says F-58 corrects sections 4 and 6; HANDOFF is rewritten at the commit (closed ISSUE-12, next free ids).
+
+REVIEW ROUND 2: FAIL, one new reason, in a sentence the fix had added. What changed
+ 1. D-163's Why said the whole error text "stays in the message's history". It stays only in the failed step's row,
+    which a flow at recording level `off` never writes and any level writes best-effort (Recorder.java:73, :88-98;
+    RecordingPolicy.java:56-61, read by the architect). The Why now says so: there the cut copy is the only one.
+    ISSUE-12's answer 3 says it too.
+Remarks taken: FIX-277's cut case adds a text whose 4 096th unit is a high surrogate (cut to 4 095, marked); ISSUE-12
+item 3 rewrapped.
+
+REVIEW ROUND 3: PASS. Nothing blocking; no remark left open.
+
+EVIDENCE WORDS
+- VERIFIED_PASS: python3 ci/name_guard.py - "name guard: clean, 6099 tracked files scanned".
+- python3 ci/ledger_check.py - "ledgers: 9 problem(s)": the nine old rows (BACKLOG 277, 289, 313, 383; DECISIONS 49, 53,
+  62, 66, 89); none is a row of this change.
+- Shape, asserted by the edit script (scratchpad ownerISSUE12.py): amended BACKLOG rows 6 cells, D-162 and D-163 and the
+  changelog row 4; the issue files and F-58 wrap at 100 characters.

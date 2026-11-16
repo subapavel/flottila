@@ -32,6 +32,9 @@ documents. Each item states the default that holds until the answer, so no work 
    Default: the failed list only, and a reason is required — relaxing either later is compatible,
    tightening is not. FIX-267 designs cancel on that default (designed 2026-11-16: D-162; what the
    design had to assume beyond this item is ISSUE-12).
+   Answered in part, 2026-11-16 (ISSUE-12, D-163): a reason is optional, never required - who may
+   cancel is for roles and authorization. What cancel covers beyond the failed list is still open,
+   on its default.
 4. **The parked idea of recomputing payloads.** With replay gone, do you still want the idea of
    storing only the input and what cannot be repeated, and recomputing the other steps' payloads
    for display (CONSIDER-22)? It would never send anything again.

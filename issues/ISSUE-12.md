@@ -1,6 +1,6 @@
 # ISSUE-12 — cancelling a failed message: six things the design had to assume
 Task: FIX-267
-Date: 2026-11-16 (D-162)
+Date: 2026-11-16 (D-162) · answered and closed 2026-11-16 (D-163)
 
 ## What is needed
 The owner's word on the six items below. Cancel is designed (D-162; `docs/ARCHITECTURE.md` §6, *The
@@ -30,6 +30,7 @@ later. The fix is the next row (FIX-275) and lands before the gate's check 7 is 
    Default: the key stays until the history is removed by age. The other way - the key is freed at
    the cancel - lets a sender's automatic repeat bring back, under a new id, a message an operator
    has just ended. (FIX-277.)
+   Withdrawn 2026-11-16: the item mixed two unrelated things (F-58) - see the owner's answer.
 2. **Must the operator say who they are?** Until logins exist, the caller of the admin API names
    itself in a request header and nothing checks the name.
    Default: a cancel without a name is refused; a retry without a name is accepted and recorded as
@@ -68,3 +69,30 @@ The six defaults above. The design is marked `draft — review at hand-over` and
 FIX-278) are built on them.
 
 ## Owner's answer
+2026-11-16, in the session, item by item (the owner's words in translation; recorded as D-163).
+
+1. "A message picked up over SFTP has its own message id in Rail8, and keeps it when its
+   processing fails on the way to the receiver. When the sender sends it again it is not the same
+   message - it has another id. You are mixing two unrelated things."
+   The item is withdrawn. Checked in the code: the SFTP dedupe key is the file's path, its time of
+   change on the server and its content's hash, so it recognises the platform picking up one file
+   twice, not a file its sender uploads again. A cancelled message's key stays with its history, as
+   any message's, and nothing is decided by it. The documents that said otherwise are corrected
+   (F-58).
+2. "This is solved together with roles and authorization." Read as: no name is required on either
+   act now; both record the name the caller gives, "unknown" when none; the real identity comes
+   with roles and authorization (OPS-9).
+3. "Of course - we need to trace it." The record of a cancel copies the failed step's error text,
+   and the message's history shows it with the cancel. The copy is cut to its first 4 096
+   characters and says so when it is cut: the text has no bound of its own and the record is never
+   deleted. Where a flow records nothing, the cut copy is the only one. Stated consequence: the
+   text can quote payload values and stays after the payload is removed; who may read the record
+   is decided with the payload permission (OPS-9), and how long the record is kept is CONSIDER-29.
+4. The default: a cancelled message's history is kept by its age, as any message's.
+5. "No reason - permissions solve it, let us not complicate it." And, told the same day that this
+   would be applied to a cancel as well: "a reason for a cancel may optionally be there, that is
+   not a bad idea." So: a retry takes no reason; a cancel takes an optional one, never required.
+6. No: a cancel is never undone.
+
+Closed. D-163 amends the design (ARCHITECTURE 3.32); FIX-276, FIX-277 and FIX-278 are built on the
+answers.

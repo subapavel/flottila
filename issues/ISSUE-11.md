@@ -52,6 +52,9 @@ computed figure, not an observed one, and the two are not reconciled.
    recognise. A dedupe key prevents it, but only an SFTP inbox has one today (the file): a sender
    over HTTP cannot give one, so its resend after a lost answer is a second message (read in the
    code, not shown by a test; CONSIDER-27 - corrected 2026-11-16 by the review of FIX-270).
+   Corrected again 2026-11-16 (F-58, the owner's remark on ISSUE-12): the SFTP file key recognises
+   one file picked up twice by the platform - same path, time of change and content - not a file
+   its sender uploads again. A sender's resend is another message, over SFTP too.
 3. **An attempt number for the partner.** Should every delivery carry a number that says which
    attempt it is?
    Default: no. The number cannot say "you had this before": the second attempt after the partner

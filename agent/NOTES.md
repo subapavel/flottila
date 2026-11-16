@@ -235,6 +235,9 @@ operator's acts on a failed message*). F-57: a `/retry` before a park has settle
 work row of the id. Rows: FIX-275 the guard on `/retry`; FIX-276 `core.dlq.FailedMessages` with
 retry's audit row and the act's timeout; FIX-277 cancel and events, `Dlq.remove` goes; FIX-278 the
 routes. The design's four hand-backs: `agent/work/FIX-267-designer*.md`, `-advisor*.md`.
+D-163 (the owner, 2026-11-16) amends it: `/retry` takes no reason, a cancel an optional one; no
+name is required (roles and authorization, OPS-9); a cancel's record carries the error text.
+sftp's dedupe key is path, mtime and content hash: one file, not a sender's resend (F-58).
 A packet for a Postgres IT passes a lease on the database clock (`expireLeases`, `locked_until`
 moved into the past): `claim` compares with `now()`, so the fake clock never frees a leased row.
 

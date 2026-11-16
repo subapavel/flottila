@@ -1,4 +1,19 @@
 
+## 2026-11-16 — ISSUE-12 the owner's answers on cancelling a message — recorded, review PASS [C]; Deviation: F-58
+
+- The owner answered ISSUE-12's six items in the session; D-163 records them and amends D-162; ISSUE-12 is closed.
+- Item 1 withdrawn: a sender's resend is another message under another id. F-58 (minor): sftp's dedupe key is path, mtime
+  and content hash - it recognises the platform's second pickup of one file. ARCHITECTURE section 4's two sentences and
+  section 6's one are corrected; ISSUE-11 item 2 and CONSIDER-27 carry a note.
+- No name is required on either act (roles and authorization, OPS-9); `/retry` takes no reason, a cancel an optional one
+  (an optional JSON body); a cancel's record and its `events` entry carry the error text, cut to 4 096 characters; history
+  by age; a cancel is never undone. ARCHITECTURE 3.32 (sections 4, 6, 9).
+- Stated consequence: an audit row can quote payload values and outlives the payload - OPS-9 and CONSIDER-29 carry it.
+- Rows amended: FIX-276, FIX-277, FIX-278 (cases for the optional reason, no required name, the error text). ISSUE-10
+  item 3 answered in part. Documents only; review [C]: three rounds (FAIL 1, FAIL 1, PASS). Name guard clean; ledger check: the 9 old.
+- In flight in the same tree, not in this commit's code: FIX-275 - its red tests are observed (three ITs red on today's
+  code: two accepts; delivered and back in the failed list) and saved as `agent/work/FIX-275-tests.patch`.
+
 ## 2026-11-16 — FIX-267 cancel and the record of a retry, designed — done, review PASS [C]; Deviation: F-57
 
 - Context compacted before this entry; state re-read from HANDOFF, `git status` and `git log -3`. A design row: no code,
