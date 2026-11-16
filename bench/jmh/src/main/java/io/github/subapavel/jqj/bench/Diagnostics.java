@@ -122,7 +122,7 @@ public class Diagnostics {
   /** The cell's outcome: the termination that ended an operation so far, or else the bytes written so far. */
   String outcome() {
     if (termination != null) {
-      return "termination " + termination.cause() + (termination.budget() == null ? "" : " " + termination.budget());
+      return "termination " + termination.cause() + ": " + termination.getMessage();
     }
     return out.written + " bytes written";
   }

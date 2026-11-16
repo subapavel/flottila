@@ -105,7 +105,7 @@ class DiagnosticsTest {
     d.mode = CompileMode.CONSERVATIVE;
     // Two billion bytes pass the embedded 1 GiB bytes-built budget, charged before anything is built.
     d.prepare(new Diagnostics.Cell("\"x\" * 2000000000", () -> Inputs.ints(3), OutputOptions.compact(), false));
-    assertThat(d.outcome()).isEqualTo("termination BUDGET BYTES_BUILT");
+    assertThat(d.outcome()).isEqualTo("termination BUDGET: Bytes-built budget exceeded");
     assertThat(d.operation()).isEqualTo(5);
   }
 
