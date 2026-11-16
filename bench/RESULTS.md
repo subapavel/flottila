@@ -4,6 +4,71 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## #199: the calibration rule per lowest pair, `b` 192 and reserve 184 320 (ADR-0046 #199), 2026-11-16
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Oracle Corporation 25.0.5.0.3+1-LTS-2 (the record's
+  `jdk` and `machine` rows). Guard pages are 98 304 B.
+- The rule, per ADR-0046 #199:
+  - the slope comes from each shape's lowest platform pair, 256 KiB → 512 KiB;
+  - the intercept and the cold term are taken per cell;
+  - reserve = ceil4K(largest intercept + largest cold) + 32 768.
+- The matrix has 308 cells: 14 shapes × `-Xint`, C1 and warm × platform 256 KiB, 512 KiB and 1 MiB
+  and virtual 512 KiB × both modes. The ticket column has 28 cells.
+- Every calibration child compiles on one long-lived helper thread with a large stack, and runs on
+  the cell's thread (owner, run A stop). A virtual cell waits on the helper by spinning, without
+  parking (owner, second stop).
+- The runs. Every record and log is in the #199 worktree's `.logs/`.
+
+  | run | commit | seed | outcome |
+  |---|---|---|---|
+  | A | `b090b21`'s predecessor (`fd2cd74` + helper) | unseeded | EXECUTED_FAIL: six C1 256 KiB cells hit a compile STACK (F-109) |
+  | A2 | `b090b21` | `199-runA.tsv`, the ten cells unseeded | EXECUTED_FAIL: four virtual cells unstable, 29 virtual `U*` moved; reserve 184 320 |
+  | A3 | `82b23f7` (spin) | `199-runA.tsv`, the ten cells unseeded | VERIFIED_PASS: the ten equal A2, the other 214 equal A; max-b 192, reserve 184 320 |
+  | B | `82b23f7` + constants 192 / 184 320 | A3 | VERIFIED_PASS: all `U*` equal A3, 28/28 edges, 84 warm cells hold; committed unedited as `calibration.tsv` |
+
+- The reserve: the largest intercept is 118 064 (C1 virtual W CONSERVATIVE, `U*` 2131, `s_low`
+  182) and the largest cold term is 30 996. ceil4K(149 060) = 151 552, and 151 552 + 32 768 =
+  184 320. At 512 KiB, `U_f` = 1770 − `D_f` (#113 gave 1237 − `D_f`).
+- `b` is 192. The largest `b_cell` is 189, on C1 W CONSERVATIVE at 512 KiB → 1 MiB. W's 256 KiB
+  pair gives 182.
+- Two virtual C1 cells each had a spread in one run: first-or CONSERVATIVE 20 in A3, and collect
+  OPTIMISED 12 in B. Their `U*` equal run A's. The owner accepted these spreads (ADR-0046, Outcome).
+- The mechanism (`199-mech.log`): a parked `join()` moves a virtual cell's proof from 4355 to 4362,
+  measured 40 frames deep. A spun wait does not move it. The seven-cell hand probe
+  (`199-c3-virtual-probe.log`) gave run A's `U*` on 3 of 3 children for each cell.
+- Per tier (`199-fact-tiers.log`; wall and child-seconds in s; `-Xint` and C1 share the 4-wide
+  pool, and warm runs 1-wide):
+
+  | run | time-ms | `-Xint` wall / child-s | C1 wall / child-s | warm wall / child-s |
+  |---|---|---|---|---|
+  | A3 | 5 178 767 | 1 982 / 1 933 (cold probes 502) | 1 995 / 5 949 | 3 184 / 3 184 |
+  | B | 4 969 441 | 1 835 / 1 696 (cold probes 396) | 1 849 / 5 601 | 3 120 / 3 120 |
+
+  edgeIsExact is outside both runs. Run alone on `82b23f7` it took 230.3 s.
+- C1 ND OPTIMISED at 384 KiB, by hand, 3 children (`199-fact-nd384.log`): `U*` 6891, spread 0.
+
+  | pair | slope | intercepts |
+  |---|---|---|
+  | 256 KiB → 384 KiB | 42 | 104 518 / 102 786 |
+  | 384 KiB → 512 KiB | 42 | 102 786 / 100 340 |
+  | 256 KiB → 512 KiB (record) | 42 | 104 518 / 100 340, virtual 102 482 |
+  | 512 KiB → 1 MiB | 34 | 181 092 / 165 460 |
+
+  Every pair below 512 KiB falls to 100–105 K, against #113's 196 618, 190 186 and 198 199. Only
+  the 512 KiB → 1 MiB pair stays high, which is why the rule takes the lowest pair.
+- ND frames against units (`199-fact-nd-frames.log`, an unmerged spike): about 0.155 Java frames
+  per unit at every edge, for example 4 590 units against 711 frames at 256 KiB and 33 528 against
+  5 163 at 1 MiB. Frames never exceed units, so there is no finding. The ratio does not explain the
+  slope dropping from 33 B to 24 B.
+- Warm alone against warm 2-wide, for F-97 (C5) (`199-fact-warm-width.log`): W CONSERVATIVE,
+  collect-descent CONSERVATIVE and plain-descent CONSERVATIVE at 512 KiB, 3 children × 60 runs each
+  way, with no other JVM running. Every child ended the same both ways, 60 of 60, with proof 4371.
+  The wall time was 28.3 s alone and 13.3 s 2-wide, with 26.1 child-seconds 2-wide.
+- L2 is corroborated: at the 184 320 reserve, the stackBytes-0 tests on a 256 KiB thread pass in the
+  full suite. These are jq-core `TrampolineTest` (lines 122, 160 and 199) and oracle
+  `CompileModesTest` (line 96), in `199-green5.log`.
+- Superseded: #113's reserve of 286 720 below is the old value. `StackUnits` holds 184 320.
+
 ## #119: recursion, `limit`, `..`, the caps and the OPTIMISED gain (ADR-0019 #119, ADR-0006, ADR-0011), 2026-11-16
 
 - Machine: `claude-cloud-4vcpu` (`nproc` 4), Intel(R) Xeon(R) Processor @ 2.10GHz, kernel
