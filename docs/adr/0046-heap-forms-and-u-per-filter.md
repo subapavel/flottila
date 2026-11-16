@@ -422,3 +422,17 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   - loading IrDepthTest in children;
   - a count row inside the tsv;
   - a literal at line 158.
+
+**Owner's rulings on #199's C3 stops (2026-11-16, on the grilling-adviser's recommendation)**
+- **`plain-descent` at 256 KiB.** Its compile overflows on a 256 KiB thread in all four probes
+  (`-Xint` and C1, both modes), and under C1 at 384 KiB. Its four 256 KiB cells stay in the record
+  as `compile STACK` rows with no edge. They are a pinned set of exactly those four cells, like
+  NEVER_FLAT, with their own red test. The shape's lowest pair is then 512 KiB → 1 MiB, by the
+  lowest-pair rule above. Compiling stays on the cell's thread (C3). The counts stay 308 and 28.
+  Compiling on a helper thread is the fallback if this shape's chord intercept sets the reserve
+  (F-109).
+- **A new baseline.** #117 and #118 moved 20 of #113's 26 record edges (F-110), so run A is an
+  unseeded baseline on the commit of the C3 edge check: every measured cell is searched under C1's
+  rule for new cells. C2's "A's old `U*` equal #113's record" becomes "A's `-Xint` 512 KiB `U*cold`
+  equal the 28 values of the C3 edge check (`199-c3-edge.log`)", and "an old `U*` differs from the
+  record" becomes "differs from that log". The other C2 stops stay.
