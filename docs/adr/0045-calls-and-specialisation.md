@@ -131,13 +131,19 @@ grilling-adviser's rulings S1–S5, made for the owner under the delegation of 2
   order.
 - A key is built if `spent + nodes ≤ SPECIALISE_CAP`. Otherwise it is refused at all its calls.
 - The cap is 16 384. If the census shows a refusal, the cap becomes the next power of two at or
-  above the largest demand, up to `INLINE_CAP`. A refusal above that is a finding; its ruling changes
+  above the largest demand, up to `INLINE_CAP`, except for a filter at the cap by design (below). A refusal above that is a finding; its ruling changes
   the pass or names the filter here.
 - Refused by design (F-94, F-96): `over-cap/param-600`, `over-cap/param-unused-600`,
   `over-cap/closure-doubling-20`, `specialise/order-param-chain-then-recurse`. Their demand grows with the chain by construction, and #114
   requires them with real closures. The census asserts that the filters refused under the cap are
   exactly these, that each is also refused under `INLINE_CAP`, and it computes S5's number over the
   other filters only. An entry needs a finding and a line here; a writer never edits the list.
+- At the cap by design (F-112, owner 2026-11-16): `bench/cap-specialise-over.1k`. It sits one key past
+  the cap so that Table B shows a refused specialisation beside its pair `bench/cap-specialise.1k`.
+  The census asserts that each entry is refused under `SPECIALISE_CAP`, refuses nothing under
+  `INLINE_CAP`, and that its pair refuses nothing; S5's number is computed over filters in neither
+  list. When the cap moves, the entry fails and gets a `-v2` id. The same rules as for the list above
+  apply to edits.
 - A filter whose earlier keys exhaust the cap leaves each later key that does not fit refused, a
   prelude loop's included. That key runs with real closures, which the depth budget counts (F-96).
 

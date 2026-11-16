@@ -494,7 +494,7 @@ _Avoid_: max depth.
 **Specialisation cap**:
 How many nodes specialisation may copy in one compile, `SPECIALISE_CAP`; a group and its argument
 tuple are copied whole or not at all (ADR-0045). A filter may demand more than the cap; ADR-0045 #117
-names the corpus filters refused by design.
+names the corpus filters refused by design and the bench filters at the cap by design (F-112).
 _Avoid_: inline cap.
 
 ## Running
@@ -518,7 +518,7 @@ The trampoline's stop at a result for its starter, keeping the form that produce
 _Avoid_: yield.
 
 **Heap form**:
-The resumable state of one node kind on the trampoline: what the push form keeps in its Java frame across a child's run or an emit, kept on the heap instead. It ticks, charges and counts as the push form does, so any body can run there (ADR-0046).
+The resumable state of one node kind on the trampoline: what the push form keeps in its Java frame across a child's run or an emit, kept on the heap instead. It ticks, charges and counts as the push form does, so any body can run there (ADR-0046). A value-form Call on the trampoline ends its activation at its first result (ADR-0046 #198).
 _Avoid_: continuation, heap frame.
 
 **Starter**:
