@@ -58,11 +58,13 @@ import org.junit.jupiter.api.Test;
  * spent before it). The lifted cap also bounds the census's own compile: the filters refused by design demand millions
  * of nodes.
  *
- * <p>The verdicts (ADR-0045 #117 "Order and cap"): the filters refused under the cap are exactly {@link
- * #REFUSED_BY_DESIGN}; each of those is refused under INLINE_CAP too; over every other filter S5's largest demand is at
- * most the cap (else S5: the cap becomes the next power of two at or above it, up to INLINE_CAP, and above INLINE_CAP a
- * finding; the failure and the log name it); a filter that refuses nothing under the cap has spent exactly its demand
- * there; no compile throws; and the witness holds.
+ * <p>The verdicts (ADR-0045 #117 "Order and cap"): the filters refused under the cap, {@link #AT_CAP_BY_DESIGN}'s
+ * entries aside, are exactly {@link #REFUSED_BY_DESIGN}; each of those is refused under INLINE_CAP too; each entry at the
+ * cap by design is refused under the cap and refuses nothing under INLINE_CAP, and its pair refuses nothing under the
+ * cap (F-112); over every filter in neither list S5's largest demand is at most the cap (else S5: the cap becomes the
+ * next power of two at or above it, up to INLINE_CAP, and above INLINE_CAP a finding; the failure and the log name it);
+ * a filter that refuses nothing under the cap has spent exactly its demand there; no compile throws; and the witness
+ * holds.
  *
  * <p>Witness that the census sees copies: each of #117's {@link #COPYING} cases, whose outside calls run copies by
  * design (SpecialiseExplainTest), compiles with a demand above 0. Without it a pass that copies nothing would leave
@@ -91,11 +93,24 @@ class SpecialiseCensusTest {
    * The filters refused by design (ADR-0045 #117 "Order and cap"): #114's cases built to exceed every cap, whose demand
    * grows with the chain by construction and which #114 requires with real closures (F-94), and #117's order case,
    * param-600's chain before a recurse, whose chain spends the cap first (F-96). The census asserts that the filters
-   * refused under SPECIALISE_CAP are exactly these, and that each is refused under INLINE_CAP too. An entry needs a
-   * finding and a line in ADR-0045; a writer never edits this list.
+   * refused under SPECIALISE_CAP, {@link #AT_CAP_BY_DESIGN}'s entries aside, are exactly these, and that each is refused
+   * under INLINE_CAP too. An entry needs a finding and a line in ADR-0045; a writer never edits this list.
    */
   static final List<String> REFUSED_BY_DESIGN =
       List.of("over-cap/param-600", "over-cap/param-unused-600", "over-cap/closure-doubling-20", "specialise/order-param-chain-then-recurse");
+
+  /** One filter at the cap by design: its id and the id of its pair, the same filter inside the cap. */
+  record AtCap(String id, String pair) {}
+
+  /**
+   * The filters at the cap by design (ADR-0045 "Order and cap", F-112, owner 2026-11-16): #119's {@code
+   * bench/cap-specialise-over.1k}, which sits one key past SPECIALISE_CAP so that Table B shows a refused specialisation
+   * beside its pair {@code bench/cap-specialise.1k}. The census asserts that each entry is refused under SPECIALISE_CAP
+   * and refuses nothing under INLINE_CAP, and that its pair refuses nothing under SPECIALISE_CAP; S5's number is computed
+   * over filters in neither this list nor {@link #REFUSED_BY_DESIGN}. When the cap moves, the entry fails and gets a
+   * {@code -v2} id. An entry needs a finding and a line in ADR-0045; a writer never edits this list.
+   */
+  static final List<AtCap> AT_CAP_BY_DESIGN = List.of(new AtCap("bench/cap-specialise-over.1k", "bench/cap-specialise.1k"));
 
   /**
    * #117's required differential cases whose outside calls run copies (diff/specialise.cases, require/117.txt), so each
@@ -223,7 +238,8 @@ class SpecialiseCensusTest {
       }
     }
 
-    List<Count> others = counts.stream().filter(c -> !REFUSED_BY_DESIGN.contains(c.filter().id())).toList();
+    Set<String> atCap = AT_CAP_BY_DESIGN.stream().map(AtCap::id).collect(Collectors.toCollection(TreeSet::new));
+    List<Count> others = counts.stream().filter(c -> !REFUSED_BY_DESIGN.contains(c.filter().id()) && !atCap.contains(c.filter().id())).toList();
     String s5 = s5(others.isEmpty() ? 0 : others.getFirst().ranked());
     List<Count> refusing = counts.stream().filter(c -> c.refused() != 0).toList();
     log(filters.size(), differential.size(), prelude.size(), left, notCompiled, notCompiledByFamily, threw, counts, refusing, others, s5);
@@ -240,9 +256,9 @@ class SpecialiseCensusTest {
         soft.assertThat(c.ranked()).as("witness: the demand of %s, whose outside calls run copies (%s)", id, c.filter().text()).isPositive();
       }
     }
-    Set<String> refused = refusing.stream().map(c -> c.filter().id()).collect(Collectors.toCollection(TreeSet::new));
+    Set<String> refused = refusing.stream().map(c -> c.filter().id()).filter(id -> !atCap.contains(id)).collect(Collectors.toCollection(TreeSet::new));
     soft.assertThat(refused)
-        .as("the filters refused under SPECIALISE_CAP %d are exactly REFUSED_BY_DESIGN (ADR-0045 #117, F-94, F-96); log %s", Specialiser.SPECIALISE_CAP, LOG)
+        .as("the filters refused under SPECIALISE_CAP %d, AT_CAP_BY_DESIGN's entries aside, are exactly REFUSED_BY_DESIGN (ADR-0045 #117, F-94, F-96); log %s", Specialiser.SPECIALISE_CAP, LOG)
         .isEqualTo(new TreeSet<>(REFUSED_BY_DESIGN));
     for (String id : REFUSED_BY_DESIGN) {
       Count c = byId.get(id);
@@ -251,8 +267,23 @@ class SpecialiseCensusTest {
         soft.assertThat(c.above()).as("%s, refused by design, is refused under INLINE_CAP %d too: %s", id, INLINE_CAP, shown(c)).isTrue();
       }
     }
+    for (AtCap a : AT_CAP_BY_DESIGN) {
+      Count c = byId.get(a.id());
+      soft.assertThat(c).as("%s, at the cap by design, compiles, and its compiles do not throw", a.id()).isNotNull();
+      if (c != null) {
+        soft.assertThat(c.refused()).as("%s, at the cap by design, is refused under SPECIALISE_CAP %d (ADR-0045, F-112): %s", a.id(), Specialiser.SPECIALISE_CAP, shown(c)).isPositive();
+        soft.assertThat(c.above()).as("%s, at the cap by design, refuses nothing under INLINE_CAP %d (ADR-0045, F-112): %s", a.id(), INLINE_CAP, shown(c)).isFalse();
+      }
+      Count p = byId.get(a.pair());
+      soft.assertThat(p).as("%s, the pair of %s at the cap by design, compiles, and its compiles do not throw", a.pair(), a.id()).isNotNull();
+      if (p != null) {
+        soft.assertThat(p.refused())
+            .as("%s, the pair of %s at the cap by design, refuses nothing under SPECIALISE_CAP %d (ADR-0045, F-112): %s", a.pair(), a.id(), Specialiser.SPECIALISE_CAP, shown(p))
+            .isZero();
+      }
+    }
     soft.assertThat(others.stream().filter(c -> c.ranked() > Specialiser.SPECIALISE_CAP).map(SpecialiseCensusTest::shown).toList())
-        .as("S5 over the filters not refused by design: the largest demand is at most SPECIALISE_CAP %d; those that demand more, largest first; S5: %s", Specialiser.SPECIALISE_CAP, s5)
+        .as("S5 over the filters in neither REFUSED_BY_DESIGN nor AT_CAP_BY_DESIGN: the largest demand is at most SPECIALISE_CAP %d; those that demand more, largest first; S5: %s", Specialiser.SPECIALISE_CAP, s5)
         .isEmpty();
     soft.assertThat(counts.stream().filter(c -> c.refused() == 0 && (c.above() || c.spent() != c.demand())).map(SpecialiseCensusTest::shown).toList())
         .as("filters that refuse nothing under the cap but spend other than their demand")
@@ -383,9 +414,9 @@ class SpecialiseCensusTest {
     lines.add("compiled\t" + counts.size());
     lines.add("specialised (demand > 0)\t" + counts.stream().filter(c -> c.ranked() > 0).count());
     lines.add("demand above INLINE_CAP " + INLINE_CAP + "\t" + counts.stream().filter(Count::above).count());
-    lines.add("refusing under the cap\t" + refusing.size() + "\trefused by design: " + REFUSED_BY_DESIGN);
+    lines.add("refusing under the cap\t" + refusing.size() + "\trefused by design: " + REFUSED_BY_DESIGN + "\tat the cap by design: " + AT_CAP_BY_DESIGN);
     refusing.forEach(c -> lines.add("  " + shown(c)));
-    lines.add("largest demand, not refused by design\t" + (others.isEmpty() ? "0" : demand(others.getFirst())));
+    lines.add("largest demand, in neither list\t" + (others.isEmpty() ? "0" : demand(others.getFirst())));
     lines.add("S5 over them\t" + s5);
     lines.add("top " + TOP + " distinct filters by demand: demand, spent, refused, id, filter");
     Set<String> listed = new HashSet<>();
@@ -407,6 +438,6 @@ class SpecialiseCensusTest {
       throw new UncheckedIOException(e);
     }
     System.out.println(
-        "SpecialiseCensusTest: largest demand " + (others.isEmpty() ? "0" : demand(others.getFirst())) + " over " + others.size() + " filters not refused by design; " + refusing.size() + " refusing; log " + log);
+        "SpecialiseCensusTest: largest demand " + (others.isEmpty() ? "0" : demand(others.getFirst())) + " over " + others.size() + " filters in neither list; " + refusing.size() + " refusing; log " + log);
   }
 }
