@@ -457,3 +457,10 @@ Before FIX-254 the runner stepped the clock under it in 3 of 210 demo runs on fo
   workflows are `.github/workflows/mapping-{ci,bench,nightly}.yml` (run in `mapping/`, not yet observed on a runner: MAP-6).
 - Pinned digests after a rename: `agent/work/BRAND-3-s2-canon/` shows how each was recomputed outside the engine (D-151).
 - `mapping/scripts/check-trailers.sh` asks for the old `Ticket: #n` trailer and fails on this repository's commits (MAP-7).
+- An observation log (`mapping/corpus/observations/*/meta.json`) only grows: a later entry of a run replaces an
+  earlier one, and one run's entries are keyed differently - by `case`, by mapping + input, by a `case` that is
+  `mapping/input`, or with `case` null. Link them, read the latest, and read a `NOT_RUN`'s reason before calling it
+  open (MAP-9's review, two rounds: 116 "not run" entries were no waiting run at all - 190 runs, eight not done,
+  seven of them not drawable in either editor, one excluded by the owner). A case's own `case.json` (`provenance`,
+  `ref`) says what it rests on; one listed case is `assumed` and contradicted by both systems
+  (`target/minOccurs/004`, F-38). A raised floor is the owner's even when it costs nothing today.

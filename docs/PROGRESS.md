@@ -1,4 +1,20 @@
 
+## 2026-11-16 — MAP-9 one set of test rules for both areas: the proposal (ISSUE-13) — pending (owner), review PASS [C]
+
+- Context compacted after FIX-275's push; HANDOFF, `git status` and `git log -3` were re-read first.
+- No code and no rule changed. The owner asked for coverage on the mapping and a proposal; nothing tightens before the answer.
+- Measured at f1be875c (`agent/work/MAP-9-numbers.md`): every measured engine module is above 90 % line and branch (lowest:
+  structure 93.22 line, mapping 98.92 branch); PIT 98 to 100 % on seven modules; the editor's unit tests reach 36 % of its lines.
+- Found beside the numbers: the mapping's ratchet check runs in no workflow, and run as it is it would compare a commit with its
+  own rows. Of 360 corpus cases 148 are observed on a real system (147 on both), 40 documented, 171 decided, 1 assumed - and that
+  one is contradicted by both systems and still listed. No build runs SAP. Of 190 requested observation runs none is waiting.
+- Designer's draft, advisor's opposition (`-designer.md`, `-advisor.md`); the proposal takes the advisor's W1, W2, W4, W5, W6, W8.
+- ISSUE-13 asks five things: 90/90 for engine modules or 75 as a lower bound; the ratchet on every push after a reporting week;
+  may a session amend the mapping's ADR-0019 and ADR-0017; the sentence about SAP and the 32 marked outputs; `mapping-ci` as a
+  required check (recommended: not now). ISSUE-9 item 4 points at it. Without an answer only MAP-10 [A] (new row) proceeds.
+- Review [C]: three rounds. r1 FAIL, seven reasons - above all 116 log entries read as pending SAP runs; r2 FAIL, two, both in the recount; r3 PASS.
+- ci run 245 (FIX-275) was still running. FIX-264's packet and second scout pass are written. Name guard clean; ledger check: the 9 old.
+
 ## 2026-11-16 — FIX-275 `/retry` refuses while a work row of its id is unsettled (F-57) — done, review PASS [C]
 
 - Context compacted before the implementer's hand-back; HANDOFF, `git status` and `git log -3` were re-read first.
