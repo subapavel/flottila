@@ -1,4 +1,15 @@
 
+## 2026-11-16 — The owner's answer on ISSUE-11 item 1: the two writes at a run's end stay apart — recorded
+
+- Context compacted before this entry: HANDOFF, `git status`, `git log -3` (25748fb9) and the fetch re-read before any change.
+- The owner asked for the second delivery at a node's death to be explained: when it happens and what it costs in
+  performance. Answered in the session from `bench/RESULTS.md`, `issues/ISSUE-11.md` and the scout's list of other sources.
+- The owner, 2026-11-16: "souhlas nespomalovat, tohle je výjimečný případ" - do not slow the platform down; an exceptional case.
+- D-161: the owner's word on D-160 (a) - the run's rows and the work row's delete do not become one transaction. ISSUE-11
+  item 1's default stands (the check only as CONSIDER-13's last case); items 2 to 5 are not answered, their defaults hold.
+- Documents only: `issues/ISSUE-11.md`, `docs/DECISIONS.md`, `agent/BACKLOG.md` (a note on CONSIDER-13), `agent/HANDOFF.md`.
+- No row is started: the owner's "finish what is in flight, start nothing else, we will agree the next steps" still holds.
+
 ## 2026-11-16 — CONSIDER-24 the second delivery at a node's death: cause, size, options — done, review PASS [C]
 
 - Cause, pinned by 8 green characterization cases (`FlowWorkerRerunWindowTest`, `RerunWindowIT`): a run commits its rows, then

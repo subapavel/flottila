@@ -90,4 +90,12 @@ first); the kill test counts only one of the two kinds of second delivery (FIX-2
 As stated per item. Nothing in the code changes; FIX-270 writes the documentation as a draft.
 
 ## Owner's answer
-
+2026-11-16, in the session, after the cause, the window and the cost of each option were explained
+in plain words: "souhlas nespomalovat, tohle je výjimečný případ" - agreed, do not slow the
+platform down; this is an exceptional case. Recorded as D-161.
+- Item 1: answered for its second paragraph. The history and the removal are not written in a single
+  transaction: the two writes stay apart, and the measured throughput is not traded for this case.
+  The item's default stands as written - the check is built only as the last case of "a retry
+  resumes at the failed step" (CONSIDER-13), never as a mechanism of its own. Until then such a
+  death sends the message twice.
+- Items 2 to 5: not answered in words; their defaults hold.
