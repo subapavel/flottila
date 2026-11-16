@@ -1,4 +1,19 @@
 
+## 2026-11-16 — MAP-14 the list for the owner's next observation session on SAP — done, review PASS [A]
+
+- A document, `mapping/corpus/observations/follow-up-2026-11.md`, and one sentence in the kit's README. No case, output, ratchet
+  row or log entry changes. D-164 (7): the architect's reading - a list obliges no one, the runs stay the owner's.
+- Scout first (the requests' form, the marks' own words); then the logs by script, a run = a mapping on an input: 195 runs in 14
+  sets - 152 observed on both, 32 marked on Cloud Integration, 1 on PO only (blocked on Cloud Integration), 10 on neither (2 withdrawn).
+- Review r1 found the first count wrong: entries linked by case merged distinct runs and hid the blocked one. ISSUE-13's 190 is
+  corrected in place, dated: 193 requested runs. The eight "neither" stand; no item of the proposal rested on the count.
+- Found: the 28 "runtime provenance unverified" marks need no mapping run again - a later field of the same entries verified the
+  parameters; open are the JVM's locale and zone ID (two facts) and, for four current-date runs, the monitor's start time.
+- The 3 "partial, time zone" marks sit on cases the owner decided on 2026-11-13 (the mapping's F-43): nothing to run. `fn/trim/001`:
+  one run. `target/minOccurs/004` is not requestable from a list (F-38's next step: two mappings drawn up); its part names the blocked run.
+- Review [A]: r1 FAIL (the count; the later fields that answer part of a mark not named; two unsourced sentences), r2 PASS; rounds in the commit body.
+- Beside it: the scripts that count and generate are in `agent/work/MAP-14/`; NOTES has the counting rule. Name guard clean; ledger check: the 9 old.
+
 ## 2026-11-16 — ISSUE-13 the owner's yes on one set of test rules for both areas (D-164) — done, review PASS [C]
 
 - The owner, in the session, to the five questions: "souhlas se všemi doporučeními, pokračuj". Documents only; nothing is built.

@@ -462,12 +462,20 @@ Before FIX-254 the runner stepped the clock under it in 3 of 210 demo runs on fo
 - Pinned digests after a rename: `agent/work/BRAND-3-s2-canon/` shows how each was recomputed outside the engine (D-151).
 - `mapping/scripts/check-trailers.sh` asks for the old `Ticket: #n` trailer and fails on this repository's commits (MAP-7).
 - An observation log (`mapping/corpus/observations/*/meta.json`) only grows: a later entry of a run replaces an
-  earlier one, and one run's entries are keyed differently - by `case`, by mapping + input, by a `case` that is
-  `mapping/input`, or with `case` null. Link them, read the latest, and read a `NOT_RUN`'s reason before calling it
-  open (MAP-9's review, two rounds: 116 "not run" entries were no waiting run at all - 190 runs, eight not done,
-  seven of them not drawable in either editor, one excluded by the owner). A case's own `case.json` (`provenance`,
+  earlier one, and one run's entries are keyed differently - with a `case`, with a `case` that is
+  `mapping/input`, or with `case` null. Link them by mapping and input (the correction below), read the latest,
+  and read a `NOT_RUN`'s reason before calling it open (MAP-9's review, two rounds: 116 "not run" entries were no
+  waiting run at all - eight not done on either system, seven of them not drawable in either editor, one excluded
+  by the owner). A case's own `case.json` (`provenance`,
   `ref`) says what it rests on; one listed case is `assumed` and contradicted by both systems
   (`target/minOccurs/004`, F-38). A raised floor is the owner's even when it costs nothing today.
+
+Counting runs in the observation logs, corrected (MAP-14's review, 2026-11-16): a run is a mapping on an
+input, and every entry names both. Link by that pair; a pair whose entries carry no `po75` value and that
+shares case and input with exactly one pair that does is the same run under its Cloud Integration name
+(four such). Never link by `case`: several mappings (`mc-min2`, `mc-opt`) and several inputs test one case,
+and the merge hid a run blocked on Cloud Integration. 195 runs; 193 requested; 184 on both systems, 8 on
+neither, 1 on PO only. The scripts are kept: `agent/work/MAP-14/obslist.py`, `mkfollowup.py`.
 
 Recording an owner's answer (ISSUE-13, review round 1, 2026-11-16): check a bracket against every
 item of the clause it amends, not only the items in mind; check a row's "stale" claim against the

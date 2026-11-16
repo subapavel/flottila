@@ -51,6 +51,13 @@ are the workflows GitHub runs on a push (CI).
      none is waiting. Eight are marked as done on neither system, each with its reason: seven
      cannot be drawn in either system's editor (the counter function takes no input there), and
      one, a JSON null case, the owner excluded.
+     Corrected 2026-11-16 (MAP-14, its review): this count linked the entries of a run by case,
+     and several mappings test one case. Linked by mapping and input the logs hold 193 requested
+     runs, and one more of them is not done on Cloud Integration: `mc-opt` on `minOccurs-004.xml`,
+     blocked there by a lock and never made again (PO's run is recorded). That qualifies "none is
+     waiting" above: this run's latest entry on Cloud Integration is a blocked one. It is on the
+     follow-up list (`mapping/corpus/observations/follow-up-2026-11.md`, part 4). The eight stand;
+     no item of the proposal rests on the count.
    - Marks on recorded Cloud Integration outputs, by the latest entry of each run: 28 say "runtime
      provenance unverified" (21 on observed cases, 7 on decided ones), 3 "partial, time zone",
      1 "input normalization unverified".
