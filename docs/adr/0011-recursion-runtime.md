@@ -91,3 +91,8 @@ reserve are maxima over the calibrated cells, and a re-run adds cells (F-55).
 Spec 2 calibrates U over every shape above except path-mode `..`, which spec 3's path-mode ticket
 adds before re-running the calibration; U may only fall: `b` and the reserve are maxima over the
 calibrated cells, and a re-run adds cells (F-55).
+
+## Measured (#119, 2026-11-16)
+
+The recursion shapes at 10⁶ under `Limits.embedded()`, in both modes, against jq-ref, are in
+`bench/RESULTS.md`, section "#119", Table A.

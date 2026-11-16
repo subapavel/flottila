@@ -4,6 +4,107 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## #119: recursion, `limit`, `..`, the caps and the OPTIMISED gain (ADR-0019 #119, ADR-0006, ADR-0011), 2026-11-16
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Intel(R) Xeon(R) Processor @ 2.10GHz, kernel
+  6.18.44-fc-v470, Java HotSpot 25.0.5.0.3+1-LTS-2, `jq-1.8.2`. Commit `746b6a7` (impl/119).
+  `stackBytes` from #113's committed constants: `b` 192, reserve 286 720 (#199 has not merged).
+  Load average 0.52 at the start (16:48:37 UTC) and 0.97 at the end (17:08:31 UTC). Nothing else
+  ran. The verifier's logs, in the impl/119 worktree: `.logs/119-env.log`, `.logs/119-jmh.log`,
+  `.logs/119-jmh.json` (54 rows) and `.logs/119-jqref.log`.
+- JMH: `java -jar bench/jmh/target/benchmarks.jar Diagnostics -bm avgt -f 2 -wi 3 -w 1s -i 5 -r 1s
+  -prof gc -foe true -jvmArgs '-Xms2g -Xmx2g'`, exit 0, with JAVA_TOOL_OPTIONS holding only the
+  proxy and truststore flags. One operation is `Gates.once` under `Limits.embedded()` with `-c`,
+  with the mode set by ADR-0020's reflective hook.
+- Every `# outcome` line is `bytes written`: no cell ended on a termination. The 1e6 recursion cells
+  write 13 bytes, which is `499999500000` and LF, jq-ref's answer.
+- The recursion shapes carry the prefix `[.[]] as $a | ($a|length) as $L |` (owner, Q1a; F-111).
+- jq-ref: `bench/jq-ref.sh`, which reports the per-document time with K = 1 and the start-up time
+  subtracted, as `per_document_us`. It gives no time for Eu at 1e6.
+- Each number is the JMH average per operation, in ms, ± JMH's 99.9 % error, and
+  `gc.alloc.rate.norm` in MiB per operation.
+- Before JMH, cold single-shots in a fresh 2 GiB JVM ended at 2.1 s at most (recur-M CONSERVATIVE)
+  with a peak heap of 282 MiB at most (recur-N). Eu is no longer quadratic. In OPTIMISED, 1e4 took
+  280 ms, 1e5 269 ms and 1e6 1 421 ms, all cold. The log is `.logs/119-shots2-*.log` in the impl/119 worktree.
+
+**Table A: recursion, `limit` and `..`**
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | alloc MiB/op O / C | jq-ref ms/doc |
+|---|---|---|---|---|
+| `recur-T.1e6` | 224 ± 42.786 | 1 552 ± 211 | 244.5 / 557.3 | 1 294 |
+| `recur-E.1e6` | 172 ± 12.733 | 1 459 ± 110 | 168.2 / 458.1 | 943 |
+| `recur-Eu.1e6` | 1 107 ± 188 | 1 414 ± 183 | 343.7 / 458.1 | — |
+| `recur-M.1e6` | 225 ± 23.816 | 1 573 ± 341 | 244.5 / 557.3 | 1 438 |
+| `recur-N.1e6` | 1 540 ± 166 | 1 545 ± 148 | 351.3 / 351.3 | 963 |
+| `limit-iter.1e6` | 75.906 ± 14.880 | 119 ± 20.100 | 53.8 / 137.7 | 767 |
+| `limit-recurse.1e6` | 70.794 ± 5.535 | 908 ± 81.091 | 122.1 / 267.0 | 832 |
+| `dotdot.1k` | 0.006 ± 0.000 | 0.007 ± 0.001 | 0.0 / 0.0 | 0.496 |
+| `dotdot.100k` | 0.578 ± 0.060 | 0.691 ± 0.065 | 0.9 / 1.3 | 5.365 |
+| `dotdot.10m` | 96.730 ± 14.358 | 110 ± 12.803 | 108.3 / 133.1 | 698 |
+| `dotdot-deep.1k` | 0.035 ± 0.003 | 0.045 ± 0.005 | 0.1 / 0.1 | 0.666 |
+| `dotdot-deep.9999` | 0.919 ± 0.061 | 1.175 ± 0.099 | 1.9 / 2.1 | 4.307 |
+
+- In OPTIMISED, T (TAIL_SELF), M (TAIL_GROUP) and E (specialised, `copyOf=`) are 5.5 to 6.4 times
+  faster than jq-ref. N (RECURSIVE) takes 1.6 times jq-ref's time. Eu (unspecialised) takes 1.1 s
+  and has no reference time.
+
+**Table B: the caps** (`cap-inline` k = 15, `cap-inline-over` k = 16,
+`cap-specialise` m = 1 637, `cap-specialise-over` m = 1 638)
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | alloc MiB/op O / C | jq-ref ms/doc |
+|---|---|---|---|---|
+| `cap-inline.1k` | 63.671 ± 5.060 | 49.130 ± 6.947 | 40.9 / 33.6 | 1.901 |
+| `cap-inline-over.1k` | 76.397 ± 10.866 | 51.647 ± 8.270 | 44.0 / 36.4 | 5.200 |
+| `cap-specialise.1k` | 42.750 ± 4.953 | 32.552 ± 2.791 | 55.8 / 52.9 | 42.838 |
+| `cap-specialise-over.1k` | 50.149 ± 7.714 | 31.336 ± 2.392 | 67.3 / 53.0 | 38.816 |
+
+- Table B's number is one whole operation: the compile and the run.
+  - The cap cells are compile-bound: jqj at 31 to 76 ms against jq-ref's 2 to 43 ms.
+  - The over-cap inline row per leaf step, with the compile included as an upper bound:
+    2^15 = 32 768 leaf steps, so 2.33 µs per step in OPTIMISED and 1.58 µs in CONSERVATIVE. At
+    the cap (2^14 steps) the figures are 3.89 µs and 3.00 µs.
+  - OPTIMISED costs 13 to 60 % more than CONSERVATIVE on all four cap cells. That is the price of
+    inlining and specialising at the cap.
+
+**Table C: the OPTIMISED gain** (every Gates cell except G7, plus every cell above; G4 at 10⁴ only;
+the gain is CONSERVATIVE / OPTIMISED)
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | gain C/O |
+|---|---|---|---|
+| `recur-T.1e6` | 224 | 1 552 | 6.92 |
+| `recur-E.1e6` | 172 | 1 459 | 8.48 |
+| `recur-Eu.1e6` | 1 107 | 1 414 | 1.28 |
+| `recur-M.1e6` | 225 | 1 573 | 6.98 |
+| `recur-N.1e6` | 1 540 | 1 545 | 1.00 |
+| `limit-iter.1e6` | 75.906 | 119 | 1.57 |
+| `limit-recurse.1e6` | 70.794 | 908 | 12.82 |
+| `dotdot.1k` | 0.006 | 0.007 | 1.25 |
+| `dotdot.100k` | 0.578 | 0.691 | 1.20 |
+| `dotdot.10m` | 96.730 | 110 | 1.14 |
+| `dotdot-deep.9999` | 0.919 | 1.175 | 1.28 |
+| `dotdot-deep.1k` | 0.035 | 0.045 | 1.27 |
+| `cap-inline.1k` | 63.671 | 49.130 | 0.77 |
+| `cap-inline-over.1k` | 76.397 | 51.647 | 0.68 |
+| `cap-specialise.1k` | 42.750 | 32.552 | 0.76 |
+| `cap-specialise-over.1k` | 50.149 | 31.336 | 0.62 |
+| `G1.1k` | 0.002 | 0.002 | 0.99 |
+| `G1.100k` | 0.173 | 0.207 | 1.19 |
+| `G1.10m` | 17.617 | 18.774 | 1.07 |
+| `G2.1k` | 0.004 | 0.004 | 1.00 |
+| `G2.100k` | 0.371 | 0.416 | 1.12 |
+| `G2.10m` | 34.398 | 40.034 | 1.16 |
+| `G3.100k` | 2.924 | 3.039 | 1.04 |
+| `G3.10m` | 1 580 | 1 582 | 1.00 |
+| `G4.1e4` | 232 | 221 | 0.95 |
+| `G6.compact.10m` | 36.241 | 37.384 | 1.03 |
+| `G6.pretty.10m` | 51.353 | 46.088 | 0.90 |
+
+- The largest gains: `limit-recurse` 12.8×, the specialised and tail recursions 6.9 to 8.5×,
+  `limit-iter` 1.6×. N gains nothing (1.00), as ADR-0006 expects of a non-tail recursion. The Gates
+  cells lie between 0.90 and 1.19. The caps lose (0.62 to 0.77), because the operation includes
+  the compile.
+- NOT_RUN, owed by spec 3: `walk` and `[paths]`.
+
 ## #113: the calibration matrix, `b` 192 and reserve 286 720 (ADR-0046 #113, K1–K8, L1–L4), 2026-11-15
 
 - Machine: `claude-cloud-4vcpu` (`nproc` 4), Temurin 25.0.5 at `/opt/temurin-25` (the record's

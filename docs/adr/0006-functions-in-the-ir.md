@@ -61,3 +61,8 @@ Recursive calls count stack units against U (ADR-0011), not calls against K.
 "The only natives" counts jq's jq-defined builtins: of those only `inputs`, `flatten` and
 `to_entries` (ADR-0042 as amended by ADR-0044, #85) are natives. Every builtin jq writes in C or bytecode (`empty`, `not`, `path/1`, `length`, `type`, …)
 is a native in jqj.
+
+## Measured (#119, 2026-11-16)
+
+The OPTIMISED gain per call kind (TAIL_SELF, TAIL_GROUP, specialised, unspecialised,
+RECURSIVE) and the cap cells' compile cost are in `bench/RESULTS.md`, section "#119".
