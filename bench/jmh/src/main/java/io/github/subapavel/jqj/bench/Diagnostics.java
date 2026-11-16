@@ -225,8 +225,12 @@ public class Diagnostics {
     }
   }
 
-  /** Spike A's prefix of every recursion shape: the input as {@code $a}, its length as {@code $L}. */
-  static final String PREFIX = ". as $a | ($a|length) as $L | ";
+  /**
+   * The prefix of every recursion shape (owner's ruling on #119, 2026-11-16): the input's elements as a built array
+   * {@code $a}, its length as {@code $L}. Spike A bound the input itself, but {@code $a[i]} on a document array costs i
+   * ticks (ADR-0034, F-111), which made every shape quadratic and ended each 1e5 and 1e6 cell on the step budget.
+   */
+  static final String PREFIX = "[.[]] as $a | ($a|length) as $L | ";
 
   /** T, Spike A's self tail call: state {@code [i, acc]}, the call the last thing the function does. */
   static final String T =

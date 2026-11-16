@@ -64,35 +64,35 @@ stderr
 end
 
 case bench/recur-T.1k
-def ed83fdcb71f4
+def ab804a41a4d5
 rc 0
 stdout 39903\n
 stderr
 end
 
 case bench/recur-E.1k
-def e410687ff96d
+def 5c9537399e80
 rc 0
 stdout 39903\n
 stderr
 end
 
 case bench/recur-Eu.1k
-def 3485172c86df
+def 8d74c266f5c2
 rc 0
 stdout 39903\n
 stderr
 end
 
 case bench/recur-M.1k
-def c2779bbf5ae1
+def f14dd245cd4c
 rc 0
 stdout 39903\n
 stderr
 end
 
 case bench/recur-N.1k
-def c19e464ad6d0
+def e98ce356b232
 rc 0
 stdout 39903\n
 stderr
