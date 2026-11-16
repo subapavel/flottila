@@ -82,7 +82,6 @@ class DifferentialOracleTest {
    */
   @Test
   void everyCaseRunsOnTheRunnersOneThread(@TempDir Path scratch) {
-    StackProbe.warm(RUNNER_STACK);
     List<Thread> threads = new CopyOnWriteArrayList<>();
     List<Integer> frames = new CopyOnWriteArrayList<>();
     DiffRunner runner =
@@ -100,7 +99,13 @@ class DifferentialOracleTest {
 
     assertThat(threads).as("the threads the entry ran on, one per case").hasSize(2);
     assertThat(threads.get(0)).as("the thread of the first case").isNotSameAs(Thread.currentThread()).isSameAs(threads.get(1));
-    StackProbe.assertHolds(frames.get(0), RUNNER_STACK, "the differential runner");
+    StackProbe.assertHolds(
+        () -> {
+          runner.run(c, null);
+          return frames.getLast();
+        },
+        RUNNER_STACK,
+        "the differential runner");
   }
 
   /** PIT reruns this factory for each of its dynamic tests; the corpus it takes is read once per JVM (F-84 (C)). */

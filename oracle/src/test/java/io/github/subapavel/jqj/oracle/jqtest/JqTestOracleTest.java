@@ -82,7 +82,6 @@ class JqTestOracleTest {
    */
   @Test
   void everyCaseRunsOnTheRunnersOneThread() {
-    StackProbe.warm(RUNNER_STACK);
     List<Thread> threads = new CopyOnWriteArrayList<>();
     List<Integer> frames = new CopyOnWriteArrayList<>();
     Runnable probe =
@@ -117,7 +116,13 @@ class JqTestOracleTest {
     assertThat(threads).as("the threads of each compile and run, two per case").hasSize(4);
     assertThat(threads.getFirst()).as("the thread of the first compile").isNotSameAs(Thread.currentThread());
     assertThat(threads).as("the threads of every compile and run").allSatisfy(t -> assertThat(t).isSameAs(threads.getFirst()));
-    StackProbe.assertHolds(frames.get(1), RUNNER_STACK, "the jqtest runner's run");
+    StackProbe.assertHolds(
+        () -> {
+          runner.run(c);
+          return frames.getLast();
+        },
+        RUNNER_STACK,
+        "the jqtest runner's run");
   }
 
   /** PIT reruns this factory for each of its dynamic tests; the corpus it takes is read once per JVM (F-84 (C)). */
