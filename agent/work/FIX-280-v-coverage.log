@@ -1,0 +1,14 @@
+bench: line 98.1 %, branch 97.8 %
+platform/api: line 99.3 %, branch 100.0 %
+platform/cli: line 99.0 %, branch 99.6 %
+platform/components/http: line 99.5 %, branch 94.8 %
+platform/components/mock: line 100.0 %, branch 99.2 %
+platform/components/sftp: line 100.0 %, branch 99.0 %
+platform/core: line 100.0 %, branch 99.5 %
+platform/runtime: line 99.5 %, branch 99.5 %
+platform/schemas: line 99.0 %, branch 99.5 %
+platform/sim: line 97.2 %, branch 95.9 %
+platform/steps/validate: line 100.0 %, branch 100.0 %
+platform/steps/xslt: line 100.0 %, branch 100.0 %
+platform/testkit: line 97.8 %, branch 96.2 %
+coverage: no decrease

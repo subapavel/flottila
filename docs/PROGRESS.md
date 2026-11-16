@@ -1,4 +1,20 @@
 
+## 2026-11-16 — FIX-280 testkit's branch figure is the same in the runs measured — done, review PASS [B]
+
+- Cause: each of `ComponentContract`'s twelve polls kept its comparison in the call site's lambda; its false outcome was taken
+  only when the first poll came before the delivery, so the module's branches read 397 to 402 of 417 on unchanged code.
+- Red first (test-author): five cases of `ComponentContractSoonTest` over three helpers that did not exist - 8 compile errors
+  (`agent/work/FIX-280-red-testkit.log`); one case changed before approval (its witness: three polls inside 20 ms).
+- Change (implementer, `ComponentContract.java` only): `soonEquals`, `soonAtLeast`, `soonPresent`; the twelve call sites use them
+  with a method reference - same value, comparison, number and message. No comparison is left in a call site's lambda.
+- `Journal`:1013's fourth branch (a later force in flight: no wait) gets a case that reaches it by construction; it fails on
+  its own assertion against a hand mutant (`agent/work/FIX-280-mutant-journal.log`); `Journal.java` is unchanged.
+- VERIFIED_PASS (`agent/work/FIX-280-evidence.txt`): testkit alone three times and the whole reactor with `-Pit` once - 384 of
+  399 branches and the same missed lines in all four; reactor 4383 tests, 0 failures; `coverage_check.py` no decrease;
+  `Journal`:1013 `mb="0" cb="4"`. `ci/coverage-baseline.json` written as measured (it was last written at 0481fac9).
+- Review [B]: PASS, round 1. Its remarks: "the runs measured", not "every run"; FIX-281 gains the older case's witness and a
+  watch on `PollingConsumerContract`'s polls. `ci` 252 and 253 read green (237 to 253 in a row).
+
 ## 2026-11-16 — FIX-240 the polling suite's self-test fails the same cases in every run — done, review PASS [B]
 
 - The flaky test `aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile` failed 1 run of 3 on 2026-11-16 (red on record:

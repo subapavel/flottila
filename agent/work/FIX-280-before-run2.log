@@ -1,0 +1,46 @@
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40769 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/opt/maven/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40769 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=40769 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+Exception in thread "variant-handler-failure-lost" java.lang.NullPointerException: Cannot invoke "io.vertx.core.Future.onComplete(io.vertx.core.Completable)" because the return value of "java.util.function.Function.apply(Object)" is null
+	at dev.rail8.testkit.ComponentContractSelfTest$Variant.lambda$dispatch$2(ComponentContractSelfTest.java:250)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:460)
+Exception in thread "variant-handler-failure-lost" java.lang.IllegalStateException: handler-threw
+	at dev.rail8.testkit.ComponentContract.lambda$aHandlerThatThrowsFailsTheSendAndStopStillCompletes$0(ComponentContract.java:235)
+	at dev.rail8.testkit.ComponentContract.lambda$aBrokenHandlerFailsTheSendAndStopStillCompletes$0(ComponentContract.java:250)
+	at dev.rail8.testkit.ComponentContractSelfTest$Variant.lambda$dispatch$2(ComponentContractSelfTest.java:250)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:460)
+[ERROR] Tests run: 22, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 41.74 s <<< FAILURE! -- in dev.rail8.testkit.PollingConsumerContractSelfTest
+[ERROR] dev.rail8.testkit.PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile -- Time elapsed: 10.06 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <[theFileStaysWhileTheAnswerIsPending, aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain, aNamedDedupePropIsSetAndStableAcrossRedeliveries, aStoppedConsumerDeliversNothing, aHandlerThatThrowsOrAnswersNullKeepsTheFile, aFinalNackIsNotDeliveredAgain, stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval, aRetryableNackEndsTheRound]> but was: <[aFinalNackIsNotDeliveredAgain, aHandlerThatThrowsOrAnswersNullKeepsTheFile, aNamedDedupePropIsSetAndStableAcrossRedeliveries, aRetryableNackEndsTheRound, aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain, aStoppedConsumerDeliversNothing, theFileStaysWhileTheAnswerIsPending]>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:177)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1145)
+	at dev.rail8.testkit.PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile(PollingConsumerContractSelfTest.java:367)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+
+[ERROR] Failures: 
+[ERROR]   PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile:367 expected: <[theFileStaysWhileTheAnswerIsPending, aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain, aNamedDedupePropIsSetAndStableAcrossRedeliveries, aStoppedConsumerDeliversNothing, aHandlerThatThrowsOrAnswersNullKeepsTheFile, aFinalNackIsNotDeliveredAgain, stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval, aRetryableNackEndsTheRound]> but was: <[aFinalNackIsNotDeliveredAgain, aHandlerThatThrowsOrAnswersNullKeepsTheFile, aNamedDedupePropIsSetAndStableAcrossRedeliveries, aRetryableNackEndsTheRound, aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain, aStoppedConsumerDeliversNothing, theFileStaysWhileTheAnswerIsPending]>
+[ERROR] Tests run: 300, Failures: 1, Errors: 0, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.6.0:test (default-test) on project rail8-testkit: There are test failures.
+[ERROR] 
+[ERROR] See /home/user/flottila/platform/testkit/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :rail8-testkit

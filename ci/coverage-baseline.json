@@ -8,7 +8,7 @@
     "line": 99.3
   },
   "platform/cli": {
-    "branch": 100.0,
+    "branch": 99.6,
     "line": 99.0
   },
   "platform/components/http": {
@@ -24,11 +24,11 @@
     "line": 100.0
   },
   "platform/core": {
-    "branch": 99.4,
-    "line": 99.6
+    "branch": 99.5,
+    "line": 100.0
   },
   "platform/runtime": {
-    "branch": 99.4,
+    "branch": 99.5,
     "line": 99.5
   },
   "platform/schemas": {
@@ -48,7 +48,7 @@
     "line": 100.0
   },
   "platform/testkit": {
-    "branch": 96.6,
-    "line": 98.1
+    "branch": 96.2,
+    "line": 97.8
   }
 }

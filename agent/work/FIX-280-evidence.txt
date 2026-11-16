@@ -1,0 +1,54 @@
+FIX-280 verifier evidence. Date 2026-11-16. HEAD 7484d69f569ae5c12b4eb1cdcc512670de26919a. Machine: 4 cores.
+git status platform/: M JournalDirForceOrderTest.java, M ComponentContract.java, M ComponentContractSoonTest.java
+
+A. testkit alone x3: VERIFIED_PASS exit 0 each. logs agent/work/FIX-280-v-testkit-{1,2,3}.log
+ Each run: tests 305, failures 0, errors 0, skipped 0. Module BRANCH 384/399 covered (15 missed), LINE 1481/1514 (33 missed).
+ ComponentContract class BRANCH missed 1, covered 41. All three runs identical, same lines. Missed-branch lines (line mb/cb):
+ ComponentContract.java 526:1/3; ChunkedReadStream 99:1/3; NoBlockedPlatformThreads 36:1/1; FakeTimer 53:1/1;
+ InMemoryBlobStore 59:1/1; RecordingComponent 231:1/3; Ports 48:2/2;
+ PollingConsumerContract 161:1/1 162:1/1 416:1/1 422:1/1 558:1/3 561:2/2. Other files: none.
+B. reactor -Pit: VERIFIED_PASS exit 0, BUILD SUCCESS, all modules SUCCESS. log agent/work/FIX-280-v-reactor.log
+ surefire+failsafe totals: tests 4383, failures 0, errors 0, skipped 0. Failing tests: none.
+C. python3 ci/coverage_check.py --baseline-ref HEAD: VERIFIED_PASS exit 0, verdict "coverage: no decrease".
+ log agent/work/FIX-280-v-coverage.log
+D. VERIFIED_PASS (read). Module jacoco.csv sums, now vs FIX-264-4-covtable.txt left side (line cov/total, branch cov/total):
+ api L 284/286 B 100/100 same; cli 518/523, 233/234 same; core L 2373/2374 B 1225/1231 (before 2492/2499, 1264/1271) share
+ higher;
+ http 210/211, 110/116 same; mock 261/261, 127/128 same; sftp 227/227, 98/99 same;
+ runtime L 6570/6603 B 2830/2845 (before 6576/6611, 2830/2847) share higher; schemas 381/385, 215/216 same;
+ sim 631/649, 211/220 same; validate 130/130, 14/14 same; xslt 188/188, 37/37 same.
+ testkit csv L 1484/1517 B 384/399 (96.24%) vs before 401/417 (96.16%); lines still missed: as list in A. bench: no jacoco
+ csv.
+ Modules with lower covered share: none. (testkit csv line sum 1484/1517 differs from jacoco.xml report counter 1481/1514
+ by 3.)
+E. VERIFIED_PASS (read), platform/runtime/target/site/jacoco/jacoco.xml:
+ class Journal BRANCH missed 0, covered 252.
+ <line nr="1013" mi="0" ci="16" mb="0" cb="4" />
+
+Added by the architect (read from the reports of run B, in the tree; no Maven run):
+ The two line figures of testkit are two counters of one report, not two measurements: summed over the classes of
+ platform/testkit/target/site/jacoco/jacoco.xml the LINE counter is 33 missed, 1484 covered (what jacoco.csv sums
+ to); summed over its source files it is 33 missed, 1481 covered (the report's own counter, which ci/coverage_check.py
+ reads). Three lines carry code of two classes. BRANCH is 15 missed, 384 covered in both.
+ ComponentContract.java:526 is `if (plainOnes.size() == 1 && boundedOnes.size() == 1) {` - the line that was :515
+ before this change (git show HEAD:...ComponentContract.java, :515), no poll; the packet says it stays.
+ The red of the helper cases: agent/work/FIX-280-red-testkit.log (8 `cannot find symbol` errors, test compilation).
+ The Journal case against the hand mutant: agent/work/FIX-280-mutant-journal.log; green on the clean tree:
+ agent/work/FIX-280-green-journal.log; Journal.java's sha256 the same before and after.
+ The implementer's runs: agent/work/FIX-280-soontest.log (the class, 6 tests), agent/work/FIX-280-testkit.log.
+ ci/coverage-baseline.json: `python3 ci/coverage_check.py --write` on run B's reports (exit 0), as every task commit
+ that ran the whole reactor writes it (agent/NOTES.md, Build and VM; D-050: as measured). The file was last written
+ at 0481fac9. What moves: cli branch 100.0 -> 99.6 and testkit line 98.1 -> 97.8 - both already so before this
+ change (agent/work/FIX-264-4-covtable.txt: cli branches 233/234, testkit lines 1481/1514); core branch 99.4 -> 99.5,
+ line 99.6 -> 100.0; runtime branch 99.4 -> 99.5; testkit branch 96.6 -> 96.2 (384 of 399; the total fell by 18:
+ twelve lambdas of two branches left, three helpers of two came in).
+
+Which missed branches of the "before" are gone (agent/work/FIX-280-before.txt and the packet's head):
+ ComponentContract.java before - :393 and :550 missed in testkit-only run 1 and covered in run 3; :279 and :510 also
+ missed in some of the four whole-reactor runs; :515 missed in every run. After - none of the four poll lines exists
+ as a branch of a call site (the comparisons are the helpers', :122, :125, :128, covered on both outcomes by
+ ComponentContractSoonTest); :526, the old :515, is the one line of the class with a missed branch, in all four runs.
+ What the four runs show is "the same figure in the runs measured" (three testkit-only, one whole reactor), not a
+ proof for every run: PollingConsumerContract keeps about 45 polls of the shape `soon(() -> <comparison>)`
+ (:108-:550, the reviewer's count); none moved in the ten runs on record (six before, four after).
+Review [B], round 1: PASS (2026-11-16).

@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static dev.rail8.runtime.journal.JournalFixture.KEY;
@@ -117,6 +118,28 @@ class JournalDirForceOrderTest {
         JournalRef a = t.pa.join();
         JournalRef b = t.pb.join();
         assertArrayEquals(new GeneratedInput(2, 10_000).readAllBytes(), t.journal.stream(a).readAllBytes(), "A is persisted and reads");
+        assertArrayEquals(new GeneratedInput(3, 10_000).readAllBytes(), t.journal.stream(b).readAllBytes(), "B is persisted and reads");
+    }
+
+    /**
+     * FIX-280: the mirror of the two above. A's force returns first while B's later force is still held: A's persist returns at
+     * once - an earlier persist never waits for a force of segments/ begun after its own.
+     */
+    @Test
+    void anEarlierPersistReturnsWhileALaterForceIsStillHeld() throws Exception {
+        Two t = new Two("later-held");
+
+        t.aForce.release();
+        until(t.pa::done, () -> "A's persist returns while B's later force of segments/ is held; A's thread is " + t.pa.thread().getState()
+                + " at " + Arrays.toString(t.pa.thread().getStackTrace()));
+        JournalRef a = t.pa.join();
+        assertFalse(t.bForce.op().returnedOk(), "B's force of segments/ is still held");
+        assertFalse(t.pb.done(), "B's persist has not returned while its own force is held");
+        untilParked(t.pb.thread(), "B's persist sits in its held force of segments/");
+        assertArrayEquals(new GeneratedInput(2, 10_000).readAllBytes(), t.journal.stream(a).readAllBytes(), "A is persisted and reads");
+
+        t.bForce.release();
+        JournalRef b = t.pb.join();
         assertArrayEquals(new GeneratedInput(3, 10_000).readAllBytes(), t.journal.stream(b).readAllBytes(), "B is persisted and reads");
     }
 }

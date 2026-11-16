@@ -34,6 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -115,6 +117,15 @@ public abstract class ComponentContract {
         }
         return true;
     }
+
+    /** {@link #soon}: until {@code actual} gives exactly {@code expected}; a value past it never satisfies. */
+    protected final boolean soonEquals(IntSupplier actual, int expected) { return soon(() -> actual.getAsInt() == expected); }
+
+    /** {@link #soon}: until {@code actual} gives {@code least} or more. */
+    protected final boolean soonAtLeast(IntSupplier actual, int least) { return soon(() -> actual.getAsInt() >= least); }
+
+    /** {@link #soon}: until {@code value} gives a non-null value. */
+    protected final boolean soonPresent(Supplier<?> value) { return soon(() -> value.get() != null); }
 
     @Test
     public void schemeMatchesTheEndpointUri() {
@@ -201,7 +212,7 @@ public abstract class ComponentContract {
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("slow"));
             Future<Envelope> outcome = producer.send(sent);
-            assertTrue(soon(() -> pending.get() != null), "the handler was invoked");
+            assertTrue(soonPresent(pending::get), "the handler was invoked");
             assertFalse(outcome.isComplete(), "ACK only after the handler acknowledged: nothing completes before");
             pending.get().complete(new Ack.Reply(sent.withHeader("x-acked", "yes")));
             assertEquals("yes", outcome.await().header("x-acked").orElse(null));
@@ -253,7 +264,7 @@ public abstract class ComponentContract {
         Future<Void> stopped = null;
         try {
             Future<Envelope> sent = producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("broken-handler")));
-            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            assertTrue(soonEquals(invoked::get, 1), "the handler was invoked");
             assertTrue(settled(sent).failed(), "a handler that " + what + " acknowledged nothing: the send fails: " + sent);
             stopped = consumer.stop();
             assertTrue(settled(stopped).succeeded(), "the failed answer counts as answered: stop completes: " + stopped.cause());
@@ -276,7 +287,7 @@ public abstract class ComponentContract {
             Body big = small.blobs().write(BlobKey.body("big", 0), new GeneratedReadStream(size, 8192), size).await();
             Envelope sent = Envelope.ingress("big", "contract", Headers.empty(), big);
             producer.send(sent).await();
-            assertTrue(soon(() -> seen.size() == 1), "delivered");
+            assertTrue(soonEquals(seen::size, 1), "delivered");
             assertEquals(size, seen.get(0).body().size(), "every byte arrived");
             assertEquals(big.hash(), seen.get(0).body().hash(), "and the same bytes: a body above the tree limit is streamed, never loaded whole");
         } finally {
@@ -296,7 +307,7 @@ public abstract class ComponentContract {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("retry-me"));
             producer.send(sent).await();
             producer.send(sent).await();
-            assertTrue(soon(() -> seen.size() == 2), "a retry is a second delivery");
+            assertTrue(soonEquals(seen::size, 2), "a retry is a second delivery");
             for (Envelope e : seen) {
                 assertEquals(sent.body().hash(), e.body().hash(), "the body was re-opened, not consumed by the first send");
                 assertEquals("retry-me", e.body().whole().toString());
@@ -390,12 +401,12 @@ public abstract class ComponentContract {
                 }
                 assertTrue(s.succeeded(), "delivered: " + s.cause());
             }
-            assertTrue(soon(() -> handlers.size() >= 2), "both deliveries reached the handler: " + handlers);   // a send acknowledged early must not race the check
+            assertTrue(soonAtLeast(handlers::size, 2), "both deliveries reached the handler: " + handlers);   // a send acknowledged early must not race the check
             assertEquals(2, handlers.size(), "one handler call per delivery: " + handlers);
             for (Thread h : handlers) assertTrue(h.isVirtual(), "the handler runs on a virtual thread, not on " + h);
             for (Thread h : handlers) assertFalse(senders.contains(h), "the handler runs on a thread of its own, not on the sender's " + h + " (senders " + senders + ")");
             assertNotSame(handlers.get(0), handlers.get(1), "two deliveries in flight at once run on two threads, not both on " + handlers.get(0));
-            assertTrue(soon(() -> together.size() == 2), "both handlers finished waiting for each other: " + together);
+            assertTrue(soonEquals(together::size, 2), "both handlers finished waiting for each other: " + together);
             assertEquals(List.of(true, true), together, "both deliveries were in their handlers at the same time (false: one waited " + patience() + " for the other)");
         } finally {
             producer.close().await();
@@ -430,7 +441,7 @@ public abstract class ComponentContract {
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("in-flight"));
             Future<Envelope> first = producer.send(sent);
-            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            assertTrue(soonEquals(invoked::get, 1), "the handler was invoked");
             stopped = consumer.stop();
             assertFalse(stopped.isComplete(), "stop waits for the delivery in flight: " + stopped);
             Future<Envelope> second = settled(producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("late"))));
@@ -461,7 +472,7 @@ public abstract class ComponentContract {
         Future<Void> stopped = null;
         try {
             Future<Envelope> sent = producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("cancel-me")));
-            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            assertTrue(soonEquals(invoked::get, 1), "the handler was invoked");
             stopped = consumer.stop();
             assertFalse(stopped.isComplete(), "the consumer is stopping, not stopped, while the delivery is in flight: " + stopped);
             // the stop has acted by the time a later send is answered (a refused connection, a refusal, a behaviour)
@@ -507,7 +518,7 @@ public abstract class ComponentContract {
             Envelope bounded = rt.ingress("contract", Headers.empty(), Buffer.buffer("id-bounded")).withId("contract-bounded-2");
             Future<Envelope> second = settled(producer.send(bounded, () -> Duration.ofMinutes(1)));
             assertTrue(second.succeeded(), "the bounded send is answered: " + second.cause());
-            assertTrue(soon(() -> seen.size() == 2), "both delivered: " + seen);
+            assertTrue(soonEquals(seen::size, 2), "both delivered: " + seen);
             // Each delivery is told by its body (its hash: what was sent), not by its place in `seen`: a partner that acknowledges before its handler answered
             // runs the two handlers on threads of their own, and the order they record in is not what this case is about (FIX-221).
             List<Envelope> plainOnes = seen.stream().filter(e -> e.body().hash().equals(plain.body().hash())).toList();
@@ -547,7 +558,7 @@ public abstract class ComponentContract {
             }
             Future<Envelope> inTime = settled(producer.send(rt.ingress("contract", Headers.empty(), Buffer.buffer("in-time")), () -> Duration.ofMinutes(1)));
             assertTrue(inTime.succeeded(), "witness: with time left the send is delivered: " + inTime.cause());
-            assertTrue(soon(() -> delivered.get() >= 1), "the send with time left reached the handler");
+            assertTrue(soonAtLeast(delivered::get, 1), "the send with time left reached the handler");
             assertEquals(1, delivered.get(), "only the send with time left reached the partner");
         } finally {
             producer.close().await();
@@ -579,7 +590,7 @@ public abstract class ComponentContract {
             FakeRuntime rt = FakeRuntime.create();
             Envelope renewed = rt.ingress("contract", Headers.empty(), Buffer.buffer("renewed"));
             Future<Envelope> first = producer.send(renewed, deadline);
-            assertTrue(soon(() -> answers.size() == 1), "the handler was invoked");
+            assertTrue(soonEquals(answers::size, 1), "the handler was invoked");
             clock.advance(Duration.ofSeconds(4));
             assertFalse(first.isComplete(), "1 s left: not cut: " + first);
             until.set(clock.instant().plusSeconds(6));   // renewed: 6 s left, 5 s past the deadline it was sent with
@@ -591,7 +602,7 @@ public abstract class ComponentContract {
 
             until.set(clock.instant().plusSeconds(3));
             Future<Envelope> second = producer.send(rt.ingress("contract", Headers.empty(), Buffer.buffer("cut")), deadline);
-            assertTrue(soon(() -> answers.size() == 2), "the second send reached the handler");
+            assertTrue(soonEquals(answers::size, 2), "the second send reached the handler");
             clock.advance(Duration.ofMillis(2_999));
             assertFalse(second.isComplete(), "1 ms left: not cut yet: " + second);
             clock.advance(Duration.ofMillis(1));

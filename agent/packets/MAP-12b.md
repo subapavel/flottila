@@ -163,8 +163,14 @@ job now compares. Its 80 % threshold and its artefact step stay.
 2. The implementer: the two new scripts (mode 100755), `pit-summary.sh`, the date file, the two workflows. All
    three tests green; every script test the two steps of `mapping-ci.yml` run stays green, unchanged.
 3. The verifier: every script test of the workflow's two steps once, exit codes and the count of `ok` and `FAIL`
-   lines per file; `bash -n` on the three scripts; both workflow files load as YAML (`python3`, PyYAML); the
-   mapping's build is not needed - no file it reads changes. Evidence `agent/work/MAP-12b-evidence.txt`.
+   lines per file; `bash -n` on the three scripts; both workflow files load as YAML (`python3`, PyYAML). Evidence
+   `agent/work/MAP-12b-evidence.txt`. Then the first exercise of the duty this row writes into the documents
+   (D-164 (2); added 2026-11-16 before any verification ran): the mapping's build
+   (`./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify`) and, in `mapping/`,
+   `java scripts/ratchet.java regen --all` - its output whole in the evidence. Either `RATCHET REGEN OK`, and a
+   row it moved is part of this commit for the reviewer to read; or it names the report it lacks - then nothing
+   is forced, `git status --short mapping/ratchet` stays empty, and the documents say what the verifier has to
+   run before it can regenerate.
 4. Not done on stubs. After the push, the architect reads the first real `mapping-ci` run by job name: the
    backend job's `BASELINE <sha> run <id>` line (expected: the closest earlier commit of `main` whose push run
    has the backend job green - 71c3b69e's run 43960684995 if it ended green, else 89311471's run 43928160498),
@@ -177,6 +183,61 @@ job now compares. Its 80 % threshold and its artefact step stay.
    `mapping/docs/WORKFLOW.md` §6 (the CI part, the Ratchet paragraph); `mapping/ratchet/README.md`; root
    `docs/WORKFLOW.md` §1 step 5 (the verifier regenerates the ratchet files at every task commit that touches the
    mapping and runs `pit-summary.sh` for a mutation-tested module it touches; the reviewer reads their diff).
+
+## Read with the tests (approved 2026-11-16)
+
+The three test files are approved as written. Where they read this packet narrower than its words, the tests are
+the contract:
+- the lookup: `BASELINE ...` is its last stdout line; without a `<dir>` it prints the usage on stderr, nothing
+  on stdout, exit 2, and calls nothing; `gh` is called only as `gh api <path>`, the paths exactly those of §1
+  (no `--paginate`, no `--jq`: the pages are asked one by one and parsed with `jq`); a page of 100 runs is
+  followed by the next page, `total_count` is not trusted; the walk stops at the baseline - the jobs of a
+  farther ancestor's run, of HEAD's own run, of a run that is not completed, of a stray commit's run and of the
+  run with `GITHUB_RUN_ID`'s id are never asked; a baseline or a base whose `mapping/ratchet/` lacks one of the
+  four names, and a HEAD without a parent when the bootstrap needs one, are `LOOKUP FAILED: <reason>`, exit 1;
+- `ratchet-ci.sh`: annotations go to stdout; the lookup's and the check's stdout lines are passed through; the
+  step summary gets one fenced block appended; an empty module list in the nightly mode is "no verdict", exit 2
+  (the summary script's usage exit); the date file is read before anything is called, in both modes;
+- §4's "the three new script tests": two files are new, the third is `pit-summary-test.sh`, which the step
+  already names - each of the three is named once in the step that needs no JDK;
+- §4's "no date anywhere in the file" stands as written, comments included: the header comment of
+  `mapping-ci.yml` (:5, "owner ruling 2026-11-02, #48") is reworded to name the ruling by its number alone;
+- the wiring test also asks the header comment of `mapping-ci.yml` to name `mapping-nightly.yml` and the
+  nightly's to name `mutation.tsv`.
+Not pinned by a test, the implementer's to keep: the step summary is skipped when `GITHUB_STEP_SUMMARY` is
+unset; the nightly's 80 % threshold stays where it is. From the test-author's reference: `git archive` exports
+`mapping/ratchet` only when run from the repository's top level.
+
+### Added on the implementer's hand-back (2026-11-16): what the scripts guard beyond §1-§3, each with its case
+
+The scripts as first written carried guards no case reached, and one way to switch the check off by accident.
+Each sentence below is contract and gets its case in `ratchet-ci-test.sh` (second round, the test-author):
+1. `RATCHET_TODAY`, when set and not empty, is one real ISO date; anything else is
+   `::error::ratchet: RATCHET_TODAY is not an ISO date`, exit 2, before `gh` or `java` is called, in both modes
+   (as first written a value that is no number compared as "before the date": the check reported and passed).
+2. `gh` exiting non-zero is `LOOKUP FAILED` also when its stdout is a well-formed answer - on the runs call and on
+   the jobs call.
+3. A shallow checkout is `LOOKUP FAILED` (a cut history would name a wrong baseline or the bootstrap, silently).
+4. `RATCHET_BASELINE_SHA` that is not a full lowercase hex sha (a branch name, an option, a short sha) is
+   `LOOKUP FAILED`; `gh` is not called and `<dir>` holds nothing.
+5. What the API answers is data: a run whose `id` is no number, whose `head_sha` is not 40 hex digits or whose
+   `status` is not a word, and a backend job whose `conclusion` is not a word, are `LOOKUP FAILED`; nothing of
+   such a value reaches `git` or a second `gh` call.
+6. `GITHUB_REPOSITORY` that is not `<owner>/<repository>` is `LOOKUP FAILED` before any `gh` call.
+7. A lookup that ends non-zero without a `LOOKUP FAILED` line (it crashed, it is missing) is a failed lookup to
+   `ratchet-ci.sh`: its own annotation with a non-empty reason, plain `check` runs, exit 0 before the date, 1 from
+   it.
+8. The date file: a date that is no calendar day (`2026-02-30`) and a date without its final newline are the
+   date-file error, exit 2, before any call.
+9. Any green run of an ancestor makes it the baseline, whichever of its runs is newer; the run named on the
+   `BASELINE` line is the newest green one.
+10. The runs list is read for at most 100 pages; a list that has not ended by then is `LOOKUP FAILED`, and page
+    101 is never asked. (GitHub answers at most 1 000 runs to a query filtered by branch and event, ten pages:
+    the cap ends a list that never ends, it is not a limit the repository grows into.)
+11. A run listed on two pages (the list moved between the two requests) is asked for its jobs once.
+12. `ratchet-ci.sh` does the same from any working directory (it changes to the mapping's root itself).
+A case that is green on arrival shows its red against a hand mutant of a scratch copy of the script, as 12a's
+and FIX-280's did; the real scripts are not edited by the test-author.
 
 ## Not this part's
 

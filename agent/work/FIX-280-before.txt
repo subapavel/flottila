@@ -1,0 +1,16 @@
+VERIFIED_PASS run1: mvn -B -ntp -q -f platform/pom.xml -pl :rail8-testkit -am clean verify; exit 0; testkit tests 300
+EXECUTED_FAIL run2: same command; exit 1; testkit tests 300 (1 failure); log agent/work/FIX-280-before-run2.log
+  failure: PollingConsumerContractSelfTest.aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile:367 (log lines 16-32)
+  run2: no jacoco report produced (target/site/jacoco absent), no csv/xml copied
+VERIFIED_PASS run3: same command; exit 0; testkit tests 300
+logs: agent/work/FIX-280-before-run1.log, -run2.log, -run3.log
+run | module branches cov/total | ComponentContract cov/total
+1   | 400/417                   | 57/60
+2   | no report                 | no report
+3   | 402/417                   | 59/60
+ComponentContract.java lines with missed branches (nr mb/cb):
+run1: 393 1/1; 515 1/3; 550 1/1
+run2: no report
+run3: 515 1/3
+differs between runs 1 and 3: lines 393 and 550 (run 2 has no data)
+other classes (missed/covered), identical in runs 1 and 3: no other class differs

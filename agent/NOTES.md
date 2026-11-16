@@ -491,3 +491,12 @@ item of the clause it amends, not only the items in mind; check a row's "stale" 
 ADR that planned the line; a row that edits a gate sentence decides a gate - a floor in a build is
 not a gate condition unless the owner said so; a reading of the owner's words is marked as the
 architect's in the decision's own cell, not only in its Why.
+
+A coverage figure that moves between runs (FIX-280, its review, 2026-11-16): a poll whose comparison sits in the
+call site's lambda (`soon(() -> x == 1)`) has a branch that is taken only when the poll comes before the event -
+by timing. Move the comparison into a shared helper that a deterministic test covers on both outcomes; say "the
+same in the runs measured", never "in every run"; check the sibling contracts for the same shape
+(`PollingConsumerContract` keeps about 45, watched by FIX-281). Two lessons the reviewer could not write into its
+memory (its file is at the 120-line cap; placing them is the owner's): "a lambda poll in a contract covers its
+false outcome by timing; check sibling contracts", and "a packet clause sharpened after the tests were approved
+needs its own case".
