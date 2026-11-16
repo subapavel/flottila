@@ -1,7 +1,9 @@
 package dev.rail8.runtime.admin;
 
 import dev.rail8.api.Runtime;
+import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.dlq.InMemoryDlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -12,7 +14,6 @@ import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
-import dev.rail8.testkit.FakeIds;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -49,12 +50,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * D-069 (P1-09c2): the admin API refuses what a browser sends. Every {@code /admin/**} request that carries an {@code Origin}
  * header — whatever its value, the server's own origin included — or a {@code Sec-Fetch-Site} other than {@code none} is 403
  * {@code {error}} before the token check, token or no token, and before the route: nothing is read, deployed, released or
- * replayed. What the CLI and curl send — neither header, or {@code Sec-Fetch-Site: none} — passes to the token check and the
- * route as before. Each "never reached" is witnessed at the store boundary (a recording message store and work queue, the
+ * retried. What the CLI and curl send — neither header, or {@code Sec-Fetch-Site: none} — passes to the token check and the
+ * route as before. Each "never reached" is witnessed at the store boundary (a recording message store, DLQ and work queue, the
  * deployments' package list) and by the same request without the header, which does reach it.
  *
- * <p>The shape assumed (P1-09c2 test-author): {@code AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe,
- * Optional<Deployments>, WorkQueue, IdGenerator)}.
+ * <p>FIX-263 (D-156): the guarded POST route of a message is the same-id retry {@code POST /admin/dlq/{id}/retry} (the replay
+ * routes are gone); the server is {@code AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional<Deployments>,
+ * WorkQueue)}.
  */
 class AdminServerBrowserGuardTest {
 
@@ -62,6 +64,8 @@ class AdminServerBrowserGuardTest {
     static final String AUTH = "Bearer " + TOKEN;
     static final String FLOW = "shop/orders";
     static final String EVIL = "https://evil.example";
+    /** The same-id retry of a message without a DLQ row: a POST route the guard stands before. */
+    static final String RETRY = "/admin/dlq/m-404/retry";
 
     static Vertx vertx;
     static HttpClientAgent client;
@@ -70,6 +74,7 @@ class AdminServerBrowserGuardTest {
     final FakeRuntime rt = FakeRuntime.create();
     final Doors doors = new Doors();
     final RecordingStore messages = new RecordingStore(new InMemoryMessageStore());
+    final RecordingDlq dlq = new RecordingDlq(new InMemoryDlq());
     final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock());
     final AdminServerWorkTest.RecordingQueue queue = new AdminServerWorkTest.RecordingQueue(rows);
     final List<AdminServer> started = new ArrayList<>();
@@ -114,8 +119,8 @@ class AdminServerBrowserGuardTest {
 
     /** A server on loopback with {@code token} (empty: an open loopback server) over the recording stores and the deployments. */
     int serve(Optional<String> token) throws Exception {
-        AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, token), messages, new InMemoryDlq(), rt.blobs(),
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new FakeIds("replay"));
+        AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, token), messages, dlq, rt.blobs(),
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue);
         int port = server.start(vertx).await(10, TimeUnit.SECONDS);
         started.add(server);
         return port;
@@ -147,7 +152,7 @@ class AdminServerBrowserGuardTest {
         return h;
     }
 
-    /** One route of each method: GET a timeline, PUT a package, POST a release, POST a replay. */
+    /** One route of each method: GET a timeline, PUT a package, POST a release, POST a retry. */
     record Route(HttpMethod method, String path, byte[] body) {
         @Override public String toString() { return method + " " + path; }
     }
@@ -156,7 +161,13 @@ class AdminServerBrowserGuardTest {
         return List.of(new Route(HttpMethod.GET, "/admin/messages/m-404", null),
                 new Route(HttpMethod.PUT, "/admin/packages/shop", AdminServerDeployTest.shop().zip()),
                 new Route(HttpMethod.POST, "/admin/work/" + seq + "/release", null),
-                new Route(HttpMethod.POST, "/admin/messages/m-404/replay?from=1", null));
+                new Route(HttpMethod.POST, RETRY, null));
+    }
+
+    /** The retry route's own answer for a message without a DLQ row: 404 naming it, never the router's "no such route". */
+    static void assertRetryAnswered(Answer a, String what) {
+        assertEquals(404, a.status(), what + ": " + a.body());
+        assertEquals(new JsonObject().put("error", "no DLQ row for message m-404"), a.json(), what + ": the route's own 404, not the router's: " + a.body());
     }
 
     static void assertRefused(Answer a, String what) {
@@ -169,9 +180,10 @@ class AdminServerBrowserGuardTest {
         assertNull(a.headers().get("www-authenticate"), what + ": the guard's refusal, not the token check's: " + a.headers());
     }
 
-    /** Nothing reached a route: no timeline read, no release asked, no package deployed; h-1 still held. */
+    /** Nothing reached a route: no timeline read, no DLQ row read, no release asked, no package deployed; h-1 still held. */
     void assertNothingReached(String what) {
         assertEquals(List.of(), messages.timelines, what + ": no timeline was read");
+        assertEquals(List.of(), dlq.gets, what + ": no DLQ row was read");
         assertEquals(List.of(), queue.calls, what + ": the work queue was not asked");
         assertEquals(List.of(), deployments.packages(), what + ": nothing was deployed");
         assertEquals(List.of("h-1"), rows.held(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(h -> h.item().messageId()).toList(),
@@ -182,8 +194,8 @@ class AdminServerBrowserGuardTest {
 
     /**
      * A cross-origin POST with the right token — the CSRF a browser can send without a preflight — is 403 and reaches nothing: the
-     * release is never asked, the replay never reads the timeline. So is any Origin: the server's own, and {@code null}. Witness: the
-     * same POSTs without Origin reach their routes (the release is asked and done, the replay reads the timeline).
+     * release is never asked, the retry never reads the DLQ row. So is any Origin: the server's own, and {@code null}. Witness: the
+     * same POSTs without Origin reach their routes (the release is asked and done, the retry reads the DLQ row).
      */
     @Test
     void aCrossOriginPostIs403WithoutReachingTheRoute() throws Exception {
@@ -191,14 +203,12 @@ class AdminServerBrowserGuardTest {
         String release = "/admin/work/" + seq + "/release";
         for (String origin : List.of(EVIL, "http://127.0.0.1:" + port, "null")) {
             assertRefused(send(port, HttpMethod.POST, release, headers("Authorization", AUTH, "Origin", origin), null), "POST release from " + origin);
-            assertRefused(send(port, HttpMethod.POST, "/admin/messages/m-404/replay?from=1", headers("Authorization", AUTH, "Origin", origin), null),
-                    "POST replay from " + origin);
+            assertRefused(send(port, HttpMethod.POST, RETRY, headers("Authorization", AUTH, "Origin", origin), null), "POST retry from " + origin);
         }
         assertNothingReached("cross-origin POSTs");
 
-        assertEquals(404, send(port, HttpMethod.POST, "/admin/messages/m-404/replay?from=1", headers("Authorization", AUTH), null).status(),
-                "witness: without Origin the replay route answers (no such message)");
-        assertEquals(List.of("m-404"), messages.timelines, "witness: and read the timeline");
+        assertRetryAnswered(send(port, HttpMethod.POST, RETRY, headers("Authorization", AUTH), null), "witness: without Origin the retry route answers");
+        assertEquals(List.of("m-404"), dlq.gets, "witness: and read the DLQ row");
         Answer released = send(port, HttpMethod.POST, release, headers("Authorization", AUTH), null);
         assertEquals(200, released.status(), "witness: without Origin the release route answers: " + released.body());
         assertEquals(List.of(seq), queue.releases, "witness: the release was asked");
@@ -218,7 +228,7 @@ class AdminServerBrowserGuardTest {
 
     /**
      * What curl and the CLI send — no Origin, no Sec-Fetch-Site — and {@code Sec-Fetch-Site: none} (a typed URL) pass the guard:
-     * the token check and the routes answer as before (GET a timeline 404, PUT a package 200, POST a release 200, POST a replay 404).
+     * the token check and the routes answer as before (GET a timeline 404, PUT a package 200, POST a release 200, POST a retry 404).
      */
     @Test
     void aCurlStyleRequestWithoutOriginPasses() throws Exception {
@@ -232,8 +242,8 @@ class AdminServerBrowserGuardTest {
         assertEquals(List.of("shop"), deployments.packages().stream().map(p -> p.name()).toList());
         assertEquals(200, send(port, HttpMethod.POST, "/admin/work/" + seq + "/release", headers("Authorization", AUTH), null).status(), "POST releases");
         assertEquals(List.of(seq), queue.releases);
-        assertEquals(404, send(port, HttpMethod.POST, "/admin/messages/m-404/replay?from=1", headers("Authorization", AUTH), null).status(),
-                "POST replay: the route's 404");
+        assertRetryAnswered(send(port, HttpMethod.POST, RETRY, headers("Authorization", AUTH), null), "POST retry");
+        assertEquals(List.of("m-404"), dlq.gets, "the retry read the DLQ row");
         assertEquals(401, send(port, HttpMethod.GET, "/admin/messages/m-404", headers(), null).status(), "and the token check still applies");
     }
 
@@ -266,6 +276,23 @@ class AdminServerBrowserGuardTest {
             assertEquals(401, plain.status(), "witness: " + r + " without a token is the token check's 401: " + plain.body());
         }
         assertNothingReached("the token check's 401s");
+    }
+
+    // --- the store boundary: a DLQ that records the rows read
+
+    static final class RecordingDlq implements Dlq {
+        final Dlq inner;
+        final List<String> gets = new CopyOnWriteArrayList<>();
+
+        RecordingDlq(Dlq inner) { this.inner = inner; }
+
+        @Override public Future<Void> park(Parked parked) { return inner.park(parked); }
+        @Override public Future<Page<Parked>> list(Optional<String> after, int limit) { return inner.list(after, limit); }
+        @Override public Future<Optional<Parked>> get(String messageId) {
+            gets.add(messageId);
+            return inner.get(messageId);
+        }
+        @Override public Future<Void> remove(String messageId) { return inner.remove(messageId); }
     }
 
     // --- the store boundary: a message store that records the timelines read

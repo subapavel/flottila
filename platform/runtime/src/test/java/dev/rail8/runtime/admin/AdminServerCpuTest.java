@@ -60,7 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p>The shape assumed (FIX-108 test-author): {@code AdminServer.Sampling(Duration period, Instant since, StepCpu cpu)}, a nested
  * record like {@link AdminServer.HealthProbe}, and the constructor {@code AdminServer(Config, MessageStore, Dlq, BlobStore,
- * HealthProbe, Optional<Deployments>, WorkQueue, IdGenerator, Optional<AdminServer.Sampling>)}; the earlier constructors stay and
+ * HealthProbe, Optional<Deployments>, WorkQueue, Optional<AdminServer.Sampling>)}; the earlier constructors stay and
  * mean sampling off. The node gives it {@code new Sampling(sampler.period(), sampler.since(), cpu)} when it runs a sampler.
  *
  * <p>Round 3 (review r1, blocking 2): a stream that ended while the sampler was open makes the route answer
@@ -153,9 +153,9 @@ class AdminServerCpuTest {
         return new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN));
     }
 
-    /** A server with the deploy, work and replay routes and, given one, the sampling aggregate. */
+    /** A server with the deploy and work routes and, given one, the sampling aggregate. */
     int serve(Optional<AdminServer.Sampling> sampling) throws Exception {
-        return start(new AdminServer(config(), messages, dlq, rt.blobs(), probe(), Optional.of(deployments), new InMemoryWorkQueue(rt.clock()), rt.ids(), sampling));
+        return start(new AdminServer(config(), messages, dlq, rt.blobs(), probe(), Optional.of(deployments), new InMemoryWorkQueue(rt.clock()), sampling));
     }
 
     int sampling() throws Exception {

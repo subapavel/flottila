@@ -7,15 +7,10 @@ import dev.rail8.api.BlobStore;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Hash;
 import dev.rail8.api.Health;
-import dev.rail8.api.IdGenerator;
 import dev.rail8.core.admission.TargetLimit;
 import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.dlq.Parked;
-import dev.rail8.core.dlq.ParkedException;
 import dev.rail8.core.flow.FlowDefinition;
-import dev.rail8.core.flow.Replay;
-import dev.rail8.core.flow.ReplayRefusedException;
-import dev.rail8.core.flow.RowNotRemovedException;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.WorkQueue;
@@ -64,9 +59,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
@@ -91,10 +84,10 @@ import java.util.function.Supplier;
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
  * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
  * acquire ({@link dev.rail8.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the same-id DLQ
- * {@code /retry}'s read and restart, a message replay's and a DLQ replay's run with a fixed text as {@code error}, a deploy's
- * work-queue question or record write and an undeploy's work-queue question or record delete with the refusal's own line (below), except a DLQ replay that ran and whose row the pool refused to
- * remove (500 naming the new message, below); 500 for anything else: a store that failed, a recorded header no response may
- * carry, a stored body whose stream fails before the head is out (after it, the response is reset).
+ * {@code /retry}'s read and restart with a fixed text as {@code error}, a deploy's work-queue question or record write and an
+ * undeploy's work-queue question or record delete with the refusal's own line (below); 500 for anything else: a store that
+ * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
+ * response is reset).
  *
  * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
@@ -143,24 +136,11 @@ import java.util.function.Supplier;
  * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
  * queue these routes do not exist (404).
  *
- * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays:
- * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
- * {@code POST /admin/dlq/{id}/replay} (FIX-138a) the parked step, each as a new message whose id the generator mints, through the
- * flow's {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is
- * 502 with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing,
- * not an int, outside 1..steps; on the DLQ replay a {@code from} at all, any value) → 404 (no timeline, no DLQ row) → 409 (the flow
- * does not run here; a DLQ replay of the id already runs on this node) → 422 (step n−1 unrecorded or metadata-only, the parked
- * step beyond the flow) → 409 (the input body removed by retention, D-096) → 422 (a body above the flow's byte budget) → 429 with
- * {@code retry-after: 1} (no permit of the flow's admission now). A store that cannot say whether the input body exists is no
- * refusal: 502 FAILED — but a run the node's Postgres pool refused a connection (D-133) is 503 with the fixed text, retryable. A
- * DLQ replay that went through but whose row could not be removed is 500 naming the new message, the pool's refusal of that
- * removal included (the run went through: retrying would run it again, D-133).
- *
  * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft; FIX-138a), {@code POST /admin/dlq/{id}/retry} runs a
- * message its flow's worker parked once more under its own id — where {@code /replay} runs a new copy: the DLQ row out and the work
+ * message its flow's worker parked once more under its own id (D-156: a message keeps one id): the DLQ row out and the work
  * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
- * not deployed here, its ingress body no longer kept), 422 naming {@code /replay} (a flow that is not at-least-once, a row its
- * worker did not park, or a keyed flow's row parked before its key was kept). There is no {@code /restart} route (404).
+ * not deployed here, its ingress body no longer kept), 422 saying why (a flow that is not at-least-once, a row its worker did not
+ * park, or a keyed flow's row parked before its key was kept). There is no {@code /restart} route and no replay route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -289,12 +269,9 @@ public final class AdminServer {
     private final HealthProbe health;
     private final Optional<Deployments> deployments;
     private final Optional<WorkQueue> work;
-    private final Optional<IdGenerator> ids;
     private final Optional<Sampling> sampling;
     private final Workers workers;
     private final WorkSignals signals;
-    /** The ids whose DLQ replay runs on this node now: a second replay of one is 409 (node-local, D-067). */
-    private final Set<String> replaying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
@@ -304,13 +281,10 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
-    /**
-     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over
-     * {@code work}; no replay routes.
-     */
+    /** The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work}. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
         this(config, messages, dlq, blobs, health, deployments, work, new Workers(), WorkSignals.NONE);
@@ -318,42 +292,33 @@ public final class AdminServer {
 
     /**
      * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work},
-     * a release waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)); no replay routes.
+     * a release waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)).
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), workers, signals);
     }
 
     /**
      * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes, the same-id DLQ retry
-     * and the message and DLQ replay routes, whose new messages take their ids from {@code ids}.
-     */
-    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                       WorkQueue work, IdGenerator ids) {
-        this(config, messages, dlq, blobs, health, deployments, work, ids, Optional.empty());
-    }
-
-    /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, same-id DLQ retry and replay routes
      * and the flows' CPU, sampled when {@code sampling} is there (D-094).
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                       WorkQueue work, IdGenerator ids, Optional<Sampling> sampling) {
-        this(config, messages, dlq, blobs, health, deployments, work, ids, sampling, new Workers(), WorkSignals.NONE);
+                       WorkQueue work, Optional<Sampling> sampling) {
+        this(config, messages, dlq, blobs, health, deployments, work, sampling, new Workers(), WorkSignals.NONE);
     }
 
     /**
-     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, IdGenerator, Optional)}, a release
-     * waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)): the node's.
+     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, Optional)}, a release waking its
+     * flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)): the node's.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                       WorkQueue work, IdGenerator ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling, workers, signals);
+                       WorkQueue work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), sampling, workers, signals);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+                        Optional<WorkQueue> work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -361,7 +326,6 @@ public final class AdminServer {
         this.health = Objects.requireNonNull(health, "health");
         this.deployments = Objects.requireNonNull(deployments, "deployments");
         this.work = work;
-        this.ids = ids;
         this.sampling = Objects.requireNonNull(sampling, "sampling");
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
@@ -407,10 +371,6 @@ public final class AdminServer {
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
                 router.get("/admin/targets").handler(offload(c -> targets(d)));
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
-                ids.ifPresent(minted -> {
-                    router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
-                    router.post("/admin/dlq/:id/replay").handler(offload(c -> dlqReplay(c, d, minted)));
-                });
             });
             work.ifPresent(q -> {
                 deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, q))));
@@ -722,49 +682,11 @@ public final class AdminServer {
     }
 
     /**
-     * {@code POST /admin/messages/{id}/replay?from=n}: a {@code from} that is not an int of at least 1 is 400 before the message is
-     * looked up; then 404 without a timeline, 409 when the message's flow does not run here; then the run ({@link #ran}).
-     */
-    private Reply replay(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
-        String id = ctx.pathParam("id");
-        int from = from(ctx);
-        List<Snapshot> timeline = messages.timeline(id).await();
-        if (timeline.isEmpty()) return Json.of(404, error("no message " + id + " recorded"));
-        String flow = timeline.getFirst().flow();
-        Optional<Replay> replay = deployments.replay(flow);
-        if (replay.isEmpty()) return notRunning(flow);
-        String replayId = ids.next();
-        return ran(replayId, id, from, () -> replay.get().from(id, from, replayId));
-    }
-
-    /**
-     * {@code POST /admin/dlq/{id}/replay} (FIX-138a): a {@code from} parameter, any value, is 400 first — the run starts at the
-     * parked step; then 404 without a DLQ row, 409 when its flow does not run here or a replay of the id runs on this node already;
-     * then the run of the parked step as a new message ({@link #ran}). A replay that went through but whose row stays is 500.
-     */
-    private Reply dlqReplay(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
-        String id = ctx.pathParam("id");
-        String from = ctx.request().getParam("from");
-        if (from != null) throw new Refused("a DLQ replay runs from the parked step and takes no from, was '" + from + "'");
-        Optional<Parked> row = dlq.get(id).await();
-        if (row.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
-        Optional<Replay> replay = deployments.replay(row.get().flow());
-        if (replay.isEmpty()) return notRunning(row.get().flow());
-        if (!replaying.add(id)) return Json.of(409, error("a DLQ replay of message " + id + " runs on this node already"));
-        try {
-            String replayId = ids.next();
-            return ran(replayId, id, row.get().step(), () -> replay.get().replayParked(id, replayId));
-        } finally {
-            replaying.remove(id);
-        }
-    }
-
-    /**
      * {@code POST /admin/dlq/{id}/retry} (CORE-14b P8, D-135 draft; FIX-138a): the parked message runs once more under its own id,
      * from step 1, as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its
      * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one
      * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
-     * before V17, O7); nothing written for any of them; each 422 names {@code /replay}. Then {@link WorkQueue#restart}: the DLQ row
+     * before V17, O7); nothing written for any of them; each 422 says why and names no other route. Then {@link WorkQueue#restart}: the DLQ row
      * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, an ingress body no
      * longer kept 409, nothing changed. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to
      * every node (the row's body node claims it).
@@ -779,15 +701,15 @@ public final class AdminServer {
         if (def.isEmpty()) return Json.of(409, error("flow " + flow + " is not deployed on this node; message " + id + " is not restarted"));
         if (!"at-least-once".equals(def.get().deliveryMode())) {
             return Json.of(422, error("message " + id + " of flow " + flow + " is not restarted: the flow is " + def.get().deliveryMode()
-                    + ", only an at-least-once flow's worker runs a restart; use /replay"));
+                    + ", only an at-least-once flow's worker runs a restart"));
         }
         Object attempt = row.props().asMap().get(Envelope.ATTEMPT.name());
         if (row.step() != 1 || row.props().get(Envelope.REPLAY_OF).isPresent() || !(attempt instanceof Integer k) || k < 1) {
             return Json.of(422, error("message " + id + " was not parked by its flow's worker (step " + row.step() + ", attempt " + attempt
-                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted; use /replay"));
+                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted"));
         }
         if (def.get().partitionBy().isPresent() && row.partitionKey().isEmpty()) {
-            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept; use /replay"));
+            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept"));
         }
         boolean restarted;
         try {
@@ -813,60 +735,6 @@ public final class AdminServer {
         }
         if (attempt < 1) throw new Refused("attempt must be an attempt number of at least 1, was '" + raw + "'");
         return OptionalInt.of(attempt);
-    }
-
-    /** The {@code from} parameter: an int of at least 1, else (missing, not an int) a 400. */
-    private static int from(RoutingContext ctx) {
-        String raw = ctx.request().getParam("from");
-        int from;
-        try {
-            from = Integer.parseInt(raw);
-        } catch (NumberFormatException notAnInt) {   // missing (null) or not an int
-            from = 0;
-        }
-        if (from < 1) throw new Refused("from must be a step number of at least 1, was " + (raw == null ? "missing" : "'" + raw + "'"));
-        return from;
-    }
-
-    /**
-     * The run {@code replayId} of {@code replayOf} from step {@code from}, on this virtual thread: 200 COMPLETE; a refusal by its
-     * reason; a DLQ replay that went through but whose row stays, 500 naming {@code replayId}; a failure the node's Postgres pool refused
-     * a connection with ({@link PgTx#refusedByThePool}, D-133), 503 with the fixed text; else 502 PARKED (the run parked again)
-     * or FAILED with the run's error — a checked one thrown sneakily by a step's await included. An Error is the caller's (500).
-     */
-    private static Reply ran(String replayId, String replayOf, int from, Supplier<Envelope> run) {
-        JsonObject answer = new JsonObject().put("id", replayId).put("replayOf", replayOf).put("from", from);
-        try {
-            run.get();
-            return Json.of(200, answer.put("outcome", "COMPLETE"));
-        } catch (ReplayRefusedException refused) {
-            return refusal(refused);
-        } catch (RowNotRemovedException kept) {
-            return Json.of(500, error(kept.getMessage()));
-        } catch (Exception failed) {
-            if (PgTx.refusedByThePool(failed)) return busy();   // the run could not take a connection: retryable, never its 502 FAILED
-            String outcome = failed instanceof ParkedException ? "PARKED" : "FAILED";
-            return Json.of(502, answer.put("outcome", outcome).put("error", Objects.toString(failed.getMessage(), failed.toString())));
-        }
-    }
-
-    /** A replay refusal by its reason: 400, 404, 409, 422, or 429 with {@code retry-after: 1}. */
-    private static Reply refusal(ReplayRefusedException refused) {
-        String why = refused.getMessage();
-        return switch (refused.reason()) {
-            case STEP_OUT_OF_RANGE -> Json.of(400, error("bad request: " + why));
-            case UNKNOWN_MESSAGE, NO_DLQ_ROW -> Json.of(404, error(why));
-            case CLOSED, REMOVED_BY_RETENTION, BODY_LOST -> Json.of(409, error(why));
-            case NOT_RECORDED, METADATA_ONLY, STEP_BEYOND_FLOW, TOO_LARGE -> Json.of(422, error(why));
-            case BUSY -> {
-                Json busy = Json.of(429, error(why));
-                yield res -> busy.send(res.putHeader("retry-after", "1"));
-            }
-        };
-    }
-
-    private static Reply notRunning(String flow) {
-        return Json.of(409, error("flow " + flow + " does not run on this node"));
     }
 
     private static Optional<String> after(RoutingContext ctx) {

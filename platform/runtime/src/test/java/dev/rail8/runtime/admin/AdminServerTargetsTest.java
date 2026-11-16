@@ -116,7 +116,7 @@ class AdminServerTargetsTest {
     int serve() throws Exception {
         Map<String, Supplier<Future<Health>>> checks = Map.of();
         AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, rt.blobs(),
-                new AdminServer.HealthProbe(checks, () -> 0L), Optional.of(deployments), new InMemoryWorkQueue(rt.clock()), rt.ids(), Optional.empty());
+                new AdminServer.HealthProbe(checks, () -> 0L), Optional.of(deployments), new InMemoryWorkQueue(rt.clock()), Optional.empty());
         int bound = server.start(vertx).await(10, TimeUnit.SECONDS);
         servers.add(server);
         return bound;

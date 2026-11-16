@@ -1,4 +1,20 @@
 
+## 2026-11-16 — FIX-263 the two replay routes leave the admin API — done, review PASS [B]
+
+- D-156, F-55: `POST /admin/messages/{id}/replay` and `POST /admin/dlq/{id}/replay` are gone - both answer as an unregistered
+  route (404). `AdminServer` loses the routes, their handlers and helpers and its id source; `Node` passes none.
+- `/retry`'s 422 texts say why and name no other route. Red first: `NodeIT.bothReplayRoutesAnswerAsUnknownRoutes`,
+  `AdminDlqRestartTest.noRetryRefusalNamesAnotherRoute` (observed red, `agent/work/FIX-263-ta-red.log`, `-ta-it2.log`).
+- Tests by the approved per-case list (`agent/work/FIX-263-cases.md` C): the cases that pinned only the copy are deleted
+  (`AdminServerReplayTest`, `AdminServerReplayRaceTest`, two of `NodeIT`, one of `NodePoolWaitIT`); the survivors moved - the
+  token, the virtual-thread offload, the browser guard, retention against a parked message (`RetentionRetryIT`), a lost body.
+- Whole reactor green (17 modules): runtime 1583 -> 1562 unit tests (24 went, 3 new) and 719 -> 717 ITs, every other count
+  unchanged; coverage no decrease; per class no surviving runtime class misses more (`agent/work/FIX-263-cmp.log`).
+- ARCHITECTURE 3.30: the lease paragraph loses its "pending"; noted that any keyed flow's row parked without its key gets the
+  V17 refusal and can never be retried - new row FIX-274 [C]. FIX-264's row corrected by the list (`ReplayTest` does not go whole).
+- Review [B]: PASS, one round; three remarks taken in tests after it, their classes run green again. Evidence:
+  `agent/work/FIX-263-evidence.txt`. FIX-267 [C] (cancel, the record of a retry) is in design beside it: draft and opposition.
+
 ## 2026-11-16 — FIX-270 a message can arrive more than once: the architecture says it plainly — done, review PASS [C]; Deviation: F-56
 
 - Context compacted before this entry: HANDOFF, `git status` and `git log -3` (b04e336a) re-read before any change.

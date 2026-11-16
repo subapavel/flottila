@@ -607,38 +607,14 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-172b A2 (end to end): a replay under the work pool held by two parks, PT0.2S, answers 503 with the fixed text (the
-     * refusal of its message's reads), never a 502 FAILED; once the pool is free the same replay runs (an {@code outcome}).
-     * The refusal inside the run (P2 {@code ran()}) is pinned by {@code AdminServerReplayTest} (no staging of a refusal between
-     * the route's read and the run's own reads exists end to end).
+     * FIX-172b A3 (pins FIX-172 for it; FIX-263 moved it from the withdrawn DLQ replay route to the same-id retry, D-156):
+     * {@code POST /admin/dlq/{id}/retry} under the work pool held by two parks, PT0.2S, answers 503 with the fixed text while the
+     * parks hold the pool, its row kept and nothing queued for it; after the release the same retry is answered by the route
+     * itself — its own decision on the row, never the pool's 503. (invoice-async is keyed and this message failed before its key
+     * was extracted: the route's decision today is its 422 for a keyed row without a key, which is not this case's concern.)
      */
     @Test
-    void aReplayRefusedByTheWorkPoolAnswers503NotA502() throws Exception {
-        try (HttpClient client = NodeIT.http()) {
-            int inPort = NodeIT.freePort();
-            Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
-            String id = parkedWhileFree(client, inPort);
-            String path = "/admin/messages/" + id + "/replay?from=1";
-
-            PgConnection locker = lock("dlq");
-            holdTheWorkPool(client, inPort);
-            assertBusy(post(client, node.adminPort(), path), "a replay the pool refused");
-            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
-
-            locker.query("rollback").execute().await();
-            NodeIT.until(() -> count("select count(*) from dlq") == 3, "the parks go through once the lock is gone");
-            HttpResponse<String> ran = post(client, node.adminPort(), path);
-            assertTrue(ran.statusCode() != 503 && new JsonObject(ran.body()).containsKey("outcome"), "witness: the replay runs once the pool is free: "
-                    + ran.statusCode() + " " + ran.body());
-        }
-    }
-
-    /**
-     * FIX-172b A3 (pins FIX-172 for it; FIX-138a moved it to the new-copy route): {@code POST /admin/dlq/{id}/replay} under the work pool held by two parks, PT0.2S, answers
-     * 503 with the fixed text while the parks hold the pool, its row kept; after the release the retry runs (an {@code outcome}).
-     */
-    @Test
-    void aDlqReplayRefusedByTheWorkPoolAnswers503() throws Exception {
+    void aDlqRetryRefusedByTheWorkPoolAnswers503() throws Exception {
         try (HttpClient client = NodeIT.http()) {
             int inPort = NodeIT.freePort();
             Node node = startDeployed(client, inPort, env("RAIL8_PG_POOL_WAIT", "PT0.2S"));
@@ -646,15 +622,16 @@ class NodePoolWaitIT {
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, inPort);
-            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/replay"), "a DLQ replay the pool refused");
+            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/retry"), "a DLQ retry the pool refused");
             assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
 
             locker.query("rollback").execute().await();
             NodeIT.until(() -> count("select count(*) from dlq") == 3, "the parks go through once the lock is gone");
             assertEquals(1, count("select count(*) from dlq where id = $1", id), "the refused retry kept its row");
-            HttpResponse<String> retried = post(client, node.adminPort(), "/admin/dlq/" + id + "/replay");
-            assertTrue(retried.statusCode() != 503 && new JsonObject(retried.body()).containsKey("outcome"), "witness: the retry runs once the pool is free: "
-                    + retried.statusCode() + " " + retried.body());
+            assertEquals(0, count("select count(*) from work where id = $1", id), "and queued nothing for it");
+            HttpResponse<String> retried = post(client, node.adminPort(), "/admin/dlq/" + id + "/retry");
+            assertTrue(retried.statusCode() != 503 && !new JsonObject(retried.body()).equals(new JsonObject().put("error", BUSY)) && retried.body().contains(id),
+                    "witness: once the pool is free the route answers the same retry itself, naming the message: " + retried.statusCode() + " " + retried.body());
         }
     }
 

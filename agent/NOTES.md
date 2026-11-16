@@ -222,10 +222,14 @@ the store resumes it once attached and never resumes one it paused or failed its
 (at-least-once flows park per step, awaited; sync and at-most-once never); runtime `store.PgDlq`
 over V1 `dlq` + V3. ITs: `PgDlqIT`. Migrations are at V3 (`MigrationsIT`,
 `BenchMainIT` expect "3").
-The operator's retry is the same-id restart, `POST /admin/dlq/{id}/retry` (D-136). Still in the code
-until its row lands: the two replay routes (FIX-263); `FlowBuilder.replay(def, baseDir)` →
-`Replay.from(id, n)` / `retry(id)` (FIX-264, `Replay.rebuild` moves into `FlowWorker`);
-`Envelope.REPLAY_OF` (FIX-265); `InvoiceSyncReplayIT` goes or moves by FIX-263's per-case list.
+The operator's retry is the same-id restart, `POST /admin/dlq/{id}/retry` (D-136). The two replay
+routes are gone (FIX-263, 2026-11-16): both answer as an unregistered route, `/retry`'s 422 texts
+name no other route, `AdminServer` takes no id source. Admin ITs over Postgres share
+`admin/AdminPgFixture`. Still in the code until its row lands: `FlowBuilder.replay(def, baseDir)` →
+`Replay.from(id, n)` / `retry(id)` (FIX-264, `Replay.rebuild` moves into `FlowWorker`; `ReplayTest`
+does not go whole - `agent/work/FIX-263-cases.md` section C); `Envelope.REPLAY_OF` and the words
+", a replay" in `/retry`'s refusal (FIX-265). A keyed flow's row parked without its key is refused
+by `/retry` for ever (FIX-274).
 
 ## Recording (P1-04, D-044)
 

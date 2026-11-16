@@ -75,8 +75,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * FIX-138a (P1, decision-driven move of CORE-14b's cases): the same-id restart is {@code POST /admin/dlq/{id}/retry}; the
- * {@code /restart} route is gone (404, the router's "no such route", nothing changed); every 422 names {@code /replay}, the
- * new-copy route. A3 (F-29 F4.1): a {@code /retry} whose restart transaction fails (a trigger refusing the DLQ delete, then one
+ * {@code /restart} route is gone (404, the router's "no such route", nothing changed); FIX-263 (D-156): every 422 says why
+ * and names no other route. A3 (F-29 F4.1): a {@code /retry} whose restart transaction fails (a trigger refusing the DLQ delete, then one
  * refusing the work insert) is 500 and leaves the DLQ row and no work row; the next {@code /retry} is 202 under the same id, and a
  * partner that applied the first send (its answer lost) and deduplicates by message id records one effect.
  *
@@ -89,8 +89,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (O6: until CORE-5 a node claims only rows whose body its journal holds).
  *
  * <p>O7 (the DLQ row keeps the partition key, V17 {@code dlq.partition_key}): a restart enqueues under the kept key; a row of a keyed
- * flow ({@code partitionBy} set, as deployed here) whose key is empty — parked before V17 — is 422 "parked before its key was kept;
- * use /replay", its DLQ row kept, nothing written; an unkeyed flow's empty key restarts (the first case).
+ * flow ({@code partitionBy} set, as deployed here) whose key is empty — parked before V17 — is 422 "parked before its key was kept",
+ * its DLQ row kept, nothing written; an unkeyed flow's empty key restarts (the first case).
  *
  * <p>Seams: the {@link AdminServer} over the {@link PgDlq}, node-b's {@link PgWorkQueue} and a real {@code Deployments} of package
  * {@code shop} ({@code shop/orders} unkeyed, {@code shop/keyed} by {@code customer}; its own workers run over an in-memory queue of
@@ -272,11 +272,17 @@ class AdminDlqRestartIT {
         return new PgDlq(pool).get(id).await();
     }
 
-    /** A5: a 422 of {@code /retry} names the new-copy route {@code /replay} as what to use instead, never {@code /retry} itself. */
-    static void namesReplay(Answer a, String what) {
+    /**
+     * FIX-263 (D-156): a 422 of {@code /retry} names no other route — no {@code /replay}, no "use /..." pointer, no
+     * {@code /admin} path at all (a pointer to a route names its path, whatever its wording) — and never the route it was
+     * refused on.
+     */
+    static void namesNoOtherRoute(Answer a, String what) {
         String error = a.json().getString("error");
-        assertTrue(error != null && error.contains("/replay"), what + ": the error names /replay as what to use instead: " + a.body());
+        assertTrue(error != null && !error.contains("/replay"), what + ": no pointer to /replay: " + a.body());
+        assertTrue(!error.contains("use /"), what + ": no route to use instead: " + error);
         assertTrue(!error.contains("/retry"), what + ": never the route it was refused on: " + error);
+        assertTrue(!error.contains("/admin"), what + ": no pointer to any admin route: " + error);
     }
 
     void refusedNaming(Answer a, int status, String id, String what) {
@@ -328,10 +334,14 @@ class AdminDlqRestartIT {
 
         Answer atStep2Refused = retry(atStep2.id());
         refusedNaming(atStep2Refused, 422, atStep2.id(), "parked at step 2, not by the worker");
-        namesReplay(atStep2Refused, "parked at step 2");
+        assertTrue(atStep2Refused.json().getString("error").contains("was not parked by its flow's worker (step 2, attempt 1)"),
+                "the error says why, with the row's step and attempt: " + atStep2Refused.body());
+        namesNoOtherRoute(atStep2Refused, "parked at step 2");
         Answer replayRefused = retry(replayed.id());
         refusedNaming(replayRefused, 422, replayed.id(), "a replay's row (replayOf)");
-        namesReplay(replayRefused, "a replay's row");
+        assertTrue(replayRefused.json().getString("error").contains("was not parked by its flow's worker (step 1, attempt 1, a replay)"),
+                "the error says why, a replay's row named so (until FIX-265): " + replayRefused.body());
+        namesNoOtherRoute(replayRefused, "a replay's row");
         assertEquals(Optional.of(step2), dlqRow(atStep2.id()), "its DLQ row kept");
         assertEquals(Optional.of(replay), dlqRow(replayed.id()), "its DLQ row kept");
         assertEquals(0, count("select count(*) from work"), "nothing written");
@@ -350,7 +360,7 @@ class AdminDlqRestartIT {
         refusedNaming(refused, 422, old.id(), "a keyed flow's row without its key");
         String error = refused.json().getString("error");
         assertTrue(error.contains("parked before its key was kept"), "the error says why: " + error);
-        namesReplay(refused, "a keyed flow's row without its key");
+        namesNoOtherRoute(refused, "a keyed flow's row without its key");
         assertEquals(Optional.of(before), dlqRow(old.id()), "its DLQ row kept");
         assertEquals(0, count("select count(*) from work"), "nothing written");
 

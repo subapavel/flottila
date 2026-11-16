@@ -1,37 +1,13 @@
 package dev.rail8.runtime.admin;
 
-import dev.rail8.api.Ack;
 import dev.rail8.api.BlobKey;
-import dev.rail8.api.Envelope;
-import dev.rail8.api.Hasher;
-import dev.rail8.api.Headers;
-import dev.rail8.api.IdGenerator;
-import dev.rail8.api.Keys;
-import dev.rail8.api.Props;
-import dev.rail8.api.Runtime;
-import dev.rail8.core.batch.BatchingWriter;
-import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
-import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.Snapshot;
-import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.runtime.deploy.Deployments;
-import dev.rail8.runtime.deploy.Doors;
-import dev.rail8.runtime.journal.TestJournals;
-import dev.rail8.runtime.node.NodeConfig;
-import dev.rail8.runtime.node.OnVirtualThread;
-import dev.rail8.runtime.store.PgMessageStore;
-import dev.rail8.runtime.time.VertxTimer;
-import dev.rail8.testkit.FakeIds;
-import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.PostgresImage;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -46,43 +22,30 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 
+import static dev.rail8.runtime.admin.AdminPgFixture.BOUND;
+import static dev.rail8.runtime.admin.AdminPgFixture.ORDER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * CORE-4c3 packet item 4 end to end (CORE-3 "Review r2 additions", D-105's exception to D-062): a message whose body an accepted
- * {@code RAIL8_JOURNAL_ACCEPT_LOSS} gave up — its {@code body_refs} row marked {@code lost_at}, as the start marks it — is
- * refused for a replay and for a DLQ replay ({@code /admin/dlq/{id}/replay}, FIX-138a: the old {@code /retry} copy) with 409 {@code {error}} saying "body lost by ACCEPT_LOSS" (D-096's 409 for a body
- * that is not there; never "removed by retention", nothing runs, the DLQ row stays), and the admin GET of that body answers
- * <b>410 Gone</b> with that reason: unlike a body retention removed (404, D-057) the message's rows say a body was stored, and
- * unlike a 409 no state of the server can be changed to make it readable again — it is gone for good. Through the real
- * {@link TieredBlobStore} over a node's journal, the {@link PgMessageStore}, a real {@link Deployments} and the
- * {@link AdminServer} (ReplayRetentionIT's wiring). Witness: before the mark the same replay, retry and GET succeed, and a sibling
- * message that was not given up still does after it.
- *
- * <p>The API assumed (CORE-4c3, test-author): core {@code ReplayRefusedException.Reason.BODY_LOST} answered 409 by the admin
- * API; the GET of a lost body 410 (test-author's pick, packet item 4).
+ * {@code RAIL8_JOURNAL_ACCEPT_LOSS} gave up — its {@code body_refs} row marked {@code lost_at}, as the start marks it — is refused
+ * for a retry ({@code POST /admin/dlq/{id}/retry}, FIX-263: the same-id restart, D-156) with 409 {@code {error}} saying "body lost
+ * by ACCEPT_LOSS" (never "removed by retention"; its DLQ row stays, nothing is queued or run), and the admin GET of that body
+ * answers <b>410 Gone</b> with that reason: unlike a body retention removed (404, D-057) the message's rows say a body was
+ * stored, and unlike a 409 no state of the server can be changed to make it readable again — it is gone for good. Over Postgres,
+ * through {@link AdminPgFixture}: an at-least-once flow whose worker parked both messages, the real
+ * {@link dev.rail8.runtime.blob.TieredBlobStore} over a node's journal, a real {@code Deployments} and the {@link AdminServer}.
+ * Witness: before the mark X's body reads; a sibling message that was not given up still reads after it, and its retry restarts
+ * it.
  */
 class LostBodyAdminIT {
 
-    static final String TOKEN = "s3cret-token";
-    static final String AUTH = "Bearer " + TOKEN;
-    static final Duration BOUND = Duration.ofSeconds(20);
-    static final long MIB = 1L << 20;
     static final String LOST = "body lost by ACCEPT_LOSS";
 
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
@@ -91,19 +54,7 @@ class LostBodyAdminIT {
     static HttpClientAgent client;
 
     @TempDir Path tmp;
-    final FakeRuntime rt = FakeRuntime.create();
-    final Doors doors = new Doors();
-    final InMemoryDlq dlq = new InMemoryDlq();
-    final InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
-    final FakeIds replayIds = new FakeIds("replay");
-    final List<String> minted = new CopyOnWriteArrayList<>();
-    final AdminServerReplayTest.Probe probe = new AdminServerReplayTest.Probe();
-    TestJournals.Opened journal;
-    TieredBlobStore blobs;
-    PgMessageStore messages;
-    Deployments deployments;
-    AdminServer server;
-    int port;
+    AdminPgFixture node;
 
     @BeforeAll
     static void up() {
@@ -126,84 +77,15 @@ class LostBodyAdminIT {
 
     @BeforeEach
     void wire() throws Exception {
-        journal = TestJournals.open(pool, Files.createDirectories(tmp.resolve("journal")), "node-1");
-        blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, MIB), Hasher.sha256(), journal.journal(), journal.tenant(), pool);
-        messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
-        Map<String, String> env = new HashMap<>();
-        env.put("RAIL8_ENV", "dev");
-        env.put("RAIL8_NODE_ID", "node-1");
-        env.put("RAIL8_DATA_DIR", tmp.resolve("data").toString());
-        Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), probe.factories(), List.of(),
-                messages, dlq, queue, () -> 0L);
-        IdGenerator ids = () -> {
-            String id = replayIds.next();
-            minted.add(id);
-            return id;
-        };
-        server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, ids);
-        port = server.start(vertx).await(10, TimeUnit.SECONDS);
+        node = new AdminPgFixture(vertx, pool, client, tmp);
     }
 
     @AfterEach
     void stop() throws Exception {
-        probe.holds.forEach(AdminServerReplayTest.Hold::release);
-        doors.releaseAll();
-        server.stop().await(10, TimeUnit.SECONDS);
-        OnVirtualThread.call(() -> { deployments.close(); return null; });
-        messages.close();
-        journal.close();
+        node.close();
     }
 
-    record Answer(int status, Buffer body) {
-        JsonObject json() { return new JsonObject(body); }
-    }
-
-    Answer send(HttpMethod method, String path) {
-        return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + port + path))
-                .compose(req -> {
-                    req.putHeader("Authorization", AUTH);
-                    req.response().onSuccess(HttpClientResponse::pause);
-                    return req.send();
-                })
-                .compose(res -> {
-                    var body = res.body();
-                    res.resume();
-                    return body.map(b -> new Answer(res.statusCode(), b));
-                })
-                .await();
-    }
-
-    /** A sync orders message whose ingress body is written to the tiered store, delivered, its five rows written. */
-    Envelope recorded() throws Exception {
-        String id = rt.ids().next();
-        Envelope e = Envelope.ingress(id, "shop/orders", Headers.empty(), blobs.write(BlobKey.body(id, 0), Buffer.buffer("<order/>"), 1024).await());
-        assertInstanceOf(Ack.Reply.class, doors.door("shop/orders").deliver(e).await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "fixture: orders answers");
-        until(() -> messages.timeline(id).await().size() == 5, "fixture: the five rows of " + id);
-        return e;
-    }
-
-    /** {@code e} parked at step 1 (a) of shop/orders on its ingress body, as a failed worker run would have left it. */
-    void parked(Envelope e) {
-        dlq.park(new Parked(e.id(), "shop/orders", 1, "a", "partner down (test)", Instant.parse("2026-11-04T10:00:00Z"), Headers.empty(), Props.empty(),
-                Keys.empty(), e.body().hash(), e.body().size(), BlobKey.body(e.id(), 0), Map.of())).await();
-    }
-
-    long count(String sql, String param) {
-        return pool.preparedQuery(sql).execute(Tuple.of(param)).await().iterator().next().getLong(0);
-    }
-
-    static void until(BooleanSupplier condition, String what) {
-        long deadline = System.nanoTime() + BOUND.toNanos();
-        while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) fail("not within " + BOUND + ": " + what);
-            Thread.onSpinWait();
-            Thread.yield();
-        }
-    }
-
-    static void saysLost(Answer a, int status, String id, String what) {
+    static void saysLost(AdminPgFixture.Answer a, int status, String id, String what) {
         assertEquals(status, a.status(), what + ": " + a.body());
         String error = a.json().getString("error");
         assertTrue(error != null && error.contains(LOST) && error.contains(id), what + ": the error names the message and says why: " + a.body());
@@ -211,33 +93,36 @@ class LostBodyAdminIT {
     }
 
     @Test
-    void aLostBodyIsRefused409ForReplayAndDlqReplayAndItsGetIs410() throws Exception {
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), AdminServerReplayTest.shop().zipTo(tmp.resolve("archives"))));
-        Envelope x = recorded();
-        Envelope k = recorded();
-        Snapshot ingress = messages.timeline(x.id()).await().stream().filter(s -> s.step() == 0).findFirst().orElseThrow();
-        assertEquals(Optional.of(BlobKey.body(x.id(), 0)), ingress.bodyKey(), "fixture: X's step 0 row names its ingress body");
-        assertEquals(1, count("select count(*) from body_refs where message_id = $1 and step = 0 and part = 'body'", x.id()), "fixture: a kept ref");
-        parked(x);
-        parked(k);
-        assertEquals(200, send(HttpMethod.GET, "/admin/messages/" + x.id() + "/steps/0/body").status(), "witness: X's body reads before the loss");
-        assertEquals(200, send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=1").status(), "witness: X replays before the loss");
+    void aLostBodyIsRefused409ForRetryAndItsGetIs410() throws Exception {
+        String x = node.parked();
+        String k = node.parked();
+        AdminPgFixture.until(() -> node.messages.timeline(x).await().stream().anyMatch(s -> s.step() == 0), "fixture: X's ingress row is written");
+        Snapshot ingress = node.messages.timeline(x).await().stream().filter(s -> s.step() == 0).findFirst().orElseThrow();
+        assertEquals(Optional.of(BlobKey.body(x, 0)), ingress.bodyKey(), "fixture: X's step 0 row names its ingress body");
+        assertEquals(1, node.count("select count(*) from body_refs where message_id = $1 and step = 0 and part = 'body'", x), "fixture: a kept ref");
+        Parked row = node.dlq.get(x).await().orElseThrow();
+        assertEquals(200, node.send(HttpMethod.GET, "/admin/messages/" + x + "/steps/0/body").status(), "witness: X's body reads before the loss");
 
-        pool.preparedQuery("update body_refs set lost_at = now() where message_id = $1").execute(Tuple.of(x.id())).await();   // the accepted loss
-        int ran = probe.total();
-        int mintedBefore = minted.size();
+        pool.preparedQuery("update body_refs set lost_at = now() where message_id = $1").execute(Tuple.of(x)).await();   // the accepted loss
+        int ran = node.runs.size();
 
-        saysLost(send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=1"), 409, x.id(), "a replay of a lost body");
-        saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/replay"), 409, x.id(), "a DLQ replay of a lost body");
-        assertEquals(ran, probe.total(), "no step ran");
-        List<String> mintedNow = List.copyOf(minted);   // a snapshot: the id generator appends from other threads
-        for (String id : mintedNow.subList(mintedBefore, mintedNow.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
-        assertTrue(dlq.get(x.id()).await().isPresent(), "the refused retry keeps its DLQ row, for the operator");
+        saysLost(node.retry(x), 409, x, "a retry of a message whose body was lost");
+        assertEquals(Optional.of(row), node.dlq.get(x).await(), "the refused retry keeps its DLQ row, unchanged, for the operator");
+        assertEquals(0, node.count("select count(*) from work where id = $1", x), "nothing queued");
+        assertEquals(0, node.worker.poll().await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "nothing to claim");
+        assertEquals(ran, node.runs.size(), "nothing ran");
 
-        saysLost(send(HttpMethod.GET, "/admin/messages/" + x.id() + "/steps/0/body"), 410, x.id(), "the GET of a lost body: gone for good");
+        saysLost(node.send(HttpMethod.GET, "/admin/messages/" + x + "/steps/0/body"), 410, x, "the GET of a lost body: gone for good");
 
-        assertEquals(200, send(HttpMethod.GET, "/admin/messages/" + k.id() + "/steps/0/body").status(), "witness: K, not given up, reads");
-        assertEquals(200, send(HttpMethod.POST, "/admin/messages/" + k.id() + "/replay?from=1").status(), "witness: and replays");
-        assertEquals(200, send(HttpMethod.POST, "/admin/dlq/" + k.id() + "/replay").status(), "witness: and its DLQ row retries");
+        AdminPgFixture.Answer kBody = node.send(HttpMethod.GET, "/admin/messages/" + k + "/steps/0/body");
+        assertEquals(200, kBody.status(), "witness: K, not given up, reads: " + kBody.body());
+        assertEquals(ORDER, kBody.body().toString());
+        AdminPgFixture.Answer kRetried = node.retry(k);
+        assertEquals(202, kRetried.status(), "witness: and its retry restarts it: " + kRetried.body());
+        assertEquals(new JsonObject().put("id", k).put("attempt", 2), kRetried.json());
+        assertEquals(1, node.worker.poll().await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "witness: the worker claims K");
+        assertEquals(List.of(k + "@2 " + ORDER), node.runs.subList(ran, node.runs.size()), "witness: K delivered once, as attempt 2");
+        assertEquals(Optional.of(row), node.dlq.get(x).await(), "X's row still stays");
+        assertTrue(node.dlq.get(k).await().isEmpty(), "K's went");
     }
 }

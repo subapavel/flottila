@@ -1,0 +1,131 @@
+FIX-263 - evidence (2026-11-16). The two replay routes leave the admin API (D-156, F-55). Class B.
+Packet: agent/packets/FIX-263.md. The approved per-case list: agent/work/FIX-263-cases.md section C.
+The test-author's hand-back: agent/work/FIX-263-step1.md. The diff: agent/work/FIX-263.diff (platform/ only, 3271 lines;
+14 files changed, 335 insertions, 1990 deletions, plus two new test files).
+The run was made on the tree at b04e336a plus this task's changes; ea75ea70 (FIX-270, documents only) was committed
+while it ran and changes no file a build reads.
+
+1. What changed
+   main (platform/runtime/src/main/java/dev/rail8/runtime/):
+     admin/AdminServer.java - the routes `POST /admin/messages/:id/replay` and `POST /admin/dlq/:id/replay`, the handlers
+       `replay` and `dlqReplay`, the helpers `from`, `ran`, `refusal(ReplayRefusedException)`, `notRunning`, the fields
+       `replaying` and `ids`, the id-source constructor parameter and the `IdGenerator` import are gone; "; use /replay"
+       left the three 422 texts of `/retry`; the `REPLAY_OF` check and the words ", a replay" stay (FIX-265).
+     node/Node.java - passes no id source to `AdminServer`; class doc.
+     queue/PgWorkQueue.java:283 - Javadoc only: the concurrent remove it names is "another restart, a PgDlq.remove"
+       (the route it named is gone; `PgDlq.remove`'s only main caller is core's `Replay.replayParked`, FIX-264's).
+   tests (platform/runtime/src/test/java/dev/rail8/runtime/): three classes deleted (`admin/AdminServerReplayTest`,
+     `admin/AdminServerReplayRaceTest`, `admin/ReplayRetentionIT`), two new (`admin/AdminPgFixture`,
+     `admin/RetentionRetryIT`), eight changed (`NodeIT`, `NodePoolWaitIT`, `admin/AdminDlqRestartIT`,
+     `admin/AdminDlqRestartTest`, `admin/AdminServerBrowserGuardTest`, `admin/LostBodyAdminIT`, and one line each of
+     `admin/AdminServerCpuTest` and `admin/AdminServerTargetsTest` - the constructor without the id source).
+   Core's `Replay`, `FlowBuilder.replay`, `Deployments.replay` and `Envelope.REPLAY_OF` are untouched, with their tests.
+
+2. The acceptance, point by point
+   1 both routes answer as an unregistered POST   `NodeIT.bothReplayRoutesAnswerAsUnknownRoutes` - red observed before the
+     (404, "no such route")                         change (agent/work/FIX-263-ta-it2.log: "expected: <404> but was: <200>"),
+                                                    green after (agent/work/FIX-263-impl-it.log; the reactor run).
+   2 no `/retry` refusal names another route      `AdminDlqRestartTest.noRetryRefusalNamesAnotherRoute`,
+                                                    `.aSyncFlowsRowIs422`, `.aRowWithoutAnAttemptOfAtLeastOneIs422`, and two
+                                                    cases of `AdminDlqRestartIT` - red observed (FIX-263-ta-red.log,
+                                                    -ta-it.log: "...; use /replay ==> expected: <false> but was: <true>"),
+                                                    green after (FIX-263-impl-unit.log, -impl-it.log; the reactor run).
+   3 every case of the list is handled            agent/work/FIX-263-step1.md, per case: deleted, moved or changed; the moved
+                                                    cases were green on the code before the change.
+   4 no surviving property is lost                the permit that comes back: core's `DeliveryTest
+                                                    .aDeliveryOverItsInFlightRequestLimitIsARetryableNack`; the token:
+                                                    `AdminDlqRestartTest.aRetryNeedsTheToken`; the virtual-thread offload:
+                                                    `.aRetryRunsOnAVirtualThreadNeverTheEventLoop`; a second `/retry` of an
+                                                    id: `AdminDlqRestartIT
+                                                    .retryAnswers202AndRunsTheItemOnceUnderItsIdOnTheNodeHoldingItsBody`
+                                                    (a second call is 404, nothing written) and `PgWorkQueueRestartIT
+                                                    .aRowRemovedWhileTheRestartWaitsOnItIsNotRestarted`; the browser guard
+                                                    on a POST route:
+                                                    `AdminServerBrowserGuardTest` (the guarded POST is `/retry`); retention
+                                                    against a parked message: `RetentionRetryIT.aParkedMessageOutlivesThe
+                                                    RetentionAndItsRetryDeliversIt`; a lost body's 409 and 410: `LostBody
+                                                    AdminIT.aLostBodyIsRefused409ForRetryAndItsGetIs410`; the work pool's 503
+                                                    on `/retry` (green before the change): `NodePoolWaitIT.aDlqRetryRefused
+                                                    ByTheWorkPoolAnswers503`.
+   5 `AdminServer` holds no replay route,         agent/work/FIX-263-impl.diff (main only, 3 files, +25 -157);
+     handler, helper or id source                   `grep -rn "/replay" platform --include=*.java` outside target: main 0
+                                                    files; tests 9 lines in 4 files (NodeIT 4, queue/DlqRestartIT 1,
+                                                    AdminDlqRestartIT 2, AdminDlqRestartTest 2): four are code - the removed
+                                                    paths `NodeIT.bothReplayRoutesAnswerAsUnknownRoutes` calls (:1601-1602)
+                                                    and the absence checks of the two helpers - and five are Javadoc that
+                                                    says what left (corrected after the review: the first wording said all
+                                                    nine were comments; `queue/DlqRestartIT:62` is FIX-264's).
+   6 coverage per module and per class            section 3 below.
+
+3. Checks (the verifier, 2026-11-16; observed)
+   Whole reactor, `mvn -B -ntp -f platform/pom.xml clean verify -Pit -Dmaven.test.failure.ignore=true`:
+     VERIFIED_PASS - exit 0, BUILD SUCCESS, 17 modules (agent/work/FIX-263-reactor.log). Every surefire and failsafe
+     report: 0 failures, 0 errors, 0 skipped. No report of the three deleted classes exists after the run.
+     Tests per module (before -> after): api 107 -> 107; testkit 300 -> 300; core 789 -> 789; schemas 304 -> 304;
+     sftp 69 -> 69; xslt 56 -> 56; validate 33 -> 33; http 52 -> 52; mock 67 -> 67; runtime unit 1583 -> 1562;
+     runtime ITs 719 -> 717; cli 208 -> 208 and 7 -> 7 ITs; sim 61 -> 61; archtest 48 -> 48; bench 239 -> 239 and
+     42 -> 42 ITs (bench is the reactor's module `../bench`; its reports are under bench/target, read by the architect
+     from the XML: 47 and 16 report files of this run, 12:25Z and 12:31Z).
+     Runtime's difference, by `@Test` count per class before (git show HEAD) and after: unit -24 + 3 = -21
+     (`AdminServerReplayTest` 20 -> gone, `AdminServerReplayRaceTest` 4 -> gone, `AdminDlqRestartTest` 6 -> 9);
+     ITs -3 + 1 = -2 (`NodeIT` 39 -> 38: two deleted, one new; `NodePoolWaitIT` 17 -> 16; `ReplayRetentionIT` 1 -> gone;
+     `RetentionRetryIT` new, 1). The other changed classes keep their counts.
+   `python3 ci/coverage_check.py --baseline-ref HEAD`: VERIFIED_PASS - exit 0, "coverage: no decrease"
+     (agent/work/FIX-263-coverage.log). Line / branch: api 99.3 / 100.0; core 99.7 / 99.4; runtime 99.5 / 99.4;
+     testkit 97.8 / 95.9; cli 99.0 / 99.6; http 99.5 / 94.8; mock 100.0 / 99.2; sftp 100.0 / 99.0; schemas 99.0 / 99.5;
+     sim 97.2 / 95.9; validate 100 / 100; xslt 100 / 100; bench 98.1 / 97.8.
+   Per class, before (agent/work/FIX-263-before/*.csv, the last whole-reactor run before the task) against after
+     (`python3 agent/work/FIX-263-cmp.py`, agent/work/FIX-263-cmp.log): no class left or joined a main source set
+     (the task deletes no main class). Runtime: lines missed 35 of 6654 -> 35 of 6599, branches missed 17 of 2868 ->
+     17 of 2843 - the removed code was covered code, and no surviving runtime class misses a line or a branch it did
+     not miss before. Missed LINES grew in no class of any module.
+     Missed BRANCHES grew by one in two classes, neither in a module this task touches (`git status` shows no change
+     under platform/core or platform/testkit, and each module's coverage counts its own tests only):
+       `dev.rail8.core.record.StepCpu` 0 -> 1 of 54: line 233, `innermost`'s condition (1 of its 8 branches);
+       `dev.rail8.testkit.ComponentContract` 2 -> 3 of 60: lines 393, 398 and 515 hold the three - the `soon(...)` waits
+         and the "told by its body" branch of the concurrent-delivery case (FIX-221), which depend on thread timing.
+     Reason: variation between two runs of unchanged code and unchanged tests - not this change. Not explained
+     further here; D-029's noise band is what the coverage check allows for it.
+   `python3 ci/name_guard.py`: VERIFIED_PASS - "name guard: clean, 6090 tracked files scanned".
+   The implementer's and the test-author's own runs: FIX-263-impl-unit.log, -impl-it.log, -impl-runtime.log,
+     -impl-2c.log, -ta-2b.log (the classes touched, green after each move).
+   NOT_RUN: PIT (runtime is outside the mutation floor; api and core are untouched); the bench harness
+     (`bench/run.sh`; no measured path is changed).
+
+4. Found otherwise than the list, and where it goes
+   - The id-source parameter had two test call sites; the implementer changes no test: three moves (2a, 2b, 2c; the
+     packet's "Step 1 - done").
+   - A keyed flow's message parked without its key is refused by `/retry` with the V17 text and can never be retried:
+     not this row's - new row FIX-274 [C]; ARCHITECTURE's lease paragraph names it (3.30).
+   - `NodePoolWaitIT:641` (the work pool's 503 on `/retry`) was green on the code before the change, so it moved; it
+     is not FIX-182's fix. Its witness after the pool's release is that the route answers, not a 202 (FIX-274).
+   - The GET's "(removed by retention)" text stays pinned by `AdminServerTest` and `JournalBlobStoreIT`.
+   - The first test-author stopped once at its turn limit and was resumed; nothing was lost.
+
+5. Review (class B)
+   PASS, one round (2026-11-16). The reviewer read the main hunks whole and every changed or new test; it found the red
+   cases real (the unregistered-path comparison is on the same server with the token; a route left registered fails the
+   body comparison), every deleted case either pinning only the withdrawn code or having a successor, the moved cases
+   not weaker, `PgWorkQueue.java:283`'s wording true, no rule breached, the coverage reading acceptable, and FIX-274's
+   deferral acceptable. Its own mutation evidence: the red runs and the test-author's scratch copy without the routes
+   (agent/work/FIX-263-ta-mutant.log, 20 of 20 green).
+   Must be written at the commit, done: the row FIX-274 (it says the `NodePoolWaitIT` witness becomes a 202 and a
+   delivery once the gap is closed); the commit body names every deleted case with D-156.
+   Remarks taken, in tests only, by the test-author after the review:
+   - `AdminServerCpuTest:156` - a Javadoc said "deploy, work and replay routes": "deploy and work routes";
+   - `namesNoOtherRoute` (`AdminDlqRestartTest`, `AdminDlqRestartIT`) also rejects any "/admin" in a refusal text, so
+     a pointer worded "see /admin/..." fails it; none of today's refusal texts holds "/admin";
+   - `RetentionRetryIT` waits for each message's exact, final rows (not `>= 2`) before it ages them, pins both at two
+     rows, and after the retention run checks that X still holds exactly its rows and none younger than the cutoff -
+     so X is kept for its DLQ row and not for a late, young row.
+   Runs after those changes (the whole reactor ran before them; they change test code of four classes only):
+     VERIFIED_PASS `AdminDlqRestartTest` 9 and `AdminServerCpuTest` 5 tests, 0 failures, errors, skipped
+       (agent/work/FIX-263-ta-r1.log);
+     VERIFIED_PASS `AdminDlqRestartIT` 6 and `RetentionRetryIT` 1, 0 failures, errors, skipped
+       (agent/work/FIX-263-ta-r1-it.log; its two "injected failure (test)" lines are the IT's own trigger fixture).
+     NOT_RUN after those changes: the whole reactor (the `ci` run on main runs it).
+   Remarks left: the two helpers assert no exact error sentence (the reason is checked by `says`; FIX-265 and
+   FIX-267's route row rewrite these texts and pin them); `AdminDlqRestartTest.post` and `retry` open an `HttpClient`
+   per call and never close it (older than this row); Javadoc that still names the withdrawn route or core's replay at
+   `queue/DlqRestartIT:62`, `PgWorkQueue.java:53` and `:420` is FIX-264's and FIX-265's; no PIT (runtime is outside
+   the mutation floor). The reviewer could not update its memory file (no write tool in its run).

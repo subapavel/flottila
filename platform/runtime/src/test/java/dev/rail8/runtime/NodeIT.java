@@ -1503,7 +1503,7 @@ class NodeIT {
         }
     }
 
-    // --- P1-09c2 (D-067, GATE check 7): message replay, same-id DLQ retry and DLQ replay over the admin API
+    // --- P1-09c2 (D-067, GATE check 7): the same-id DLQ retry over the admin API; FIX-263 (D-156): the replay routes are gone
 
     /** The demo flow's {@code retry.attempts}: retries after the first try (RetryPolicy). */
     static final int DEMO_RETRIES = 3;
@@ -1557,55 +1557,82 @@ class NodeIT {
     }
 
     /**
-     * GATE check 7, replay: the demo (sync) has sent an invoice to the partner. {@code POST /admin/messages/{id}/replay?from=3}
-     * answers 200 with exactly {@code {id, replayOf, from, outcome}}: a new id, the original's, 3, COMPLETE. The new message ran
-     * steps 3..5 (route, toPartner, partner) and nothing before: its timeline starts with its input at step 2 — the original's
-     * recorded step-2 output, by hash — and every row of it is marked {@code replayOf} the original. The partner got the same
-     * mapped invoice a second time; the original's timeline is as it was, unmarked.
+     * FIX-263 A1 (D-156: replay is not part of Rail8): on a node with an admin token, the demo deployed and an invoice recorded —
+     * the node's id source and its deployments present, as every node has them — {@code POST /admin/messages/{id}/replay} and
+     * {@code POST /admin/dlq/{id}/replay} answer exactly what an unregistered POST path of the same shape answers: 404
+     * {@code {"error":"no such route"}}. Nothing ran: the partner saw the invoice once, the invoice's timeline is as it was, and
+     * its key still finds one message.
      */
     @Test
-    void replayFromStep3IsANewMessageMarkedReplayOf() throws Exception {
+    void bothReplayRoutesAnswerAsUnknownRoutes() throws Exception {
+        String token = "s3cret-token";
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
         try (HttpClient client = http()) {
             int inPort = freePort();
             byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
-            startDemoNode(env("ci"));
+            Map<String, String> env = env("ci");
+            env.put("RAIL8_ADMIN_TOKEN", token);
+            startDemoNode(env);
             int admin = node.adminPort();
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip, "application/zip").statusCode(), "fixture: the demo deploys");
+            HttpResponse<String> put = authed(client, "PUT", admin, "/admin/packages/demo", zip, token);
+            assertEquals(200, put.statusCode(), "fixture: the demo deploys: " + put.body());
             HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(200, invoice.statusCode(), "fixture: the invoice went through: " + invoice.body());
-            String original = invoiceByKey(admin);
-            JsonArray originalSteps = stepsOf(admin, original);
+            List<String> found = new CopyOnWriteArrayList<>();
+            until(() -> {
+                found.clear();
+                HttpResponse<String> byKey = authed(client, "GET", admin, "/admin/messages?key=invoiceId:4711", null, token);
+                new JsonObject(byKey.body()).getJsonArray("items").forEach(id -> found.add((String) id));
+                return found.size() == 1 && timelineSteps(client, admin, found.get(0), token).size() == 6;
+            }, "fixture: the invoice is found by its key and its six rows are recorded");
+            String id = found.get(0);
+            JsonArray steps = timelineSteps(client, admin, id, token);
             assertEquals(1, partnerSaw.size(), "fixture: the partner saw the invoice once: " + partnerSaw);
 
-            HttpResponse<String> replayed = post(client, admin, "/admin/messages/" + original + "/replay?from=3");
-
-            assertEquals(200, replayed.statusCode(), replayed.body());
-            JsonObject answer = new JsonObject(replayed.body());
-            String id = answer.getString("id");
-            assertTrue(id != null && !id.equals(original), "the replay is a new message: " + answer);
-            assertEquals(new JsonObject().put("id", id).put("replayOf", original).put("from", 3).put("outcome", "COMPLETE"), answer, "the replay's answer");
-            assertEquals(2, partnerSaw.size(), "the replay reached the partner, once: " + partnerSaw);
-            assertEquals(partnerSaw.get(0), partnerSaw.get(1), "the same mapped invoice: steps 3..5 ran on the recorded step-2 output");
-            until(() -> stepsOf(admin, id).size() == 4, "the replay's rows are recorded: its input and steps 3..5");
-            JsonArray steps = stepsOf(admin, id);
-            assertEquals(List.of("2 replay", "3 route", "4 toPartner", "5 partner"), stepNames(steps), "steps 3..n ran, nothing before: " + steps.encode());
-            for (Object each : steps) {
-                JsonObject row = (JsonObject) each;
-                assertEquals("OK", row.getString("outcome"), row.encode());
-                assertEquals(original, row.getJsonObject("props").getString("replayOf"), "every row of the new message is marked replayOf: " + row.encode());
+            HttpResponse<String> unknownMessageRoute = authed(client, "POST", admin, "/admin/messages/" + id + "/nonesuch?from=3", new byte[0], token);
+            HttpResponse<String> unknownDlqRoute = authed(client, "POST", admin, "/admin/dlq/" + id + "/nonesuch", new byte[0], token);
+            for (HttpResponse<String> unknown : List.of(unknownMessageRoute, unknownDlqRoute)) {
+                assertEquals(404, unknown.statusCode(), "fixture: an unregistered POST path is the router's 404: " + unknown.body());
+                assertEquals(new JsonObject().put("error", "no such route"), new JsonObject(unknown.body()), "fixture: the router's own body");
             }
-            JsonObject recordedStep2 = originalSteps.stream().map(JsonObject.class::cast).filter(s -> s.getInteger("step") == 2).findFirst().orElseThrow();
-            assertEquals(recordedStep2.getJsonObject("body").getString("hash"), steps.getJsonObject(0).getJsonObject("body").getString("hash"),
-                    "the replay's input is the original's recorded step-2 output: " + recordedStep2.encode());
-            assertEquals(originalSteps, stepsOf(admin, original), "the original's timeline is as it was");
-            assertTrue(originalSteps.stream().map(JsonObject.class::cast).noneMatch(s -> s.getJsonObject("props").containsKey("replayOf")),
-                    "the original is not marked: " + originalSteps.encode());
+
+            for (String path : List.of("/admin/messages/" + id + "/replay?from=3", "/admin/messages/" + id + "/replay?from=1",
+                    "/admin/messages/" + id + "/replay", "/admin/dlq/" + id + "/replay")) {
+                HttpResponse<String> answer = authed(client, "POST", admin, path, new byte[0], token);
+                HttpResponse<String> unknown = path.startsWith("/admin/dlq/") ? unknownDlqRoute : unknownMessageRoute;
+                assertEquals(unknown.statusCode(), answer.statusCode(), "POST " + path + " answers as an unregistered route: " + answer.body());
+                assertEquals(new JsonObject(unknown.body()), new JsonObject(answer.body()), "POST " + path + ": the router's body, not a route's");
+            }
+            assertEquals(1, partnerSaw.size(), "nothing ran: the partner saw the invoice once: " + partnerSaw);
+            assertEquals(steps, timelineSteps(client, admin, id, token), "the invoice's timeline is as it was");
+            HttpResponse<String> byKey = authed(client, "GET", admin, "/admin/messages?key=invoiceId:4711", null, token);
+            assertEquals(new JsonArray().add(id), new JsonObject(byKey.body()).getJsonArray("items"), "its key still finds one message: no new one");
         } finally {
             partner.close().await();
         }
+    }
+
+    /** {@code method path} on {@code port} with the bearer {@code token}; {@code body} sent when not null. */
+    static HttpResponse<String> authed(HttpClient client, String method, int port, String path, byte[] body, String token) {
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(20))
+                .header("Authorization", "Bearer " + token)
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(body));
+        if (body != null) req.header("content-type", "PUT".equals(method) ? "application/zip" : "application/json");
+        try {
+            return client.send(req.build(), HttpResponse.BodyHandlers.ofString());
+        } catch (IOException | InterruptedException e) {
+            throw new AssertionError("the admin API did not answer " + method + " " + path, e);
+        }
+    }
+
+    /** The {@code steps} of {@code GET /admin/messages/{id}} with the token; empty while nothing of it is recorded (404). */
+    static JsonArray timelineSteps(HttpClient client, int admin, String id, String token) {
+        HttpResponse<String> r = authed(client, "GET", admin, "/admin/messages/" + id, null, token);
+        if (r.statusCode() == 404) return new JsonArray();
+        assertEquals(200, r.statusCode(), r.body());
+        return new JsonObject(r.body()).getJsonArray("steps");
     }
 
     /** The demo's partner, down (503) until {@code down} is cleared: every request as {@code "<status> <path> <body>"}, its {@code x-message-id}. */
@@ -1699,48 +1726,6 @@ class NodeIT {
             assertEquals(parked, partner.ids().getLast(), "delivered under the parked message id");
             assertEquals(List.of(parked), partner.ids().stream().distinct().toList(), "a partner deduplicating by message id sees one message: " + partner.ids());
             assertEquals(new JsonArray(), dlqItems(admin), "not parked again");
-        } finally {
-            partner.server().close().await();
-        }
-    }
-
-    /**
-     * GATE check 7, DLQ replay (FIX-138a: today's {@code /retry} copy, moved): the message parked as above
-     * ({@link #parkedWhilePartnerDown}). The partner comes back; {@code POST /admin/dlq/{id}/replay} answers 200 with exactly
-     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 1, COMPLETE — the partner gets the mapped invoice once more,
-     * under the new id, and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input
-     * at step 0 and the five steps, marked {@code replayOf}.
-     */
-    @Test
-    void partnerDownParksAndReplayDeliversANewCopyOncePartnerIsBack() throws Exception {
-        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
-        DownPartner partner = downPartner(ack);
-        try (HttpClient client = http()) {
-            String parked = parkedWhilePartnerDown(client, partner);
-            int admin = node.adminPort();
-
-            partner.down().set(false);
-            HttpResponse<String> replayed = post(client, admin, "/admin/dlq/" + parked + "/replay");
-
-            assertEquals(200, replayed.statusCode(), replayed.body());
-            JsonObject answer = new JsonObject(replayed.body());
-            String id = answer.getString("id");
-            assertTrue(id != null && !id.equals(parked), "the replay is a new message: " + answer);
-            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 1).put("outcome", "COMPLETE"), answer, "the replay's answer");
-            assertEquals(2 + DEMO_RETRIES, partner.saw().size(), "delivered once the partner is back, once: " + partner.saw());
-            String delivered = partner.saw().getLast();
-            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
-            assertEquals(id, partner.ids().getLast(), "under the new id");
-            assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
-            until(() -> stepsOf(admin, id).size() == 6, "the replay's rows are recorded: its input and the five steps");
-            JsonArray steps = stepsOf(admin, id);
-            assertEquals(List.of("0 replay", "1 validate", "2 extractKey", "3 route", "4 toPartner", "5 partner"), stepNames(steps),
-                    "the run from the parked step ran on the parked input: " + steps.encode());
-            for (Object each : steps) {
-                JsonObject step = (JsonObject) each;
-                assertEquals("OK", step.getString("outcome"), step.encode());
-                assertEquals(parked, step.getJsonObject("props").getString("replayOf"), "marked replayOf the parked message: " + step.encode());
-            }
         } finally {
             partner.server().close().await();
         }

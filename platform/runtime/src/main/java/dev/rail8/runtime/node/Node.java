@@ -107,7 +107,7 @@ import java.util.function.Function;
  * what the pool's records name ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
  * {@link Retention} job over the work pool, the clock and the timer ({@code RAIL8_RETENTION_*}, D-088) and only then starts the admin
- * server with the deploy, work, replay and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
+ * server with the deploy, work and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
  * {@code postgres}, {@code deployments} (DOWN while
  * anything is listed FAILED, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
  * stopped, DEGRADED while a segment row is retried), then the
@@ -338,7 +338,7 @@ public final class Node implements AutoCloseable {
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
-                    Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)), workers, signals);
+                    Optional.of(restored), work, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)), workers, signals);
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
