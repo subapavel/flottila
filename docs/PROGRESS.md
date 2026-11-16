@@ -1,4 +1,19 @@
 
+## 2026-11-16 — MAP-12 the ratchet's check on GitHub — designed and split into 12a, 12b, 12c (nothing built)
+
+- Class C path: the designer's draft (`agent/work/MAP-12-designer.md`), the advisor's opposition (`-advisor.md`: sound with
+  changes, six required), a scout's map of today's script (`-scout.md`), the architect's decision in the rows.
+- Decided, as a bracket on D-164 (the architect's reading, draft, for the owner at hand-over): the baseline is the last commit
+  the check PASSED on, not ran on - else a red push's lowered rows are the next push's baseline. Found through GitHub's API.
+- The reporting week's date is one file both workflows' script reads; the nightly comparison reports for the same week (the
+  mapping's F-16: timed-out mutants depend on the machine); the switch leaves at the week's end (12c): no off-switch remains.
+- Not built: a way for a row to fall or leave on purpose. The advisor asked for a waiver file; the review showed it would excuse
+  only a hand edit that the mapping's rule file forbids - the owner's file. The question goes to him with MAP-1's design.
+- Rows: MAP-12a [C] the script's `check --baseline` (ready; packet; no Maven for its red), MAP-12b [C] the lookup, both
+  workflows, the wiring test, the documents; MAP-12c [B] the week's record; MAP-15 [B] the editor's rows. MAP-13 waits for 12c.
+- Checked first: GitHub's documentation of the two endpoints (through Context7; the host is outside this session's network) and a
+  real run's jobs (43928160498: the backend job green on 89311471 - a baseline exists today). Review [C]: three rounds - FAIL (11), FAIL (3), PASS.
+
 ## 2026-11-16 — MAP-14 the list for the owner's next observation session on SAP — done, review PASS [A]
 
 - A document, `mapping/corpus/observations/follow-up-2026-11.md`, and one sentence in the kit's README. No case, output, ratchet

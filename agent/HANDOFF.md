@@ -1,9 +1,9 @@
 # Handoff
 
 state: D-148's plan is complete. The owner's answers of 2026-11-15 are on main (D-156 to D-159). The repository is renamed
-  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: MAP-14 (the list).
+  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: MAP-12 (designed, split).
 WIP: FIX-264 [B] IN FLIGHT - steps 1a, 1b, 2 done and approved (uncommitted in the tree); step 3 (verifier: whole reactor, scoped PIT) was running.
-  Mapping test rules are decided (D-164, ISSUE-13 closed), not built: MAP-10 [A], 11 [B] (packet written), 12 [C], 13 [C]. MAP-14 done.
+  Mapping test rules are decided (D-164, ISSUE-13 closed), not built: MAP-10 [A], 11 [B] (packet written), 12a [C] (ready, packet), 12b, 12c, 13 [C], 15.
   `/retry` is guarded (FIX-275). Cancel is designed, not built: D-162 as D-163 amends it. Replay's core half is still in the code. `site` is red.
 next exact action: FIX-264 - read `agent/work/FIX-264-evidence.txt` (step 3); then reviewer [B] on `agent/work/FIX-264.diff`; close with D-165 (packet).
   Order (agreed 2026-11-16; cancel's build at the end of 1): (1) FIX-264, 265, 268 [G], 269, 276, 277, CONSIDER-17, 278;
@@ -17,4 +17,4 @@ OWNER: applies agent/patches/BRAND-3-steering.patch and FIX-262-claude-replayabl
 OWNER ACTIONS, never a session's: GitHub's About text (the line chosen 2026-11-15, in BRAND-6's packet); Pages on and DNS for
   `rail8.dev` (after BRAND-6); archive `subapavel/flottila-mapping` (after MAP-3). TRAPS: `-Dtest=` on runtime OOMs; one Maven at a
   time (`flock /tmp/rail8-maven.lock`); a container restart kills dockerd, Postgres, agents. The owner may push to `main`: fetch first.
-  open issues: ISSUE-1, 6, 8, 9, 10, 11. next free ids: D-165, FIX-280, BRAND-9, OPS-13, CONSIDER-30, ISSUE-14, F-59, MAP-15.
+  open issues: ISSUE-1, 6, 8, 9, 10, 11. next free ids: D-165, FIX-280, BRAND-9, OPS-13, CONSIDER-30, ISSUE-14, F-59, MAP-16.

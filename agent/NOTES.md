@@ -477,6 +477,12 @@ shares case and input with exactly one pair that does is the same run under its 
 and the merge hid a run blocked on Cloud Integration. 195 runs; 193 requested; 184 on both systems, 8 on
 neither, 1 on PO only. The scripts are kept: `agent/work/MAP-14/obslist.py`, `mkfollowup.py`.
 
+An exception file beside a check (MAP-12's record, its review, 2026-11-16): before proposing a waiver or any
+other committed exception, ask who can write the state it excuses. The mapping's `regen` refuses every drop and
+`mapping/CLAUDE.md`:24-25 forbids a hand edit of `ratchet/`, so a waiver for a lowered row excused only a broken
+rule - and relaxed a line of a file that only the owner changes. Such a proposal goes to the owner, not into a
+packet. And when a row is split, re-point every row that depended on its id (MAP-13 named MAP-12).
+
 Recording an owner's answer (ISSUE-13, review round 1, 2026-11-16): check a bracket against every
 item of the clause it amends, not only the items in mind; check a row's "stale" claim against the
 ADR that planned the line; a row that edits a gate sentence decides a gate - a floor in a build is
