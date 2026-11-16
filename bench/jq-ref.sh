@@ -10,7 +10,8 @@
 # ./mvnw -B -Pbench package; its class Inputs writes the documents), MACHINE (default claude-cloud-4vcpu).
 #
 # Per cell: one discarded run, then the best of 5 wall-clock runs, output to /dev/null. A 1k document runs as 10 000
-# concatenated copies, a 100k document as 100, a 10m document once, the ints of G4.1e4 (10^4 elements) as 100 (K).
+# concatenated copies, a 100k document as 100, a 10m document once, the ints of G4.1e4 (10^4 elements) as 100 (K);
+# the #119 diagnostics run one document each (K = 1).
 # Per document = (best - start-up) / K, where
 # start-up is the best of 5 runs of the same filter on /dev/null. G7.process.1k is one whole process on one 1k
 # document, start-up included: its best of 5, with nothing subtracted (G7 has no factor, ADR-0019).
@@ -28,6 +29,7 @@ if [ ! -f "$jar" ]; then
   exit 2
 fi
 java -cp "$jar" io.github.subapavel.jqj.bench.Inputs "$dir"
+java -cp "$jar" io.github.subapavel.jqj.bench.Diagnostics "$dir"
 
 # copies <file> <k> <out>: <out> is <k> copies of <file>, which ends in its only LF.
 copies() {
@@ -92,3 +94,18 @@ cell G6.pretty.10m 1 "$dir/orders-10m.json" .
 cell G7.engine.1k 10000 "$dir/orders-1k-x10000.json" -c .a
 process=$(best_us -c .a "$dir/orders-1k.json")
 awk -v b="$process" 'BEGIN { printf "G7.process.1k\t-c .a\t1\t%.3f\t-\t%.3f\n", b / 1000, b }'
+
+# The #119 diagnostics of Tables A and B (ADR-0019 #119 amendment): one document each (K = 1), the filters and the
+# documents Diagnostics.main wrote. Eu at 10^6 has no row: jq-ref is quadratic there. A cap cell's start-up run
+# compiles its filter too, so per document is the run alone; best_ms holds the compile.
+for shape in T E M N; do cell "recur-$shape.1e6" 1 "$dir/ints-1e6.json" -c -f "$dir/recur-$shape.jq"; done
+cell limit-iter.1e6 1 "$dir/ints-1e6.json" -c -f "$dir/limit-iter.jq"
+cell limit-recurse.1e6 1 "$dir/ints-1e6.json" -c -f "$dir/limit-recurse.jq"
+cell dotdot.1k 1 "$dir/orders-1k.json" -c -f "$dir/dotdot.jq"
+cell dotdot.100k 1 "$dir/orders-100k.json" -c -f "$dir/dotdot.jq"
+cell dotdot.10m 1 "$dir/orders-10m.json" -c -f "$dir/dotdot.jq"
+cell dotdot-deep.9999 1 "$dir/deep-9999.json" -c -f "$dir/dotdot.jq"
+cell dotdot-deep.1k 1 "$dir/deep-1k.json" -c -f "$dir/dotdot.jq"
+for cap in cap-inline cap-inline-over cap-specialise cap-specialise-over; do
+  cell "$cap.1k" 1 "$dir/ints-1k.json" -c -f "$dir/$cap.jq"
+done
