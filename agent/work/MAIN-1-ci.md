@@ -211,3 +211,7 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
 - 2026-11-16: `ci` run 235 (id 43774288165) on 8cfd066e (FIX-262, documents only): success, 23:20Z to 23:47Z on
   2026-11-15, read from its conclusion. Green `ci` runs in a row: 6 (230 to 235). The run on 28e7ff9a (FIX-266,
   documents only) was not read when this line was written.
+- 2026-11-16, later: `ci` run 238 (id 43850535042) on 25748fb9 (CONSIDER-24: two test classes, one SQL file, documents):
+  success, 10:37Z to 11:03Z, read from its conclusion. Run 237 (id 43843463196), a scheduled run on 28e7ff9a (FIX-266,
+  documents only), was listed as in progress when read (started 09:50Z, last update 10:16Z); its conclusion and the push
+  runs on 28e7ff9a and a57a146f were not read. Green `ci` runs read in a row: 230 to 235, then 238.

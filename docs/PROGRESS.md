@@ -1,4 +1,14 @@
 
+## 2026-11-16 — The owner agreed the order of the next work — recorded
+
+- The owner, 2026-11-16, to the order proposed in the session: "souhlas s pořadím, pokračuj" - agreed with the order, go on.
+- (1) Replay leaves the code and the gate's check 7 is measured again: FIX-263, 267, 264, 265, 268, 269. FIX-270 - the plain
+  sentences on a second delivery - is done early, it is cheap. (2) The mapping: MAP-9 measured first, then MAP-1's design.
+  (3) The other rows on a second delivery, FIX-271 to 273, last: the owner called that death an exceptional case (D-161).
+- This lifts the stop of 2026-11-16 ("start nothing else"). The scratch worktree of CONSIDER-24 is removed; its files are on main.
+- `ci` on main: run 238 on 25748fb9 (CONSIDER-24) success; the scheduled run 237 on 28e7ff9a was still running when read
+  (`agent/work/MAIN-1-ci.md`).
+
 ## 2026-11-16 — The owner's answer on ISSUE-11 item 1: the two writes at a run's end stay apart — recorded
 
 - Context compacted before this entry: HANDOFF, `git status`, `git log -3` (25748fb9) and the fetch re-read before any change.
