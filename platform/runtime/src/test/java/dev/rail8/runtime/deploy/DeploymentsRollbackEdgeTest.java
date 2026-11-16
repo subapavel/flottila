@@ -397,8 +397,8 @@ class DeploymentsRollbackEdgeTest {
         DeployRefusedException refused = joinRefused(deploying(probed(version(changed(syncFlows("a", "b"), "b", "v2"), "2.0.0"), "b"), "r2"),
                 "v2, whose b does not start and does not build again");
 
-        assertEquals(List.of(true, true, false, false, true), probeBuilds.stream().map(dir -> dir.contains(sha1)).toList(),
-                "fixture: b's probe was built by v1 from its directory and by v2 from its own, twice each (delivery and replay, D-067), then once by the "
+        assertEquals(List.of(true, false, true), probeBuilds.stream().map(dir -> dir.contains(sha1)).toList(),
+                "fixture: b's probe was built by v1 from its directory and by v2 from its own, once each (its delivery), then once by the "
                         + "rollback from v1's, which threw: " + probeBuilds);
         assertEquals(Kind.FAILED, refused.kind(), refused.error() + " " + refused.problems());
         assertEquals("version 2.0.0 did not start; 1.0.0 runs again; flows [shop/b] FAILED", refused.error());

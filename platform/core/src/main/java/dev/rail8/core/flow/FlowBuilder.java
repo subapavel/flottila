@@ -72,8 +72,7 @@ import java.util.function.UnaryOperator;
  * With {@link #stepEvents stepEvents(true)} every step, whatever else wraps it, is marked outermost by a {@link StepEvent} (D-094);
  * the start stage is not. Without it no step is marked.
  * An at-least-once flow parks a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} (ARCHITECTURE §4
- * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build. {@link #replay} gives
- * the flow's replay: steps {@code n..end} as a new message.
+ * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build.
  *
  * <p>{@link #delivery} gives the flow's consumer handler per delivery mode, under the flow's {@link Admission} — at-least-once
  * saves durably through the {@link Intake} given through {@link #intake(Intake)}, by default into the store and the
@@ -84,8 +83,7 @@ import java.util.function.UnaryOperator;
  * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e). Each {@code to} sends under the limit of the target
  * its endpoint's component names ({@link Component#target}), from the {@link Targets} given through {@link #targets(Targets)} —
  * an unshared limit with the defaults when the component names none (D-099); the limit wraps only the producer's send, inside
- * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
- * runs the same stage. A permit not granted within the earlier of the limit's maxWait and the time left until the message's
+ * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time). A permit not granted within the earlier of the limit's maxWait and the time left until the message's
  * deadline fails the send with a retryable {@link dev.rail8.api.NackException}; a send where no {@link MessageContext} is bound
  * waits maxWait. Under the permit the producer is handed the time the send has left as a live {@link Deadline} — until the
  * message's deadline; no time left fails the send with a retryable {@link dev.rail8.api.NackException} "deadline passed" and
@@ -97,12 +95,12 @@ import java.util.function.UnaryOperator;
  * {@link FencedException} once it is closed (the item left unsettled; the abandoned send keeps its permit until its own future
  * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a worker's failed run
  * is deferred or parked only while the same fence is open — closed, its item is left unsettled, no defer and no DLQ row
- * ({@link FlowWorker}); a sync, at-most-once or replayed run is never fenced (no other node takes it over).
+ * ({@link FlowWorker}); a sync or at-most-once run is never fenced (no other node takes it over).
  *
- * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
- * {@code from} and {@code replayParked} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
- * (D-100): its deadline is the run's start on the Runtime's clock, taken when the stage runs, plus the flow's
- * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each message replay or DLQ replay.
+ * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s — starts with one
+ * stage that binds the message's {@link MessageContext} for the rest of the run (D-100): its deadline is the run's start on the
+ * Runtime's clock, taken when the stage runs, plus the flow's {@code delivery.timeout} — fresh per run: each sync call, each
+ * at-least-once claim.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -111,7 +109,7 @@ import java.util.function.UnaryOperator;
  * scheme, language or expression is a build error naming the step; nothing is deferred to the first message. So is a
  * step that needs the whole body ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit
  * without a {@code split} before it (ARCHITECTURE §5). A build that fails closes the producers it created before the failure
- * leaves; those of a {@link Delivery}, {@link FlowWorker} or {@link Replay} built are theirs to close ({@code close()}, FIX-30).
+ * leaves; those of a {@link Delivery} or {@link FlowWorker} built are theirs to close ({@code close()}, FIX-30).
  *
  * @since 0.1
  */
@@ -211,7 +209,7 @@ public final class FlowBuilder {
     /**
      * Tells {@code sink} every path the steps of the flows built from now on read through their {@link StepResources} ({@code file},
      * {@code resolve}) while they are built — by {@link #delivery} (sync, at-most-once; at-least-once: its partition key's
-     * expression), {@link #worker}, {@link #build} and {@link #replay} — for a flow's effective hash (D-063); it replaces the sink
+     * expression), {@link #worker} and {@link #build} — for a flow's effective hash (D-063); it replaces the sink
      * of an earlier call. Without a call nobody is told.
      */
     public FlowBuilder reads(Consumer<Path> sink) {
@@ -438,42 +436,6 @@ public final class FlowBuilder {
     }
 
     /**
-     * The flow's replay with an {@link Admission} of its own, built from the flow's limits as a {@link #delivery}'s is — no
-     * unbounded path; see {@link #replay(FlowDefinition, Path, Delivery)}.
-     */
-    public Replay replay(FlowDefinition flow, Path baseDir) {
-        Objects.requireNonNull(flow, "flow");
-        return replay(flow, baseDir, admission(flow));
-    }
-
-    /**
-     * The flow's replay, its runs admitted by {@code delivery}'s {@link Admission}: a replay in flight holds one of the permits
-     * the consumer's deliveries take, and the other way round (D-067). Needs the recorded snapshots ({@link #recording}) and, for
-     * DLQ replays, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
-     * the {@link Runtime}; the producers its steps send through are its own, closed by {@link Replay#close()}.
-     */
-    public Replay replay(FlowDefinition flow, Path baseDir, Delivery delivery) {
-        Objects.requireNonNull(flow, "flow");
-        return replay(flow, baseDir, delivery.admission());
-    }
-
-    private Replay replay(FlowDefinition flow, Path baseDir, Admission admission) {
-        if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
-        Built built = built(flow, baseDir, OPEN, true);
-        List<Stage> steps = built.steps();
-        Recorder recorder = built.recorder();
-        RecordingPolicy policy = flow.recording();
-        Stage context = built.context();
-        return new Replay(flow, from -> {
-            List<Stage> tail = new ArrayList<>(steps.size() - from + 3);
-            tail.add(context);
-            tail.add(recorder.start(policy, Replay.REPLAY_INPUT));
-            tail.addAll(steps.subList(from - 1, steps.size()));
-            return Pipeline.of(tail);
-        }, store, dlq, runtime.blobs(), runtime.ids(), admission, built.producers());
-    }
-
-    /**
      * The flow's steps as stages, wrapped (retry, numbering, recording, parking, then, with {@link #stepEvents}, the {@link StepEvent}
      * outermost), without the start stage; the stage that binds the message's context, the recorder (null without a store) and
      * the producers the steps send through.
@@ -491,7 +453,7 @@ public final class FlowBuilder {
 
     /**
      * The flow built, its {@code to} steps sending under {@code fence}; an at-least-once flow's steps wrapped by {@link Parking} when
-     * {@code parking} (a {@link #build} and a replay; a worker's are not, CORE-14a P6). A build that throws closes every producer it
+     * {@code parking} (a {@link #build}'s; a worker's are not, CORE-14a P6). A build that throws closes every producer it
      * created before the failure leaves (FIX-30), unchecked ones included.
      */
     private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence, boolean parking) {

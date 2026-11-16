@@ -17,9 +17,9 @@ import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.record.Meter;
+import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.journal.JournalRef;
@@ -64,18 +64,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * P1-09k2 (D-064, D-066, F-10) against Postgres: every kept step body of a run is made durable — its record forced in the
- * node's journal and its {@code body_refs} row committed — when the run ends and before its row is written, so a replay from
- * any step works after a restart: a new tiered store over the node's journal reopened, a new pool, a new message store. A
+ * node's journal and its {@code body_refs} row committed — when the run ends and before its row is written, so every step's body reads
+ * after a restart: a new tiered store over the node's journal reopened, a new pool, a new message store. A
  * row's {@code body_key} always names a durable body; a body above the durable bound is recorded metadata-only; a persisted
  * body's local copy is gone once the run ended.
  *
@@ -392,14 +390,14 @@ class StepBodiesIT {
 
     /**
      * The done-when of P1-09k: a message ran through {@code one} (memory), {@code two} (spill) and {@code three}; the node's
-     * process is gone. In the next process — its journal reopened, a new tiered store, new pool, new message store — a replay
-     * from step 3 gives step 3 the bytes the original run gave it, read from the journal by the ref Postgres names for the key
-     * step 2's row names; a replay from step 2 does the same for the body that was held in memory. (CORE-4c2: was "on a fresh
-     * node", read from {@code bodies}; a body is read on its owner node only until CORE-5.)
+     * process is gone. In the next process — its journal reopened, a new tiered store, new pool, new message store — step 2's
+     * and step 1's rows name their bodies by key, and the new store reads each from the journal by the ref Postgres names for
+     * that key, byte for byte: step 2's is the input step 3 ran on, step 1's the body that was held in memory. (CORE-4c2: was
+     * "on a fresh node", read from {@code bodies}; a body is read on its owner node only until CORE-5.)
      */
     @ParameterizedTest
     @ValueSource(strings = {"at-least-once", "sync"})
-    void aReplayFromStepThreeAfterARestartReproducesTheStepThreeInputByteForByte(String mode) {
+    void stepBodiesAreDurableAndReadByteForByteThroughTheirRowsAfterARestart(String mode) {
         FlowDefinition def = flow(mode, List.of(ONE, TWO, THREE));
         NodeStores a = new NodeStores();
         String id = "sb-" + mode;
@@ -416,27 +414,31 @@ class StepBodiesIT {
 
         NodeStores b = new NodeStores();
         assertEquals(Optional.empty(), b.blobs.location(stepTwo), "fixture: the restarted store holds nothing locally");
-        Replay replay = b.builder.replay(def, NO_FILES);
-        Envelope fromThree = assertDoesNotThrow(() -> replay.from(id, 3), "a replay from step 3 after the restart");
-        assertEquals(Optional.of(id), fromThree.get(Envelope.REPLAY_OF));
-        List<Buffer> replayed = inputsOf("three", fromThree.id());
-        assertEquals(1, replayed.size(), "step 3 ran once in the replay");
-        assertEquals(original.get(0), replayed.get(0), "the replayed step-3 input is the original step-3 input, byte for byte");
+        assertEquals(Optional.empty(), b.blobs.location(stepOne), "fixture: nor step 1's body");
+        List<Snapshot> rows = b.messages.timeline(id).await();
+        assertEquals(Optional.of(stepTwo), rowAt(rows, 2).bodyKey(), "the restarted message store reads step 2's row with its body key");
+        assertEquals(original.get(0), b.blobs.read(stepTwo).await(), "the restarted store reads the original step-3 input, byte for byte, from the journal");
+        assertEquals(Optional.of(stepOne), rowAt(rows, 1).bodyKey(), "and step 1's row with its key");
+        assertEquals(written.get(stepOne), b.blobs.read(stepOne).await(), "and step 1's in-memory body, byte for byte, from the journal");
+    }
 
-        Envelope fromTwo = assertDoesNotThrow(() -> replay.from(id, 2), "a replay from step 2 after the restart");
-        assertEquals(List.of(written.get(stepOne)), inputsOf("two", fromTwo.id()), "step 2 replayed on step 1's in-memory body, read from the journal");
+    /** The one row at {@code step} in {@code rows}. */
+    static Snapshot rowAt(List<Snapshot> rows, int step) {
+        List<Snapshot> at = rows.stream().filter(s -> s.step() == step).toList();
+        assertEquals(1, at.size(), "one row at step " + step + ": " + rows);
+        return at.get(0);
     }
 
     /**
      * D-066 with the trail: the first run of a message whose {@code stamp} step is not deterministic crashes after its stamp,
      * so its item is claimed again. The first run's trail made its stamp body durable, under the plain key; the rerun stamps
      * other bytes under a key of its own ({@code body~2}). Each attempt keeps its own stamp row (FIX-175: was "the first row
-     * wins"), each durable with its run's bytes, and after a restart a replay from step 2 reads attempt 2's bytes — the latest
-     * attempt's row, the bytes that row describes (FIX-175 P5: was the first run's). (CORE-4c2: was "on a fresh node", the
+     * wins"), each durable with its run's bytes, and after a restart the message store reads both rows and the new store reads
+     * the bytes the latest attempt's row describes (FIX-175 P5: was the first run's). (CORE-4c2: was "on a fresh node", the
      * first run's bytes in its {@code bodies} row; now its kept ref, read back from the journal.)
      */
     @Test
-    void aRerunOfAStampingStepKeepsEachAttemptsRowAndAReplayAfterARestartReadsAttemptTwosBytes() {
+    void aRerunOfAStampingStepKeepsEachAttemptsRowAndAfterARestartTheLatestRowReadsAttemptTwosBytes() {
         FlowDefinition def = flow("at-least-once", List.of(STAMP, CRASH_FIRST, THREE));
         NodeStores a = new NodeStores();
         String id = "sb-rerun";
@@ -452,7 +454,7 @@ class StepBodiesIT {
         assertEquals(2, stamped.size(), "fixture: stamp ran twice");
         assertNotEquals(stamped.get(0), stamped.get(1), "fixture: the rerun stamped other bytes");
         BlobKey first = BlobKey.body(id, 1);
-        // FIX-175 (P2, P5) changed this expectation: each attempt keeps its own stamp row, and a replay takes the latest attempt's.
+        // FIX-175 (P2, P5) changed this expectation: each attempt keeps its own stamp row, each naming its own bytes.
         // FIX-212: the rows are six, not five — attempt 1's crash-first row too, outcome failed (a step that throws is recorded, D-140);
         // both trails closed before their polls returned, the flush is the writer's own signal that nothing is left queued: one read.
         a.messages.flush().await();
@@ -466,8 +468,13 @@ class StepBodiesIT {
         a.close();
 
         NodeStores b = new NodeStores();
-        Envelope replayed = assertDoesNotThrow(() -> b.builder.replay(def, NO_FILES).from(id, 2), "a replay from step 2 after the restart");
-        assertEquals(List.of(stamped.get(1)), inputsOf("three", replayed.id()), "step 3 of the replay read the bytes the latest attempt's stamp row describes");
+        List<Snapshot> stampRows = b.messages.timeline(id).await().stream().filter(s -> s.step() == 1)
+                .sorted(java.util.Comparator.comparingInt(Snapshot::attempt)).toList();
+        assertEquals(List.of(1, 2), stampRows.stream().map(Snapshot::attempt).toList(), "the restarted message store reads both attempts' stamp rows");
+        assertEquals(Optional.of(second), stampRows.get(1).bodyKey(), "the latest attempt's row names the rerun's key");
+        assertEquals(stamped.get(1), b.blobs.read(second).await(), "and the restarted store reads the bytes that row describes, the rerun's, from the journal");
+        assertEquals(Optional.of(first), stampRows.get(0).bodyKey(), "attempt 1's row names the plain key");
+        assertEquals(stamped.get(0), b.blobs.read(first).await(), "which still reads the first run's bytes");
     }
 
     /** The {@code body_key} of each stamp (step 1) row of {@code id}, by attempt. */
@@ -495,8 +502,8 @@ class StepBodiesIT {
 
     /**
      * Above the durable bound a step body cannot be made durable: its row is recorded metadata-only (hash and size, no key),
-     * the rows around it keep theirs, the message is done with as usual, and a replay that would need that body is refused as
-     * "recorded metadata-only".
+     * the rows around it keep theirs, the message is done with as usual, and the message store reads that row back
+     * metadata-only.
      */
     @ParameterizedTest
     @ValueSource(strings = {"at-least-once", "sync"})
@@ -515,8 +522,9 @@ class StepBodiesIT {
         assertEquals(Optional.of(id + "/1/body"), rowBodyKey(id, 1), "the row before it keeps its key");
         assertEquals(Optional.empty(), rowBodyKey(id, 3), "step 3 handed the huge body on unchanged: its row names no key either");
         assertEquals(0, rowsWithoutTheirBody(), "no row names a body that is not durable");
-        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> a.builder.replay(def, NO_FILES).from(id, 3));
-        assertTrue(refused.getMessage().contains("metadata-only"), "a replay that needs the body names why it cannot: " + refused.getMessage());
+        Snapshot hugeRow = rowAt(a.messages.timeline(id).await(), 2);
+        assertEquals(Optional.empty(), hugeRow.bodyKey(), "the message store reads that row back metadata-only: no body key");
+        assertEquals(ABOVE, hugeRow.bodySize(), "and its size");
     }
 
     /**

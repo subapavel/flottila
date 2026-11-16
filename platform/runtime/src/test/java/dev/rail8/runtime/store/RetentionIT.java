@@ -583,7 +583,7 @@ class RetentionIT {
         message("orig", 1, cutoff.minus(DAY), "invoiceId=1");
         body("orig", 0, cutoff.minus(DAY.multipliedBy(2)));
         body("orig", 1, cutoff.minus(DAY));
-        dlq("retry", "orig/0/body", cutoff.minus(DAY));   // a replay parked with the original's step-0 body (Replay, Parking)
+        dlq("retry", "orig/0/body", cutoff.minus(DAY));   // a row parked with another message's step-0 body (Parking keeps the body's key as given)
 
         Retention.Run run = run(job(1000));
 

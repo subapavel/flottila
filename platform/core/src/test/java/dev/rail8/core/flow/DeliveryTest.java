@@ -1362,6 +1362,69 @@ class DeliveryTest {
     }
 
     /**
+     * FIX-264 (from the replay's permit case): a sync run that fails holds its flow permit until its trail closed, as a run that
+     * replies does ({@link #aSyncReplyIsAnsweredBeforeItsBodiesPersistAndThePermitReturnsAfter}): the caller has its failure while
+     * the trail's persist is held, the next delivery of the one-permit flow is a retryable Nack that runs nothing, and once the
+     * persist is released the failed run's rows land, the permit is back and the next delivery is answered.
+     */
+    @Test
+    void aFailedSyncRunHoldsItsPermitUntilItsTrailClosed() {
+        Delivery delivery = delivery(onePermit("sync"));
+        Envelope in = ingressInOwnStore(ORDER);
+        partner.failNext(1, () -> new IllegalStateException("partner down"));
+        own.hold();
+
+        Future<Ack> failed = applied(applyOn(delivery, in)).ack();
+        assertTrue(failed.failed(), "the run's failure is the caller's answer, with the trail's persist still held: " + failed);
+        assertEquals("partner down", failed.cause().getMessage(), "the step's own failure: " + failed.cause());
+        until(() -> own.held() == 1, () -> "the failed run's trail persists the ingress body: " + own.persists());
+        assertEquals(List.of(), rowNames(in.id()), "fixture: the failed run's rows wait for their body");
+
+        Envelope probe = ingressInOwnStore(ORDER);
+        retryableNack(applied(applyOn(delivery, probe)).ack());
+        assertEquals(List.of(in.id()), partner.sent().stream().map(Envelope::id).toList(), "the refused delivery ran nothing: the failed run still holds the permit");
+        assertEquals(1, delivery.admission().inFlightRequests(), "the failed run's permit is out while its trail closes");
+
+        own.release();
+        until(() -> delivery.admission().inFlightRequests() == 0, () -> "the permit back once the trail closed: " + delivery.admission().inFlightRequests());
+        assertEquals(List.of("ingress", "partner"), rowNames(in.id()), "the failed run's rows landed");
+        assertEquals(Snapshot.Outcome.FAILED, store.timeline(in.id()).await().get(1).outcome());
+        assertInstanceOf(Ack.Reply.class, applied(applyOn(delivery, ingressInOwnStore(ORDER))).ack().result(), "the next delivery is admitted and answered");
+    }
+
+    /**
+     * FIX-264, the at-most-once twin of {@link #aFailedSyncRunHoldsItsPermitUntilItsTrailClosed}: a run that fails after its
+     * Accepted holds the flow's one permit while its trail's persist is held — the next delivery is a retryable Nack, a stop's
+     * flight has not landed — and gives it back once the trail closed.
+     */
+    @Test
+    void aFailedAtMostOnceRunHoldsItsPermitUntilItsTrailClosed() {
+        Delivery delivery = delivery(onePermit("at-most-once"));
+        Envelope in = ingressInOwnStore(ORDER);
+        List<Thread> runs = new CopyOnWriteArrayList<>();
+        partner.failNext(1, () -> {
+            runs.add(Thread.currentThread());
+            return new IllegalStateException("partner down");
+        });
+        own.hold();
+
+        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
+        until(() -> own.held() == 1 && runs.size() == 1 && endedOrWaiting(runs.get(0)),
+                () -> "the failed run past its pipeline, its trail's persist asked: held " + own.held() + ", runs " + runs);
+        assertEquals(List.of(), rowNames(in.id()), "fixture: the failed run's rows wait for their body");
+        retryableNack(delivery.apply(ingressInOwnStore(ORDER)));
+        assertEquals(List.of(in.id()), partner.sent().stream().map(Envelope::id).toList(), "the refused delivery ran nothing: the failed run still holds the permit");
+        Future<Void> stopped = delivery.stop(Duration.ofHours(1));
+        assertFalse(stopped.isComplete(), "the failed run has not landed while its trail's persist is held: " + stopped);
+
+        own.release();
+        assertTrue(settled(stopped).succeeded(), "it landed once its trail closed");
+        assertEquals(0, delivery.admission().inFlightRequests(), "and gave its permit back");
+        assertEquals(List.of("ingress", "partner"), rowNames(in.id()), "the failed run's rows landed");
+        assertEquals(Snapshot.Outcome.FAILED, store.timeline(in.id()).await().get(1).outcome());
+    }
+
+    /**
      * A sync caller's thread leaves its delivery with the reply (P1-09k2 r1b): a stop's deadline that comes while the run's
      * trail still closes (its persist held) interrupts nothing — the thread that called goes on with its own work — and the
      * trail closes as usual, the flight landing after it.

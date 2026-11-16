@@ -1,4 +1,20 @@
 
+## 2026-11-16 — FIX-264 replay leaves the platform's code (D-156) — done, review PASS [B]
+
+- Gone: `Replay`, `ReplayRefusedException`, `RowNotRemovedException`, `FlowBuilder.replay`, the producers a deployment opened
+  for it, the oracle's check `REPLAY_YIELDS_RECORDED` (deleted, no tombstone: D-165), and replay's tests with no successor.
+- Kept and tested as before: park, the failed list, `/retry`, the trail, delivery close. Left for their rows: `REPLAY_OF` and
+  `/retry`'s refusal words (FIX-265), `Dlq.remove` and `WorkQueue.restart` (FIX-276), what has no main caller now (FIX-269).
+- Run 1 was red: `DeploymentsSecretsTest.producerOptionsResolvedToo` asked for at least four producers, replay's among them
+  (now exactly three) - a wrong expectation the packet had missed. Core and runtime read lower by ratio: fix round 1 added cases, no exception.
+- VERIFIED_PASS run 2 (`agent/work/FIX-264-evidence.txt`): whole reactor `-Pit` 4377 tests, 0 failures, errors, skips; ArchUnit
+  48; coverage no decrease - core 99.72 -> 99.96 % lines, 99.45 -> 99.51 % branches; runtime 99.47 -> 99.50, 99.40 -> 99.47.
+- Mutation (`agent/work/FIX-264-pit-match.txt`): no mutant unkilled after and killed before; `Parking`:88's two lambdas,
+  SURVIVED before, are KILLED. `PinnedSeedsTest` green, `pinned-seeds.tsv` byte-identical.
+- Amended in the packet (acceptance 8): testkit's branch figure is lower, 397 of 417 against 400, in a module the diff cannot
+  reach - it read 401, 400, 398, 397 in four runs on the same code. New row FIX-280 [B], put first in the order.
+- Review [B]: PASS, round 1; its remarks on Javadoc and a dead test fixture went to FIX-269's notes.
+
 ## 2026-11-16 — MAP-12 the ratchet's check on GitHub — designed and split into 12a, 12b, 12c (nothing built)
 
 - Class C path: the designer's draft (`agent/work/MAP-12-designer.md`), the advisor's opposition (`-advisor.md`: sound with

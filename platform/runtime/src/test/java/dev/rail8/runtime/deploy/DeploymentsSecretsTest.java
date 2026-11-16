@@ -300,7 +300,11 @@ class DeploymentsSecretsTest {
         assertEquals(HOST_KEY, options.get("hostKey"), "the other options as written: " + options);
     }
 
-    /** An out endpoint's reference reaches every producer built of it — the sync and at-most-once deliveries', the worker's, the replays'. */
+    /**
+     * An out endpoint's reference reaches every producer built of it — the deliveries' and the worker's: in {@code shop} the sync
+     * delivery of {@code orders}, the at-most-once delivery of {@code ping} and the worker of the at-least-once {@code audit} (whose
+     * delivery only saves), exactly three.
+     */
     @Test
     void producerOptionsResolvedToo() throws Exception {
         Node n = node(Map.of("RAIL8_SECRET_PARTNER_URL", "rec://partner-from-the-env"));
@@ -311,7 +315,7 @@ class DeploymentsSecretsTest {
         for (Map<String, Object> options : produced) {
             assertEquals("rec://partner-from-the-env", options.get("url"), "every producer of partner gets the value: " + produced);
         }
-        assertTrue(produced.size() >= 4, "at least the three flows' sends and the worker's: " + produced.size() + " " + n.doors.producers());
+        assertEquals(3, produced.size(), "the sync delivery's of orders, the at-most-once delivery's of ping, the worker's of audit: " + n.doors.producers());
     }
 
     /** The consumer's options carry the value; the deploy's own options (flow, maxBodyBytes) are still there. */

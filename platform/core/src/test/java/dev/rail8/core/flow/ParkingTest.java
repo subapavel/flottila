@@ -1,12 +1,15 @@
 package dev.rail8.core.flow;
 
 import dev.rail8.api.BlobKey;
+import dev.rail8.api.BlobNotFoundException;
 import dev.rail8.api.BlobStore;
 import dev.rail8.api.BodyTooLargeException;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
+import dev.rail8.api.Keys;
 import dev.rail8.api.Pipeline;
+import dev.rail8.api.Props;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
@@ -20,6 +23,7 @@ import dev.rail8.core.node.FencedException;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.Trail;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.InMemoryBlobStore;
 import io.vertx.core.Future;
@@ -31,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -274,6 +279,115 @@ class ParkingTest {
         assertSame(thrown, park.cause(), "with what the persist threw as its cause");
         assertEquals(List.of(), dlq.durableAtPark, "the DLQ was never asked to park");
         assertEquals(List.of(), dlq.all(), "no row");
+    }
+
+    /** An OK snapshot of {@code e} at its step, showing its body and keeping that body's key. */
+    static Snapshot keeping(Envelope e) {
+        return new Snapshot(e.id(), "f", e.step(), "s" + e.step(), Snapshot.Outcome.OK, Optional.empty(), FakeRuntime.T0, 0, 0, Headers.empty(),
+                Props.empty(), Keys.empty(), e.body().hash(), e.body().size(), Optional.of(e.body().key()), Map.of());
+    }
+
+    /**
+     * FIX-264 (D-066, from the replay's trail case): a park made while a run's {@link Trail} is bound tells that trail the parked
+     * body is durable once its persist succeeded — even when the persist answers later, on a thread with no trail bound: the trail
+     * is the one current at the call. The trail then never persists that key again and its row keeps the key.
+     */
+    @Test
+    void aParkUnderATrailTellsTheTrailTheParkedBodyIsDurableOnceItsPersistSucceeded() throws Exception {
+        HoldingBlobStore bodies = bodies();
+        WatchingDlq dlq = new WatchingDlq(bodies);
+        Envelope e = stepTwoInput(ingressIn(bodies), bodies);
+        BlobKey key = BlobKey.body(e.id(), 1);
+        Trail trail = new Trail(Set.of());
+        bodies.hold();
+
+        Future<Parked> park = trail.call(() -> parking(dlq).park(e, STEP_X, new IllegalStateException("boom at x")));
+        assertFalse(park.isComplete(), "fixture: the persist answers after the trail's scope ended: " + park);
+        assertTrue(Trail.current().isEmpty(), "fixture: no trail bound on the thread the persist answers on");
+        bodies.release();
+        Parked parked = park.await(5, TimeUnit.SECONDS);
+        assertEquals(key, parked.bodyKey());
+
+        trail.add(store, keeping(e), e.body());
+        trail.close().await(5, TimeUnit.SECONDS);
+        assertEquals(List.of(key), bodies.persists(), "persisted once, by the park: the trail was told the key is durable and did not persist it again");
+        List<Snapshot> rows = store.timeline(e.id()).await();
+        assertEquals(List.of(Optional.of(key)), rows.stream().map(Snapshot::bodyKey).toList(), "the trail's row keeps the parked key: " + rows);
+        assertEquals(0, trail.metadataOnly());
+    }
+
+    /**
+     * FIX-264 (D-066): a park made while a run's {@link Trail} is bound whose persist failed tells the trail nothing: the trail
+     * persists the key itself at its close, and its row keeps the key only because that persist of its own succeeded.
+     */
+    @Test
+    void aParkUnderATrailWhosePersistFailedTellsTheTrailNothing() throws Exception {
+        HoldingBlobStore bodies = bodies();
+        WatchingDlq dlq = new WatchingDlq(bodies);
+        Envelope e = stepTwoInput(ingressIn(bodies), bodies);
+        BlobKey key = BlobKey.body(e.id(), 1);
+        Trail trail = new Trail(Set.of());
+        bodies.hold();
+        IllegalStateException down = new IllegalStateException("pg down");
+
+        Future<Parked> park = trail.call(() -> parking(dlq).park(e, STEP_X, new IllegalStateException("boom at x")));
+        assertFalse(park.isComplete(), "fixture: the persist answers after the trail's scope ended: " + park);
+        bodies.fail(down);
+        assertTrue(park.failed(), "the park fails with its persist: " + park);
+        assertSame(down, park.cause());
+        assertFalse(bodies.persisted(key), "fixture: the park made nothing durable");
+
+        trail.add(store, keeping(e), e.body());
+        trail.close().await(5, TimeUnit.SECONDS);
+        assertEquals(List.of(key, key), bodies.persists(), "the park's failed persist, then the trail's own: the trail was not told the key is durable");
+        assertTrue(bodies.persisted(key), "the trail's persist made it durable");
+        List<Snapshot> rows = store.timeline(e.id()).await();
+        assertEquals(List.of(Optional.of(key)), rows.stream().map(Snapshot::bodyKey).toList(), "the row keeps the key its own persist made durable: " + rows);
+        assertEquals(List.of(), dlq.all(), "no DLQ row");
+    }
+
+    /**
+     * FIX-264 (from the replay's removed-body case, its retry half): a park that finds no body to persist — the parked input's
+     * bytes are gone from its store, as retention takes them — fails with the store's miss naming the key and writes no DLQ row:
+     * the DLQ is never asked. A row that was there stays as it was: the message's own earlier row and another message's. Through
+     * {@code park} and through a wrapped step alike; the wrapped step's own failure surfaces, not a {@link ParkedException}, the
+     * miss suppressed on it.
+     */
+    @Test
+    void aParkThatFindsNoBodyToPersistFailsWritesNoRowAndLeavesTheRowsThatWereThere() {
+        ForgettingBlobStore bodies = new ForgettingBlobStore(new InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+        List<Parked> asked = new CopyOnWriteArrayList<>();
+        Dlq watched = new Dlq() {
+            @Override public Future<Void> park(Parked p) { asked.add(p); return dlq.park(p); }
+            @Override public Future<Page<Parked>> list(Optional<String> after, int limit) { return dlq.list(after, limit); }
+            @Override public Future<Optional<Parked>> get(String id) { return dlq.get(id); }
+            @Override public Future<Void> remove(String id) { return dlq.remove(id); }
+        };
+        Parking parking = parking(watched);
+        Envelope earlier = stepTwoInput(ingressIn(bodies), bodies);
+        Envelope other = stepTwoInput(ingressIn(bodies), bodies);
+        Parked earlierRow = parking.park(earlier, STEP_X, new IllegalStateException("boom at x")).await();
+        Parked otherRow = parking.park(other, STEP_X, new IllegalStateException("boom at x")).await();
+        assertEquals(List.of(earlierRow, otherRow), asked, "fixture: both rows parked while their bodies were there");
+        BlobKey gone = earlier.body().key();
+        bodies.forget(gone);
+
+        Future<Parked> park = parking.park(earlier, STEP_X, new IllegalStateException("boom at x again"));
+        assertTrue(park.failed(), "a park with no body to persist fails: " + park);
+        assertEquals(gone, assertInstanceOf(BlobNotFoundException.class, park.cause(), "the store's miss: " + park.cause()).key(), "naming the gone key");
+
+        IllegalStateException boom = new IllegalStateException("boom at x, wrapped");
+        Stage failing = parking.wrap(Stage.of(e -> { throw boom; }), STEP_X);
+        IllegalStateException surfaced = assertThrows(IllegalStateException.class, () -> failing.apply(earlier, out -> out));
+        assertSame(boom, surfaced, "the step's own failure surfaces, not a ParkedException");
+        assertEquals(1, surfaced.getSuppressed().length, List.of(surfaced.getSuppressed()).toString());
+        assertEquals(gone, assertInstanceOf(BlobNotFoundException.class, surfaced.getSuppressed()[0]).key(), "the miss, suppressed");
+
+        assertTrue(bodies.events().contains("persist " + gone), "fixture: the parks tried to persist the gone body: " + bodies.events());
+        assertEquals(List.of(earlierRow, otherRow), asked, "no DLQ row written: the DLQ was never asked to park again");
+        assertEquals(Optional.of(earlierRow), dlq.get(earlier.id()).await(), "the message's earlier row stays as it was");
+        assertEquals(Optional.of(otherRow), dlq.get(other.id()).await(), "another message's row stays");
+        assertEquals(2, dlq.size());
     }
 
     /** One way a store cannot make the parked body durable; {@code arm} sets the store up and returns what the persist fails with. */

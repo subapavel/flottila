@@ -39,10 +39,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * D-100 (FIX-115, F-24): every pipeline the builder builds — sync, at-most-once, the at-least-once worker's, a replay's and a DLQ
- * retry's — starts with one stage that binds the message's {@link MessageContext}: its id, its flow, tenant {@code "default"},
+ * D-100 (FIX-115, F-24): every pipeline the builder builds — sync, at-most-once, the at-least-once worker's and a built one —
+ * starts with one stage that binds the message's {@link MessageContext}: its id, its flow, tenant {@code "default"},
  * trace id = message id, and a deadline = the run's start on the Runtime's clock + the flow's {@code delivery.timeout} (default
- * 30 s), fresh per run (each claim, each replay). The binding ends with the run. A core probe step reads
+ * 30 s), fresh per run (each claim). The binding ends with the run. A core probe step reads
  * {@link MessageContext#current()} — steps in api cannot.
  */
 class FlowBuilderContextTest {
@@ -215,43 +215,27 @@ class FlowBuilderContextTest {
     }
 
     /**
-     * A replay ({@code from}) and a DLQ replay each bind the context of the new message they run: its new id as id and trace id,
-     * and a deadline from the replay's start + 7 s — not the original's. The original run (a built pipeline) bound its own.
+     * A built at-least-once pipeline binds the context of the message it runs for every step, on the caller's thread — its id as
+     * id and trace id, a deadline from its start + 7 s — and a step's failure parks it under that binding.
      */
     @Test
-    void aReplayAndARetryBindTheirNewIdWithAFreshDeadline() throws Exception {
+    void aBuiltAtLeastOnceRunThatParksBindsItsOwnContextForEveryStep() throws Exception {
         InMemoryDlq dlq = new InMemoryDlq();
         FlowBuilder b = builder().recording(new InMemoryMessageStore(), () -> 0).dlq(dlq);
-        FlowDefinition def = flow("ctx-replay", "at-least-once", "7s", List.of(step("probe", "a"), step("probe", "b")));
+        FlowDefinition def = flow("ctx-built", "at-least-once", "7s", List.of(step("probe", "a"), step("probe", "b")));
         Pipeline pipeline = b.build(def, NO_FILES);
-        Replay replay = b.replay(def, NO_FILES);
-        Envelope in = ingress("ctx-replay");
-        Instant original = rt.clock().instant();
+        rt.clock().advance(BACKLOG);
+        Envelope in = ingress("ctx-built");
+        Instant start = rt.clock().instant();
 
         failAt.set("b");
         Ran parked = onVirtualThread(() -> pipeline.apply(in));
-        assertInstanceOf(ParkedException.class, parked.outcome(), "fixture: the original run parked at b");
-        assertTrue(dlq.get(in.id()).await().isPresent(), "fixture: the DLQ row for the retry");
-        failAt.set(null);
+        assertInstanceOf(ParkedException.class, parked.outcome(), "fixture: the run parked at b");
+        assertTrue(dlq.get(in.id()).await().isPresent(), "fixture: the DLQ row");
 
-        rt.clock().advance(BACKLOG);
-        Instant replayed = rt.clock().instant();
-        Ran from = onVirtualThread(() -> replay.from(in.id(), 2, "r-1"));
-        assertInstanceOf(Envelope.class, from.outcome(), "fixture: the replay went through");
-
-        rt.clock().advance(Duration.ofMinutes(1));
-        Instant retried = rt.clock().instant();
-        Ran retry = onVirtualThread(() -> replay.replayParked(in.id(), "r-2"));
-        assertInstanceOf(Envelope.class, retry.outcome(), "fixture: the retry went through");
-
-        MessageContext originalContext = context(in.id(), "ctx-replay", original.plus(Duration.ofSeconds(7)));
-        assertEquals(List.of(
-                        new Seen("a", originalContext, parked.thread()),
-                        new Seen("b", originalContext, parked.thread()),
-                        new Seen("b", context("r-1", "ctx-replay", replayed.plus(Duration.ofSeconds(7))), from.thread()),
-                        new Seen("b", context("r-2", "ctx-replay", retried.plus(Duration.ofSeconds(7))), retry.thread())),
-                seen, "the original, the replay from step 2 and the retry of the parked step each run under their own message's context");
-        replay.close().await(5, TimeUnit.SECONDS);
+        MessageContext expected = context(in.id(), "ctx-built", start.plus(Duration.ofSeconds(7)));
+        assertEquals(List.of(new Seen("a", expected, parked.thread()), new Seen("b", expected, parked.thread())), seen,
+                "both steps, the failing one included, see the message's context on the caller's thread");
     }
 
     /**

@@ -65,6 +65,49 @@ class StepCpuTest {
         assertEquals(totals(5, 5, 0, 0, 0, 0, 0), cpu.totals());
     }
 
+    /**
+     * FIX-264 (fixed intervals; {@link StepCpuPropertyTest} draws them at random): a late sample meets five kept steps of its thread
+     * in their arrival order — one containing it (the first found), one containing it that started later (the innermost), one
+     * containing it that started earlier, one that starts after it, one that ended before it though it started after the innermost.
+     * The sample goes to the containing step that started last, wherever it stands in the arrival order.
+     */
+    @Test
+    void aLateSampleGoesToTheContainingStepThatStartedLastWhateverTheArrivalOrder() {
+        cpu.step(VT, T + 100 * MS, T + 1_000 * MS, "f", 1, "outer");   // contains the sample: the first found
+        cpu.step(VT, T + 200 * MS, T + 900 * MS, "f", 2, "inner");     // contains it, starts later: the innermost
+        cpu.step(VT, T + 50 * MS, T + 950 * MS, "f", 3, "wider");      // contains it, starts earlier than the innermost
+        cpu.step(VT, T + 600 * MS, T + 700 * MS, "f", 4, "later");     // starts after the sample
+        cpu.step(VT, T + 300 * MS, T + 400 * MS, "f", 5, "ended");     // started after the innermost, ended before the sample
+        cpu.sample(VT, true, T + 500 * MS, P);
+
+        assertEquals(List.of(new StepCpu.Row(2, "inner", 1, 1, P), new StepCpu.Row(1, "outer", 1, 0, 0), new StepCpu.Row(3, "wider", 1, 0, 0),
+                new StepCpu.Row(4, "later", 1, 0, 0), new StepCpu.Row(5, "ended", 1, 0, 0)), cpu.rows("f"),
+                "the sample at 500 ms is inner's (start 200 ms): not outer's (100), wider's (50), later's (starts 600) or ended's (ends 400)");
+        assertEquals(totals(1, 1, 0, 0, 0, 0, 0), cpu.totals());
+    }
+
+    /**
+     * FIX-264 (FIX-108 review r1): a step handed without its thread counts one execution under its name, claims no pending sample
+     * and is not kept — no lane is held for it; a sample handed without its thread counts in {@code samples} and is
+     * {@code unattributed} at once, never pending.
+     */
+    @Test
+    void aStepOrASampleWithoutItsThreadIsCountedButNeverMatched() {
+        cpu.sample(VT, true, T + 10 * MS, P);   // pending on VT
+        cpu.stepWithoutThread("f", 1, "a");
+        assertEquals(List.of(new StepCpu.Row(1, "a", 1, 0, 0)), cpu.rows("f"), "one execution, no sample claimed");
+        assertEquals(totals(1, 0, 1, 0, 0, 0, 0), cpu.totals(), "VT's sample still pending");
+        assertEquals(1, cpu.lanes(), "only VT's lane: the threadless step is not kept");
+
+        cpu.sampleWithoutThread();
+        assertEquals(totals(2, 0, 1, 1, 0, 0, 0), cpu.totals(), "counted and unattributed at once");
+        assertEquals(1, cpu.lanes(), "no lane for a threadless sample");
+
+        cpu.stepWithoutThread("f", 1, "b");
+        assertEquals(List.of(new StepCpu.Row(1, "b", 2, 0, 0)), cpu.rows("f"), "a second execution, under the name it last ran under");
+        assertEquals(totals(2, 0, 1, 1, 0, 0, 0), cpu.totals(), "the step takes neither sample");
+    }
+
     /** A sample that arrives before its step waits; the step claims only its own thread's pending samples, each step counts one execution. */
     @Test
     void aPendingSampleIsClaimedWhenItsStepArrives() {

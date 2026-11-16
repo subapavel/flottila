@@ -44,9 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * CORE-4c2 (CORE-3 item 10, last sentence; packet item 3): a replay or DLQ-retry enqueue adds no record — it copies its source's
- * ref onto the new work row. It is one statement whose CTE holds the source row (the key's {@code body_refs} row: a kept input
- * snapshot for a replay, the parked body for a retry) and that row's segment row {@code for key share} and inserts the work row
+ * CORE-4c2 (CORE-3 item 10, last sentence; packet item 3): an enqueue by reference (PgIntake's, a DLQ retry's) adds no record — it copies its source's
+ * ref onto the new work row. It is one statement whose CTE holds the source row (the key's {@code body_refs} row: a kept body,
+ * the parked body for a retry) and that row's segment row {@code for key share} and inserts the work row
  * from them; no source row, or its segment row gone (swept) → {@link BlobNotFoundException} naming the key, nothing inserted.
  * A session holding either row for update makes the enqueue wait; its delete, once committed, leaves the enqueue with no row.
  *
@@ -162,8 +162,8 @@ class ReferenceEnqueueIT {
     }
 
     @Test
-    void aReplayEnqueueCopiesItsSourcesRefInOneStatement() throws Exception {
-        BlobKey input = BlobKey.body("m-src", 0);   // the kept input snapshot a replay from step 1 starts on
+    void anEnqueueByReferenceCopiesItsSourcesRefInOneStatement() throws Exception {
+        BlobKey input = BlobKey.body("m-src", 0);   // a kept body an enqueue by reference names (PgIntake's)
         segmentRow(7);
         bodyRef(input, 7, 4_096);
         try (PgWire wire = new PgWire(pg.getHost(), pg.getMappedPort(5432))) {
@@ -174,13 +174,13 @@ class ReferenceEnqueueIT {
             counted.query("select 1").execute().await();   // the one connection is open before the count starts
 
             int mark = wire.mark();
-            Future<Void> enqueued = settled(onTheWire.enqueue(counted, "m-replay", FLOW, 1, "K-1", input));
+            Future<Void> enqueued = settled(onTheWire.enqueue(counted, "m-copy", FLOW, 1, "K-1", input));
             assertTrue(enqueued.succeeded(), "enqueued: " + enqueued.cause());
             assertEquals(1, wire.statementsSince(mark).size(), "one statement holds the source rows and inserts the item: " + wire.since(mark));
         }
-        assertEquals(new Ref("node-a", 7L, 4_096L, 400L), workRef(db.pool(), "m-replay"),
+        assertEquals(new Ref("node-a", 7L, 4_096L, 400L), workRef(db.pool(), "m-copy"),
                 "the item takes its source's ref: no record added, the body named where it already lies");
-        Row item = db.pool().query("select flow, step, partition_key from work where id = 'm-replay'").execute().await().iterator().next();
+        Row item = db.pool().query("select flow, step, partition_key from work where id = 'm-copy'").execute().await().iterator().next();
         assertEquals(List.of(FLOW, 1, "K-1"), List.of(item.getString(0), item.getInteger(1), item.getString(2)), "the item as asked");
         assertEquals(1, count("select count(*) from body_refs"), "and no ref row added: the source's stays the only one");
     }

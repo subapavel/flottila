@@ -10,7 +10,6 @@ import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -237,20 +236,28 @@ class RecorderTest {
         assertEquals(0, ingress.step());
     }
 
+    /**
+     * FIX-264 (Q9 (1)): {@code start} at a later step records the envelope at its own step under the name it is given — CPU
+     * unknown, never 0, and wall 0, even with a reading meter and a step after it that takes 5 ms — and the step after it is
+     * measured by the same meter: a reading, not unknown.
+     */
     @Test
-    void replayStartRowRecordsCpuUnknown() {
-        FlowDefinition def = FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), step("mark", "b"))));
+    void aStartRowAtALaterStepRecordsItsOwnStepWithCpuUnknownAndTheNextStepIsMeasured() {
+        Recorder recorder = new Recorder(store, rt.clock(), READING, Map.of("flow", "f@1.0.0"));
         Envelope in = in();
-        new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, READING)
-                .build(def, java.nio.file.Path.of("")).apply(in);
-        Envelope again = new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, READING)
-                .replay(def, java.nio.file.Path.of("")).from(in.id(), 2);
-        List<Snapshot> t = store.timeline(again.id()).await();
-        assertEquals(List.of(Replay.REPLAY_INPUT, "b"), names(t), "the replay's timeline starts with the input it was given");
-        assertEquals(1, t.get(0).step());
-        assertEquals(Snapshot.CPU_UNKNOWN, t.get(0).cpuNanos(), "the replay's start row times nothing: its CPU is unknown, never 0 (F-21)");
-        assertEquals(0, t.get(0).wallNanos(), "and its wall stays 0");
-        assertEquals(0, t.get(1).cpuNanos(), "step b is measured by the same meter: a reading, not unknown");
+        Envelope atOne = in.next(rt.store(in, Buffer.buffer("<a/>")));
+        Stage b = recorder.wrap(Stage.of(e -> { rt.clock().advance(Duration.ofMillis(5)); return e.withHeader("seen-b", "yes"); }),
+                new StepConfig(2, "mark", "b", false, Map.of()), true, RecordingPolicy.DEFAULT);
+        Pipeline.of(List.of(recorder.start(RecordingPolicy.DEFAULT, "restart-at-b"), b)).apply(atOne);
+
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("restart-at-b", "b"), names(t), "the timeline starts with the row under the name start was given");
+        assertEquals(List.of(1, 2), t.stream().map(Snapshot::step).toList(), "the start row at the envelope's own step, 1, not 0");
+        assertEquals(Snapshot.CPU_UNKNOWN, t.get(0).cpuNanos(), "the start row times nothing: its CPU is unknown, never 0 (F-21)");
+        assertEquals(0, t.get(0).wallNanos(), "and its wall stays 0, though the step after it took 5 ms");
+        assertEquals(Optional.of(atOne.body().key()), t.get(0).bodyKey(), "the start row shows the envelope it was given: step 1's body");
+        assertEquals(0, t.get(1).cpuNanos(), "step b is measured by the same meter: two equal readings, a difference of 0, not unknown");
+        assertEquals(Duration.ofMillis(5).toNanos(), t.get(1).wallNanos(), "step b's wall is measured");
     }
 
     /** Throws a checked {@code failure} from code that declares none, as Vert.x {@code Future.await()} does when interrupted. */

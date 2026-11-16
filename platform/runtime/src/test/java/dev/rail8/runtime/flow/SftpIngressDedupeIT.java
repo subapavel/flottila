@@ -12,11 +12,9 @@ import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.journal.TestJournals;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.store.PgDlq;
@@ -60,7 +58,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -69,8 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * journal (CORE-4c2: the durable body is a journal record named by a {@code body_refs} row, no {@code bodies} row), {@code PgIntake} over Postgres, an at-least-once flow built with the dedupe key the sftp component names, its worker
  * over the Postgres queue, a mock partner. Round 1 saves the file as {@code sd-1} and its removal is refused: the file stays.
  * Round 2 delivers it again as {@code sd-2}: the save finds its file key taken and answers {@code sd-1}; the removal goes
- * through. One ingress row, one item, one send. A replay of the message is a new message: it never passes the intake, so is
- * never deduped.
+ * through. One ingress row, one item, one send.
  *
  * <p>The shape assumed: {@code Component.dedupeBy(EndpointConfig)}, {@code FlowBuilder.delivery(FlowDefinition, Path,
  * Optional<Key<String>>)}, {@code PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue)}; EmbeddedSftp's
@@ -225,34 +221,5 @@ class SftpIngressDedupeIT {
         assertEquals(0, worker.poll().await(), "nothing else is queued");
         assertEquals(1, partner.sentTo("partner").size(), "still one send");
         assertEquals(0, count("select count(*) from work"), "the item is completed");
-    }
-
-    @Test
-    void replayOfADedupedMessageRunsAsANewMessage() throws Exception {
-        sftp.drop("/inbox", "order.xml", Buffer.buffer("<order id=\"2\"/>"));
-        sftp.onNextRemoving((session, path) -> {
-            throw new IOException("the test refuses the first removal");
-        });
-        round();
-        round();
-        assertEquals(List.of(new Ack.Accepted("sd-1"), new Ack.Accepted("sd-1")), answers, "fixture: delivered twice, one message");
-        assertEquals(1, worker.poll().await(), "fixture: the message ran");
-        messages.flush().await();
-
-        Replay replay = builder.replay(def, DEMO, delivery);
-        try {
-            OnVirtualThread.call(() -> replay.from("sd-1", 1));
-        } finally {
-            replay.close().await();
-        }
-
-        List<Envelope> sent = partner.sentTo("partner");
-        assertEquals(2, sent.size(), "the replay ran and sent again, though the file key it carries is taken: never deduped — " + sent);
-        Envelope replayed = sent.get(1);
-        assertNotEquals("sd-1", replayed.id(), "a replay is a message of its own");
-        assertEquals(Optional.of("sd-1"), replayed.get(Envelope.REPLAY_OF), "marked as the replay of sd-1");
-        assertEquals(sent.get(0).get(SftpComponent.FILE_KEY), replayed.get(SftpComponent.FILE_KEY), "fixture: with the file key it was recorded with");
-        assertEquals(List.of("sd-1"), column("select message_id from processed_ids"), "the replay never passed the intake: no key row of its own");
-        assertEquals(0, count("select count(*) from work"), "nor an item");
     }
 }

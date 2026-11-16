@@ -1,12 +1,15 @@
 package dev.rail8.core.flow;
 
 import dev.rail8.api.BlobStore;
+import dev.rail8.api.Body;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Fault;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Pipeline;
+import dev.rail8.api.Props;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.Timer;
+import dev.rail8.api.Views;
 import dev.rail8.core.dlq.Parking;
 import dev.rail8.core.node.FencedException;
 import dev.rail8.core.queue.WorkQueue;
@@ -643,7 +646,7 @@ public final class FlowWorker {
                 LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " has no ingress snapshot to resume from; its item is completed");
                 return Verdict.COMPLETE;
             }
-            ingress = Replay.rebuild(in.get(), id, flow, in.get().props(), blobs);
+            ingress = rebuild(in.get(), id, flow, in.get().props(), blobs);
             if (item.attempts() > 1) ingress = ingress.with(Envelope.ATTEMPT, item.attempts());   // a rerun's step bodies under keys of its own (D-066)
             if (exhausted) {
                 if (!fence.getAsBoolean()) {   // a park is a settle (D-101 (2)): never from a closed fence, whose items another node may take and park
@@ -669,6 +672,16 @@ public final class FlowWorker {
             trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
         }
         return failure == null ? Verdict.COMPLETE : failed(item, ingress, failure);
+    }
+
+    /**
+     * The envelope {@code input} shows, as message {@code id} of {@code flow} with {@code props}: at the snapshot's step, its
+     * headers and keys, the body by its recorded key, no attachments, fresh views. What the worker resumes an at-least-once
+     * message from (its {@code ingress} snapshot, same id).
+     */
+    private static Envelope rebuild(Snapshot input, String id, String flow, Props props, BlobStore blobs) {
+        return new Envelope(id, flow, input.step(), input.headers(), props, input.keys(),
+                Body.of(blobs, input.bodyKey().orElseThrow(), input.bodyHash(), input.bodySize()), Map.of(), new Views());
     }
 
     /**

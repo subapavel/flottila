@@ -19,7 +19,6 @@ import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.core.flow.Intake;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.core.flow.SequentialIntake;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.Workers;
@@ -100,7 +99,7 @@ import java.util.stream.Stream;
  * are listed; a queue that cannot answer is the node's failure, and only when every question that failed was one the node's Postgres
  * pool refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133, FIX-173 — unless the package has
  * problems: then it is their 422) — and
- * every flow built: its delivery, its worker (at-least-once), its replay ({@link #replay(String)}, D-067)
+ * every flow built: its delivery, its worker (at-least-once)
  * and its effective hash ({@link DeployedFlow#hash()}). Each flow is then added (an id the package does not run, or one it lists
  * {@link DeployedFlow.State#FAILED}: nothing of that one runs), unchanged (the hash of the flow running: that flow runs on
  * untouched, with the stamps it was built with, and the new build is stopped with a zero deadline and closed), changed, or removed
@@ -113,8 +112,8 @@ import java.util.stream.Stream;
  *
  * <p>Then the swap (D-063, F-5 amended). Phase A stops every changed and removed flow at once ({@link #stop(Flow, Duration)}: its
  * worker first, then its delivery within the node's stop deadline and its consumer together, that consumer's stop bounded by the
- * stop deadline once the delivery stopped: ≤ 2× the stop deadline), then closes its delivery's producers and asks its worker and
- * its replay to close their own, never awaited (FIX-30; the replay refuses new runs from then on); a stop that fails or does not complete is logged at WARNING and the swap goes on. Phase B starts every
+ * stop deadline once the delivery stopped: ≤ 2× the stop deadline), then closes its delivery's producers and asks its worker
+ * to close its own, never awaited (FIX-30); a stop that fails or does not complete is logged at WARNING and the swap goes on. Phase B starts every
  * added and changed flow at once — its consumer, whose start is bounded by the node's stop deadline on the node's timer, then,
  * once that start succeeded, its worker, as worker {@code nodeId} — only once
  * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. A removed
@@ -187,14 +186,13 @@ import java.util.stream.Stream;
  * at its next tick, never the deploy's {@link Kind#FAILED}. Its stop — phase A, a rollback, {@link #close} — stops the consumer,
  * then releases the lease: the flow that replaces it takes the lease at its first tick, not a ttl later.
  *
- * <p>{@link #close} refuses deploys from then on, waits for a running one, then closes every replay to new runs and stops every
+ * <p>{@link #close} refuses deploys from then on, waits for a running one, then stops every
  * flow that runs at once: its worker first, then its delivery (within the node's stop deadline) and its consumer (bounded by the
  * stop deadline once the delivery stopped: ≤ 2× the stop deadline) together; once all have stopped it
  * closes every delivery's producers (FIX-30; a failed close is logged), then waits for every worker's items still running to
  * settle in the work queue and its producers to close — within the stop deadline counted from the start of the close (FIX-142):
  * a flow whose worker has not closed by then is a WARNING naming its count of unsettled items, whose work rows stay claimed
- * and run again once their lease ran out — then waits up to the stop deadline for every replay's runs in flight to end and its
- * producers to close (a WARNING when they did not by then), then returns and rethrows the first stop failure, in flow order.
+ * and run again once their lease ran out — then returns and rethrows the first stop failure, in flow order.
  * The node lease and each item's lease are renewed while the close waits: the node closes its lease and stores after it.
  * A redeploy or an undeploy never waits for a worker (D-063, FIX-30): its items run to their end through the worker's open
  * producers, renewing their lease, and the worker closes its producers once the last of them finished.
@@ -371,10 +369,9 @@ public final class Deployments {
      * One flow as the deploy built it: {@code archive} names the directory it was built from ({@code packages/<name>/<archive>}) and
      * {@code recipe} what its build took, so a failed redeploy can build it again (D-063); {@code from} is its in endpoint as its
      * consumer gets it; {@code worker} is null unless the flow is at-least-once, and {@code consumer} is null until one is built for
-     * it ({@link #with}); {@code replay} runs its message and DLQ replays under its delivery's admission (D-067). A
-     * {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker, replay or consumer.
+     * it ({@link #with}). A {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker or consumer.
      */
-    private record Flow(DeployedFlow flow, String archive, Recipe recipe, Delivery delivery, FlowWorker worker, Replay replay, EndpointConfig from,
+    private record Flow(DeployedFlow flow, String archive, Recipe recipe, Delivery delivery, FlowWorker worker, EndpointConfig from,
                         Consumer consumer) {
         String id() {
             return flow.id();
@@ -386,25 +383,23 @@ public final class Deployments {
         }
 
         Flow with(Consumer built) {
-            return new Flow(flow, archive, recipe, delivery, worker, replay, from, built);
+            return new Flow(flow, archive, recipe, delivery, worker, from, built);
         }
 
         /** This flow as a failed redeploy lists it when it cannot run it again: its record, FAILED; nothing of it built. */
         Flow failed() {
             DeployedFlow f = flow;
             return new Flow(new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.revision(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.FAILED),
-                    archive, recipe, null, null, null, from, null);
+                    archive, recipe, null, null, from, null);
         }
 
         /**
-         * Asks its stopped worker and its replay to close their producers, never awaited here — those closes wait for the items and
-         * the runs still in flight; the replay refuses new runs at once; only the node's shutdown waits for them ({@link Deployments#drain},
-         * FIX-142) — and closes its delivery's producers once the delivery stopped; completes with the delivery's close, never
-         * fails (FIX-30).
+         * Asks its stopped worker to close its producers, never awaited here — that close waits for the items still in flight;
+         * only the node's shutdown waits for them ({@link Deployments#drain}, FIX-142) — and closes its delivery's producers once
+         * the delivery stopped; completes with the delivery's close, never fails (FIX-30).
          */
         Future<Void> close() {
             if (worker != null) worker.close();
-            replay.close();
             return delivery.close();
         }
     }
@@ -482,15 +477,6 @@ public final class Deployments {
     /** Every package deployed, sorted by name; during a deploy as before it. */
     public List<DeployedPackage> packages() {
         return deployed.values().stream().map(Deployed::pkg).toList();
-    }
-
-    /**
-     * The replay of the flow {@code flowId} ({@code <package>/<flow>}) deployed now, sharing its delivery's admission (D-067);
-     * empty unless the flow is listed {@link DeployedFlow.State#RUNNING} — a FAILED flow has none — and once {@link #close} began.
-     * During a deploy, the version listed before it: a flow the deploy replaced refuses new runs from its phase A on (CLOSED).
-     */
-    public Optional<Replay> replay(String flowId) {
-        return deployed.values().stream().flatMap(d -> d.flows().stream()).filter(f -> f.id().equals(flowId)).findFirst().map(Flow::replay);
     }
 
     /**
@@ -653,9 +639,8 @@ public final class Deployments {
     /**
      * Refuses deploys from now on, waits for a running one, then stops every flow at once and closes their producers (see the
      * class comment) and returns once all have stopped and every delivery's producers closed, and every worker closed — its
-     * items settled — or the stop deadline, counted from now, passed ({@link #drain}); every replay refuses new runs at once and
-     * its producers' close, once its runs in flight ended, is awaited up to the stop deadline (one not closed by then is a
-     * WARNING); the first stop failure, in flow order, is rethrown then. Blocking: on a virtual thread.
+     * items settled — or the stop deadline, counted from now, passed ({@link #drain}); the first stop failure, in flow order, is
+     * rethrown then. Blocking: on a virtual thread.
      */
     public void close() {
         closing = true;
@@ -663,12 +648,9 @@ public final class Deployments {
         try {
             List<Flow> running = deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs).toList();
             deployed.clear();
-            Future<Void> replays = Future.all(running.stream().map(f -> f.replay().close()).toList()).mapEmpty();   // no new run from here on
             Future<Void> stopped = stop(running, config.stopDeadline());   // every worker stopped first: no claim from here on
             Future<Void> drained = drain(running, stopped);                 // its bound runs from here, the start of the close
-            stopped.eventually(() -> close(running)).eventually(() -> drained).eventually(() -> bounded(replays, "the replays' runs in flight")
-                    .onFailure(late -> LOG.log(System.Logger.Level.WARNING, "the node closes with replay runs still in flight; their producers close once "
-                            + "they ended: " + late, late)).otherwiseEmpty()).await();
+            stopped.eventually(() -> close(running)).eventually(() -> drained).await();
         } finally {
             deploying.unlock();
         }
@@ -1496,12 +1478,11 @@ public final class Deployments {
     /**
      * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery (its save deduped by the prop its in
      * endpoint's component names, {@link Component#dedupeBy} — asked first; a throw is the flow's failure), its worker
-     * (at-least-once), its replay (D-067: after them, sharing the delivery's admission), its effective hash ({@link FlowHash}: the
+     * (at-least-once), its effective hash ({@link FlowHash}: the
      * files those builds read, its endpoints as its consumer and its producers get them); its consumer comes later
      * ({@link #consumers}). A flow that fails after
      * its delivery was built stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included —
-     * its worker and its replay have run nothing yet, so their closes run at once; a worker or a replay that does not build has
-     * closed its own producers.
+     * its worker has run nothing yet, so its close runs at once; a worker that does not build has closed its own producers.
      *
      * @throws IOException a file the build read cannot be hashed: the node's failure
      */
@@ -1515,17 +1496,15 @@ public final class Deployments {
         // the save dedupes by the prop the in endpoint's component names (D-084), asked as the consumer gets the endpoint
         Delivery delivery = builder.delivery(def, baseDir, components.get(consumed.scheme()).dedupeBy(consumed));
         FlowWorker worker = null;
-        Replay replay = null;
         boolean built = false;
         try {
             worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
-            replay = builder.replay(def, baseDir, delivery);
             Map<String, EndpointConfig> written = recipe.written();   // the hash covers the references, never a value (D-081)
             String hash = FlowHash.of(dir, recipe.dependencies().dirs(), recipe.flowFile(), reads, consumed(written.get(def.fromEndpoint()), def),
                     def.referencedEndpoints().stream().map(written::get).toList());
             built = true;
             return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode(), hash, DeployedFlow.State.RUNNING),
-                    archive, recipe, delivery, worker, replay, consumed, null);
+                    archive, recipe, delivery, worker, consumed, null);
         } finally {
             if (!built) {
                 delivery.stop(Duration.ZERO);   // nothing was delivered yet: the stop completes at once, and the close after it
@@ -1534,7 +1513,6 @@ public final class Deployments {
                     worker.stop();
                     worker.close();
                 }
-                if (replay != null) replay.close();   // nothing ran on it yet: its producers close at once
             }
         }
     }

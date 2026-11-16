@@ -401,7 +401,7 @@ class DeploymentsRestoreTest {
         for (String flow : List.of("shop/a", "shop/b", "store/c")) {
             assertInstanceOf(Ack.Reply.class, second.send(flow), flow + " serves on node 2");
         }
-        assertTrue(second.deployments.replay("shop/a").isPresent(), "a restored flow has its replay");
+        assertEquals(1, second.live("shop/a").size(), "a restored flow's consumer runs on node 2: " + second.doors.events());
     }
 
     /**
@@ -431,7 +431,7 @@ class DeploymentsRestoreTest {
     }
 
     /**
-     * A flow whose consumer does not start on node 2 is listed FAILED — nothing of it runs, it has no replay — and the others
+     * A flow whose consumer does not start on node 2 is listed FAILED — nothing of it runs — and the others
      * run, the other flows of its package included; the package itself was not refused: it is listed RUNNING with both flows,
      * and the restore returns.
      */
@@ -459,7 +459,6 @@ class DeploymentsRestoreTest {
         Doors.Door door = second.doors.door("shop/b");
         assertTrue(door.history().contains("start failed"), "fixture: the restore called b's start, which failed: " + door.history());
         assertEquals(List.of(), second.live("shop/b"), "nothing of b runs: " + second.doors.events());
-        assertTrue(second.deployments.replay("shop/b").isEmpty(), "a FAILED flow has no replay");
         assertInstanceOf(Ack.Reply.class, second.send("shop/a"), "a serves");
         assertInstanceOf(Ack.Reply.class, second.send("store/c"), "c serves");
     }
@@ -497,7 +496,6 @@ class DeploymentsRestoreTest {
         assertFalse(errorsNaming("shop").isEmpty(), "an ERROR log names shop: " + logged.stream().map(LogRecord::getMessage).toList());
         assertEquals(List.of("store/c"), second.deployments.flows().stream().map(DeployedFlow::id).toList(), "only store's flow is listed");
         assertEquals(List.of(), second.startedOf("shop"), "nothing of shop started: " + second.doors.events());
-        assertTrue(second.deployments.replay("shop/a").isEmpty(), "a FAILED package's flows have no replay");
         assertRunning(second.pkg("store"), "store runs");
         assertInstanceOf(Ack.Reply.class, second.send("store/c"), "c serves");
     }

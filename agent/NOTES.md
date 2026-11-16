@@ -216,7 +216,7 @@ Open from the P1-06 review: an http reply above the limit leaves the client resp
 the store resumes it once attached and never resumes one it paused or failed itself
 (`resumeOwed` / `attached` in `StreamingWrite`).
 
-## DLQ (P1-05, D-045); replay is leaving (D-156, F-55)
+## DLQ (P1-05, D-045); replay has left the code (D-156, F-55)
 
 `core.dlq` Parked / Dlq / InMemoryDlq / Parking / ParkedException; `FlowBuilder.dlq(dlq)`
 (at-least-once flows park per step, awaited; sync and at-most-once never); runtime `store.PgDlq`
@@ -225,11 +225,14 @@ over V1 `dlq` + V3. ITs: `PgDlqIT`. Migrations are at V3 (`MigrationsIT`,
 The operator's retry is the same-id restart, `POST /admin/dlq/{id}/retry` (D-136). The two replay
 routes are gone (FIX-263, 2026-11-16): both answer as an unregistered route, `/retry`'s 422 texts
 name no other route, `AdminServer` takes no id source. Admin ITs over Postgres share
-`admin/AdminPgFixture`. Still in the code until its row lands: `FlowBuilder.replay(def, baseDir)` →
-`Replay.from(id, n)` / `retry(id)` (FIX-264, `Replay.rebuild` moves into `FlowWorker`; `ReplayTest`
-does not go whole - `agent/work/FIX-263-cases.md` section C); `Envelope.REPLAY_OF` and the words
-", a replay" in `/retry`'s refusal (FIX-265). A keyed flow's row parked without its key is refused
-by `/retry` for ever (FIX-274).
+`admin/AdminPgFixture`. Replay's core half left with FIX-264 (2026-11-16): `Replay`, its two
+exceptions, `FlowBuilder.replay`, the deployments' replay pipeline per flow (a flow opens producers
+for its delivery and its worker only) and the oracle's `Check.REPLAY_YIELDS_RECORDED` (D-165). A
+worker run starts in `FlowWorker.rebuild`, private. The properties `ReplayTest` carried that survive
+live in `DeliveryTest`, `ParkingTest`, `FlowBuilderTargetTest`, `RecorderTest` and the deployments'
+tests (`agent/work/FIX-264-scout.md`). Still in the code: `Envelope.REPLAY_OF` and the words
+", a replay" in `/retry`'s refusal (FIX-265); what has no main caller now is FIX-269's. A keyed
+flow's row parked without its key is refused by `/retry` for ever (FIX-274).
 Cancel and the record of both acts are designed, not built (D-162; ARCHITECTURE section 6, *The
 operator's acts on a failed message*). F-57: a `/retry` before a park has settled inserts a second
 work row of the id. Rows: FIX-275 the guard on `/retry`; FIX-276 `core.dlq.FailedMessages` with

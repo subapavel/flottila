@@ -11,7 +11,6 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.dlq.ParkedException;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
@@ -54,15 +53,13 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * BACKLOG P1-05 acceptance, GATE check 7 data: the demo flow as at-least-once — partner down → retries per the flow's policy →
- * DLQ row by reference in Postgres; the retry delivers once the partner is back; replay from step n of a delivered message
- * reproduces the run as a new message marked REPLAY_OF.
+ * DLQ row by reference in Postgres, durable before the failure surfaced, and the parked step's row recorded FAILED.
  */
-class InvoiceSyncReplayIT {
+class InvoiceSyncParkIT {
 
     static final Path DEMO = Path.of("../../examples/demo");
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
@@ -164,7 +161,7 @@ class InvoiceSyncReplayIT {
     }
 
     @Test
-    void partnerDownParksByReferenceAndTheRetryDeliversOnceThePartnerIsBack() {
+    void partnerDownParksByReferenceDurablyWithTheStepsFailedRow() {
         FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
         Pipeline p = builder().build(def, DEMO);
         http.failNext(4, () -> new IllegalStateException("503 from partner"));
@@ -184,36 +181,5 @@ class InvoiceSyncReplayIT {
         store.flush().await();
         List<Snapshot> original = store.timeline(in.id()).await();
         assertEquals(Snapshot.Outcome.FAILED, original.get(5).outcome());
-        Replay replay = builder().replay(def, DEMO);
-        Object delivered = run(() -> replay.replayParked(in.id()));
-        assertTrue(delivered instanceof Envelope, String.valueOf(delivered));
-        Envelope out = (Envelope) delivered;
-        assertNotEquals(in.id(), out.id());
-        assertEquals(Optional.of(in.id()), out.get(Envelope.REPLAY_OF));
-        assertEquals(5, out.step());
-        assertEquals(5, http.sentTo("partner-domestic").size(), "exactly one more delivery: the parked step only");
-        assertTrue(http.sentTo("partner-domestic").get(4).body().whole().toString().contains("<PartnerInvoice number=\"4711\""), "the parked mapped body went out");
-        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "GATE check 7: the retry delivered, the row is gone");
-        store.flush().await();
-        List<Snapshot> retried = store.timeline(out.id()).await();
-        assertEquals(List.of(4, 5), retried.stream().map(Snapshot::step).toList());
-        assertEquals(List.of(Replay.REPLAY_INPUT, "partner"), retried.stream().map(Snapshot::stepName).toList());
-        assertEquals(List.of(in.id(), out.id()), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items());
-    }
-
-    @Test
-    void replayFromStepFourOfADeliveredMessageMapsAndSendsAgainAsANewMessage() {
-        FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
-        Envelope in = rt.ingress("invoice-sync", Headers.empty(), invoice);
-        Envelope first = builder().build(def, DEMO).apply(in);
-        store.flush().await();
-        Envelope again = builder().replay(def, DEMO).from(in.id(), 4);
-        assertEquals(2, http.sentTo("partner-domestic").size());
-        assertEquals(http.sentTo("partner-domestic").get(0).body().hash(), http.sentTo("partner-domestic").get(1).body().hash(), "the same mapping of the same step-3 body");
-        assertEquals(Optional.of(in.id()), again.get(Envelope.REPLAY_OF));
-        assertEquals(first.body().hash(), again.body().hash(), "the same ack came back");
-        store.flush().await();
-        assertEquals(List.of(3, 4, 5), store.timeline(again.id()).await().stream().map(Snapshot::step).toList(), "input, xslt, to");
-        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing parked");
     }
 }

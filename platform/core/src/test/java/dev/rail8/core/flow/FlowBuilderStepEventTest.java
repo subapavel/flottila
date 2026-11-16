@@ -62,8 +62,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code dev.rail8.Step} (fields {@code flow}, {@code step}, {@code name}; category Rail8; no stack trace; no message id),
  * disabled unless a recording enables it; by default, or after {@code stepEvents(false)}, no step is wrapped. The event begins when
  * the step's stage is entered and is committed when it returns or throws, on the message's thread: it spans the rest of the pipeline
- * (the events of one message nest) and the step's retry, numbering, recording and parking wrappers. The start stage (ingress, replay)
- * is not marked.
+ * (the events of one message nest) and the step's retry, numbering, recording and parking wrappers. The start stage (ingress) is
+ * not marked.
  *
  * <p>Observed with {@link Recording} to a file and {@link RecordingFile}, deterministic on any OS. A test event
  * {@code dev.rail8.test.Probe}, committed by the steps' bodies, the meter and the DLQ on the message's thread, places what ran
@@ -336,7 +336,7 @@ class FlowBuilderStepEventTest {
 
     /**
      * By default the builder marks no step (owner decision 2026-11-03): built as a node's is (store, DLQ, queue) without
-     * {@code stepEvents}, its pipeline, sync delivery, at-least-once worker and replay emit no {@code dev.rail8.Step} under a recording
+     * {@code stepEvents}, its pipeline, sync delivery and at-least-once worker emit no {@code dev.rail8.Step} under a recording
      * that enables it — while that recording sees each step's body probe on the same threads, and the step events of a flow built
      * with {@code stepEvents(true)} run in the same window.
      */
@@ -351,7 +351,6 @@ class FlowBuilderStepEventTest {
         String witnessId = "step-events-off-witness";
         FlowDefinition plainDef = flow(plainId, "sync", List.of(step("mark", "a"), step("mark", "b")));
         Pipeline plain = b.build(plainDef, NO_FILES);
-        Replay replay = b.replay(plainDef, NO_FILES);
         Delivery sync = b.delivery(flow(syncId, "sync", List.of(step("mark", "a"), step("mark", "b"))), NO_FILES);
         FlowDefinition atLeastOnce = flow(queuedId, "at-least-once", List.of(step("mark", "a"), step("mark", "b")));
         Delivery accepting = b.delivery(atLeastOnce, NO_FILES);
@@ -360,14 +359,12 @@ class FlowBuilderStepEventTest {
                 .build(flow(witnessId, "sync", List.of(step("mark", "a"))), NO_FILES);
         Envelope in = ingress(plainId);
         AtomicReference<Ran> ran = new AtomicReference<>();
-        AtomicReference<Ran> replayed = new AtomicReference<>();
         AtomicReference<Ran> synced = new AtomicReference<>();
         AtomicReference<Ran> witnessed = new AtomicReference<>();
         List<RecordedEvent> all;
         try {
             all = recorded(() -> {
                 ran.set(onVirtualThread(() -> plain.apply(in)));
-                replayed.set(onVirtualThread(() -> replay.from(in.id(), 2)));
                 synced.set(onVirtualThread(() -> sync.apply(ingress(syncId)).await()));
                 Envelope queued = ingress(queuedId);
                 assertEquals(new Ack.Accepted(queued.id()), accepting.apply(queued).await(10, TimeUnit.SECONDS), "fixture: saved and queued");
@@ -383,20 +380,17 @@ class FlowBuilderStepEventTest {
             worker.stop();
         }
         assertInstanceOf(Envelope.class, ran.get().outcome(), "fixture: the message went through");
-        assertInstanceOf(Envelope.class, replayed.get().outcome(), "fixture: the replay went through");
         assertInstanceOf(Ack.Reply.class, synced.get().outcome(), "fixture: the sync delivery answered");
         assertInstanceOf(Envelope.class, witnessed.get().outcome(), "fixture: the witness flow's message went through");
 
         assertEquals(List.of("body a", "body b"), probes(all, "body ", ran.get().thread()).stream().map(e -> e.getString("label")).toList(),
                 "witness: the recording saw the pipeline's step bodies on its thread");
-        assertEquals(List.of("body b"), probes(all, "body ", replayed.get().thread()).stream().map(e -> e.getString("label")).toList(),
-                "witness: the recording saw the replay's step body on its thread");
         assertEquals(List.of("body a", "body b"), probes(all, "body ", synced.get().thread()).stream().map(e -> e.getString("label")).toList(),
                 "witness: the recording saw the sync delivery's step bodies on its thread");
         assertEquals(List.of("1 a"), stepsOf(stepEvents(all, witnessId)), "witness: the same recording sees the step events of a flow built with stepEvents(true)");
         for (String id : List.of(plainId, syncId, queuedId)) {
             assertEquals(List.of(), stepEvents(all, id).stream().map(FlowBuilderStepEventTest::shown).toList(),
-                    "a default builder marks no step of " + id + " (pipeline, replay, sync delivery, worker)");
+                    "a default builder marks no step of " + id + " (pipeline, sync delivery, worker)");
         }
     }
 
@@ -446,7 +440,7 @@ class FlowBuilderStepEventTest {
 
     /**
      * The stages a pipeline starts with are not steps: a recorded flow's run emits events for steps 1..3 only, not for the ingress
-     * snapshot's stage; a replay from step 2 emits events for steps 2 and 3 only, not for its replay-input stage.
+     * snapshot's stage.
      */
     @Test
     void theStartStageIsNotMarked() throws Exception {
@@ -454,20 +448,13 @@ class FlowBuilderStepEventTest {
         FlowDefinition def = flow(id, "sync", List.of(step("mark", "a"), step("mark", "b"), step("mark", "c")));
         FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(MARK), List.of(), Map.of()).stepEvents(true).recording(new InMemoryMessageStore(), () -> Snapshot.CPU_UNKNOWN);
         Pipeline p = b.build(def, NO_FILES);
-        Replay replay = b.replay(def, NO_FILES);
         Envelope in = ingress(id);
         AtomicReference<Ran> run = new AtomicReference<>();
-        AtomicReference<Ran> replayed = new AtomicReference<>();
-        List<RecordedEvent> all = recorded(() -> {
-            run.set(onVirtualThread(() -> p.apply(in)));
-            replayed.set(onVirtualThread(() -> replay.from(in.id(), 2)));
-        });
+        List<RecordedEvent> all = recorded(() -> run.set(onVirtualThread(() -> p.apply(in))));
         assertInstanceOf(Envelope.class, run.get().outcome(), "fixture: the message went through");
-        assertInstanceOf(Envelope.class, replayed.get().outcome(), "fixture: the replay went through");
 
         assertEquals(List.of("1 a", "2 b", "3 c"), stepsOf(stepEvents(all, id, run.get().thread())), "the recorded run: its steps, not its ingress stage");
-        assertEquals(List.of("2 b", "3 c"), stepsOf(stepEvents(all, id, replayed.get().thread())), "the replay from step 2: steps 2 and 3, not its input stage");
-        assertEquals(5, stepEvents(all, id).size(), "and nothing else of the flow");
+        assertEquals(3, stepEvents(all, id).size(), "and nothing else of the flow");
     }
 
     /**

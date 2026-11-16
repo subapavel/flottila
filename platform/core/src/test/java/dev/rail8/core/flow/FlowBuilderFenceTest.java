@@ -21,8 +21,8 @@ import static dev.rail8.core.flow.FlowWorkerTest.TO_PARTNER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * P2-15a (D-101 (2)): a builder's fence fences its workers only. An at-least-once flow's pipeline built by {@code build} and its
- * replay run under a closed fence, never asking it: no other node takes such a run over.
+ * P2-15a (D-101 (2)): a builder's fence fences its workers only. An at-least-once flow's pipeline built by {@code build} runs
+ * under a closed fence, never asking it: no other node takes such a run over.
  */
 class FlowBuilderFenceTest {
 
@@ -41,15 +41,14 @@ class FlowBuilderFenceTest {
     }
 
     @Test
-    void aBuiltPipelineAndAReplayAreNotFenced() {
+    void aBuiltPipelineIsNotFenced() {
         FlowBuilder b = fenced();
         FlowDefinition def = FlowDefinition.from(DeliveryTest.flow("at-least-once", List.of(TO_PARTNER)));
         Envelope in = rt.ingress("orders", Headers.empty(), Buffer.buffer("<order/>"));
 
         b.build(def, NO_FILES).apply(in);
-        Envelope again = b.replay(def, NO_FILES).from(in.id(), 1);
 
-        assertEquals(List.of(in.id(), again.id()), partner.sent().stream().map(Envelope::id).toList(), "both sent under a closed fence");
-        assertEquals(0, asked.get(), "neither asked the fence");
+        assertEquals(List.of(in.id()), partner.sent().stream().map(Envelope::id).toList(), "sent under a closed fence");
+        assertEquals(0, asked.get(), "the fence was not asked");
     }
 }

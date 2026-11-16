@@ -17,7 +17,6 @@ import dev.rail8.core.admission.Targets;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.dlq.ParkedException;
-import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.scope.MessageContext;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
@@ -48,12 +47,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The {@code to} step's send under the per-target limit (D-099): the builder resolves each producer's limit at build time from
  * {@link Component#target} — the {@link Targets}' limit of that key, or an unshared one with the defaults when the component
- * names none — and wraps only the producer's send, inside Retry (no permit across a backoff) and inside Recorder; a replay runs
+ * names none — and wraps only the producer's send, inside Retry (no permit across a backoff) and inside Recorder; a delivery runs
  * the same stage. A permit not granted within maxWait on the Runtime's timer is a retryable NackException. The partner is a
  * component at the SPI boundary that counts the sends it has not answered yet.
  */
@@ -489,34 +487,33 @@ class FlowBuilderTargetTest {
     }
 
     /**
-     * A replay runs the flow's {@code to} under the same per-target limit: while another flow holds the target's one permit the
-     * replay waits and sends nothing; once that send is answered the replay is sent.
+     * FIX-264 (the delivery side of the replay's target case): a consumer's delivery runs the flow's {@code to} under the same
+     * per-target limit: while another flow holds the target's one permit the delivered message waits and sends nothing, and its
+     * caller has no answer yet; once that send is answered the message is sent and the delivery replies with the partner's reply.
      */
     @Test
-    void replayCountsAgainstTarget() throws Exception {
+    void aDeliveryWaitsForTheTargetPermitAnotherFlowHoldsAndIsSentOnceItIsFree() throws Exception {
         Targets targets = targets(rt, 1);
-        FlowBuilder b = builder().targets(targets).recording(new InMemoryMessageStore(), () -> 0);
-        FlowDefinition def = flow("r", "sync", List.of(Map.of("type", "mark", "name", "m"), sendStep("b", false)));
-        Envelope original = message("r");
-        run(b.build(def, NO_FILES), original).get(5, TimeUnit.SECONDS);
-        assertEquals(List.of(original.id()), partner.sentIds(), "fixture: the original was sent and recorded");
-
+        FlowBuilder b = builder().targets(targets);
+        Delivery delivery = b.delivery(flow("d", "sync", List.of(Map.of("type", "mark", "name", "m"), sendStep("b", false))), NO_FILES);
         Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
         partner.holdNext(1);
-        CompletableFuture<Envelope> holding = run(holder, message("holder"));
+        Envelope held = message("holder");
+        CompletableFuture<Envelope> holding = run(holder, held);
         until(() -> partner.inFlight.get() == 1, () -> "the holder's send is out: " + partner.sentIds());
 
-        Replay replay = b.replay(def, NO_FILES);
-        CompletableFuture<Envelope> replaying = onVirtualThread(() -> replay.from(original.id(), 2, "r-1"));
-        until(() -> targets.of(SHARED).gauge().waiting() == 1, () -> "the replay waits for the target: " + targets.of(SHARED).gauge());
-        assertFalse(partner.sentIds().contains("r-1"), "nothing of the replay is sent while the target is busy");
+        Envelope in = message("d");
+        CompletableFuture<Future<Ack>> answered = DeliveryTest.applyOnVirtualThread(delivery, in);
+        until(() -> targets.of(SHARED).gauge().waiting() == 1, () -> "the delivered message waits for the target: " + targets.of(SHARED).gauge());
+        assertFalse(partner.sentIds().contains(in.id()), "nothing of the delivered message is sent while the target is busy");
+        assertFalse(answered.isDone(), "its caller has no answer while it waits: " + answered);
 
         partner.release(0);
-        assertEquals("r-1", replaying.get(5, TimeUnit.SECONDS).id());
-        assertTrue(partner.sentIds().contains("r-1"), "the replay was sent once the permit was free");
+        Ack.Reply reply = assertInstanceOf(Ack.Reply.class, answered.get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS));
+        assertEquals("b", reply.reply().header("replied-by").orElseThrow(), "the partner's reply is the delivery's answer");
+        assertEquals(List.of(held.id(), in.id()), partner.sentIds(), "the delivered message was sent once the permit was free");
         holding.get(5, TimeUnit.SECONDS);
-        replay.close().await(5, TimeUnit.SECONDS);
-        if (partner.peak.get() > 1) fail("more than the limit in flight: " + partner.peak.get());
+        assertEquals(1, partner.peak.get(), "never more than the limit in flight");
     }
 
     // ---- FIX-115 (D-100): the send waits min(maxWait, the time left until the message's deadline) --------------------------

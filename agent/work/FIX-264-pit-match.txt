@@ -1,0 +1,37 @@
+FIX-264 - every mutant not KILLED or TIMED_OUT after (run 1, 885 mutants) beside the same class, method and mutator
+before (ef669a71, 542 mutants) and, where run 2's narrower scope holds it (242 mutants), after fix round 1. Written by the
+architect from agent/work/FIX-264-3-pit-after.xml, -3-pit-before.xml and -4-pit.xml. Line numbers shift between the trees
+(FlowWorker +3 to +13, FlowBuilder -38); a line is matched by its mutator within the method. One line per mutant:
+class.method mutator :line status-after | before: line status ... | run 2: line status ...
+
+FlowBuilder$Send.lambda$deadline$1 ConditionalsBoundary :668 SURVIVED | before: 706:SURVIVED | run 2: 668:SURVIVED
+FlowWorker.deferredUntil ConditionalsBoundary :505 SURVIVED | before: 502:SURVIVED | run 2: -
+FlowWorker.failed VoidMethodCall :713 SURVIVED | before: 684:KILLED 689:KILLED 693:KILLED 700:SURVIVED 701:KILLED | run 2: -
+FlowWorker.handedOff VoidMethodCall :448 SURVIVED | before: 445:SURVIVED 446:TIMED_OUT 447:KILLED | run 2: -
+FlowWorker.lambda$process$0 VoidMethodCall :556 SURVIVED | before: 553:SURVIVED 554:TIMED_OUT | run 2: -
+FlowWorker.lambda$verdict$0 BooleanTrueReturnVals :644 SURVIVED | before: 641:SURVIVED | run 2: -
+FlowWorker.reserve EmptyObjectReturnVals :321 SURVIVED | before: 318:SURVIVED 321:KILLED | run 2: -
+FlowWorker.stop VoidMethodCall :264 SURVIVED | before: 261:SURVIVED 263:SURVIVED | run 2: -
+FlowWorker.stop VoidMethodCall :266 SURVIVED | before: 261:SURVIVED 263:SURVIVED | run 2: -
+FlowWorker.taken EmptyObjectReturnVals :611 SURVIVED | before: 608:SURVIVED 612:TIMED_OUT | run 2: -
+FlowWorker.verdict VoidMethodCall :661 SURVIVED | before: 643:KILLED 658:SURVIVED | run 2: -
+FlowWorker.wake Math :331 SURVIVED | before: 328:SURVIVED | run 2: -
+FlowWorker$Lease.stop BooleanFalseReturnVals :890 SURVIVED | before: 877:SURVIVED | run 2: -
+Parking.lambda$park$0 VoidMethodCall :88 SURVIVED | before: 88:SURVIVED | run 2: 88:KILLED
+Parking.lambda$park$1 VoidMethodCall :88 NO_COVERAGE | before: 88:SURVIVED | run 2: 88:KILLED
+RetryPolicy.delayBefore ConditionalsBoundary :40 SURVIVED | before: 38:KILLED 40:SURVIVED | run 2: -
+StepCpu.sampleWithoutThread Math :178 NO_COVERAGE | before: 178:NO_COVERAGE 179:NO_COVERAGE | run 2: 178:KILLED 179:KILLED
+StepCpu.sampleWithoutThread Math :179 NO_COVERAGE | before: 178:NO_COVERAGE 179:NO_COVERAGE | run 2: 178:KILLED 179:KILLED
+StepEvent.lambda$marked$0 NegateConditionals :64 RUN_ERROR | before: 64:RUN_ERROR | run 2: -
+StepEvent.lambda$marked$0 NullReturnVals :62 RUN_ERROR | before: 62:RUN_ERROR | run 2: -
+StepEvent.lambda$marked$0 VoidMethodCall :60 RUN_ERROR | before: 60:RUN_ERROR 68:RUN_ERROR | run 2: -
+StepEvent.lambda$marked$0 VoidMethodCall :68 RUN_ERROR | before: 60:RUN_ERROR 68:RUN_ERROR | run 2: -
+StepEvent.marked NullReturnVals :58 RUN_ERROR | before: 58:RUN_ERROR | run 2: -
+WorkEvents.unknown ConditionalsBoundary :129 SURVIVED | before: 129:SURVIVED 131:KILLED | run 2: -
+WorkEvents.unknown EmptyObjectReturnVals :131 SURVIVED | before: 131:SURVIVED 133:KILLED | run 2: -
+
+Read: no mutant is unkilled after and killed before. Where a method holds several mutants of one mutator, the unkilled
+one after sits at the unkilled one's line before plus the shift (FlowWorker.reserve: 318 SURVIVED, 321 KILLED before; 321
+SURVIVED, 324 KILLED after - the run-1 remark that :321 was killed before reads the old line number against the new tree).
+Parking.lambda$park$1 lost its only covering test with replay (SURVIVED -> NO_COVERAGE in run 1); fix round 1's two
+ParkingTest cases kill both lambdas in run 2. StepCpu.sampleWithoutThread: see its run-2 column.

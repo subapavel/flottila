@@ -51,7 +51,7 @@ import java.util.function.Function;
  * by the fast path — only the items whose body lies in that node's journal, or pre-V12 ones (until CORE-5 a body is read on
  * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
- * (a message replay's or a DLQ replay's) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
+ * (an ingress body durable already, {@code PgIntake}'s) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
  * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} (CORE-14b P8) deletes the
  * message's DLQ row and inserts its row from the ingress body's kept ref in one statement, unless a work row of the id is there:
  * then it is refused and nothing is written (F-57); its row carries its own bound ({@code max_attempts}, V17). An item whose
@@ -281,7 +281,7 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * The restart (CORE-14b P8, D-135): {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
-     * after attempt {@code $4} (prop {@code attempt}), not a replay's (no prop {@code replayOf}) — a concurrent remove of it
+     * after attempt {@code $4} (prop {@code attempt}), not one with the prop {@code replayOf} — a concurrent remove of it
      * (another restart, a {@code PgDlq.remove}) commits first and leaves none, or waits for this statement —; {@code w}, the guard
      * (F-57, D-162 (5)), reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
      * and flow only when none is, never as a row without a key — of which a park whose settle has not landed leaves one, still
@@ -434,7 +434,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * The item on {@code client} taking the ref of {@code body}'s kept row (a message replay's input, a DLQ replay's parked body): one
+     * The item on {@code client} taking the ref of {@code body}'s kept row (an ingress body durable already, its intake's): one
      * statement holding that row and its segment row for key share; without them it fails {@link BlobNotFoundException} naming
      * {@code body} and inserts nothing — {@link BodyLostException} when an accepted loss gave that row up ({@code lost_at}).
      */
@@ -612,7 +612,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * {@link #RESTART} in a transaction of its own, a keyed row under its key's lock ({@link #lockKeys}) as every keyed insert, its
      * guard read under that lock: {@code true} when the DLQ row was deleted and the work row inserted; {@code false} without a DLQ row
-     * of {@code messageId} in {@code flow} the worker parked at step 1 after attempt {@code attempt} (a replay's row is none), nothing
+     * of {@code messageId} in {@code flow} the worker parked at step 1 after attempt {@code attempt} (a row with the prop {@code replayOf} is none), nothing
      * written; beside a work row of the id in {@code flow} (under {@code partitionKey} when one is given) {@link UnsettledException}
      * naming the oldest, nothing written, whatever became of the body; else without its ingress body's kept ref
      * {@link BlobNotFoundException} ({@link BodyLostException} when an accepted loss gave it up), the failed future rolling the delete

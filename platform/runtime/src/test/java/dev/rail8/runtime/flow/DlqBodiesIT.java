@@ -18,7 +18,6 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
-import dev.rail8.core.flow.Replay;
 import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.blob.TieredBlobStore;
@@ -65,7 +64,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -327,11 +325,11 @@ class DlqBodiesIT {
     /**
      * CORE-14a (P6): the worker parks the ingress, never a step body. Two messages whose step bodies are held in memory and
      * spilled fail for good: each run's trail makes its step body durable, then the ingress — durable since its delivery — is
-     * parked at step 1 with attempt 1, its ref committed before its DLQ row. The node restarted retries both from step 1, reading
-     * the ingress through its ref.
+     * parked at step 1 with attempt 1, its ref committed before its DLQ row. The node restarted reads each parked ingress
+     * through its ref, with a fresh store.
      */
     @Test
-    void aMessageParkedOnOneNodeIsRetriedFromAFreshStoreAfterARestart() {
+    void aMessageParkedOnOneNodeIsReadFromAFreshStoreAfterARestart() {
         NodeStores first = new NodeStores();
         BlobKey inMemory = BlobKey.body(deliver(first, "dlq-memory", SMALL), 1);
         BlobKey spooled = BlobKey.body(deliver(first, "dlq-spool", LARGE), 1);
@@ -355,19 +353,13 @@ class DlqBodiesIT {
         first.close();   // the process is gone: its memory, its index, its pool
 
         NodeStores restarted = new NodeStores();
-        Replay replay = restarted.builder.replay(def, NO_FILES);
         for (BlobKey k : List.of(inMemory, spooled)) {
-            assertEquals(Optional.empty(), restarted.blobs.location(BlobKey.body(k.messageId(), 0)), "the fresh store holds nothing locally: " + k);
-            int runs = inputs.size();
-            int before = partner.sentTo("partner").size();
-            Envelope out = assertDoesNotThrow(() -> replay.replayParked(k.messageId()), "retried on the fresh store: " + k);
-            assertEquals(Optional.of(k.messageId()), out.get(Envelope.REPLAY_OF), "a retry of the parked message");
-            assertEquals(runs + 1, inputs.size(), "step 1 ran once more: " + k);
-            assertEquals(ORDER, inputs.get(runs).bytes(), "its input is the ingress, byte-equal, read by the restarted store through its ref: " + k);
-            assertEquals(before + 1, partner.sentTo("partner").size(), "the retry reached the partner: " + k);
-            assertEquals(Optional.empty(), dlqRow(k.messageId()), "the DLQ row is gone after the retry: " + k);
+            BlobKey ingress = BlobKey.body(k.messageId(), 0);
+            assertEquals(Optional.empty(), restarted.blobs.location(ingress), "the fresh store holds nothing locally: " + k);
+            assertEquals(ORDER, restarted.blobs.read(ingress).await(), "the parked ingress, byte-equal, read by the fresh store through its ref: " + k);
+            assertEquals(Optional.of(ingress), dlqRow(k.messageId()).map(Parked::bodyKey), "its DLQ row still names it: " + k);
         }
-        assertEquals(0, count("dlq"));
+        assertEquals(2, count("dlq"), "both rows stay: reading a parked body takes nothing out");
     }
 
     /**
@@ -412,11 +404,11 @@ class DlqBodiesIT {
     /**
      * CORE-14a (P2, P3): a retryable refusal is deferred on Postgres — no DLQ row, the item not due and held by nobody — and
      * the last hand-out the bound allows (count 1: two) parks the ingress at step 1 with attempt 2, durable since its delivery,
-     * whatever its step body (here above the durable bound). A fresh store retries it from step 1. The defer's due is the
+     * whatever its step body (here above the durable bound). A fresh store reads it through its ref. The defer's due is the
      * database clock's, so the case makes it due by an update of its row, never by a wait.
      */
     @Test
-    void theLastAllowedAttemptParksItsIngressWhichAFreshStoreRetries() {
+    void theLastAllowedAttemptParksItsIngressWhichAFreshStoreReads() {
         int maxAttempts = 2;
         NodeStores first = new NodeStores();
         String id = deliver(first, "dlq-exhausted", ABOVE);
@@ -444,15 +436,9 @@ class DlqBodiesIT {
         first.close();
 
         NodeStores restarted = new NodeStores();
-        int runs = inputs.size();
-        Envelope out = assertDoesNotThrow(() -> restarted.builder.replay(def, NO_FILES).replayParked(id), "retried on a fresh store from step 1");
-        assertEquals(Optional.of(id), out.get(Envelope.REPLAY_OF));
-        assertEquals(runs + 1, inputs.size(), "step 1 ran once more");
-        Input retried = inputs.get(runs);
-        assertEquals(out.id(), retried.messageId(), "as the retry's message");
-        assertEquals(ORDER, retried.bytes(), "its input is the ingress, byte-equal, read by the restarted store through its ref");
-        assertEquals(maxAttempts + 1, partner.sent().size(), "and it reached the partner");
-        assertEquals(Optional.empty(), dlqRow(id), "the DLQ row is gone after the retry");
+        assertEquals(Optional.empty(), restarted.blobs.location(BlobKey.body(id, 0)), "the fresh store holds nothing locally");
+        assertEquals(ORDER, restarted.blobs.read(BlobKey.body(id, 0)).await(), "the parked ingress, byte-equal, read by the fresh store through its ref");
+        assertEquals(Optional.of(BlobKey.body(id, 0)), dlqRow(id).map(Parked::bodyKey), "its DLQ row still names it");
     }
 
     /**

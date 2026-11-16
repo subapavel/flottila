@@ -1,0 +1,71 @@
+VERIFIED_PASS? A reactor clean verify -Pit: BUILD SUCCESS exit 0, 27:04; runtime 1 FAILURE (see below) -> EXECUTED_FAIL for t
+A counts (tests/fail/err/skip): api 107/0/0/0 archtest 48/0/0/0 cli 215/0/0/0 http 52/0/0/0 mock 67/0/0/0 sftp 69/0/0/0
+A counts: core 770/0/0/0 runtime 2288/1/0/0 schemas 304/0/0/0 sim 61/0/0/0 validate 33/0/0/0 xslt 56/0/0/0 testkit 300/0/0/0
+EXECUTED_FAIL DeploymentsSecretsTest.producerOptionsResolvedToo (DeploymentsSecretsTest.java:314) AssertionFailedError
+VERIFIED_PASS coverage_check.py --baseline-ref HEAD exit 0 'coverage: no decrease' agent/work/FIX-264-3-cov.log
+VERIFIED_PASS PinnedSeedsTest 1/0/0/0; git diff --quiet pinned-seeds.tsv exit 0
+VERIFIED_PASS PIT core scoped exit 0: 885 gen, 865 killed(98%), 3 no cov; 16m7s; agent/work/FIX-264-3-pit.log
+VERIFIED_PASS PIT before (narrowed classes) exit 0: 542 gen, 522 killed(96%), 2 no cov; 14m41s; FIX-264-3-pit-before.log
+coverage table: agent/work/FIX-264-3-covtable.txt ; mutant lists: agent/work/FIX-264-3-pit-diff.txt (+ -pit-after.xml, -pit-b
+api       line 99.30% (284/286) -> 99.30% (284/286) | branch 100.00% (100/100) -> 100.00% (100/100)
+cli       line 99.04% (518/523) -> 99.04% (518/523) | branch 99.57% (233/234) -> 99.57% (233/234)
+core      line 99.72% (2492/2499) -> 99.71% (2367/2374) | branch 99.45% (1264/1271) -> 99.35% (1223/1231)  LOWER
+http      line 99.53% (210/211) -> 99.53% (210/211) | branch 94.83% (110/116) -> 94.83% (110/116)
+mock      line 100.00% (261/261) -> 100.00% (261/261) | branch 99.22% (127/128) -> 99.22% (127/128)
+sftp      line 100.00% (227/227) -> 100.00% (227/227) | branch 98.99% (98/99) -> 98.99% (98/99)
+runtime   line 99.47% (6576/6611) -> 99.47% (6568/6603) | branch 99.40% (2830/2847) -> 99.37% (2827/2845)  LOWER
+schemas   line 98.96% (381/385) -> 98.96% (381/385) | branch 99.54% (215/216) -> 99.54% (215/216)
+sim       line 97.23% (631/649) -> 97.23% (631/649) | branch 95.91% (211/220) -> 95.91% (211/220)
+testkit   line 97.82% (1481/1514) -> 97.82% (1481/1514) | branch 95.92% (400/417) -> 95.44% (398/417)  LOWER
+validate  line 100.00% (130/130) -> 100.00% (130/130) | branch 100.00% (14/14) -> 100.00% (14/14)
+xslt      line 100.00% (188/188) -> 100.00% (188/188) | branch 100.00% (37/37) -> 100.00% (37/37)
+before total 542 Counter({'KILLED': 383, 'TIMED_OUT': 134, 'SURVIVED': 18, 'RUN_ERROR': 5, 'NO_COVERAGE': 2})
+(1) not killed both 44 Counter({('TIMED_OUT', 'TIMED_OUT'): 32, ('RUN_ERROR', 'RUN_ERROR'): 5, ('SURVIVED', 'SURVIVED'): 4, (
+  ('dev.rail8.core.record.StepCpu', 'sampleWithoutThread', 178, 'MathMutator', 'NO_COVERAGE', 'NO_COVERAGE')
+  ('dev.rail8.core.record.StepCpu', 'sampleWithoutThread', 179, 'MathMutator', 'NO_COVERAGE', 'NO_COVERAGE')
+  ('dev.rail8.core.flow.WorkEvents', 'unknown', 129, 'ConditionalsBoundaryMutator', 'SURVIVED', 'SURVIVED')
+  ('dev.rail8.core.flow.WorkEvents', 'unknown', 131, 'EmptyObjectReturnValsMutator', 'SURVIVED', 'SURVIVED')
+  ('dev.rail8.core.flow.RetryPolicy', 'delayBefore', 40, 'ConditionalsBoundaryMutator', 'SURVIVED', 'SURVIVED')
+  ('dev.rail8.core.dlq.Parking', 'lambda$park$0', 88, 'VoidMethodCallMutator', 'SURVIVED', 'SURVIVED')
+  ('dev.rail8.core.dlq.Parking', 'lambda$park$1', 88, 'VoidMethodCallMutator', 'NO_COVERAGE', 'SURVIVED')
+(2) not killed after, KILLED before 2
+  ('dev.rail8.core.flow.FlowWorker', 'reserve', 321, 'EmptyObjectReturnValsMutator', 'SURVIVED', 'KILLED')
+  ('dev.rail8.core.flow.Producers', 'close', 48, 'NegateConditionalsMutator', 'TIMED_OUT', 'KILLED')
+(3) not killed after, line/mutator absent before 106
+  ('dev.rail8.core.flow.FlowWorker', 'deferredUntil', 505, 'ConditionalsBoundaryMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'failed', 713, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'handedOff', 448, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'lambda$process$0', 556, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'lambda$verdict$0', 644, 'BooleanTrueReturnValsMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'stop', 264, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'stop', 266, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'taken', 611, 'EmptyObjectReturnValsMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'verdict', 661, 'VoidMethodCallMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker', 'wake', 331, 'MathMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowBuilder$Send', 'lambda$deadline$1', 668, 'ConditionalsBoundaryMutator', 'SURVIVED')
+  ('dev.rail8.core.flow.FlowWorker$Lease', 'stop', 890, 'BooleanFalseReturnValsMutator', 'SURVIVED')
+
+== Run 2 (after fix round 1) ==
+VERIFIED_PASS reactor clean verify -Pit exit 0, 36:26, 4377 run/0 fail/0 err/0 skip; FIX-264-4-reactor.log
+  per module: api 107 archtest 48 cli 215 http 52 mock 67 sftp 69 core 775 runtime 2290 schemas 304 sim 61 validate 33
+  xslt 56 testkit 300 (all 0/0/0); archtest SUCCESS; blocked-thread grep 0; failing tests none
+VERIFIED_PASS coverage_check.py exit 0 'coverage: no decrease'; FIX-264-4-cov.log; table FIX-264-4-covtable.txt
+  LOWER (exact ratio): testkit branch 400/417 -> 397/417 (95.9233 -> 95.2038); no other module lower
+api       L 284/286 99.3007% -> 284/286 99.3007% | B 100/100 100.0000% -> 100/100 100.0000%
+cli       L 518/523 99.0440% -> 518/523 99.0440% | B 233/234 99.5726% -> 233/234 99.5726%
+core      L 2492/2499 99.7199% -> 2373/2374 99.9579% | B 1264/1271 99.4493% -> 1225/1231 99.5126%
+http      L 210/211 99.5261% -> 210/211 99.5261% | B 110/116 94.8276% -> 110/116 94.8276%
+mock      L 261/261 100.0000% -> 261/261 100.0000% | B 127/128 99.2188% -> 127/128 99.2188%
+sftp      L 227/227 100.0000% -> 227/227 100.0000% | B 98/99 98.9899% -> 98/99 98.9899%
+runtime   L 6576/6611 99.4706% -> 6570/6603 99.5002% | B 2830/2847 99.4029% -> 2830/2845 99.4728%
+schemas   L 381/385 98.9610% -> 381/385 98.9610% | B 215/216 99.5370% -> 215/216 99.5370%
+sim       L 631/649 97.2265% -> 631/649 97.2265% | B 211/220 95.9091% -> 211/220 95.9091%
+testkit   L 1481/1514 97.8203% -> 1481/1514 97.8203% | B 400/417 95.9233% -> 397/417 95.2038% LOWER
+validate  L 130/130 100.0000% -> 130/130 100.0000% | B 14/14 100.0000% -> 14/14 100.0000%
+xslt      L 188/188 100.0000% -> 188/188 100.0000% | B 37/37 100.0000% -> 37/37 100.0000%
+C missed (after): core StepCpu line 0 branch 0; runtime Journal line 6 branch 0; testkit ComponentContract line 7 branch 6
+  run 1: see the architect's note (per-class csv not kept). Missed-line lists core/runtime: in hand-back/not saved
+VERIFIED_PASS PIT core scoped: 242 gen, 241 killed (99%), no cov 0; FIX-264-4-pit.log; xml FIX-264-4-pit.xml
+  KILLED 224, TIMED_OUT 17, SURVIVED 1 (FlowBuilder$Send lambda$deadline$1 668 ConditionalsBoundary)
+  Parking lambda$park$0 88 KILLED; lambda$park$1 88 KILLED; lambda$park$2 88 TIMED_OUT
+E greps unchanged counts (1 and 21 lines); PinnedSeedsTest 1/0/0/0; pinned-seeds.tsv git diff --quiet exit 0

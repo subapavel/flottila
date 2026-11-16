@@ -143,7 +143,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         this.mode = mode;
     }
 
-    /** The flow's admission this delivery admits by: a {@link Replay} built beside it shares it ({@link FlowBuilder#replay}). */
+    /** The flow's admission this delivery admits by; nothing in main reads it. */
     Admission admission() {
         return admission;
     }
