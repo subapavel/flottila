@@ -1,4 +1,17 @@
 
+## 2026-11-16 — MAP-10 mutation testing measured on `structure` and `structure-import` — done, review PASS [A]
+
+- A measurement: no file under `mapping/` or `.github/` changes. One PIT run per module by the verifier, upstream installed
+  first so that no upstream module is mutated again, the skip lifted on the command line: `agent/work/MAP-10-numbers.md`.
+- `engine/structure`: VERIFIED_PASS - 33 mutants, 33 killed (100 %), the tool's own time 12 s.
+- `engine/structure-import`, first call: EXECUTED_FAIL - "126 tests did not pass without mutation". Its tests read the system
+  property `rail8.corpus`, which its pom hands to surefire alone (:57-63), so the mutation tool's JVMs had no corpus.
+- Second call, the property handed over for the one run (`-DjvmArgs=-Drail8.corpus=...`): VERIFIED_PASS - 625 mutants, 598
+  killed (96 %; 2 of them by time-out), 27 survive in eight classes, the tool's own time 78 s. Not run on GitHub's machine.
+- `issues/ISSUE-13.md` names the numbers beside "Not verified by a run". Whether the two modules join the nightly mutation run
+  is a floor and the owner's: new row MAP-16, `pending (owner)`, with the numbers, what a yes builds, and one recommendation.
+- Review [A]: PASS, round 1; its remark - the minute and a half is this machine's, not GitHub's - is in MAP-16's row.
+
 ## 2026-11-16 — MAP-12a the ratchet check is handed a baseline (`check --baseline <dir>`) — done, review PASS [C]
 
 - `java scripts/ratchet.java check --baseline <dir>` does what `check` does, then holds the commit's `ratchet/` rows against the

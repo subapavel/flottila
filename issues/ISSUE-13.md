@@ -175,6 +175,14 @@ Not verified by a run: that GitHub's machines reproduce the measured figures (th
 that); the Windows job under a branch floor; how long mutation testing takes on `structure-import`,
 the largest module; the nightly comparison step on GitHub.
 
+Measured since (MAP-10, 2026-11-16, commit 71c3b69e, 4 cores; `agent/work/MAP-10-numbers.md`): one
+mutation run per module, the time the tool itself prints. `structure`: 33 mutants, all killed,
+12 s. `structure-import`: 625 mutants, 598 killed (96 %; 2 of them by time-out), 27 survive in
+eight classes, 78 s. `structure-import` ran only with the corpus location handed to the mutation
+tool's own JVMs on the command line: its tests read `rail8.corpus`, which the pom gives to the test
+plugin alone, and without it the tool stops before the first mutant. Not measured: the same run on
+GitHub's machine. The question the numbers carry is the owner's, row MAP-16.
+
 ## Default if the owner does not answer
 Nothing tightens and no rule file changes. One measurement proceeds in its turn, because it changes
 no rule: mutation testing on `structure` and `structure-import` (MAP-10). On a yes the work is
