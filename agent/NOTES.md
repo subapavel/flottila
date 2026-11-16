@@ -318,6 +318,10 @@ queue needs a case in core's tree, or core's report misses the new lines (FIX-27
 A CTE that probes beside a `for update` CTE reads the statement's snapshot, taken before the
 lock wait: check what every holder of that lock can write. A class Javadoc's list of a route's
 answers follows every new answer (`AdminServer`'s class text) — both FIX-275's review.
+The unscoped form above (`-pl :rail8-api,:rail8-core -am`, the nightly job's) also mutates the
+testkit: 54 minutes there alone on this machine (4 cores), before core starts - it does not fit
+a 30-minute command (FIX-264's "before" died that way). For a before-and-after, scope with
+`-DtargetClasses` and measure the "before" in a worktree of the earlier commit, afterwards.
 In the cloud session the services die with the tool call that started them unless detached:
 `sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &` and
 `sudo -n setsid pg_ctlcluster 16 main start`. A container restart kills both and every background agent; the working tree survives.
@@ -464,3 +468,9 @@ Before FIX-254 the runner stepped the clock under it in 3 of 210 demo runs on fo
   seven of them not drawable in either editor, one excluded by the owner). A case's own `case.json` (`provenance`,
   `ref`) says what it rests on; one listed case is `assumed` and contradicted by both systems
   (`target/minOccurs/004`, F-38). A raised floor is the owner's even when it costs nothing today.
+
+Recording an owner's answer (ISSUE-13, review round 1, 2026-11-16): check a bracket against every
+item of the clause it amends, not only the items in mind; check a row's "stale" claim against the
+ADR that planned the line; a row that edits a gate sentence decides a gate - a floor in a build is
+not a gate condition unless the owner said so; a reading of the owner's words is marked as the
+architect's in the decision's own cell, not only in its Why.

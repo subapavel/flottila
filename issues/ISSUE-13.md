@@ -1,6 +1,6 @@
 # ISSUE-13 — one set of test rules for the platform and the mapping: the proposal
 Task: MAP-9
-Date: 2026-11-16
+Date: 2026-11-16 · answered and closed 2026-11-16 (D-164)
 
 ## What is needed
 The owner's answer to the five questions at the end. The owner asked for coverage rules for the
@@ -175,4 +175,25 @@ three rows: the floors with the amended table; the ratchet's check on GitHub and
 job, with its script tests, red first; the patch of the root rules.
 
 ## Owner's answer
+2026-11-16, in the session, to the five questions as they were put to him in Czech: "souhlas se
+všemi doporučeními, pokračuj" - agreed with every recommendation, go on. Recorded as D-164.
 
+- Q1: 90 % of lines and of branches for every engine module that has code.
+- Q2: yes - the ratchet's check on every push, repaired, after a week of reporting only, and the
+  two places that keep "no new surviving mutant".
+- Q3: yes - a session amends the mapping's ADR-0019 and ADR-0017 for items 1, 2, 3 and 5.
+- Q4: the sentence about SAP was the proposal, he read it in Czech translation, and it is taken as
+  agreed. The second half - whether the 32 marked outputs and the assumed case go on the list for
+  his next observation session - carried no recommendation. The architect's reading, told to the
+  owner in the session: they are listed; a list obliges no one and the runs stay the owner's.
+- Q5: not now.
+
+Not part of the answer and not decided by it (D-164 says so). Whether the mapping's floors and
+its nightly mutation threshold are conditions of a phase gate: the proposal did not ask, the
+gate's texts stay as they are, and the question comes to the owner with the design of how the
+mapping joins the platform (MAP-1). And whether `structure` and `structure-import` join the
+nightly mutation run: that is a floor, so it comes to the owner with MAP-10's numbers.
+
+Closed. The work is four rows: MAP-11 (the floors), MAP-12 (the ratchet's check on GitHub and in
+the nightly job), MAP-13 (the patch of the rule files, for the owner to apply), MAP-14 (the list
+for the next observation session). MAP-10, the measurement, keeps its turn.

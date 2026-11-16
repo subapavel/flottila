@@ -59,7 +59,8 @@ B. Rules.
    root's Tests, Working rules and Context hygiene binds both areas; the lines named here are the
    platform's and the mapping's own stand in their place; the `assumeTrue` cases that exist stay and
    no new skipped case is added. Since 2026-11-16 the proposal of one set of test rules for both
-   areas, with its measurements and five questions, is `issues/ISSUE-13.md` (MAP-9).
+   areas, with its measurements and five questions, is `issues/ISSUE-13.md` (MAP-9); the owner
+   agreed to every recommendation of it the same day (D-164).
 
 C. Rule files and the session's set-up.
 5. `mapping/CLAUDE.md` was cut to the engine's technical rules (37 lines): the process lines went,

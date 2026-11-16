@@ -1,4 +1,20 @@
 
+## 2026-11-16 — ISSUE-13 the owner's yes on one set of test rules for both areas (D-164) — done, review PASS [C]
+
+- The owner, in the session, to the five questions: "souhlas se všemi doporučeními, pokračuj". Documents only; nothing is built.
+- D-164: engine modules with code at 90 % line and branch (draft - review at hand-over until MAP-1); the ratchet's check in
+  GitHub's checks, repaired, after a week of reporting only; 80 % mutation nightly in both areas, "no new surviving mutant" kept
+  by the verifier before a commit and by the nightly comparison; the sentence about SAP; root rules name the tier by role;
+  a session may amend the mapping's ADR-0019 and ADR-0017; `mapping-ci` not a required check now. D-153 carries a bracket.
+- The architect's readings, told to the owner: the SAP sentence was the proposal and is taken as agreed; the list of the 32 marked
+  outputs and the assumed case had no recommendation - they are listed, the runs stay the owner's.
+- Rows: MAP-9 done. New: MAP-11 [B] floors, MAP-12 [C] the ratchet on GitHub and in the nightly job, MAP-13 [C] the rule-file
+  patch for the owner, MAP-14 [A] the observation list. MAP-10 [A] keeps its turn. ISSUE-13 closed; ISSUE-9 item 4 points at D-164.
+- Not decided, and D-164 says so: the mapping's floors as phase-gate conditions (to the owner with MAP-1's design); whether
+  `structure` and `structure-import` join the nightly mutation run (a floor: to the owner with MAP-10's numbers).
+- Beside it: FIX-264 [B] steps 1a, 1b approved (tests, in the tree), step 2 running; MAP-11's packet written. `ci` runs 245, 246 green.
+- Review [C]: r1 FAIL, five (one row made the floors a gate condition unasked); r2 FAIL, two; r3 PASS. Name guard clean; ledger check: the 9 old.
+
 ## 2026-11-16 — MAP-9 one set of test rules for both areas: the proposal (ISSUE-13) — pending (owner), review PASS [C]
 
 - Context compacted after FIX-275's push; HANDOFF, `git status` and `git log -3` were re-read first.

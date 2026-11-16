@@ -1,0 +1,8 @@
+FIX-264 PIT before - INCOMPLETE (core run killed by the 30 min background time limit)
+command: flock /tmp/rail8-maven.lock mvn -B -ntp -f platform/pom.xml -pl :rail8-api,:rail8-core -am test-compile
+         org.pitest:pitest-maven:mutationCoverage > agent/work/FIX-264-pit-before.log 2>&1
+commit: ef669a71   date: 2026-11-16   exit: none (process killed; no BUILD line, no Total time)
+api:  generated 189, killed 188 (99%), no coverage 0, test strength 99%, PIT time 1m23s
+testkit (pulled in by -am): generated 883, killed 672 (76%), no coverage 12, strength 77%, PIT time 54m29s
+core: NOT COMPLETED. Mutating started at log line 622; log ends with TIMED_OUT minion warnings at 17:32.
+      platform/core/target/pit-reports/mutations.xml is 0 bytes; no survivor list available.
