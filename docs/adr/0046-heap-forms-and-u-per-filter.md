@@ -436,3 +436,45 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   rule for new cells. C2's "A's old `U*` equal #113's record" becomes "A's `-Xint` 512 KiB `U*cold`
   equal the 28 values of the C3 edge check (`199-c3-edge.log`)", and "an old `U*` differs from the
   record" becomes "differs from that log". The other C2 stops stay.
+
+## Amendment (ticket #198, owner 2026-11-16)
+
+Owner's rulings on the #198 grilling round, on the grilling-adviser's recommendations (designer
+draft; F-100, #117 W3).
+
+- **A value-form Call ends at its first result on the driver.** On the driver a value-form Call
+  takes its body's first result, answers it with a stop, leaves its activation and its units, and
+  then emits the value with `under` as producer, as a value-form starter does (ADR-0047 #116). No
+  heap form calls `eval`. This replaces C2's first bullet ("on the driver, the call stays live for as
+  long as its consumer runs") and its carve-out that an OPTIMISED depth verdict may depend on
+  `stackBytes`. It also narrows "the same … depth counts" above: the driver now counts what the
+  stack counts. Only Call changes; the other value-eligible forms keep their heap form (their
+  ending frees heap only and changes no count). Units, `D_f` and stack frames are untouched, and the
+  ticket's calibration column of 28 cells must show no edge moved.
+- **Why it is sound.** On the stack a value-form call's `eval` has returned before its consumer
+  runs, so a downstream error never reaches the callee; the driver now agrees. jq-ref confirms the
+  routes: an AltBind upstream of the call catches (`[[1]]`), a `try` inside the callee does not
+  (error, rc 5), and M4 gives `[[1]]` (grilling-adviser, 2026-11-16).
+- **Red and guards.** `ValueFormTest`'s `def f: if . == 0 then 0 else (. - 1 | f) | (0 | f) end` at
+  `stackBytes` 0 in OPTIMISED: depth n + 1 passes and n ends at the budget (today 2n + 1, by code
+  reading). `SpecialiseExplainTest`'s pipe ladder is re-pinned from 110 000 to 40 000 for OPTIMISED,
+  which is stricter (owner's consent, 2026-11-16; precedent ADR-0047 #116); CONSERVATIVE still ends
+  at the budget there. The M4 and F-56 cases and the adviser's probes run as OPTIMISED cases at
+  `stackBytes` 0, since the oracle's `trampoline` run is CONSERVATIVE only. A filter that pipes
+  lifted helper calls before each recursive call, `def r: if .==0 then 0 else
+  ((.-1)|until(true;.)|until(true;.)|until(true;.)|until(true;.)|r)+1 end; 1000000|r`, is run on
+  jqj at `Limits.cli()` before and after; jq-ref gives `1000000`.
+- **Order.** The ticket runs after #199's record commit and #119's JMH session, so both keep a
+  quiet baseline.
+- **A value-form `D_f` (design C) is deferred** to spec 6 (Speed), not the bytecode spec (milestone 1
+  ships only the interpreter, ADR-0018). It is reopened only if the all-driver time from #119
+  exceeds a factor the owner sets once that number exists. Until then a filter whose
+  `callFreeDepth` is above `U_f` runs wholly on the driver.
+- **Later round.** If the ticket holds, whether "the count of live call activations does not depend
+  on `stackBytes`" becomes a stated invariant per compile mode, with a property test, and the
+  bytecode hand-over above becomes "holds it or names its cases".
+- **Considered.** Every value-eligible form ending at its result (20–22 forms, heap only, 20× the
+  PIT surface); deferring all of it (keeps C2's carve-out and the 110 000 pin, and may break
+  DEVIATIONS' "at least 10⁶ levels" if the adviser's prediction holds); a value-form `D_f` now (a
+  value-form walk in `Nesting`, measured `eval` weights, an OPTIMISED matrix re-run of about 60 min;
+  an undercount ends in `termination STACK`).
