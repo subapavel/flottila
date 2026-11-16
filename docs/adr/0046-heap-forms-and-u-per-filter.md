@@ -459,6 +459,34 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   (C2's stop "max b > 192") or a reserve of 184 320 (adviser's inference); either goes to the owner.
 - **The compile overflow is F-109, widened.** It is not a new finding.
 
+**Owner's rulings on #199's second run A stop (2026-11-16, on the grilling-adviser's recommendation)**
+- **Spin on virtual cells.** The seeded run A (1 h 28 min) failed on four virtual 512 KiB cells
+  (`-Xint` CONSERVATIVE T, C1 OPTIMISED hold, collect and first-or: no fixed point or a `ran out` in
+  one child), and 41 virtual `U*` moved, all towards the platform value and none past it. Every
+  platform cell outside the ten equals run A. The likely cause is that the cell's virtual thread
+  parks on the helper's `join()` and is remounted with only its top frames thawed (UNVERIFIED on
+  25.0.5). So on a virtual cell the cell's thread waits for the helper without parking: it spins on
+  `isDone` with `Thread.onSpinWait`, and calls no park, `yield` or `sleep`. Platform cells keep the
+  parked `join()`. The calibration measures a virtual thread that has never parked. If the fix fails
+  the probe, the fallback is compiling on the cell's thread for virtual cells only.
+- **The probe comes first.** Before any long run, a hand probe of seven virtual 512 KiB cells, 3
+  children each: the four failed cells, C1 W CONSERVATIVE (the cell that sets the reserve), and `-Xint`
+  and C1 N OPTIMISED. Each must give a fixed point, spread 0 and run A's `U*`. Stable values that
+  differ from run A go to the owner. No fixed point means trying the fallback.
+- **The reserve is 184 320**, accepted on condition that the third run reproduces it. It comes from
+  the rule, not from noise. C1 virtual W CONSERVATIVE keeps `U*` 2131, but its slope is now taken
+  from the measured 256 KiB pair (`s_low` 182, not 189): intercept 118 064, plus cold 30 996, rounded
+  up to 4K is 151 552, plus 32 768. It holds while that cell's `U*` is at least 2118. `b` stays 192,
+  because the slopes come from platform pairs.
+- **The third run is the second run A, repeated on the fix commit.** It runs after the 28-cell edge
+  check, seeded from run A's record, with the ten cells unseeded. It stops if:
+  - the 28 edge cells differ from `199-c3-edge.log`;
+  - the ten cells differ from the second run's values;
+  - any other `U*` differs from run A, all 56 virtual cells included;
+  - max `b` is not 192 or the reserve is not 184 320;
+  - any other C2 stop fires.
+  Then run B, at 192 and 184 320.
+
 ## Amendment (ticket #198, owner 2026-11-16)
 
 Owner's rulings on the #198 grilling round, on the grilling-adviser's recommendations (designer
