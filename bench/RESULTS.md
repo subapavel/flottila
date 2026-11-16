@@ -21,7 +21,7 @@ verifier output; newest section first.
 
   | run | commit | seed | outcome |
   |---|---|---|---|
-  | A | `b090b21`'s predecessor (`fd2cd74` + helper) | unseeded | EXECUTED_FAIL: six C1 256 KiB cells hit a compile STACK (F-109) |
+  | A | `fd2cd74` (compile on the cell's thread) | unseeded | EXECUTED_FAIL: six C1 256 KiB cells hit a compile STACK (F-109) |
   | A2 | `b090b21` | `199-runA.tsv`, the ten cells unseeded | EXECUTED_FAIL: four virtual cells unstable, 29 virtual `U*` moved; reserve 184 320 |
   | A3 | `82b23f7` (spin) | `199-runA.tsv`, the ten cells unseeded | VERIFIED_PASS: the ten equal A2, the other 214 equal A; max-b 192, reserve 184 320 |
   | B | `82b23f7` + constants 192 / 184 320 | A3 | VERIFIED_PASS: all `U*` equal A3, 28/28 edges, 84 warm cells hold; committed unedited as `calibration.tsv` |
