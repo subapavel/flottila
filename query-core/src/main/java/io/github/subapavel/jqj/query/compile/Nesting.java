@@ -24,9 +24,12 @@ import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
+import io.github.subapavel.jqj.query.analysis.CallGraph;
+import io.github.subapavel.jqj.query.analysis.CallKinds;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +79,9 @@ public final class Nesting {
   /** The leaf-emit depth of each function's body, by its place. */
   private final long[] functions;
 
+  /** The leaf-emit depth a Call into each function is charged, by its place: its own, or its group's largest. */
+  private final long[] charged;
+
   /** The bottom-up facts of each node, by identity, while the walk runs. */
   private final Map<Node, Facts> facts = new IdentityHashMap<>();
 
@@ -91,11 +97,17 @@ public final class Nesting {
 
   private Nesting(int functions, long starter) {
     this.functions = new long[functions];
+    this.charged = new long[functions];
     this.starter = starter;
   }
 
-  /** The nesting of {@code program}, whose IR the verifier passed, with {@link StackUnits#STARTER} as {@code T}. */
-  static Nesting of(Program program) {
+  /**
+   * The nesting of {@code program}, whose IR the verifier passed, with {@link StackUnits#STARTER} as {@code T}: its
+   * recursive groups {@code graph} and its Call kinds {@code kinds}. A jump keeps the units of its activation, so a
+   * Call into a group with a TAIL_GROUP call is charged the largest leaf-emit depth of the group's functions, whose bodies
+   * may all run in that activation (ADR-0046 #111 amendment, ADR-0047 #118).
+   */
+  static Nesting of(Program program, CallGraph graph, CallKinds kinds) {
     List<Function> functions = program.functions();
     Nesting n = new Nesting(functions.size(), StackUnits.STARTER);
     List<Node> roots = new ArrayList<>();
@@ -107,8 +119,13 @@ public final class Nesting {
     for (int r = 0; r < roots.size(); r++) {
       n.up(roots.get(r), roots);
     }
+    Map<Integer, Long> deepest = new HashMap<>();
     for (int i = 0; i < functions.size(); i++) {
       n.functions[i] = n.leafDepth(functions.get(i).body());
+      deepest.merge(graph.group(i), n.functions[i], Math::max);
+    }
+    for (int i = 0; i < functions.size(); i++) {
+      n.charged[i] = kinds.groupJumps(i) ? deepest.get(graph.group(i)) : n.functions[i];
     }
     for (int r = 1 + functions.size(); r < roots.size(); r++) {
       n.closures.put(roots.get(r), n.leafDepth(roots.get(r)));
@@ -351,7 +368,7 @@ public final class Nesting {
     long rise = at.rise();
     return switch (at.node()) {
       case Call c -> {
-        record(c, base + CALL + starter + rise + functions[c.fn()]);
+        record(c, base + CALL + starter + rise + charged[c.fn()]);
         yield List.of();
       }
       case ParamCall p -> {

@@ -1,6 +1,5 @@
 package io.github.subapavel.jqj.internal.explain;
 
-import io.github.subapavel.jqj.query.analysis.CallGraph;
 import io.github.subapavel.jqj.query.analysis.Facts;
 import io.github.subapavel.jqj.query.analysis.Numbering;
 import io.github.subapavel.jqj.query.compile.Executable;
@@ -21,16 +20,17 @@ import java.util.Set;
 /**
  * The text of {@code JqFilter.explain()} (ADR-0016, #108, ADR-0045 #112 and #117, ADR-0007 #115, ADR-0047 #116): the
  * main tree, then each function of the frozen program by its place, one line per node. Unstable and outside semver.
- * The program, the ids and the groups are query-core's ({@link Frozen}, {@link Numbering}, {@link CallGraph}); the
+ * The program, the ids and the groups are query-core's ({@link Frozen}, {@link Numbering}, {@link io.github.subapavel.jqj.query.analysis.CallGraph CallGraph}); the
  * printer keeps none of its own.
  *
  * <ul>
  *   <li>A node line is {@code <function> <id> <kind> <start>..<end>}, then its facts as {@code name=value}. The function
  *       is {@code main} or {@code fn<place>}; the id is the node's freeze id, which numbers the body's nodes from 0 in
  *       pre-order, a node before its parts in their order; the span is the node's source.
- *   <li>A Call shows {@code call=RECURSIVE} when the caller is a function and the callee is in its recursive group
- *       (GLOSSARY "Recursive group"), and {@code call=PLAIN} for every other call, each call from main among them; then
- *       {@code callee=fn<place>}. A ParamCall shows {@code param=<j>}.
+ *   <li>A Call shows its kind (GLOSSARY "Call kind", ADR-0047 #118), {@code call=<PLAIN|RECURSIVE|TAIL_SELF|TAIL_GROUP>}:
+ *       a tail kind for a tail call, which only the optimised compile stores; RECURSIVE for any other call from a function
+ *       into its recursive group (GLOSSARY "Recursive group"); PLAIN for every other call, each call from main among
+ *       them. Then {@code callee=fn<place>}. A ParamCall shows {@code param=<j>}.
  *   <li>Every node line shows its cardinality, {@code card=<NONE|ONE|AT_MOST_ONE|MANY>} (ADR-0007 #112), then whether
  *       it may break out, {@code breaks=<true|false>} (ADR-0007 #115), then its run form, {@code form=<push|value>}
  *       (ADR-0047 #116).
@@ -58,11 +58,10 @@ public final class Explain {
     Frozen frozen = executable.frozen();
     Nesting nesting = executable.nesting();
     Numbering numbering = frozen.numbering();
-    CallGraph graph = frozen.graph();
     List<Function> functions = frozen.program().functions();
     int[] origin = frozen.origin();
     StringBuilder text = new StringBuilder();
-    body(text, MAIN, -1, numbering, graph, executable);
+    body(text, MAIN, -1, numbering, executable);
     for (int place = 0; place < functions.size(); place++) {
       Function f = functions.get(place);
       text.append("function ").append(function(place)).append(' ').append(names.get(origin[place])).append(' ').append(span(f.source()));
@@ -71,7 +70,7 @@ public final class Explain {
         text.append(" copyOf=").append(function(origin[place]));
       }
       text.append(" emitDepth=").append(nesting.emitDepth(place)).append('\n');
-      body(text, function(place), place, numbering, graph, executable);
+      body(text, function(place), place, numbering, executable);
     }
     text.append("stack units filter callFreeDepth=").append(nesting.callFreeDepth()).append(" starterUnits=").append(nesting.starterUnits());
     text.append(" bytesPerUnit=").append(StackUnits.bytesPerUnit()).append(" reserve=").append(StackUnits.reserve());
@@ -80,7 +79,7 @@ public final class Explain {
   }
 
   /** The lines of the body of function {@code place}, or of main for -1, by freeze id. */
-  private static void body(StringBuilder text, String name, int place, Numbering numbering, CallGraph graph, Executable executable) {
+  private static void body(StringBuilder text, String name, int place, Numbering numbering, Executable executable) {
     Facts facts = executable.facts();
     Nesting nesting = executable.nesting();
     List<Node> nodes = numbering.nodes(place);
@@ -91,8 +90,7 @@ public final class Explain {
       text.append(name).append(' ').append(id).append(' ').append(node.getClass().getSimpleName());
       text.append(' ').append(span(node.source()));
       if (node instanceof Call c) {
-        boolean recursive = place >= 0 && graph.group(c.fn()) == graph.group(place);
-        text.append(" call=").append(recursive ? "RECURSIVE" : "PLAIN").append(" callee=").append(function(c.fn()));
+        text.append(" call=").append(executable.callKind(place, id)).append(" callee=").append(function(c.fn()));
         text.append(" units=").append(nesting.units(c));
         closures.addAll(c.closures());
       } else if (node instanceof ParamCall p) {

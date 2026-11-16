@@ -110,6 +110,28 @@ class CompileModesTest {
     assertThat(onSmallStack(() -> CompileModes.cli(deep, scratch, declared))).as("the conservative run of F on 9999 with a declared stack of 1 GiB").isEqualTo(new Run.Terminated("STACK"));
   }
 
+  /**
+   * ADR-0047 #118: a case with {@code limit recursion-depth 16} runs every hook of this oracle under that budget, so a
+   * tail call of 100 levels completes only in the optimised compile, which jumps, and the conservative and trampoline
+   * runs end at the budget; a hook that is not this oracle's is refused. Witness: without the key the conservative run
+   * completes under the oracle's budget.
+   */
+  @Test
+  void aLimitedCaseRunsEveryHookUnderItsBudget(@TempDir Path scratch) {
+    List<String> args = List.of("-c", "def f: if . >= 100 then . else .+1|f end; 0|f");
+    DiffCase limited = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d", 16L);
+    DiffCase plain = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+
+    assertEnded(CompileModes.cli(limited, scratch, CompileModes.hook(CompileMode.OPTIMISED)), "the optimised run under the key", 0, "100\n", "");
+    assertThat(CompileModes.cli(limited, scratch, CompileModes.hook(CompileMode.CONSERVATIVE))).as("the conservative run under the key").isEqualTo(new Run.Terminated("BUDGET RECURSION_DEPTH"));
+    assertThat(CompileModes.cli(limited, scratch, CompileModes.trampoline())).as("the trampoline run under the key").isEqualTo(new Run.Terminated("BUDGET RECURSION_DEPTH"));
+    assertEnded(CompileModes.cli(plain, scratch, CompileModes.hook(CompileMode.CONSERVATIVE)), "witness: the conservative run without the key", 0, "100\n", "");
+    UnaryOperator<JqEngine.Builder> foreign = b -> CompileModes.hook(CompileMode.CONSERVATIVE).apply(b);
+    assertThatThrownBy(() -> CompileModes.cli(limited, scratch, foreign))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("case t/tail has limit recursion-depth, which only a hook of CompileModes applies");
+  }
+
   /** The hook of {@code mode} with no steps: the read's one tick for {@code 1} ends the run (StepBudgetTest). */
   private static UnaryOperator<JqEngine.Builder> noSteps(CompileMode mode) {
     Limits l = CompileModes.limits();

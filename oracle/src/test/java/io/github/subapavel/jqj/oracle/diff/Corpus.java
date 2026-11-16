@@ -1,6 +1,8 @@
 package io.github.subapavel.jqj.oracle.diff;
 
+import io.github.subapavel.jqj.Limits;
 import io.github.subapavel.jqj.cli.Invocation;
+import io.github.subapavel.jqj.cli.Main;
 import io.github.subapavel.jqj.oracle.RunnerThread;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -50,10 +52,17 @@ public final class Corpus {
 
   /**
    * The runner of the differential oracle and its survey over {@code entry}, {@code Main::run}, which runs on the
-   * {@link RunnerThread} (F-88).
+   * {@link RunnerThread} (F-88). A case with {@code limit recursion-depth n} runs the command line's engine with
+   * {@link Limits#cli()} under a recursion-depth budget of {@code n} instead (ADR-0047 #118), on the same thread; that
+   * entry ends no run on a termination, so one there is the runner's CRASH.
    */
   static DiffRunner runner(Path scratch, ToIntFunction<Invocation> entry) {
-    return new DiffRunner(onRunnerThread(entry), scratch, deviations());
+    return new DiffRunner(onRunnerThread(entry), depth -> onRunnerThread(invocation -> Main.run(invocation, b -> b.limits(recursionDepth(Limits.cli(), depth)))), scratch, deviations());
+  }
+
+  /** {@code l} with a recursion-depth budget of {@code depth}. */
+  private static Limits recursionDepth(Limits l, long depth) {
+    return new Limits(l.steps(), l.deadline(), l.nestingDepth(), Math.toIntExact(depth), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), l.stackBytes());
   }
 
   /** {@code entry} on the {@link RunnerThread} (F-88): the differential and the json runners' entry. */

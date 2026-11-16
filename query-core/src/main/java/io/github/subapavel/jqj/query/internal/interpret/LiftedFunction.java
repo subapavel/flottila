@@ -24,15 +24,22 @@ public final class LiftedFunction {
     this.body = body;
   }
 
-  int slots() {
-    return slots;
-  }
-
-  int cells() {
-    return cells;
-  }
-
   Op body() {
     return body;
+  }
+
+  /**
+   * A fresh frame for an activation that a Call or a jump enters from the running {@code slots}: its value parameters
+   * read on {@code in}, then its closures, each bound in {@code slots}.
+   */
+  Object[] frame(Argument[] values, ClosureArgument[] closures, Object[] slots, Object in) {
+    Object[] frame = new Object[cells];
+    for (int k = 0; k < values.length; k++) {
+      frame[k] = values[k].read(slots, in);
+    }
+    for (int j = 0; j < closures.length; j++) {
+      frame[this.slots + j] = closures[j].bind(slots);
+    }
+    return frame;
   }
 }

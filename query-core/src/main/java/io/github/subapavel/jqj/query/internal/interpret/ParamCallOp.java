@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
@@ -62,6 +63,29 @@ public final class ParamCallOp extends Op {
     Closure closure = (Closure) Frames.out(slots, level)[cell];
     t.state.tick();
     t.state.enter();
-    closure.start(t, new CallOp.Active(under), in, out);
+    closure.start(t, new Active(under), in, out);
+  }
+
+  /**
+   * The heap form of one live closure activation (ADR-0046): it leaves the activation when the closure's run answers or
+   * an error passes it, as the push form's {@code finally} does. A closure's body holds no tail call (ADR-0047 #118), so
+   * it takes no jump.
+   */
+  private static final class Active extends HeapForm {
+    Active(HeapForm under) {
+      super(under);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      t.state.leave();
+      t.answer(under, more);
+    }
+
+    @Override
+    void fail(Trampoline t, FilterException e) {
+      t.state.leave();
+      t.raise(under, e);
+    }
   }
 }

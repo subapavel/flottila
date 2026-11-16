@@ -1,5 +1,7 @@
 package io.github.subapavel.jqj.query.compile;
 
+import io.github.subapavel.jqj.query.analysis.CallKind;
+import io.github.subapavel.jqj.query.analysis.CallKinds;
 import io.github.subapavel.jqj.query.analysis.Facts;
 import io.github.subapavel.jqj.query.internal.interpret.Op;
 import io.github.subapavel.jqj.query.internal.interpret.Trampoline;
@@ -27,6 +29,9 @@ public final class Executable {
   /** The facts of the program this was compiled from, by its freeze ids. */
   private final Facts facts;
 
+  /** The kind of each Call of the program this was compiled from, by its freeze ids (ADR-0047 #118). */
+  private final CallKinds kinds;
+
   /** The program's frames, {@code D_f} among them (ADR-0046 #111 amendment). */
   private final Nesting nesting;
 
@@ -36,11 +41,12 @@ public final class Executable {
   /** Whether the main tree's root runs by its value form (ADR-0047 #116), so that the run entry emits its value. */
   private final boolean value;
 
-  Executable(Op root, int slots, int parameters, Facts facts, Nesting nesting, Frozen frozen) {
+  Executable(Op root, int slots, int parameters, Facts facts, CallKinds kinds, Nesting nesting, Frozen frozen) {
     this.root = root;
     this.slots = slots;
     this.parameters = parameters;
     this.facts = facts;
+    this.kinds = kinds;
     this.nesting = nesting;
     this.frozen = frozen;
     this.value = form(-1, 0) == RunForm.VALUE;
@@ -66,6 +72,15 @@ public final class Executable {
    */
   public RunForm form(int function, int id) {
     return RunForm.of(facts, function, id);
+  }
+
+  /**
+   * The kind of the Call {@code id}, a freeze id, of the body {@code function}, -1 for the main tree (ADR-0047 #118):
+   * PLAIN from main or into another recursive group, RECURSIVE into the caller's group, TAIL_SELF or TAIL_GROUP for a
+   * tail call, which the conservative compile never has; null for a node that is no Call.
+   */
+  public CallKind callKind(int function, int id) {
+    return kinds.kind(function, id);
   }
 
   /**

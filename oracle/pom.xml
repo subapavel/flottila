@@ -107,6 +107,9 @@
             <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
             <param>io.github.subapavel.jqj.OperatorChainTest</param>
+            <!-- 1.8 s in surefire; killer of 0 of 3 751 jq-core mutants when the only tests: its filters run in child
+                 JVMs on the unmutated class path (#118). -->
+            <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
           </excludedTestClasses>
           <!-- Mutated here: query-core and jq-core, the class-C modules. Their tests still run. -->
           <excludedClasses>

@@ -57,6 +57,38 @@ class DifferentialRunnerTest {
     assertThat(all).allSatisfy(e -> assertThat(e.recording().id()).isEqualTo(e.c().id()));
   }
 
+  /**
+   * ADR-0047 #118: a case with {@code limit recursion-depth n} runs through the limited entry for {@code n}, never the
+   * plain one, and a runner without a limited entry refuses it before jqj runs. Witness: a case without the key runs
+   * the plain entry.
+   */
+  @Test
+  void aLimitedCaseRunsTheLimitedEntryUnderItsBudget() {
+    DiffCorpus.Entry e = DiffCorpus.load(Corpus.casesDir()).stream().filter(x -> x.c().id().equals("tail/until-ten-million")).findFirst().orElseThrow();
+    assertThat(e.c().recursionDepth()).as("premise: the case's budget").isEqualTo(16L);
+    List<String> entries = new ArrayList<>();
+    DiffRunner runner =
+        new DiffRunner(
+            inv -> {
+              entries.add("plain");
+              return jqj(3, "plain\n", "").applyAsInt(inv);
+            },
+            depth -> {
+              entries.add("limited " + depth);
+              return jqj(0, "10000000\n", "");
+            },
+            scratch,
+            Corpus.deviations());
+
+    assertThat(runner.run(e.c(), e.recording()).kind()).as("the limited entry's run against jq-ref's recording").isEqualTo(Verdict.Kind.PASS);
+    assertThat(entries).as("the entries a limited case ran").containsExactly("limited 16");
+    runner.run(basics("basics/compact-object").c(), null);
+    assertThat(entries).as("witness: a case without the key runs the plain entry").containsExactly("limited 16", "plain");
+    assertThatThrownBy(() -> runner(jqj(0, "10000000\n", "")).run(e.c(), e.recording()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("case tail/until-ten-million: limit recursion-depth, and this runner has no limited entry");
+  }
+
   /** An entry standing in for jqj: writes the given bytes and returns rc. */
   private static ToIntFunction<Invocation> jqj(int rc, String stdout, String stderr) {
     return inv -> {

@@ -21,15 +21,16 @@ done
 # oracle: the Survey tests fail only on CRASH and stay out of PIT (ADR-0020); so does the compile-mode oracle, which
 # runs in the ticket gate since #89 but never under PIT (F-46, ADR-0020 amendment for #60).
 # jq-core and oracle: OperatorChainTest and WideConstructStepsTest are slow at each minion start and stay out of PIT
-# (F-84 (a), #190); they still run in step 1. Any further exclusion needs a finding. jq-core: the child-JVM classes of
+# (F-84 (a), #190); they still run in step 1. TailJumpFreshJvmTest runs its filters in child JVMs on the unmutated
+# class path, so it kills no mutant (#118). Any further exclusion needs a finding. jq-core: the child-JVM classes of
 # #113, CalibrationTest and DeepStackFreshJvmTest, whose mutants never reach a child (F-101); CalibrationRecordTest,
 # in-process, stays in PIT's set.
 expected() {
   case $1 in
     query-core) echo "" ;;
-    jq-core) echo "io.github.subapavel.jqj.CalibrationTest,io.github.subapavel.jqj.DeepStackFreshJvmTest,io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.WideConstructStepsTest" ;;
+    jq-core) echo "io.github.subapavel.jqj.CalibrationTest,io.github.subapavel.jqj.DeepStackFreshJvmTest,io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.TailJumpFreshJvmTest,io.github.subapavel.jqj.WideConstructStepsTest" ;;
     jq-cli) echo "io.github.subapavel.jqj.cli.*ModulePathTest,io.github.subapavel.jqj.cli.LauncherTest" ;;
-    oracle) echo "io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.WideConstructStepsTest,io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest,io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest,io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest" ;;
+    oracle) echo "io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.TailJumpFreshJvmTest,io.github.subapavel.jqj.WideConstructStepsTest,io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest,io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest,io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest" ;;
   esac
 }
 modules="query-core jq-core jq-cli oracle"

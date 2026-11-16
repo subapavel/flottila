@@ -1,6 +1,8 @@
 package io.github.subapavel.jqj.query.compile;
 
 import io.github.subapavel.jqj.query.analysis.CallGraph;
+import io.github.subapavel.jqj.query.analysis.CallKind;
+import io.github.subapavel.jqj.query.analysis.CallKinds;
 import io.github.subapavel.jqj.query.analysis.Facts;
 import io.github.subapavel.jqj.query.analysis.Numbering;
 import io.github.subapavel.jqj.query.internal.interpret.AdvanceOp;
@@ -23,6 +25,7 @@ import io.github.subapavel.jqj.query.internal.interpret.Intrinsic2Op;
 import io.github.subapavel.jqj.query.internal.interpret.IntrinsicManyOp;
 import io.github.subapavel.jqj.query.internal.interpret.IntrinsicNOp;
 import io.github.subapavel.jqj.query.internal.interpret.IntrinsicOp;
+import io.github.subapavel.jqj.query.internal.interpret.JumpOp;
 import io.github.subapavel.jqj.query.internal.interpret.LabelOp;
 import io.github.subapavel.jqj.query.internal.interpret.LiftedFunction;
 import io.github.subapavel.jqj.query.internal.interpret.Op;
@@ -102,15 +105,19 @@ public final class Compiler {
   /** The facts each node's run form is read from (ADR-0047 #116). */
   private final Facts facts;
 
+  /** The kind of each Call, by which a tail call is built as a jump (ADR-0047 #118). */
+  private final CallKinds kinds;
+
   /** The body the node being built is in: -1 for the main tree, a function's place otherwise. */
   private int body;
 
-  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts) {
+  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting, Numbering numbering, Facts facts, CallKinds kinds) {
     this.shells = shells;
     this.closures = closures;
     this.nesting = nesting;
     this.numbering = numbering;
     this.facts = facts;
+    this.kinds = kinds;
   }
 
   /**
@@ -148,9 +155,11 @@ public final class Compiler {
    * {@link #compile(Program, int, CompileMode)} with the specialisation cap {@code cap}. The order is verify, specialise,
    * verify, freeze, facts, build (ADR-0045 #112 and #117): {@link CompileMode#OPTIMISED} specialises the program under
    * {@code cap}, verifies the result again and analyses it; {@link CompileMode#CONSERVATIVE} makes no copy and keeps
-   * every fact at its safe value (ADR-0018). The interpreter reads one thing from the facts, each node's run form
-   * (ADR-0047 #116), over the frozen program's numbering, so a copy's nodes take their own: value form only where the
-   * optimised facts allow it (ADR-0030). The executable runs the frozen program and carries it ({@link Frozen}).
+   * every fact at its safe value (ADR-0018). The interpreter reads two things from the facts, over the frozen program's
+   * numbering, so a copy's nodes take their own: each node's run form (ADR-0047 #116), value form only where the
+   * optimised facts allow it (ADR-0030), and each Call's kind ({@link CallKinds}), a jump only for a tail kind, which
+   * only the optimised compile stores (ADR-0047 #118). The executable runs the frozen program and carries it
+   * ({@link Frozen}).
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
    */
@@ -162,14 +171,15 @@ public final class Compiler {
     Numbering numbering = Numbering.of(frozen);
     CallGraph graph = CallGraph.of(frozen, numbering);
     Facts facts = mode == CompileMode.OPTIMISED ? Facts.optimised(numbering, graph) : Facts.conservative(numbering);
+    CallKinds kinds = mode == CompileMode.OPTIMISED ? CallKinds.optimised(numbering, graph, facts) : CallKinds.conservative(numbering, graph);
     int[] slots = layout.slots();
     List<Function> functions = frozen.functions();
     LiftedFunction[] shells = new LiftedFunction[functions.size()];
     for (int i = 0; i < shells.length; i++) {
       shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
     }
-    Nesting nesting = Nesting.of(frozen);
-    Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts);
+    Nesting nesting = Nesting.of(frozen, graph, kinds);
+    Compiler compiler = new Compiler(shells, layout.closures(), nesting, numbering, facts, kinds);
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1]);
       compiler.body = i;
@@ -178,7 +188,7 @@ public final class Compiler {
     compiler.region = new Region(null, null, slots[0]);
     compiler.body = -1;
     Frozen record = new Frozen(frozen, numbering, graph, pass.origin(), pass.specialised(), pass.refused());
-    return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, nesting, record);
+    return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, kinds, nesting, record);
   }
 
   /** The op of {@code node}, built in its run form (ADR-0047 #116). */
@@ -253,7 +263,8 @@ public final class Compiler {
 
   /**
    * The Call {@code c} of its function's shell, in the run form {@code value}: its values read here, and each closure
-   * written here or, a bare ParamCall, the caller's closure passed on.
+   * written here or, a bare ParamCall, the caller's closure passed on. A tail call, TAIL_SELF or TAIL_GROUP, is a jump
+   * (ADR-0047 #118), whose written closures read no cell here and are bound with no defining frame.
    */
   private Op call(boolean value, Call c) {
     List<Node> nodes = c.values();
@@ -261,37 +272,46 @@ public final class Compiler {
     for (int k = 0; k < values.length; k++) {
       values[k] = argument(nodes.get(k));
     }
+    CallKind kind = kinds.kind(body, numbering.id(c));
+    boolean jump = kind == CallKind.TAIL_SELF || kind == CallKind.TAIL_GROUP;
     List<Node> written = c.closures();
     ClosureArgument[] closures = new ClosureArgument[written.size()];
     for (int j = 0; j < closures.length; j++) {
-      closures[j] = closure(written.get(j));
+      closures[j] = closure(written.get(j), jump);
+    }
+    if (jump) {
+      return new JumpOp(value, shells[c.fn()], closures, values);
     }
     return new CallOp(value, shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
   }
 
   /**
    * A closure argument: a bare ParamCall passed on; a body that binds no slot built here, in its defining frame; any
-   * other built in a region of its own, cell 0 the link and its slots from cell 1.
+   * other built in a region of its own, cell 0 the link and its slots from cell 1. At a jump ({@code closed}) a written
+   * one is bound once, with no defining frame.
    */
-  private ClosureArgument closure(Node body) {
+  private ClosureArgument closure(Node body, boolean closed) {
     if (body instanceof ParamCall p) {
       At at = parameter(p.param());
       return ClosureArgument.passed(at.level(), at.cell());
     }
     List<Integer> own = closures.get(body);
     long emitDepth = nesting.emitDepth(body);
+    int cells = own.isEmpty() ? 0 : own.size() + 1;
+    Op op;
     if (own.isEmpty()) {
-      return ClosureArgument.written(interpreter(body), 0, emitDepth);
+      op = interpreter(body);
+    } else {
+      Map<Integer, Integer> at = new HashMap<>();
+      for (int slot : own) {
+        at.put(slot, at.size() + 1);
+      }
+      Region outer = region;
+      region = new Region(outer, at, 0);
+      op = interpreter(body);
+      region = outer;
     }
-    Map<Integer, Integer> cells = new HashMap<>();
-    for (int slot : own) {
-      cells.put(slot, cells.size() + 1);
-    }
-    Region outer = region;
-    region = new Region(outer, cells, 0);
-    Op op = interpreter(body);
-    region = outer;
-    return ClosureArgument.written(op, cells.size() + 1, emitDepth);
+    return closed ? ClosureArgument.closed(op, cells, emitDepth) : ClosureArgument.written(op, cells, emitDepth);
   }
 
   /**

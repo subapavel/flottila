@@ -350,8 +350,10 @@ class SpecialiseExplainTest {
 
   /**
    * The required deep cases (#118 owns their results, 4999999 and 5000000 on reference jq): each outside call runs a
-   * copy that takes its free slots as values, holds no ParamCall and calls itself RECURSIVE, which #118 makes a tail
-   * call.
+   * copy that takes its free slots as values, holds no ParamCall and calls itself TAIL_SELF. Re-pinned by #118 (ADR-0047
+   * #118): in the copy the self-call sits in an If branch whose condition, the inlined {@code . < $upto} or {@code . >=
+   * $n}, is at most one, on the right of a Pipe whose left {@code . + $by} or {@code . + 1} is at most one (while's call
+   * also on the right of a Comma), and its only arguments are the copy's trailing values, which pass condition 4.
    */
   @ParameterizedTest(name = "{argumentSetName}")
   @MethodSource("deep")
@@ -361,7 +363,7 @@ class SpecialiseExplainTest {
       assertThat(Integer.parseInt(function(lines, copy).facts().get("values"))).as("values= of the copy %s in %s", copy, filter).isGreaterThanOrEqualTo(1);
       assertThat(calls(lines, copy))
           .as("the Calls of the copy %s in %s", copy, filter)
-          .anySatisfy(l -> assertThat(l.facts()).as("the Call %s", l.fields()).containsEntry("callee", copy).containsEntry("call", "RECURSIVE"));
+          .anySatisfy(l -> assertThat(l.facts()).as("the Call %s", l.fields()).containsEntry("callee", copy).containsEntry("call", "TAIL_SELF"));
     }
   }
 

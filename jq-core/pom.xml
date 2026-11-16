@@ -66,6 +66,9 @@
             <!-- 9.2 s in surefire; killer of 299 of 3 543 mutants when the only tests, all in-process through
                  reserveCoversTheGuardPages (F-101). -->
             <param>io.github.subapavel.jqj.DeepStackFreshJvmTest</param>
+            <!-- 1.8 s in surefire; killer of 0 of 3 751 mutants when the only tests: its filters run in child JVMs on
+                 the unmutated class path (#118). -->
+            <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
           </excludedTestClasses>
         </configuration>
       </plugin>

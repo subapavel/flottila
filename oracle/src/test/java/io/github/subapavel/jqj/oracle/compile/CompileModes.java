@@ -58,14 +58,7 @@ final class CompileModes {
    * @throws IllegalStateException when the switch is not there, or when the hook runs and the switch fails
    */
   static UnaryOperator<JqEngine.Builder> hook(CompileMode mode) {
-    Method compileMode = method(JqEngine.Builder.class, "compileMode", CompileMode.class);
-    return b -> {
-      try {
-        return (JqEngine.Builder) compileMode.invoke(b.limits(limits()), mode);
-      } catch (ReflectiveOperationException e) {
-        throw new IllegalStateException("the compile-mode switch JqEngine.Builder.compileMode(CompileMode) failed for " + mode, e);
-      }
-    };
+    return new Hook(method(JqEngine.Builder.class, "compileMode", CompileMode.class), mode, limits());
   }
 
   /**
@@ -75,9 +68,43 @@ final class CompileModes {
    * @throws IllegalStateException as {@link #hook}
    */
   static UnaryOperator<JqEngine.Builder> trampoline() {
-    UnaryOperator<JqEngine.Builder> conservative = hook(CompileMode.CONSERVATIVE);
-    Limits zero = trampolineLimits();
-    return b -> conservative.apply(b).limits(zero);
+    return new Hook(method(JqEngine.Builder.class, "compileMode", CompileMode.class), CompileMode.CONSERVATIVE, trampolineLimits());
+  }
+
+  /**
+   * One of this oracle's hooks: it gives a builder {@code limits} and {@code mode} through {@code compileMode}, the
+   * switch, so a case's {@code limit recursion-depth} can replace the budget of exactly those limits.
+   */
+  private record Hook(Method compileMode, CompileMode mode, Limits limits) implements UnaryOperator<JqEngine.Builder> {
+    @Override
+    public JqEngine.Builder apply(JqEngine.Builder b) {
+      try {
+        return (JqEngine.Builder) compileMode.invoke(b.limits(limits), mode);
+      } catch (ReflectiveOperationException e) {
+        throw new IllegalStateException("the compile-mode switch JqEngine.Builder.compileMode(CompileMode) failed for " + mode, e);
+      }
+    }
+
+    /** This hook with a recursion-depth budget of {@code depth} (ADR-0047 #118). */
+    Hook recursionDepth(long depth) {
+      Limits l = limits;
+      return new Hook(compileMode, mode, new Limits(l.steps(), l.deadline(), l.nestingDepth(), Math.toIntExact(depth), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), l.stackBytes()));
+    }
+  }
+
+  /**
+   * The hook of a run of {@code c} under {@code hook}: for a case with {@code limit recursion-depth} (ADR-0047 #118), the
+   * same hook with that budget, in every mode's run.
+   *
+   * @throws IllegalArgumentException when the case has the key and {@code hook} is not one of this oracle's, whose
+   *     limits it could replace
+   */
+  static UnaryOperator<JqEngine.Builder> limited(DiffCase c, UnaryOperator<JqEngine.Builder> hook) {
+    if (c.recursionDepth() == null) return hook;
+    if (!(hook instanceof Hook h)) {
+      throw new IllegalArgumentException("case " + c.id() + " has limit recursion-depth, which only a hook of CompileModes applies");
+    }
+    return h.recursionDepth(c.recursionDepth());
   }
 
   /** The trampoline run's limits: this oracle's {@link #limits()} with {@code stackBytes} 0. */
@@ -106,14 +133,20 @@ final class CompileModes {
     }
   }
 
-  /** Runs a differential case through {@link Main#run(Invocation, UnaryOperator)}, in a fresh working directory. */
+  /**
+   * Runs a differential case through {@link Main#run(Invocation, UnaryOperator)}, in a fresh working directory, under
+   * its {@code limit recursion-depth} when it has one ({@link #limited}).
+   *
+   * @throws IllegalArgumentException as {@link #limited}, before the run
+   */
   static Run cli(DiffCase c, Path scratch, UnaryOperator<JqEngine.Builder> hook) {
+    UnaryOperator<JqEngine.Builder> run = limited(c, hook);
     try (CaseDirectory dir = CaseDirectory.of(c.files(), scratch)) {
       ByteArrayOutputStream out = new ByteArrayOutputStream();
       ByteArrayOutputStream err = new ByteArrayOutputStream();
       Invocation invocation = new Invocation(c.args(), c.environment(dir.path()), dir.path(), new ByteArrayInputStream(c.stdin()), out, err);
       try {
-        int rc = Main.run(invocation, hook);
+        int rc = Main.run(invocation, run);
         return new Run.Ended(new Outcome(rc, out.toByteArray(), err.toByteArray()));
       } catch (JqTermination t) {
         return termination(t, () -> new Outcome(t.exitCode(), out.toByteArray(), err.toByteArray()));

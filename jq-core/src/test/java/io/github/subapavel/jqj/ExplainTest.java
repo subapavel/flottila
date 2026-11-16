@@ -65,7 +65,11 @@ class ExplainTest {
     return (s + offset) + ".." + (s + offset + 1);
   }
 
-  /** The ticket's case: main and f are listed, and each Call shows its kind and its callee. */
+  /**
+   * The ticket's case: main and f are listed, and each Call shows its kind and its callee. Re-pinned by #118 (ADR-0047
+   * #118): f's call of itself is on the right of a Pipe whose left side {@code . - 1} is at most one, in a branch of an
+   * If whose condition {@code . > 0} is at most one, with no closure argument, so it is TAIL_SELF.
+   */
   @Test
   void explainListsTheProgram() {
     List<Line> lines = lines(RECURSIVE_F);
@@ -75,7 +79,7 @@ class ExplainTest {
     assertThat(nodes(lines, "main")).as("main's nodes").isNotEmpty();
     assertThat(nodes(lines, f)).as("f's nodes").isNotEmpty();
     assertThat(node(lines, "main", "Call", "43..44")).as("the outside call").containsEntry("call", "PLAIN").containsEntry("callee", f);
-    assertThat(node(lines, f, "Call", "29..30")).as("the recursive call").containsEntry("call", "RECURSIVE").containsEntry("callee", f);
+    assertThat(node(lines, f, "Call", "29..30")).as("the recursive call").containsEntry("call", "TAIL_SELF").containsEntry("callee", f);
   }
 
   /** Each body numbers its nodes from 0 in pre-order: a node, then its parts in their order. */
@@ -96,29 +100,43 @@ class ExplainTest {
   }
 
   /**
-   * a and b, written inside a, reach each other, so they are one group and their calls of each other are RECURSIVE; the
-   * calls of g, a group of its own, from a and b are PLAIN, and g's call of itself RECURSIVE. b calls g before a does,
-   * so a's call meets a function whose group is already found.
+   * A call into the caller's recursive group is RECURSIVE unless it is a tail call, and any other call is PLAIN. h's
+   * call of itself has {@code + 1} still to run after it, so it is in no tail position: RECURSIVE. a and b, written
+   * inside a, reach each other, so they are one group; the calls of g, a group of its own, from a and b are PLAIN. b
+   * calls g before a does, so a's call meets a function whose group is already found. Re-pinned by #118 (ADR-0047
+   * #118): the other calls into the caller's group are in tail positions with one-valued left contexts and no closure
+   * argument, so g's call of itself is TAIL_SELF, and a's call of b and b's call of a are TAIL_GROUP. Reference jq 1.8.2
+   * gives 10 and 8 for the filter on 0 (#118's implementer, 2026-11-15).
    */
   @Test
   void aCallIntoTheCallersGroupIsRecursiveAndAnyOtherPlain() {
-    String filter = "def g: if . > 9 then . else . + 1 | g end; def a: def b: g | a; if . > 0 then . - 1 | b else g end; a";
+    String filter =
+        "def h: if . > 3 then . else (. + 1 | h) + 1 end; def g: if . > 9 then . else . + 1 | g end;"
+            + " def a: def b: g | a; if . > 0 then . - 1 | b else g end; a, h";
     List<Line> lines = lines(filter);
+    String h = function(lines, "h/0");
     String g = function(lines, "g/0");
     String a = function(lines, "a/0");
     String b = function(lines, "b/0");
 
-    assertThat(node(lines, g, "Call", at(filter, "| g end", 2))).as("g in g").containsEntry("call", "RECURSIVE").containsEntry("callee", g);
-    assertThat(node(lines, a, "Call", at(filter, "| b else", 2))).as("b in a").containsEntry("call", "RECURSIVE").containsEntry("callee", b);
+    // The left operand of + 1: not the right of a Pipe, a Comma or an Alt, nor an If branch.
+    assertThat(node(lines, h, "Call", at(filter, "| h)", 2))).as("h in h").containsEntry("call", "RECURSIVE").containsEntry("callee", h);
+
+    // An If branch (condition . > 9 at most one), the right of a Pipe whose left . + 1 is at most one.
+    assertThat(node(lines, g, "Call", at(filter, "| g end", 2))).as("g in g").containsEntry("call", "TAIL_SELF").containsEntry("callee", g);
+    // An If branch (condition . > 0 at most one), the right of a Pipe whose left . - 1 is at most one; b is in a's group.
+    assertThat(node(lines, a, "Call", at(filter, "| b else", 2))).as("b in a").containsEntry("call", "TAIL_GROUP").containsEntry("callee", b);
     assertThat(node(lines, a, "Call", at(filter, "else g end", 5))).as("g in a").containsEntry("call", "PLAIN").containsEntry("callee", g);
     assertThat(node(lines, b, "Call", at(filter, "def b: g | a", 7))).as("g in b").containsEntry("call", "PLAIN").containsEntry("callee", g);
-    assertThat(node(lines, b, "Call", at(filter, "def b: g | a", 11))).as("a in b").containsEntry("call", "RECURSIVE").containsEntry("callee", a);
+    // The right of b's root Pipe, whose left side, the PLAIN call of g, is at most one (card=AT_MOST_ONE).
+    assertThat(node(lines, b, "Call", at(filter, "def b: g | a", 11))).as("a in b").containsEntry("call", "TAIL_GROUP").containsEntry("callee", a);
     assertThat(node(lines, "main", "Call", at(filter, "; a", 2))).as("a in main").containsEntry("call", "PLAIN").containsEntry("callee", a);
   }
 
   /**
    * a calls b, then c, which calls b too: c's call meets b's group already found, which joins neither a's group nor
-   * c's, so a's call of c stays PLAIN.
+   * c's, so a's call of c stays PLAIN. Re-pinned by #118 (ADR-0047 #118): c's call of itself is in an If branch
+   * (condition {@code . > 5} at most one), on the right of a Pipe whose left {@code . + 1} is at most one: TAIL_SELF.
    */
   @Test
   void aCallIntoAnEarlierGroupJoinsNoGroup() {
@@ -130,10 +148,14 @@ class ExplainTest {
     String c = function(lines, "c/0");
 
     assertThat(node(lines, a, "Call", at(filter, "(b, c)", 4))).as("c in a").containsEntry("call", "PLAIN").containsEntry("callee", c);
-    assertThat(node(lines, c, "Call", at(filter, "| c end", 2))).as("c in c").containsEntry("call", "RECURSIVE").containsEntry("callee", c);
+    assertThat(node(lines, c, "Call", at(filter, "| c end", 2))).as("c in c").containsEntry("call", "TAIL_SELF").containsEntry("callee", c);
   }
 
-  /** a calls b, b calls c and c calls a: one group of three, though no call goes straight back to a's caller. */
+  /**
+   * a calls b, b calls c and c calls a: one group of three, though no call goes straight back to a's caller. Re-pinned
+   * by #118 (ADR-0047 #118): every call is into another function of the group, in a tail position, with no closure
+   * argument, so each is TAIL_GROUP.
+   */
   @Test
   void aCycleOfThreeIsOneGroup() {
     String filter = "def a: def b: def c: a; c; if . > 0 then . - 1 | b else . end; a";
@@ -142,9 +164,12 @@ class ExplainTest {
     String b = function(lines, "b/0");
     String c = function(lines, "c/0");
 
-    assertThat(node(lines, a, "Call", at(filter, "| b else", 2))).as("b in a").containsEntry("call", "RECURSIVE").containsEntry("callee", b);
-    assertThat(node(lines, b, "Call", at(filter, "a; c;", 3))).as("c in b").containsEntry("call", "RECURSIVE").containsEntry("callee", c);
-    assertThat(node(lines, c, "Call", at(filter, "c: a;", 3))).as("a in c").containsEntry("call", "RECURSIVE").containsEntry("callee", a);
+    // An If branch (condition . > 0 at most one), the right of a Pipe whose left . - 1 is at most one.
+    assertThat(node(lines, a, "Call", at(filter, "| b else", 2))).as("b in a").containsEntry("call", "TAIL_GROUP").containsEntry("callee", b);
+    // The root of b's body, a tail position with no left context.
+    assertThat(node(lines, b, "Call", at(filter, "a; c;", 3))).as("c in b").containsEntry("call", "TAIL_GROUP").containsEntry("callee", c);
+    // The root of c's body, a tail position with no left context.
+    assertThat(node(lines, c, "Call", at(filter, "c: a;", 3))).as("a in c").containsEntry("call", "TAIL_GROUP").containsEntry("callee", a);
   }
 
   /**

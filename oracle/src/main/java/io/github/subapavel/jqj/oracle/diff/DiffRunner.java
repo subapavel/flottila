@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.function.LongFunction;
 import java.util.function.ToIntFunction;
 
 /**
@@ -18,7 +19,8 @@ import java.util.function.ToIntFunction;
  * replaces the recording's part (ADR-0020). The rules, in order:
  *
  * <ol>
- *   <li>a deviation case whose slug names no row of {@code DEVIATIONS.md} is an error, before jqj runs;
+ *   <li>a deviation case whose slug names no row of {@code DEVIATIONS.md} is an error, before jqj runs, and so is a case
+ *       with {@code limit recursion-depth} for a runner without a limited entry;
  *   <li>an exception out of the entry is FAIL if its message carries the Stub prefix, otherwise CRASH;
  *   <li>jqj's stderr carrying the Stub prefix is FAIL;
  *   <li>a case without a recording, or whose def differs from the recording's, is STALE;
@@ -35,28 +37,52 @@ public final class DiffRunner {
   private static final int BEFORE = 40;
 
   private final ToIntFunction<Invocation> entry;
+  private final LongFunction<ToIntFunction<Invocation>> limited;
   private final Path scratch;
   private final Set<String> deviations;
 
   /**
+   * A runner of the cases without {@code limit recursion-depth}.
+   *
    * @param entry the in-process entry, {@code Main::run}
    * @param scratch where each run's working directory is made and deleted again
    * @param deviations the slugs that {@code DEVIATIONS.md} names, {@link Deviations#slugs}
    */
   public DiffRunner(ToIntFunction<Invocation> entry, Path scratch, Set<String> deviations) {
+    this(entry, null, scratch, deviations);
+  }
+
+  /**
+   * @param entry the in-process entry, {@code Main::run}
+   * @param limited the entry of a case with {@code limit recursion-depth n}, given {@code n}: jqj under that budget
+   *     (ADR-0047 #118); null for a runner of no such case
+   * @param scratch where each run's working directory is made and deleted again
+   * @param deviations the slugs that {@code DEVIATIONS.md} names, {@link Deviations#slugs}
+   */
+  public DiffRunner(ToIntFunction<Invocation> entry, LongFunction<ToIntFunction<Invocation>> limited, Path scratch, Set<String> deviations) {
     this.entry = entry;
+    this.limited = limited;
     this.scratch = scratch;
     this.deviations = Set.copyOf(deviations);
   }
 
   /**
-   * The verdict of one case; {@code recording} is null when the case was never recorded.
+   * The verdict of one case; {@code recording} is null when the case was never recorded. A case with {@code limit
+   * recursion-depth} runs through the limited entry.
    *
-   * @throws IllegalArgumentException when the case's deviation slug names no row of {@code DEVIATIONS.md}
+   * @throws IllegalArgumentException when the case's deviation slug names no row of {@code DEVIATIONS.md}, or when the
+   *     case has {@code limit recursion-depth} and this runner has no limited entry
    */
   public Verdict run(DiffCase c, Recording recording) {
     if (c.deviation() != null && !deviations.contains(c.deviation())) {
       throw new IllegalArgumentException("case " + c.id() + ": deviation '" + c.deviation() + "' names no row of DEVIATIONS.md");
+    }
+    ToIntFunction<Invocation> cli = entry;
+    if (c.recursionDepth() != null) {
+      if (limited == null) {
+        throw new IllegalArgumentException("case " + c.id() + ": limit recursion-depth, and this runner has no limited entry");
+      }
+      cli = limited.apply(c.recursionDepth());
     }
     Outcome jqj;
     try (CaseDirectory dir = CaseDirectory.of(c.files(), scratch)) {
@@ -66,7 +92,7 @@ public final class DiffRunner {
           new Invocation(c.args(), c.environment(dir.path()), dir.path(), new ByteArrayInputStream(c.stdin()), out, err);
       int rc;
       try {
-        rc = entry.applyAsInt(invocation);
+        rc = cli.applyAsInt(invocation);
       } catch (RuntimeException e) {
         String line = CaseFormat.escape(e.toString().getBytes(UTF_8));
         if (String.valueOf(e.getMessage()).contains(Verdict.STUB)) {

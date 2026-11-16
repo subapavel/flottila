@@ -17,6 +17,9 @@ import java.util.List;
  * <ol>
  *   <li>an exception out of either run is CRASH, unless its message carries the Stub prefix;
  *   <li>either run reaching a Stub, by such an exception or in its stderr, is FAIL {@code stub:};
+ *   <li>for a case with {@code limit recursion-depth} (ADR-0047 #118), the other run, which stores no tail kind, passes
+ *       only as {@code Terminated("BUDGET RECURSION_DEPTH")} while the optimised run ended: PASS; an optimised run that
+ *       ended as a termination is FAIL {@code left out:}, and any other end of the other run FAIL {@code no depth end:};
  *   <li>either run ending as a termination is FAIL {@code left out:}, so the case is never ratcheted;
  *   <li>otherwise both runs ended: equal exit code, stdout and stderr byte for byte is PASS, and anything else is a
  *       Disagreement, FAIL {@code disagree:}, which {@code scripts/ratchet.java regen} refuses.
@@ -32,6 +35,9 @@ public final class CompileModeRunner {
   /** The mode that is a compile of its own; every other mode is a run setting (F-58). */
   private static final String CONSERVATIVE = "conservative";
 
+  /** The one end of a run that stores no tail kind under {@code limit recursion-depth} (ADR-0047 #118). */
+  private static final String DEPTH = "BUDGET RECURSION_DEPTH";
+
   /** Bytes shown of a differing stream, starting a little before the first difference. */
   private static final int WINDOW = 200;
 
@@ -46,9 +52,17 @@ public final class CompileModeRunner {
 
   /**
    * The verdict of case {@code id} from its run under the optimised compile and {@code other}, its run under
-   * {@code mode}: {@code conservative} or {@code trampoline} (F-58).
+   * {@code mode}: {@code conservative} or {@code trampoline} (F-58), for a case without {@code limit recursion-depth}.
    */
   public static Verdict judge(String id, Run optimised, String mode, Run other) {
+    return judge(id, optimised, mode, other, false);
+  }
+
+  /**
+   * {@link #judge(String, Run, String, Run)} for a case with {@code limit recursion-depth} when {@code limited}
+   * (ADR-0047 #118): the other run passes only as a termination over the recursion-depth budget.
+   */
+  public static Verdict judge(String id, Run optimised, String mode, Run other, boolean limited) {
     String[] modes = {OPTIMISED, mode};
     Run[] runs = {optimised, other};
     for (int i = 0; i < runs.length; i++) {
@@ -65,6 +79,12 @@ public final class CompileModeRunner {
             case Run.Ended _, Run.Terminated _ -> null;
           };
       if (stub != null) return fail(id, "stub: the " + modes[i] + " run reached a Stub: " + stub);
+    }
+    if (limited) {
+      if (optimised instanceof Run.Terminated(String cause)) return fail(id, "left out: the " + OPTIMISED + " run ended with " + cause);
+      if (other instanceof Run.Terminated(String cause) && cause.equals(DEPTH)) return new Verdict(Verdict.Kind.PASS, "", "");
+      String end = other instanceof Run.Terminated(String cause) ? "ended with " + cause : "ended with rc " + ((Run.Ended) other).outcome().rc();
+      return fail(id, "no depth end: under limit recursion-depth the " + mode + " run must end with " + DEPTH + "; it " + end);
     }
     for (int i = 0; i < runs.length; i++) {
       if (runs[i] instanceof Run.Terminated(String cause)) return fail(id, "left out: the " + modes[i] + " run ended with " + cause);
