@@ -1,4 +1,19 @@
 
+## 2026-11-16 — FIX-270 a message can arrive more than once: the architecture says it plainly — done, review PASS [C]; Deviation: F-56
+
+- Context compacted before this entry: HANDOFF, `git status` and `git log -3` (b04e336a) re-read before any change.
+- `docs/ARCHITECTURE.md` 3.29, section 4: a new paragraph, "A message can arrive more than once", `draft — review at hand-over`
+  (a public statement to partners; ISSUE-11 items 2 to 4 as their defaults). Causes: the in-step retry in every mode, a scheduled
+  retry, a run left to its lease after the partner had the message, an operator's retry. Same `x-message-id`; nothing marks a repeat.
+- Deviation, F-56 (minor): three standing sentences read wider than what is built and are made exact - XI "exactly-once" is the
+  intake's and only where a dedupe key is named; section 5's "every producer"; the Phase 2 gate's and GATE check 5's "no duplicate"
+  carry a dated reading (none saved twice), their meaning left to the owner: ISSUE-11 item 6 (new).
+- Corrected: ISSUE-11 item 5 said the park of a delivered message was only read in the code - two existing tests stage it for a
+  death mid-send; FIX-271 keeps the death between the two writes. Only sftp names a dedupe key, http none: CONSIDER-27 (owner).
+- Each claim names its test, decision or row (`agent/work/FIX-270-evidence.txt`). Nothing is built; no Maven run (documents only).
+- Review [C], four rounds: FAIL (8), FAIL (4), FAIL (1, in ISSUE-11's own text), PASS; every finding taken (the commit body).
+- `ci` on main: runs 237, 239, 240 success (`agent/work/MAIN-1-ci.md`). FIX-263 is in flight in the same tree, not in this commit.
+
 ## 2026-11-16 — The owner agreed the order of the next work — recorded
 
 - The owner, 2026-11-16, to the order proposed in the session: "souhlas s pořadím, pokračuj" - agreed with the order, go on.

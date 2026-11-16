@@ -20,6 +20,11 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
 5. **Flow B** — `sftp-invoice`: file in the SFTP inbox → poller (lease in Valkey) → durable save →
    file deleted → XSLT → HTTP partner. Killing the runtime between pick-up and delete loses
    nothing and duplicates nothing.
+   [2026-11-16: read as "no message is lost and none is saved twice". A run that reached the
+   partner and was left unsettled by the kill is sent again under the same id (ARCHITECTURE §4, *A
+   message can arrive more than once*; F-56). A measurement of this check records the partner's
+   receipts per id beside its result (FIX-272). Whether this check means more is the owner's:
+   ISSUE-11 item 6. `draft — review at hand-over`.]
 6. **Snapshots.** `GET /admin/messages/{id}` returns the step timeline with wall time per
    step and `cpuNanos` present, null where the JVM cannot measure a virtual thread (F-21; ISSUE-3 option 2,
    2026-10-30 — CPU per flow and step by JFR sampling follows as FIX-108); `GET /admin/messages/{id}/steps/{n}/body` returns the payload as it was after step n;

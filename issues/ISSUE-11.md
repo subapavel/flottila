@@ -3,7 +3,7 @@ Task: CONSIDER-24
 Date: 2026-11-16 (D-160)
 
 ## What is needed
-The owner's word on the five items below. On 2026-11-15 the owner asked for the cause of the second
+The owner's word on the six items below. On 2026-11-15 the owner asked for the cause of the second
 delivery at a node's death ("zjisti příčinu"). The cause is found and pinned by tests, the window
 is measured, and a design draft was written and opposed. That row changes nothing in the code.
 Each item states the default that holds until the answer, so no work waits.
@@ -49,7 +49,9 @@ computed figure, not an observed one, and the two are not reconciled.
    `draft — review at hand-over`. Two limits it will state: a file put on an SFTP server carries
    no message id today; and when the sender itself sends a message twice (its answer was lost)
    without a dedupe key, Rail8 sees two messages with two ids - a repeat the partner cannot
-   recognise, which the sender prevents with a dedupe key (read in the code, not shown by a test).
+   recognise. A dedupe key prevents it, but only an SFTP inbox has one today (the file): a sender
+   over HTTP cannot give one, so its resend after a lost answer is a second message (read in the
+   code, not shown by a test; CONSIDER-27 - corrected 2026-11-16 by the review of FIX-270).
 3. **An attempt number for the partner.** Should every delivery carry a number that says which
    attempt it is?
    Default: no. The number cannot say "you had this before": the second attempt after the partner
@@ -61,18 +63,41 @@ computed figure, not an observed one, and the two are not reconciled.
    Default: the documentation names the two choices - an operation on the partner's side that is
    safe to repeat, or the delivery mode "at most once", which can lose a message instead of
    repeating it.
-5. **A delivered message shown as failed.** Read in the code, not yet shown by a test (FIX-271
-   stages it): when the node dies in that window on the message's last allowed attempt - with no
-   retries configured that is the first - the message ends in the failed list although the partner
-   has it, and an operator's retry sends it a third time. Should that be closed sooner than item 1's
-   default?
-   Default: FIX-271 shows first whether it happens. If it does, it is closed together with item 1;
-   until then the message's history shows the operator the earlier, finished run.
+5. **A delivered message shown as failed.** When a run is left unsettled on the message's last
+   allowed attempt - with no retries configured that is the first; after an operator's retry it is
+   that one attempt - the next hand-out is parked without running: the message ends in the failed
+   list although the partner may have it, and an operator's retry sends it again. Two existing
+   tests show it for a death in the middle of a send
+   (`FlowWorkerFenceTest.aNodeKilledMidSendIsRerunInDoubtWithTheSameIdAndParkedPastMaxAttempts`,
+   `FlowWorkerRetryTest.aRestartedRowTakenOverInDoubtIsParkedUnsent`). Not staged yet: the same
+   after a death between the two writes, and what the history then shows (FIX-271). Corrected
+   2026-11-16: this item first said "read in the code, not yet shown by a test"; the review of
+   FIX-270 named the two tests. Should that be closed sooner than item 1's default?
+   Default: no sooner - it is closed together with item 1. Until then the history does not tell
+   the operator that the partner has the message: after a death in the middle of a send, or before
+   the run's rows were written, it shows nothing of the attempt the partner received - only the
+   park (the doubt is counted in `work.doubts`). Only after a death between the two writes are the
+   finished run's rows there; that they are shown beside the park is not staged yet. FIX-271
+   stages the remaining case.
+6. **What "no duplicate" means in the two gates** (added 2026-11-16, F-56). The Phase 2 gate says
+   "Postgres failover during load with no loss or duplicate" (ARCHITECTURE section 13); hand-over
+   check 5 says a kill between a file's pick-up and its delete "loses nothing and duplicates
+   nothing" (`docs/GATE.md`). Read toward the partner neither can hold by design: a run whose
+   removal from the queue failed - the database failing over, the node killed - is sent again under
+   the same id (items 1 and 2; D-160, D-161).
+   Default: both are read as "no message is lost and none is saved twice"; a repeat toward the
+   partner under the same id is at-least-once working as designed. Both sentences carry a dated
+   note saying so, marked `draft — review at hand-over`. When either is measured, the partner's
+   receipts per id are recorded beside the result (FIX-272's count), so the reading never hides a
+   repeat. If you mean more - no repeat toward the
+   partner in those two tests - say so; no change of the platform can promise it for the part
+   before the history is written (item 2).
 
 ## Why the agent cannot decide it
 Items 1 and 5 decide whether the platform may ever treat a message as done without running it - a
 change of what "at least once" means, expensive to reverse once operators rely on it. Items 2 to 4
-are a public promise to partners. All five are product behaviour.
+are a public promise to partners. All five are product behaviour. Item 6 asks what a gate check
+means, and a gate's meaning is the owner's.
 
 ## What was tried
 Eight tests stage the death and pin what happens (`FlowWorkerRerunWindowTest`, `RerunWindowIT`);
@@ -98,4 +123,5 @@ platform down; this is an exceptional case. Recorded as D-161.
   The item's default stands as written - the check is built only as the last case of "a retry
   resumes at the failed step" (CONSIDER-13), never as a mechanism of its own. Until then such a
   death sends the message twice.
-- Items 2 to 5: not answered in words; their defaults hold.
+- Items 2 to 5: not answered in words; their defaults hold. (Item 6 was added after this answer;
+  its default holds until it is answered.)

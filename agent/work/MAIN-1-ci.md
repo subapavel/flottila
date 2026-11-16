@@ -215,3 +215,7 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
   success, 10:37Z to 11:03Z, read from its conclusion. Run 237 (id 43843463196), a scheduled run on 28e7ff9a (FIX-266,
   documents only), was listed as in progress when read (started 09:50Z, last update 10:16Z); its conclusion and the push
   runs on 28e7ff9a and a57a146f were not read. Green `ci` runs read in a row: 230 to 235, then 238.
+- 2026-11-16, 12:10Z: `ci` run 237 (id 43843463196, scheduled, on 28e7ff9a): success. Run 239 (id 43854636165) on
+  a57a146f (the owner's answer, documents only): success, 11:05Z to 11:31Z. Run 240 (id 43857063800) on b04e336a (the
+  agreed order, documents only): success, 11:21Z to 11:48Z. Each read from its conclusion. Run 236 (the push run on
+  28e7ff9a) was not read. Green `ci` runs read in a row: 237 to 240.

@@ -1,0 +1,174 @@
+FIX-270 - evidence (2026-11-16, round 4). Documents: docs/ARCHITECTURE.md (changelog 3.29), docs/findings/F-56.md
+(new), docs/GATE.md (a dated note on check 5), issues/ISSUE-11.md (items 2 and 5 corrected, item 6 new),
+agent/BACKLOG.md (FIX-271's row and CONSIDER-13's note corrected, a note on FIX-272, new row CONSIDER-27).
+Nothing under platform/, bench/, mapping/ or site/ is changed by this task. The diff: agent/work/FIX-270.diff.
+`git status --short` at round 4: agent/work/FIX-270-status.txt (it also shows FIX-263's tests and main, in flight in
+the same tree; they are not part of this commit - the commit names its paths one by one).
+
+1. What changed
+   Section 4, a new paragraph after "Node lease and fence": "A message can arrive more than once", marked
+     `draft - review at hand-over` (a public statement to partners; ISSUE-11 items 2 to 4, stated as their defaults).
+   Section 4, the lease paragraph: one pointer after "Each attempt reruns from the ingress ...".
+   Section 4, XI quality of service: "exactly-once" reads "exactly-once at the intake", where the endpoint's
+     component names a dedupe key and for as long as retention keeps it (F-56).
+   Section 5: "Every producer" reads "Every producer whose transport carries headers - http and the mock today";
+     a transport without headers names its carrier with its producer (F-56); one pointer.
+   Section 13, the Phase 2 gate: "no loss or duplicate" carries a dated reading - no message lost and none saved
+     twice - marked draft; whether it means more is the owner's (ISSUE-11 item 6, F-56).
+   docs/GATE.md check 5 ("loses nothing and duplicates nothing"): the same dated note, marked draft.
+   The changelog: row 3.29, four cells, finding "F-56 (minor; section 13's gate clause the owner's); D-160, D-161".
+   The finding: docs/findings/F-56.md - names the three standing sentences (XI quality of service, section 5,
+     section 13 with GATE check 5), the dedupe key's limits, the two staging tests, its severity, ISSUE-11 item 6.
+   issues/ISSUE-11.md: "six items"; item 2's sentence on the dedupe key corrected (an http sender cannot give one);
+     item 5 rewritten (the park is shown by two existing tests; corrected 2026-11-16); item 6 new (what "no
+     duplicate" means in the two gates; default: no message lost and none saved twice).
+   agent/BACKLOG.md: FIX-271's row names the two existing tests and keeps only the unstaged case; CONSIDER-13's note
+     corrected the same way; new row CONSIDER-27 [C] (an http in-endpoint names no dedupe key), `pending (owner)`.
+   The draft: agent/work/CONSIDER-24-designer.md section E, with the advisor's change 8 (agent/work/CONSIDER-24-advisor.md).
+
+2. Each claim of the paragraph and what backs it
+   a repeat the platform sends has the same id     D-113; section 5; RerunWindowIT
+                                                    .theSecondRequestCarriesTheFirstRequestsHeadersAndNothingSaysAgain
+   no attempt number on the wire                   D-160 (d); the same case
+   the rerun differs only by its attempt prop,     FlowWorkerRerunWindowTest.theRerunsEnvelopeDiffersFromTheFirstRuns
+       in the staged flow (one `to`)                OnlyByTheAttemptProp - said of that flow only (a step that writes a
+                                                    body keys it by attempt, D-066)
+   (1) the in-step retry, in every delivery mode,  section 6 ("Retry per step ... only on steps marked retryable");
+       under the flow's `retry`: a `retryable`      FlowBuilderTest.aRetryableStepIsRetriedWithTheFlowsPolicyAndANon
+       step that timed out or lost its answer       RetryableOneIsNot; D-113 (the cut and a `timeoutMs` expiry are
+                                                    retryable); the reviewer read FlowBuilder.java:534, Retry.java:46-56;
+                                                    the CLI cases "partner down" of `sync-order` and `async-order`
+                                                    (platform/cli/src/test/resources/packages/flowtest/flows/*.test.yaml;
+                                                    TestCommandTest.java:65, :68 - "flow time" 2400 ms and 750 ms)
+   (2) a retry resends every earlier `to` step,    D-135; the lease paragraph ("Each attempt reruns from the ingress");
+       the failed one too, a split's children       section 5 (`<parent id>.<index>`, D-113); CONSIDER-13 is pending
+       a send cut at its deadline is not started   FlowBuilderSendDeadlineTest.aSendPastTheMessageDeadlineIsNotStarted
+       again inside the attempt; the next attempt   (round 2, finding 1: it was under cause (1) and is cause (2)'s);
+       has fresh time                               D-113 (the deadline is per attempt)
+   (3) left to its lease: the node died            the eight cases of CONSIDER-24 (below)
+       its fence closed on the send or before      D-113, F-28; the lease paragraph (a fenced send is never retried and
+       the complete                                 never parked; the fence is checked before every complete)
+       its settle failed                           RerunWindowIT stages exactly this (its head comment: the node loses
+                                                    its database sessions); FlowWorkerCompleteUnkeyedTest.aFailedComplete
+                                                    UnkeyedFailsTheRoundAndLeavesTheItemToItsLease
+       an Error or an interrupt                    the lease paragraph ("a JVM Error in a run, like a crash ... left to
+                                                    its lease"); section 6 ("an interrupt is neither retried nor parked");
+                                                    FlowWorkerRetryTest.anInterruptedRunIsNotDeferred
+       its stop ran past its deadline              READ, not staged: agent/work/CONSIDER-24-scout-3.md section 4
+                                                    (`Deployments.drain`); the paragraph says so
+       past its bound (count + 1 attempts; after   STAGED for a death in the middle of a send (round 2, finding 2):
+       an operator's retry, that one attempt):      FlowWorkerFenceTest.aNodeKilledMidSendIsRerunInDoubtWithTheSameId
+       parked without running                       AndParkedPastMaxAttempts; FlowWorkerRetryTest.aRestartedRowTakenOver
+                                                    InDoubtIsParkedUnsent; the lease paragraph ("after count + 1 attempts
+                                                    the ingress is parked"; `/retry` inserts `max_attempts` = k + 1).
+                                                    NOT staged: the same park after a death between the two writes, and
+                                                    what the history then shows - ISSUE-11 item 5, FIX-271; said so
+       two writes, and they stay two               D-160 (a), D-161 (the owner, 2026-11-16)
+       a death before the final row: one run       FlowWorkerRerunWindowTest.aNodeDeadAfterThePartnerAnsweredAndBefore
+                                                    ItsRowsAreRecordedIsRunAgainAndTheHistoryShowsOnlyTheSecondRun
+       a death between the two writes: two         FlowWorkerRerunWindowTest.aNodeDeadBetweenItsFinalRowAndItsUnkeyed
+                                                    Complete... and ...ItsFastPathComplete...; RerunWindowIT.aNodeThat
+                                                    DiesBetweenTheTwoCommitsIsRunAgainByAnotherNodeAndThePartnerGets...
+       after the work row is gone: no second run   FlowWorkerRerunWindowTest.aNodeDeadAfterItsCompleteIsNotRunAgain...
+       the figures and their load                  bench/RESULTS.md, the entry "CONSIDER-24 - the re-run window ...":
+                                                    ledger runs 1 to 3, record mean 4.203, 4.372, 4.479 ms; settle mean
+                                                    2.402, 2.500, 2.465 ms; max 40.6 to 53.4 ms; ACK 1 063, 1 034, 982
+                                                    msg/s; `--scenario ack --concurrency 8`, passthrough; its "Reading"
+                                                    (the answer's travel on top of the first part)
+       completion statements have no time bound    the lease paragraph ("statements have no time bound")
+       the first part cannot be closed             D-160; ISSUE-11 item 2
+       nothing skips a finished run                D-160 (c); CONSIDER-13's note (its last-step case, pending)
+       a dead node's items wait for its restart    the lease paragraph's last sentence (until CORE-5)
+       a second run beside a living one: open      FIX-273
+   (4) an operator's retry, no limit               D-156 (changelog 3.28: no cap on manual retries); the row's wording
+   a partner dedupes on the id                     D-113; ISSUE-11 item 2 (the default; the owner has not answered it)
+   a partner that cannot: safe to repeat, or       ISSUE-11 item 4 (the default); the lifecycle table's at-most-once row;
+       at-most-once with no retryable step          the in-step retry of claim (1)
+   http and the mock carry the id                  the advisor's change 8 (HttpComponent.java:414, the mock; read)
+   sftp has no producer before Phase 4             SftpComponent.java:167-169 (read by the architect); section 13 Phase 4
+   a sender's resend under another id; saved once  D-084 (the dedupe key is the at-least-once save's). READ, not staged
+       only where the endpoint's component names    (round 2, finding 3): `Component.dedupeBy` is empty by default
+       a dedupe key - sftp's file key today, http   (platform/api/.../Component.java:68); the only override in main code
+       none; for as long as retention keeps it      is SftpComponent.java:162 (`grep -rn dedupeBy platform`, tests
+                                                    excluded: api, sftp, the testkit's contract, core's FlowBuilder and
+                                                    runtime's Deployments that read it); so every http sender's resend
+                                                    after a lost 202 is a second message - CONSIDER-27 (new row);
+                                                    agent/work/CONSIDER-24-scout-3.md section 6 (PgIntake.java:80-83)
+   a sync caller's retry and an at-most-once       the lifecycle table (sync: the client owns the retry)
+       sender's resend are new messages
+   no rerun of a sync or at-most-once message      D-156; the lifecycle table's two rows
+   XI quality of service: exactly-once is the      the dedupe-key claim above; F-56
+       intake's, where a key is named and kept
+   section 13 and GATE check 5: "no duplicate"     round 2, finding 4: ARCHITECTURE's Phase 2 gate ("Postgres failover
+       read as none saved twice; the owner's        during load with no loss or duplicate") and docs/GATE.md:22 ("loses
+                                                    nothing and duplicates nothing") cannot hold toward the partner
+                                                    (D-160, D-161; RerunWindowIT). Both carry a dated reading marked
+                                                    `draft - review at hand-over`; ISSUE-11 item 6 asks the owner; F-56
+                                                    names both. A gate's meaning is the owner's: no gate text is removed.
+
+3. Not promised by the text: a skip of a finished run, an attempt number, a carrier of the id over sftp, a dedupe
+   key for http. ISSUE-11 items 2 to 6 are open: the text states their defaults and is a draft; an answer changes it.
+
+4. Checks
+   python3 ci/name_guard.py     VERIFIED_PASS - "name guard: clean, 6083 tracked files scanned" (round 3's text in the
+                                 tree; the count is of tracked files, so F-56 is scanned once it is added).
+   python3 ci/ledger_check.py   EXECUTED_FAIL as before the task: "ledgers: 9 problem(s)", the same 9 older rows.
+   Every test and symbol the paragraph cites exists by that name (grep `void <name>(` under platform/, 2026-11-16):
+     the six cases named in round 3, `Component.dedupeBy`, the CLI's two "partner down" cases.
+   NOT_RUN - Maven, the reactor, the coverage check: no file they read is changed by this task.
+
+5. Review (class C)
+   Round 1 FAIL, eight findings, all taken:
+   1 the rerun past the flow's count is parked, not run - the exception is in the text, marked as read (FIX-271);
+   2 the in-step retry was missing - it is cause (1); "at-most-once" and "sync is never resent" are made exact; the
+     failed `to` itself can be a repeat;
+   3 the dedupe key cures a resend for an at-least-once sender only; the source is marked inferred;
+   4 "exactly-once" in XI quality of service reads "exactly-once at the intake" - with finding F-56;
+   5 section 5's "Every producer" is limited to transports with headers;
+   6 cause (3) is framed "after the partner received the message" and lists a closed fence before the complete, a
+     failed settle, an Error or an interrupt;
+   7 "differs only by its attempt prop" is said of the staged flow only;
+   8 the changelog row has its fourth cell.
+   Remarks taken: the load is named and "the final row's commit" is said, with the largest values and the unbounded
+   completion; "every repeat the platform sends"; FIX-273 is named; a dead node's items wait for its restart; the
+   dedupe key lasts as long as `processed_ids` keeps it; the header names ISSUE-11 items 2 to 4; the status file.
+   Remark left: the entry in bench/RESULTS.md ran on PostgreSQL 16.15 (outside D-129's 17 and 18) - it is RESULTS'
+   own and is said there; not this text's.
+   The reviewer's lesson (it had no write tool in this run, and its memory file is at its 120-line cap, so no patch
+   is written): before a "runs again" or "never resent" sentence in a document for partners, check the attempt
+   bound, the in-step `retry` in every mode, the mode scope of the dedupe key and any standing "exactly-once" line.
+
+   Round 2 FAIL, four findings, all taken:
+   1 a send cut at its deadline is not sent again inside the attempt - cause (1) says "under the flow's `retry`" and
+     names a `timeoutMs` expiry or a lost answer; the deadline cut is cause (2)'s, with its test;
+   2 the park past the bound is staged by two existing tests, and the bound is "count + 1 attempts; after an
+     operator's retry, that one attempt" - the paragraph, F-56 and the changelog say so; FIX-271 keeps only the death
+     between the two writes; ISSUE-11 item 5, FIX-271's row and CONSIDER-13's note are corrected (the item had said
+     "read in the code, not yet shown by a test");
+   3 only sftp names a dedupe key today, http none - the paragraph's limit, XI quality of service and F-56 say so;
+     ISSUE-11 item 2's sentence is corrected; new row CONSIDER-27 for the owner;
+   4 section 13's Phase 2 gate and GATE check 5 say "no ... duplicate" - F-56 names both, each carries a dated
+     reading marked draft, and ISSUE-11 item 6 asks the owner what the two gates mean.
+   Remarks taken: the CLI case is cited for the in-step retry in a sync flow; tests are cited for an interrupt and a
+   failed settle; ISSUE-11 item 5 is corrected; the commit names its paths one by one.
+
+   Round 3 FAIL, one blocking reason, in issues/ISSUE-11.md only (the four of round 2 found cured in every place):
+   1 item 5's default said "the message's history shows the operator the earlier attempts" - not so for the case the
+     item asks about: an attempt whose node dies before its rows are written leaves none (FlowWorkerRerunWindowTest
+     .aNodeDeadAfterThePartnerAnsweredAndBeforeItsRowsAreRecordedIsRunAgainAndTheHistoryShowsOnlyTheSecondRun). The
+     default now says the history does not tell the operator that the partner has the message: after a death in the
+     middle of a send or before the rows it shows only the park (the doubt is counted in `work.doubts` - the lease
+     paragraph); only after a death between the two writes are the finished run's rows there, and their being shown
+     beside the park is not staged (FIX-271);
+   2 "Why the agent cannot decide it" gives item 6's reason (a gate's meaning is the owner's); the owner's answer
+     says item 6 was added after it.
+   Remarks taken: F-56's title says "three sentences"; FIX-270's row points to CONSIDER-27 at the commit; the
+   reviewer's condition on the dated reading - a measurement of check 5 or of the Phase 2 failover gate records the
+   partner's receipts per id beside its result (FIX-272's count) - is written into GATE.md's note, ARCHITECTURE's
+   section 13 clause, ISSUE-11 item 6 and FIX-272's row, so the reading never hides a repeat.
+   The reviewer accepted the dated reading as the smallest change (no gate text removed; it agrees with D-161; GATE
+   check 7's dated note of F-55 is the precedent).
+
+   Round 4 PASS. The reviewer's remarks, not blocking: FIX-272's done-when is still LedgerIT's count - the duty to
+   record receipts beside a measurement of check 5 or of the failover gate is in its notes and in GATE.md's note, so
+   whoever measures reads the note; the commit names its paths one by one (FIX-263 is in the same tree).
