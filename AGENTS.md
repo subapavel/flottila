@@ -29,6 +29,9 @@ change touches. Everything in the repository is in English.
    comments. Wording in docs is never a reason to send a change back. One round of fixes.
 5. Green checks, then the session merges the pull request with the rebase method.
 
+The dispatcher (`.claude/routines/dispatcher.md`) picks the tasks and starts their sessions; a
+session removes the label `in-progress` from its issue once its pull request is merged.
+
 Design first only for `class:C` work (skill `design-it-twice`). The owner-proxy judges the design
 and a second model argues against it. No records beyond the issue, the pull request and the commits.
 
