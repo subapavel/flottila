@@ -123,6 +123,27 @@ describe('Shell', () => {
     await expect.element(page.getByText('Child screen')).toBeVisible();
   });
 
+  test('asks a screen before its tab closes, and closes it only when the screen says so', async () => {
+    let closeLater: (() => void) | undefined;
+    const guarded: Screen = {
+      id: 'guarded',
+      title: 'Guarded',
+      render: () => <p>Guarded screen</p>,
+      beforeClose: (close) => (closeLater = close),
+    };
+    render([guarded, two[0]!], 'guarded');
+    await nav().getByRole('button', { name: 'First' }).click();
+    await tab('Guarded').click();
+
+    await page.getByRole('button', { name: 'Close Guarded' }).click();
+    await expect.element(page.getByText('Guarded screen')).toBeVisible();
+    expect(tabs().elements()).toHaveLength(2);
+
+    closeLater!();
+    await expect.element(tab('First')).toHaveAttribute('aria-selected', 'true');
+    expect(tabs().elements()).toHaveLength(1);
+  });
+
   test('on a narrow window hides the navigation until the Navigation button shows it', async () => {
     await page.viewport(414, 896);
     render(two, 'first');

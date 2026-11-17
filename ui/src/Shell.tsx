@@ -32,9 +32,9 @@ export interface ShellProps {
 /**
  * The application's shell: a masthead with the brand and the button that shows or hides the navigation, the
  * navigation listing every screen, and the tabs of the open screens. Choosing a screen in the navigation opens it in a
- * new tab, or shows the tab it already has; each tab closes with its close button. A screen may open tabs of its own,
- * such as one for each message it found, through the function its `render` is given. With no tab open the main area
- * says so.
+ * new tab, or shows the tab it already has; each tab closes with its close button, once its screen agrees. A screen may
+ * open tabs of its own, such as one for each message it found, through the function its `render` is given. With no
+ * tab open the main area says so.
  */
 export function Shell({ screens, start }: ShellProps) {
   const [tabs, setTabs] = useState(() => (start === undefined ? noTabs : openTab(noTabs, start)));
@@ -47,7 +47,7 @@ export function Shell({ screens, start }: ShellProps) {
     setTabs((current) => openTab(current, screen.id));
   }, []);
 
-  const close = (id: string) => {
+  const remove = (id: string) => {
     setTabs((current) => closeTab(current, id));
     setOpened((current) => {
       if (!current.has(id)) return current;
@@ -55,6 +55,11 @@ export function Shell({ screens, start }: ShellProps) {
       rest.delete(id);
       return rest;
     });
+  };
+  const close = (id: string) => {
+    const screen = opened.get(id) ?? byId.get(id);
+    if (screen?.beforeClose) screen.beforeClose(() => remove(id));
+    else remove(id);
   };
 
   const masthead = (
