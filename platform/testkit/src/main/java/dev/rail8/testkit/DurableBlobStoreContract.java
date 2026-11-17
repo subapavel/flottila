@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The contract of a {@link BlobStore} with a durable tier (D-061): everything {@link BlobStoreContract} asks, plus
+ * The contract of a {@link BlobStore} with a durable tier: everything {@link BlobStoreContract} asks, plus
  * {@link BlobStore#persist(BlobKey)} — it completes once the bytes outlive the process, a persisted body reads back intact
  * by every path, and a key with nothing stored is refused with a {@link BlobNotFoundException} (an IllegalArgumentException) as a failed future. A key's
- * durable bytes never change (D-061 amended by FIX-35): persisting the same bytes again is quiet; persisting other bytes under
+ * durable bytes never change: persisting the same bytes again is quiet; persisting other bytes under
  * a durable key fails with an {@link IllegalStateException}, makes nothing durable and leaves the body as written; another
  * step or part is another key, for a conflict and for a match alike. The in-memory testkit store and every runtime store with
  * a durable tier run these cases. The bodies here stay below {@link #TREE_LIMIT} and below any durable bound a subclass
@@ -62,8 +62,8 @@ public abstract class DurableBlobStoreContract extends BlobStoreContract {
     }
 
     /**
-     * D-096: a key with nothing stored — never written, or removed by retention — is refused as a failed future with a
-     * {@link BlobNotFoundException} (an {@link IllegalArgumentException}, D-061) naming that key.
+     * A key with nothing stored — never written, or removed by retention — is refused as a failed future with a
+     * {@link BlobNotFoundException} (an {@link IllegalArgumentException}) naming that key.
      */
     @Test
     public void persistingAnUnknownKeyFailsBlobNotFound() {
@@ -80,7 +80,7 @@ public abstract class DurableBlobStoreContract extends BlobStoreContract {
     }
 
     /**
-     * D-096: a persisted key exists — also once the persist let its local copy go (a tier whose local index forgets the key
+     * A persisted key exists — also once the persist let its local copy go (a tier whose local index forgets the key
      * must ask its durable tier) — and a sibling key never written still does not.
      */
     @Test
@@ -95,7 +95,7 @@ public abstract class DurableBlobStoreContract extends BlobStoreContract {
         assertEquals(Boolean.FALSE, await(s.exists(key("p-exists", 3))), "the next step was never written");
     }
 
-    /** The refusal's text (FIX-35): it names the key and the size of the bytes that were refused. */
+    /** The refusal's text: it names the key and the size of the bytes that were refused. */
     protected static String otherBytesRefused(BlobKey key, long size) {
         return "the durable body under " + key + " holds other bytes than these " + size
                 + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local";

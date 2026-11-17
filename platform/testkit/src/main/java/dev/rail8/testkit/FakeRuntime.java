@@ -85,7 +85,7 @@ public final class FakeRuntime {
 
     /**
      * Stores {@code bytes} as the body of the step after {@code e}, under {@link Envelope#nextKey()} — keyed by the run's attempt
-     * from the second on (D-066); pass the result to {@link Envelope#next(Body)}.
+     * from the second on; pass the result to {@link Envelope#next(Body)}.
      */
     public Body store(Envelope e, Buffer bytes) {
         return blobs.write(e.nextKey(), bytes, blobs.treeLimit()).await();

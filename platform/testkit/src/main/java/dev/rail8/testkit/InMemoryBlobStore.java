@@ -89,7 +89,7 @@ public final class InMemoryBlobStore implements BlobStore {
 
     /**
      * The heap is this store's durable tier: a stored key is durable at once — {@link #persisted(BlobKey)} says so from then
-     * on — with a copy of the bytes stored under it now. A key's durable bytes never change (D-061 amended by FIX-35):
+     * on — with a copy of the bytes stored under it now. A key's durable bytes never change:
      * persisting the same bytes again succeeds; other bytes under a durable key fail with an {@link IllegalStateException},
      * the durable copy stays the first and the key reads what was written last. A key with nothing stored is refused with a
      * {@link BlobNotFoundException}.

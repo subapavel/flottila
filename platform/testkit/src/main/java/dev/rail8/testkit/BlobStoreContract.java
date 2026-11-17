@@ -160,7 +160,7 @@ public abstract class BlobStoreContract {
     }
 
     /**
-     * D-096: a key with nothing stored — never written, or removed by retention — fails the read with a
+     * A key with nothing stored — never written, or removed by retention — fails the read with a
      * {@link BlobNotFoundException} naming that key, whatever is stored under its siblings.
      */
     @Test
@@ -177,7 +177,7 @@ public abstract class BlobStoreContract {
     }
 
     /**
-     * D-096: opening a key with nothing stored either throws a {@link BlobNotFoundException} naming the key, or returns a stream
+     * Opening a key with nothing stored either throws a {@link BlobNotFoundException} naming the key, or returns a stream
      * that fails with one before its first chunk — and never ends as an empty body.
      */
     @Test
@@ -210,7 +210,7 @@ public abstract class BlobStoreContract {
     }
 
     /**
-     * D-096: {@code exists} is true for every written key — an empty body too — and false, as an answer and not a failure, for a
+     * {@code exists} is true for every written key — an empty body too — and false, as an answer and not a failure, for a
      * key with nothing stored: another step, another part, another message.
      */
     @Test

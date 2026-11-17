@@ -38,19 +38,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The cases every polling consumer passes, real or mock (D-076): a component that fetches files from a place the partner
+ * The cases every polling consumer passes, real or mock: a component that fetches files from a place the partner
  * drops them — sftp, and the mock standing in for it — rather than being sent to. A component's test extends this class and
  * supplies the component, an endpoint that selects it, a way to drop a file where the consumer polls, the names still there,
  * and a way to fire the consumer's next round through the fake timer.
  *
  * <p>The rules every case pins: a round takes the files oldest first, one at a time; each delivery calls the handler on a
- * virtual thread of its own (D-057) and the round waits for the answer. An {@link Ack.Accepted} or an {@link Ack.Reply}
- * removes the file — only then, the durable save being the handler's (ARCHITECTURE §4). A retryable {@link Ack.Nack}, a
+ * virtual thread of its own and the round waits for the answer. An {@link Ack.Accepted} or an {@link Ack.Reply}
+ * removes the file — only then, the durable save being the handler's. A retryable {@link Ack.Nack}, a
  * failed answer, a handler that throws or answers null keep the file and end the round: the next round delivers it again.
  * A final Nack keeps the file (this endpoint names no error directory) but never delivers it again to the same consumer.
- * {@link Consumer#stop()} (D-056) takes no new file, waits for the answer in flight and for its removal; a stopped consumer
+ * {@link Consumer#stop()} takes no new file, waits for the answer in flight and for its removal; a stopped consumer
  * delivers nothing. Health is up only while a consumer runs. A dedupe prop the component names is set on every delivery and
- * stable across redeliveries of the same file (D-084).
+ * stable across redeliveries of the same file.
  *
  * @since 0.1
  */
@@ -521,7 +521,7 @@ public abstract class PollingConsumerContract {
     }
 
     /**
-     * A component that names a dedupe prop ({@link Component#dedupeBy}, D-084) sets it on every delivery, never empty, to the same
+     * A component that names a dedupe prop ({@link Component#dedupeBy}) sets it on every delivery, never empty, to the same
      * value each time the same file is delivered again and to another value for another file: the durable save dedupes by it, so
      * a file delivered again — its removal refused after the save, here a retryable Nack standing in — is one message, and two
      * files are never one. A component that names none (the mock) passes trivially.

@@ -29,13 +29,13 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * The mock binding of a scheme for flow tests (ARCHITECTURE §11: a flow file is byte-identical everywhere, the
+ * The mock binding of a scheme for flow tests (a flow file is byte-identical everywhere, the
  * mocks live next to it). A producer records every envelope it is sent, per endpoint, and answers: with the
  * reply of the consumer running on that same endpoint (the loopback of the contract suite), else
  * with {@link #replyWith(Function)} (identity by default), or with the next failure queued by
  * {@link #failNext(int, Supplier)} — the way a test plays "partner down" for a retry. Each delivery calls a consumer's handler
- * on a virtual thread of its own (D-057); a consumer's {@code stop()} completes once the answers its handler handed out have
- * completed (D-056). Health is up while a consumer runs. The consumer's handler receives the envelope with its
+ * on a virtual thread of its own; a consumer's {@code stop()} completes once the answers its handler handed out have
+ * completed. Health is up while a consumer runs. The consumer's handler receives the envelope with its
  * {@link Envelope#H_MESSAGE_ID} ({@link Envelope#withOutboundId()}); {@link #sent()} records it as it was given. A bounded send
  * ({@code send(e, d)}) with no time left is refused with a retryable {@link NackException}, not recorded; one built with a
  * {@link Timer} is cut there — the same failure — when its deadline, re-read at each firing, has run out. Passes
@@ -53,12 +53,12 @@ public final class RecordingComponent implements Component {
     private final AtomicInteger producersBuilt = new AtomicInteger();
     private volatile Function<Envelope, Envelope> reply = e -> e;
     private final Map<String, Function<Envelope, Future<Ack>>> handlers = new ConcurrentHashMap<>();   // by endpoint name
-    // record and take are one step (FIX-229): a send takes its hold and is recorded under this lock, so a visible send has
+    // record and take are one step: a send takes its hold and is recorded under this lock, so a visible send has
     // taken its hold and holds are taken in the order sends are recorded; no caller code runs under it
     private final Object recordAndTake = new Object();
     private final ArrayDeque<CountDownLatch> holds = new ArrayDeque<>();   // guarded by recordAndTake
     private final List<Waiter> waiters = new CopyOnWriteArrayList<>();
-    private volatile Runnable afterSendVisible;   // null: none; a test seam (FIX-229)
+    private volatile Runnable afterSendVisible;   // null: none; a test seam
 
     public RecordingComponent(String scheme) {
         this.scheme = Objects.requireNonNull(scheme, "scheme");
@@ -165,13 +165,13 @@ public final class RecordingComponent implements Component {
         Function<Envelope, Future<Ack>> tracked = e -> drain.deliver(h, e);
         return new Consumer() {
             @Override public Future<Void> start() { handlers.put(cfg.name(), tracked); return Future.succeededFuture(); }
-            /** Unregisters the handler at once; completes once every answer it handed out has completed (D-056). */
+            /** Unregisters the handler at once; completes once every answer it handed out has completed. */
             @Override public Future<Void> stop() { handlers.remove(cfg.name(), tracked); return drain.stop(); }
         };
     }
 
     /**
-     * The answers a consumer's handler handed out and that are still outstanding (D-056): the consumer itself holds one more
+     * The answers a consumer's handler handed out and that are still outstanding: the consumer itself holds one more
      * until {@link #stop}, so the count reaches zero — and the drain completes — only after the stop and the last answer.
      */
     private static final class Drain {
@@ -184,7 +184,7 @@ public final class RecordingComponent implements Component {
         }
 
         /**
-         * Calls {@code handler} with {@code e} on a virtual thread of its own — one per delivery, never the sender's (D-057) —
+         * Calls {@code handler} with {@code e} on a virtual thread of its own — one per delivery, never the sender's —
          * and returns its answer, counted until it completes before the handler runs: a stop issued meanwhile waits for it.
          * A handler that throws or answers null fails the answer ({@link Future#future} catches what its handler throws).
          */
