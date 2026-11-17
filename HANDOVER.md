@@ -1,6 +1,6 @@
 # Hand-over — "Pavel can test the first real iFlow"
 
-Gate: `docs/GATE.md` (agreed 2026-10-17). Gate commit: `fea6c5c` (2026-10-30). Evidence: the GATE section of
+Gate: `docs/archive/gate-2026-10-17.md` (agreed 2026-10-17). Gate commit: `fea6c5c` (2026-10-30). Evidence: the GATE section of
 `bench/RESULTS.md`, CI runs 145 (push) and 146 (dispatch: build, stack, bench, mutation, DCO) on that commit, and the
 session's verifier logs (`target/GATE2-*.log`, `target/GATE3-stack.log` for the evidence re-run, named per check below). Verdict: the gate-reviewer's, in `docs/archive/PROGRESS-until-2026-11-03.md`
 (GATE entry).
@@ -83,7 +83,7 @@ GATE run 1 (on 5505b0f, target/GATE-stack.log) found three defects, fixed before
 when the node was killed (FIX-105); step 0 showed CPU 0 and every other step null (FIX-106, F-21); with the partner down a message
 parked at the wrong step after 154 s, because a checked ConnectException slipped past Retry and Parking (FIX-107).
 
-## 5. Deviations from docs/ARCHITECTURE.md (findings)
+## 5. Deviations from the architecture of the time (findings)
 
 F-1 testkit cannot depend on core · F-2 the at-least-once durable save does not depend on the recording level · F-3 no
 RequestScope wraps a delivery yet · F-4 runtime wires the shipped components through `Main` · F-5 a redeploy stops the old
@@ -94,8 +94,8 @@ dependency of a deployed node · F-13 a closing trail drops whole timelines on w
 not reachable with two commits on this VM · F-15 the sftp design (MINA SSHD, platform-thread wrapper, runtime-held lease) · F-16
 the CLI runs flow tests on api + testkit · F-17 the scheduler MXBean does not see a VT blocked on a monitor · F-18 the
 one-transaction ACK misses 5 ms at c=1 and costs throughput under load · F-19 sftp endpoint server/directory options · F-20
-retention by age in keyset batches, not partitions · F-21 no CPU time on virtual threads. Each file is in `docs/findings/`,
-with a changelog row in ARCHITECTURE.md.
+retention by age in keyset batches, not partitions · F-21 no CPU time on virtual threads. Each file is in `docs/archive/findings/`,
+with a changelog row in `docs/archive/architecture-until-2026-11-17.md`.
 
 ## 6. Decisions marked "draft — review at hand-over" (docs/DECISIONS.md)
 
