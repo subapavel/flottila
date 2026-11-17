@@ -48,8 +48,8 @@ class WideConstructStepsTest {
 
   /**
    * A bytes-built budget one byte short of the 12 that the element table of {@code [0,0,0]} takes, so that every
-   * indexed read of the input walks and ticks the elements it steps, as at 2fe9654, however often the array is read.
-   * The two rows that use it build nothing else.
+   * indexed read of the input walks and ticks the elements it steps, as without a table, however often the array is
+   * read. The two rows that use it build nothing else.
    */
   private static final long NO_TABLE = 11;
 

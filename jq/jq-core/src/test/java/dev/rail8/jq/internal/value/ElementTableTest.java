@@ -10,6 +10,7 @@ import dev.rail8.jq.Workspace;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
+import java.util.Arrays;
 import java.util.StringJoiner;
 import org.junit.jupiter.api.Test;
 
@@ -107,28 +108,84 @@ class ElementTableTest {
     assertThat(fits.steps()).as("ticks of reads 0 to 19 with 80 bytes").isEqualTo(41);
   }
 
+  /** The elements of the root array of {@code json}, read into {@code workspace}, as views. */
+  private static ArrayView[] elements(Workspace workspace, String json) {
+    ArrayView root = read(workspace, json);
+    RunState free = new RunState();
+    ArrayView[] elements = new ArrayView[root.length()];
+    for (int k = 0; k < elements.length; k++) elements[k] = (ArrayView) root.get(free, k);
+    return elements;
+  }
+
+  /** {@code [a,b,…]} of the given arrays. */
+  private static String arrayOf(String... arrays) {
+    return "[" + String.join(",", arrays) + "]";
+  }
+
   @Test
   void aHotArrayKeepsItsTableAmongOneShotReads() {
-    // [[0,…,19],[0],[0],…]: each read of the hot array is followed by reads of three single-element arrays, each read
-    // once. They take the other slots and evict each other, never the hot array, which builds its table at read 7 as
-    // alone: 41 ticks, and 0 for each read of a single element.
-    StringJoiner doc = new StringJoiner(",", "[", "]");
-    doc.add(counting(20));
-    for (int k = 0; k < 60; k++) doc.add("[0]");
-    Workspace workspace = JqEngine.builder().build().newWorkspace();
-    ArrayView root = read(workspace, doc.toString());
-    RunState free = new RunState();
-    ArrayView hot = (ArrayView) root.get(free, 0);
-    ArrayView[] singles = new ArrayView[60];
-    for (int k = 0; k < 60; k++) singles[k] = (ArrayView) root.get(free, k + 1);
+    // Each read of the hot array is followed by reads of four single-element arrays, each read once. They evict each
+    // other, never the hot array, whose walks outweigh theirs, so it builds its table at read 7 as alone: 41 ticks, and
+    // 0 for each single read. Replacing the least recently used entry instead would evict the hot array at every read:
+    // 190.
+    String[] arrays = new String[81];
+    arrays[0] = counting(20);
+    Arrays.fill(arrays, 1, 81, "[0]");
+    ArrayView[] views = elements(JqEngine.builder().build().newWorkspace(), arrayOf(arrays));
     RunState state = running(UNLIMITED);
     for (int i = 0; i < 20; i++) {
-      assertThat(hot.get(state, i).toJson()).as("element %s of the hot array", i).isEqualTo(Integer.toString(i));
-      for (int k = 0; k < 3; k++) {
-        assertThat(singles[3 * i + k].get(state, 0).toJson()).as("the single element of array %s", 3 * i + k).isEqualTo("0");
+      assertThat(views[0].get(state, i).toJson()).as("element %s of the hot array", i).isEqualTo(Integer.toString(i));
+      for (int k = 1; k <= 4; k++) {
+        assertThat(views[4 * i + k].get(state, 0).toJson()).as("the single element of array %s", 4 * i + k).isEqualTo("0");
       }
     }
-    assertThat(state.steps()).as("ticks of the hot reads and the 60 single reads").isEqualTo(41);
+    assertThat(state.steps()).as("ticks of the hot reads and the 80 single reads").isEqualTo(41);
+  }
+
+  @Test
+  void anEntryWithATableIsReplacedAfterTheOnesWithout() {
+    // [0,…,19] builds its table (41 ticks); three arrays of 1000 elements are read at 500 (1500), which outweighs the
+    // 21 elements the walks of the first array stepped; a fifth array then replaces one of the three, not the one with
+    // the table, whose next read costs nothing: 1541.
+    String thousand = counting(1000);
+    ArrayView[] views = elements(JqEngine.builder().build().newWorkspace(), arrayOf(counting(20), thousand, thousand, thousand, "[0]"));
+    RunState state = running(UNLIMITED);
+    readTwenty(state, views[0]);
+    for (int k = 1; k <= 3; k++) {
+      assertThat(views[k].get(state, 500).toJson()).as("element 500 of array %s", k).isEqualTo("500");
+    }
+    assertThat(views[4].get(state, 0).toJson()).as("the single element").isEqualTo("0");
+    assertThat(views[0].get(state, 5).toJson()).as("element 5 from the table").isEqualTo("5");
+    assertThat(state.steps()).as("ticks of the table, three walks of 500 and two reads").isEqualTo(1541);
+  }
+
+  @Test
+  void anEntryNotReadInTheLastAgeReadsIsReplacedFirst() {
+    // Three arrays of 1000 elements are read at 999 (2997) and never again. Then each read of a hot array of 100 elements
+    // is followed by a read of a single-element array. While the three keep their slots, outweighing the hot array, the
+    // hot array and the single read replace each other in the fourth slot, and each hot read walks from a count of zero:
+    // reads 0 to 29, 435. Read 30 of the hot array is the memo's 64th read; at the next one the first of the three has
+    // not been read in 64 reads and is replaced, then the other two. The hot array keeps its slot from read 30 on: its
+    // walks 30 + 31 + 32 + 33 = 126 pass its span of 100, read 34 builds the table (100), and the later reads cost none:
+    // 2997 + 435 + 126 + 100 = 3658, against 2997 + 4950 if the three kept their slots.
+    String thousand = counting(1000);
+    String[] arrays = new String[104];
+    arrays[0] = thousand;
+    arrays[1] = thousand;
+    arrays[2] = thousand;
+    arrays[3] = counting(100);
+    Arrays.fill(arrays, 4, 104, "[0]");
+    ArrayView[] views = elements(JqEngine.builder().build().newWorkspace(), arrayOf(arrays));
+    RunState state = running(UNLIMITED);
+    for (int k = 0; k < 3; k++) {
+      assertThat(views[k].get(state, 999).toJson()).as("element 999 of array %s", k).isEqualTo("999");
+    }
+    for (int i = 0; i < 100; i++) {
+      assertThat(views[3].get(state, i).toJson()).as("element %s of the hot array", i).isEqualTo(Integer.toString(i));
+      assertThat(views[4 + i].get(state, 0).toJson()).as("the single element of array %s", 4 + i).isEqualTo("0");
+    }
+    assertThat(ElementTable.AGE).as("the age the counts above assume").isEqualTo(64);
+    assertThat(state.steps()).as("ticks of the three walks, the hot reads and the single reads").isEqualTo(3658);
   }
 
   @Test

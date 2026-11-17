@@ -18,12 +18,17 @@ import dev.rail8.jq.query.run.RunState;
  * element, charged before the table is allocated. The walks before a build thus cost at least the build, so a table
  * never more than doubles what the walks alone would have cost, and a read that builds none costs what the walk costs.
  * With a table a read and a length cost no tick. An array of more than {@link #CAP} elements, or whose table the run's
- * bytes-built budget cannot take, gets no table in this run and its reads go on walking.
+ * bytes-built budget cannot take, gets no table while its entry lasts and its reads go on walking. A built table's
+ * bytes count against the run's later allocations like any other allocation.
  *
- * <p>A new entry takes a free slot or else replaces the entry with no table whose walks have stepped the fewest
- * elements, the least recently used among equals; only when every entry has a table does it replace the least recently
- * used one. A one-off read thus replaces another one-off read before an array a loop reads. The caller checks the
- * document with {@link Document#live()} first, so a read of a stale view fails before the memo is consulted.
+ * <p>The memo counts its reads, every read and every length, entered or not, and each entry keeps the count at its
+ * last read. A new entry takes a free slot. Otherwise it replaces the least recently used entry if that entry has not
+ * been read in the last {@link #AGE} reads. Failing that, it replaces the entry with no table whose walks have stepped
+ * the fewest elements, the least recently used among equals; only when every entry has a table does it replace the
+ * least recently used one. A one-off read thus replaces another one-off read before an array a loop reads, while an
+ * array no longer read gives up its slot. An entry that is replaced loses its count with its table, so a rebuild again
+ * follows walks that cost more than it. The caller checks the document with {@link Document#live()} first, so a read
+ * of a stale view fails before the memo is consulted.
  */
 final class ElementTable {
   /** The most elements a table holds: 2^24 positions, 64 MiB. */
@@ -31,6 +36,9 @@ final class ElementTable {
 
   /** The arrays a run's memo keeps at once. */
   private static final int SLOTS = 4;
+
+  /** The reads of the memo after which an entry not read among them may be replaced first. */
+  static final int AGE = 16 * SLOTS;
 
   private ElementTable() {}
 
@@ -40,12 +48,14 @@ final class ElementTable {
    */
   static int at(RunState state, Document doc, long[] tape, int array, int i) {
     Memo memo = memo(state);
+    memo.reads++;
     int slot = memo.find(doc, array);
     if (slot < 0) {
       memo.enter(doc, array);
     } else {
       memo.front(slot);
     }
+    memo.last[0] = memo.reads;
     int[] table = table(state, memo, tape, array);
     if (table != null) {
       return i < table.length ? table[i] : -1;
@@ -65,13 +75,18 @@ final class ElementTable {
   /** The number of elements of the array at tape index {@code array} of {@code doc}, whose live tape is {@code tape}. */
   static int length(RunState state, Document doc, long[] tape, int array) {
     Memo memo = state.memo() instanceof Memo m ? m : null;
-    int slot = memo == null ? -1 : memo.find(doc, array);
+    int slot = -1;
+    if (memo != null) {
+      memo.reads++;
+      slot = memo.find(doc, array);
+    }
     if (slot < 0) {
       int length = count(tape, array);
       state.tick(length);
       return length;
     }
     memo.front(slot);
+    memo.last[0] = memo.reads;
     int[] table = table(state, memo, tape, array);
     if (table != null) {
       return table.length;
@@ -140,10 +155,16 @@ final class ElementTable {
     private final long[] stepped = new long[SLOTS];
     private final int[][] tables = new int[SLOTS][];
 
+    /** The memo's read count at the entry's last read. */
+    private final long[] last = new long[SLOTS];
+
     /** Whether the entry's array gets no table in this run: past the cap or past the bytes-built budget. */
     private final boolean[] refused = new boolean[SLOTS];
 
     private int used;
+
+    /** The reads of the memo in this run: every read and every length. */
+    private long reads;
 
     /** The slot of the entry for the array at tape index {@code array} of {@code doc}, or -1. */
     int find(Document doc, int array) {
@@ -162,18 +183,21 @@ final class ElementTable {
       long steps = stepped[s];
       int[] table = tables[s];
       boolean refuse = refused[s];
+      long read = last[s];
       for (int k = s; k > 0; k--) {
         docs[k] = docs[k - 1];
         arrays[k] = arrays[k - 1];
         stepped[k] = stepped[k - 1];
         tables[k] = tables[k - 1];
         refused[k] = refused[k - 1];
+        last[k] = last[k - 1];
       }
       docs[0] = doc;
       arrays[0] = array;
       stepped[0] = steps;
       tables[0] = table;
       refused[0] = refuse;
+      last[0] = read;
     }
 
     /** Enters the array at tape index {@code array} of {@code doc} in slot 0, replacing an entry when all are used. */
@@ -188,11 +212,14 @@ final class ElementTable {
     }
 
     /**
-     * The slot to replace: the entry with no table whose walks stepped the fewest elements, the last among equals; the
-     * last entry when every entry has a table.
+     * The slot to replace: the last entry if it was not read in the last {@link #AGE} reads; else the entry with no
+     * table whose walks stepped the fewest elements, the last among equals; the last entry when every entry has a table.
      */
     private int victim() {
       int victim = SLOTS - 1;
+      if (reads - last[victim] >= AGE) {
+        return victim;
+      }
       long fewest = Long.MAX_VALUE;
       for (int s = SLOTS - 1; s >= 0; s--) {
         if (tables[s] == null && stepped[s] < fewest) {

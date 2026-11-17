@@ -229,6 +229,27 @@ class NavigationBudgetTest {
   }
 
   @Test
+  void aLoopAfterAZipOfThreeArraysStaysLinear() {
+    // {"a","b","c": [0,…,999], "rows": [[0],…,[999]]}, 17 588 bytes. The zip of a, b and c alone costs 20 123 steps and
+    // the loop over rows alone 9038; together they cost both less the document's 18 read ticks, plus 469. After the zip
+    // a, b and c keep their tables and the rows loop shares the fourth entry of the run's memo with each row it reads,
+    // so the walks of rows restart from zero until a, b and c, no longer read, give up their entries: at the memo's
+    // 64th read after their last ones, one by one. Reads 0 to 29 of rows walk 435 in vain; reads 30 to 70 walk 2050 and
+    // pass its span of 2000, against reads 0 to 63 and 2016 alone: 435 + 2050 - 2016 = 469. jq 1.7 gives 1498500 and
+    // 499500, the three sums and the rows' sum.
+    StringJoiner rows = new StringJoiner(",", "[", "]");
+    for (int i = 0; i < 1000; i++) rows.add("[" + i + "]");
+    String thousand = counting(1000);
+    String doc = "{\"a\":" + thousand + ",\"b\":" + thousand + ",\"c\":" + thousand + ",\"rows\":" + rows + "}";
+    String zip = "[range(0;1000) as $i | $d.a[$i] + $d.b[$i] + $d.c[$i]] | add";
+    String loop = "reduce range(0; $d.rows|length) as $i (0; . + $d.rows[$i][0])";
+    assertAll(
+        () -> assertExactSteps(". as $d | " + zip, doc, 20123, "1498500"),
+        () -> assertExactSteps(". as $d | " + loop, doc, 9038, "499500"),
+        () -> assertExactSteps(". as $d | (" + zip + ") as $x | " + loop, doc, 20123 + 9038 - 18 + 469, "499500"));
+  }
+
+  @Test
   void aSliceOfAViewChargesTheLengthAndTheElementsUpToItsEnd() {
     // Slice.of walks the length (20), then ArrayView.slice charges its end, the walk to the start and the copy (5):
     // read 1 + 20 + 5 = 26. jq-ref 1.8.2, observed 2026-11-12: [range(20)] | .[2:5] gives [2,3,4].
