@@ -111,6 +111,49 @@ the list of failed messages, like messages in error status in PO's message monit
   for an ordered flow, stops its key. An operator lists held items and releases them.
 - A row whose body was lost with a node's disk can be discarded by an operator; the act is audited.
 
+### A run's time limit, and cancelling a running message
+
+Each run of a message has the flow's `delivery.timeout` (30 s by default, at most 24 h): a sync call
+from its admission, an at-most-once run, and each claim of an at-least-once message. When it passes,
+the run stops. The step it is in is interrupted, no later step and no new send starts, and a step
+retry neither waits nor tries again. A send already started has until the same deadline, when its
+producer cuts it, and the run ends only once its sends have settled. A step that returns before it
+notices the stop keeps its result.
+
+- The history has a failed row at the step where the run stopped: `its time limit of PT30S passed`.
+- `at-least-once`: a failed attempt that may get better, so the run retry and the park apply to it as
+  to any other failure.
+- `sync`: the sender gets 503 with `Retry-After`. `at-most-once`: it is logged and dropped.
+
+`POST /admin/messages/{id}/cancel` cancels an at-least-once message that has not ended. It takes the
+same optional reason and `X-Rail8-Actor` as the cancel of a failed message and writes one audit row.
+
+- A message that is queued, waiting for its retry or running is marked in its work row, in the
+  audit's transaction. The answer is 202 `{"id", "auditId", "cancelledAt", "state": "stopping",
+  "node"}`. A run on the node that took the call stops at once. A run on another node, the one
+  `node` names, stops at that node's next lease renewal (within 10 s at the default lease). A message
+  that is not running stops at its next claim, before its first step does anything; `node` is null
+  then. A second cancel answers with the first one's audit row and writes nothing.
+- The history of a cancelled message has a failed row at the step where it stopped: `cancelled by
+  alice: <reason>`. The message ends: it is never retried or parked, and the next message of its key
+  runs once its run and its sends are done.
+- A parked message is ended as by `POST /admin/dlq/{id}/cancel`: 200 with `"state": "ended"`.
+- A held message, or one whose body was lost: 409. They keep their own release and discard.
+- `sync` and `at-most-once` runs are not cancelled; their time limit ends them. Any other id: 404.
+
+A cancel takes longer:
+
+- for a message whose body is in a dead node's journal: it stops when that node comes back;
+- for a message behind an older message of its key: it stops when its turn comes;
+- for a step that ignores the interrupt (a long XSLT or jq evaluation): its message, and the key of
+  an ordered flow, stays taken until the step returns. Once the run has gone on for its time limit
+  plus the lease, a WARNING names the message, the step and the thread.
+
+With `recording: {level: off}` no failed row is written: the audit row and the log show the stop.
+
+**Upgrading to the cancel.** The migration adds the column `work.cancel_audit`. A node of the earlier
+version runs a marked message as if it were not cancelled, so upgrade every node before cancelling.
+
 ### Delivery in order
 
 A flow with `partitionBy: <key>` processes the messages of one key one at a time, in the order they
@@ -152,7 +195,6 @@ with `partitionBy`, this one refuses it. Upgrade every node, then deploy such pa
   avoids reading the same file twice and drops its built-in deduplication.
 - What happens when a step fails, defined by the flow's author: an error message to a partner, a
   chosen answer to the caller, or a few steps of its own (like an exception subprocess in CPI).
-- A time limit for a whole message, and cancelling a running message.
 - What is left in the code from replay is removed.
 
 ## 3. Storage
@@ -163,7 +205,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 
 | Table | Holds |
 | --- | --- |
-| `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held or stops its key, and where the body is in the journal |
+| `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held, stops its key or is cancelled, and where the body is in the journal |
 | `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size), and the business keys for search |
 | `dlq` | parked messages, by reference |
 | `processed_ids` | the delivery identities used against duplicates |
@@ -565,6 +607,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/messages/{id}` | a message's steps with their times |
 | `GET /admin/messages/{id}/steps/{n}/body` | the body after step `n` |
 | `GET /admin/dlq`, `POST /admin/dlq/{id}/retry`, `POST /admin/dlq/{id}/cancel` | failed messages, running one again, ending one |
+| `POST /admin/messages/{id}/cancel` | cancelling a message that has not ended |
 | `GET /admin/work/stopped` | keys of ordered flows stopped behind a failed message |
 | `GET /admin/work/held`, `POST /admin/work/{seq}/release` | held items |
 | `GET /admin/work/lost`, `POST /admin/work/{seq}/discard` | items whose body was lost |
