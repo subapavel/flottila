@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * {@code rail8 lock <dir> [--deps <dir>]} (D-087, D-089): pins every dependency {@code package.yaml} declares (the first
+ * {@code rail8 lock <dir> [--deps <dir>]}: pins every dependency {@code package.yaml} declares (the first
  * declaration of a name) with its candidate's content digest ({@link Dependencies#find}) and writes {@code package.lock} —
  * {@code kind: lock}, the entries sorted by name, an empty list without dependencies — over the previous one, then prints one
  * line per entry, {@code <name>@<version> sha256:<hex>}; exit 0. A file of the package that does not parse, a {@code package.yaml}

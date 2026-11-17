@@ -26,7 +26,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * {@code rail8 deploy <dir> [--name N] [--revision R] [--admin URL]} (D-079): the package directory as a deterministic zip
+ * {@code rail8 deploy <dir> [--name N] [--revision R] [--admin URL]}: the package directory as a deterministic zip
  * ({@link #zip}), PUT to {@code <admin>/admin/packages/<name>[?revision=R]} with {@code Content-Type: application/zip} and,
  * when RAIL8_ADMIN_TOKEN is set and not blank, {@code Authorization: Bearer <token>} — the token is taken from the
  * environment only. The name is package.yaml's unless {@code --name}; the admin URL {@code --admin}, else RAIL8_ADMIN, else

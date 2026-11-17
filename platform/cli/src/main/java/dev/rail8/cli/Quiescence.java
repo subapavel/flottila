@@ -10,14 +10,14 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * When {@code rail8 test} may move a case's virtual time (D-080): the case's world is quiet when two consecutive samples each
+ * When {@code rail8 test} may move a case's virtual time: the case's world is quiet when two consecutive samples each
  * show no virtual thread mounted on a carrier and none queued for one, and equal ({@code equals}) fingerprints of what the runner
  * reads of the world. Every message of a case runs on a virtual thread and every timer task on the thread that advances the
  * clock, so a world with nothing mounted or queued can only move when the clock does; the fingerprint and the second sample
  * guard the instant a thread changes hands.
  *
  * <p>A sample of {@link #ofJvm} counts as mounted the scheduler's mounted count, the carrier threads running now
- * ({@link #runningCarriers()}) and the runner's busy threads (FIX-254, D-155). The scheduler's count alone is not enough: it is
+ * ({@link #runningCarriers()}) and the runner's busy threads. The scheduler's count alone is not enough: it is
  * its pool's active count, and the pool leaves a carrier out of it while the carrier's virtual thread, mounted and running, is
  * inside a blocking operation the pool compensates for — between {@code jdk.internal.misc.Blocker.begin()} and {@code end()},
  * as a write of {@code System.out} or {@code System.err} that reaches the file descriptor and every read of a {@code Process}

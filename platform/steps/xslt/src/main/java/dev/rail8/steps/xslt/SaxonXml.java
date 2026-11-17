@@ -13,7 +13,7 @@ import java.io.ByteArrayInputStream;
 import java.util.List;
 
 /**
- * The XML steps on Saxon-HE (ARCHITECTURE §13): one {@link Processor} shared by the {@code xslt} step and the
+ * The XML steps on Saxon-HE: one {@link Processor} shared by the {@code xslt} step and the
  * {@code xpath} expression language, and the parsed view of a body — an {@link XdmNode} computed once per body
  * and shared by every envelope that carries it ({@link Envelope#view}). A body is parsed from
  * {@link Body#whole()}: a tree view exists for bodies under the store's tree limit; streaming transformation is

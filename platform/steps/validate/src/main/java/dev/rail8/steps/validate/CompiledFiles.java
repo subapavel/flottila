@@ -18,7 +18,7 @@ import java.util.Optional;
 /**
  * The files one schema compilation read besides its main file — every schema it includes or imports, nested ones
  * included — each with its bytes' hash then. The compile cache serves the compiled schema only to a flow whose files
- * are {@link #sameIn the same} (FIX-17). A compilation that read a file it could not find fails, so a read is always a
+ * are {@link #sameIn the same}. A compilation that read a file it could not find fails, so a read is always a
  * file.
  *
  * <p>A read lies where a compile in another flow would read it: a relative reference from the main file or from a
@@ -38,7 +38,7 @@ final class CompiledFiles {
 
     /**
      * Whether {@code resources}' flow, compiling the main file {@code main}, would read the same: every read located
-     * against {@code main}'s directory lies inside the flow's directory or the dependency's that holds it (D-052, D-087: one
+     * against {@code main}'s directory lies inside the flow's directory or the dependency's that holds it (one
      * outside means the compile there is refused) and holds the same bytes. When it does, every located read is reported to the flow's {@code reads} sink,
      * as the compile there would report it; when it does not, none is.
      */

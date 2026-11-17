@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A package's dependencies resolved off the node (D-087, D-089), for {@code lock}, {@code validate} and {@code test}: the candidates
+ * A package's dependencies resolved off the node, for {@code lock}, {@code validate} and {@code test}: the candidates
  * are the immediate subdirectories of the candidates directory — {@code --deps <dir>}, else the package directory's parent —
  * that hold a {@code package.yaml} and load ({@link Package#load}), the package's own directory excluded; a candidate whose files
  * do not load, or cannot be read or walked for its content ({@link Package#content}: an {@link IOException} or
@@ -99,7 +99,7 @@ final class Dependencies {
     }
 
     /**
-     * The closure of {@code lock} — the lock of the package {@code name} — as a node resolves it (D-087), leaves first: each entry's
+     * The closure of {@code lock} — the lock of the package {@code name} — as a node resolves it, leaves first: each entry's
      * candidate ({@link #find}) with the content the entry pins, then that candidate's own lock, each dependency after those it
      * depends on and each once. Every problem is a line added to {@code problems}: a name met again on the way is a cycle
      * ({@code dependency cycle: a -> b -> a}, checked before any candidate lookup), a content other than the pinned one is a drift

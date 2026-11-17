@@ -31,11 +31,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * {@code rail8 validate <dir> [--env <env>] [--deps <dir>]} (D-079): {@link Package#problems()}, then its dependencies'
- * closure resolved from the candidates ({@link Dependencies#resolve}, D-089), then — when that found no problem — the node's dry
+ * {@code rail8 validate <dir> [--env <env>] [--deps <dir>]}: {@link Package#problems()}, then its dependencies'
+ * closure resolved from the candidates ({@link Dependencies#resolve}), then — when that found no problem — the node's dry
  * build ({@link Deployments#validate}) over what a node ships ({@link Main#shipped()}) in the environment {@code --env} (dev
  * unless given, whatever {@code RAIL8_ENV} says), with in-memory stores on one Vert.x, the closure held for that call so that
- * the node's own resolution (D-087) runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
+ * the node's own resolution runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
  * then one {@code problem: } line per problem, each once; exit 0 without a problem, 1 with one.
  */
 final class Validate {
@@ -123,7 +123,7 @@ final class Validate {
     private record DryBuild(List<String> problems, Set<String> schemes) {}
 
     /**
-     * {@link Deployments#validate(String, Path, List)} of {@code dir} as {@code name}, {@code closure}'s folders held (D-089), on a
+     * {@link Deployments#validate(String, Path, List)} of {@code dir} as {@code name}, {@code closure}'s folders held, on a
      * node of the environment {@code env} that runs nothing: the shipped components on a Vert.x of the run's own (closed after
      * it), the shipped steps and languages, a fake clock, timer and ids, in-memory blobs and stores, and an empty data directory
      * of the run's own (deleted after it). Nothing of the closure is deployed or started, so no component of it listens or
@@ -133,7 +133,7 @@ final class Validate {
         Path data = Files.createTempDirectory("rail8-validate-");
         try {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", env, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
-                    .withSecrets(Secrets.placeholder());   // no secret off the node: references are syntax-checked, resolved to the placeholder (D-081)
+                    .withSecrets(Secrets.placeholder());   // no secret off the node: references are syntax-checked, resolved to the placeholder
             FakeRuntime rt = FakeRuntime.create();
             Main.Shipped shipped = Main.shipped();
             Vertx vertx = Vertx.vertx();

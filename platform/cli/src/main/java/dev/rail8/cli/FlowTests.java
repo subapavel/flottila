@@ -52,8 +52,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * {@code rail8 test <dir> [--deps <dir>]} (D-080). First what {@code rail8 validate} checks, in the environment {@code ci}
- * — the package's problems, its dependencies' closure (D-089) and the dry build over what a node ships — and what only a test
+ * {@code rail8 test <dir> [--deps <dir>]}. First what {@code rail8 validate} checks, in the environment {@code ci}
+ * — the package's problems, its dependencies' closure and the dry build over what a node ships — and what only a test
  * run asks of its test documents: a {@code recorded}
  * or {@code script} behaviour (not implemented yet), {@code expect.status} on a flow whose from endpoint is not http, an
  * {@code xpath} that does not compile; any problem is printed as validate prints it and no case runs (exit 1).
@@ -62,11 +62,11 @@ import java.util.stream.Stream;
  * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per shipped scheme bound to the document's
  * {@code mocks} — a case's entry for an endpoint replaces the document's whole — in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
- * dependencies' closure validate resolved (D-089) is deployed leaves first, then the package, each as its deterministic zip
+ * dependencies' closure validate resolved is deployed leaves first, then the package, each as its deterministic zip
  * ({@link Deploy#zip}, built once). The case's {@code send} — the fixture's bytes and
  * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
- * a case that neither sends nor is fed, D-080). The case settles on virtual time ({@link VirtualTime}: settled = the answer
+ * a case that neither sends nor is fed). The case settles on virtual time ({@link VirtualTime}: settled = the answer
  * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and the
  * work queue empty, on a quiet world) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
  * read the first message the from endpoint delivered); then the node is closed, on virtual time too.
@@ -87,7 +87,7 @@ final class FlowTests {
      * it again, a hand-over of microseconds this outlasts.
      */
     static final Duration STEADY = Duration.ofMillis(1);
-    /** The environment a test runs in: a node that loads mocks (not deployed, ARCHITECTURE §11). */
+    /** The environment a test runs in: a node that loads mocks (not deployed). */
     private static final String ENV = "ci";
     /** The node id of each case's node: a DNS label, named nowhere in the output. */
     private static final String NODE_ID = "rail8-test";
@@ -258,7 +258,7 @@ final class FlowTests {
         Path data = Files.createTempDirectory("rail8-test-");
         try {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", ENV, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
-                    .withSecrets(Secrets.placeholder());   // no secret off the node: every reference resolves to the placeholder (D-081)
+                    .withSecrets(Secrets.placeholder());   // no secret off the node: every reference resolves to the placeholder
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
                     rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
             try {
