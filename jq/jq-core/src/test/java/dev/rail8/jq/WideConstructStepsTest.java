@@ -43,26 +43,36 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class WideConstructStepsTest {
 
+  /** A bytes-built budget that limits nothing. */
+  private static final long UNLIMITED = Limits.UNLIMITED;
+
   /**
-   * One row per construct of ADR-0043's lowering: its name ({@link #filter}), the input, and the line's {@code a} and
-   * {@code b} from 2fe9654.
+   * A bytes-built budget one byte short of the 12 that the element table of {@code [0,0,0]} takes, so that every
+   * indexed read of the input walks and ticks the elements it steps, as at 2fe9654, however often the array is read.
+   * The two rows that use it build nothing else.
+   */
+  private static final long NO_TABLE = 11;
+
+  /**
+   * One row per construct that lowers to one Binds when wide: its name ({@link #filter}), the input, the line's {@code a} and
+   * {@code b} from 2fe9654, and the run's bytes-built budget.
    */
   static Stream<Arguments> constructs() {
     return Stream.of(
         // 2fe9654: s30 = 91, s60 = 181.
-        Arguments.of("object of computed values", "{\"b\":0,\"c\":0,\"a\":0}", 1L, 3L),
+        Arguments.of("object of computed values", "{\"b\":0,\"c\":0,\"a\":0}", 1L, 3L, UNLIMITED),
         // 2fe9654: s30 = 181, s60 = 361.
-        Arguments.of("object of computed keys", "{\"b\":0,\"k\":\"x\",\"a\":0}", 1L, 6L),
+        Arguments.of("object of computed keys", "{\"b\":0,\"k\":\"x\",\"a\":0}", 1L, 6L, UNLIMITED),
         // 2fe9654: s30 = 61, s60 = 121.
-        Arguments.of("interpolation", "{\"b\":0,\"a\":\"\"}", 1L, 2L),
+        Arguments.of("interpolation", "{\"b\":0,\"a\":\"\"}", 1L, 2L, UNLIMITED),
         // 2fe9654: s30 = 85, s60 = 175.
-        Arguments.of("array pattern", "[0,0,0]", -5L, 3L),
+        Arguments.of("array pattern", "[0,0,0]", -5L, 3L, NO_TABLE),
         // 2fe9654: s30 = 121, s60 = 241.
-        Arguments.of("object pattern of computed keys", "{\"k\":\"x\",\"b\":0}", 1L, 4L),
+        Arguments.of("object pattern of computed keys", "{\"k\":\"x\",\"b\":0}", 1L, 4L, UNLIMITED),
         // 2fe9654: s30 = 86, s60 = 176.
-        Arguments.of("alternatives", "[0,0,0]", -4L, 3L),
+        Arguments.of("alternatives", "[0,0,0]", -4L, 3L, NO_TABLE),
         // 2fe9654: s30 = 61, s60 = 121.
-        Arguments.of("value parameters", "{\"b\":0,\"a\":0}", 1L, 2L));
+        Arguments.of("value parameters", "{\"b\":0,\"a\":0}", 1L, 2L, UNLIMITED));
   }
 
   /**
@@ -87,12 +97,12 @@ class WideConstructStepsTest {
 
   @ParameterizedTest(name = "{0}")
   @MethodSource("constructs")
-  void aWideConstructTicksAsTheNestedFormDoes(String construct, String input, long a, long b) {
+  void aWideConstructTicksAsTheNestedFormDoes(String construct, String input, long a, long b, long bytesBuilt) {
     byte[] json = input.getBytes(UTF_8);
     for (int n : new int[] {63, 65, 20_000}) {
       String filter = filter(construct, n);
       assertThatCode(() -> Inlining.ENGINE.compile(filter)).as("compile of the %s of %d parts", construct, n).doesNotThrowAnyException();
-      assertThat(fewestSteps(filter, json)).as("fewest steps of the %s of %d parts on %s, against %d + %d·%d", construct, n, input, a, b, n).isEqualTo(a + b * n);
+      assertThat(fewestSteps(filter, json, bytesBuilt)).as("fewest steps of the %s of %d parts on %s, against %d + %d·%d", construct, n, input, a, b, n).isEqualTo(a + b * n);
     }
   }
 
@@ -152,11 +162,16 @@ class WideConstructStepsTest {
 
   /** The fewest steps a run of {@code filter} on the JSON text {@code input}, read as a view, ends under, by bisection. */
   static long fewestSteps(String filter, byte[] input) {
+    return fewestSteps(filter, input, UNLIMITED);
+  }
+
+  /** {@link #fewestSteps(String, byte[])} under a bytes-built budget, which must never end the run. */
+  static long fewestSteps(String filter, byte[] input, long bytesBuilt) {
     long low = 1;
     long high = 1L << 24;
     while (low < high) {
       long mid = (low + high) >>> 1;
-      if (endsUnder(filter, input, mid)) {
+      if (endsUnder(filter, input, mid, bytesBuilt)) {
         high = mid;
       } else {
         low = mid + 1;
@@ -165,13 +180,25 @@ class WideConstructStepsTest {
     return low;
   }
 
-  private static boolean endsUnder(String filter, byte[] input, long steps) {
-    JqEngine engine = RunBudgets.steps(steps);
+  private static boolean endsUnder(String filter, byte[] input, long steps, long bytesBuilt) {
+    Limits stepsOnly = RunBudgets.limits(steps, Limits.UNLIMITED_TIME, Limits.UNLIMITED);
+    JqEngine engine =
+        RunBudgets.engine(
+            new Limits(
+                steps,
+                stepsOnly.deadline(),
+                stepsOnly.nestingDepth(),
+                stepsOnly.recursionDepth(),
+                bytesBuilt,
+                stepsOnly.bytesWritten(),
+                stepsOnly.regexMatchTime(),
+                stepsOnly.stackBytes()));
     Workspace workspace = engine.newWorkspace();
     try {
       engine.compile(filter).run(RunBudgets.read(workspace, input).root(), RunBudgets.NONE, v -> true, workspace);
       return true;
     } catch (JqTermination e) {
+      assertThat(e.budget()).as("the budget that ended %s", filter).isNotEqualTo(JqTermination.Budget.BYTES_BUILT);
       return false;
     }
   }
