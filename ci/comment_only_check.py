@@ -10,7 +10,9 @@ be equal.
 
 Checked files: Java (.java), TypeScript and JavaScript (.ts, .tsx, .js, .jsx, .mjs, .cjs) and CSS (.css). The
 files are the ones named on the command line, or else every checked file the change adds, deletes or modifies.
-A file that exists on only one side is a finding, so is a rename. Other files are not looked at.
+A file that exists on only one side is a finding, so is a rename. When no files are named, every other file the
+change touches is a finding too, except Markdown (.md): a comment cleanup changes nothing else. In Java, Unicode
+escapes (\\uXXXX) are decoded first, as the compiler does, so an escaped line break cannot end a comment unseen.
 
 The base is `--base <commit>`; the change is the commit `--head`, or the working tree when `--head` is not
 given. Findings, one per file: `path: the code differs (base line N, head line M)`, followed by the two lines
@@ -24,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +37,9 @@ WIDTH = 160
 TIGHT = set("{}()[];,")
 # the code character before a / that makes the / start a regular expression literal rather than a division
 REGEX_AFTER = set("(,=:[!&|?{};+-*%~^")
+# a Java Unicode escape: an odd number of backslashes, one or more u, four hex digits
+UNICODE_ESCAPE = re.compile(r"(?<!\\)((?:\\\\)*)\\u+([0-9a-fA-F]{4})")
+DOCS_SUFFIXES = (".md",)
 REGEX_AFTER_WORDS = {"return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw",
                      "yield", "await"}
 
@@ -57,6 +63,8 @@ def reduce(text: str, kind: str) -> tuple[str, list[int]]:
     style knows /* */ comments and '...' and "..." strings. A '...' or "..." literal that is not closed ends at
     the end of its line.
     """
+    if kind == "java":
+        text = UNICODE_ESCAPE.sub(lambda m: m.group(1) + chr(int(m.group(2), 16)), text)
     out: list[str] = []
     lines: list[int] = []
     pending = False  # whitespace (or a removed comment) seen since the last character written
@@ -223,11 +231,14 @@ def in_tree(path: str) -> str | None:
     return p.read_text(encoding="utf-8", errors="replace") if p.is_file() else None
 
 
-def changed_files(base: str, head: str | None) -> list[str]:
-    """Every checked file the change adds, deletes or modifies; a rename counts as a delete and an add."""
+def changed_files(base: str, head: str | None) -> tuple[list[str], list[str]]:
+    """The checked files the change adds, deletes or modifies (a rename is a delete and an add), and the other
+    files it touches that are not Markdown."""
     args = ["diff", "--name-only", "--no-renames", "-z", base] + ([head] if head else [])
-    names = git(*args).stdout.decode("utf-8", errors="replace").split("\0")
-    return sorted(p for p in names if p and file_kind(p))
+    names = [p for p in git(*args).stdout.decode("utf-8", errors="replace").split("\0") if p]
+    checked = sorted(p for p in names if file_kind(p))
+    other = sorted(p for p in names if not file_kind(p) and not p.endswith(DOCS_SUFFIXES))
+    return checked, other
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -243,9 +254,10 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
     try:
-        paths = sorted(set(args.paths)) or changed_files(args.base, args.head)
-        findings: list[str] = []
-        count = 0
+        paths, other = (sorted(set(args.paths)), []) if args.paths else changed_files(args.base, args.head)
+        findings = [f"{p}: not a Java, TypeScript, JavaScript, CSS or Markdown file, which a comment cleanup "
+                    f"does not change" for p in other]
+        count = len(other)
         for path in paths:
             head = at_commit(args.head, path) if args.head else in_tree(path)
             lines = compare(path, at_commit(args.base, path), head)

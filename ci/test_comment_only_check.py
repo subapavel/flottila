@@ -163,17 +163,32 @@ class CommentOnlyCheckTest(unittest.TestCase):
         repo.change({"src/A.java": JAVA.replace("return x", "return -x")}, commit=False)
         self.findings(repo, 1)
 
-    def test_added_deleted_and_renamed_files_are_findings_and_other_files_are_ignored(self):
+    def test_added_deleted_renamed_and_other_files_are_findings_and_markdown_is_not(self):
         repo = self.repo({"src/A.java": JAVA, "src/B.java": "class B {}\n", "docs/a.md": "old\n"})
         repo.change({"src/A.java": None, "src/C.java": "class C {}\n", "docs/a.md": "new\n", "ci/x.py": "x = 1\n"})
         repo.git("mv", "src/B.java", "src/D.java")
         repo.git("commit", "-q", "-m", "rename")
         self.assertEqual([
+            "ci/x.py: not a Java, TypeScript, JavaScript, CSS or Markdown file, which a comment cleanup does not change",
             "src/A.java: the file is deleted, which changes code",
             "src/B.java: the file is deleted, which changes code",
             "src/C.java: the file is added, which changes code",
             "src/D.java: the file is added, which changes code",
-        ], self.findings(repo, 4, "--head", "HEAD"))
+        ], self.findings(repo, 5, "--head", "HEAD"))
+
+    def test_a_unicode_escape_that_ends_a_java_comment_is_seen(self):
+        base = "class A {\n  void f() { g(); }\n}\n"
+        repo = self.repo({"src/A.java": base})
+        repo.change({"src/A.java": base.replace("g(); }", "g(); // ok \\u000a h(); }")})
+        self.findings(repo, 1, "--head", "HEAD")
+        repo.change({"src/A.java": base.replace("g(); }", "g(); /* ok *\\u002f h(); /* */ }")})
+        self.findings(repo, 1, "--head", "HEAD")
+
+    def test_an_escaped_backslash_before_u_is_not_a_unicode_escape(self):
+        base = 'class A {\n  String s = "\\\\u000a";\n}\n'
+        repo = self.repo({"src/A.java": base})
+        repo.change({"src/A.java": base.replace(";\n", "; // a backslash and u000a\n")})
+        self.assertClean(repo, "--head", "HEAD")
 
     def test_only_the_named_files_are_checked(self):
         repo = self.repo({"src/A.java": JAVA, "src/B.java": "class B {}\n"})
