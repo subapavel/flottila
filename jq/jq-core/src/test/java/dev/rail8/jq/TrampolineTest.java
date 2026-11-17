@@ -164,6 +164,39 @@ class TrampolineTest {
   }
 
   /**
+   * The cases of diff/heap.cases, then three filters whose part runs on after its first result, the routes of a
+   * downstream error past a value-form call, and the activation case with its second call on and off the tail.
+   */
+  static Stream<Arguments> optimisedCases() {
+    List<Arguments> cases = new ArrayList<>(caseFile("heap"));
+    cases.add(Arguments.argumentSet("a comma that runs on after its result, in limit", "[limit(1; (1, error(\"x\")) | .+1)]", "null"));
+    cases.add(Arguments.argumentSet("a comma before a repeat, in first", "first((1, (repeat(1)|empty)) as $x | $x)", "null"));
+    cases.add(Arguments.argumentSet("a recursion after a comma", "def f: if .>3 then . else ((.+1), error(\"x\"))|f end; 0|f", "null"));
+    cases.add(
+        Arguments.argumentSet(
+            "an AltBind upstream of a value-form call catches a downstream error",
+            "def f: if .==0 then [1] else (.-1|f) end; [(3|f) as [$a] ?// $a | if $a == 1 then error(\"x\") else $a end]",
+            "null"));
+    cases.add(Arguments.argumentSet("a try inside a value-form callee does not catch a downstream error", "def f: try (if .==0 then 1 else (.-1|f) end) catch \"c\"; [3|f|error(\"x\")]", "null"));
+    cases.add(Arguments.argumentSet("the activation case", "def f: if . == 0 then 0 else (. - 1 | f) | (0 | f) end; f", "2000"));
+    cases.add(Arguments.argumentSet("the activation case off the tail", "def f: if . == 0 then 0 else (. - 1 | f) | (0 | f) | . + 1 end; f", "2000"));
+    return cases.stream();
+  }
+
+  /**
+   * Under the optimised compile, the run with {@code stackBytes} 0 ends as the run with the default does: the same
+   * results, the same end, and the same {@code Workspace.steps()}. On the driver a value-form call ends its activation
+   * at its result and then emits it, so a downstream error or stop goes where it goes on the stack, past the callee.
+   */
+  @ParameterizedTest
+  @MethodSource("optimisedCases")
+  void optimisedTrampolineEndsAsTheStackDoes(String filter, String json) {
+    String pushed = ended(engine(Limits.cli().stackBytes(), CompileMode.OPTIMISED), filter, json, BIG, true);
+    String zero = ended(engine(0, CompileMode.OPTIMISED), filter, json, SMALL, true);
+    assertThat(zero).as("%s with stackBytes 0, against the default's end", filter).isEqualTo(pushed);
+  }
+
+  /**
    * The witnesses of RecursionDepthTest with {@code stackBytes} 0, a hundred times deeper: the recursion-depth budget
    * counts the call activations on the driver as on the stack (ADR-0046), one per live Call and real-closure
    * invocation, none for an inlined call, and a call leaves the count when its results run out, at a stop or a break,

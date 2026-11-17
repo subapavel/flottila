@@ -32,8 +32,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Every expected result is reference jq 1.8.2's, recorded in {@code diff/specialise.rec} (the 5 000 000-step results
  * are #118's). The deep runs use the design's limits: {@code recursionDepth} {@value #DEPTH}, which a copy's 30 000
- * levels fit and real closures, one more live activation per level and per closure, do not (the pipe ladder has a
- * budget of its own, {@link #PIPE_LADDER_DEPTH}); each run is on a thread of
+ * levels fit and real closures, one more live activation per level and per closure, do not; each run is on a thread of
  * the oracle runners' size (F-88, ADR-0046 #111), {@link #RUNNER_STACK} bytes, with {@link Limits#cli()}'s declared
  * stack.
  */
@@ -65,9 +64,6 @@ class SpecialiseExplainTest {
    * (specialise/over-inline-cap-comma-recurse).
    */
   static final String COMMA_LADDER = ladder(',', "[", "]");
-
-  /** The pipe ladder's recursion-depth budget: between its edges, 95 522 in OPTIMISED and 125 522 in CONSERVATIVE. */
-  static final int PIPE_LADDER_DEPTH = 110_000;
 
   /** {@code f1} to {@code f15}, each two of the one below joined by {@code op}, then the ladder's chain in {@code open} and {@code close}. */
   private static String ladder(char op, String open, String close) {
@@ -267,7 +263,7 @@ class SpecialiseExplainTest {
   static Stream<Arguments> ladders() {
     return Stream.of(
         Arguments.argumentSet("the comma ladder at recursionDepth 40 000", COMMA_LADDER, DEPTH),
-        Arguments.argumentSet("the pipe ladder at recursionDepth 110 000", OVER_CAP, PIPE_LADDER_DEPTH));
+        Arguments.argumentSet("the pipe ladder at recursionDepth 40 000", OVER_CAP, DEPTH));
   }
 
   /**
@@ -279,11 +275,11 @@ class SpecialiseExplainTest {
    * <ul>
    *   <li>The comma ladder's calls have ended when recurse runs, its results collected first, so the copy fits {@link
    *       #DEPTH} and the real closure does not.
-   *   <li>The pipe ladder runs every call on the driver, its {@code callFreeDepth} above the runner's unit limit, and on
-   *       the driver a call stays live while its consumer runs (ADR-0046 #109 and "Amendment (ticket #116)", C2). So its
-   *       PLAIN calls stay live under recurse's levels: it ends at recursionDepth 95 522 in OPTIMISED and 125 522 in
-   *       CONSERVATIVE, each ending at the budget one below (.logs/117-repin2-edges.log at fede05d), and is pinned at
-   *       {@link #PIPE_LADDER_DEPTH}, between them.
+   *   <li>The pipe ladder runs every call on the driver, its {@code callFreeDepth} above the runner's unit limit. There
+   *       a push-form call stays live while its consumer runs, and a value-form call ends at its result, as on the
+   *       stack. So in OPTIMISED, where the ladder's calls are value form, the ladder holds 15 live activations at the
+   *       deepest and fits {@link #DEPTH}; in CONSERVATIVE its calls stay live under recurse's levels, and it ends at the
+   *       budget below 125 522.
    * </ul>
    */
   @ParameterizedTest(name = "{argumentSetName}")
