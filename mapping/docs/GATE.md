@@ -2,8 +2,8 @@
 
 Final, 2026-10-31 (Phase 0 map #1, grilling #19). Drafted 2026-10-30; the Phase 0 tickets set each
 check. The gate-reviewer (`/gate`) verifies every check on one commit of `main`; each check names
-the command and the evidence it needs. A change to a check after this point is a finding
-(the root `docs/WORKFLOW.md` §7).
+the command and the evidence it needs. A change to a check after this point needs the owner-proxy's answer (a GitHub issue labelled
+`owner-question`).
 
 ## Checks
 

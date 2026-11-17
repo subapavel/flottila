@@ -1,8 +1,7 @@
 > **Status:** binding design. The body below is the v3.3 text exported from the design document on
 > 2026-10-17, changed since then only by the changes the changelog lists. The *Amendments* agreed in
-> Part A on 2026-10-17 come first and override the body where they differ. During autonomous execution
-> the coordinator edits this file on findings (`docs/WORKFLOW.md §7`) and adds a line to the changelog
-> for every change.
+> Part A on 2026-10-17 come first and override the body where they differ. A change to this file adds
+> a line to the changelog.
 >
 > **Under revision by two briefs of the owner, each in its own scope.** Where a brief differs from this
 > file within its scope, the brief wins.
@@ -128,6 +127,7 @@
 | 2026-11-16 | 3.31 | §6: new paragraph *The operator's acts on a failed message* — cancel (`POST /admin/dlq/{id}/cancel`), the record of a retry and of a cancel in the `audit` table, the answers for an id that is not in the failed list (410 after a cancel, else 404 with the last event), the 409 while a work row of the id is unsettled, the act's statement bound `RAIL8_ADMIN_ACT_TIMEOUT`, and what the guard does not close: designed, not built (FIX-275 to FIX-278), `draft — review at hand-over`, the owner's questions in ISSUE-12. §4: the lease paragraph states the defect — a `/retry` before a park has settled inserts a second work row of the id (FIX-275 is to close it) —, and the durability paragraph names the one exception to `statement_timeout=0`: an act's statements are bounded, its commit never. §7: the restart is to refuse while a work row of the id exists and to move, with cancel and the events read, to one core type, `FailedMessages`; `Dlq.remove` goes. §8: a message's timeline is to list `events`. §9: the audit actions `message.retry` and `message.cancel`, the actor required on cancel, no error text in the detail; the table's bound is open (CONSIDER-29). The three sentences that said "cancel is FIX-267, pending" point at the design and its rows | F-57 (major; read in the code, not staged: FIX-275's red cases are to stage the second work row and both outcomes); D-162 |
 | 2026-11-16 | 3.32 | The owner's answers to ISSUE-12 (D-163), on the design of 3.31. §6 *The operator's acts on a failed message*: neither act requires a name or a reason — who may act is for roles and authorization (OPS-9); the actor is the header's, `unknown` when absent, until then; `/retry` takes no reason and a cancel an optional one, in an optional JSON body; a cancel's record and its entry in `events` carry the failed step's error text, cut to 4 096 characters; a cancelled message's history is kept by its age and a cancel is never undone (both as designed). §9: the audit detail of a cancel copies the error text, so reading audit rows belongs to the payload permission. §4 and §6: a sender's resend is another message under another id; sftp's dedupe key names one path at one mtime with one content and recognises the platform's own second pickup of a file, not a sender's new upload — the two sentences of §4 and the one of §6 that read otherwise are corrected | F-58 (minor); D-163 |
 | 2026-11-16 | 3.33 | §4, §6, §7: the guard on `/retry` is built (FIX-275) — a `/retry` beside an unsettled work row of its id is refused, 409 with a text until FIX-278 adds the `unsettled` member; the sentences that said "today", "not built" and "to be" follow. §6 states what the probe relies on: it reads the statement's snapshot, so every holder of the DLQ row lock deletes the row or writes nothing | F-57 (staged by FIX-275's red cases) |
+| 2026-11-17 | 3.34 | Status note and amendments 6–8: the way of working is `AGENTS.md` (one issue, one session, one pull request, one review, a rebase merge); `review: PASS` is no longer a gate condition; the body is unchanged | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -154,17 +154,16 @@
    `dev.rail8` (D-154: the owner's answer to ISSUE-7, which replaced the draft namespace of D-149). The product's name is Rail8 (D-145).
 6. **§13 — gates and order.** Every phase gate additionally requires: coverage floors met
    (`api`/`core` 90 % line and branch; runtime, components, steps 75 %), PIT mutation score ≥ 80 %
-   on `api`/`core`, and `review: PASS` on every task — measured on the gate commit. A hand-over
+   on `api`/`core` — measured on the gate commit. A hand-over
    gate ("the owner can test the first real iFlow", `docs/GATE.md`) sits after Phase 1 and
    includes the Phase 2 pieces two demo flows need; autonomous execution stops there. The control
    plane (Quarkus API, React UI, git watcher) moves to the end of the whole plan; until then the
    runtime admin API is the operator surface.
-7. **§13 "Working method" — superseded** by `docs/WORKFLOW.md`: autonomous execution with
-   coordinator / implementer / scout / reviewer roles, TDD, independent review of every task,
-   one commit per task to `main`, no stop-and-report. The `javap` rule stays as the fallback after
-   Context7.
-8. **§11 — testing additions.** TDD from day 1 (red first, PROGRESS names the test); the reviewer
-   agent judges every task's tests for being real; property tests (jqwik) for batcher, admission
+7. **§13 "Working method" — superseded** by `AGENTS.md`: one task = one GitHub issue = one
+   session and one pull request, TDD, one review by another agent, a rebase merge after green
+   checks. The `javap` rule stays as the fallback after Context7.
+8. **§11 — testing additions.** TDD from day 1 (red first); the review judges every task's tests
+   for being real; property tests (jqwik) for batcher, admission
    and WorkQueue ordering; hexagonal in substance only — SPI and store interfaces plus the ArchUnit
    dependency direction, no `domain/application/infrastructure` layering, interfaces only where a
    second implementation exists on day 1.

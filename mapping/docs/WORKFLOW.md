@@ -1,7 +1,11 @@
 # Workflow
 
-The way of working is the repository's: `AGENTS.md` at the root. This file keeps only the
-mapping's checks, ratchet and CI.
+The way of working is the repository's: `AGENTS.md` at the root. This file keeps the mapping's
+checks, ratchet and CI as the earlier process ran them. Read the roles in it (verifier, architect,
+ticket and spec gates, integration branch) as "the session": it runs the commands itself. On every
+change only the build with its tests blocks (`.github/workflows/mapping-ci.yml`); coverage floors,
+mutation tests, the ratchet, the stack suite and Windows run nightly as a report
+(`.github/workflows/mapping-nightly.yml`).
 
 ## 6. Checks, ratchet, CI
 

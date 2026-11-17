@@ -12,8 +12,11 @@ React + PatternFly.
 - `docs/FOUNDING-ARCHITECTURE.md`: the agreed direction.
 - `GLOSSARY.md`: the project's language. Use its terms in code and tests.
 - `docs/adr/`: the decisions that bind the area you touch. Contradicting one needs the owner-proxy.
+  Where an ADR prescribes a way of working (roles, tickets, integration branches), `AGENTS.md`
+  overrides it.
 - `docs/CODING_STANDARDS.md`: the coding standard.
-- Checks, ratchet and CI: `docs/WORKFLOW.md` §6.
+- Checks, ratchet and CI: `docs/WORKFLOW.md` §6, the commands. Only the build with its tests
+  blocks a change; coverage floors, mutation tests, the ratchet and Windows run nightly.
 
 ## Rules
 
@@ -25,5 +28,6 @@ React + PatternFly.
   and all of `ui/package.json`. Exceptions are per artifact, listed in the mapping's POM: Saxon-HE
   at test scope (the oracle), JMH in `bench/jmh` only, the Quarkus test framework's own
   dependencies, and three dev-only npm build tools. Maven plugins are tools (any OSI licence).
-  A new dependency or licence exception is a question for the owner.
+  A new dependency or licence exception is a question for the owner-proxy; a paid licence stays
+  with the owner.
 - No secret, customer payload or real partner data in the repository; corpora are synthetic.

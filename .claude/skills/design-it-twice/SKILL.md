@@ -43,6 +43,12 @@ Each draft returns:
 
 Put the drafts side by side and compare them by depth (how much a caller gets per entry point),
 locality (where a future change lands) and how a mock and the contract suite would test them.
-Recommend one, or a hybrid with the parts named. Then give the brief, the drafts and the
-recommendation to the `owner-proxy` agent; it chooses. Record the chosen contract and the reason
+Recommend one, or a hybrid with the parts named.
+
+A second model then argues against the recommendation: Codex (`codex exec`, read-only), or, when
+Codex cannot be run, an agent on a different Claude model than yours. It names the weak points,
+the failure scenarios and what the other drafts do better.
+
+Give the brief, the drafts, the recommendation and the objections to the `owner-proxy` agent; it
+chooses. Record the chosen contract and the reason
 in the pull request that introduces it, and write the contract before its implementation.

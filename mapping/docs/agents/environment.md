@@ -16,7 +16,6 @@ Read this before your first build or commit in a worktree.
 - **Fetch**: name the branches (`git fetch origin <branch>…`); a bare `git fetch origin` can stall
   here. `git fetch origin <branch>` sometimes creates no remote-tracking ref; then take the
   sha from `git ls-remote origin <branch>`.
-- **Commits**: write the message to a file and `git commit -F <file>` with the trailer block of
-  the root `docs/WORKFLOW.md` §3. The block already carries `Signed-off-by`, so `-s` would add a second.
+- **Commits**: `git commit -s`; every commit carries `Signed-off-by` (DCO).
 - **Logs**: in a worktree that will be removed, write the hand-back before `git worktree remove`;
   the logs go with the worktree.

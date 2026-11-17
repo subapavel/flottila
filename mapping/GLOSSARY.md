@@ -593,8 +593,7 @@ _Avoid_: default, guess
 
 **Ratchet**:
 A committed record of what passes (oracle cases, coverage, mutation scores, benchmark
-baselines). Merges into `main` may only keep or raise it; the verifier regenerates it once per
-spec, nobody edits it by hand.
+baselines). Merges into `main` may only keep or raise it; the nightly job regenerates it, nobody edits it by hand.
 
 **Floor**:
 A fixed minimum of coverage or mutation score below which the build fails, whatever the ratchet
@@ -635,12 +634,12 @@ The open, unblocked, unclaimed tickets of a spec or map.
 `spec/<issue>-<slug>`, where a spec's tickets are merged one by one before one PR to `main`.
 
 **Ticket gate**:
-The automatic checks the verifier runs on one ticket's worktree before it merges: the scoped
+The automatic checks run on one change before it merges: the scoped
 build of the touched modules, a compile of the whole build, and the ratchet check.
 _Avoid_: CI (that runs the spec gate's checks), pre-merge review
 
 **Spec gate**:
-The full checks the verifier runs on an integration branch before the spec's PR: every build,
+The full checks run once a night as a report: every build,
 test, oracle and UI suite, the ratchet regeneration and the benchmarks.
 _Avoid_: full build (only one part of it)
 

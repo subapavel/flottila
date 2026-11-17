@@ -29,8 +29,8 @@ whole file. Everything in the repository is in English.
    comments. Wording in docs is never a reason to send a change back. One round of fixes.
 5. Green checks, then the session merges the pull request with the rebase method.
 
-Design first only for hard things: contracts, public API, storage format, security. The
-owner-proxy judges the design and a second model argues against it. No records beyond the issue,
+Design first only for hard things: contracts, public API, storage format, security (skill
+`design-it-twice`). The owner-proxy judges the design and a second model argues against it. No records beyond the issue,
 the pull request and the commits.
 
 Blocking on every change: the build with unit and integration tests on one Postgres version, and
