@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.ToLongFunction;
 
 /**
- * The holder's side of one repl link (CORE-5b1): the owner's OPEN, DATA and SEAL frames of its segments, written to
+ * The holder's side of one repl link: the owner's OPEN, DATA and SEAL frames of its segments, written to
  * {@link Replicas} and answered by RECEIPT and REFUSE.
  *
  * <p>The link's event loop checks each frame as it comes and closes the link (WARNING) on a breach: a frame of another
@@ -36,9 +36,9 @@ import java.util.function.ToLongFunction;
  * more than {@value #HOLD_AT} bytes written and not forced. A create, write, force, rename or directory force that fails is
  * REFUSE FAILED: the replica closed, its {@code .part} kept, its later frames dropped.
  *
- * <p>Back-pressure: above {@value #HOLD_AT} bytes of frames queued and not yet done (their wire length, r1) the link's socket is
- * paused, resumed at {@value #RESUME_AT}; the writer takes more frames only once every RECEIPT and REFUSE sent went out (r1
- * R3), so an owner that reads none stops it, and then its socket. A closed link stops its writer at its next drain and its force thread at its next task; every replica
+ * <p>Back-pressure: above {@value #HOLD_AT} bytes of frames queued and not yet done (their wire length) the link's socket is
+ * paused, resumed at {@value #RESUME_AT}; the writer takes more frames only once every RECEIPT and REFUSE sent went out,
+ * so an owner that reads none stops it, and then its socket. A closed link stops its writer at its next drain and its force thread at its next task; every replica
  * still open is then detached, its count trued to its size. A link superseding the owner's earlier one stops that one's holder
  * as a close does (its writer waits for no receipt more) and takes its first frame only once the earlier one's threads stopped.
  */
@@ -49,7 +49,7 @@ final class Holder implements PeerLink.Receiver {
     static final long HOLD_AT = 8L << 20;
     /** Queued bytes at which a paused socket resumes. */
     static final long RESUME_AT = 4L << 20;
-    /** The most unsealed segments on one link (a wire constant, D-139). */
+    /** The most unsealed segments on one link (a wire constant: owner and holder must agree on it). */
     static final int OPEN_MAX = 4;
 
     private static final int PENDING = 0;   // OPEN taken, not receipted
@@ -99,7 +99,7 @@ final class Holder implements PeerLink.Receiver {
     private final ArrayDeque<Queued> frames = new ArrayDeque<>();
     private final ArrayDeque<Task> tasks = new ArrayDeque<>();
     private long queued;           // the wire bytes of the frames queued and not yet done
-    private int unsent;            // the RECEIPTs and REFUSEs handed to the link whose write has not completed (r1 R3)
+    private int unsent;            // the RECEIPTs and REFUSEs handed to the link whose write has not completed
     private boolean paused;
     private boolean closed;
 
@@ -248,7 +248,7 @@ final class Holder implements PeerLink.Receiver {
     }
 
     /**
-     * The frames queued, once there are any and every RECEIPT and REFUSE sent went out (r1 R3, as a READ's BYTES: an owner that
+     * The frames queued, once there are any and every RECEIPT and REFUSE sent went out (as with a READ's BYTES: an owner that
      * reads none stops the writer, its frames then queue past {@value #HOLD_AT} and pause the socket); null once closed.
      */
     private List<Queued> take() {

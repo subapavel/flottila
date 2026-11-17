@@ -66,10 +66,10 @@ public interface SegmentRows {
     }
 
     /**
-     * A committed pin of a node's journal (CORE-3 item 9): a work row ({@code seq} at least 1, its message's ingress body) or a
+     * A committed pin of a node's journal: a work row ({@code seq} at least 1, its message's ingress body) or a
      * kept ref ({@code seq} {@value #REF}, its key) that is not lost — a ref also not archived — naming the record at
      * {@code segment, position, length}. At recovery a kept ref pins only while its segment row is registered; a work row
-     * always pins ([amended by FIX-140]).
+     * always pins.
      *
      * @since 0.1
      */

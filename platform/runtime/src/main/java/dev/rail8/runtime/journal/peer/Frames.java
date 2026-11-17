@@ -5,22 +5,22 @@ import io.vertx.core.buffer.Buffer;
 import java.nio.ByteBuffer;
 
 /**
- * The peer link's framing v1 (CORE-5 S2): {@code u32 len · u8 type · u64 seq · payload · tag[16]}, big-endian, {@code len}
+ * The peer link's framing v1: {@code u32 len · u8 type · u64 seq · payload · tag[16]}, big-endian, {@code len}
  * counting every byte after itself; the tag is HMAC-SHA256/128 over every byte before it under the direction's session key
  * (a HELLO's is zero: it is proven by the proofs that follow). A receiver refuses a length below the shortest frame or above
- * the longest it takes now — until the link is proven a HELLO's, then a proof's (r2 R1) — from the length alone, before it
+ * the longest it takes now — until the link is proven a HELLO's, then a proof's — from the length alone, before it
  * waits for a byte it announces.
  */
 final class Frames {
 
     static final int HELLO = 1;
     static final int PROOF = 2;
-    /** The repl channel's (CORE-5b1, {@link ReplFrames}): owner to holder OPEN, DATA, SEAL; holder to owner RECEIPT, REFUSE. */
+    /** The repl channel's ({@link ReplFrames}): owner to holder OPEN, DATA, SEAL; holder to owner RECEIPT, REFUSE. */
     static final int OPEN = 3;
     static final int DATA = 4;
     static final int SEAL = 5;
     static final int RECEIPT = 6;
-    // 7 HAVE (CORE-5b3)
+    // 7 HAVE, reserved: not sent yet
     static final int REFUSE = 8;
     // 9 reserved
     static final int READ = 10;
@@ -30,7 +30,7 @@ final class Frames {
     /** The bytes before the payload: len, type, seq. */
     static final int HEAD = 4 + 1 + 8;
     static final int TAG = 16;
-    /** The longest payload: a DATA frame's 4 MiB and its addressing (CORE-5b). */
+    /** The longest payload: a DATA frame's 4 MiB and its addressing. */
     static final int MAX_PAYLOAD = (4 << 20) + 1024;
     /** The shortest and the longest {@code len}. */
     static final long MIN_LEN = 1 + 8 + TAG;
