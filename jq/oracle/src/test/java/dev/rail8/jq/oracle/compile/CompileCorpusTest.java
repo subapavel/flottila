@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileCorpusTest {
 
-  /** jqj's F (CallRuns.F): reference jq 1.8.2 gives 9999 on 9999 (observed 2026-11-15, #109). */
+  /** The engine's F (CallRuns.F): reference jq 1.8.2 gives 9999 on 9999 (observed 2026-11-15). */
   private static final String F = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
 
   /** The thread on which F on 9999 completes only on the trampoline: DeepRuns' small stack. */
@@ -107,7 +107,7 @@ class CompileCorpusTest {
    */
   @Test
   void eachModeRunsThroughItsOwnHookAgainstOneOptimisedRun(@TempDir Path scratch) {
-    DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d");
     AtomicInteger runs = new AtomicInteger();
     Limits l = CompileModes.limits();
     Limits gib = new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 1L << 30);

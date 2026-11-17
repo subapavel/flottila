@@ -23,7 +23,7 @@
 #   an error or (1, 2) first gives that.
 #
 # Every case is required at #94 (oracle/src/test/resources/require/94.txt). The 20 000-part runs are pinned by jq-core
-# IrDepthTest. jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null.
+# IrDepthTest. jq's -n is not built in the engine's command line yet, so a filter that ignores its input runs on stdin null.
 # Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in runs.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 

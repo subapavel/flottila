@@ -27,7 +27,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * that the construct was not built yet (GLOSSARY "Stub"), and each filter it named is now asserted to run. A live
  * recursive definition that no call expands compiles, and a binding error is thrown before any lowering. jq-ref 1.8.2
  * (observed 2026-11-13): {@code def f: f; f} runs until killed and {@code def f: def g: f; g; f} ends with rc 134
- * "cannot allocate memory"; jqj runs each until its step budget ends it, one step per Call (#107 "Call kinds").
+ * "cannot allocate memory"; the engine runs each until its step budget ends it, one step per Call.
  * {@code def f(g): 1; def r: f(r); r} prints 1 (r calls itself inside the closure it passes, an edge r → r, though f
  * never runs it; also calls/closure-passed-to-itself-never-runs). The recursive definitions that compile are also
  * differential cases ({@code defs/recursive-def-*}, {@code defs/closure-of-the-same-def-is-not-recursion},

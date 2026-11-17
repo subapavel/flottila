@@ -25,7 +25,7 @@ public final class CaseDirectory implements AutoCloseable {
   public static CaseDirectory of(Map<String, byte[]> files, Path parent) {
     CaseDirectory dir;
     try {
-      dir = new CaseDirectory(Files.createTempDirectory(parent, "jqj-case-"));
+      dir = new CaseDirectory(Files.createTempDirectory(parent, "engine-case-"));
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

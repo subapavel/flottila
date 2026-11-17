@@ -25,10 +25,10 @@ class JqTestReportTest {
     JqTestReport.merge(
         report,
         List.of(
-            new JqTestReport.Row("jq.test#bbbbbbbbbbbb", new Verdict(Verdict.Kind.FAIL, "jqj ended with a Stub: x", "diff")),
+            new JqTestReport.Row("jq.test#bbbbbbbbbbbb", new Verdict(Verdict.Kind.FAIL, "the engine ended with a Stub: x", "diff")),
             new JqTestReport.Row("base64.test#aaaaaaaaaaaa", new Verdict(Verdict.Kind.PASS, "", ""))));
 
-    assertThat(Files.readString(report, UTF_8)).isEqualTo("base64.test#aaaaaaaaaaaa\tPASS\t\njq.test#bbbbbbbbbbbb\tFAIL\tjqj ended with a Stub: x\n");
+    assertThat(Files.readString(report, UTF_8)).isEqualTo("base64.test#aaaaaaaaaaaa\tPASS\t\njq.test#bbbbbbbbbbbb\tFAIL\tThe engine ended with a Stub: x\n");
   }
 
   @Test

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class MainInputTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   @TempDir Path cwd;
 

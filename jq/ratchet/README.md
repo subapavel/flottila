@@ -28,7 +28,7 @@ All files are line-based, UTF-8, LF. Columns are separated by one tab.
   `backend.txt` are written once their oracles exist.
 - **`coverage.tsv`, `mutation.tsv` and `bench.tsv`** start with one line of the column names above;
   the lines after it are sorted.
-- **`bench.tsv`**: `score` is jqj's time as JMH reports it (ADR-0019), in `unit` (such as `us/op`),
+- **`bench.tsv`**: `score` is the engine's time as JMH reports it (ADR-0019), in `unit` (such as `us/op`),
   at most six decimals. `machine` is the label set by `RATCHET_MACHINE`. `tolerance%` is empty until
   spec 6's finding (ADR-0023).
 

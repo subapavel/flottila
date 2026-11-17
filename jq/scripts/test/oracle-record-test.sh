@@ -36,8 +36,8 @@ end
 
 case t/env
 arg -nc
-filter [$ENV.JQJ_PROBE, ($ENV|keys)]
-env JQJ_PROBE=x\\y
+filter [$ENV.JQ_PROBE, ($ENV|keys)]
+env JQ_PROBE=x\\y
 end
 
 case t/utf8-argument
@@ -52,7 +52,7 @@ has "stdout recorded with escapes" 'stdout {"a":1}\n' "$rec"
 has "exit code recorded" 'rc 5' "$rec"
 has "stderr recorded" 'stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n' "$rec"
 has "the case's file is in the working directory" 'stdout {"b":2}\n' "$rec"
-has "environment is exactly HOME TZ LC_ALL and the case's env" 'stdout ["x\\\\y",["HOME","JQJ_PROBE","LC_ALL","TZ"]]\n' "$rec"
+has "environment is exactly HOME TZ LC_ALL and the case's env" 'stdout ["x\\\\y",["HOME","JQ_PROBE","LC_ALL","TZ"]]\n' "$rec"
 has "a non-ASCII argument reaches jq-ref as UTF-8" 'stdout "é"\n' "$rec"
 check "verify of a fresh recording exits 0" "$(run --verify "$rec")" 0
 

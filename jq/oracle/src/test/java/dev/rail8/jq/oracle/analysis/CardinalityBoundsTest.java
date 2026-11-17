@@ -121,7 +121,7 @@ class CardinalityBoundsTest {
       program = Resolver.resolve(Parser.parse(filter));
     } catch (JqCompileException e) {
       // Every core-v1 seed compiles; one that does not is a failure, never a skipped case (CODING_STANDARDS, Tests).
-      throw new AssertionError("jqj does not compile core-v1 seed " + seed + ": " + filter, e);
+      throw new AssertionError("the engine does not compile core-v1 seed " + seed + ": " + filter, e);
     }
     Workspace workspace = JqEngine.builder().build().newWorkspace();
     try (JsonDoc doc = workspace.read(MemorySegment.ofArray(g.stdin()))) {

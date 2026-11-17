@@ -28,7 +28,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class CommandLineTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   /** The two lines jq prints after "jq: Unknown option X" (cli/unknown-long). */
   private static final String USAGE =
@@ -133,7 +133,7 @@ class CommandLineTest {
         .isEqualTo(new Outcome(2, "", "jq: error: Could not open file " + name + ": No such file or directory\n"));
   }
 
-  /** jq options jqj does not build yet; jq-ref 1.8.2 knows each (observed 2026-11-11: none prints "Unknown option"). */
+  /** jq options the engine does not build yet; jq-ref 1.8.2 knows each (observed 2026-11-11: none prints "Unknown option"). */
   static Stream<Arguments> notBuiltYet() {
     return Stream.of(
         // cli/arg-option: jq-ref prints 1, rc 0.
@@ -169,7 +169,7 @@ class CommandLineTest {
   @Test
   void aDashWithoutALetterIsTheFilter() {
     // observed 2026-11-11: jq-ref -_ .a in.json -> rc 3, "_/0 is not defined"; printf '{"a":1}\n' | jq-ref -c -1 -> -1.
-    // Each is the filter. Since #70 jqj binds the call (ADR-0040), and jq's message, a column-2 caret under the
+    // Each is the filter. The engine binds the call, and jq's message, a column-2 caret under the
     // name after the minus, shows -_ was read as the filter. Observed 2026-11-13: jq-ref -_ in.json on {"a":1} -> rc 3,
     // stdout empty and exactly this stderr.
     List<String> call = List.of("-_", "in.json");

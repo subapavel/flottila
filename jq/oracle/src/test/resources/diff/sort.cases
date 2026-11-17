@@ -209,7 +209,7 @@ end
 
 # NaN lies below every number and above true; a pair of NaNs compares as less either way in jq's jv_cmp. jq 1.8.2
 # sorts with libc qsort, which keeps such a pair in the input's order here, and this case pins jq-ref 1.8.2's order;
-# the merge sort is jqj's own (DEVIATIONS.md, "Order inside a comparison cycle"). min_by replaces on it and max_by
+# the merge sort is the engine's own (DEVIATIONS.md, "Order inside a comparison cycle"). min_by replaces on it and max_by
 # does not.
 
 case sort/nan-order
@@ -231,7 +231,7 @@ stdin null\n
 end
 
 # DEVIATIONS.md "Order inside a comparison cycle" (ADR-0012): two literals of one double and a computed number equal to
-# both form a cycle of jq's pairwise rule. jq's order there is its libc qsort's, jqj's its own merge sort's; min and
+# both form a cycle of jq's pairwise rule. jq's order there is its libc qsort's, the engine's its own merge sort's; min and
 # max are jq's left-to-right scan, so they match, and so does unique where both merges end with the same run.
 
 case sort/deviation-cycle-sort
@@ -239,9 +239,9 @@ arg -c
 filter [100000000000000000001,(1e20+0),100000000000000000000] | sort
 stdin null\n
 deviation comparison-cycle
-jqj-rc 0
-jqj-stdout [100000000000000000000,100000000000000000001,1e+20]\n
-jqj-stderr
+engine-rc 0
+engine-stdout [100000000000000000000,100000000000000000001,1e+20]\n
+engine-stderr
 end
 
 case sort/deviation-cycle-unique
@@ -249,9 +249,9 @@ arg -c
 filter [100000000000000000001,(1e20+0),100000000000000000000] | unique
 stdin null\n
 deviation comparison-cycle
-jqj-rc 0
-jqj-stdout [100000000000000000000,100000000000000000001]\n
-jqj-stderr
+engine-rc 0
+engine-stdout [100000000000000000000,100000000000000000001]\n
+engine-stderr
 end
 
 case sort/deviation-cycle-group-by
@@ -259,9 +259,9 @@ arg -c
 filter [100000000000000000001,(1e20+0),100000000000000000000] | group_by(.)
 stdin null\n
 deviation comparison-cycle
-jqj-rc 0
-jqj-stdout [[100000000000000000000],[100000000000000000001,1e+20]]\n
-jqj-stderr
+engine-rc 0
+engine-stdout [[100000000000000000000],[100000000000000000001,1e+20]]\n
+engine-stderr
 end
 
 case sort/cycle-min-max

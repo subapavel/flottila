@@ -64,15 +64,15 @@ class JsonCorpusTest {
   }
 
   @Test
-  void theNulCaseIsOneJqRefAcceptsAndJqjRejects() {
+  void theNulCaseIsOneJqRefAcceptsAndTheEngineRejects() {
     DiffCorpus.Entry e = ENTRIES.stream().filter(x -> x.c().id().equals("json/n_multidigit_number_then_00")).findFirst().orElseThrow();
 
     assertThat(e.c().files().get("n_multidigit_number_then_00.json")).isEqualTo(new byte[] {'1', '2', '3', 0});
     assertThat(e.recording().outcome().rc()).isZero();
-    // The NUL row's jqj column, "rejected": rc 5 and no value, as jq-ref's rejected files give (ADR-0015). Its text,
+    // The NUL row's engine column, "rejected": rc 5 and no value, as jq-ref's rejected files give. Its text,
     // with line and column, is the reader's in spec 5; until then the Stub rule fails the case first.
-    assertThat(e.c().jqj().rc()).isEqualTo(5);
-    assertThat(e.c().jqj().stdout()).isEmpty();
-    assertThat(e.c().jqj().matches(e.recording().outcome())).as("deviation gone").isFalse();
+    assertThat(e.c().engine().rc()).isEqualTo(5);
+    assertThat(e.c().engine().stdout()).isEmpty();
+    assertThat(e.c().engine().matches(e.recording().outcome())).as("deviation gone").isFalse();
   }
 }

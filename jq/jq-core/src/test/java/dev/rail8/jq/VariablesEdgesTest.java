@@ -23,7 +23,7 @@ class VariablesEdgesTest {
   private static final JqEngine ENGINE = JqEngine.builder().build();
 
   /** The stub mark (ADR-0024). */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   private static JqCompileException compileError(String text) {
     return assertThatExceptionOfType(JqCompileException.class).as("compile of %s", text).isThrownBy(() -> ENGINE.compile(text)).actual();

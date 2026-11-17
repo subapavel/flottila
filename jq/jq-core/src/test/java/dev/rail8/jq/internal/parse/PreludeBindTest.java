@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  * undefined name and the prelude definition, instead of a result or a Stub.
  */
 class PreludeBindTest {
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   @Test
   void signaturesAreBuiltinJqsDefinitionsInFileOrder() {

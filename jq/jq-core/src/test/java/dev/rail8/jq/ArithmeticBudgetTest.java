@@ -51,10 +51,10 @@ class ArithmeticBudgetTest {
 
   @Test
   void theRepeatBoundIsJqsErrorRaisedBeforeAnyCharge() {
-    // arith-repeat/too-long-input: 2147483639 bytes or more is "Repeat string result too long", which jqj raises without
+    // arith-repeat/too-long-input: 2147483639 bytes or more is "Repeat string result too long", which the engine raises without
     // allocating: under 100 bytes built it is the catchable error, not the budget, and so it is with no limit at all (an
     // allocation of 2 GiB would end otherwise). Just under the bound, jq-ref builds "ab" * 1073741819 (2147483638 bytes,
-    // observed with | length); with 1 MiB jqj charges it before it allocates and ends with the budget.
+    // observed with | length); with 1 MiB the engine charges it before it allocates and ends with the budget.
     JqValue tooLong = document("{\"s\":\"a\",\"n\":2147483639}");
     assertRepeatTooLong(bytesBuilt(100), tooLong, "under 100 bytes built");
     assertRepeatTooLong(RunBudgets.unlimited(), tooLong, "with no limit");

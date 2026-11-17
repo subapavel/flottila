@@ -15,7 +15,7 @@
 #   evaluated on the value the pattern destructures: $a1 is 20, 20, 30, 30 and $a68 20, 30, 20, 30, so the first
 #   key's generator is the outer loop; $a0 and $a69 are 10.
 #
-# Every case is required at #93 (oracle/src/test/resources/require/93.txt). jq's -n is not built in jqj's command
+# Every case is required at #93 (oracle/src/test/resources/require/93.txt). jq's -n is not built in the engine's command
 # line yet, so a filter reads its stdin. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java.
 # Expected outputs live in binds.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 

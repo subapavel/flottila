@@ -55,8 +55,8 @@ class ParserEdgesTest {
   }
 
   @Test
-  void jqjsBlocksAreAPrefixOfJqsWhereItBuildsNoRecovery() {
-    // DEVIATIONS "Syntax-error text": jq-ref gives each a second block, from a recovery jqj does not build yet
+  void enginesBlocksAreAPrefixOfJqsWhereItBuildsNoRecovery() {
+    // DEVIATIONS "Syntax-error text": jq-ref gives each a second block, from a recovery the engine does not build yet
     // (ADR-0032): its "if", "try", "break" or object pattern message, or a later error after its silent '('.
     blocks("if . then 1", syntax("end of file", 1, 11, "if . then 1", carets(11, 1)));
     blocks("try 1 catch ]", syntax("INVALID_CHARACTER", 1, 13, "try 1 catch ]", carets(13, 1)));
@@ -251,9 +251,9 @@ class ParserEdgesTest {
         message(MAY_NEED_PARENTHESES, 1, 7, "{a:1, 1}: 2}", "          ^^"));
     syntaxError("{a:1, b: }", "'}'", 1, 10, 1);
     // After a whole pair the error goes to the brace's state, where jq's silent '{' error '}' takes the closing brace;
-    // jqj does not build it, so the parse ends there.
+    // The engine does not build it, so the parse ends there.
     syntaxError("{a 1}", "LITERAL", 1, 4, 1);
-    // jq-ref gives 3 blocks here: its '{' error '}' closes the first object, then the second one recovers. jqj's one
+    // jq-ref gives 3 blocks here: its '{' error '}' closes the first object, then the second one recovers. The engine's one
     // block is the first of them; dropping the brace instead would run the recovery on into the second object.
     blocks("{1 2} | {3+4:5}", syntax("LITERAL", 1, 2, "{1 2} | {3+4:5}", "     ^"));
     // A recovered pair's value is the token after it; a dot's recovery inside drops its token for the object.
@@ -374,7 +374,7 @@ class ParserEdgesTest {
     return lexer.lastStart() == offset ? Kind.END : null;
   }
 
-  /** jqj's syntax block: jq's with its expecting list cut. */
+  /** The engine's syntax block: jq's with its expecting list cut. */
   private static String syntax(String unexpected, int line, int column, String sourceLine, String carets) {
     return message("syntax error, unexpected " + unexpected, line, column, sourceLine, carets);
   }

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
  * #73's natives on built arrays and on a document's (jq 1.8.2's sort, unique, min, max and the {@code _…_impl} forms
  * under builtin.jq's {@code sort_by} and its kin). Every expected text is jq-ref 1.8.2's, recorded in diff/sort.rec for
  * the same filter and input, or observed 2026-11-13 with {@code jq-ref -nc} for the built forms of a recorded document;
- * the comparison cycle's is jqj's column of DEVIATIONS.md "Order inside a comparison cycle".
+ * the comparison cycle's is the engine's column of DEVIATIONS.md "Order inside a comparison cycle".
  */
 class SortTest {
   private static final JqEngine ENGINE = JqEngine.builder().build();
@@ -136,9 +136,9 @@ class SortTest {
   }
 
   @Test
-  void aComparisonCycleTakesJqjsMergeOrder() {
+  void aComparisonCycleTakesTheEnginesMergeOrder() {
     assertThat(run("[100000000000000000001,(1e20+0),100000000000000000000] | sort, unique, group_by(.), min, max"))
-        .as("DEVIATIONS.md comparison cycle, jqj's column, and min and max as jq's")
+        .as("DEVIATIONS.md comparison cycle, the engine's column, and min and max as jq's")
         .containsExactly(
             "[100000000000000000000,100000000000000000001,1e+20]",
             "[100000000000000000000,100000000000000000001]",

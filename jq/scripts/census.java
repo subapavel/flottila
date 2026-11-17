@@ -65,7 +65,7 @@ public class census {
 
   static final Path root = Path.of(System.getenv().getOrDefault("CENSUS_ROOT", ".")).toAbsolutePath().normalize();
   static final String LIST = "oracle/src/test/resources/census/jqtest.tsv";
-  static final String ENV_MARK = "JQJ_CENSUS_ENV";
+  static final String ENV_MARK = "JQ_CENSUS_ENV";
 
   /** The specs in build order (ADR-0023, docs/GATE.md), and the issue of each spec the gate can name. */
   static final List<String> SPECS = List.of("1", "2a", "2b", "3", "4", "5", "6", "7");

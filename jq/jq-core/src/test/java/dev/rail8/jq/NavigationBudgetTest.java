@@ -276,7 +276,7 @@ class NavigationBudgetTest {
 
   @Test
   void keysChargesItsProofEachKeyAndItsSort() {
-    // keys_unsorted's ticks and one per compare of the sort for each started KiB of the shorter key (Keys, #72). jqj's
+    // keys_unsorted's ticks and one per compare of the sort for each started KiB of the shorter key (Keys). The engine's
     // merge sort (F-48, #103) sorts these 20 keys in 56 compares (TimSort, before #103, in 52): 41 + 56 = 97, and
     // 42 + 56 = 98 with k0 repeated (the sort sees the same 20 keys). jq-ref 1.8.2, observed 2026-11-13: keys gives
     // ["k0","k1","k10",…,"k19","k2",…,"k9"] on both.
@@ -321,7 +321,7 @@ class NavigationBudgetTest {
   @Test
   void anOrderChargesBothProofsAndItsKeyLists() {
     // .[0] steps no entry and .[1] one (ArrayView.get). Order (ADR-0037) collects each side's key list through its proof:
-    // 20 proof and 20 collect ticks per side; F-53: each side's list is sorted as keys sorts it, the 56 compares of jqj's
+    // 20 proof and 20 collect ticks per side; each side's list is sorted as keys sorts it, the 56 compares of the engine's
     // merge sort on these 20 keys (keysChargesItsProofEachKeyAndItsSort), one started KiB each; then 20 key pairs of one started
     // KiB each, then 20 member pairs; the member after a proved key is the next entry, which costs no scan.
     // 1 + 1 + 80 + 2 x 56 + 20 + 20 = 234 (122 before F-53, 880 on 25ef36c). jq-ref 1.8.2, observed 2026-11-13 and

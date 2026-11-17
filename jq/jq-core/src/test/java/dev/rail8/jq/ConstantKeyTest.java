@@ -120,7 +120,7 @@ class ConstantKeyTest {
     assertThat(results.values.stream().map(JqValue::toJson).toList()).as("results of {(\"a\"):1}").containsExactly("{\"a\":1}");
   }
 
-  /** A syntax block: jq's {@code syntax error, unexpected <token>}, any text of jqj's own, then jq's position. */
+  /** A syntax block: jq's {@code syntax error, unexpected <token>}, any text of the engine's own, then jq's position. */
   private static void syntaxBlock(String block, String what, String unexpected, String position) {
     assertThat(block)
         .as("syntax block of %s", what)

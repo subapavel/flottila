@@ -46,11 +46,11 @@ class ValuesV1CorpusTest {
     return out;
   }
 
-  /** The case file without the lines a deviation seed gains (answer (d) on #28): {@code deviation} and {@code jqj-*}. */
+  /** The case file without the lines a deviation seed gains: {@code deviation} and {@code engine-*}. */
   static String withoutDeviationLines(String cases) {
     StringBuilder b = new StringBuilder();
     for (String line : cases.split("\n", -1)) {
-      if (line.startsWith("deviation ") || line.startsWith("jqj-")) continue;
+      if (line.startsWith("deviation ") || line.startsWith("engine-")) continue;
       b.append(line).append('\n');
     }
     return b.substring(0, b.length() - 1);
@@ -66,7 +66,7 @@ class ValuesV1CorpusTest {
   @Test
   void theFreezeCheckIgnoresOnlyTheDeviationLines() {
     String block = ValuesV1.generate(4).block();
-    String marked = block.replace("\nend\n", "\ndeviation nul\njqj-rc 5\njqj-stdout\njqj-stderr x\nend\n");
+    String marked = block.replace("\nend\n", "\ndeviation nul\nengine-rc 5\nengine-stdout\nengine-stderr x\nend\n");
 
     assertThat(withoutDeviationLines("# h\n\n" + marked)).isEqualTo("# h\n\n" + block);
     assertThat(withoutDeviationLines(block.replace("filter", "filterx"))).isNotEqualTo(block);

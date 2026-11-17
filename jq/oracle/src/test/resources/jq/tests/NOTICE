@@ -1,6 +1,6 @@
 The .test files and modules/ of this directory are copied byte for byte from the jq 1.8.2 release
 tarball's tests/ directory (https://github.com/jqlang/jq), and COPYING from its root;
-SOURCES.sha256 holds their sums (this NOTICE is jqj's own and is not listed). They are test
+SOURCES.sha256 holds their sums (this NOTICE is the engine's own and is not listed). They are test
 resources only and never enter a shipped jar (ADR-0021).
 
 jq is copyright (C) 2012 Stephen Dolan, MIT License; the licence text is COPYING, jq's own file.

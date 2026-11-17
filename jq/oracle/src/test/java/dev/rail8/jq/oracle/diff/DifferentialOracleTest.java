@@ -92,7 +92,7 @@ class DifferentialOracleTest {
               frames.add(StackProbe.frames());
               return 0;
             });
-    DiffCase c = new DiffCase("t/compact-dot", List.of("-c", "."), "1\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    DiffCase c = new DiffCase("t/compact-dot", List.of("-c", "."), "1\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d");
 
     runner.run(c, null);
     runner.run(c, null);

@@ -130,8 +130,8 @@ public class Gates {
   }
 
   /**
-   * Cold start as a process: {@code jqj -c .a} on the 1 KB document, through the launcher that {@code jq-cli}'s
-   * {@code package} writes. The system property {@code jqj.launcher} names it (default {@code jq-cli/target/jqj},
+   * Cold start as a process: {@code rail8-jq -c .a} on the 1 KB document, through the launcher that {@code jq-cli}'s
+   * {@code package} writes. The system property {@code rail8.jq.launcher} names it (default {@code jq-cli/target/rail8-jq},
    * relative to the directory JMH runs in).
    *
    * @throws IllegalStateException if the process exits with a code other than 0
@@ -145,12 +145,12 @@ public class Gates {
   @Warmup(iterations = 0)
   @Measurement(iterations = 1, batchSize = 1)
   public int G7_process_1k(ColdFile s) throws IOException, InterruptedException {
-    Process jqj =
+    Process engine =
         new ProcessBuilder(s.launcher, "-c", ".a", s.file.toString())
             .redirectOutput(Redirect.DISCARD)
             .redirectError(Redirect.INHERIT)
             .start();
-    int code = jqj.waitFor();
+    int code = engine.waitFor();
     // A failed process would be timed as a fast shot. GatesTest covers this check with stand-in launchers; the real
     // launcher runs here in the gate's JMH step.
     if (code != 0) {
@@ -306,12 +306,12 @@ public class Gates {
   /** G7 as a process: the 1 KB document in a temporary file. */
   @State(Scope.Thread)
   public static class ColdFile {
-    final String launcher = System.getProperty("jqj.launcher", "jq-cli/target/jqj");
+    final String launcher = System.getProperty("rail8.jq.launcher", "jq-cli/target/rail8-jq");
     Path file;
 
     @Setup
     public void setUp() throws IOException {
-      file = Files.createTempFile("jqj-orders-1k-", ".json");
+      file = Files.createTempFile("rail8-jq-orders-1k-", ".json");
       try {
         Files.write(file, Inputs.orders(Size.K1));
       } catch (IOException | RuntimeException e) {

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  * DEVIATIONS "Huge constant keys" (ADR-0035, #65 standards reviews): every fold of a compile, the key-kind check
  * included, charges one budget of 1 MiB of bytes built and 2^20 steps, each node folded once, so an untrusted filter
  * cannot make the compile allocate gigabytes or work without a limit. jq folds {@code {(("x"*1e9)/"x"):1}} whole at
- * parse time: a 1 GB string, then 10^9 pieces. jqj's fold stops at the budget before it allocates the string, so the
+ * parse time: a 1 GB string, then 10^9 pieces. The engine's fold stops at the budget before it allocates the string, so the
  * compile is quick (a time witness: the whole fold would take far longer than the limit, or run out of heap), and the
  * key is left to the run, whose own bytes-built budget governs it.
  */

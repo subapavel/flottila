@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The ticks of a comparison (ADR-0037): one per member pair compared (an array's elements, an object's values; GLOSSARY,
  * {@code Members}), one per key collected per side, one per started KiB of the shorter string, the member walks' own
- * (none for a built value or an array view), one per compare of jqj's merge sort of each side's key list, max(1, started
+ * (none for a built value or an array view), one per compare of the engine's merge sort of each side's key list, max(1, started
  * KiB of the shorter key), as {@code keys} (F-53, ADR-0037 as amended by #104), and none for If and Alt, so none for
  * {@code and}, {@code or}, {@code not} and {@code //}. A key pair of two key lists is a string pair, not a member pair:
  * it charges its KiB only (the test-author's reading of ADR-0037, an open question of the #66 red). Two numbers on the
@@ -92,7 +92,7 @@ class ComparisonStepsTest {
 
   @Test
   void theSortOfAnObjectsKeysChargesItsCompares() {
-    // F-53: each side's 8 keys sort in 12 compares of jqj's merge sort, 4 per level of runs 1, 2 and 4, in the opposite
+    // Each side's 8 keys sort in 12 compares of the engine's merge sort, 4 per level of runs 1, 2 and 4, in the opposite
     // as in sorted insertion order, one tick each. 16 keys collected, 2 x 12 compares, 8 key pairs, and the value pair at
     // "a": 49 (25 before F-53). Two keys: 4 collected, one compare per side, 2 key pairs, the value pair at "a": 9 (7).
     String sorted = "{\"a\":1,\"b\":1,\"c\":1,\"d\":1,\"e\":1,\"f\":1,\"g\":1,\"h\":1}";
@@ -104,7 +104,7 @@ class ComparisonStepsTest {
 
   @Test
   void aKeySortChargesItsMergeSortsCompares() {
-    // F-53: the count is the compares of jqj's bottom-up merge sort (internal.op.Sort), so it depends on the insertion
+    // The count is the compares of the engine's bottom-up merge sort (internal.op.Sort), so it depends on the insertion
     // order. [c,b,a]: c b, then b a once the run [b,c] meets [a], 2 compares. [a,b,c]: a b, then a c and b c, 3 compares.
     // 6 keys collected, 3 key pairs, 3 value pairs, all equal: 12 + 2 x 2 = 16 and 12 + 2 x 3 = 18 (both 12 before F-53).
     assertAll(

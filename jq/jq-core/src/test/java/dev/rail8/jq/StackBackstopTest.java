@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The stack backstop at the public API (#107 "Stack overflow", ADR-0045 #107 amendment: only {@code Executable.run}
  * turns a {@code StackOverflowError} into {@code Termination(STACK)}, a backstop until S2b.4 and S2b.5). jq-ref 1.8.2
- * completes F on 10^7 (F-87: N up to 10^7 prints N, rc 0), so the end here is jqj's.
+ * completes F on 10^7 (N up to 10^7 prints N, rc 0), so the end here is the engine's.
  *
  * <p>The run's thread has a 1 MiB stack while the limits declare {@code stackBytes} of 1 GiB and no recursion-depth
  * limit, so neither the depth budget nor the driver that S2b.5 derives from the declared stack (ADR-0046, {@code U_f})

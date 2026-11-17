@@ -45,7 +45,7 @@ import org.junit.jupiter.api.Test;
  * "Amendment (ticket #117)", S5 and "Order and cap"; ADR-0020 "Amendment (ticket #117)"; F-94, F-96; GLOSSARY
  * "Specialisation cap"): every CompileCorpus filter, each jqtest case's program and each differential case's {@code
  * filter} key, plus each prelude definition of builtin.jq called as {@code name(.; …)}, compiled OPTIMISED as {@code
- * JqEngine.compile} does it (the Resolver with no declared variables, then {@code Compiler.compile}). A filter jqj does
+ * JqEngine.compile} does it (the Resolver with no declared variables, then {@code Compiler.compile}). A filter the engine does
  * not compile ({@link JqCompileException}, a Stub among them) is logged by id and left out, and how many do not compile
  * is pinned by family ({@link #NOT_COMPILED}); a throw from the Compiler, which runs the pass and the IrVerifier after
  * it, fails the census.
@@ -137,7 +137,7 @@ class SpecialiseCensusTest {
   static final int PRELUDE_DEFINITIONS = 106;
 
   /**
-   * How many filters of each family jqj does not compile at the #117 tip, a Stub or a compile error; the ids are in the
+   * How many filters of each family the engine does not compile, a Stub or a compile error; the ids are in the
    * log. Observed by the #117 census's test-author; the Resolver decides it, never the pass. A later ticket that builds a
    * Stub lowers an entry: that is no weakened test. 1 249 filters in all.
    */
@@ -219,7 +219,7 @@ class SpecialiseCensusTest {
         forCap = resolve(f.text());
         forDemand = resolve(f.text());
       } catch (JqCompileException e) {
-        notCompiled.put(f.id(), e.getMessage() != null && e.getMessage().startsWith("jqj stub: ") ? "Stub" : "compile error");
+        notCompiled.put(f.id(), e.getMessage() != null && e.getMessage().startsWith("rail8-jq stub: ") ? "Stub" : "compile error");
         continue;
       }
       try {
@@ -247,7 +247,7 @@ class SpecialiseCensusTest {
     Map<String, Count> byId = new LinkedHashMap<>();
     counts.forEach(c -> byId.put(c.filter().id(), c));
     SoftAssertions soft = new SoftAssertions();
-    soft.assertThat(notCompiledByFamily).as("the filters jqj does not compile, by family (their ids are in %s)", LOG).isEqualTo(NOT_COMPILED);
+    soft.assertThat(notCompiledByFamily).as("the filters the engine does not compile, by family (their ids are in %s)", LOG).isEqualTo(NOT_COMPILED);
     soft.assertThat(threw).as("filters whose OPTIMISED compile threw (the pass or the IrVerifier after it)").isEmpty();
     for (String id : COPYING) {
       Count c = byId.get(id);

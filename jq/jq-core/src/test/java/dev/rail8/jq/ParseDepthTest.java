@@ -23,7 +23,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * {@code JqEngine.compile} on a deeply nested filter (#81, DEVIATIONS "Parse depth"): it ends with jq's {@code memory
  * exhausted} compile error, never with a {@code StackOverflowError}. jq-ref 1.8.2's first rejected depths, recorded in
  * diff/depth.rec: 9995 parentheses or brackets around 1, 3332 objects {@code {"a": ...}} around 1, and 10 000 pipes,
- * each rc 3 with one {@code memory exhausted} block. jqj's parser stops earlier, past 512 nesting levels: this test pins
+ * each rc 3 with one {@code memory exhausted} block. The engine's parser stops earlier, past 512 nesting levels: this test pins
  * that boundary per shape, which the differential cases cannot show.
  */
 class ParseDepthTest {
@@ -57,13 +57,13 @@ class ParseDepthTest {
   }
 
   /**
-   * jqj's last accepted depth per shape and the column of its block one level deeper. Of the 512 levels, the top query,
+   * The engine's last accepted depth per shape and the column of its block one level deeper. Of the 512 levels, the top query,
    * expression and term take 3, then each parenthesis, bracket or object 4 (its error state, query or object value,
    * expression and term), so 127 fit; each pipe, {@code -} or {@code try} 1, so 509 fit, and 509 minus signs fill the
    * 512 exactly. A pattern takes 1 (510 brackets after the query), an {@code elif} 2 (its {@code if} and error state),
    * an object value after {@code |} 1, and a definition 2 (its body and the body's query).
    */
-  static Stream<Arguments> jqjsLastAcceptedDepths() {
+  static Stream<Arguments> enginesLastAcceptedDepths() {
     return Stream.of(
         shape("parentheses", n -> nested("(", ")", n), 127, 129, 1),
         shape("brackets", n -> nested("[", "]", n), 127, 129, 1),
@@ -82,8 +82,8 @@ class ParseDepthTest {
   }
 
   @ParameterizedTest(name = "{argumentSetName}")
-  @MethodSource("jqjsLastAcceptedDepths")
-  void jqjsLastAcceptedDepthParsesAndOneMoreIsMemoryExhausted(IntFunction<String> filter, int depth, int column, int length) {
+  @MethodSource("enginesLastAcceptedDepths")
+  void enginesLastAcceptedDepthParsesAndOneMoreIsMemoryExhausted(IntFunction<String> filter, int depth, int column, int length) {
     assertThatCode(() -> Parser.parse(filter.apply(depth))).as("parse at depth %d", depth).doesNotThrowAnyException();
 
     String deeper = filter.apply(depth + 1);
@@ -183,7 +183,7 @@ class ParseDepthTest {
     try {
       ENGINE.compile(filter);
     } catch (JqCompileException e) {
-      assertThat(e.getMessage()).as("compile error of a filter jqj's parser accepts").doesNotContain("memory exhausted");
+      assertThat(e.getMessage()).as("compile error of a filter the engine's parser accepts").doesNotContain("memory exhausted");
     }
   }
 

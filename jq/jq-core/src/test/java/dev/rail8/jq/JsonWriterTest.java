@@ -40,7 +40,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class JsonWriterTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   /** The compact output of one read document's root, through the OutputStream sink. */
   private static String compact(String json) {

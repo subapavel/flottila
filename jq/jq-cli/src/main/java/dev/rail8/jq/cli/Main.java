@@ -34,7 +34,7 @@ import java.util.function.UnaryOperator;
 
 /**
  * The command line. Not exported API: the oracle reaches {@link #run} on the class path, and the launcher
- * {@code target/jqj} starts {@link #main} on the module path of {@code target/lib}.
+ * {@code target/rail8-jq} starts {@link #main} on the module path of {@code target/lib}.
  *
  * <p>What it handles: the filter ({@code .} when there is none) and at most one file, read instead
  * of stdin; {@code -c} and {@code -M}, alone, combined or as {@code --compact-output} and {@code --monochrome-output},
@@ -49,7 +49,7 @@ import java.util.function.UnaryOperator;
 public final class Main {
 
   /** The mark every Stub message starts with: a Stub is a part of the language not built yet, which ends the run. */
-  private static final String STUB = "jqj stub: ";
+  private static final String STUB = "rail8-jq stub: ";
 
   /** The lines jq 1.8.2 prints after "jq: Unknown option X". */
   private static final String HELP =

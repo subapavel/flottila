@@ -47,7 +47,7 @@ class BomInputTest {
   void aPartialBomBeforeMoreInputIsAParseError() {
     // jq-ref 1.8.2, observed 2026-11-12: printf '\xef ', '\xef\xbb ' and '\xef\xbb{}' | jq-ref -c . -> rc 5, no output,
     // "jq: parse error: Malformed BOM" (json.rec n_structure_incomplete_UTF8_BOM for the last); and printf ' \xef\xbb\xbf1'
-    // -> rc 5, "Invalid numeric literal": a BOM after whitespace is not skipped. jqj's text is the malformed-input Stub
+    // -> rc 5, "Invalid numeric literal": a BOM after whitespace is not skipped. The engine's text is the malformed-input Stub
     // until spec 5 (spec-1 grilling item 7), so only the exit code, stdout and the parse-error prefix are pinned.
     for (String hex : List.of("ef 20", "ef bb 20", "ef bb 7b 7d", "20 ef bb bf 31")) {
       Outcome o = run(hex);

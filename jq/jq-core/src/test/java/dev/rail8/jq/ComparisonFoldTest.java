@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
  * {@code or}, {@code //} and {@code not} are not folded, and their non-string key fails at run time. The differential
  * oracle compares rc and stdout alone for these recordings; this test checks the blocks and the run-time texts. Every
  * expected value is jq-ref 1.8.2's recording in diff/compare.rec, case named at each check. A fold that raises cannot
- * be reached here: a comparison raises only past 10 000 levels, and jqj's parser stops at 512 (DEVIATIONS "Parse
+ * be reached here: a comparison raises only past 10 000 levels, and the engine's parser stops at 512 (DEVIATIONS "Parse
  * depth").
  */
 class ComparisonFoldTest {

@@ -1,9 +1,9 @@
 # A computed object key whose fold goes past the 4 KiB cap of a Const (ADR-0035 amendments, #65 standards reviews):
 # jq folds without a cap, so a key that folds to an array or an object is jq's compile error (rc 3) however large it
-# is; jqj's check takes the fold whatever its size, within the compile's budget. A key that folds to a long string is
+# is; the engine's check takes the fold whatever its size, within the compile's budget. A key that folds to a long string is
 # valid, and a pipe whose sides are not . alone is no fold, so both run (rc 0), as do a remainder of a string and a
 # merge of an array, to their errors (rc 5).
-# jq's -n is not built in jqj's command line yet, so
+# jq's -n is not built in the engine's command line yet, so
 # every case runs on stdin null. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java.
 # Expected outputs live in constant-key-cap.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
@@ -157,15 +157,15 @@ filter {((("x"*5000)/"x") * {}):1}
 stdin null\n
 end
 
-# Deviation: past the compile's 1 MiB budget jqj leaves the key to the run, rc 5 (DEVIATIONS "Huge constant keys")
+# Deviation: past the compile's 1 MiB budget the engine leaves the key to the run, rc 5 (DEVIATIONS "Huge constant keys")
 
 case constant-key-cap/huge-split
 deviation huge-constant-keys
 arg -c
 filter {(("x"*2000000)/"x"):1}
 stdin null\n
-jqj-rc 5
-jqj-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
+engine-rc 5
+engine-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
 end
 
 # N = 21395 builds 1048589 bytes, 13 past the bound
@@ -175,8 +175,8 @@ deviation huge-constant-keys
 arg -c
 filter {(("x"*21395)/"x"):1}
 stdin null\n
-jqj-rc 5
-jqj-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
+engine-rc 5
+engine-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
 end
 
 # The bound holds for the whole fold: two strings of 1000040 bytes each, together past 1 MiB
@@ -186,8 +186,8 @@ deviation huge-constant-keys
 arg -c
 filter {([("x"*1000000),("x"*1000000)]):1}
 stdin null\n
-jqj-rc 5
-jqj-stderr jq: error (at <stdin>:1): Cannot use array (["xxxxxxxxxxxxxxxxxxxxxxx...]) as object key\n
+engine-rc 5
+engine-stderr jq: error (at <stdin>:1): Cannot use array (["xxxxxxxxxxxxxxxxxxxxxxx...]) as object key\n
 end
 
 # Outside a key the 4 KiB cap holds for the whole fold too: two strings of 4040 bytes are no 8 KiB Const, so the run
@@ -225,11 +225,11 @@ deviation huge-constant-keys
 arg -c
 filter {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}
 stdin null\n
-jqj-rc 3
-jqj-stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}\n      ^^^^^^^^^^^^^^^\njq: 1 compile error\n
+engine-rc 3
+engine-stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}\n      ^^^^^^^^^^^^^^^\njq: 1 compile error\n
 end
 
-# Deviation: jq checks a key at parse time wherever it stands; past the compile budget jqj leaves it to the run, which
+# Deviation: jq checks a key at parse time wherever it stands; past the compile budget the engine leaves it to the run, which
 # never reaches a key behind empty, so the filter gives its other output, rc 0 (DEVIATIONS "Huge constant keys")
 
 case constant-key-cap/unreached-huge-key
@@ -237,7 +237,7 @@ deviation huge-constant-keys
 arg -c
 filter 1, (empty | {(("x"*2000000)/"x"):1})
 stdin null\n
-jqj-rc 0
-jqj-stdout 1\n
-jqj-stderr
+engine-rc 0
+engine-stdout 1\n
+engine-stderr
 end

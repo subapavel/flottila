@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The filters are SpecialiseCensusTest's census, read through its own methods: each jqtest case's program, each
  * differential case's {@code filter} key and each builtin.jq definition called as {@code name(.; …)}, resolved as {@code
- * JqEngine.compile} does and compiled OPTIMISED (the conservative compile stores no tail kind, ADR-0018). A filter jqj
+ * JqEngine.compile} does and compiled OPTIMISED (the conservative compile stores no tail kind). A filter the engine
  * does not compile is left out, as in the census; a compile that throws is logged and left out, and the census fails on
  * it. For each body of the frozen program and each freeze id whose {@link Executable#callKind(int, int)} is TAIL_SELF
  * or TAIL_GROUP, the site's form is {@link Executable#form(int, int)} and its target's root form is {@code

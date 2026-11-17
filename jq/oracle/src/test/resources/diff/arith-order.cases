@@ -1,6 +1,6 @@
 # Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": the order of an operator's results.
 # ADR-0034's #65 amendment lowers l op r with the right operand as the outer loop, as jq 1.8.2 runs a C function's
-# arguments last-first; these cases pin it, and the right operand's error comes first. jq's -n is not built in jqj's
+# arguments last-first; these cases pin it, and the right operand's error comes first. jq's -n is not built in the engine's
 # command line yet, so a filter that ignores its input runs on stdin null. Format:
 # oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-order.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.

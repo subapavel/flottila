@@ -67,7 +67,7 @@ import java.util.Set;
  * 11-digit exponents {@code 1e10000000000}, {@code 1e-10000000000}, {@code 1e99999999999} and
  * {@code 1E+12345678901} all give rc 0, so every one of them stays in the table.
  *
- * <p>A seed that hits a deviation keeps its block and gains {@code deviation} and {@code jqj-*} lines; the freeze
+ * <p>A seed that hits a deviation keeps its block and gains {@code deviation} and {@code engine-*} lines; the freeze
  * check ignores them.
  */
 public final class ValuesV1 {
@@ -223,7 +223,7 @@ public final class ValuesV1 {
     b.append("# Generated cases of values-v1 (ADR-0025), seeds [").append(from).append(", ").append(to).append("): ");
     b.append("oracle/src/main/java/dev/rail8/jq/oracle/gen/ValuesV1.java.\n");
     b.append("# Written with values-v1.rec by scripts/oracle-record.sh --generate values-v1 ").append(from).append(' ').append(to);
-    b.append(", never by hand; a seed that hits a deviation keeps its block and gains deviation and jqj-* lines.\n");
+    b.append(", never by hand; a seed that hits a deviation keeps its block and gains deviation and engine-* lines.\n");
     for (Map.Entry<Long, String> d : dropped.entrySet()) b.append("# dropped ").append(d.getKey()).append(' ').append(d.getValue()).append('\n');
     for (long seed = from; seed < to; seed++) {
       if (!dropped.containsKey(seed)) b.append('\n').append(generate(seed).block());

@@ -93,29 +93,29 @@ public final class JqTestCorpus {
     if (reports != null) JqTestReport.merge(Path.of(reports).resolve("jqtest-" + BACKEND + ".tsv"), rows);
   }
 
-  /** The runner over the public API, {@link ApiJqj}'s host for every file (ADR-0020:50). */
+  /** The runner over the public API, {@link ApiEngine}'s host for every file. */
   static JqTestRunner runner() {
-    return runner(new ApiJqj());
+    return runner(new ApiEngine());
   }
 
-  /** The runner of the jqtest oracle and its survey over {@code jqj}, every call of which runs on the {@link RunnerThread} (F-88). */
-  static JqTestRunner runner(Jqj jqj) {
+  /** The runner of the jqtest oracle and its survey over {@code engine}, every call of which runs on the {@link RunnerThread}. */
+  static JqTestRunner runner(Engine engine) {
     return new JqTestRunner(
-        new Jqj() {
+        new Engine() {
           @Override
           public Filter compile(String program) {
-            Filter filter = RunnerThread.call(() -> jqj.compile(program));
+            Filter filter = RunnerThread.call(() -> engine.compile(program));
             return (input, sink) -> RunnerThread.run(() -> filter.run(input, sink));
           }
 
           @Override
           public JvValue read(String json) {
-            return RunnerThread.call(() -> jqj.read(json));
+            return RunnerThread.call(() -> engine.read(json));
           }
 
           @Override
           public JvValue reread(String json) {
-            return RunnerThread.call(() -> jqj.reread(json));
+            return RunnerThread.call(() -> engine.reread(json));
           }
         });
   }

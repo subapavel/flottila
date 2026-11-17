@@ -17,7 +17,7 @@ final class Inlining {
   private Inlining() {}
 
   /** GLOSSARY "Stub": the prefix of every Stub's message; no test asserts the text after it. */
-  static final String MARK = "jqj stub: ";
+  static final String MARK = "rail8-jq stub: ";
 
   /** An engine with no budget. */
   static final JqEngine ENGINE = JqEngine.builder().build();

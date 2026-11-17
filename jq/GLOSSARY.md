@@ -1,4 +1,4 @@
-# jqj
+# Rail8 jq
 
 Runs a jq filter over JSON bytes on the JVM: the filter is compiled once and then run on each
 input without turning the input into an object tree.
@@ -40,7 +40,7 @@ The pinned release of the original jq whose binary decides what a filter does.
 _Avoid_: real jq, upstream jq, jq-ref (that is the binary's path)
 
 **Deviation**:
-A behaviour where jqj differs from the reference jq on purpose, listed in `DEVIATIONS.md` with
+A behaviour where the engine differs from the reference jq on purpose, listed in `DEVIATIONS.md` with
 its reason.
 _Avoid_: incompatibility, known issue
 
@@ -68,7 +68,7 @@ _Avoid_: lowering pass
 
 **Syntax error**:
 A compile error at the first token jq's grammar rejects, `syntax error, unexpected <token name>`,
-in jqj's own text (ADR-0020).
+in the engine's own text (ADR-0020).
 
 **Recovery message**:
 A compile error jq adds after a syntax error at a known place, such as "May need parentheses around
@@ -109,7 +109,7 @@ _Avoid_: accumulator (a kind of Hold), fold (that is parse-time).
 The slot a Reduce or Foreach keeps its loop state in. Its one Advance takes the value out, leaving null, and stores each update result back (ADR-0041).
 
 **Native table**:
-Every builtin signature jq writes in C or bytecode, plus jqj's replacing natives, each built or unbuilt; looked up after the user's definitions and before the prelude (ADR-0042).
+Every builtin signature jq writes in C or bytecode, plus the engine's replacing natives, each built or unbuilt; looked up after the user's definitions and before the prelude (ADR-0042).
 
 **Unbuilt native**:
 An entry of the native table that its spec has not built yet. A call binds, and lowering it is a Stub (ADR-0042).
@@ -681,7 +681,7 @@ _Avoid_: skeleton ticket, build skeleton ticket
 
 **Stub**:
 A body that ends with a `JqCompileException` (a `JqSyntaxException` for malformed input) whose
-message starts with `jqj stub: `, until the spec that owns it. The runners score its cases FAIL by
+message starts with `rail8-jq stub: `, until the spec that owns it. The runners score its cases FAIL by
 that prefix; no test asserts the text after it.
 
 **Generator**:
@@ -730,7 +730,7 @@ _Avoid_: program, plan
 **Read block**:
 One read of jq's input loop: the bytes through the next LF, or 4091 bytes plus the rest of a
 UTF-8 character cut there (F-25). `(at <file>:N)` counts the read blocks that end in LF, up to the
-block that holds the completing byte. jqj does not read by blocks: it computes their ends only
+block that holds the completing byte. The engine does not read by blocks: it computes their ends only
 where jq shows them (`(at <file>:N)`, `input_line_number`, `-R`, the drop after a caught `input`
 error), and `-R` decodes each block on its own (F-75).
 _Avoid_: chunk, line
@@ -815,7 +815,7 @@ amendment for #60; the `trampoline` run, F-58).
 _Avoid_: mismatch
 
 **Differential oracle**:
-Running a case in jqj and in the reference jq binary and requiring the same exit code, stdout and
+Running a case in the engine and in the reference jq binary and requiring the same exit code, stdout and
 stderr, byte for byte (syntax-error text excepted, ADR-0020).
 
 **Backend oracle**:
@@ -854,14 +854,14 @@ The run of every case that is not required; it writes the oracle report and fail
 Each case's verdict (PASS, FAIL, STALE, CRASH) per oracle and backend; the ratchet reads it.
 
 **Deviation case**:
-A differential case that carries jqj's column of a `DEVIATIONS.md` row; the reference jq's column is
+A differential case that carries the engine's column of a `DEVIATIONS.md` row; the reference jq's column is
 its recording.
 
 **Retired case**:
 A ratcheted id whose source file changed with a reference bump.
 
 **Reference profile**:
-The reference jq's build options (decNumber, Oniguruma, builtins), which jqj mirrors.
+The reference jq's build options (decNumber, Oniguruma, builtins), which the engine mirrors.
 
 **Ratchet**:
 A committed record of what passes (oracle cases, coverage, mutation scores, benchmark
@@ -889,7 +889,7 @@ The reference jq's time per document on the same machine in the same session, it
 subtracted.
 
 **Speed factor**:
-jqj's time per document divided by the reference time.
+The engine's time per document divided by the reference time.
 
 **Machine label**:
 The name of a kind of machine (`claude-cloud-4vcpu`), recorded with its CPU, kernel and JDK.
@@ -925,7 +925,7 @@ runs PIT on all of it (the ticket gate no longer does, F-27).
 _Avoid_: core module
 
 **Word check**:
-The check that no file of `query-core` contains the word jq or json; the project name jqj passes.
+The check that no file of `query-core` contains the word jq or json; the project's names (`dev.rail8.jq`, `rail8-jq-*`) pass.
 
 **Ticket gate**:
 The automatic checks the verifier runs on one ticket's worktree before it merges: the

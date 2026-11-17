@@ -23,7 +23,7 @@ public final class PreludeLoadProbe {
       try {
         engine.compile(filter);
       } catch (JqCompileException e) {
-        if (e.getMessage() == null || !e.getMessage().startsWith("jqj stub: ")) throw e;
+        if (e.getMessage() == null || !e.getMessage().startsWith("rail8-jq stub: ")) throw e;
       }
       out.append(filter).append(' ').append(Prelude.loads()).append('\n');
     }

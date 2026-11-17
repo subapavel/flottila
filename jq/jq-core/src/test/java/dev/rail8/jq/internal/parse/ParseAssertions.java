@@ -44,7 +44,7 @@ import java.util.StringJoiner;
  */
 final class ParseAssertions {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  static final String MARK = "jqj stub: ";
+  static final String MARK = "rail8-jq stub: ";
 
   /** jq's whole text for a program with no top-level filter (ADR-0032), which is no syntax error. */
   static final String NOT_GIVEN = "jq: error: Top-level program not given (try \".\")\njq: 1 compile error";

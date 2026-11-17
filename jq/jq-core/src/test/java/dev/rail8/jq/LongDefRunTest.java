@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * DEVIATIONS "Long definition runs" (F-44): jq-ref 1.8.2 (observed 2026-11-13, the filter read with {@code -f})
  * prints {@code [0,9991]} for {@code def f0: 0; …; def f9991: 9991; [f0, f9991]} and rejects 9 993 such definitions
- * with {@code jq: error: memory exhausted at <top-level>, line 1, column 167660}, rc 3. jqj binds and lowers a run of
+ * with {@code jq: error: memory exhausted at <top-level>, line 1, column 167660}, rc 3. The engine binds and lowers a run of
  * definitions by loops, so it compiles and runs the first rejected run and one of 10⁵, on ADR-0017's 512 KiB stack.
  */
 class LongDefRunTest {

@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
- * The compile-mode oracle's reach into jqj (ADR-0020 amendment for #60, ADR-0018): the one class that reaches the
+ * The compile-mode oracle's reach into the engine: the one class that reaches the
  * engine-internal switch, by reflection on the package-private {@code JqEngine.Builder.compileMode(CompileMode)}, on
  * the class path. A reflective failure is an {@link IllegalStateException}, never a second optimised run; renaming the
  * switch is a change to this class. It lives with the tests because the oracle module does not read jq-core.

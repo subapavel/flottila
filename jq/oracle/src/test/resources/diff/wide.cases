@@ -1,7 +1,7 @@
 # Differential cases (ADR-0020) of #83: lookups and .[] on built objects on both sides of the 8-key boundary, past
 # which a lookup goes through an index of the keys (ADR-0003). Shape sites and growable objects, with and without a
 # repeated computed key, keys that share a slot of the index (a, A and ! all hash to slot 1 of 32), and a computed
-# key escaped in its document. jq's -n is not built in jqj's command line yet, so a filter that ignores its input
+# key escaped in its document. jq's -n is not built in the engine's command line yet, so a filter that ignores its input
 # runs on stdin null. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected
 # outputs live in wide.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 

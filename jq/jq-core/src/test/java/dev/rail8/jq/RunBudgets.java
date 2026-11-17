@@ -26,8 +26,7 @@ final class RunBudgets {
   static final Bindings NONE = Bindings.builder().build();
 
   /**
-   * ADR-0030 and the design approval of #59: jq has no budgets, so the messages are jqj's own. Bytes built: ADR-0035
-   * and the design approval of #64. Recursion depth: #107 ("Depth budget").
+   * The message of each budget. jq has no budgets, so the messages are the engine's own.
    */
   private static final Map<Budget, String> MESSAGES =
       Map.of(

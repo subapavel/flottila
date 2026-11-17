@@ -256,7 +256,7 @@ public final class CoreV1 {
     b.append("# Generated cases of core-v1 (#58), seeds [").append(from).append(", ").append(to).append("): ");
     b.append("oracle/src/main/java/dev/rail8/jq/oracle/gen/CoreV1.java.\n");
     b.append("# Written with core-v1.rec by scripts/oracle-record.sh --generate core-v1 ").append(from).append(' ').append(to);
-    b.append(", never by hand; a seed that hits a deviation keeps its block and gains deviation and jqj-* lines.\n");
+    b.append(", never by hand; a seed that hits a deviation keeps its block and gains deviation and engine-* lines.\n");
     for (Map.Entry<Long, String> d : dropped.entrySet()) b.append("# dropped ").append(d.getKey()).append(' ').append(d.getValue()).append('\n');
     for (long seed = from; seed < to; seed++) {
       if (!dropped.containsKey(seed)) b.append('\n').append(generate(seed).block());

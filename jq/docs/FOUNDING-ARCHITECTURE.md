@@ -13,7 +13,7 @@ need; where the two differ, this file is the one agents follow.
 ## 1. Goal and scope
 
 - An implementation of the **jq 1.8 language** on Java 25 and newer, open source (Apache 2.0).
-  Working name and command name: `jqj`.
+  Command name: `rail8-jq`.
 - Judged on, in this order:
   1. **Speed when warm.** Speed is a priority of the design. The target is the same range as the
      original jq, measured end to end (read JSON, run the filter, write JSON). Beating jq or jaq
@@ -48,7 +48,7 @@ need; where the two differ, this file is the one agents follow.
 
 ## 3. What is taken from jq and what differs
 
-| jq does | jqj does | Why |
+| jq does | Rail8 jq does | Why |
 | --- | --- | --- |
 | Compiles the filter to bytecode for its own VM | Compiles the filter to an IR, then to JVM bytecode (and an interpreter over the same IR) | The JIT makes machine code specialised for one filter |
 | Reference counts; mutates in place when the count is 1 | GC for sharing; an ownership marker for in-place updates (§6) | The JVM has no reference counts |

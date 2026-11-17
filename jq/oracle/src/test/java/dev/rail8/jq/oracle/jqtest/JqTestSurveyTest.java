@@ -15,7 +15,7 @@ import org.junit.jupiter.api.TestInstance;
 
 /**
  * The Survey of the jqtest oracle (ADR-0020): every case of jq's test files nobody requires runs and goes into the
- * jqtest report; a test fails only on CRASH, an exception that is not jqj's. PIT excludes this class (oracle/pom.xml).
+ * jqtest report; a test fails only on CRASH, an exception that is not the engine's. PIT excludes this class (oracle/pom.xml).
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JqTestSurveyTest {

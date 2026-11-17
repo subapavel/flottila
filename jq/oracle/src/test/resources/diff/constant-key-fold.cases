@@ -2,7 +2,7 @@
 # constants (parser.y constant_fold, GLOSSARY "Fold"), so a folded key that is not a string is a parse-time key error
 # (ADR-0036, rc 3), a folded string key is no error (rc 0), and a fold that raises folds to no constant: its error
 # comes at run time (rc 5), and so does a key jq does not fold (a negation, an input). ADR-0035's 4 KiB cap leaves a
-# longer fold to the run with the same output (constant-key-fold/string-past-the-cap). jq's -n is not built in jqj's
+# longer fold to the run with the same output (constant-key-fold/string-past-the-cap). jq's -n is not built in the engine's
 # command line yet, so every case runs on stdin null. Format:
 # oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in
 # constant-key-fold.rec, written by scripts/oracle-record.sh only. Ids are immutable.
