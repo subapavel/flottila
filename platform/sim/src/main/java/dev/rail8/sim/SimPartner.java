@@ -19,7 +19,7 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /**
- * The partner every {@code to} sends to (scheme {@code sim}, D-143): it answers {@code ack:} and the body it got. Per call, in
+ * The partner every {@code to} sends to (scheme {@code sim}): it answers {@code ack:} and the body it got. Per call, in
  * this order: REFUSE fails the call before any effect (a retryable {@link NackException}); DELAY holds it — the run is HELD
  * until the driver's RELEASE at its tick, parked in {@code send} — and then answers. The oracle sees each call start and end.
  * It names no target: each {@code to} gets an unshared limit above every flow's maxInFlight.

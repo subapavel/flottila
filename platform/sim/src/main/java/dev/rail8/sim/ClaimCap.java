@@ -10,7 +10,7 @@ import java.util.Optional;
 import java.util.function.BiConsumer;
 
 /**
- * The simulation's claim cap over the world's queue (D-143): a claim asks for at most one item and only the driver's claim
+ * The simulation's claim cap over the world's queue: a claim asks for at most one item and only the driver's claim
  * reaches the queue — a claim from any other thread (the chain-end poll of a FlowWorker run) answers {@code []} — so a POLL
  * starts at most one run, and only a POLL starts one. Each item handed out — by the driver's claim or by a fast path on the
  * finishing thread — is told to {@code claimed} / {@code taken} before the worker starts its run. Everything else passes through.

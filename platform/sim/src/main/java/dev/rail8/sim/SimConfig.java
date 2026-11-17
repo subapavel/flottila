@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.SplittableRandom;
 
 /**
- * What a run is made of (D-143): action weights, fault rates, the four partition keys, the flows' limits. {@link #V1} is frozen
+ * What a run is made of: action weights, fault rates, the four partition keys, the flows' limits. {@link #V1} is frozen
  * once a seed is pinned under it; a changed one is a new name.
  *
  * @param name the name a failure line and the replay command carry ({@code config=V1})
@@ -36,7 +36,7 @@ public record SimConfig(String name, Map<Action, Integer> weights, Map<FaultKind
                         long aloMaxInFlight, long aloMaxInFlightBytes, int retries, Duration retryInitial, Duration retryMax,
                         double retryMultiplier, int maxHeldTicks, int resendAfter, int drainTicks, Duration tick) {
 
-    /** The per-push configuration, frozen since seeds are pinned under it (P2-10a, bench/RESULTS.md §P2-10). */
+    /** The per-push configuration, frozen because the pinned seeds are only reproducible under it. */
     public static final SimConfig V1 = new SimConfig("V1",
             Map.of(Action.SEND_SYNC, 3, Action.SEND_ALO, 4, Action.RESEND, 1, Action.POLL, 4),
             Map.of(FaultKind.DELAY, 0.25, FaultKind.REFUSE, 0.2, FaultKind.STORE_REFUSE, 0.05),

@@ -16,7 +16,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * What the simulation's flows are built from besides the built-ins (D-143): the {@code sim-transform} step, which reverses the
+ * What the simulation's flows are built from besides the built-ins: the {@code sim-transform} step, which reverses the
  * body's bytes into the next step's body (through {@link World#transform}), and the {@code sim} expression language, whose
  * expression names the header a value is read from (the at-least-once flow's partition key).
  */

@@ -8,7 +8,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * The run's timer over the fake one (D-143). A schedule from a message thread with {@link Retry} on its stack is that run
+ * The run's timer over the fake one. A schedule from a message thread with {@link Retry} on its stack is that run
  * parking on a backoff: the run is PARKED, and when the fake clock reaches the task, the task is deferred to the driver as a
  * WAKE unit instead of run — the fake timer fires every due task in one loop, which would wake several runs at once. Every
  * other schedule (leases, the save timeout, the driver's own) goes to the fake timer as it is and fires under ADVANCE. The
