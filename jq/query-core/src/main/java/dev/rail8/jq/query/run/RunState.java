@@ -6,8 +6,8 @@ import java.util.function.LongSupplier;
 /**
  * The budgets of one evaluation: its fuel, the step budget, the deadline, the bytes-built and bytes-written counts and
  * the live call activations, in a phase that is idle, primed or running; the stack bytes the run declares; its label
- * tokens and break target; and a reused scratch of ints. The engine's Workspace owns one and hands it to each run, so
- * it is never shared between two running evaluations; it is not thread-safe.
+ * tokens and break target; a reused scratch of ints; and the engine's memo for one run. The engine's Workspace owns
+ * one and hands it to each run, so it is never shared between two running evaluations; it is not thread-safe.
  *
  * <p>A main read primes it: the run that begins next keeps the ticks counted since, less those the writer charged
  * through {@link #tickWritten} outside a run, so a large document counts against the run that consumes it and a print
@@ -106,6 +106,9 @@ public final class RunState {
   /** The monotonic clock in nanoseconds that the deadline reads: {@link System#nanoTime()} outside the tests. */
   private final LongSupplier clock;
 
+  /** The engine's memo for the running run, or null: never read here, set to null by each begin and each end. */
+  private Object memo;
+
   /** The longest scratch {@link #ints} keeps: 2^20 ints, 4 MiB. */
   static final int KEPT_INTS = 1 << 20;
 
@@ -202,13 +205,14 @@ public final class RunState {
     labels = 0;
     breakTo = 0;
     clearJump();
+    memo = null;
     start = clock.getAsLong();
     refill(kept);
   }
 
   /**
    * Ends the running run, however it ended: every budget is unlimited until the next {@link #begin}, {@link #steps()}
-   * goes on from the run's count, and a pending jump is cleared, so no value stays pinned between runs.
+   * goes on from the run's count, and a pending jump and the memo are cleared, so no value stays pinned between runs.
    */
   public void end() {
     running = false;
@@ -216,6 +220,7 @@ public final class RunState {
     writtenBudget = UNLIMITED;
     depthBudget = UNLIMITED;
     clearJump();
+    memo = null;
     fill(steps(), UNLIMITED);
   }
 
@@ -347,6 +352,27 @@ public final class RunState {
       throw Termination.over(Budget.BYTES_BUILT);
     }
     built += bytes;
+  }
+
+  /**
+   * Whether {@link #chargeBuilt} would take {@code bytes} now: it neither throws nor counts, and a charge of at most
+   * those bytes right after it returns true succeeds. A builder that can do without its allocation asks this first.
+   */
+  public boolean fits(long bytes) {
+    return bytes <= builtBudget - built;
+  }
+
+  /**
+   * The engine's memo for the running run, or null: whatever the engine keeps for this run alone, so that what a run
+   * costs never depends on another run. Each {@link #begin} and each {@link #end} set it to null.
+   */
+  public Object memo() {
+    return memo;
+  }
+
+  /** Sets the memo {@link #memo()} gives until the next {@link #begin} or {@link #end}. */
+  public void memo(Object memo) {
+    this.memo = memo;
   }
 
   /**

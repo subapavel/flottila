@@ -285,6 +285,41 @@ class RunStateTest {
   }
 
   /**
+   * The memo slot is the engine's own per run: each begin and each end set it to null, so nothing one run memoised
+   * reaches the next, and nothing stays pinned between runs.
+   */
+  @Test
+  void memoIsNullAfterBeginAndAfterEnd() {
+    RunState state = new RunState();
+    state.memo("a run's memo");
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.memo()).as("memo after begin").isNull();
+    state.memo("a run's memo");
+    assertThat(state.memo()).as("memo set during the run").isEqualTo("a run's memo");
+    state.end();
+    assertThat(state.memo()).as("memo after end").isNull();
+  }
+
+  /**
+   * Whether a charge would fit tells, without throwing or counting, what chargeBuilt would do: a charge up to the bytes
+   * left fits and then succeeds, one byte more does not fit.
+   */
+  @Test
+  void fitsTellsWhetherAChargeWouldPass() {
+    RunState state = new RunState();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, 10, Long.MAX_VALUE);
+    state.chargeBuilt(4);
+    assertThat(state.fits(7)).as("7 bytes with 6 left").isFalse();
+    assertThat(state.fits(6)).as("6 bytes with 6 left").isTrue();
+    assertThat(state.built()).as("bytes built after two questions").isEqualTo(4);
+    state.chargeBuilt(6);
+    assertThat(state.fits(0)).as("0 bytes with none left").isTrue();
+    assertThat(state.fits(1)).as("1 byte with none left").isFalse();
+    state.end();
+    assertThat(state.fits(Long.MAX_VALUE - 10)).as("outside a run every budget is unlimited").isTrue();
+  }
+
+  /**
    * Label tokens count from 1 in each run, and a Break's mark is taken back only by its own token (ADR-0039, ADR-0008):
    * a false is a break to the Label whose token was marked, and a stop for any other.
    */

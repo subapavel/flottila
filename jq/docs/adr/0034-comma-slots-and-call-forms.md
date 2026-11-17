@@ -1,6 +1,6 @@
 # Comma, slots and atomic arguments in the IR; call forms as a sealed CallForm
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10); scalar reads amended by #97 (F-50)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10); scalar reads amended by #97 (F-50); element tables for indexed reads (F-111), see the end
 
 #63 is the first ticket to lower constructs that #62's parser builds: comma, indexing, slicing and iteration. They need a sequencing node, a way to hold a computed key while its target runs, and the call forms ADR-0009 names. This ADR fixes those IR and protocol shapes; later tickets extend them with their first user.
 
@@ -11,7 +11,7 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; desig
 - **`Intrinsic(op, args)`** takes atomic arguments (Identity, Var or Const), as many as its form's arity. `Operation(name, CallForm)`, with `sealed CallForm permits Fn0, Fn1, Fn2, Many`; `CallForm.NONE` means no result, and `Many.END` is −1. A Many loop charges one tick per element before its emit.
 - **jq's lowering order** (jq 1.8.2 `parser.y`, `gen_index` and `gen_slice_index`): `t[e]` binds `e` outside `t`, so the key is the outer loop; `t[a:b]` binds `a` outside `b` outside `t`. Constant keys and bounds are passed as Const arguments.
 - **A navigation `?`** (`.a?`, `.[e]?`, `.[]?`, `.[a:b]?`) selects the step's quiet variant when it is lowered, not a Try (ADR-0008, ADR-0009, F-11). The quiet variant drops only the step's own error; errors from its target or key propagate.
-- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008). A loop of indexed reads is therefore quadratic in ticks and time; the fix is a spec 6 ticket (F-111, owner 2026-11-16).
+- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008). A run's element tables make a loop of indexed reads linear; see the amendment on element tables at the end.
 - `Many.key`, an Operation's cardinality, path rule and quiet flag, and the other ADR-0005/0009 facts join with their first user, not before.
 
 ## Considered options
@@ -83,3 +83,40 @@ it builds. Update ticks nothing of its own.
 
 Amended at spec 3's ticket approval, grilling-adviser for the owner under the delegation of
 2026-11-14.
+
+## Amendment (2026-11-17, element tables for indexed reads, F-111)
+
+Chosen by the owner-proxy after a design in several drafts. Before this, a loop of indexed reads
+of a read array was quadratic in ticks and time.
+
+- **The memo.** A filter's `.[n]` and a view's length go through the run's element tables
+  (`ElementTable`), kept in the run state's memo slot. `begin` and `end` clear the slot, so a
+  run's step count depends only on that run, and no table outlives its run. The memo lives in the
+  run state, never in the document: an owned document may be shared, and its cost must never
+  depend on what another run left there.
+- **Its entries.** The memo keeps 4 arrays, each keyed by its document's identity and its tape
+  index. The tape is reused across reads, so a later document's array may sit at the same index.
+  A read of an array not in the memo enters it; a length enters nothing. A read of a stale view
+  fails before the memo is consulted.
+- **Building a table.** Without a table, a read walks and ticks the elements it steps, as before,
+  and a length ticks every element. Each walk of an entered array adds its steps to the array's
+  count. Once that count is greater than the array's tape span, the next read or length builds
+  the table. The span is the array's entries, an upper bound of its length known without a walk.
+  The build costs one tick per element and `Charges.POSITION` (4) bytes built per element, charged
+  before the allocation. After that, a read and a length of that array cost no tick.
+- **The cost bound.** The walks before a build cost more than the build, so the rule at most
+  doubles what the walks alone would cost. A read that builds nothing costs what it cost before,
+  and an index loop costs O(n + reads). For an array whose elements are containers, the span is
+  larger than the length, so more walks come before the build, but the total stays linear in the
+  array's entries.
+- **No table.** An array of more than 2^24 elements, or whose table the bytes-built budget cannot
+  take (`RunState.fits`), gets no table in that run and its reads go on walking. No run ends
+  because of a table.
+- **Replacing an entry.** A new entry replaces the entry with no table whose walks stepped the
+  fewest elements, the least recently used among equals. Only when every entry has a table is the
+  least recently used one replaced. One-off reads therefore replace each other, not the array a
+  loop reads. A rebuild after its array was replaced is charged again: bytes built count
+  allocations.
+- **Unchanged.** Slices, iteration and the host's accessors keep their costs. `first`, `last` and
+  `nth($n)` are `.[0]`, `.[-1]` and `.[$n]`, and `has(n)` on an array reads through the same path,
+  so they get the tables too. The step default (spec 6) is set on these costs.
