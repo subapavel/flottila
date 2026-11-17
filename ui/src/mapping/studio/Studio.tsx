@@ -3,18 +3,15 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { useState } from 'react';
 import type { ApiClient, StoredMapping } from '../api/client';
 import { newAuthoringId } from '../model/authoring-id';
-import type { BrowserStateStore } from './browser-state/browser-state';
 import { RefusedMapping } from './RefusedMapping';
 import { createWorkingCopyStore } from './store/working-copy';
-import { lastTabKey, openingTab, StudioFrame, type CloseGuard } from './StudioFrame';
+import { StudioFrame, type CloseGuard } from './StudioFrame';
 
 export interface StudioProps {
   /** The mapping's id: its workspace path without the file suffix. */
   mappingId: string;
   /** The port to the mapping service. */
   api: ApiClient;
-  /** The port for viewer preferences. */
-  browserState: BrowserStateStore;
   /** Opens the mapping in edit mode, as Create does; otherwise it opens in view mode. */
   startEditing?: boolean;
   /** Told after each save the service accepted. */
@@ -35,7 +32,7 @@ export function studioStore(api: ApiClient, mappingId: string, opened: StoredMap
 
 /**
  * The Mapping studio of one mapping, over injected ports with its own query client: it loads the mapping, shows a
- * refusal with Retry, and opens the loaded mapping on the tab it was last left on.
+ * refusal with Retry, and opens the loaded mapping on the Overview tab.
  */
 export function Studio(props: StudioProps) {
   const [queryClient] = useState(
@@ -69,12 +66,11 @@ function Loader(props: StudioProps) {
   );
 }
 
-function Opened({ mappingId, api, browserState, startEditing, onSaved, guardClose, opened }: StudioProps & { opened: StoredMapping }) {
+function Opened({ mappingId, api, startEditing, onSaved, guardClose, opened }: StudioProps & { opened: StoredMapping }) {
   const [store] = useState(() => {
     const created = studioStore(api, mappingId, opened);
-    created.getState().setTab(openingTab(browserState.read(lastTabKey(mappingId))));
     if (startEditing) created.getState().startEditing();
     return created;
   });
-  return <StudioFrame mappingId={mappingId} api={api} store={store} browserState={browserState} onSaved={onSaved} guardClose={guardClose} />;
+  return <StudioFrame mappingId={mappingId} api={api} store={store} onSaved={onSaved} guardClose={guardClose} />;
 }

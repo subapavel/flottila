@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { ApiProblem, type ApiClient } from '../api/client';
 import { fakeApiClient } from '../api/fake/fake-api';
-import type { BrowserStateStore } from './browser-state/browser-state';
 import { selectUnsaved } from './store/working-copy';
 import type { MappingModel } from '../generated/mapping-model';
 import { Studio, studioStore } from './Studio';
@@ -15,11 +14,6 @@ import { StudioFrame } from './StudioFrame';
 const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
-
-function memoryBrowserState(): BrowserStateStore {
-  const values = new Map<string, unknown>();
-  return { read: (key) => values.get(key), write: (key, value) => void values.set(key, value) };
-}
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
@@ -38,12 +32,11 @@ function unmount() {
   root = undefined;
 }
 
-function renderStudio(api: ApiClient, mappingId: string, options: { browserState?: BrowserStateStore; startEditing?: boolean } = {}) {
+function renderStudio(api: ApiClient, mappingId: string, options: { startEditing?: boolean } = {}) {
   render(
     <Studio
       mappingId={mappingId}
       api={api}
-      browserState={options.browserState ?? memoryBrowserState()}
       startEditing={options.startEditing}
     />,
   );
@@ -55,7 +48,7 @@ async function renderFrame(api: ApiClient, mappingId: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <StudioFrame mappingId={mappingId} api={api} store={store} browserState={memoryBrowserState()} />
+      <StudioFrame mappingId={mappingId} api={api} store={store} />
     </QueryClientProvider>,
   );
   return store;
