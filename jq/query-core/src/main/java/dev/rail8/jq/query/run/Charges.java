@@ -11,6 +11,9 @@ public final class Charges {
   /** One element of a built array: a reference slot. */
   public static final long ELEMENT = 8;
 
+  /** One position of a built table of positions: an int. */
+  public static final long POSITION = 4;
+
   /** One entry of a built object: a key and a value. */
   public static final long ENTRY = 16;
 

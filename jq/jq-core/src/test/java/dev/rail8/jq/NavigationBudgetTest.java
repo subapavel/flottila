@@ -195,6 +195,39 @@ class NavigationBudgetTest {
     assertExactSteps(".[.[0]]", array, 40, "19");
   }
 
+  /** {@code [0,1,…,n-1]}. */
+  private static String counting(int n) {
+    StringJoiner array = new StringJoiner(",", "[", "]");
+    for (int i = 0; i < n; i++) array.add(Integer.toString(i));
+    return array.toString();
+  }
+
+  @Test
+  void anIndexLoopIsLinear() {
+    // The loop over [0,…,n-1] costs, without its reads, 1 read tick per started KiB, n for the length and n for the
+    // range: 41 for 20 elements, 43 for 21 and 2004 for 1000. Its reads walk until their walks pass the array's span,
+    // n here, and the next read builds the array's table for n ticks; the later reads cost none (ElementTable).
+    // 20 elements: reads 0 to 6 walk 21 > 20, read 7 builds, 41 + 21 + 20 = 82. 21 elements: reads 0 to 7 walk 28 > 21,
+    // read 8 builds, 43 + 28 + 21 = 92. 1000 elements: reads 0 to 45 walk 1035 > 1000, 2004 + 1035 + 1000 = 4039,
+    // against 2004 + 499 500 for a walk per read. The sums are those of jq 1.7 (jq -nc '[range(n)] | <filter>'
+    // gives 190, 210 and 499500); a sum of 0 to n-1 has no other value.
+    String loop = ". as $a | reduce range(0;length) as $i (0; . + $a[$i])";
+    assertAll(
+        () -> assertExactSteps(loop, counting(20), 82, "190"),
+        () -> assertExactSteps(loop, counting(21), 92, "210"),
+        () -> assertExactSteps(loop, counting(1000), 4039, "499500"));
+  }
+
+  @Test
+  void aNegativeIndexLoopIsLinear() {
+    // $a[-1 - $i] reads the length before each read. The first length enters nothing (20) and read 19 enters the array
+    // (19); the second length walks it (20), its walks now 39 > 20, so read 18 builds the table (20); every later
+    // length and read costs none: 41 + 20 + 19 + 20 + 20 = 120. For 1000 elements 2004 + 1000 + 999 + 1000 + 1000 =
+    // 6003. jq 1.7 gives 190 and 499500.
+    String loop = ". as $a | reduce range(0;length) as $i (0; . + $a[-1 - $i])";
+    assertAll(() -> assertExactSteps(loop, counting(20), 120, "190"), () -> assertExactSteps(loop, counting(1000), 6003, "499500"));
+  }
+
   @Test
   void aSliceOfAViewChargesTheLengthAndTheElementsUpToItsEnd() {
     // Slice.of walks the length (20), then ArrayView.slice charges its end, the walk to the start and the copy (5):

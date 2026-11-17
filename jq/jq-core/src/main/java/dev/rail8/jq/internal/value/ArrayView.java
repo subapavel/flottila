@@ -9,7 +9,8 @@ import dev.rail8.jq.value.JqValue;
 /**
  * An array of a document: its document and tape index. Public only so the kind can permit it. Equality is the record's,
  * never jq's. The host's accessors walk the tape for nothing; the walks a filter makes take its run state and charge it
- * the elements they step, once per walk.
+ * the elements they step, once per walk. A filter's reads and lengths go through the run's {@link ElementTable}, which
+ * builds a table of the array's element positions once its walks have cost as much as the table.
  */
 public record ArrayView(Document doc, int index) implements JqArray, Members {
 
@@ -45,28 +46,19 @@ public record ArrayView(Document doc, int index) implements JqArray, Members {
     throw new IndexOutOfBoundsException("Index " + i + " out of bounds for length " + n);
   }
 
-  /** {@link #length()} for a filter: one tick per element. */
+  /** {@link #length()} for a filter: one tick per element, none once the run has the array's table. */
   public int length(RunState state) {
-    int length = length();
-    state.tick(length);
-    return length;
+    return ElementTable.length(state, doc, doc.live(), index);
   }
 
   /**
    * The element at {@code i >= 0} for a filter, or Java {@code null} when the array is shorter: one tick per element
-   * stepped over, all of them past the end.
+   * stepped over, all of them past the end, and none once the run has the array's table.
    */
   public JqValue get(RunState state, int i) {
     long[] tape = doc.live();
-    int end = Tape.end(tape, index);
-    int at = index + 1;
-    int stepped = 0;
-    while (stepped < i && at < end) {
-      at = Tape.next(tape, at);
-      stepped++;
-    }
-    state.tick(stepped);
-    return at < end ? doc.valueAt(tape, at) : null;
+    int at = ElementTable.at(state, doc, tape, index, i);
+    return at < 0 ? null : doc.valueAt(tape, at);
   }
 
   /**
