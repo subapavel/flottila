@@ -17,13 +17,12 @@ import java.util.Map;
 import javax.xml.namespace.QName;
 
 /**
- * Reads a schema bundle into a structure (ADR-0008). An element root reads XSD bundles of one or
- * more files, linked by {@code xs:import} and {@code xs:include}, with global elements, element
- * references and named types (#93); choices, alls and groups (#94); and derivation and substitution
- * groups (#95). A WSDL root reads WSDL 1.1 and 2.0 bundles under an operation's message (#96). The
- * JSON root reads JSON Schema 2020-12 (#97). It reads every file the bundle lists through the
- * host's {@link ReferenceResolver}, and no other file, and opens no file itself (ADR-0014
- * "Reference resolver shape").
+ * Reads a schema bundle into a structure. An element root reads XSD bundles of one or more files,
+ * linked by {@code xs:import} and {@code xs:include}, with global elements, element references and
+ * named types; choices, alls and groups; and derivation and substitution groups. A WSDL root reads
+ * WSDL 1.1 and 2.0 bundles under an operation's message. The JSON root reads JSON Schema 2020-12.
+ * It reads every file the bundle lists through the host's {@link ReferenceResolver}, and no other
+ * file, and opens no file itself.
  */
 public final class StructureReader {
 
@@ -65,7 +64,7 @@ public final class StructureReader {
                       all, contents, errors, eqName(operation.interfaceName()), operation);
           case JsonRoot json -> JsonSchemaReader::read;
         };
-    // each file the bundle lists is read once, in bundle order, and no other file (ADR-0008)
+    // each file the bundle lists is read once, in bundle order, and no other file
     List<StructureLoadException> errors = new ArrayList<>();
     Map<String, byte[]> contents = new LinkedHashMap<>();
     for (String file : files) {

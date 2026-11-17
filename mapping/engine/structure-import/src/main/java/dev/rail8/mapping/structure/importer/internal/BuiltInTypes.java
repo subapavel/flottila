@@ -7,8 +7,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The value type of each XSD 1.0 built-in simple type, by built-in ancestry (ADR-0008): the nearest
- * of ADR-0004's seven atomic types it derives from, otherwise {@code xs:string}. A list type is one
+ * The value type of each XSD 1.0 built-in simple type, by built-in ancestry: the nearest of the
+ * seven atomic {@link ValueType}s it derives from, otherwise {@code xs:string}. A list type is one
  * value, so it is a string.
  */
 final class BuiltInTypes {

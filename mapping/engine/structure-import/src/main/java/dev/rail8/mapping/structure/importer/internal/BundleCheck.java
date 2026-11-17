@@ -22,29 +22,28 @@ import javax.xml.XMLConstants;
 import javax.xml.namespace.QName;
 
 /**
- * The checks across the files of a schema bundle (ADR-0008 as amended 2026-11-05), over what {@link
- * XsdSubsetCheck} read from each.
+ * The checks across the files of a schema bundle, over what {@link XsdSubsetCheck} read from each.
  *
  * <ul>
  *   <li>The bundle is a closed set. An {@code xs:import}'s or {@code xs:include}'s {@code
  *       schemaLocation} is mapped to a bundle file by text, relative to the importing file's bundle
- *       name, with no file-system call (ADR-0014 "Reference resolver shape (#90)"). An import whose
- *       location names no bundle file, an absolute path or a URL among them, or that has no
- *       location, falls back to a bundle file with its namespace, or one whose namespace is unknown
- *       because it was not read as far as its {@code xs:schema}. Otherwise the reference is {@code
- *       schema-reference-outside-bundle}. A {@code wsdl:import} or {@code wsdl:include} follows the
- *       same rule, and an import may also fall back to a WSDL of its namespace (#96).
+ *       name, with no file-system call. An import whose location names no bundle file, an absolute
+ *       path or a URL among them, or that has no location, falls back to a bundle file with its
+ *       namespace, or one whose namespace is unknown because it was not read as far as its {@code
+ *       xs:schema}. Otherwise the reference is {@code schema-reference-outside-bundle}. A {@code
+ *       wsdl:import} or {@code wsdl:include} follows the same rule, and an import may also fall
+ *       back to a WSDL of its namespace.
  *   <li>Names are checked in every file, whatever load errors other files have: every name a file
- *       uses, a WSDL 1.1 message and an attribute reference's global attribute (#89 review) among
- *       them, must be declared by a bundle file, and a type must not derive from itself. The base
- *       of {@code xs:complexContent} is a complex type with element content, that of {@code
- *       xs:simpleContent} a simple type or a complex type with simple content, and no element is in
- *       its own substitution group (#95). A name that may be declared where nothing was read is not
- *       reported, so one load error gives no second: the name of a refused global declaration, any
- *       name in the namespace of a file that stopped being well-formed or of a reference outside
- *       the bundle, and any name at all once a file was not read as far as its {@code xs:schema}. A
- *       named group or attribute group must not refer to itself other than through an element
- *       (#94). No complex type has two attributes of one name ({@link AttributeCheck}, #89 review).
+ *       uses, a WSDL 1.1 message and an attribute reference's global attribute among them, must be
+ *       declared by a bundle file, and a type must not derive from itself. The base of {@code
+ *       xs:complexContent} is a complex type with element content, that of {@code xs:simpleContent}
+ *       a simple type or a complex type with simple content, and no element is in its own
+ *       substitution group. A name that may be declared where nothing was read is not reported, so
+ *       one load error gives no second: the name of a refused global declaration, any name in the
+ *       namespace of a file that stopped being well-formed or of a reference outside the bundle,
+ *       and any name at all once a file was not read as far as its {@code xs:schema}. A named group
+ *       or attribute group must not refer to itself other than through an element. No complex type
+ *       has two attributes of one name ({@link AttributeCheck}).
  *   <li>The root must be a global element of a complex type, never of an anonymous simple type. A
  *       missing root, or a WSDL operation's message that leads to none, is reported only when the
  *       bundle has no other load error.
@@ -55,7 +54,7 @@ final class BundleCheck {
   private BundleCheck() {}
 
   /**
-   * @param root the root element; null when none is found, for a WSDL operation (#96)
+   * @param root the root element; null when none is found, for a WSDL operation
    * @param missing the message of {@code schema-root-not-found} when the bundle declares no root
    */
   static void check(
@@ -65,7 +64,7 @@ final class BundleCheck {
       String missing,
       List<StructureLoadException> errors) {
     // a file not read as far as its xs:schema adds null: its namespace is unknown. An xs:import
-    // falls back to a schema's namespace, a wsdl:import also to a WSDL's (#96).
+    // falls back to a schema's namespace, a wsdl:import also to a WSDL's.
     Set<String> namespaces = new HashSet<>();
     Set<String> withWsdl = new HashSet<>();
     for (SchemaFile file : files) {
@@ -102,7 +101,7 @@ final class BundleCheck {
    * The bundle name {@code location} stands for, written in the file {@code file}, by text: its
    * segments appended to the directory of {@code file}, {@code .} dropped and {@code ..} taking off
    * the segment before it, if there is one that is not {@code ..} itself. An absolute path keeps an
-   * empty segment and a URL its scheme, so neither is ever a bundle name (ADR-0024).
+   * empty segment and a URL its scheme, so neither is ever a bundle name.
    */
   static String located(String file, String location) {
     List<String> segments = new ArrayList<>(List.of(file.split("/", -1)));
@@ -161,7 +160,7 @@ final class BundleCheck {
     Map<QName, AttributeOwner> typeAttributes = new HashMap<>();
     Map<QName, AttributeOwner> groupAttributes = new HashMap<>();
     // the base of every type that derives, simple or complex, and the head of every element in a
-    // substitution group (#95)
+    // substitution group
     Map<QName, QName> bases = new HashMap<>();
     Map<QName, QName> heads = new HashMap<>();
     // the namespaces of files that stopped, were never read or are outside the bundle, null for
@@ -339,10 +338,10 @@ final class BundleCheck {
   }
 
   /**
-   * The checks of one kind of named group in {@code file} (#94): each of its references {@code
-   * uses} names one of {@code all}, the bundle's, unless a declaration that was not read may
-   * declare it; and none of its own {@code declared} refers to itself, directly or through others,
-   * other than through an element, because inlining it would never end.
+   * The checks of one kind of named group in {@code file}: each of its references {@code uses}
+   * names one of {@code all}, the bundle's, unless a declaration that was not read may declare it;
+   * and none of its own {@code declared} refers to itself, directly or through others, other than
+   * through an element, because inlining it would never end.
    *
    * @param what the kind as messages name it, {@code group}
    */
@@ -394,7 +393,7 @@ final class BundleCheck {
     return new StructureLoadException(code, file, at.line(), at.column(), message);
   }
 
-  /** {@code Q{ns}local}, the EQName of field paths (ADR-0007). */
+  /** {@code Q{ns}local}, the EQName of field paths. */
   static String eqName(QName name) {
     return "Q{" + name.getNamespaceURI() + "}" + name.getLocalPart();
   }

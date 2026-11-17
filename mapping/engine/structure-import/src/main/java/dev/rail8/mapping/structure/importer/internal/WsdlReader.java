@@ -16,12 +16,12 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 /**
- * Reads a WSDL 1.1 or 2.0 bundle into the structure under one operation's input, output or fault
- * (#96, ADR-0008 "JSON Schema and WSDL"): the element of its message. Our own code reads the WSDL
- * ({@link WsdlCheck}) and hands every inline schema, over the {@code java.xml} DOM, to the XSD
- * reader; WSDL4J and Woden are not used (ADR-0008 "Considered options"). The bundle is closed as
- * for XSD: a {@code wsdl:import} or {@code wsdl:include} names a bundle file by its location, or an
- * import falls back to the bundle file of its namespace.
+ * Reads a WSDL 1.1 or 2.0 bundle into the structure under one operation's input, output or fault:
+ * the element of its message. Our own code reads the WSDL ({@link WsdlCheck}) and hands every
+ * inline schema, over the {@code java.xml} DOM, to the XSD reader; WSDL4J (Common Public License)
+ * and Woden (no release since 2015) are not used. The bundle is closed as for XSD: a {@code
+ * wsdl:import} or {@code wsdl:include} names a bundle file by its location, or an import falls back
+ * to the bundle file of its namespace.
  */
 public final class WsdlReader {
 

@@ -3,9 +3,9 @@ package dev.rail8.mapping.structure.importer;
 import java.io.Serial;
 
 /**
- * A reference a {@link ReferenceResolver} cannot turn into a file (ADR-0014 "Reference resolver
- * shape"). It carries a reason and the reference only, never the host's own text: the engine
- * reports it as a load error at line 1, column 1 of the reference, with a message of its own.
+ * A reference a {@link ReferenceResolver} cannot turn into a file. It carries a reason and the
+ * reference only, never the host's own text: the engine reports it as a load error at line 1,
+ * column 1 of the reference, with a message of its own.
  */
 public final class UnresolvedReferenceException extends Exception {
 

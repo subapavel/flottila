@@ -1,9 +1,8 @@
 package dev.rail8.mapping.structure.importer;
 
 /**
- * The host's port through which the engine reads every schema file (ADR-0014 "Reference resolver
- * shape"). The engine opens no file in any other way. The host binds a resolver to the base its
- * bundle references are relative to.
+ * The host's port through which the engine reads every schema file. The engine opens no file in any
+ * other way. The host binds a resolver to the base its bundle references are relative to.
  */
 @FunctionalInterface
 public interface ReferenceResolver {

@@ -12,13 +12,13 @@ import java.util.Set;
 import javax.xml.namespace.QName;
 
 /**
- * The check that no complex type, named or anonymous, has two attributes of one name (#89 review;
- * XSD 1.1 Part 1, 3.4.6.1 ct-props-correct.4), over what {@link XsdSubsetCheck} read from each
- * file. A type's attributes are its base's first, then its own, each attribute group reference's
- * inlined (XSD 1.1 Part 1, 3.4.2): an extension's own attribute of a name its base has is a second
- * declaration, a restriction's own replaces the base's, and {@code use="prohibited"} declares none.
- * A second declaration is {@code schema-invalid} at its own start tag, in the file that declares
- * it, once however many types reach it.
+ * The check that no complex type, named or anonymous, has two attributes of one name (XSD 1.1 Part
+ * 1, 3.4.6.1 ct-props-correct.4), over what {@link XsdSubsetCheck} read from each file. A type's
+ * attributes are its base's first, then its own, each attribute group reference's inlined (XSD 1.1
+ * Part 1, 3.4.2): an extension's own attribute of a name its base has is a second declaration, a
+ * restriction's own replaces the base's, and {@code use="prohibited"} declares none. A second
+ * declaration is {@code schema-invalid} at its own start tag, in the file that declares it, once
+ * however many types reach it.
  */
 final class AttributeCheck {
 

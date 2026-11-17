@@ -14,7 +14,7 @@ import javax.xml.namespace.QName;
  * WSDL file, for the checks across the bundle: its target namespace, its references to other files,
  * the global names it declares and the names it uses, each with its position. A WSDL file is one
  * WSDL part and one schema per inline schema, all with the file's name. For {@link XsdReader} a
- * schema also keeps where each particle of a complex type or a group is declared (#92, #94).
+ * schema also keeps where each particle of a complex type or a group is declared.
  */
 final class SchemaFile {
 
@@ -36,7 +36,7 @@ final class SchemaFile {
    * A global element.
    *
    * @param type its {@code type}, or null for an anonymous type
-   * @param simple whether its anonymous type is a simple type (#89 review)
+   * @param simple whether its anonymous type is a simple type
    */
   record GlobalElement(String file, QName type, boolean simple, Position at) {
 
@@ -61,9 +61,9 @@ final class SchemaFile {
   record NameUse(QName name, Position at) {}
 
   /**
-   * A particle of a complex type or a group (#92, #94): a local element or an element reference, a
-   * model group ({@code xs:sequence}, {@code xs:choice}, {@code xs:all}), or a group reference. An
-   * {@code xs:any} is no particle here.
+   * A particle of a complex type or a group: a local element or an element reference, a model group
+   * ({@code xs:sequence}, {@code xs:choice}, {@code xs:all}), or a group reference. An {@code
+   * xs:any} is no particle here.
    *
    * @param at where its start tag ends
    * @param content the particles it holds, in document order: a model group's members, or the one
@@ -73,7 +73,7 @@ final class SchemaFile {
   record Particle(Position at, List<Particle> content) {}
 
   /**
-   * A named group or attribute group (#94).
+   * A named group or attribute group.
    *
    * @param at its start tag's end
    * @param uses the groups, or attribute groups, it refers to other than through an element
@@ -82,7 +82,7 @@ final class SchemaFile {
 
   /**
    * An attribute declaration or reference, or an attribute group reference, of a complex type or an
-   * attribute group, in document order (#89 review).
+   * attribute group, in document order.
    *
    * @param name the attribute's name, as its field's step names it, or the attribute group's
    * @param group whether it is an attribute group reference
@@ -92,7 +92,7 @@ final class SchemaFile {
 
   /**
    * The attribute uses a complex type, named or anonymous, or an attribute group declares, for the
-   * check that no complex type has two attributes of one name (#89 review; XSD 1.1 Part 1, 3.4.6.1
+   * check that no complex type has two attributes of one name (XSD 1.1 Part 1, 3.4.6.1
    * ct-props-correct.4).
    */
   static final class AttributeOwner {
@@ -157,16 +157,16 @@ final class SchemaFile {
   /** WSDL 1.1 message references of operations. */
   final List<NameUse> messageRefs = new ArrayList<>();
 
-  /** Named groups (#94). */
+  /** Named groups. */
   final Map<QName, Definition> groups = new HashMap<>();
 
-  /** Named attribute groups (#94). */
+  /** Named attribute groups. */
   final Map<QName, Definition> attributeGroups = new HashMap<>();
 
-  /** Group references (#94). */
+  /** Group references. */
   final List<NameUse> groupRefs = new ArrayList<>();
 
-  /** Attribute group references (#94). */
+  /** Attribute group references. */
   final List<NameUse> attributeGroupRefs = new ArrayList<>();
 
   /** The content particle of each global element's anonymous complex type, if it has one. */
@@ -175,7 +175,7 @@ final class SchemaFile {
   /** The content particle of each named complex type, if it has one. */
   final Map<QName, List<Particle>> complexTypeParticles = new HashMap<>();
 
-  /** The model group of each named group (#94). */
+  /** The model group of each named group. */
   final Map<QName, List<Particle>> groupParticles = new HashMap<>();
 
   /** The bases of {@code xs:complexContent} derivations: a complex type with element content. */
@@ -190,34 +190,34 @@ final class SchemaFile {
   /** The named complex types with simple content. */
   final Set<QName> simpleContentTypes = new HashSet<>();
 
-  /** The base of each named complex type that derives, at its derivation (#95). */
+  /** The base of each named complex type that derives, at its derivation. */
   final Map<QName, NameUse> derivations = new HashMap<>();
 
-  /** The head of each global element in a substitution group, at the element (#95). */
+  /** The head of each global element in a substitution group, at the element. */
   final Map<QName, NameUse> substitutions = new HashMap<>();
 
-  /** Where each abstract global element is declared (#95). */
+  /** Where each abstract global element is declared. */
   final Map<QName, Position> abstractElements = new HashMap<>();
 
-  /** Where each abstract named complex type is declared (#95). */
+  /** Where each abstract named complex type is declared. */
   final Map<QName, Position> abstractTypes = new HashMap<>();
 
-  /** Whether its {@code attributeFormDefault} is {@code qualified} (#89 review). */
+  /** Whether its {@code attributeFormDefault} is {@code qualified}. */
   boolean attributesQualified;
 
-  /** Global attributes (#89 review). */
+  /** Global attributes. */
   final Set<QName> attributes = new HashSet<>();
 
-  /** Attribute references (#89 review). */
+  /** Attribute references. */
   final List<NameUse> attributeRefs = new ArrayList<>();
 
-  /** The attribute uses of each named complex type (#89 review). */
+  /** The attribute uses of each named complex type. */
   final Map<QName, AttributeOwner> typeAttributes = new HashMap<>();
 
-  /** The attribute uses of each anonymous complex type (#89 review). */
+  /** The attribute uses of each anonymous complex type. */
   final List<AttributeOwner> anonymousTypeAttributes = new ArrayList<>();
 
-  /** The attribute uses of each named attribute group (#89 review). */
+  /** The attribute uses of each named attribute group. */
   final Map<QName, AttributeOwner> groupAttributes = new HashMap<>();
 
   SchemaFile(String name) {
