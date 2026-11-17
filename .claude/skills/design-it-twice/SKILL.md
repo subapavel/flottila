@@ -1,6 +1,6 @@
 ---
 name: design-it-twice
-description: Design a contract several times before building it — several agents independently draft radically different interfaces, one draft comes from Codex, the owner-proxy picks. Use only for contracts — an adapter, a step, the API for custom code, plugin loading, other public API.
+description: Design a contract or another hard piece several times before building it — several agents independently draft radically different interfaces, one draft comes from Codex, the owner-proxy picks. Use for every class:C issue — a new contract (adapter, step, API for custom code, plugin loading), public API, storage format, security and the other hard work.
 ---
 
 <!-- Adapted from mattpocock/skills `codebase-design/DESIGN-IT-TWICE.md`, commit
@@ -8,7 +8,7 @@ description: Design a contract several times before building it — several agen
      (../LICENSE-mattpocock-skills). After John Ousterhout's "Design It Twice": the first idea is
      rarely the best. -->
 
-Required for every `class:C` issue before its implementation (`AGENTS.md`, "Task class").
+Required for every `class:C` issue before its implementation.
 
 ## 1. Frame the problem
 

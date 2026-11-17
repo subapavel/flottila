@@ -15,8 +15,8 @@ whole file. Everything in the repository is in English.
 - Comments and docs are for people: what the code does, its inputs, its outputs. Each one stands on
   its own, with no task ids, decision ids or pointers to other files.
 - UI: PatternFly components and design tokens only (skill `patternfly`, PatternFly MCP).
-- Contracts first: for an adapter, a step, the API for custom code or plugin loading, write and
-  agree the contract before the implementation (skill `design-it-twice`).
+- Contracts first: a new contract (an adapter, a step, the API for custom code, plugin loading) is
+  `class:C` work, designed and agreed before the implementation (skill `design-it-twice`).
 - Unsure? Ask the owner-proxy: open a GitHub issue labelled `owner-question` (agent `owner-proxy`).
 - Library APIs: Context7 first, then `javap` on the resolved jar. Never an API from memory.
 
@@ -25,23 +25,22 @@ whole file. Everything in the repository is in English.
 1. One task = one GitHub issue = one fresh session, branched from `main`.
 2. The session writes the test and the code, and runs the tests of the modules it touched.
 3. It opens a pull request. Every commit is signed off (`git commit -s`, checked by DCO).
-4. One review by a different agent (`reviewer`): correct behaviour, needless complexity, readable
+4. One review by a different agent (`reviewer`), launched at the effort the class sets: correct behaviour, needless complexity, readable
    comments. Wording in docs is never a reason to send a change back. One round of fixes.
 5. Green checks, then the session merges the pull request with the rebase method.
 
-Design first only for hard things: contracts, public API, storage format, security (skill
-`design-it-twice`). The owner-proxy judges the design and a second model argues against it. No records beyond the issue,
-the pull request and the commits.
+Design first only for `class:C` work (skill `design-it-twice`). The owner-proxy judges the design
+and a second model argues against it. No records beyond the issue, the pull request and the commits.
 
 ## Task class
 
-Every issue carries one class label. It sets the model and effort of the session and the review:
+Every task issue carries one class label (an `owner-question` issue carries none). It sets the model and effort of the session and the review:
 
 | Label | Work | Session | Review | Design first |
 | --- | --- | --- | --- | --- |
 | `class:A` mechanical | docs, CI scripts, fixtures, mock behaviour, compose files | Sonnet 5.5, medium | Opus 5.5, medium | no |
-| `class:B` standard | a component with its mock, a step, a fix in existing code, the admin API, the CLI | Opus 5.5, high | Opus 5.5, high | no |
-| `class:C` hard | batcher, admission, `BlobStore`, concurrency, leases, public types in `rail8-api`, JSON Schemas, security, storage format | Opus 5.5, xhigh | Opus 5.5, xhigh | yes, `design-it-twice` |
+| `class:B` standard | a component with its mock or a step behind an agreed contract, a fix in existing code, the admin API, the CLI | Opus 5.5, high | Opus 5.5, high | no |
+| `class:C` hard | a new contract, public types in `rail8-api`, JSON Schemas, storage format, security, batcher, admission, `BlobStore`, concurrency, leases | Opus 5.5, xhigh | Opus 5.5, xhigh | yes, `design-it-twice` |
 
 Whoever opens the issue sets the class; when it is unclear, the owner-proxy decides. When a task
 turns out harder than its class, raise the label and say why in the issue. Never lower it mid-task.
