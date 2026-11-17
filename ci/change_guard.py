@@ -5,7 +5,7 @@ Two checks, each on the added and modified lines only (older lines are left alon
 folders whose comments have been cleaned (CLEANED below), references in comments are checked in every file, on
 every line, whether the change touches it or not.
 
-1. References in comments. A comment or Javadoc in a Java file under platform/ or mapping/, or a comment in a
+1. References in comments. A comment or Javadoc in a Java file under platform/, mapping/ or jq/, or a comment in a
    TypeScript, JavaScript or CSS file under mapping/ui/, must explain; it must not point at a task or a decision.
    A reference is an upper-case tag, a hyphen and a number, such as D-164, FIX-268, MAP-12b, P2-02D, P0-10 or ADR-0019,
    or a `#` followed by a number, such as #123. Names of standards (UTF-8, SHA-256, ISO-8601 and the like) are not
@@ -31,7 +31,7 @@ import re
 import subprocess
 import sys
 
-JAVA_ROOTS = ("platform/", "mapping/")
+JAVA_ROOTS = ("platform/", "mapping/", "jq/")
 # Folders (and two single files) whose comments have been cleaned of references: every comment in every file under
 # them is checked, not only the lines a change touches. A cleanup adds its folders to this list.
 CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtime/src/main/", "platform/testkit/src/main/",

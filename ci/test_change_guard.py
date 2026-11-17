@@ -114,6 +114,12 @@ class ChangeGuardTest(unittest.TestCase):
         self.assertEqual(["mapping/engine/A.java:5: a reference in a comment (D-3): "
                           "say what the code does and why instead"], self.findings(repo, 1))
 
+    def test_comments_in_java_of_the_jq_engine_are_checked(self):
+        repo = self.repo()
+        repo.change({"jq/jq-core/src/main/java/A.java": "package a;\n// a compiled filter (ADR-0016, #108)\nclass A {}\n"})
+        self.assertEqual(["jq/jq-core/src/main/java/A.java:2: a reference in a comment (ADR-0016, #108): "
+                          "say what the code does and why instead"], self.findings(repo, 1))
+
     def test_in_a_cleaned_folder_every_comment_of_every_file_is_checked(self):
         untouched = "package a;\n// kept D-1\nclass A {}\n"
         touched = "package b;\n/** old FIX-2 */\nclass B {\n  int y;\n}\n"
@@ -155,7 +161,7 @@ class ChangeGuardTest(unittest.TestCase):
             ]) + "\n",
             "docs/notes.md": "D-164 in a document\n",
             "ci/x.py": "# D-164 in a script outside the checked folders\n",
-            "bench/B.java": "// D-164 outside platform/ and mapping/\n",
+            "bench/B.java": "// D-164 outside platform/, mapping/ and jq/\n",
         })
         self.assertClean(repo)
 
