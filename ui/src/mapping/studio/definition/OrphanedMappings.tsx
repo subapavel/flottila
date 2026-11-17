@@ -22,7 +22,7 @@ export interface OrphanedMappingsProps {
  * only.
  */
 export function OrphanedMappings({ paths, selected, editing, onOpen, onDelete }: OrphanedMappingsProps) {
-  const titleId = useId();
+  const listId = useId();
   return (
     <CardBody isFilled={false} component="section" aria-label="Orphaned target field mappings">
       <Title headingLevel="h3" size="md">
@@ -36,17 +36,18 @@ export function OrphanedMappings({ paths, selected, editing, onOpen, onDelete }:
         {paths.map((path) => {
           const shown = `/${localPath(path)}`;
           const open = selected === path;
+          const itemId = `${listId}-${path}`;
           return (
             <DataListItem key={path} aria-label={shown}>
               <DataListItemRow>
                 <DataListItemCells
                   dataListCells={[
-                    <DataListCell key="path">
+                    <DataListCell key="path" id={`${itemId}-path`}>
                       <code title={path}>{shown}</code>
                     </DataListCell>,
                   ]}
                 />
-                <DataListAction aria-label={`Actions for ${shown}`} id={`${titleId}-${path}`} aria-labelledby={`${titleId}-${path}`}>
+                <DataListAction aria-label={`Actions for ${shown}`} id={`${itemId}-actions`} aria-labelledby={`${itemId}-path`}>
                   <Button variant="link" isInline size="sm" aria-label={`Open ${shown}`} aria-pressed={open} isClicked={open} onClick={() => onOpen(path)}>
                     Open
                   </Button>

@@ -81,7 +81,7 @@ describe('the rows of a structure tree', () => {
   });
 });
 
-describe('Expand all and the field count (spec #135, stories 16 and 17)', () => {
+describe('Expand all and the field count', () => {
   test('expand every structure field down to one whose type is already on its path, so a recursive type ends', () => {
     expect(expandAllPaths(structure)).toEqual([ORDER, `${ORDER}/Item`]);
     expect(describeRows(expandAllPaths(structure))).toEqual([
@@ -100,7 +100,7 @@ describe('Expand all and the field count (spec #135, stories 16 and 17)', () => 
   });
 });
 
-describe('the rows of a search (spec #135, story 15)', () => {
+describe('the rows of a search', () => {
   const searched = (query: string) =>
     searchRows(structure, query, 'target').map((r) => `${'  '.repeat(r.depth)}${r.path}${r.expandable ? (r.expanded ? ' -' : ' +') : ''}`);
 
@@ -132,7 +132,7 @@ describe('the rows of a search (spec #135, story 15)', () => {
   });
 });
 
-describe('a refused field in the tree (ADR-0008, ADR-0027)', () => {
+describe('a refused field in the tree', () => {
   const ambiguousNote = { code: 'ambiguous-field-path', side: 'both' as const, file: 'r.xsd', line: 8, column: 65 };
   const ambiguousPart = { code: 'ambiguous-field-path', side: 'both' as const, file: 'r.xsd', line: 20, column: 53 };
   const abstractBox = { code: 'abstract-target-element', side: 'target' as const, file: 'r.xsd', line: 12, column: 40 };
@@ -179,7 +179,7 @@ describe('a refused field in the tree (ADR-0008, ADR-0027)', () => {
     ]);
   });
 
-  test('a source row passes a refusal that holds in a target only, as compile does (#94, #95)', () => {
+  test('a source row passes a refusal that holds in a target only, as compile does', () => {
     expect(rowRefusals('source')).toEqual([
       '/Doc -',
       '/Doc/Id -',
@@ -236,7 +236,7 @@ describe('the effective occurrence of a field', () => {
   });
 });
 
-describe('the source fields a target field mapping links (ADR-0013, "reached")', () => {
+describe('the source fields a target field mapping links ("reached")', () => {
   const mapping = (result: string | null, boxes: TargetFieldMapping['boxes']): TargetFieldMapping => ({ id: 't1', result, boxes });
   const source = (field: string) => ({ kind: 'source' as const, field });
   const fn = (inputs?: (string | null)[]) => ({ kind: 'function' as const, fn: 'concat', ...(inputs ? { inputs } : {}) });

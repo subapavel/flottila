@@ -43,7 +43,7 @@ const OVERSCAN = 8;
 const SCROLL_AREA = { flex: '1 1 0', minHeight: 0, overflow: 'auto' } as const;
 
 /** Whether a key opens a context menu: the context menu key, or Shift+F10. */
-export const isContextMenuKey = (e: KeyboardEvent) => e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10');
+const isContextMenuKey = (e: KeyboardEvent) => e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10');
 
 export interface SchemaPaneProps {
   side: Side;
