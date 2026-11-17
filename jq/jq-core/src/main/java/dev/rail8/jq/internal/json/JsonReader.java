@@ -16,8 +16,9 @@ import java.util.Arrays;
  *
  * <p>A lenient token and a second top-level value are malformed, and a malformed document ends in the Stub with the
  * line and column of its detecting byte. A limit is a real error, not a Stub. A number gets the FITS_LONG flag when it
- * is an integer a long holds and the CANONICAL flag when its bytes are what jq prints for it. A string is tag 5, its
- * bytes printed as they are, or tag 6, with an escape, DEL or bytes that are not well-formed UTF-8, decoded when read.
+ * is an integer a long holds, except -0, and the CANONICAL flag when its bytes are what jq prints for it. A string is
+ * tag 5, its bytes printed as they are, or tag 6, with an escape, DEL or bytes that are not well-formed UTF-8, decoded
+ * when its value is taken or printed.
  */
 public final class JsonReader {
   /** jq's parse depth, a constant: {@code Limits.nestingDepth} is not read. */
