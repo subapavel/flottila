@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code RAIL8_ENV};
+ * A node's whole configuration, read from its environment. Every key has a default except {@code RAIL8_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
  * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Leases} prints of
  * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, {@link MasterKeySource} names
@@ -44,48 +44,48 @@ import java.util.regex.Pattern;
  * @param maxPackageBytes {@code RAIL8_MAX_PACKAGE_BYTES}, 1 byte to 1 GiB (64 MiB)
  * @param pg the {@code RAIL8_PG_*} keys
  * @param blobs the {@code RAIL8_BLOB_*} keys
- * @param archives {@code RAIL8_ARCHIVE_STORE} and {@code RAIL8_ARCHIVE_DIR}: where package archives are stored (D-070)
+ * @param archives {@code RAIL8_ARCHIVE_STORE} and {@code RAIL8_ARCHIVE_DIR}: where package archives are stored
  * @param s3 the {@code RAIL8_S3_*} keys: present exactly when the archive store is {@link Archives.Store#S3}
- * @param secrets what the endpoints' {@code secret://} references resolve to (D-081): the {@code RAIL8_SECRET_*} variables
+ * @param secrets what the endpoints' {@code secret://} references resolve to: the {@code RAIL8_SECRET_*} variables
  * @param leases the {@code RAIL8_VALKEY_URI} and {@code RAIL8_POLLER_LEASE_*} keys: where and how long a polling consumer's
- *               lease is held (D-083)
- * @param retention the retention job's keys (D-088): {@code RAIL8_RETENTION_MAX_AGE}, ISO-8601, PT1H to P366D (P7D): rows
+ *               lease is held
+ * @param retention the retention job's keys: {@code RAIL8_RETENTION_MAX_AGE}, ISO-8601, PT1H to P366D (P7D): rows
  *                  older are deleted; {@code RAIL8_RETENTION_INTERVAL}, ISO-8601, PT1M to P1D (PT1H): from the end of a run to
  *                  the start of the next; {@code RAIL8_RETENTION_BATCH}, 1 to 10000 (1000): the rows one batch scans
- * @param cpuSampling {@code RAIL8_CPU_SAMPLING} (D-094): {@code off} (the default, empty) or the CPU-time sampling period, an
+ * @param cpuSampling {@code RAIL8_CPU_SAMPLING}: {@code off} (the default, empty) or the CPU-time sampling period, an
  *                    ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S; with a period the node runs a CPU sampler
- * @param targets the limits per target system (D-099): {@code RAIL8_TARGET_MAX_CALLS}, {@code RAIL8_TARGET_MAX_WAIT} and
+ * @param targets the limits per target system: {@code RAIL8_TARGET_MAX_CALLS}, {@code RAIL8_TARGET_MAX_WAIT} and
  *                {@code RAIL8_TARGET_LIMITS} ({@link TargetLimits})
- * @param journal the body journal's keys (CORE-3, D-105): {@code RAIL8_JOURNAL_DIR} ({@code <dataDir>/journal}),
+ * @param journal the body journal's keys: {@code RAIL8_JOURNAL_DIR} ({@code <dataDir>/journal}),
  *                {@code RAIL8_JOURNAL_SEGMENT_BYTES} (64 MiB), {@code RAIL8_JOURNAL_SEGMENT_RECORDS} (65 536, at most
  *                2^31 - 1), {@code RAIL8_JOURNAL_SEGMENT_AGE} (PT1S), {@code RAIL8_JOURNAL_PENDING_BYTES} (16 MiB),
  *                {@code RAIL8_JOURNAL_APPEND_WAIT} (PT5S), {@code RAIL8_JOURNAL_RECORD_MAX} (256 KiB or
  *                {@code RAIL8_BLOB_MEMORY_TIER} when that is smaller; at most the tier), {@code RAIL8_JOURNAL_MAX_BYTES} (16 GiB),
  *                {@code RAIL8_JOURNAL_READ_CHANNELS} (64, 1..1024), {@code RAIL8_JOURNAL_ACCEPT_LOSS} (none, taken as given),
  *                each range-checked as {@link JournalConfig} says; the node id is the journal's
- * @param journalKey the journal's master key source (D-106): {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or
+ * @param journalKey the journal's master key source: {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or
  *                   {@code RAIL8_JOURNAL_KEY_GENERATE}; a node without one is refused at start, not here
- * @param journalSweep the segment sweeper's keys (CORE-3 items 10, 14): {@code RAIL8_JOURNAL_SWEEP_INTERVAL} (PT10S,
+ * @param journalSweep the segment sweeper's keys: {@code RAIL8_JOURNAL_SWEEP_INTERVAL} (PT10S,
  *                     PT1S..PT1H), {@code RAIL8_JOURNAL_SWEEP_GRACE} (PT1M, PT1S..PT1H), {@code RAIL8_JOURNAL_KEEP_MAX_AGE}
  *                     (PT1H, PT1M..P1D), ISO-8601 each, range-checked as {@link SweepConfig} says
- * @param intakeGroup the intake's group commit (CORE-6b, D-109): {@code RAIL8_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
+ * @param intakeGroup the intake's group commit: {@code RAIL8_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
  *                    {@code RAIL8_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code RAIL8_INTAKE_GROUP_WINDOW} (PT0.001S,
  *                    PT0S..PT0.05S in whole milliseconds), {@code RAIL8_INTAKE_GROUP_CONCURRENCY} (1..64, at most
- *                    max(1, {@code RAIL8_PG_POOL_INTAKE} − 1), the intake pool's bound (D-130 draft amends D-109's bound over
- *                    {@code RAIL8_PG_POOL_SIZE}); unset, min(4, that bound)); draft defaults until CORE-GATE
- * @param nodeLease {@code RAIL8_NODE_LEASE} (D-101 (1), F-28), ISO-8601, above zero and at most PT10M (PT30S): the node's
+ *                    max(1, {@code RAIL8_PG_POOL_INTAKE} − 1), the intake pool's bound); unset,
+ *                    min(4, that bound)); the defaults are provisional
+ * @param nodeLease {@code RAIL8_NODE_LEASE}, ISO-8601, above zero and at most PT10M (PT30S): the node's
  *                  lease in the membership; its fence closes half a lease after its last renewed send
  * @param nodeLeaseRenew {@code RAIL8_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
  *                       often the node renews it
- * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}
- *                (CORE-14a P1, D-135 draft): {@code RAIL8_RETRIES_COUNT} (3, 0..100) retries {@code RAIL8_RETRIES_INTERVAL}
+ * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}:
+ *                {@code RAIL8_RETRIES_COUNT} (3, 0..100) retries {@code RAIL8_RETRIES_INTERVAL}
  *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
- * @param peer the peer link's keys (CORE-5a S11, draft): {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083,
+ * @param peer the peer link's keys: {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083,
  *             0..65535, 0 any free port; 8082 is the compose async door), {@code RAIL8_PEER_HOST} (the node id),
  *             {@code RAIL8_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code RAIL8_PEER_READS} (16, 1..64 per peer)
- * @param journalCopies {@code RAIL8_JOURNAL_COPIES} (CORE-5 S10, S11, draft): 1 or 2; unset 1 in dev and ci, 2 in every
+ * @param journalCopies {@code RAIL8_JOURNAL_COPIES}: 1 or 2; unset 1 in dev and ci, 2 in every
  *                      deployed environment. A generated master key ({@code RAIL8_JOURNAL_KEY_GENERATE=true}) is one node's
- *                      alone, which no peer could read with (D-106): with more than one copy it is refused
+ *                      alone, which no peer could read with: with more than one copy it is refused
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
@@ -96,11 +96,11 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
-     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake pool's share of the Postgres
-     * connections is at least 1 and below their total, so each pool keeps a connection (D-130 draft). The intake's groups in flight leave the
-     * intake pool a connection: at most max(1, intake pool size − 1) of them (CORE-6b, D-130 draft). The node lease is renewed at least four times a lease
-     * (D-101 (1)): a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
-     * wait queue 1 to 65536 callers (D-132): an in-process {@link Pg} is held to the ranges the env reader names.
+     * held in memory whole, so the record max is at most the memory tier. The intake pool's share of the Postgres
+     * connections is at least 1 and below their total, so each pool keeps a connection. The intake's groups in flight leave the
+     * intake pool a connection: at most max(1, intake pool size − 1) of them. The node lease is renewed at least four times a
+     * lease: a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
+     * wait queue 1 to 65536 callers: an in-process {@link Pg} is held to the ranges the env reader names.
      */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
@@ -226,7 +226,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 journal(Map.of(), dataDir, nodeId, blobs.memoryTier()), MasterKeySource.fromEnv(Map.of()));
     }
 
-    /** A node whose targets have the default limits and no override, as {@link #from} reads them by default (D-099). */
+    /** A node whose targets have the default limits and no override, as {@link #from} reads them by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling) {
@@ -234,7 +234,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 TargetLimits.DEFAULTS);
     }
 
-    /** A node without CPU sampling, as {@link #from} reads it by default (D-094). */
+    /** A node without CPU sampling, as {@link #from} reads it by default. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention) {
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, Optional.empty());
@@ -252,7 +252,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, Leases.DEFAULTS);
     }
 
-    /** A node without secrets: every {@code secret://} reference of an endpoint is not set (D-081). */
+    /** A node without secrets: every {@code secret://} reference of an endpoint is not set. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs, Archives archives, Optional<S3> s3) {
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, Secrets.fromEnv(Map.of()));
@@ -271,7 +271,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies);
     }
 
-    /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
+    /** Every environment but {@code dev} and {@code ci} ({@code test} is deployed); a deployed node refuses a mock binding. */
     public boolean deployed() {
         return deployed(env);
     }
@@ -288,35 +288,35 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param database {@code RAIL8_PG_DATABASE} (rail8)
      * @param user {@code RAIL8_PG_USER} (rail8)
      * @param password {@code RAIL8_PG_PASSWORD} (empty)
-     * @param poolSize {@code RAIL8_PG_POOL_SIZE}, 2 to 1024 (21 = 5 intake + 16 work, F-33): the pooled connections of both pools together (D-130 draft)
-     * @param sslMode {@code RAIL8_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full} (D-124); unset,
+     * @param poolSize {@code RAIL8_PG_POOL_SIZE}, 2 to 1024 (21 = 5 intake + 16 work): the pooled connections of both pools together
+     * @param sslMode {@code RAIL8_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full}; unset,
      *                {@code disable} on a loopback host ({@code localhost}, {@code 127.0.0.1}, {@code ::1}), else {@code verify-full}
      * @param sslRootCert {@code RAIL8_PG_SSL_ROOT_CERT}: the PEM CA bundle that signs the server's certificate, required by a
      *                    verifying mode (never a silent fallback to plaintext or to an unverified link), refused at start when given but
      *                    missing, unreadable or empty; not a secret
-     * @param durability {@code RAIL8_PG_DURABILITY}: {@code local} or {@code ha} (D-127 draft); unset, {@code local} in a
+     * @param durability {@code RAIL8_PG_DURABILITY}: {@code local} or {@code ha}; unset, {@code local} in a
      *                   non-deployed environment ({@code dev}, {@code ci}) and {@code ha} in every deployed one, whatever the host
-     * @param intakePoolSize {@code RAIL8_PG_POOL_INTAKE}, 1 to 1023 and below {@code poolSize} (D-130 draft): the intake pool's
+     * @param intakePoolSize {@code RAIL8_PG_POOL_INTAKE}, 1 to 1023 and below {@code poolSize}: the intake pool's
      *                       share — the at-least-once saves and the journal's segment rows; unset, {@link #intakeDefault}; the work
      *                       pool keeps the rest ({@link #workPoolSize}). The split is checked by the {@link NodeConfig} constructor, not here
-     * @param poolWait {@code RAIL8_PG_POOL_WAIT}, PT0.001S to PT1M (PT5S, the save timeout; FIX-172, D-132): the longest a caller
+     * @param poolWait {@code RAIL8_PG_POOL_WAIT}, PT0.001S to PT1M (PT5S, the save timeout): the longest a caller
      *                 waits for a connection of either pool before the pool refuses it; the range is checked by the {@link NodeConfig}
      *                 constructor, not here
-     * @param poolQueue {@code RAIL8_PG_POOL_QUEUE}, 1 to 65536 (1024; FIX-172, D-132): the most callers waiting per pool; the next
+     * @param poolQueue {@code RAIL8_PG_POOL_QUEUE}, 1 to 65536 (1024): the most callers waiting per pool; the next
      *                  one is refused at once; the range is checked by the {@link NodeConfig} constructor, not here
      * @since 0.1
      */
     public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
                      Durability durability, int intakePoolSize, Duration poolWait, int poolQueue) {
 
-        /** {@code RAIL8_PG_POOL_WAIT} unset: the save timeout (ARCHITECTURE §4). */
+        /** {@code RAIL8_PG_POOL_WAIT} unset: the save timeout. */
         public static final Duration POOL_WAIT_DEFAULT = Duration.ofSeconds(5);
 
         /** {@code RAIL8_PG_POOL_QUEUE} unset. */
         public static final int POOL_QUEUE_DEFAULT = 1024;
 
         /**
-         * What an accepted message survives on the Postgres side (D-127 draft, D-114, D-115), checked once at the node's start
+         * What an accepted message survives on the Postgres side, checked once at the node's start
          * ({@code PgDurability}). Both profiles pin the node's sessions to {@code synchronous_commit=on} and refuse a server in
          * recovery.
          *
@@ -342,7 +342,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
 
         /**
-         * How the node's Postgres links are secured (D-124). TLS without verification ({@code require}, {@code prefer}) is not
+         * How the node's Postgres links are secured. TLS without verification ({@code require}, {@code prefer}) is not
          * offered: it gives no protection against an active attacker.
          *
          * @since 0.1
@@ -480,7 +480,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * The intake's group commit (CORE-6b, D-109): saves waiting while a group is in flight go together, in one transaction.
+     * The intake's group commit: saves waiting while a group is in flight go together, in one transaction.
      *
      * @param max members of a group at most; 1 = no grouping
      * @param bytes the bytes a group binds at most (a member above it goes alone)
@@ -498,13 +498,13 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
         /**
          * Groups in flight at most over an intake pool of {@code intakePoolSize}: max(1, intakePoolSize − 1), one connection left for
-         * the intake's other statements (D-130 draft).
+         * the intake's other statements.
          */
         static int bound(int intakePoolSize) {
             return Math.max(1, intakePoolSize - 1);
         }
 
-        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
+        /** The defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
         public static IntakeGroup defaults(int intakePoolSize) {
             return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(intakePoolSize)));
         }
@@ -518,13 +518,13 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param memoryTier {@code RAIL8_BLOB_MEMORY_TIER} (1 MiB, at least 4096)
      * @param memoryBudget {@code RAIL8_BLOB_MEMORY_BUDGET} (256 MiB)
      * @param durableMax {@code RAIL8_BLOB_DURABLE_MAX} (1 MiB, at most 64 MiB): the largest max body an at-least-once flow
-     *                   may declare (D-058, D-059)
+     *                   may declare
      * @since 0.1
      */
     public record Blobs(long treeLimit, long memoryTier, long memoryBudget, long durableMax) {}
 
     /**
-     * Where package archives are stored, each once under its SHA-256 (D-070); a deployed node refuses {@link Store#DIR}.
+     * Where package archives are stored, each once under its SHA-256; a deployed node refuses {@link Store#DIR}.
      *
      * @param store {@code RAIL8_ARCHIVE_STORE}, {@code dir} or {@code s3} (dir)
      * @param dir {@code RAIL8_ARCHIVE_DIR} ({@code <dataDir>/archives}): the dir store's directory
@@ -541,7 +541,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * The S3 archive store's bucket and how to reach it (D-070). Without keys the client takes the AWS SDK's default credentials
+     * The S3 archive store's bucket and how to reach it. Without keys the client takes the AWS SDK's default credentials
      * chain, which reads the process environment and the instance's role: the one place the node's credentials do not come from
      * this record.
      *
@@ -566,7 +566,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * Where a polling consumer's lease is held and for how long (D-083): the node runs the consumer only while it holds the lease.
+     * Where a polling consumer's lease is held and for how long: the node runs the consumer only while it holds the lease.
      *
      * @param valkey {@code RAIL8_VALKEY_URI}, a {@code redis://} or {@code rediss://} URI with a host (none: the leases are held
      *               in the node's memory — one node alone; two such nodes on one endpoint both poll)
@@ -599,7 +599,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * How many sends each target system may have in flight and how long a send waits for a permit (D-099), the node's one
+     * How many sends each target system may have in flight and how long a send waits for a permit, the node's one
      * {@link Targets} is built from: the {@code defaults} of every target, and the {@code overrides} by target key, each with the
      * default maxWait. Never unlimited: maxCalls 1 to 10000, maxWait PT0.001S to PT5M.
      *
@@ -621,32 +621,32 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     private static final long MIB = 1024L * 1024;
-    /** The least RAIL8_BLOB_MEMORY_TIER: the least RAIL8_JOURNAL_RECORD_MAX, which is at most the tier (CORE-4c1 r1). */
+    /** The least RAIL8_BLOB_MEMORY_TIER: the least RAIL8_JOURNAL_RECORD_MAX, which is at most the tier. */
     private static final long MEMORY_TIER_MIN = 4096;
     /** RAIL8_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
     private static final long RECORD_MAX_DEFAULT = 256 * 1024;
     private static final long GIB = 1024 * MIB;
     private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
-    /** The {@code RAIL8_PG_HOST} values that default to {@code RAIL8_PG_SSL_MODE=disable} (D-124): written as-is, never resolved. */
+    /** The {@code RAIL8_PG_HOST} values that default to {@code RAIL8_PG_SSL_MODE=disable}: written as-is, never resolved. */
     private static final Set<String> PG_LOOPBACK = Set.of("localhost", "127.0.0.1", "::1");
     /** The one path of a Valkey URI that is printed: its database number. */
     private static final Pattern DB = Pattern.compile("/\\d+");
     /** The longest ttl and renew period of a poller lease. */
     private static final Duration LEASE_MAX = Duration.ofMinutes(10);
-    /** The most calls in flight one target may be given (D-099). */
+    /** The most calls in flight one target may be given. */
     private static final int TARGET_MAX_CALLS = 10_000;
     /** A target key: {@code scheme://host[:port]}, the host a name or a bracketed IPv6 literal; nothing after the authority. */
     private static final Pattern TARGET = Pattern.compile("([a-z][a-z0-9+.-]*)://(\\[[0-9a-f:.]+]|[^\\[\\]/:?#@=,\\s]+)(?::([0-9]{1,5}))?");
-    /** The schemes whose target key may leave out the port, and the port it then names (Component.target, D-099). */
+    /** The schemes whose target key may leave out the port, and the port it then names (Component.target). */
     private static final Map<String, Integer> DEFAULT_PORTS = Map.of("http", 80, "https", 443, "sftp", 22);
-    /** The retention job's defaults (D-088): a max age of P7D, an interval of PT1H, batches of 1000 rows. */
+    /** The retention job's defaults: a max age of P7D, an interval of PT1H, batches of 1000 rows. */
     private static final Retention.Config RETENTION_DEFAULTS = new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000);
-    /** The shortest and the longest CPU-time sampling period (D-094). */
+    /** The shortest and the longest CPU-time sampling period. */
     private static final Duration CPU_SAMPLING_MIN = Duration.ofMillis(1);
     private static final Duration CPU_SAMPLING_MAX = Duration.ofMillis(100);
     private static final Duration GROUP_WINDOW_MAX = Duration.ofMillis(50);
-    /** The node lease's defaults and bound (D-101 (1)). */
+    /** The node lease's defaults and bound. */
     private static final Duration NODE_LEASE_DEFAULT = Duration.ofSeconds(30);
     private static final Duration NODE_LEASE_RENEW_DEFAULT = Duration.ofSeconds(5);
     private static final Duration NODE_LEASE_MAX = Duration.ofMinutes(10);
@@ -657,7 +657,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
     private static final int POOL_QUEUE_MAX = 65536;
     private static final String PEER_BIND = "0.0.0.0";
-    /** The most {@code RAIL8_JOURNAL_COPIES}: the owner's and one holder's (CORE-5 O2, draft). */
+    /** The most {@code RAIL8_JOURNAL_COPIES}: the owner's and one holder's. */
     private static final int COPIES_MAX = 2;
 
     /**
@@ -700,7 +700,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 (int) number(env, "RAIL8_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX));
     }
 
-    /** The {@code RAIL8_PEER_*} keys (CORE-5a S11): each range-checked naming its key. */
+    /** The {@code RAIL8_PEER_*} keys: each range-checked naming its key. */
     private static PeerConfig peer(Map<String, String> env, String nodeId) {
         return new PeerConfig(env.getOrDefault("RAIL8_PEER_BIND", PEER_BIND), (int) number(env, "RAIL8_PEER_PORT", PeerConfig.PORT, 0, 65535),
                 env.getOrDefault("RAIL8_PEER_HOST", nodeId),
@@ -708,7 +708,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 (int) number(env, "RAIL8_PEER_READS", PeerConfig.READS, 1, PeerConfig.READS_MAX));
     }
 
-    /** The {@code RAIL8_RETRIES_*} keys (CORE-14a P1): each range-checked naming its key; no growth, the interval its own cap. */
+    /** The {@code RAIL8_RETRIES_*} keys: each range-checked naming its key; no growth, the interval its own cap. */
     private static RetryPolicy retries(Map<String, String> env) {
         int count = (int) number(env, "RAIL8_RETRIES_COUNT", FlowBuilder.DEFAULT_RETRIES.attempts(), 0, RETRIES_COUNT_MAX);
         Duration interval = span(env, "RAIL8_RETRIES_INTERVAL", FlowBuilder.DEFAULT_RETRIES.initial(), RETRIES_INTERVAL_MIN.toString(),
@@ -716,7 +716,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         return new RetryPolicy(count, interval, interval, 1.0);
     }
 
-    /** {@code RAIL8_PG_DURABILITY} as written; unset, {@code ha} when {@code deployed}, else {@code local} (D-127 draft). */
+    /** {@code RAIL8_PG_DURABILITY} as written; unset, {@code ha} when {@code deployed}, else {@code local}. */
     private static Pg.Durability durability(Map<String, String> env, boolean deployed) {
         String raw = env.get("RAIL8_PG_DURABILITY");
         if (raw == null) return deployed ? Pg.Durability.HA : Pg.Durability.LOCAL;
@@ -727,7 +727,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 + "synchronous standby), was '" + raw + "'");
     }
 
-    /** {@code RAIL8_PG_SSL_MODE} as written; unset, {@code disable} on a loopback {@code host}, else {@code verify-full} (D-124). */
+    /** {@code RAIL8_PG_SSL_MODE} as written; unset, {@code disable} on a loopback {@code host}, else {@code verify-full}. */
     private static Pg.SslMode sslMode(Map<String, String> env, String host) {
         String raw = env.get("RAIL8_PG_SSL_MODE");
         if (raw == null) return PG_LOOPBACK.contains(host) ? Pg.SslMode.DISABLE : Pg.SslMode.VERIFY_FULL;
@@ -796,7 +796,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * The {@code RAIL8_JOURNAL_*} limits and directory, each with its design default (CORE-3); a value that is no number or
+     * The {@code RAIL8_JOURNAL_*} limits and directory, each with its design default; a value that is no number or
      * no ISO-8601 duration is refused here naming its key, a range by {@link JournalConfig} naming its key.
      */
     private static JournalConfig journal(Map<String, String> env, Path dataDir, String nodeId, long memoryTier) {
@@ -824,8 +824,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * The {@code RAIL8_TARGET_*} keys (D-099); a refusal names the key, and for a {@code RAIL8_TARGET_LIMITS} entry the entry —
-     * by its text, or by its position only when the value holds an {@code @} anywhere (D-099 amended): userinfo, a password among
+     * The {@code RAIL8_TARGET_*} keys; a refusal names the key, and for a {@code RAIL8_TARGET_LIMITS} entry the entry —
+     * by its text, or by its position only when the value holds an {@code @} anywhere: userinfo, a password among
      * it, may hold a comma the split cuts at, so no entry's text is shown then, and neither is its target.
      */
     private static TargetLimits targets(Map<String, String> env) {

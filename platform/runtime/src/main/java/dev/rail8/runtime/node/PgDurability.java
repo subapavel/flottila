@@ -11,8 +11,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * The node's Postgres durability profile, checked once at its start before it migrates (FIX-136, D-127 draft, D-114, D-115;
- * D-061 amended). The node pins every session to {@code synchronous_commit=on} and {@code statement_timeout=0}
+ * The node's Postgres durability profile, checked once at its start before it migrates. The node pins every session to {@code synchronous_commit=on} and {@code statement_timeout=0}
  * ({@link Node#connectOptions}); this check reads what a session of the pool actually runs with and what the server is, in one
  * statement, and refuses a server the profile's promise does not hold on. Settings are read at the start only: a standby lost
  * later makes commits wait in Postgres, bounded for the caller by the save timeout (503); the node never cancels a commit.
@@ -26,7 +25,7 @@ final class PgDurability {
     /**
      * The one read: the session's own settings, the server's recovery state and standby names, whether the role sees every
      * statistic, the {@code pg_stat_replication} entries as one array of {@code [name, state, sync_state]} (empty when none), and
-     * whether the role may run {@code pg_logical_emit_message}, the duplicate's commit barrier (FIX-137, D-128). That function is
+     * whether the role may run {@code pg_logical_emit_message}, the duplicate's commit barrier. That function is
      * looked up with {@code to_regprocedure} by its PostgreSQL 17 signature, so a server without it answers false, never an error.
      */
     static final String READ = "select current_user::text, current_setting('synchronous_commit'), pg_is_in_recovery(), "
@@ -66,7 +65,7 @@ final class PgDurability {
      * @param synchronousStandbyNames the server's {@code synchronous_standby_names}
      * @param readsAllStats the role has the privileges of {@code pg_read_all_stats} (it sees a standby's state)
      * @param standbys the {@code pg_stat_replication} rows
-     * @param emitsLogicalMessages the role may run {@code pg_logical_emit_message(boolean, text, text, boolean)} (FIX-137, D-128)
+     * @param emitsLogicalMessages the role may run {@code pg_logical_emit_message(boolean, text, text, boolean)}
      */
     record Server(String user, String synchronousCommit, boolean inRecovery, String synchronousStandbyNames, boolean readsAllStats,
                   List<Standby> standbys, boolean emitsLogicalMessages) {
@@ -93,9 +92,9 @@ final class PgDurability {
      * The pure verdict of {@code profile} on {@code server}. Both profiles refuse a session that does not commit {@code on} (a
      * pooler dropped the node's startup parameter) and a server in recovery (the host names a standby). {@code ha} also refuses an
      * empty {@code synchronous_standby_names}, a role that cannot read every statistic, then a role that may not run
-     * {@code pg_logical_emit_message} (the duplicate's commit barrier, D-128), and a server with no sync or quorum standby
+     * {@code pg_logical_emit_message} (the duplicate's commit barrier), and a server with no sync or quorum standby
      * streaming. Accepted under {@code local}, the notices state its promise and, with standbys streaming, name them and {@code ha};
-     * accepted under {@code ha}, they name D-115 for each standby a commit does not wait for.
+     * accepted under {@code ha}, they name each standby a commit does not wait for.
      */
     static Verdict verdict(Durability profile, Server server) {
         if (!server.synchronousCommit().equals("on")) {
