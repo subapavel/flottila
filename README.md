@@ -23,7 +23,8 @@ Where to look:
 
 Build at the current state, JDK 25. The repository holds three areas, each built on its own:
 
-- the platform, `platform/` and `bench/` — Maven 3.9: `mvn -B -ntp -f platform/pom.xml verify` for
+- the platform, `platform/` and `bench/` — Maven 3.9: `bin/install-jq` once (the jq step depends on
+  the engine in `jq/`), then `mvn -B -ntp -f platform/pom.xml verify` for
   the unit tests, with `-Pit` to include the Testcontainers tests (Docker required). Modules:
   `rail8-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
   `-sim`, `-archtest`, `-bench`.

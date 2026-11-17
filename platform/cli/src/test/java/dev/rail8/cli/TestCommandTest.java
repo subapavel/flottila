@@ -70,6 +70,14 @@ class TestCommandTest {
 
     static final Path FLOWTEST = FIXTURES.resolve("flowtest");
 
+    /** The {@code jq} fixture: an order mapped by a jq step, and a recursion deeper than the default under the flow's own depth. */
+    static final List<String> JQ_REPORT = List.of(
+            "PASS count: deeper than the default (flow time 0ms)",
+            "PASS count: deeper than the flow's depth (flow time 0ms)",
+            "PASS order: order mapped (flow time 0ms)",
+            "PASS order: not json (flow time 0ms)",
+            "4 cases: 4 passed, 0 failed");
+
     @TempDir Path tmp;
 
     /** A copy of {@code flowtest} under {@code tmp} without its test documents, with {@code docs} (file name under flows/ → text) instead. */
@@ -100,6 +108,20 @@ class TestCommandTest {
         Ran ran = run("test", DEMO.toString());
 
         assertEquals(DEMO_REPORT, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
+     * A flow with a jq step transforms the message end to end: the partner receives the step's compact JSON, a body that is not
+     * JSON is the sender's fault (400) and nothing is sent, and a flow's {@code maxRecursionDepth} of 20 000 lets a recursion of
+     * 15 000 levels pass, above the default of 10 000, while one of 30 000 fails the flow (500).
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aFlowWithAJqStepTransformsTheMessageEndToEnd() {
+        Ran ran = run("test", FIXTURES.resolve("jq").toString());
+
+        assertEquals(JQ_REPORT, ran.outLines(), ran.toString());
         assertEquals(0, ran.exit(), ran.toString());
     }
 

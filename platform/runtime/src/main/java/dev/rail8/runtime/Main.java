@@ -8,6 +8,7 @@ import dev.rail8.components.sftp.SftpComponent;
 import dev.rail8.runtime.node.ComponentContext;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.steps.jq.JqStepFactory;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import io.vertx.core.Vertx;
@@ -26,8 +27,8 @@ import java.util.stream.Stream;
 
 /**
  * The node's entry point and the one runtime class that names the shipped components and steps: the http and sftp
- * components, the xslt steps with the xpath language, the xsd step — explicitly, no ServiceLoader (components need
- * {@code Vertx}, which {@code api} may not name). {@link #shipped()} is the one wiring point, used by the node and the CLI.
+ * components, the xslt steps with the xpath language, the xsd step, the jq step — explicitly, no ServiceLoader (components need
+ * {@code Vertx}, which {@code api} may not name). {@link #shipped(int)} is the one wiring point, used by the node and the CLI.
  *
  * @since 0.1
  */
@@ -40,7 +41,7 @@ public final class Main {
      * languages.
      *
      * @param components builds the shipped components (http, sftp) over a node's context; never a mock
-     * @param steps the shipped step factories: the xslt steps, then the xsd step
+     * @param steps the shipped step factories: the xslt steps, the xsd step, then the jq step
      * @param languages the shipped expression languages (xpath)
      */
     public record Shipped(Function<ComponentContext, List<Component>> components, List<StepFactory> steps, List<Expressions> languages) {
@@ -50,12 +51,18 @@ public final class Main {
         }
     }
 
-    /** The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI. */
-    public static Shipped shipped() {
+    /**
+     * The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI.
+     *
+     * @param jqMaxRecursionDepth the recursion depth of a jq step whose flow sets none: the node's
+     *                            {@link NodeConfig#jqMaxRecursionDepth()}, the CLI's {@link NodeConfig#JQ_MAX_RECURSION_DEPTH_DEFAULT}
+     */
+    public static Shipped shipped(int jqMaxRecursionDepth) {
         SaxonXml xml = new SaxonXml();
+        List<StepFactory> steps = Stream.of(xml.steps(), new XsdValidate().steps(), List.<StepFactory>of(new JqStepFactory(jqMaxRecursionDepth)))
+                .flatMap(List::stream).toList();
         return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer()),
-                new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())),
-                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages());
+                new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())), steps, xml.languages());
     }
 
     /** Starts a node from the process environment; it runs on Vert.x's non-daemon threads until the JVM is told to stop. */
@@ -101,7 +108,7 @@ public final class Main {
             return new Started(2, Optional.empty(), Optional.empty());
         }
         Vertx vertx = Vertx.vertx(new VertxOptions().setUseDaemonThread(false));
-        Shipped shipped = shipped();
+        Shipped shipped = shipped(config.jqMaxRecursionDepth());
         try (ExecutorService starter = Executors.newVirtualThreadPerTaskExecutor()) {
             Node node = starter.submit(() -> Node.start(config, vertx, shipped.components(), shipped.steps(), shipped.languages())).get();
             return new Started(0, Optional.of(node), Optional.of(vertx));

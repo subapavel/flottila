@@ -187,6 +187,10 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-step-jq</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
     </dependency>
     <dependency>

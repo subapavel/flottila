@@ -1,0 +1,19 @@
+schemaVersion: 1
+kind: test
+flow: order
+mocks:
+  partner: { reply: fixtures/ack.json }
+cases:
+  - name: order mapped
+    send: fixtures/order.json
+    expect:
+      status: 200
+      steps: 3
+      sent:
+        partner: { count: 1, equals: '{"id":42,"customer":"Acme Corp","total":50}' }
+  - name: not json
+    send: fixtures/not-json.xml
+    expect:
+      status: 400
+      sent:
+        partner: { count: 0 }

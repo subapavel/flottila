@@ -44,10 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The shape these tests assume (P2-03a test-author): {@code public List<String> Deployments.validate(String name, Path dir)}
  * (blocking: called on a virtual thread, as a deploy is), and in {@code dev.rail8.runtime.Main} a public
- * {@code static Shipped shipped()} with the public record {@code Main.Shipped(Function<ComponentContext, List<Component>>
+ * {@code static Shipped shipped(int jqMaxRecursionDepth)} with the public record {@code Main.Shipped(Function<ComponentContext, List<Component>>
  * components, List<StepFactory> steps, List<Expressions> languages)} — the one wiring point of the node and the CLI.
  *
- * <p>The demo cases run over the shipped components, steps and languages ({@code Main.shipped()}) on a Vert.x of the case's own,
+ * <p>The demo cases run over the shipped components, steps and languages ({@code Main.shipped(int)}) on a Vert.x of the case's own,
  * from copies of {@code examples/demo} rewritten in a temp directory (each rewrite asserted); the dry-build cases over
  * {@link Doors}, whose events, producers and gates witness what was built, started and held.
  */
@@ -104,10 +104,10 @@ class DeploymentsValidateTest {
                 messages, dlq, queue, () -> 0L, records, shelf);
     }
 
-    /** Deployments of the environment {@code rail8Env} over what {@code Main.shipped()} wires: the node's components, steps and languages. */
+    /** Deployments of the environment {@code rail8Env} over what {@code Main.shipped(int)} wires: the node's components, steps and languages. */
     Deployments shipped(String rail8Env) {
         if (vertx == null) vertx = Vertx.vertx();
-        Main.Shipped shipped = Main.shipped();
+        Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
         List<Component> built = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock()));
         Map<String, Component> byScheme = built.stream().collect(Collectors.toMap(Component::scheme, c -> c));
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), byScheme);
