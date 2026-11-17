@@ -25,23 +25,21 @@ import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
 /**
- * The writer (ADR-0015, ADR-0027): prints a value as jq's {@code -c} does, or pretty as jq does by default, into a
- * 64 KiB buffer, which it drains into a {@link Target} whenever it is full and once at the end. It walks containers,
- * a document's and built ones alike, with its own stack, so depth costs no Java frames (#64). One per Workspace; not
- * thread-safe.
+ * The writer: prints a value as jq's {@code -c} does, or pretty as jq does by default, into a 64 KiB buffer, which it
+ * drains into a {@link Target} whenever it is full and once at the end. It walks containers, a document's and built
+ * ones alike, with its own stack, so depth costs no Java frames. One per Workspace; not thread-safe.
  *
- * <p>null, the booleans and tag-5 strings are their bytes. A number is copied when it is CANONICAL (ADR-0012) and is
- * written in its canonical form otherwise (#36); a filter's literal number is its canonical form (#61); a computed
- * number is jq's {@code jvp_dtoa_fmt} layout of its double (#65, ADR-0012); a tag-6 string,
- * a tag-6 key and a built string are re-escaped as jq's {@code jvp_dump_string} (#35). A document's object prints each
- * key at its first position with its last value (ADR-0002), through the plan its key proof gives, or its key entries
- * in order when the proof finds no repeat; the proof charges the printer's run state as the writer's ticks (ADR-0044).
- * A built object prints its key list (#64). A value inside
- * more than {@link #MAX_DEPTH} containers prints as {@code <skipped: too deep>}, as jq's does (jq-ref 1.8.2, observed:
- * DeepBuiltArrayTest), so the stack never holds more than {@code MAX_DEPTH + 1} containers. A target's exception, or a
- * document found stale after a drain, in the middle of a value leaves what was drained before it written.
+ * <p>null, the booleans and tag-5 strings are their bytes. A number is copied when it is CANONICAL and is written in its
+ * canonical form otherwise; a filter's literal number is its canonical form; a computed number is jq's
+ * {@code jvp_dtoa_fmt} layout of its double; a tag-6 string, a tag-6 key and a built string are re-escaped as jq's
+ * {@code jvp_dump_string}. A document's object prints each key at its first position with its last value, as jq
+ * does, through the plan its key proof gives, or its key entries in order when the proof finds no repeat; the proof
+ * charges the printer's run state as the writer's ticks. A built object prints its key list. A value inside more than
+ * {@link #MAX_DEPTH} containers prints as {@code <skipped: too deep>}, as jq 1.8.2's does, so the stack never holds
+ * more than {@code MAX_DEPTH + 1} containers. A target's exception, or a document found stale after a drain, in the
+ * middle of a value leaves what was drained before it written.
  *
- * <p>Pretty (#37) changes only the layout of containers: each entry of a non-empty container starts on a new line,
+ * <p>Pretty changes only the layout of containers: each entry of a non-empty container starts on a new line,
  * indented by two spaces a level, a key is followed by {@code ": "}, and the closing bracket is on its own line at the
  * container's indent. An empty container is {@code []} or {@code {}}, as in compact output.
  */
@@ -75,7 +73,7 @@ public final class Printer implements CanonicalForm.Out {
 
   /**
    * Where a tag-6 string's escape pass goes before it is re-escaped. It grows to at most {@link #CAPACITY}; a longer
-   * string decodes into an array of its own, dropped after it (architect's answer to #35 Open 3: bounded memory).
+   * string decodes into an array of its own, dropped after it, so the memory a printer keeps stays bounded.
    */
   private byte[] scratch = new byte[0];
 
@@ -86,7 +84,7 @@ public final class Printer implements CanonicalForm.Out {
    * The open containers, innermost last: a document's array, or its object whose key proof found its keys distinct, as
    * its {@link Document}; a document's object with a repeated key as the plan its proof gave
    * ({@link dev.rail8.jq.internal.value.ObjectWalk#plan}); a built one as itself. No walk object is made per
-   * printed object (#85). A cleared slot holds null, so a printed value is not kept after its line.
+   * printed object. A cleared slot holds null, so a printed value is not kept after its line.
    */
   private Object[] open = new Object[16];
 
@@ -96,7 +94,7 @@ public final class Printer implements CanonicalForm.Out {
    */
   private int[] cursors = new int[32];
 
-  /** What the key proofs of a document's objects charge, through {@link RunState#tickWritten} (ADR-0044). */
+  /** What the key proofs of a document's objects charge, through {@link RunState#tickWritten}. */
   private final RunState state;
 
   /** A printer whose key proofs charge a run state of its own, which no run reads: a view's text outside a run. */
@@ -104,7 +102,7 @@ public final class Printer implements CanonicalForm.Out {
     this(new RunState());
   }
 
-  /** A printer whose key proofs charge {@code state}, its Workspace's (ADR-0008, ADR-0030, ADR-0044). */
+  /** A printer whose key proofs charge {@code state}, its Workspace's. */
   public Printer(RunState state) {
     this.state = state;
   }
@@ -118,7 +116,7 @@ public final class Printer implements CanonicalForm.Out {
    */
   private Document doc;
 
-  /** Prints {@code v}, pretty or compact, and one LF, then drains everything into {@code target} (ADR-0027). */
+  /** Prints {@code v}, pretty or compact, and one LF, then drains everything into {@code target}. */
   public void line(JqValue v, boolean pretty, Target target) {
     // The document of an earlier line may be closed by now; a built value has none to check.
     doc = null;
@@ -162,7 +160,7 @@ public final class Printer implements CanonicalForm.Out {
 
   /**
    * The compact text of {@code v}, read or built, whose read objects' key proofs charge {@code state}: a run's print of
-   * a value into a string, {@code tojson}, {@code tostring}, {@code @text} and interpolation (ADR-0044 as amended).
+   * a value into a string, {@code tojson}, {@code tostring}, {@code @text} and interpolation.
    *
    * @throws dev.rail8.jq.JqTermination with cause {@code STALE_VIEW} when an entry's document is dropped
    */
@@ -178,7 +176,7 @@ public final class Printer implements CanonicalForm.Out {
   /**
    * The first {@code n} bytes of {@code v}'s compact text, or all of it when it is shorter: what an error shows of a
    * value (ErrorDump). It prints no more than the first drain, a buffer at most, so a long value costs no more; the
-   * key proofs of its read objects charge {@code state}, the run's (ADR-0044 as amended).
+   * key proofs of its read objects charge {@code state}, the run's.
    */
   public static byte[] head(RunState state, JqValue v, int n) {
     byte[][] first = new byte[1][];
@@ -208,7 +206,7 @@ public final class Printer implements CanonicalForm.Out {
     }
   }
 
-  /** The byte length of the scratch this printer keeps between values (#35 Open 3). */
+  /** The byte length of the scratch this printer keeps between values. */
   public int retainedScratch() {
     return scratch.length;
   }
@@ -326,7 +324,7 @@ public final class Printer implements CanonicalForm.Out {
   }
 
   /**
-   * Prints the entry at tape index {@code at} of {@code d}, after checking that the document is live (ADR-0026), as
+   * Prints the entry at tape index {@code at} of {@code d}, after checking that the document is live, as
    * {@link #value} prints a value.
    */
   private int entry(Document d, int at, int depth) {
@@ -383,7 +381,7 @@ public final class Printer implements CanonicalForm.Out {
     return Tape.tag(tape[object]) == Tape.OBJECT && plan[plan.length - 1] < Tape.end(tape, object);
   }
 
-  /** A built object's key: a built string, or a document's string, its document checked first (ADR-0026). */
+  /** A built object's key: a built string, or a document's string, its document checked first. */
   private void key(JqString k) {
     switch (k) {
       case BuiltString s -> built(s);
@@ -407,7 +405,7 @@ public final class Printer implements CanonicalForm.Out {
         }
       }
       case Tape.STRING_REENCODE -> string(bytes, entry);
-      // Tape.NULL, FALSE, TRUE and STRING: a scalar's span is its byte length (ADR-0002).
+      // Tape.NULL, FALSE, TRUE and STRING: a scalar's span is its byte length.
       default -> put(bytes, Tape.off(entry), span);
     }
   }
@@ -552,7 +550,7 @@ public final class Printer implements CanonicalForm.Out {
 
   /**
    * Drains a full buffer in the middle of a value, then checks the document again when the value has one: the target
-   * is host code and may have read into the same Workspace (ADR-0027). Only a document's value, a built string, a
+   * is host code and may have read into the same Workspace. Only a document's value, a built string, a
    * built container or a filter's literal number fills the buffer: null and a boolean alone are at most five bytes and
    * start in an empty one. A built string and a literal number have no document; a built container has its views'.
    */

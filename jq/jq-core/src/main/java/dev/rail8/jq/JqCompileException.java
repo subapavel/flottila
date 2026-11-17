@@ -3,11 +3,11 @@ package dev.rail8.jq;
 import java.util.List;
 
 /**
- * A filter that does not compile (ADR-0016, ADR-0031). Its message is jq's command-line text: every error block (the
+ * A filter that does not compile. Its message is jq's command-line text: every error block (the
  * message, its position, the source line and carets), joined by LF, then {@code jq: N compile error} or
  * {@code jq: N compile errors}. Its line and column are the first block's, 1-based and counted in bytes of the filter's
  * UTF-8: the line is the LFs before the error plus 1, the column the bytes since that line's start plus 1. A Stub ends
- * with one too, whose message is its one block and starts with {@code jqj stub: } (ADR-0024).
+ * with one too, whose message is its one block and starts with the Stub mark, {@code Stub.PREFIX}.
  */
 public final class JqCompileException extends JqException {
   private static final long serialVersionUID = 1L;
@@ -28,7 +28,7 @@ public final class JqCompileException extends JqException {
 
   /**
    * jq's compile errors: {@code blocks} joined by LF, then jq's count line; {@code line} and {@code column} are the
-   * first block's (ADR-0031). The blocks are copied, so a later change to {@code blocks} changes nothing here.
+   * first block's. The blocks are copied, so a later change to {@code blocks} changes nothing here.
    */
   public JqCompileException(List<String> blocks, int line, int column) {
     this(blocks.toArray(String[]::new), line, column);

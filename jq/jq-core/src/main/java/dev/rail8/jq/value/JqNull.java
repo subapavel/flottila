@@ -1,6 +1,6 @@
 package dev.rail8.jq.value;
 
-/** jq's null (ADR-0003). */
+/** jq's null. */
 public enum JqNull implements JqValue {
   NULL;
 

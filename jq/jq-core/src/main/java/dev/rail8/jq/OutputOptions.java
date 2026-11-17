@@ -1,8 +1,8 @@
 package dev.rail8.jq;
 
 /**
- * How a {@link JsonWriter} prints (ADR-0015, ADR-0024). Built by factories; a later option arrives as a
- * factory or a wither, never as a constructor parameter.
+ * How a {@link JsonWriter} prints. Built by factories; a new option comes as a factory or a wither, never as a
+ * constructor parameter.
  */
 public final class OutputOptions {
   private static final OutputOptions COMPACT = new OutputOptions();

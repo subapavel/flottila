@@ -3,7 +3,7 @@ package dev.rail8.jq;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq's catchable error, ending an evaluation that did not catch it (ADR-0016). It carries jq's error
+ * jq's catchable error, ending an evaluation that did not catch it. It carries jq's error
  * value; the text a host prints is made from that value, so the exception has no message of its own.
  */
 public final class JqFilterException extends JqException {

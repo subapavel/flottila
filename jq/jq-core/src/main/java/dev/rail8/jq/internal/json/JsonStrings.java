@@ -29,7 +29,7 @@ import dev.rail8.jq.internal.value.Tape;
 import java.util.Arrays;
 
 /**
- * jq's decoding of a JSON string (ADR-0015 and its #35 amendment, F-26), in jq's two steps: the escape-sequence pass
+ * jq's decoding of a JSON string, in jq's two steps: the escape-sequence pass
  * of {@code found_string} ({@link #unescape}), then {@code jv_string_sized}'s replacement of each sequence that
  * {@code jvp_utf8_next} ({@link #step}) calls invalid by one U+FFFD, over the escape-sequence pass's output and the raw
  * bytes together ({@link #decode(byte[], int, int)}). The input is a string the reader accepted, so its escape
@@ -125,7 +125,7 @@ public final class JsonStrings {
   /**
    * {@code jvp_utf8_next} at {@code s[i]}, before {@code end}: the length of the sequence there, negated when jq's code
    * point is -1. A bad lead byte or a stray continuation takes one byte; a sequence cut by {@code end} takes every byte
-   * left (F-26); a missing continuation takes the bytes before it; an overlong, surrogate or too large one takes all.
+   * left; a missing continuation takes the bytes before it; an overlong, surrogate or too large one takes all.
    */
   static int step(byte[] s, int i, int end) {
     int first = s[i] & 0xFF;
@@ -210,9 +210,9 @@ public final class JsonStrings {
   /**
    * {@code found_string}'s checks over {@code b[from, to)}, a string's text between its quotes, when every byte of it is
    * in an escape sequence, a backslash and its letter (or the U+FFFD of a bad byte), as in the filter lexer's escape run
-   * with its bad UTF-8 replaced (GLOSSARY "Escape run"): jq's
-   * message for the first bad sequence, or null when all are well formed. A {@code \\u} needs four bytes before
-   * {@code to}, all hex digits, and a high surrogate a {@code \\u} low surrogate right after it.
+   * (the longest run of escape sequences in a filter's string literal, which jq checks as one JSON string) with its
+   * bad UTF-8 replaced: jq's message for the first bad sequence, or null when all are well formed. A {@code \\u}
+   * needs four bytes before {@code to}, all hex digits, and a high surrogate a {@code \\u} low surrogate right after it.
    */
   public static String escapeError(byte[] b, int from, int to) {
     int in = from;

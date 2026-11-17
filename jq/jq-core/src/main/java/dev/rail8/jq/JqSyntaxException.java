@@ -1,7 +1,7 @@
 package dev.rail8.jq;
 
 /**
- * A malformed document, thrown by reading (ADR-0016): jq's text, the byte offset and the 1-based line and
+ * A malformed document, thrown by reading: jq's text, the byte offset and the 1-based line and
  * column. Inside a filter a syntax error is a {@link JqFilterException} instead.
  */
 public final class JqSyntaxException extends JqException {

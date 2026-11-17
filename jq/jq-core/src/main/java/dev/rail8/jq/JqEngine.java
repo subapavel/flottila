@@ -11,8 +11,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Compiles filters (ADR-0016). Immutable and thread-safe; it keeps no filter. It carries its limits, which every run
- * of its filters takes as its budgets (ADR-0030), its host, which nothing reads before spec 2, and its compile mode.
+ * Compiles filters. Immutable and thread-safe; it keeps no filter. It carries its limits, which every run of its
+ * filters takes as its budgets, its host, which no run reads, and its compile mode.
  */
 public final class JqEngine {
   private final Limits limits;
@@ -33,8 +33,8 @@ public final class JqEngine {
   /**
    * Compiles {@code text}, which declares no host variable: {@link #compile(String, Set)} with none.
    *
-   * @throws JqCompileException with jq's error blocks for a lexical, syntax or recovery error (ADR-0031), jq's
-   *     not-given error for a program without a top-level filter, jq's error for each variable not defined, or a
+   * @throws JqCompileException with jq's error blocks for a lexical, syntax or recovery error, jq's not-given
+   *     error for a program without a top-level filter, jq's error for each variable not defined, or a
    *     Stub's
    */
   public JqFilter compile(String text) {
@@ -43,17 +43,16 @@ public final class JqEngine {
 
   /**
    * Compiles {@code text} with the host variables {@code variables}, names without their {@code $}, each read as
-   * {@code $name} anywhere in the filter and given its value by each run's {@link Bindings} (ADR-0016, ADR-0038): parses
-   * jq's whole grammar, then resolves it (ADR-0032). Resolved so far: navigation, {@code |}, {@code ,}, literals,
-   * constructions, arithmetic, comparisons, {@code and}, {@code or}, {@code not}, {@code //}, {@code as} bindings and
-   * patterns, {@code ?//}, {@code $__loc__} and string interpolation; any other construct is a Stub.
+   * {@code $name} anywhere in the filter and given its value by each run's {@link Bindings}: parses jq's whole
+   * grammar, then resolves it into the IR. A construct the engine does not build, such as the module directive and
+   * imports, is a Stub.
    *
-   * @throws JqCompileException with jq's error blocks for a lexical, syntax or recovery error (ADR-0031), jq's
-   *     not-given error for a program without a top-level filter, jq's error for each variable neither declared nor
-   *     bound by {@code as}, or a Stub's
+   * @throws JqCompileException with jq's error blocks for a lexical, syntax or recovery error, jq's not-given
+   *     error for a program without a top-level filter, jq's error for each variable neither declared nor bound by
+   *     {@code as}, or a Stub's
    */
   public JqFilter compile(String text, Set<String> variables) {
-    // ADR-0038: the declared names, sorted, take the parameter slots.
+    // The declared names, sorted, take the parameter slots, so a slot does not depend on the order of the set.
     List<String> names = List.copyOf(new TreeSet<>(variables));
     Resolver.Resolved resolved = Resolver.resolved(Parser.parse(text), names);
     return new JqFilter(Compiler.compile(resolved.program(), names.size(), compileMode), resolved, limits, names);
@@ -64,7 +63,7 @@ public final class JqEngine {
     return new Workspace();
   }
 
-  /** The compile mode of this engine's filters; engine-internal, for the compile-mode oracle (ADR-0018, #60). */
+  /** The compile mode of this engine's filters; engine-internal, for the compile-mode oracle. */
   CompileMode compileMode() {
     return compileMode;
   }
@@ -91,7 +90,7 @@ public final class JqEngine {
 
     /**
      * Sets the compile mode, {@link CompileMode#OPTIMISED} by default. Engine-internal: the compile-mode oracle reaches
-     * it by reflection (ADR-0018, #60).
+     * it by reflection.
      *
      * @throws NullPointerException if {@code compileMode} is null
      */

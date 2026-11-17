@@ -36,12 +36,12 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's {@code jv_dump_string_trunc} into its 30-byte buffer (ADR-0015): what an error text shows of a value. A
+ * jq 1.8.2's {@code jv_dump_string_trunc} into its 30-byte buffer: what an error text shows of a value. A
  * compact text of at most 29 bytes is shown whole. A longer one is cut to 29 bytes: a string keeps 25 bytes and ends
  * in {@code ..."}, an array in {@code ...]} and an object in {@code ...}}; a number keeps 26 bytes and ends in
- * {@code ...}. The cut steps back to the start of a character, as jq's {@code jvp_utf8_backtrack} does (jq-ref 1.8.2,
- * recorded: index/array-key-*, iterate/cut-*; observed 2026-11-12: an array key on a string shows
- * {@code [1111111111,2222222222,33...]}, an object key on an object {@code {"aaaaaaaaaaaaaaaaaaaaa":...}}).
+ * {@code ...}. The cut steps back to the start of a character, as jq's {@code jvp_utf8_backtrack} does. With jq 1.8.2 an
+ * array key on a string shows {@code [1111111111,2222222222,33...]}, an object key on an object
+ * {@code {"aaaaaaaaaaaaaaaaaaaaa":...}}.
  */
 public final class ErrorDump {
   /** The longest text shown whole: jq's buffer less its NUL. */
@@ -49,7 +49,7 @@ public final class ErrorDump {
 
   private ErrorDump() {}
 
-  /** What an error text shows of {@code v}, the key proofs of its read objects charged to {@code state} (ADR-0044). */
+  /** What an error text shows of {@code v}, the key proofs of its read objects charged to {@code state}. */
   public static String of(RunState state, JqValue v) {
     int closing =
         switch (v) {

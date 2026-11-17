@@ -3,7 +3,7 @@ package dev.rail8.jq;
 import dev.rail8.jq.internal.value.Document;
 import dev.rail8.jq.value.JqValue;
 
-/** A document that was read (ADR-0016). Closing it makes its views stale (ADR-0026). */
+/** A document that was read. Closing it makes its views stale. */
 public final class JsonDoc implements AutoCloseable {
   private final Document document;
 
