@@ -349,9 +349,99 @@ expected outputs, including runs observed on PO and CPI, tests it.
 The platform does not use the engine yet: no step runs a mapping.
 
 **Planned**
-- A step that runs a mapping in a flow.
+- A step that runs a mapping in a flow. Its contract is agreed and follows this list.
 - A bytecode tier for speed, later.
-- A point where an importer of SAP PO and CPI message mappings plugs in.
+- A point where an importer of SAP PO and CPI message mappings plugs in, with a contract of its own
+  that is designed first. It runs at design time, before compile, and writes a canonical
+  `*.mapping.json` and its schema files into a package. The step and the embedding API do not change
+  for it, and nothing is imported at deploy time: the reviewed file in git is what runs.
+
+The contract of the mapping step, engine side. A module `mapping/engine/embed`
+(`dev.rail8.mapping:rail8-mapping-embed`, JPMS `dev.rail8.mapping.embed`) is the engine's embedding
+API: the one engine package with a compatibility promise. It requires `dev.rail8.mapping.api`
+without `transitive`, exports only its own package, and its signatures use JDK types and its own.
+
+```java
+public final class Mapping {                  // immutable; any number of concurrent runs
+  public static Mapping compile(byte[] model, BundleFiles files) throws MappingRefusedException;
+  public String mediaType();                  // "application/xml" while the engine writes XML only
+  public byte[] run(byte[] input, long maxOutputBytes, OffsetDateTime now)
+      throws RunFailure, InterruptedException;
+}
+@FunctionalInterface public interface BundleFiles {   // the only way compile reads a schema file
+  byte[] read(BundleReference reference) throws IOException;
+}
+public sealed interface BundleReference {     // the engine parses the two spellings of a reference
+  String spelling();                          // as the mapping file writes it
+  record Relative(String spelling, String path) implements BundleReference {}  // ../structures/a.xsd
+  record Packaged(String spelling, String name, String version, String path)   // common@1.4.0:/a.xsd,
+      implements BundleReference {}                                            //   path "a.xsd"
+}
+public final class MappingRefusedException extends Exception {
+  public record Problem(String code, String at, String message) {}
+  public List<Problem> problems();            // at least one, in the engine's diagnostic order
+}
+public final class RunFailure extends Exception {
+  public enum Reason { MALFORMED_INPUT, DATA_ERROR, OUTPUT_TOO_LARGE }   // reasons may be added
+  public Reason reason();
+  public Optional<String> code();             // DATA_ERROR: po:MINOCCURS, err:FORG0001, ...
+  public Optional<String> authoringId();      // DATA_ERROR: the target field mapping or function box
+}
+```
+
+- `compile` compiles as a deploy does, optimised and untraced: load, both structures, the
+  fingerprint check, lowering. It calls `files` on the calling thread, once for each reference a
+  schema bundle lists (the source's first), and for nothing else. It refuses with every problem of
+  the first stage that refuses: bytes that are no JSON (`malformed-json`), the model's own checks, a
+  missing structure, a schema load error (an `IOException` from `files` is `schema-unreadable` at
+  that reference), `fingerprint-mismatch`, the checks against both structures, and every UDF box
+  the mapping reaches (`unsupported-box-kind`). An unchecked exception from `files` passes through
+  unchanged, so the host's own refusal keeps its words.
+- `run` reads all of `input` (XML without a DOCTYPE, or JSON, as the source structure says) before
+  it writes, and returns the whole output or throws, never part of it. `now` is the time every date
+  function sees, and its offset is the run's time zone; a run reads no clock and no file. Output
+  above `maxOutputBytes` (at least 1) stops the run with `OUTPUT_TOO_LARGE`. An interrupt ends it
+  with `InterruptedException`. Anything else it throws is an engine bug.
+- Memory: the host holds the input, the output is at most `maxOutputBytes`, and the engine's working
+  memory grows with the input and the mapping, with no limit of its own until one is measured.
+- A new `Reason` breaks hosts on purpose: a host maps reasons with a `switch` that has no `default`,
+  so a recompiled host does not compile and an old one fails with `MatchException`, which is retried.
+- The module's contract suite is abstract and lives in its test jar, so a later bytecode tier passes
+  the same tests. There is no mock: the engine is code in the process, not a way out of it.
+
+The contract of the mapping step, platform side. A step module `platform/steps/mapping`
+(`dev.rail8:rail8-step-mapping`) registers the step type `mapping`. It depends on `rail8-api` and
+`rail8-mapping-embed`, and it is the only platform module that depends on the mapping, and only on
+`dev.rail8.mapping.embed`; an architecture test checks both. The node and the command line ship it.
+Every CI job and documented command that builds the platform first installs the engine's `embed`
+module from the same commit (`./mvnw -f mapping/pom.xml -pl engine/embed -am install -DskipTests`).
+
+```yaml
+steps:
+  - { type: mapping, mapping: mappings/order-to-invoice.mapping.json }   # or <dependency>:<path>
+```
+
+- Options: `{"type":"object","required":["mapping"],"additionalProperties":false,"properties":
+  {"mapping":{"type":"string","minLength":1}}}`. `mapping` is a path from the package root or
+  `<dependency>:<path>`, read with `StepResources.file`. The step reads the whole body.
+- A mapping is a file of the package that a step names, as a stylesheet is; it has no `kind`. The
+  studio's layout is the convention: `mappings/<name>.mapping.json`, its schemas in `structures/`.
+- The mapping file keeps the engine's spelling of its references. A `Relative` reference resolves
+  against the mapping file through `StepResources.resolve`, inside the package or dependency that
+  holds the mapping. A `Packaged` reference is a build error naming the step and the reference,
+  until its version can be compared and the studio can refresh such a mapping.
+- The flow's hash covers the mapping file and every schema file it read, since both are read
+  through `StepResources`. The engine's version is not in it, as Saxon's is not. A refusal, a
+  fingerprint mismatch and a file outside the package are build errors naming the step, at deploy,
+  in `rail8 validate` and in `rail8 test` alike.
+- A run writes its output to the blob store under the flow's body limit, with `content-type` from
+  `mediaType()`. Its faults: `MALFORMED_INPUT` is MALFORMED; `OUTPUT_TOO_LARGE` is INVALID, as a body
+  over the limit is; `DATA_ERROR` is INTERNAL and retried, because a data error need not come from the
+  input (a box with a bad constant fails every message); an interrupt is rethrown with the flag
+  restored, so the worker leaves the item to its lease.
+- UDFs, and what a mapping may later read besides the body (headers, properties, mapping
+  parameters), wait for the platform's data model. They come as additions, such as a `run` that
+  takes a context.
 
 ## 8. jq
 
