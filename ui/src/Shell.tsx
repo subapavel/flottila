@@ -18,7 +18,7 @@ import {
   Tabs,
   TabTitleText,
 } from '@patternfly/react-core';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Screen } from './screens';
 import { closeTab, noTabs, openTab } from './tabs';
 
@@ -32,12 +32,30 @@ export interface ShellProps {
 /**
  * The application's shell: a masthead with the brand and the button that shows or hides the navigation, the
  * navigation listing every screen, and the tabs of the open screens. Choosing a screen in the navigation opens it in a
- * new tab, or shows the tab it already has; each tab closes with its close button. With no tab open the main area says
- * so.
+ * new tab, or shows the tab it already has; each tab closes with its close button. A screen may open tabs of its own,
+ * such as one for each message it found, through the function its `render` is given. With no tab open the main area
+ * says so.
  */
 export function Shell({ screens, start }: ShellProps) {
   const [tabs, setTabs] = useState(() => (start === undefined ? noTabs : openTab(noTabs, start)));
+  // the tabs screens opened, by id; the navigation's screens are looked up in `screens`
+  const [opened, setOpened] = useState<ReadonlyMap<string, Screen>>(() => new Map());
   const byId = new Map(screens.map((screen) => [screen.id, screen]));
+
+  const open = useCallback((screen: Screen) => {
+    setOpened((current) => (current.has(screen.id) ? current : new Map(current).set(screen.id, screen)));
+    setTabs((current) => openTab(current, screen.id));
+  }, []);
+
+  const close = (id: string) => {
+    setTabs((current) => closeTab(current, id));
+    setOpened((current) => {
+      if (!current.has(id)) return current;
+      const rest = new Map(current);
+      rest.delete(id);
+      return rest;
+    });
+  };
 
   const masthead = (
     <Masthead>
@@ -88,16 +106,16 @@ export function Shell({ screens, start }: ShellProps) {
             aria-label="Open screens"
             activeKey={tabs.active}
             onSelect={(_event, key) => setTabs((current) => openTab(current, String(key)))}
-            onClose={(_event, key) => setTabs((current) => closeTab(current, String(key)))}
+            onClose={(_event, key) => close(String(key))}
             usePageInsets
             mountOnEnter
           >
             {tabs.open.map((id) => {
-              const screen = byId.get(id);
+              const screen = opened.get(id) ?? byId.get(id);
               const title = screen?.title ?? id;
               return (
                 <Tab key={id} eventKey={id} title={<TabTitleText>{title}</TabTitleText>} closeButtonAriaLabel={`Close ${title}`}>
-                  {screen?.render()}
+                  {screen?.render(open)}
                 </Tab>
               );
             })}

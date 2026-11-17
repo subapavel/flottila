@@ -472,9 +472,21 @@ the local Maven repository, put there by `bin/install-jq`; the engine's own test
 The Rail8 web application in `ui/` is React with PatternFly 6, built from PatternFly components
 and design tokens only. Its shell has a masthead, a navigation listing every screen and the tabs of
 the open screens: choosing a screen opens it in a tab, or shows the tab it already has, and each tab
-closes on its own. The tabs live in the page's memory; a reload starts again with the Home screen,
-the only screen so far. Screens are registered in one list (`ui/src/screens.tsx`). The application
-talks to no server yet, and no node serves it; `npm run dev` runs it.
+closes on its own, and a screen may open tabs of its own. The tabs live in the page's memory; a
+reload starts again with the Home screen. Screens are registered in one list (`ui/src/screens.tsx`).
+
+The Messages screen finds messages by business key (name and value, a page at a time) or by id, and
+opens each one found in a tab of its own. A message's tab shows its flow, the state of its latest
+attempt and every attempt step by step: outcome, start, wall and CPU time, payload size and error.
+The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
+attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
+
+No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
+passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
+`http://127.0.0.1:8081`), as the node answers no browser: it takes only GET and POST from its own
+pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops every header but
+`Accept` and `Content-Type`, and adds the token from `RAIL8_ADMIN_TOKEN` itself, so the browser
+never holds it.
 
 The admin API answers JSON and refuses browsers. The mapping studio in `mapping/ui` is a separate
 application: React with PatternFly 6, the expression canvas on React Flow. Its screens are a list of
@@ -482,8 +494,8 @@ mappings and a studio with overview, definition, test, signature and functions t
 project's public web page.
 
 **Planned**
-- First screen: find a message (by id, business key, flow, time) and see its progress step by step;
-  fast.
+- Finding messages by flow and time, which the admin API cannot search by yet.
+- A server for the UI outside development, holding the token and talking to the node the same way.
 - The mapping studio rebuilt inside it.
 - Plugins add their screens through a form generated from their JSON Schema.
 - Writing a view of a payload (how a body is shown), later and simply.

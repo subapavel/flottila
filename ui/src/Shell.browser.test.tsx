@@ -97,6 +97,32 @@ describe('Shell', () => {
     await expect.element(nav().getByRole('button', { name: 'First' })).not.toHaveAttribute('aria-current');
   });
 
+  test('opens the tabs a screen asks for, one per id, and forgets one once it is closed', async () => {
+    const opener: Screen = {
+      id: 'opener',
+      title: 'Opener',
+      render: (open) => (
+        <button type="button" onClick={() => open({ id: 'child', title: 'Child', render: () => <p>Child screen</p> })}>
+          Open child
+        </button>
+      ),
+    };
+    render([opener], 'opener');
+    await page.getByRole('button', { name: 'Open child' }).click();
+    await expect.element(tab('Child')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByText('Child screen')).toBeVisible();
+    expect(nav().getByRole('button', { name: 'Child' }).elements()).toHaveLength(0);
+
+    await tab('Opener').click();
+    await page.getByRole('button', { name: 'Open child' }).click();
+    expect(tabs().elements()).toHaveLength(2);
+
+    await page.getByRole('button', { name: 'Close Child' }).click();
+    expect(tabs().elements()).toHaveLength(1);
+    await page.getByRole('button', { name: 'Open child' }).click();
+    await expect.element(page.getByText('Child screen')).toBeVisible();
+  });
+
   test('on a narrow window hides the navigation until the Navigation button shows it', async () => {
     await page.viewport(414, 896);
     render(two, 'first');
