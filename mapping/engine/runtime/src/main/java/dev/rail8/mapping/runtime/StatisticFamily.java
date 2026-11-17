@@ -10,14 +10,14 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The function family {@code statistic} (ADR-0025 "Families", F-15), #75: each catalogue name to
- * its binder over the algebra in {@link StatisticFunctions}. A value or a numeric param that is no
- * {@code xs:decimal} stops the run with {@code err:FORG0001} at the function box (ADR-0025, F-19),
- * and {@code average} of a context without a value with {@code err:FOAR0001} (F-45). {@code
- * counter} numbers the values of its whole queue, so a counter of each target field mapping starts
- * at its initial value (an assumed reading of #37); unlike {@code index}, which numbers SUPPRESS
- * too (F-45), it keeps SUPPRESS without a number (decided, F-43). The binders are methods, not
- * lambdas of the maps, so that PIT mutates them.
+ * The function family {@code statistic}: each catalogue name to its binder over the algebra in
+ * {@link StatisticFunctions}. A value or a numeric param that is no {@code xs:decimal} stops the
+ * run with {@code err:FORG0001} at the function box, and {@code average} of a context without a
+ * value with {@code err:FOAR0001}. {@code counter} numbers the values of its whole queue, so a
+ * counter of each target field mapping starts at its initial value (an assumed reading); unlike
+ * {@code index}, which numbers SUPPRESS too, it keeps SUPPRESS without a number (decided, since PO
+ * and CPI cannot show it). The binders are methods, not lambdas of the maps, so that PIT mutates
+ * them.
  */
 final class StatisticFamily {
 
@@ -36,8 +36,8 @@ final class StatisticFamily {
   private StatisticFamily() {}
 
   /**
-   * {@code average(values)}: a context without a value is ADR-0005's division error, {@code
-   * err:FOAR0001} at the box, as PO's "Division undefined" (F-45).
+   * {@code average(values)}: a context without a value is the division error, {@code err:FOAR0001}
+   * at the box, as PO's "Division undefined".
    */
   static Node.OfQueue average(AuthoringId box, List<Node.OfQueue> inputs, List<String> params) {
     Node.OfQueue values = inputs.getFirst();

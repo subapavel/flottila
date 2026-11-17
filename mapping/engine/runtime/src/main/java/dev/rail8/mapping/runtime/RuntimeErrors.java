@@ -1,11 +1,11 @@
 package dev.rail8.mapping.runtime;
 
 /**
- * The codes of the runtime errors a mapping run raises from its data (ADR-0006, ADR-0015, ADR-0025
- * since #52): error QNames, the same names the export raises. A context function has one, {@code
- * po:<catalogue name upper-cased>}, whichever of its conditions fails; a standard function's data
- * error is the W3C code the export raises too ({@code err:FORG0001}, {@code err:FOAR0001}, ADR-0025
- * "Names and fidelity"). A test run's limit, {@code rail8:TIMEOUT}, is not one of them.
+ * The codes of the runtime errors a mapping run raises from its data: error QNames, the same names
+ * the export raises. A context function has one, {@code po:<catalogue name upper-cased>}, whichever
+ * of its conditions fails; a standard function's data error is the W3C code the export raises too
+ * ({@code err:FORG0001}, {@code err:FOAR0001}). A test run's limit, {@code rail8:TIMEOUT}, is not
+ * one of them.
  */
 public final class RuntimeErrors {
 

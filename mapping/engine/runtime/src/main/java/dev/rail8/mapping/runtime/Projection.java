@@ -9,22 +9,20 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 
 /**
- * Fills the source queues of a compiled mapping in one pass over the input (ADR-0004), in the input
- * format of the mapping's IR, which its source's root selector gives (ADR-0008 "JSON as a source at
- * run time", #98): {@link XmlProjection} or {@link JsonProjection}. Only the steps the queues name
- * are followed, and no tree is built. A queue whose context field never occurs is one empty
- * context, as in PO (ADR-0004 as amended, F-17), a structure field's too.
+ * Fills the source queues of a compiled mapping in one pass over the input, in the input format of
+ * the mapping's IR, which its source's root selector gives: {@link XmlProjection} or {@link
+ * JsonProjection}. Only the steps the queues name are followed, and no tree is built. A queue whose
+ * context field never occurs is one empty context, as in PO, a structure field's too.
  *
- * <p>The plan's entries are distinct (field, context) pairs; equal pairs share one queue
- * (ADR-0006).
+ * <p>The plan's entries are distinct (field, context) pairs; equal pairs share one queue.
  */
 sealed interface Projection permits XmlProjection, JsonProjection {
 
   /**
    * One queue of the plan: a field by its steps, its context by depth, whether it is a structure
-   * field, whose queue gets {@code ""} per occurrence (ADR-0008; #63), whether its last step is an
-   * attribute (#102), so that {@code /A/b} and {@code /A/@b} are two queues, and the depths of its
-   * JSON array properties (#98).
+   * field, whose queue gets {@code ""} per occurrence, whether its last step is an attribute, so
+   * that {@code /A/b} and {@code /A/@b} are two queues, and the depths of its JSON array
+   * properties.
    */
   record Queue(
       List<Name> field,
@@ -74,7 +72,7 @@ sealed interface Projection permits XmlProjection, JsonProjection {
     for (int k = 0; k < builders.length; k++) {
       blocks[k] = builders[k].build();
       if (blocks[k].contexts() == 0) {
-        // the context field never occurred: one empty context, {0,0} (ADR-0004 as amended, F-17)
+        // the context field never occurred: one empty context, {0,0}, as in PO
         builders[k].newContext();
         blocks[k] = builders[k].build();
       }

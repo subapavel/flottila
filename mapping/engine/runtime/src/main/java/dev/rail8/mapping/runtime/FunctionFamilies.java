@@ -6,10 +6,10 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The function families of the runtime (ADR-0025 "Families", F-15). Each family is one {@code
- * <Family>Family.java} of this package, whose package-private maps {@code QUEUE} and {@code VALUE}
- * take a catalogue name to its binder. The build lists the families in {@code FamilyIndex}, which
- * scripts/function-families.java writes into target/, so no hand-written file lists them.
+ * The function families of the runtime. Each family is one {@code <Family>Family.java} of this
+ * package, whose package-private maps {@code QUEUE} and {@code VALUE} take a catalogue name to its
+ * binder. The build lists the families in {@code FamilyIndex}, which scripts/function-families.java
+ * writes into target/, so no hand-written file lists them.
  */
 final class FunctionFamilies {
 

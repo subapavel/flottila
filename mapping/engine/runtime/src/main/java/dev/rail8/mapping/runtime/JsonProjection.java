@@ -12,13 +12,12 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 
 /**
- * The projection of a JSON input, in one pass of {@link JsonParser} (ADR-0008 "JSON as a source at
- * run time", ADR-0006 "A SourceQueue over a JSON field"): only the properties the queues name are
- * followed, every other value is skipped, and no tree is built. A field's steps are {@code $}, the
- * input's one value, and then property names. A context opens at each object its context field
- * reads, and a value is appended at each occurrence of its field: a string as it escapes, a number
- * as the input spells it, a boolean as {@code true} or {@code false}, {@code null} as {@code ""},
- * and {@code ""} for each object a structure field reads. An array property's items are the
+ * The projection of a JSON input, in one pass of {@link JsonParser}: only the properties the queues
+ * name are followed, every other value is skipped, and no tree is built. A field's steps are {@code
+ * $}, the input's one value, and then property names. A context opens at each object its context
+ * field reads, and a value is appended at each occurrence of its field: a string as it escapes, a
+ * number as the input spells it, a boolean as {@code true} or {@code false}, {@code null} as {@code
+ * ""}, and {@code ""} for each object a structure field reads. An array property's items are the
  * occurrences of its field. A value of the wrong kind reads as absent: an object or an array for a
  * leaf, a scalar or an array for a structure field, a value that is no array for an array property,
  * and an array for a property that is none. The input is still parsed whole, so it must be one

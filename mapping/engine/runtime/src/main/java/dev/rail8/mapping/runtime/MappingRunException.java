@@ -3,10 +3,10 @@ package dev.rail8.mapping.runtime;
 import dev.rail8.mapping.ir.AuthoringId;
 
 /**
- * A runtime error that stops a mapping run (ADR-0015 since #52): its code, one of {@link
- * RuntimeErrors}, and the authoring id it is raised at, the target field mapping for {@code
- * po:MINOCCURS} and the function box for a context function's data error. The output written so far
- * is undefined; a caller that needs all or nothing buffers it (ADR-0006).
+ * A runtime error that stops a mapping run: its code, one of {@link RuntimeErrors}, and the
+ * authoring id it is raised at, the target field mapping for {@code po:MINOCCURS} and the function
+ * box for a context function's data error. The output written so far is undefined; a caller that
+ * needs all or nothing buffers it.
  */
 public final class MappingRunException extends RuntimeException {
 
@@ -25,8 +25,8 @@ public final class MappingRunException extends RuntimeException {
 
   /**
    * The data error {@code code} of a function, single-value or queue, raised at its function box
-   * {@code box} (ADR-0026, F-19): its message is {@code the function box <id>: } and then {@code
-   * message}, the function's own words, as the export's {@code po:data-error} writes it.
+   * {@code box}: its message is {@code the function box <id>: } and then {@code message}, the
+   * function's own words, as the export's {@code po:data-error} writes it.
    */
   static MappingRunException dataError(
       String code, AuthoringId box, String message, Throwable cause) {

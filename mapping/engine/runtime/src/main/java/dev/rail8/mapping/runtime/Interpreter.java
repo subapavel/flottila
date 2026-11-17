@@ -27,15 +27,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Tier 0, the closure-compiled interpreter (ADR-0021). Compiling turns the IR once into a tree of
- * executable nodes over a frame: variables become slots, source queues become indexes into the
- * projection plan, a context or single-value function is bound by its name once per call site
- * (ADR-0025), and nothing is looked up by name while a mapping runs. A traced compile reports every
- * source queue, context function call and {@code Lift} it evaluates to the run's tracer, at its
- * box, every single-value call but a {@code Lift}'s body as the box's single value (#83), each
- * {@code TargetSlots}' occurrences per parent slot, at its target field mapping, and each {@code
- * TargetRepeat}'s copies per parent slot, at its origin (#83); an untraced compile has no hook at
- * all.
+ * Tier 0, the closure-compiled interpreter. Compiling turns the IR once into a tree of executable
+ * nodes over a frame: variables become slots, source queues become indexes into the projection
+ * plan, a context or single-value function is bound by its name once per call site, and nothing is
+ * looked up by name while a mapping runs. A traced compile reports every source queue, context
+ * function call and {@code Lift} it evaluates to the run's tracer, at its box, every single-value
+ * call but a {@code Lift}'s body as the box's single value, each {@code TargetSlots}' occurrences
+ * per parent slot, at its target field mapping, and each {@code TargetRepeat}'s copies per parent
+ * slot, at its origin; an untraced compile has no hook at all.
  */
 public final class Interpreter {
 
@@ -156,7 +155,7 @@ public final class Interpreter {
   /**
    * A call of a single-value function, its args' string nodes bound by the function's name. The
    * node is not traced: a call that is a box's single value is traced around it, at its box, and a
-   * call that is a {@code Lift}'s body is the {@code Lift}'s, which traces its queue (ADR-0006).
+   * call that is a {@code Lift}'s body is the {@code Lift}'s, which traces its queue.
    */
   private Node.OfString singleValueCall(FunCall c, Map<String, Integer> scope) {
     List<Node.OfString> args = new ArrayList<>();
@@ -167,9 +166,9 @@ public final class Interpreter {
   }
 
   /**
-   * A {@code Lift} (ADR-0006): its inputs' nodes in {@code scope}, and its body's node in a scope
-   * of its slot variables only, each a string frame slot of its own. Per slot, the slot's values go
-   * into those frame slots and the body reads them there.
+   * A {@code Lift}: its inputs' nodes in {@code scope}, and its body's node in a scope of its slot
+   * variables only, each a string frame slot of its own. Per slot, the slot's values go into those
+   * frame slots and the body reads them there.
    */
   private Node.OfQueue lift(Lift l, Map<String, Integer> scope) {
     Node.OfQueue[] inputs = new Node.OfQueue[l.queues().size()];
@@ -217,7 +216,7 @@ public final class Interpreter {
 
   /**
    * {@code node}, a box's single value, which reports each value it gives at {@code box} when the
-   * compile is traced (ADR-0015 {@code {atomic}}, #83).
+   * compile is traced, as an {@code {atomic}} trace entry.
    */
   private Node.OfString tracedValue(AuthoringId box, Node.OfString node) {
     if (!traced) {
@@ -231,8 +230,8 @@ public final class Interpreter {
   }
 
   /**
-   * An {@code AtomicToQueue} (ADR-0006 since #83): one context holding its value. It is not traced;
-   * its value is, at its own box.
+   * An {@code AtomicToQueue}: one context holding its value. It is not traced; its value is, at its
+   * own box.
    */
   private static Node.OfQueue atomicToQueue(Node.OfString value) {
     return frame -> QueueBlock.of(new String[] {value.eval(frame)}, new int[] {0, 1});
@@ -246,10 +245,9 @@ public final class Interpreter {
   }
 
   /**
-   * A {@code TargetSlots} (ADR-0006 since #52): its queue and parent slot in {@code scope}, and its
-   * body in {@code scope} with its slot-number variable, an {@code INTEGER} frame slot of its own,
-   * and its value variable, a {@code STRING} one. A traced compile reports its occurrences per
-   * parent slot (since #53).
+   * A {@code TargetSlots}: its queue and parent slot in {@code scope}, and its body in {@code
+   * scope} with its slot-number variable, an {@code INTEGER} frame slot of its own, and its value
+   * variable, a {@code STRING} one. A traced compile reports its occurrences per parent slot.
    */
   private Node.OfContent slots(TargetSlots s, Map<String, Integer> scope) {
     Node.OfQueue queue = (Node.OfQueue) compile(s.queue(), scope);
@@ -275,14 +273,13 @@ public final class Interpreter {
   }
 
   /**
-   * A {@code TargetRepeat} (ADR-0006; #63): its parent slot in {@code scope}, and its body in
-   * {@code scope} with its slot-number variable, an {@code INTEGER} frame slot of its own. A traced
-   * compile reports its copies per parent slot (#83). A generating block, its value when it has a
-   * value variable, is a queue in {@code scope} with a frame slot for its block, and its value
-   * variable a {@code STRING} frame slot of its own in the body's scope (#217). A generating
-   * structure field's single value, in {@code scope}, is evaluated by each copy before its body and
-   * dropped, in every compile, so its boxes are traced and its data error is raised (ADR-0006 as
-   * amended by #83); without a value the copy is its body alone.
+   * A {@code TargetRepeat}: its parent slot in {@code scope}, and its body in {@code scope} with
+   * its slot-number variable, an {@code INTEGER} frame slot of its own. A traced compile reports
+   * its copies per parent slot. A generating block, its value when it has a value variable, is a
+   * queue in {@code scope} with a frame slot for its block, and its value variable a {@code STRING}
+   * frame slot of its own in the body's scope. A generating structure field's single value, in
+   * {@code scope}, is evaluated by each copy before its body and dropped, in every compile, so its
+   * boxes are traced and its data error is raised; without a value the copy is its body alone.
    */
   private Node.OfContent repeat(TargetRepeat r, Map<String, Integer> scope) {
     Node.OfInteger parentSlot = (Node.OfInteger) compile(r.parentSlot(), scope);

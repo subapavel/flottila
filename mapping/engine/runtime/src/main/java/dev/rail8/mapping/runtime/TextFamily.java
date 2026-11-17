@@ -9,13 +9,13 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The function family {@code text} (ADR-0025 "Families", F-15), #76: the single-value functions on
- * strings. A string is counted, indexed and compared in code points, as XPath does and as the
- * export does; SAP PO counts UTF-16 units, so a character outside the BMP is a documented deviation
- * of every function whose result depends on the count or the order (ADR-0025). A truth value is
- * written {@code true} or {@code false}. {@code substring} reads its two params in the {@code
- * xs:decimal} lexical form, anything else is {@code err:FORG0001} at the function box (ADR-0025,
- * F-19). The binders are methods, not lambdas of the map, so that PIT mutates them.
+ * The function family {@code text}: the single-value functions on strings. A string is counted,
+ * indexed and compared in code points, as XPath does and as the export does; SAP PO counts UTF-16
+ * units, so a character outside the BMP is a documented deviation of every function whose result
+ * depends on the count or the order. A truth value is written {@code true} or {@code false}. {@code
+ * substring} reads its two params in the {@code xs:decimal} lexical form, anything else is {@code
+ * err:FORG0001} at the function box. The binders are methods, not lambdas of the map, so that PIT
+ * mutates them.
  */
 final class TextFamily {
 

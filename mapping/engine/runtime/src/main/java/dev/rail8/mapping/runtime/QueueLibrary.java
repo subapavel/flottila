@@ -6,10 +6,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The binding of the runtime library (ADR-0025, refining ADR-0021's queue-operation library): a
- * queue function's catalogue name, bound once per call site when the interpreter compiles, by the
- * binder of its function family (ADR-0025 "Families"). A binder parses the params into the node, so
- * nothing is looked up by name or parsed while a mapping runs.
+ * The binding of the runtime library: a queue function's catalogue name, bound once per call site
+ * when the interpreter compiles, by the binder of its function family. A binder parses the params
+ * into the node, so nothing is looked up by name or parsed while a mapping runs.
  */
 final class QueueLibrary {
 

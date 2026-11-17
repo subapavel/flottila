@@ -5,11 +5,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The binding of the single-value functions (ADR-0025): a catalogue name, bound once per call site
- * when the interpreter compiles, by the binder of its function family (ADR-0025 "Families") to a
- * string node over its args' string nodes. Such a call stands in a {@code Lift}'s body, which runs
- * it once per slot, or, over single values only, is a single value of its own: a box's value, an
- * arg of another call, or an {@code AtomicToQueue}'s value (ADR-0006 since #83).
+ * The binding of the single-value functions: a catalogue name, bound once per call site when the
+ * interpreter compiles, by the binder of its function family to a string node over its args' string
+ * nodes. Such a call stands in a {@code Lift}'s body, which runs it once per slot, or, over single
+ * values only, is a single value of its own: a box's value, an arg of another call, or an {@code
+ * AtomicToQueue}'s value.
  */
 final class SingleValueLibrary {
 
@@ -20,7 +20,7 @@ final class SingleValueLibrary {
     /**
      * The node of a call over {@code args}: the inputs, then the params, in catalogue order.
      *
-     * @param box the call's function box, where its data error is raised (ADR-0026)
+     * @param box the call's function box, where its data error is raised
      */
     Node.OfString bind(AuthoringId box, List<Node.OfString> args);
   }
@@ -34,7 +34,7 @@ final class SingleValueLibrary {
    * The node of a call of {@code name} over {@code args}, which the IR verifier has checked against
    * the call's {@code FunctionRef}: the inputs, then the params, in catalogue order.
    *
-   * @param box the call's function box, where its data error is raised (ADR-0026)
+   * @param box the call's function box, where its data error is raised
    * @throws IllegalArgumentException when no single-value function is called {@code name}: lowering
    *     calls only functions of the catalogue, so this is a compiler bug
    */
