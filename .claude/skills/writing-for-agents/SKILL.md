@@ -1,26 +1,19 @@
 ---
 name: writing-for-agents
-description: Writing documents agents read. Use when editing CLAUDE.md, AGENTS.md, docs/WORKFLOW.md, a .claude/agents definition, or a skill.
+description: Writing documents agents read. Use when editing AGENTS.md, CLAUDE.md, a .claude/agents definition, or a skill.
 ---
 
 <!-- Adapted from mattpocock/skills (MIT, see ../LICENSE-mattpocock-skills); Rail8 section added. -->
 
 ## Rail8 targets
 
-Apply this reference to every steering file in this repo, and keep its limits:
+Apply this reference to every steering file in this repo:
 
-- `CLAUDE.md` is loaded into every turn of every agent: the most expensive line in the repo. It
-  holds rules and pointers; procedure lives in `docs/WORKFLOW.md`, roles in `AGENTS.md`. A meaning
-  stated in both is a duplication finding: keep the authoritative copy, leave a pointer.
-- `.claude/agents/*.md`: the body is the whole context of a subagent. Self-check lists mirror the
-  reviewer memory (`docs/WORKFLOW.md` §10 E); a lesson goes into both in the same commit.
-- `.claude/agent-memory/<name>/MEMORY.md`: under 120 lines, durable facts only.
-- `agent/HANDOFF.md`: at most 20 lines of at most 160 characters.
-- A mechanical rule (a banned API, an import shape, a file location) belongs in ArchUnit, CI or a
-  hook, not in prose. Prose is for judgement calls.
-- The architect never edits `.claude/` directly: the change goes to `agent/patches/<name>.patch`
-  for the owner to apply and commit (`docs/WORKFLOW.md` §10 D).
-
+- `AGENTS.md` is loaded into every turn of every agent (`CLAUDE.md` only imports it): the most
+  expensive lines in the repo. Rules and pointers only; a meaning stated twice keeps one copy.
+- `.claude/agents/*.md`: the body is the whole context of a subagent.
+- A mechanical rule (a banned API, an import shape, a file location) belongs in ArchUnit or CI,
+  not in prose. Prose is for judgement calls.
 
 Reference for writing any document an agent consumes: a skill, an `AGENTS.md` / `CLAUDE.md`, a doc reached by a pointer. The packaging differs; the writing does not: the same levers make each one predictable, since the agent takes the same _process_ every run rather than producing the same output.
 

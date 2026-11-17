@@ -1,8 +1,7 @@
 # Workflow
 
-The process is the repository's: the root `CLAUDE.md`, `AGENTS.md` and `docs/WORKFLOW.md` (D-151).
-This file keeps only the mapping's checks, ratchet and CI, under their old number; the whole workflow
-as it was is `docs/archive/WORKFLOW-until-2026-11-15.md`.
+The way of working is the repository's: `AGENTS.md` at the root. This file keeps only the
+mapping's checks, ratchet and CI.
 
 ## 6. Checks, ratchet, CI
 

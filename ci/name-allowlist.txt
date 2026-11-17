@@ -4,17 +4,10 @@
 # when its reason goes away. Prefer a literal to `*` and a path to a glob.
 
 # History keeps the old name, whole files (D-148).
-docs/PROGRESS.md | * | history: the progress log of the tasks done under the old name (D-148)
 docs/DECISIONS.md | * | history: decisions are not rewritten (D-148)
 docs/archive/** | * | history: archived documents (D-148)
 docs/findings/** | * | history: findings are records of what was found (D-148)
 docs/review/** | * | history: review reports of past commits (D-148)
-agent/packets/** | * | history: task packets as they were handed out (D-148)
-agent/archive/** | * | history: archived agent material (D-148)
-agent/work/** | * | history: tracked work files, diffs and reports of past tasks (D-148)
-agent/review/** | * | history: reviewer verdicts of past tasks (D-148)
-agent/patches/** | * | history: patches as they were taken (D-148)
-agent/wip/** | * | history: parked work-in-progress patches (D-148)
 issues/** | * | history: issue records (D-148)
 bench/RESULTS.md | * | history: a recorded number keeps the commit and configuration it was taken with (D-148)
 agent/BACKLOG.md | * | history: the done rows; the rename tool translates the open ones (D-148)
@@ -59,10 +52,6 @@ deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's c
 
 # The repository's address and its checkout path, in any file, until the owner renames the repository.
 ** | github.com/subapavel/flottila | the repository's address until the owner renames it
-** | subapavel/flottila | the repository's name until the owner renames it
-** | subapavel/flottila-mapping | the mapping repository's name until the owner renames it
-** | /home/user/flottila | the checkout path, which follows the repository's name
-agent/cloud/README.md | `flottila` | the owner's cloud environment carries the old name until the owner renames it
 docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as it was called when the owner wrote the brief (D-147)
 
 # The prototype's names, where a live file names the prototype.

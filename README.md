@@ -17,8 +17,8 @@ Where to look:
 
 - `docs/ARCHITECTURE.md` — the binding design (amendments block at the top, then the v3.3 text)
 - `docs/GATE.md` — what "you can test the first real iFlow" means
-- `agent/HANDOFF.md`, `docs/PROGRESS.md` — where the work is, with measurements
-- `docs/WORKFLOW.md`, `CLAUDE.md`, `AGENTS.md` — how the work is done (TDD, review, roles)
+- `agent/BACKLOG.md` — the open work, until it moves to GitHub Issues
+- `AGENTS.md` — how the work is done (one issue, one session, one pull request, one review)
 - `docs/DECISIONS.md`, `docs/findings/`, `issues/` — what was decided, what deviated, what is open
 - `agent/cloud/` — the cloud environment the autonomous session runs in
 
