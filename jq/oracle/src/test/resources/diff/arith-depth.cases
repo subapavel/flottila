@@ -7,7 +7,7 @@
 # around 0 (a document nests 10 000 arrays at most, F-22; nested objects only 5 000, so the merge depth needs built
 # values: the reduce cases at the end, recorded now and required by #69, and jq-core ObjectMergeDepthTest).
 # [.[] | 1] prints [1] for a kept x and [] for a removed one. Written by a script; Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-depth.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-depth.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 # equal arrays on both sides of the bound

@@ -324,14 +324,14 @@ public class census {
   /** The cases of every file, read by the jqtest oracle's JqTestFile, compiled here from its source. */
   @SuppressWarnings("unchecked")
   static List<Case> readCases(List<Path> files) throws Exception {
-    Path src = root.resolve("oracle/src/main/java/io/github/subapavel/jqj/oracle/jqtest");
+    Path src = root.resolve("oracle/src/main/java/dev/rail8/jq/oracle/jqtest");
     Path classes = Files.createTempDirectory("census-classes");
     try {
       ToolProvider.getSystemJavaCompiler().run(null, null, null, "-proc:none", "-d", classes.toString(),
           src.resolve("JqTestCase.java").toString(), src.resolve("JqTestFile.java").toString());
       List<Case> cases = new ArrayList<>();
       try (URLClassLoader cl = new URLClassLoader(new URL[] {classes.toUri().toURL()}, census.class.getClassLoader())) {
-        String pkg = "io.github.subapavel.jqj.oracle.jqtest.";
+        String pkg = "dev.rail8.jq.oracle.jqtest.";
         Method parse = cl.loadClass(pkg + "JqTestFile").getMethod("parse", String.class, String.class);
         Class<?> k = cl.loadClass(pkg + "JqTestCase");
         Method id = k.getMethod("id"), line = k.getMethod("line"), mode = k.getMethod("mode");

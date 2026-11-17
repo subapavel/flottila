@@ -3,7 +3,7 @@
 # and raises "Repeat string result too long" when the result would hold 2147483639 bytes or more; jq-ref builds
 # 2147483638 ("ab" * 1073741819 | length, "a" * 2147483638 | length, observed 2026-11-13), which no case prints. A
 # filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-repeat.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-repeat.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 case arith-repeat/counts-number-left

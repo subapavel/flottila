@@ -6,7 +6,7 @@ jq 1.8.2's `builtins_bind` binds builtin.jq's definitions, then the bytecoded bu
 
 ## Decision
 
-- **Source**: jq 1.8.2's `builtin.jq`, verbatim, moves to `jq-core/src/main/resources/io/github/subapavel/jqj/internal/parse/builtin.jq`. Its SHA-256 is checked against `SOURCES.sha256`, and NOTICE names the main path. The MIT text stays in `META-INF/LICENSE-jq`.
+- **Source**: jq 1.8.2's `builtin.jq`, verbatim, moves to `jq-core/src/main/resources/dev/rail8/jq/internal/parse/builtin.jq`. Its SHA-256 is checked against `SOURCES.sha256`, and NOTICE names the main path. The MIT text stays in `META-INF/LICENSE-jq`.
 - **Cache**: a holder-class `Prelude` parses the file once per JVM, with fixed settings independent of any Engine, and indexes the definitions by `name/arity`. The AST is shared read-only. A filter whose every call binds before the prelude (nested defs, params, user defs, the native table) never triggers the parse; a name that binds nowhere does parse it, to know the name is undefined (amended at #71).
 - **Lookup order**:
   - A user reference looks in nested defs, params, the def, outer user scopes, then the native table, then the prelude.

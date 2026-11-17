@@ -4,7 +4,7 @@
 # parent, a Call or the run entry emits it. Each case puts a value-form node where a wrong eval would show: a value with
 # no result, a Try or a Label around an eligible body, a downstream error, a Break next to an eligible value, and a deep
 # value-form recursion. Every case is required at #116 (oracle/src/test/resources/require/116.txt). Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in value-form.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in value-form.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # A bound value with no result for some inputs: the body runs only for the values select keeps.

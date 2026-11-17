@@ -2,7 +2,7 @@
 # ADR-0046, GLOSSARY "Tail call", "Call kind"): a call in a tail position of a function body, into the caller's
 # recursive group, runs as a pending jump, so neither the Java stack nor the recursion-depth count grows. Every case is
 # required at #118 (oracle/src/test/resources/require/118.txt). Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in tail.rec, written by
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in tail.rec, written by
 # scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 #
 # The deep cases carry #118's key "limit recursion-depth 16": every compile mode runs under a recursion-depth budget of

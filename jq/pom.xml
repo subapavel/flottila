@@ -6,11 +6,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.subapavel.jqj</groupId>
-  <artifactId>jqj-parent</artifactId>
+  <groupId>dev.rail8.jq</groupId>
+  <artifactId>rail8-jq-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
-  <name>jqj</name>
+  <name>Rail8 jq</name>
   <description>The jq language over JSON bytes on Java 25: parent and aggregator.</description>
   <licenses>
     <license>
@@ -32,11 +32,16 @@
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+    <!-- The engine's root: the repository holds it as jq/ and keeps the one .mvn/ at its own root, which Maven finds
+         from the root, from jq/ and with -f jq/pom.xml alike. -->
+    <jq.root>${maven.multiModuleProjectDirectory}/jq</jq.root>
 
     <!-- Plugins -->
     <maven-clean-plugin.version>3.5.0</maven-clean-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <!-- Apache-2.0: Error Prone, the static analysis javac runs; a tool on the processor path, not a dependency -->
+    <errorprone.version>2.52.0</errorprone.version>
     <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
     <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
     <maven-install-plugin.version>3.2.0</maven-install-plugin.version>
@@ -74,18 +79,18 @@
         <version>${assertj.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.github.subapavel.jqj</groupId>
-        <artifactId>query-core</artifactId>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-query-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.github.subapavel.jqj</groupId>
-        <artifactId>jq-core</artifactId>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>io.github.subapavel.jqj</groupId>
-        <artifactId>jq-cli</artifactId>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-cli</artifactId>
         <version>${project.version}</version>
       </dependency>
     </dependencies>
@@ -132,10 +137,24 @@
             <!-- JMH's annotation processor runs in bench/jmh (ADR-0014). -->
             <proc>full</proc>
             <showWarnings>true</showWarnings>
+            <!-- Error Prone runs inside javac on main and test sources and fails the build on a check of severity
+                 ERROR. Its warning checks are off here: -Werror would turn each of them into a failure. It needs the
+                 javac internals opened in the repository's .mvn/jvm.config. -->
             <compilerArgs>
               <arg>-Xlint:all</arg>
               <arg>-Werror</arg>
+              <arg>-XDcompilePolicy=simple</arg>
+              <arg>--should-stop=ifError=FLOW</arg>
+              <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+              <arg>-Xplugin:ErrorProne -XepDisableAllWarnings</arg>
             </compilerArgs>
+            <annotationProcessorPaths>
+              <path>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_core</artifactId>
+                <version>${errorprone.version}</version>
+              </path>
+            </annotationProcessorPaths>
           </configuration>
         </plugin>
         <plugin>
@@ -170,10 +189,10 @@
           </dependencies>
           <configuration>
             <targetClasses>
-              <param>io.github.subapavel.jqj.*</param>
+              <param>dev.rail8.jq.*</param>
             </targetClasses>
             <targetTests>
-              <param>io.github.subapavel.jqj.*</param>
+              <param>dev.rail8.jq.*</param>
             </targetTests>
             <!-- A ticket that changes only records or interfaces has no mutants (ADR-0014). -->
             <failWhenNoMutations>false</failWhenNoMutations>

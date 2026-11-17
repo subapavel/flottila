@@ -7,7 +7,7 @@
 # comparison #66, variables #67, if/try/label/error #68, reduce/foreach #69, def #70; and/or/alternative and
 # assignment as the census assigns them). At #62 the parse of each is checked by
 # jq-core ResolverTest.everyUnloweredKindParsesAndResolvesToAStub. The precedence levels a syntax error shows (the
-# non-associative ones) are in syntax.cases. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# non-associative ones) are in syntax.cases. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/
 # DiffCase.java. Expected outputs live in precedence.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # prefix forms: def, as and label take the whole pipe after them

@@ -7,7 +7,7 @@ ticket (ADR-0013). Facts marked "jq-ref" were observed on 1.8.2 by the adviser (
 
 ## Surface
 
-- `jq-core` (module `io.github.subapavel.jqj`) exports three packages: `…jqj` (engine, filter,
+- `jq-core` (module `dev.rail8.jq`) exports three packages: `…jqj` (engine, filter,
   Workspace, documents, sinks, bindings, limits, exceptions), `…jqj.value` (values) and `…jqj.host`
   (the SPI, ADR-0017). No exported signature names a `query-core` type, so `requires
   …jqj.query` is not `transitive`. A test checks every exported signature. `jq-cli` uses only the

@@ -28,9 +28,9 @@ done
 expected() {
   case $1 in
     query-core) echo "" ;;
-    jq-core) echo "io.github.subapavel.jqj.CalibrationTest,io.github.subapavel.jqj.DeepStackFreshJvmTest,io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.TailJumpFreshJvmTest,io.github.subapavel.jqj.WideConstructStepsTest" ;;
-    jq-cli) echo "io.github.subapavel.jqj.cli.*ModulePathTest,io.github.subapavel.jqj.cli.LauncherTest" ;;
-    oracle) echo "io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.TailJumpFreshJvmTest,io.github.subapavel.jqj.WideConstructStepsTest,io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest,io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest,io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest" ;;
+    jq-core) echo "dev.rail8.jq.CalibrationTest,dev.rail8.jq.DeepStackFreshJvmTest,dev.rail8.jq.OperatorChainTest,dev.rail8.jq.TailJumpFreshJvmTest,dev.rail8.jq.WideConstructStepsTest" ;;
+    jq-cli) echo "dev.rail8.jq.cli.*ModulePathTest,dev.rail8.jq.cli.LauncherTest" ;;
+    oracle) echo "dev.rail8.jq.OperatorChainTest,dev.rail8.jq.TailJumpFreshJvmTest,dev.rail8.jq.WideConstructStepsTest,dev.rail8.jq.oracle.compile.CompileModeOracleTest,dev.rail8.jq.oracle.compile.CompileModeSurveyTest,dev.rail8.jq.oracle.diff.DifferentialSurveyTest,dev.rail8.jq.oracle.jqtest.JqTestSurveyTest,dev.rail8.jq.oracle.json.JsonSurveyTest" ;;
   esac
 }
 modules="query-core jq-core jq-cli oracle"

@@ -28,8 +28,8 @@ if [ ! -f "$jar" ]; then
   echo "jq-ref.sh: $jar is missing; build it with ./mvnw -B -Pbench package" >&2
   exit 2
 fi
-java -cp "$jar" io.github.subapavel.jqj.bench.Inputs "$dir"
-java -cp "$jar" io.github.subapavel.jqj.bench.Diagnostics "$dir"
+java -cp "$jar" dev.rail8.jq.bench.Inputs "$dir"
+java -cp "$jar" dev.rail8.jq.bench.Diagnostics "$dir"
 
 # copies <file> <k> <out>: <out> is <k> copies of <file>, which ends in its only LF.
 copies() {

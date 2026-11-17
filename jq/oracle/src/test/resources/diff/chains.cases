@@ -4,7 +4,7 @@
 # jq's binding errors by compile level (stderr compared byte for byte), an arithmetic operator's operands placing
 # their inner levels right first, an assignment's operands being inner levels under a //, and a folded prefix of
 # constants with the rest of the chain. Every case is required at #86 (oracle/src/test/resources/require/86.txt). The
-# long chains are pinned by jq-core OperatorChainTest. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/
+# long chains are pinned by jq-core OperatorChainTest. Format: oracle/src/main/java/dev/rail8/jq/oracle/
 # diff/DiffCase.java. Expected outputs live in chains.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # binding errors along a chain

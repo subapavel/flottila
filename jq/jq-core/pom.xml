@@ -4,11 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.github.subapavel.jqj</groupId>
-    <artifactId>jqj-parent</artifactId>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>jq-core</artifactId>
+  <artifactId>rail8-jq-core</artifactId>
   <name>jq-core</name>
 
   <!-- The calibration's full matrix (JUnit tag calibration-matrix, CalibrationTest) runs only under
@@ -19,8 +19,8 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>query-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-query-core</artifactId>
     </dependency>
   </dependencies>
 
@@ -31,7 +31,7 @@
         <directory>src/main/resources</directory>
       </resource>
       <resource>
-        <directory>${maven.multiModuleProjectDirectory}</directory>
+        <directory>${jq.root}</directory>
         <includes>
           <include>NOTICE</include>
         </includes>
@@ -57,18 +57,18 @@
         <configuration>
           <excludedTestClasses>
             <!-- 116.4 s in surefire; first killer of 8 of 3 259 mutants (F-84). -->
-            <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
+            <param>dev.rail8.jq.WideConstructStepsTest</param>
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
-            <param>io.github.subapavel.jqj.OperatorChainTest</param>
+            <param>dev.rail8.jq.OperatorChainTest</param>
             <!-- The child-JVM classes of #113 (ADR-0046 #113, F-101): a child never runs a mutant. 21.85 s in surefire;
                  killer of 0 of 3 543 mutants when the only tests. -->
-            <param>io.github.subapavel.jqj.CalibrationTest</param>
+            <param>dev.rail8.jq.CalibrationTest</param>
             <!-- 9.2 s in surefire; killer of 299 of 3 543 mutants when the only tests, all in-process through
                  reserveCoversTheGuardPages (F-101). -->
-            <param>io.github.subapavel.jqj.DeepStackFreshJvmTest</param>
+            <param>dev.rail8.jq.DeepStackFreshJvmTest</param>
             <!-- 1.8 s in surefire; killer of 0 of 3 751 mutants when the only tests: its filters run in child JVMs on
                  the unmutated class path (#118). -->
-            <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
+            <param>dev.rail8.jq.TailJumpFreshJvmTest</param>
           </excludedTestClasses>
         </configuration>
       </plugin>

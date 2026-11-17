@@ -3,7 +3,7 @@
 # .[1], with jq's error texts; then the 29-byte cut of a value in those texts (jv_dump_string_trunc, ErrorDump): a
 # dump of 29 bytes shows whole, a longer one keeps 25 bytes (26 for a number) and ends in ...", ...] or ...}, stepping
 # back to a character start but not to an escape start. Written by a script from the product of the kinds; Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-kinds.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-kinds.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 # plus

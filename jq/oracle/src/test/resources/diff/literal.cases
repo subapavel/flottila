@@ -1,7 +1,7 @@
 # Differential cases (ADR-0020) of #61 "S2a.11 Literals and the full lexer": number, string, true, false and null
 # literals, the lexical errors with their error blocks (ADR-0031), bare @text, ."string" and comments. No case holds
 # an interpolation: every "...\(f)..." is a Stub here and belongs to #67 (F-35). Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java; a backslash of the filter is \\ here, a raw
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java; a backslash of the filter is \\ here, a raw
 # TAB \t, a raw LF \n and a raw CR \x0d. Expected outputs live in literal.rec, written by scripts/oracle-record.sh
 # only. Ids are immutable. Every case uses -c: the input is irrelevant to a literal, so it is null unless stated.
 

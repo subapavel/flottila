@@ -4,7 +4,7 @@
 # interpolate, and @text over an interpolation. @base64 is not built yet, so no other format is here over an
 # interpolation; a format string without one is its text whatever the format, known or not (#67's standards review).
 # jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in
 # interpolation.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # the #61 hand-over: "a\(.)b" on several inputs

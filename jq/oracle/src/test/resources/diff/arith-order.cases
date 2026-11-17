@@ -2,7 +2,7 @@
 # ADR-0034's #65 amendment lowers l op r with the right operand as the outer loop, as jq 1.8.2 runs a C function's
 # arguments last-first; these cases pin it, and the right operand's error comes first. jq's -n is not built in jqj's
 # command line yet, so a filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-order.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-order.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 case arith-order/plus-right-operand-outer

@@ -1,3 +1,5 @@
-module io.github.subapavel.jqj.cli {
-  requires io.github.subapavel.jqj;
+// javac's module lint warns that the name component rail8 ends in a digit; the name is the project's
+@SuppressWarnings("module")
+module dev.rail8.jq.cli {
+  requires dev.rail8.jq;
 }

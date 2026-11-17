@@ -26,15 +26,15 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 cat > "$WORK/Probe.java" <<'EOF'
-import io.github.subapavel.jqj.Bindings;
-import io.github.subapavel.jqj.JqEngine;
-import io.github.subapavel.jqj.JqFilter;
-import io.github.subapavel.jqj.JqFilterException;
-import io.github.subapavel.jqj.JqSink;
-import io.github.subapavel.jqj.JqTermination;
-import io.github.subapavel.jqj.Limits;
-import io.github.subapavel.jqj.Workspace;
-import io.github.subapavel.jqj.value.JqValue;
+import dev.rail8.jq.Bindings;
+import dev.rail8.jq.JqEngine;
+import dev.rail8.jq.JqFilter;
+import dev.rail8.jq.JqFilterException;
+import dev.rail8.jq.JqSink;
+import dev.rail8.jq.JqTermination;
+import dev.rail8.jq.Limits;
+import dev.rail8.jq.Workspace;
+import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

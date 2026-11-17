@@ -16,7 +16,7 @@
 #   key's generator is the outer loop; $a0 and $a69 are 10.
 #
 # Every case is required at #93 (oracle/src/test/resources/require/93.txt). jq's -n is not built in jqj's command
-# line yet, so a filter reads its stdin. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# line yet, so a filter reads its stdin. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java.
 # Expected outputs live in binds.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # objects

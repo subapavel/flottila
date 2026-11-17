@@ -1,5 +1,5 @@
 # Differential cases (ADR-0020) of the command line (#38): where options go, --, combined short flags, a missing
-# file, an unknown option, the file name in an error. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# file, an unknown option, the file name in an error. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/
 # DiffCase.java. Expected outputs live in cli.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every
 # case uses -c: pretty output is a Stub until #37.
 

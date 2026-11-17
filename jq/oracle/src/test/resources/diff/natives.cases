@@ -1,6 +1,6 @@
 # Differential cases (ADR-0020) of #72 "S2a.22 Language natives": each native of the ticket on each JSON kind, its
 # error included, on a document's value (stdin) and on a built one (a constant of the filter); format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in natives.rec, written
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in natives.rec, written
 # by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # length/0: null 0, an array its elements, an object its distinct keys, a string its code points, a number its absolute

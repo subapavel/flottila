@@ -2,7 +2,7 @@
 # a DoubleNumber in jq's jvp_dtoa_fmt layout), -0 and the negation of literals (decNumberMinus), null as the identity
 # of + that keeps a literal a literal, the integer range around 2^53, overflow, denormals and NaN, and the negation
 # errors. A filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-numbers.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in arith-numbers.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 # -0

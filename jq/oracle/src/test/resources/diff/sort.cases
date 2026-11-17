@@ -3,7 +3,7 @@
 # src/jv_aux.c), and the prelude's sort_by, group_by, unique_by, min_by and max_by over them. Each on a document's array
 # (stdin) and on a built one, jq's value order over mixed kinds, its stable order on equal keys, its errors, min and max
 # of [], group_by on objects, and where "Comparison too deep" (ADR-0029) and "Equality check too deep" bite. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in sort.rec, written by
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in sort.rec, written by
 # scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # jq's value order over every kind: null, false, true, numbers, strings by their UTF-8 bytes, arrays element by element,

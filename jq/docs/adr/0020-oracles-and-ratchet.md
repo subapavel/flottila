@@ -348,7 +348,7 @@ delegation to 2026-11-16; on the owner-review list).
 - `@Setup` reads the mode back through package-private `JqEngine.compileMode()`, and a mismatch or a
   reflective failure is an `IllegalStateException`.
 - No product descriptor or exported signature changes. The bench's own `module-info` may add
-  `requires io.github.subapavel.jqj.query` to name `CompileMode`.
+  `requires dev.rail8.jq.query` to name `CompileMode`.
 - Considered and rejected: a public mode (ADR-0018, `exported-signatures.txt`); a system property
   (rejected under #60); timing in the oracle (not ADR-0019's JMH settings); an internal accessor
   behind `--add-exports` (product code for a test).

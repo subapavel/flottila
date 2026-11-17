@@ -15,7 +15,7 @@
 # no Maven build. Exit codes: 0 ok, 1 a rejected case, a refused file or a difference, 2 usage.
 set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
-src=$root/oracle/src/main/java/io/github/subapavel/jqj/oracle
+src=$root/oracle/src/main/java/dev/rail8/jq/oracle
 classes=$(mktemp -d)
 trap 'rm -rf "$classes"' EXIT
 javac -Xlint:all -Werror -d "$classes" \
@@ -29,4 +29,4 @@ javac -Xlint:all -Werror -d "$classes" \
 if [ "${1:-}" = --generate ]; then set -- "$@" "$root/oracle/src/test/resources/diff"; fi
 # The recorder's own locale decides how it encodes the arguments it passes to jq-ref: UTF-8 here. jq-ref itself
 # gets LC_ALL=C from the recorder.
-LC_ALL=C.UTF-8 java -cp "$classes" io.github.subapavel.jqj.oracle.record.Recorder "$@"
+LC_ALL=C.UTF-8 java -cp "$classes" dev.rail8.jq.oracle.record.Recorder "$@"

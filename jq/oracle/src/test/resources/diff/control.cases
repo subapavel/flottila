@@ -1,6 +1,6 @@
 # Differential cases (ADR-0020) of #68 "S2a.18 Control flow: if, try, error, label": if and elif, the catch set of
 # try and postfix ?, the wrap depth of a downstream error (ADR-0039), errors with any value and the CLI's message for
-# them, and label and break orders. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java; a
+# them, and label and break orders. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java; a
 # backslash of the filter is \\ here, a raw LF \n. Expected outputs live in control.rec, written by
 # scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 

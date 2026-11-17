@@ -4,11 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.github.subapavel.jqj</groupId>
-    <artifactId>jqj-parent</artifactId>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>oracle</artifactId>
+  <artifactId>rail8-jq-oracle</artifactId>
   <name>oracle</name>
 
   <!-- The compile-mode oracle's tests (JUnit tag compile-mode) run only under -Pcompile-oracle: after every merge, in
@@ -21,16 +21,16 @@
   <!-- Tests only: the oracle runs the code of every module (ADR-0014). -->
   <dependencies>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>query-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-query-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>jq-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>jq-cli</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-cli</artifactId>
     </dependency>
   </dependencies>
 
@@ -44,9 +44,9 @@
         <configuration>
           <compilerArgs combine.children="append">
             <arg>--add-exports</arg>
-            <arg>io.github.subapavel.jqj.cli/io.github.subapavel.jqj.cli=io.github.subapavel.jqj.oracle</arg>
+            <arg>dev.rail8.jq.cli/dev.rail8.jq.cli=dev.rail8.jq.oracle</arg>
             <arg>--add-exports</arg>
-            <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.parse=io.github.subapavel.jqj.oracle</arg>
+            <arg>dev.rail8.jq/dev.rail8.jq.internal.parse=dev.rail8.jq.oracle</arg>
           </compilerArgs>
         </configuration>
       </plugin>
@@ -85,8 +85,8 @@
              PIT goes first in the same reactor (gate-spec.sh, nightly.yml). -->
         <dependencies>
           <dependency>
-            <groupId>io.github.subapavel.jqj</groupId>
-            <artifactId>pit-filter</artifactId>
+            <groupId>dev.rail8.jq</groupId>
+            <artifactId>rail8-jq-pit-filter</artifactId>
             <version>${project.version}</version>
           </dependency>
         </dependencies>
@@ -98,25 +98,25 @@
           <!-- The Survey runs the cases nobody requires and fails only on CRASH (ADR-0020). The compile-mode oracle
                leaves PIT with the ticket gate (F-27, ADR-0020 amendment for #60). -->
           <excludedTestClasses>
-            <param>io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest</param>
-            <param>io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest</param>
-            <param>io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest</param>
-            <param>io.github.subapavel.jqj.oracle.json.JsonSurveyTest</param>
-            <param>io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest</param>
+            <param>dev.rail8.jq.oracle.compile.CompileModeOracleTest</param>
+            <param>dev.rail8.jq.oracle.compile.CompileModeSurveyTest</param>
+            <param>dev.rail8.jq.oracle.diff.DifferentialSurveyTest</param>
+            <param>dev.rail8.jq.oracle.json.JsonSurveyTest</param>
+            <param>dev.rail8.jq.oracle.jqtest.JqTestSurveyTest</param>
             <!-- 116.4 s in surefire; first killer of 8 of 3 259 mutants (F-84). -->
-            <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
+            <param>dev.rail8.jq.WideConstructStepsTest</param>
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
-            <param>io.github.subapavel.jqj.OperatorChainTest</param>
+            <param>dev.rail8.jq.OperatorChainTest</param>
             <!-- 1.8 s in surefire; killer of 0 of 3 751 jq-core mutants when the only tests: its filters run in child
                  JVMs on the unmutated class path (#118). -->
-            <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
+            <param>dev.rail8.jq.TailJumpFreshJvmTest</param>
           </excludedTestClasses>
           <!-- Mutated here: query-core and jq-core, the class-C modules. Their tests still run. -->
           <excludedClasses>
             <!-- No ratchet line reads oracle's own mutants; its corpus loader is then never a mutant (F-84 (B)). -->
-            <param>io.github.subapavel.jqj.oracle.*</param>
+            <param>dev.rail8.jq.oracle.*</param>
             <!-- No ratchet line reads jq-cli's mutants from this run (F-84 (B)). -->
-            <param>io.github.subapavel.jqj.cli.*</param>
+            <param>dev.rail8.jq.cli.*</param>
           </excludedClasses>
           <!-- Only oracle's own tests run here: ratchet.java unions each module's own kills with these (F-84). -->
         </configuration>

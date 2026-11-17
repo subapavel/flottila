@@ -4,18 +4,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.github.subapavel.jqj</groupId>
-    <artifactId>jqj-parent</artifactId>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>jmh</artifactId>
+  <artifactId>rail8-jq-bench-jmh</artifactId>
   <name>bench/jmh</name>
 
   <dependencies>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>jq-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-core</artifactId>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmh</groupId>
@@ -35,7 +35,7 @@
           <execution>
             <id>default-compile</id>
             <configuration>
-              <annotationProcessorPaths>
+              <annotationProcessorPaths combine.children="append">
                 <path>
                   <groupId>org.openjdk.jmh</groupId>
                   <artifactId>jmh-generator-annprocess</artifactId>
@@ -46,9 +46,9 @@
                    ADR-0042); the jar runs on the class path. -->
               <compilerArgs combine.children="append">
                 <arg>--add-exports</arg>
-                <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.value=io.github.subapavel.jqj.bench</arg>
+                <arg>dev.rail8.jq/dev.rail8.jq.internal.value=dev.rail8.jq.bench</arg>
                 <arg>--add-exports</arg>
-                <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.parse=io.github.subapavel.jqj.bench</arg>
+                <arg>dev.rail8.jq/dev.rail8.jq.internal.parse=dev.rail8.jq.bench</arg>
               </compilerArgs>
             </configuration>
           </execution>

@@ -4,23 +4,23 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.github.subapavel.jqj</groupId>
-    <artifactId>jqj-parent</artifactId>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>jq-cli</artifactId>
+  <artifactId>rail8-jq-cli</artifactId>
   <name>jq-cli</name>
 
   <dependencies>
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>jq-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-core</artifactId>
     </dependency>
     <!-- Already on the class path through jq-core. Declared because PIT's crossModule run below mutates only the
          modules this POM declares (pitest-maven 1.30.2), and query-core is class C (#47). -->
     <dependency>
-      <groupId>io.github.subapavel.jqj</groupId>
-      <artifactId>query-core</artifactId>
+      <groupId>dev.rail8.jq</groupId>
+      <artifactId>rail8-jq-query-core</artifactId>
     </dependency>
   </dependencies>
 
@@ -138,8 +138,8 @@
           <crossModule>true</crossModule>
           <!-- They run only in the surefire executions above, which PIT does not run. -->
           <excludedTestClasses>
-            <param>io.github.subapavel.jqj.cli.LauncherTest</param>
-            <param>io.github.subapavel.jqj.cli.*ModulePathTest</param>
+            <param>dev.rail8.jq.cli.LauncherTest</param>
+            <param>dev.rail8.jq.cli.*ModulePathTest</param>
           </excludedTestClasses>
         </configuration>
       </plugin>

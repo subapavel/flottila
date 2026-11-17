@@ -3,7 +3,7 @@
 # from a propagates, before or after a truthy result. The #66 design approval (C1) asked for [error("x") // 1] and
 # "s" | .a // 1 to be recorded again: both end with rc 5 and the error, as ADR-0008:40 records. A run-time navigation
 # error (.a on a string, #63) stands in for error/1; the cases named *-error-builtin use error/1, which is #68's, and
-# are required there. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs
+# are required there. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs
 # live in alternative.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 case alternative/truthy-left-results

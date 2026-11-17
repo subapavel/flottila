@@ -4,11 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.github.subapavel.jqj</groupId>
-    <artifactId>jqj-parent</artifactId>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>pit-filter</artifactId>
+  <artifactId>rail8-jq-pit-filter</artifactId>
   <name>pit-filter</name>
   <description>Build tool: a PIT mutation filter that keeps only the mutants a module's own PIT run left alive (F-84).</description>
 

@@ -1,4 +1,4 @@
-# Generated cases of values-v1 (ADR-0025), seeds [0, 2100): oracle/src/main/java/io/github/subapavel/jqj/oracle/gen/ValuesV1.java.
+# Generated cases of values-v1 (ADR-0025), seeds [0, 2100): oracle/src/main/java/dev/rail8/jq/oracle/gen/ValuesV1.java.
 # Written with values-v1.rec by scripts/oracle-record.sh --generate values-v1 0 2100, never by hand; a seed that hits a deviation keeps its block and gains deviation and jqj-* lines.
 
 case gen/values-v1/0

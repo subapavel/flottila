@@ -62,9 +62,9 @@ g config user.name t
 g add -A
 g commit -q -m base
 g branch base
-mkdir -p "$repo/query-core/src/main/java/io/github/subapavel/jqj/query" "$repo/jq-core/src/main/java/io/github/subapavel/jqj/core"
-echo 'class Foo {}' > "$repo/query-core/src/main/java/io/github/subapavel/jqj/query/Foo.java"
-echo 'class Bar {}' > "$repo/jq-core/src/main/java/io/github/subapavel/jqj/core/Bar.java"
+mkdir -p "$repo/query-core/src/main/java/dev/rail8/jq/query" "$repo/jq-core/src/main/java/dev/rail8/jq/core"
+echo 'class Foo {}' > "$repo/query-core/src/main/java/dev/rail8/jq/query/Foo.java"
+echo 'class Bar {}' > "$repo/jq-core/src/main/java/dev/rail8/jq/core/Bar.java"
 echo 'module x {}' > "$repo/query-core/src/main/java/module-info.java"
 echo 'x' > "$repo/query-core/README.md"
 g add -A

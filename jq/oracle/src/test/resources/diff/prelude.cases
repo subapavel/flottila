@@ -1,5 +1,5 @@
 # Differential cases (ADR-0020) of #71 "S2a.21 Prelude loader": the builtins jq writes in jq (builtin.jq), loaded by
-# the resolver (ADR-0042); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected
+# the resolver (ADR-0042); format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected
 # outputs live in prelude.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # limit/2 lowers onto #69's foreach and #68's label and break (the #69 hand-over); range/1 is the prelude's

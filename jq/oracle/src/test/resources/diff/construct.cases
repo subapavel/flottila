@@ -3,7 +3,7 @@
 # repeated key keeps its first place and its last value), shorthand keys, navigation on built values, and constant
 # keys, which jq rejects at parse time (ADR-0036) while any other non-string key fails at run time. jq's -n is not
 # built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in construct.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in construct.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable.
 
 # the order of results

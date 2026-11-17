@@ -12,7 +12,7 @@ before any loop exists. This ADR fixes where that state lives and when it counts
 
 ## Decision
 
-- `RunState` in `io.github.subapavel.jqj.query.run`, exported by `query-core` only, is the first
+- `RunState` in `dev.rail8.jq.query.run`, exported by `query-core` only, is the first
   parameter of every `Op.run`, `Fn*` and `Many` call (the `ws` of ADR-0008/0009). It holds fuel,
   the step budget, the deadline, the bytes-written count and a phase (idle, primed, running).
   Labels, the break target, bytes built, stack units and activations join it with their first

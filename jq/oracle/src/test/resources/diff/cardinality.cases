@@ -3,7 +3,7 @@
 # is "many". The first three are F-56's reference jq probes; a backend that took any of them for a value form or a tail
 # jump would drop the rest. The last two pin the Reduce rule (#112 review). Every case is required at #112
 # (oracle/src/test/resources/require/112.txt). Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in cardinality.rec,
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in cardinality.rec,
 # written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # limit stops after the first result: running the rest of (1, error("x")) first would raise x instead of [2].

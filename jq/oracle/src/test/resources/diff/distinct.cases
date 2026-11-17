@@ -1,7 +1,7 @@
 # Differential cases (ADR-0020) of #82 and #85: objects with and without a repeated key, iterated, printed and indexed,
 # around the key proof a read object's walk begins with (ADR-0044: up to 8 keys compared pairwise, more hashed, keys of
 # one hash sorted; first place and last value, ADR-0002); format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in distinct.rec, written
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in distinct.rec, written
 # by scripts/oracle-record.sh only. Ids are immutable. Each object of #82 runs .[] . .k0 .k8 .zz with -c.
 
 # The 8-key boundary: 8 keys are compared pairwise, 9 are hashed (ADR-0044).

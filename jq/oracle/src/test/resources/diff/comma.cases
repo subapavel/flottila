@@ -1,4 +1,4 @@
-# Differential cases (ADR-0020) of #63: the comma; format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# Differential cases (ADR-0020) of #63: the comma; format: oracle/src/main/java/dev/rail8/jq/oracle/diff/
 # DiffCase.java. Expected outputs live in comma.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every
 # case uses -c.
 

@@ -1,5 +1,5 @@
 # Differential cases (ADR-0020) of #63: the index .[e] and the field's quiet variant .a?; format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in index.rec, written
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in index.rec, written
 # by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
 # P1: each form on each kind (null true 1 "abc" [1] {"a":1}).

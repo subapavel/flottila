@@ -1,5 +1,5 @@
 # Differential cases (ADR-0020) of the bench scenarios (ADR-0024: bench.<scenario>, here bench/<scenario>, the
-# family/name form of every case id); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# family/name form of every case id); format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java.
 # Expected outputs live in bench.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # G1 (ADR-0019, bench Gates.G1At1k): .a.b.c, compact, on Inputs.orders(Size.K1), the 1 024-byte orders document

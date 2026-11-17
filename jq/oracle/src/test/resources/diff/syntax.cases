@@ -3,7 +3,7 @@
 # "jq: error: syntax error" compares rc and stdout only (ADR-0020, DEVIATIONS "Syntax-error text"); jq-core's
 # SyntaxErrorTest checks the blocks, line and column of the exception against these recordings. The "not given" cases
 # have no syntax error, so their stderr is compared byte for byte. Every case is required at #62
-# (oracle/src/test/resources/require/62.txt). Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# (oracle/src/test/resources/require/62.txt). Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/
 # DiffCase.java; a backslash of the filter is \\ here, a raw LF \n, a raw TAB \t, other control bytes and a
 # trailing space \xHH. Expected outputs live in syntax.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 

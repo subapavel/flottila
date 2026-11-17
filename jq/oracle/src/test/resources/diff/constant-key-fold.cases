@@ -4,7 +4,7 @@
 # comes at run time (rc 5), and so does a key jq does not fold (a negation, an input). ADR-0035's 4 KiB cap leaves a
 # longer fold to the run with the same output (constant-key-fold/string-past-the-cap). jq's -n is not built in jqj's
 # command line yet, so every case runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in
 # constant-key-fold.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # rc 3: the fold is a constant non-string key

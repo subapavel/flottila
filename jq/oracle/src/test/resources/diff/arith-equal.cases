@@ -4,7 +4,7 @@
 # literals past 17 digits compare as exact decimals, a literal and a computed number as doubles, NaN equals nothing,
 # two Infinity literals of one sign are equal (ADR-0028), while 1e1000 and 1e1001 are finite literals and differ. Read
 # objects with a repeated key compare by its last value. == itself is #66's. A filter that ignores its input runs on
-# stdin null. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# stdin null. Format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in
 # arith-equal.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 case arith-equal/zero-and-computed-negative-zero

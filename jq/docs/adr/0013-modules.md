@@ -5,11 +5,11 @@ Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and bui
 The tree is flat: a root `pom.xml` (parent and aggregator, `0.1.0-SNAPSHOT`, not published) and the
 modules `query-core/`, `jq-core/`, `jq-cli/`, `oracle/` (tests only) and `bench/jmh/` (built only
 with `-Pbench`). Since F-84 (#192) there is also `pit-filter/`, a build tool: a PIT mutation filter used only as a pitest-maven plugin dependency of `oracle`, never a dependency of another module and not published. Each artifactId is its directory name. The groupId and root package are
-`io.github.subapavel.jqj`. This ADR binds module names and exported packages; the types named in
+`dev.rail8.jq`. This ADR binds module names and exported packages; the types named in
 parentheses belong to ADR-0005, ADR-0008 and ADR-0009. Until the first publish a rename is one mechanical ticket; after it, a
 rename is a breaking release for the Rail8 (R8) adapter.
 
-- **`query-core`** is module `io.github.subapavel.jqj.query`. It has no `requires`:
+- **`query-core`** is module `dev.rail8.jq.query`. It has no `requires`:
   `java.lang.classfile`, `java.lang.foreign` and `java.lang.invoke` are in `java.base`.
   - It exports `.query.ir` (the sealed `Node` family and `Operation`), `.query.run` (`Sink`, the two
     exception classes, `Fn0`..`FnN`, `Many`), `.query.compile` (the pass pipeline and the backend
@@ -21,7 +21,7 @@ rename is a breaking release for the Rail8 (R8) adapter.
   - Hidden classes are defined through a `query-core` Lookup, so generated code links only to
     `java.*` and `query-core` types. jq values reach it as `Object`, and operations as `Fn*` in class
     data (ADR-0009).
-- **`jq-core`** is module `io.github.subapavel.jqj`. It requires `query-core` and `org.jruby.joni`
+- **`jq-core`** is module `dev.rail8.jq`. It requires `query-core` and `org.jruby.joni`
   2.2.9 (MIT, with its own descriptor and jcodings 1.0.64, MIT). It holds the resolver, the
   Operations, the prelude, the value model and the JSON reader and writer, and it exports only the
   packages of "What are the public API, the host SPI and the sandbox?". The requirement on

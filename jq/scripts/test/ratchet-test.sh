@@ -254,7 +254,7 @@ echo '[{"benchmark":"x.G1","mode":"avgt","primaryMetric":{"score":105.0,"scoreUn
 check "tolerance set, within it" "$(run check)" 0
 # A method name is its ADR-0024 id with '.' written '_': a slower G6_compact_10m must fail the G6.compact.10m line.
 printf 'scenario\tmachine\tscore\tunit\ttolerance%%\nG6.compact.10m\tm1\t100\tus/op\t10\n' > "$root/ratchet/bench.tsv"
-echo '[{"benchmark":"io.github.subapavel.jqj.bench.Gates.G6_compact_10m","mode":"avgt","primaryMetric":{"score":900.0,"scoreUnit":"us/op"}}]' > "$root/jmh.json"
+echo '[{"benchmark":"dev.rail8.jq.bench.Gates.G6_compact_10m","mode":"avgt","primaryMetric":{"score":900.0,"scoreUnit":"us/op"}}]' > "$root/jmh.json"
 check "method G6_compact_10m reads as id G6.compact.10m" "$(run check)" 1
 # A NaN score is no score: it fails, as a bare literal and as JMH 1.37 writes it ("NaN", a string).
 printf 'scenario\tmachine\tscore\tunit\ttolerance%%\nG1\tm1\t100\tms/op\t10\n' > "$root/ratchet/bench.tsv"

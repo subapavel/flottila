@@ -2,7 +2,7 @@
 # null as the identity of +, array difference (jq's jv_equal per pair, so 1.10 and 1.1 are one value and integers
 # past 17 digits are not), and the object merge * (GLOSSARY "Object merge"). Objects read with a repeated key keep its
 # first place and last value (ADR-0002). A filter that ignores its input runs on stdin null. Format:
-# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in
 # arith-containers.rec, written by scripts/oracle-record.sh only. Ids are immutable.
 
 # strings
