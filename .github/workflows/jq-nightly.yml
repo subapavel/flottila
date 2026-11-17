@@ -1,0 +1,236 @@
+name: jq-nightly
+
+# The jq engine's nightly report; nothing here blocks a change.
+# mutation: PIT on the class-C modules of jq/quality/floors.tsv and on oracle; uploads the reports.
+# calibration: the calibration matrix at the committed stack constants, a check only; uploads its tsv.
+# reference: the recorded cases against the reference jq 1.8.2 (oracle-record.sh --verify), then the build with the
+#   compile-mode oracle.
+# bench: the build with the benchmarks, the ratchet check, the line-ending check and the script tests.
+# windows: the whole reactor compiles on Windows.
+# It commits nothing.
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Central rate-limits shared IPs; the Google mirror of Central serves the same artefacts.
+  MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+
+jobs:
+  mutation:
+    name: jq · mutation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      - name: Class-C modules
+        id: modules
+        run: echo "list=$(awk -F'\t' 'NR > 1 && $2 == "C" { printf "%s%s", sep, $1; sep = "," }' quality/floors.tsv)" >> "$GITHUB_OUTPUT"
+      # The cross-module reports of oracle join the class-C modules' own; each module keeps its PIT test exclusions
+      # in its own POM.
+      - name: PIT
+        run: ../mvnw -B -pl "${{ steps.modules.outputs.list }},oracle" -am test org.pitest:pitest-maven:mutationCoverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jq-pit-reports
+          path: 'jq/*/target/pit-reports/'
+          if-no-files-found: warn
+
+  calibration:
+    name: jq · calibration
+    runs-on: ubuntu-24.04
+    # GitHub's job limit. The matrix's children run 4 at a time, its warm children one at a time.
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      # Its children run without -Xmx or ulimit: they need their own stack and heap.
+      - name: Calibration matrix
+        run: ../mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true
+      # 3 tiers x 3 threads x 2 modes x the 13 shapes of CalibrationCell.SHAPES, and the run's time
+      - name: Cells that ran
+        run: scripts/calibration-cells.sh jq-core/target/calibration.tsv cell 234
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jq-calibration
+          path: |
+            jq/jq-core/target/calibration*.tsv
+            jq/jq-core/target/calibration-progress.log
+          if-no-files-found: warn
+
+  reference:
+    name: jq · reference jq
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      - name: Reference jq 1.8.2
+        run: |
+          set -e
+          curl -fsSL -o jq-ref https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+          echo "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f  jq-ref" | sha256sum -c -
+          sudo install -m 755 jq-ref /usr/local/bin/jq-ref
+          rm jq-ref
+          jq-ref --version
+      - name: Recordings against the reference jq (oracle-record.sh --verify)
+        run: bash scripts/oracle-record.sh --verify $(git ls-files -- 'oracle/src/test/resources/**/*.rec')
+      - name: Build with the compile-mode oracle
+        run: ../mvnw -B -Pcompile-oracle -Djacoco.skip=true verify
+
+  bench:
+    name: jq · bench, ratchet, scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      - name: Script tests (every scripts/test/*-test.sh)
+        if: always()
+        run: |
+          set -e
+          bash scripts/check-script-tests.sh
+          for t in scripts/test/*-test.sh; do
+            echo "== $t"
+            bash "$t"
+          done
+      - name: Build with the benchmarks
+        if: always()
+        run: ../mvnw -B -Pbench verify
+      - name: Line endings
+        if: always()
+        run: ../mvnw -B -Plf-check validate
+      - name: Ratchet
+        if: always()
+        run: java scripts/ratchet.java check
+
+  windows:
+    name: jq · windows
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      - run: ..\mvnw.cmd -B -q -DskipTests "-Dchecks.skip=true" verify

@@ -74,3 +74,4 @@ mapping/docs/archive/** | * | history: the mapping's process files as they were,
 # Names held by systems outside the repository, which the mapping's observation kits call or read.
 mapping/corpus/observations/** | flottilaobservations | the integration package on the SAP CPI tenant the observation kits upload to
 mapping/corpus/observations/** | flottila-observations-key.json | the owner's service-key file the observation kits read, outside the repository
+jq/docs/archive/** | * | history: the jq engine's process files as they were when it joined the repository (CLAUDE.md, WORKFLOW.md, AGENTS.md, agent/, .claude/ as dot-claude/, .github/ as github/)
