@@ -14,11 +14,11 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, due, oldest
- * row of its key, no live lease on the key; another node's row only once its holder has no live row in the
- * {@link InMemoryMembership}, a restarted node's own rows only after its old lease's end, D-101, D-112), the same attempts, doubts and
- * fencing (D-055, D-074), leases on an injected {@link Clock}. Single process only; state whose loss loses messages belongs
- * to Postgres (CLAUDE.md) — this is for tests.
+ * In-memory {@link WorkQueue} with the same eligibility rule as the Postgres claim (not held, due, oldest row of its
+ * key, no live lease on the key; another node's row only once its holder has no live row in the
+ * {@link InMemoryMembership}, a restarted node's own rows only after its old lease's end), the same attempts, doubts and
+ * fencing, and leases timed by an injected {@link Clock}. Single process only and meant for tests: state whose loss
+ * loses messages belongs in Postgres.
  *
  * @since 0.1
  */
@@ -30,7 +30,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         long lockedEpoch;     // the holder's epoch in the membership at the hand-out
         Instant lockedUntil;
         Instant heldAt;       // null: not held
-        Instant availableAt;  // null: due; else not claimed before it (a defer, CORE-14a)
+        Instant availableAt;  // null: due; else not claimed before this instant (a deferred row)
         Row(Item item) { this.item = item; }
     }
 
@@ -97,7 +97,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Instant now = clock.instant();
         for (Row r : rows.values()) {   // seq order: the first row of the key is its oldest, and only the oldest is ever leased
             if (!r.item.flow().equals(done.item.flow()) || !done.item.partitionKey().equals(r.item.partitionKey())) continue;
-            return Future.succeededFuture(Completion.done(Optional.of(take(r, workerId, now, lease))));   // never handed out: the oldest only ever is
+            return Future.succeededFuture(Completion.done(Optional.of(take(r, workerId, now, lease))));   // not yet handed out: only a key's oldest row ever is
         }
         return Future.succeededFuture(Completion.done(Optional.empty()));
     }
@@ -121,8 +121,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     /**
-     * Appends the row whatever was parked — this queue has no DLQ (the Postgres one deletes its row in the same transaction) —
-     * unless a row of {@code messageId} in {@code flow} is still there, held or not, whatever its key: then {@link UnsettledException}
+     * Appends the row whatever was parked, since this queue has no dead-letter table (the Postgres one deletes its
+     * row in the same transaction), unless a row of {@code messageId} in {@code flow} is still there, held or not, whatever its key: then {@link UnsettledException}
      * naming the oldest such row, nothing appended. The check and the append are one step under this queue's monitor.
      */
     @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
@@ -145,7 +145,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
-    /** Seq order over every flow; the cursor is the last seq handed out, as the Postgres queue's. */
+    /** Seq order over every flow; the cursor is the last seq handed out, as in the Postgres queue. */
     @Override public synchronized Future<Page<Held>> held(Optional<String> after, int limit) {
         Page.requireLimit(limit);
         long from = after.map(InMemoryWorkQueue::seqOf).orElse(Long.MIN_VALUE);
@@ -216,8 +216,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     /**
-     * The caller's claim is the row's current one (Q-1, D-074): the row exists, is not held and was last handed out with
-     * {@code attempts}, at least 1 — a row never handed out matches no token.
+     * Whether the caller's claim is the row's current one: the row exists, is not held and was last handed out with
+     * {@code attempts}, at least 1, so a row never handed out matches no token.
      */
     private static boolean current(Row r, int attempts) {
         return r != null && r.heldAt == null && attempts > 0 && r.item.attempts() == attempts;
@@ -234,7 +234,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     /**
-     * The holder of a row whose lease ran out lets it go to {@code workerId} (D-101): no holder, the claimer itself, or a node
+     * The holder of a row whose lease ran out lets it go to {@code workerId}: no holder, the claimer itself, or a node
      * with no live membership row; and a restarted holder's row only once its previous incarnation's lease ended.
      */
     private boolean released(Row r, String workerId, Instant now) {

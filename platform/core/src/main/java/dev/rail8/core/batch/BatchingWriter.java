@@ -12,20 +12,22 @@ import java.util.Objects;
 import java.util.function.ToLongFunction;
 
 /**
- * The persistence batcher (ARCHITECTURE §4 "Writer"): hand-rolled, no reactive operator chain.
- * Adaptive flush — a save commits immediately when no commit is in flight, accumulates to
- * {@code batchSize} items or {@code batchBytes} bytes (the weighed constructor; an item above {@code batchBytes} goes alone) or
- * the {@code window} under load — a batch full by count or by bytes goes on a free slot without waiting for the window; up to
- * {@code commitConcurrency} commits in flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
- * {@link OverloadedException}. {@link #saveWaiting} instead waits for room, in arrival order, at most
- * {@code maxWait} (D-071): a slot that frees is handed to the oldest waiter under the same lock that freed it, so
- * {@code waiting() > 0} implies {@code backlog() == maxBacklog} and a {@link #save} never overtakes a waiter.
- * Ported from the milestone-1 prototype onto Vert.x {@code Future} and an injected {@link Timer}; thread-safe,
- * callers are the messages' virtual threads.
+ * The persistence batcher: collects saved items into batches and commits each batch to a {@link BatchSink}, written by
+ * hand rather than as a reactive operator chain. It works with Vert.x {@code Future}s and an injected {@link Timer}, and
+ * is thread-safe; its callers are the messages' virtual threads.
  *
- * <p>D-146 containment (as FIX-235 amends it), exactly as far as it goes. Contained — never thrown out of a public method or
- * a timer task, whatever {@code Throwable} it is, a checked exception thrown without being declared too — is everything thrown
- * by {@code sink.write}, by the timer, by a timer's handle and by the weight function. A fault that belongs to an
+ * <p>Flushing adapts to load. A save commits at once when no commit is in flight. Under load, items accumulate until
+ * there are {@code batchSize} of them, {@code batchBytes} bytes of them (with the weighing constructor; an item above
+ * {@code batchBytes} goes alone) or the {@code window} has passed; a batch full by count or by bytes goes as soon as a
+ * commit slot is free, without waiting for the window. Up to {@code commitConcurrency} commits are in flight, each
+ * completing the items of its own batch. The backlog is bounded: a {@link #save} beyond it fails at once with
+ * {@link OverloadedException}, while {@link #saveWaiting} waits for room, in arrival order, for at most {@code maxWait}.
+ * A slot that frees is handed to the oldest waiter under the same lock that freed it, so {@code waiting() > 0} implies
+ * {@code backlog() == maxBacklog} and a {@link #save} never overtakes a waiter.
+ *
+ * <p>Containment of faults, exactly as far as it goes. Everything thrown by {@code sink.write}, by the timer, by a
+ * timer's handle and by the weight function is contained: it never leaves a public method or a timer task, whatever
+ * {@code Throwable} it is, a checked exception thrown without being declared included. A fault that belongs to an
  * item or a batch fails exactly that item or batch, with the thrown object itself as cause where there is one, and is not
  * logged: the failed future is its report. A throw of {@code sink.write} fails its batch; so does a sink that answers
  * {@code null}, with a {@code NullPointerException} that says the sink answered null and names the batch's item count, and so
@@ -53,14 +55,14 @@ import java.util.function.ToLongFunction;
  * {@code sink.write} and a null answer always, a future already completed when its listener runs at once inside
  * {@code onComplete} (a Vert.x future bound to a context the dispatching thread is not on runs it later, on that
  * context) — nest, one commit inside the previous one's completion per queued batch while the commit slots are full, and
- * an error of the JVM raised in the writer's own frames (a stack overflow there, an out-of-memory error) is not contained
- * (row FIX-257); weights whose sum passes {@code Long.MAX_VALUE} are not guarded (row FIX-258); a
+ * an error of the JVM raised in the writer's own frames (a stack overflow there, an out-of-memory error) is not
+ * contained; weights whose sum passes {@code Long.MAX_VALUE} are not guarded; a
  * timer that answers {@code null} where a handle is due is misreported: a null window handle is not counted as a refusal,
  * ends an open refusal episode with the recovery line and leaves the window unarmed, so every later drain that leaves items
  * queued schedules the window again until the timer answers a handle (what stays queued rides the commits in flight, as
  * after a refused window), and a waiter's null deadline is cancelled when the waiter enters: the
  * {@code NullPointerException} of that call is counted and logged as a refused cancel at that site, and the waiter enters
- * all the same; a log handler that throws from one of the writer's log calls is not contained (row FIX-245).
+ * all the same; a log handler that throws from one of the writer's log calls is not contained.
  *
  * <p>Documented non-guarantee: the batches of one drain are handed to the sink oldest first, but a sink that answers
  * inline — a throw of {@code sink.write}, a null answer, or a future already completed whose listener runs at once, as
@@ -75,10 +77,10 @@ public final class BatchingWriter<T> implements AutoCloseable {
     private static final System.Logger LOG = System.getLogger(BatchingWriter.class.getName());
 
     /**
-     * Writer limits; every value finite and positive (CLAUDE.md: never default a limit to unlimited).
+     * Writer limits; every value is finite and positive, so no limit is ever unbounded.
      *
      * @param batchSize largest batch handed to the sink
-     * @param window how long a partial batch may wait while a commit is in flight; zero = only on completion
+     * @param window how long a partial batch may wait while a commit is in flight; zero means only on a commit's completion
      * @param commitConcurrency commits in flight at most
      * @param maxBacklog items queued (not yet handed to the sink) at most; at least one batch
      * @param maxWait how long a {@link #saveWaiting} item may wait for room in the backlog before it fails; positive
@@ -86,7 +88,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
      */
     public record Options(int batchSize, Duration window, int commitConcurrency, int maxBacklog, Duration maxWait) {
 
-        /** The default {@code maxWait}: the default stop deadline, so a stopping flow is not held past it (D-071). */
+        /** The default {@code maxWait}: the default stop deadline, so a stopping flow is not held past it. */
         public static final Duration DEFAULT_MAX_WAIT = Duration.ofSeconds(10);
 
         public Options {
@@ -104,7 +106,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
             this(batchSize, window, commitConcurrency, maxBacklog, DEFAULT_MAX_WAIT);
         }
 
-        /** The prototype's measured defaults: 100 / 10 ms / 4 in flight / 64 batches of backlog; waiters wait 10 s at most. */
+        /** Measured defaults: 100 / 10 ms / 4 in flight / 64 batches of backlog; waiters wait 10 s at most. */
         public static Options defaults() {
             return new Options(100, Duration.ofMillis(10), 4, 6_400);
         }
@@ -120,7 +122,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         Waiter(Pending<T> pending) { this.pending = pending; }
     }
 
-    /** One cancel site's refusal episode (D-146): each site has its own, so a refusing site never masks the other's first line. */
+    /** One cancel site's refusal episode: each site has its own, so a refusing site never masks the other's first line. */
     private static final class CancelSite {
         final String what;
         boolean refusing;   // an episode is open at this site: a cancel was refused and none served since
@@ -141,9 +143,9 @@ public final class BatchingWriter<T> implements AutoCloseable {
     private long queuedBytes;   // the weights of the items in the queue
     private Timer.Cancellable armed;
     private boolean closed;
-    private long windowsRefused;        // every refusal of the window schedule, counted (D-146)
+    private long windowsRefused;        // every refusal of the window schedule
     private boolean windowRefusing;     // an episode is open: the window was refused and not served since
-    private long cancelsRefused;        // every refused cancel at either site, counted (D-146)
+    private long cancelsRefused;        // every refused cancel at either site
     private final CancelSite windowCancel = new CancelSite("the armed window");
     private final CancelSite deadlineCancel = new CancelSite("an entering waiter's deadline");
 
@@ -153,7 +155,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * A writer batching by count and bytes (D-109): a batch holds at most {@code batchSize} items and at most {@code batchBytes}
+     * A writer batching by count and bytes: a batch holds at most {@code batchSize} items and at most {@code batchBytes}
      * bytes, an item's bytes its {@code weight} (asked once, when it is saved, outside the writer's lock; a throw of it or a
      * negative weight fails that save, nothing queued); an item above {@code batchBytes} goes alone. Queued items whose bytes
      * reach {@code batchBytes} are a full batch, as {@code batchSize} items are.
@@ -172,7 +174,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Queues the item; completes when the batch containing it is committed and fails when that commit fails or the backlog
-     * is full. A window the timer refuses fails no item (D-146): the batch this save's drain took is committed all the same
+     * is full. A window the timer refuses fails no item: the batch this save's drain took is committed all the same
      * and what stayed queued rides its completion. A throw of the weight function fails the save with the thrown object and a
      * negative weight with an {@code IllegalArgumentException} that names it, nothing queued and the sink not called; the one
      * throw the writer makes itself is a null item's {@code NullPointerException}, nothing queued (the class Javadoc lists
@@ -189,8 +191,8 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with whatever the timer throws
      * when its deadline cannot be scheduled, a checked exception too. A null item, a throw of the weight function and a
      * negative weight are met as {@link #save} meets them, before any wait: nobody waits and no deadline is scheduled. Once
-     * queued (directly or moved in from the waiters) it behaves as a {@link #save}: a window the timer refuses fails no item
-     * (D-146).
+     * queued (directly or moved in from the waiters) it behaves as a {@link #save}: a window the timer refuses fails no
+     * item.
      */
     public Future<Void> saveWaiting(T item) {
         return enqueue(item, true);
@@ -202,10 +204,10 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. The weight
-     * is asked outside the lock, after the null check and before anything else: any {@code Throwable} of the weight function
-     * fails this save with that object and a negative weight with an IllegalArgumentException that names it (D-146, FIX-235),
-     * nothing queued, nobody waiting, no deadline scheduled. Only a null item is thrown (NullPointerException), the writer's
+     * Puts {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters.
+     * The weight is asked outside the lock, after the null check and before anything else: any {@code Throwable} of the
+     * weight function fails this save with that object and a negative weight with an IllegalArgumentException that names
+     * it, nothing queued, nobody waiting, no deadline scheduled. Only a null item is thrown (NullPointerException), the writer's
      * own argument check.
      */
     private Future<Void> enqueue(T item, boolean wait) {
@@ -233,7 +235,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Under the lock: {@code p} waits with a deadline of {@code maxWait}; a timer that refuses it — any {@code Throwable}, a
-     * checked exception thrown without being declared too (D-146) — fails {@code p} with that cause at once and queues nothing,
+     * checked exception thrown without being declared too — fails {@code p} with that cause at once and queues nothing,
      * never throws at the saver.
      */
     private Future<Void> waitLocked(Pending<T> p) {
@@ -258,7 +260,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * How often the timer has refused to schedule the window (D-146). It only rises; each refusal is counted, whether or not
+     * How often the timer has refused to schedule the window. It only rises; each refusal is counted, whether or not
      * it opened an episode and was logged.
      *
      * @since 0.1
@@ -268,9 +270,9 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * How often the timer has refused a cancel, the armed window's and an entering waiter's deadline's together (D-146). It
-     * only rises; each refusal is counted, whether or not it opened an episode and was logged. Package-private: D-146 exposes
-     * this count to the tests and nowhere else.
+     * How often the timer has refused a cancel, the armed window's and an entering waiter's deadline's together. It only
+     * rises; each refusal is counted, whether or not it opened an episode and was logged. Package-private: the count is for
+     * the tests only.
      */
     long cancelsRefused() {
         synchronized (lock) { return cancelsRefused; }
@@ -302,10 +304,11 @@ public final class BatchingWriter<T> implements AutoCloseable {
     /**
      * Under the lock: takes every batch that may go now and arms the window timer for what stays. A timer that refuses the
      * window — any {@code Throwable}, a checked exception thrown without being declared too — is never thrown at the caller
-     * and fails no item (D-146): the batches just taken are returned for commit like any others. A non-empty queue after the
-     * take means a commit is in flight (the take keeps taking while {@code inFlight == 0}, so it never leaves the queue
-     * non-empty with no commit in flight), so that commit's completion drains again and nothing stays queued with no commit in flight and no window. The refusal is counted, and logged on the first refusal of an episode;
-     * the window served again ends the episode with a second line.
+     * and fails no item: the batches just taken are returned for commit like any others. A non-empty queue after the take
+     * means a commit is in flight (the take keeps taking while {@code inFlight == 0}, so it never leaves the queue non-empty
+     * with no commit in flight), so that commit's completion drains again and nothing stays queued with no commit in flight
+     * and no window. The refusal is counted, and logged on the first refusal of an episode; the window served again ends
+     * the episode with a second line.
      */
     private List<List<Pending<T>>> drainLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = takeLocked(windowElapsed);
@@ -371,10 +374,10 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Under the lock: cancels {@code handle}; a timer that refuses the cancel — any {@code Throwable}, a checked exception
-     * thrown without being declared too — goes no further (D-146): a refused cancel never reaches the caller. Every refusal
-     * is counted; the first of an episode at {@code site} is logged with its cause and a cancel served again at that site
-     * ends the episode with a second line, so a timer refusing every cancel logs two lines per episode, not one per message. The task the refused cancel leaves
-     * pending costs tempo at most — the window's fires into {@link #onWindow}, which only drains again (and gives up a
+     * thrown without being declared too — goes no further: a refused cancel never reaches the caller. Every refusal is
+     * counted; the first of an episode at {@code site} is logged with its cause and a cancel served again at that site ends
+     * the episode with a second line, so a timer refusing every cancel logs two lines per episode, not one per message. The
+     * task the refused cancel leaves pending costs time at most: the window's fires into {@link #onWindow}, which only drains again (and gives up a
      * window armed since, which the next drain arms anew), an entered waiter's deadline finds its waiter gone in
      * {@link #expire} and does nothing.
      */
@@ -416,7 +419,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Outside the lock: hands {@code batch} to the sink. Whatever {@code sink.write} throws or answers fails at most this
-     * batch (D-146): any {@code Throwable} it throws, a checked one too, and a null answer each become a failed future, so
+     * batch: any {@code Throwable} it throws, a checked one too, and a null answer each become a failed future, so
      * the batch fails, its slot is released and the queue drained again, whichever path dispatched it. What the answered
      * future's {@code onComplete} does is outside the guarantee (class Javadoc).
      */
@@ -426,7 +429,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         Future<Void> written;
         try {
             written = sink.write(items);
-        } catch (Throwable e) {   // D-146: whatever the sink throws fails its own batch, it is not thrown at the dispatcher
+        } catch (Throwable e) {   // whatever the sink throws fails its own batch; it is not thrown at the dispatcher
             written = Future.failedFuture(e);
         }
         if (written == null) {
@@ -439,7 +442,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
     /**
      * {@code batch}'s commit is over: the slot is released and the queue drained, then its items complete if
      * {@code committed}, else fail with {@code failure} — a failed commit whose future names no cause fails them too:
-     * {@code tryFail(null)} on a Vert.x promise fails it with a {@code NoStackTraceThrowable} (D-146, FIX-235).
+     * {@code tryFail(null)} on a Vert.x promise fails it with a {@code NoStackTraceThrowable}.
      */
     private void afterCommit(List<Pending<T>> batch, boolean committed, Throwable failure) {
         List<List<Pending<T>>> taken;
