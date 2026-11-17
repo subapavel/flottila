@@ -70,7 +70,8 @@ public final class FunctionCatalogue {
       return syntax.flatMap(
           name -> {
             try {
-              PICTURES.get(name).apply(value);
+              // compiled only to learn whether the compiler refuses it
+              var unused = PICTURES.get(name).apply(value);
               return Optional.empty();
             } catch (IllegalArgumentException refused) {
               return Optional.of(refused.getMessage());
