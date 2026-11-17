@@ -1015,9 +1015,10 @@ class FlowWorkerTest {
         Future<Integer> round = w1.poll();
         until(() -> parks.size() == 1 && w.rt.timer().pending() == 1, () -> "the park of attempt 2 waiting, its renewal scheduled");
         long seq = w.rows.snapshot().get(0).seq();
+        assertEquals(1, w.queue.renews().size(), "the ask for the item's mark before its park, an unkeyed one: " + w.queue.renews());
         w.queue.answerRenews(false);
         w.rt.clock().advance(LEASE.dividedBy(3));
-        until(() -> w.queue.renews().size() == 1 && w.rt.timer().pending() == 0, () -> "the lease found lost");
+        until(() -> w.queue.renews().size() == 2 && w.rt.timer().pending() == 0, () -> "the lease found lost");
         w.queue.renewsOk();
         w.rt.clock().advance(LEASE);   // the claim's lease ran out
         w1.poll();

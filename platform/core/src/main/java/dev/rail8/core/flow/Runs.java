@@ -32,9 +32,9 @@ import java.util.function.Supplier;
  * on, {@link #guard} refuses every step that has not yet started, a send does not start, and {@code Retry} neither waits nor
  * tries again. A step that throws while its run is stopped throws a {@link RunStoppedException} instead, carrying the
  * stop's {@link Why} and the step's own failure; a step that returns keeps its result. The head of a stopped run returns only
- * once every send the run started has settled, so nothing the run sent is still out when its caller goes on, unless another
- * interrupts that wait (a delivery's stop deadline); a run that was not stopped waited for its sends itself, except one the
- * node's fence made it give up, which it leaves as it is.
+ * once every send the run started has settled, so nothing the run sent is still out when its caller goes on, unless its
+ * delivery's stop deadline comes first ({@link #releasedBy}) or another interrupts that wait; a run that was not stopped waited
+ * for its sends itself, except one the node's fence made it give up, which it leaves as it is.
  *
  * <p>A run still going {@code patience} after its time limit — a step that does not answer the interrupt — is logged once as
  * a WARNING naming the message, the last step it entered and its thread. Nothing ends it: it ends when that step returns.
@@ -45,7 +45,8 @@ public final class Runs {
 
     private static final System.Logger LOG = System.getLogger(Runs.class.getName());
     private static final ScopedValue<Run> CURRENT = ScopedValue.newInstance();
-    private static final ScopedValue<Why> FROM_START = ScopedValue.newInstance();
+    private static final ScopedValue<Supplier<Why>> FROM_START = ScopedValue.newInstance();
+    private static final ScopedValue<Future<?>> RELEASE = ScopedValue.newInstance();
 
     /**
      * Why a run stopped. Its {@link #text()} is what the history row at the step where the run stopped says.
@@ -121,16 +122,20 @@ public final class Runs {
         if (!limit.isPositive()) throw new IllegalArgumentException("a run's time limit must be positive, was " + limit);
         return (e, rest) -> {
             Run run = new Run(e, limit, Thread.currentThread());
+            Future<?> release = RELEASE.isBound() ? RELEASE.get() : null;
             Instant deadline = clock.instant().plus(limit);
             register(run);
             try {
-                if (FROM_START.isBound()) run.stop(FROM_START.get());   // not inside yet: nothing to interrupt
+                if (FROM_START.isBound()) {   // asked once the run is registered: a stop told after this finds it
+                    Why from = FROM_START.get().get();
+                    if (from != null) run.stop(from);   // not inside yet: nothing to interrupt
+                }
                 run.arm();
                 run.enter();
                 return ScopedValue.where(CURRENT, run).call(() -> MessageContext.of(e, deadline).apply(rest, e));
             } finally {
                 run.leave();
-                run.awaitSends();
+                run.awaitSends(release);
                 deregister(run);
             }
         };
@@ -151,11 +156,25 @@ public final class Runs {
         return !runs.isEmpty();
     }
 
-    /** {@code run}, in which the pipeline's head starts the run already stopped by {@code why}: its first step records why and does nothing. */
-    public static <T> T stoppedFromStart(Why why, Supplier<T> run) {
+    /**
+     * {@code run}, in which the pipeline's head, once it registered the run, asks {@code why} whether the run is stopped already
+     * (null: it is not). A run stopped then starts stopped: its first step records why and does nothing. A stop the caller learns
+     * of after that question goes through {@link #stop}, which finds the run registered, so none falls between the two.
+     */
+    public static <T> T stoppedFromStart(Supplier<Why> why, Supplier<T> run) {
         Objects.requireNonNull(why, "why");
         Objects.requireNonNull(run, "run");
         return ScopedValue.where(FROM_START, why).call(run::get);
+    }
+
+    /**
+     * {@code run}, in which a stopped run's wait for its sends also ends once {@code release} completes: a delivery's stop
+     * deadline, whose interrupt alone may not reach that wait (one flag holds it and a stop's own, which the run clears).
+     */
+    static <T> T releasedBy(Future<?> release, Supplier<T> run) {
+        Objects.requireNonNull(release, "release");
+        Objects.requireNonNull(run, "run");
+        return ScopedValue.where(RELEASE, release).call(run::get);
     }
 
     /** The stop of the run bound on this thread; empty when it is not stopped, or no run is bound. */
@@ -308,11 +327,11 @@ public final class Runs {
         }
 
         /**
-         * A stopped run waits until every send it started has settled. An interrupt while it waits is never the stop's own,
-         * which {@link #leave} cleared, but another's — a delivery's stop deadline: the run stops waiting, leaves its sends as
-         * they are, and keeps that interrupt for the other.
+         * A stopped run waits until every send it started has settled, or {@code release} (null: none) completed. An interrupt
+         * while it waits is never the stop's own, which {@link #leave} cleared, but another's: the run stops waiting too. Either
+         * way it leaves its sends as they are, and an interrupt stays set for the other.
          */
-        private void awaitSends() {
+        private void awaitSends(Future<?> release) {
             List<Future<?>> left;
             synchronized (this) {
                 if (why == null) return;
@@ -320,8 +339,10 @@ public final class Runs {
             }
             CompletableFuture<?>[] settled = left.stream().map(send -> send.toCompletionStage().handle((result, failure) -> null).toCompletableFuture())
                     .toArray(CompletableFuture[]::new);
+            CompletableFuture<?> wait = CompletableFuture.allOf(settled);
+            if (release != null) wait = CompletableFuture.anyOf(wait, release.toCompletionStage().handle((result, failure) -> null).toCompletableFuture());
             try {
-                CompletableFuture.allOf(settled).get();
+                wait.get();
             } catch (InterruptedException another) {
                 Thread.currentThread().interrupt();
             } catch (ExecutionException impossible) {   // each one is handled: it never completes exceptionally

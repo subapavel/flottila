@@ -13,6 +13,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.InMemoryFailedMessages;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
+import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
@@ -71,6 +72,22 @@ class FlowRunStopTest {
     final AtomicReference<Thread> runThread = new AtomicReference<>();
     /** What the next run of the {@code flaky} step does before it fails; counted. */
     final AtomicInteger flakyRuns = new AtomicInteger();
+    /** Run once by the next read of a message's history, before it answers: the worker's read before its run. */
+    final AtomicReference<Runnable> onTimeline = new AtomicReference<>();
+    /** {@link #store}, read through {@link #onTimeline}. */
+    final MessageStore history = new MessageStore() {
+        @Override public Future<Void> record(Snapshot snapshot) { return store.record(snapshot); }
+
+        @Override public Future<List<Snapshot>> timeline(String messageId) {
+            Runnable first = onTimeline.getAndSet(null);
+            if (first != null) first.run();
+            return store.timeline(messageId);
+        }
+
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
+            return store.findByKey(name, value, after, limit);
+        }
+    };
 
     FlowRunStopTest() {
         rt.withComponent(partner);
@@ -103,7 +120,7 @@ class FlowRunStopTest {
             throw new NackException("partner busy", true);
         }));
         return new FlowBuilder(rt.runtime(), List.of(probe, flaky), List.of(BuiltInStepsTest.HEADERS), ENDPOINTS)
-                .recording(store, Meter.system()).queue(queue).dlq(dlq).runs(runs);
+                .recording(history, Meter.system()).queue(queue).dlq(dlq).runs(runs);
     }
 
     /** {@code b}'s worker {@code n1} of {@code def}, bounded to {@code maxAttempts} hand-outs an hour apart. */
@@ -262,6 +279,78 @@ class FlowRunStopTest {
         List<Snapshot> stopped = failures(in.id());
         assertEquals(1, stopped.size(), "one failed row: " + stopped);
         assertTrue(stopped.getFirst().error().orElseThrow().contains("cancelled by alice"), stopped.getFirst().error().orElseThrow());
+    }
+
+    /**
+     * A cancel the lease's renewal tells of while the worker still reads the message's history, before its run is registered, stops
+     * the run from its start: nothing of the flow runs, and its first step records who cancelled it.
+     */
+    @Test
+    void aCancelLearntBeforeTheRunStartedStopsItFromItsStart() throws Exception {
+        FlowBuilder b = builder();
+        FlowDefinition def = flow("at-least-once", "1h", List.of(PROBE, TO));
+        Envelope in = accept(b.delivery(def, NO_FILES));
+        FlowWorker worker = worker(b, def, 3);
+        onTimeline.set(() -> {
+            assertInstanceOf(FailedMessages.Stopping.class, failed.end(in.id(), ALICE, Optional.of("wrong order")).await());   // on another node
+            rt.clock().advance(LEASE.dividedBy(3));   // the renewal tells of the mark: no run to stop yet
+        });
+
+        assertEquals(1, worker.poll().await(10, SECONDS));
+        until(() -> rows.size() == 0, () -> "the item ended: " + rows.snapshot());
+        assertEquals(null, runThread.get(), "no step of the flow ran");
+        assertTrue(partner.calls.isEmpty(), "nothing sent");
+        List<Snapshot> stopped = failures(in.id());
+        assertEquals(1, stopped.size(), "one failed row: " + stopped);
+        assertEquals(1, stopped.getFirst().step(), "at the first step");
+        assertTrue(stopped.getFirst().error().orElseThrow().contains("cancelled by alice: wrong order"), stopped.getFirst().error().orElseThrow());
+        assertTrue(dlqRows().isEmpty(), "never parked");
+    }
+
+    /**
+     * A run that fails on its last allowed attempt after a cancel on another node marked its item, before any renewal told of it,
+     * is not parked: the worker asks the queue for the mark before it parks a message that has no key, and the message ends.
+     */
+    @Test
+    void aLastAttemptFailingBeforeItsRenewalToldOfTheCancelEndsAndIsNotParked() throws Exception {
+        FlowBuilder b = builder();
+        FlowDefinition def = flow("at-least-once", "1h", List.of(PROBE, TO));
+        Envelope in = accept(b.delivery(def, NO_FILES));
+        FlowWorker worker = worker(b, def, 1);
+
+        Future<Integer> round = worker.poll();
+        DeadlinePartner.Call call = awaitCall(1);
+        assertInstanceOf(FailedMessages.Stopping.class, failed.end(in.id(), ALICE, Optional.empty()).await());   // on another node: no stop here
+        call.fail(new NackException("partner down", true));
+
+        assertEquals(1, round.await(10, SECONDS));
+        until(() -> rows.size() == 0, () -> "the item ended: " + rows.snapshot());
+        assertTrue(dlqRows().isEmpty(), "ended, not parked: " + dlqRows());
+        assertTrue(queue.deferCalls().isEmpty(), "never retried");
+    }
+
+    /**
+     * A message past its bound whose cancel lands while the worker reads its history is not parked: the run starts stopped instead,
+     * so its first step records the cancel, and the message ends.
+     */
+    @Test
+    void aMessagePastItsBoundCancelledWhileItsHistoryIsReadEndsAndIsNotParked() throws Exception {
+        FlowBuilder b = builder();
+        FlowDefinition def = flow("at-least-once", "1h", List.of(PROBE, TO));
+        Envelope in = accept(b.delivery(def, NO_FILES));
+        FlowWorker worker = worker(b, def, 1);
+        assertEquals(1, rows.claim("gone", "orders", 1, LEASE).await().size(), "a holder that died with its hand-out");
+        rt.clock().advance(LEASE.plusSeconds(1));
+        onTimeline.set(() -> assertInstanceOf(FailedMessages.Stopping.class, failed.end(in.id(), ALICE, Optional.of("not needed")).await()));
+
+        assertEquals(1, worker.poll().await(10, SECONDS), "its second hand-out, past its bound of one");
+        until(() -> rows.size() == 0, () -> "the item ended: " + rows.snapshot());
+        assertTrue(dlqRows().isEmpty(), "ended, not parked: " + dlqRows());
+        assertTrue(partner.calls.isEmpty(), "nothing of the flow ran");
+        List<Snapshot> stopped = failures(in.id());
+        assertEquals(1, stopped.size(), "one failed row: " + stopped);
+        assertEquals(1, stopped.getFirst().step(), "at the first step");
+        assertTrue(stopped.getFirst().error().orElseThrow().contains("cancelled by alice: not needed"), stopped.getFirst().error().orElseThrow());
     }
 
     @Test

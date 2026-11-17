@@ -1,10 +1,12 @@
 package dev.rail8.core.flow;
 
+import dev.rail8.api.Ack;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Pipeline;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
+import dev.rail8.core.admission.Admission;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -18,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 import static dev.rail8.core.flow.FlowWorkerTest.until;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -136,11 +139,79 @@ class RunsTest {
         assertFalse(runs.stop(e.id(), ALICE), "the run is no longer registered");
     }
 
+    /**
+     * A sync delivery's stop deadline ends a stopped run's wait for its send even when its interrupt lands while the stop's own
+     * is still pending on the run's thread: the one flag then holds both, and the run clears it as its own. The delivery answers
+     * its cancel; the send is left as it is.
+     */
+    @Test
+    void aDeliverysStopDeadlineEndsAStoppedRunsWaitThoughItsInterruptMergedWithTheStops() throws Exception {
+        Promise<Envelope> send = Promise.promise();
+        Object gate = new Object();
+        Delivery delivery = Delivery.sync(new Admission(8, 1 << 20), pipeline(Duration.ofSeconds(5), Stage.of(x -> {
+            Runs.current().watch(send.future());
+            synchronized (gate) {   // no interrupt wakes a thread blocked here: both land on its flag before it awaits the send
+                return send.future().await();
+            }
+        })), rt.timer());
+        CompletableFuture<Ack> answer = new CompletableFuture<>();
+        synchronized (gate) {
+            Thread caller = Thread.ofVirtual().start(() -> delivery.apply(e).onComplete(answer::complete, answer::completeExceptionally));
+            until(() -> caller.getState() == Thread.State.BLOCKED, () -> "the step waits for the gate: " + caller.getState());
+            rt.clock().advance(Duration.ofSeconds(5));   // the time limit: the stop's interrupt, still pending
+            delivery.stop(Duration.ZERO);                // the deadline at once: its interrupt on the same flag
+        }
+
+        assertEquals(new Ack.Nack("cancelled: flow orders stopping after PT0S", true), answer.get(10, SECONDS), "the delivery's cancel");
+        assertFalse(send.future().isComplete(), "the send is left as it is");
+        assertFalse(runs.stop(e.id(), ALICE), "the run is no longer registered");
+    }
+
+    /**
+     * A run still going its patience after its time limit — its step does not answer the interrupt — is logged once as a WARNING
+     * naming the message, the step and the thread. Nothing ends it: the step that returns at last keeps its result.
+     */
+    @Test
+    void aRunStillGoingItsPatienceAfterItsTimeLimitIsLoggedOnce() throws Exception {
+        FlowWorkerTest.Logs logs = FlowWorkerTest.Logs.attach();
+        try {
+            Object gate = new Object();
+            CompletableFuture<Envelope> out = new CompletableFuture<>();
+            synchronized (gate) {
+                Thread run = Thread.ofVirtual().name("run-of-a-stuck-step").start(() -> {
+                    try {
+                        out.complete(pipeline(Duration.ofSeconds(5), Stage.of(x -> {
+                            synchronized (gate) {   // no interrupt wakes a thread blocked here: a step that does not answer it
+                                return x.withHeader("done", "yes");
+                            }
+                        })).apply(e));
+                    } catch (Throwable t) {
+                        out.completeExceptionally(t);
+                    }
+                });
+                until(() -> run.getState() == Thread.State.BLOCKED, () -> "the step is stuck: " + run.getState());
+                rt.clock().advance(Duration.ofSeconds(5));
+                rt.clock().advance(Duration.ofSeconds(30).minusMillis(1));
+                assertEquals(List.of(), logs.at(Level.WARNING, e.id()), "not before its patience passed");
+                rt.clock().advance(Duration.ofMillis(1));
+                List<String> warned = logs.at(Level.WARNING, e.id());
+                assertEquals(1, warned.size(), logs.all().toString());
+                assertTrue(warned.getFirst().contains("still runs PT30S after its time limit of PT5S on thread run-of-a-stuck-step, last in step 's1'"),
+                        warned.getFirst());
+                rt.clock().advance(Duration.ofSeconds(30));
+                assertEquals(1, logs.at(Level.WARNING, e.id()).size(), "logged once");
+            }
+            assertEquals("yes", out.get(10, SECONDS).headers().get("done"), "the step that returns at last keeps its result");
+        } finally {
+            logs.detach();
+        }
+    }
+
     @Test
     void aRunStoppedFromItsStartRunsNoStep() {
         AtomicInteger ran = new AtomicInteger();
         RunStoppedException stopped = assertThrows(RunStoppedException.class,
-                () -> Runs.stoppedFromStart(ALICE, () -> pipeline(Duration.ofMinutes(1), Stage.of(x -> { ran.incrementAndGet(); return x; })).apply(e)));
+                () -> Runs.stoppedFromStart(() -> ALICE, () -> pipeline(Duration.ofMinutes(1), Stage.of(x -> { ran.incrementAndGet(); return x; })).apply(e)));
         assertSame(ALICE, stopped.why());
         assertNull(stopped.getCause());
         assertEquals(0, ran.get());

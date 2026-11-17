@@ -145,6 +145,8 @@ A cancel takes longer:
 
 - for a message whose body is in a dead node's journal: it stops when that node comes back;
 - for a message behind an older message of its key: it stops when its turn comes;
+- for a message without a key whose last attempt fails just as the cancel commits: it can be parked
+  all the same, and a second cancel ends it (200, `"state": "ended"`);
 - for a step that ignores the interrupt (a long XSLT or jq evaluation): its message, and the key of
   an ordered flow, stays taken until the step returns. Once the run has gone on for its time limit
   plus the lease, a WARNING names the message, the step and the thread.
