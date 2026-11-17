@@ -18,6 +18,15 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- a temporary directory for each test JVM, so a test that lists java.io.tmpdir sees only its own JVM's files;
+               ForkTempDir creates it -->
+          <argLine>@{argLine} -Drail8.test.fork=${surefire.forkNumber} -Djava.io.tmpdir=${project.build.directory}/tmp/fork-${surefire.forkNumber}</argLine>
+        </configuration>
+      </plugin>
+      <plugin>
         <!-- the runnable cli (D-079): `java -jar target/rail8-cli-<v>.jar` (bin/rail8) runs Cli; the manifest names it and a
              lib/ class path, which copy-dependencies below fills, as rail8-runtime's jar does; no shading -->
         <groupId>org.apache.maven.plugins</groupId>
@@ -85,6 +94,12 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- ForkTempDir: creates each test JVM's temporary directory when the test run opens -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

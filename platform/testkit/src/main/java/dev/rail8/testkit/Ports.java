@@ -18,6 +18,11 @@ import java.nio.file.Path;
  * JVM does not hand the same port out twice before it has wrapped. The process-wide cursor starts at an offset derived from
  * the process id so that two JVMs on one host start apart.
  *
+ * <p>A test JVM that runs beside others (the build forks one per core) is given its fork number in the system property
+ * {@value #FORK_PROPERTY}, 1 and up. Such a JVM draws only from its own slice of the pool, one of {@value #SLICES}, so two
+ * forks never hand out the same port: one fork's port that its node releases and binds again later cannot be taken by
+ * another fork in between.
+ *
  * <p>What it does not guarantee: another process that binds the same number explicitly can still take it; and on a host whose
  * kernel chooses from everywhere (its range covers the whole pool) there is no usable port, the helper falls back to binding
  * port 0 and handing that number on, and the guarantee is gone. After one whole pass without a bindable port it throws
@@ -31,6 +36,10 @@ public final class Ports {
 
     static final int POOL_FROM = 20000;
     static final int POOL_TO = 32767;
+    /** The system property naming this JVM's test fork, 1 and up; set, the JVM draws from its fork's slice only. */
+    public static final String FORK_PROPERTY = "rail8.test.fork";
+    /** The pool is cut into this many slices; fork n takes slice (n - 1) modulo this number. */
+    static final int SLICES = 16;
     private static final Path KERNEL_RANGE_FILE = Path.of("/proc/sys/net/ipv4/ip_local_port_range");
     private static final int[] IANA_DEFAULT = {49152, 65535};
 
@@ -53,6 +62,11 @@ public final class Ports {
 
         private static Ports create() {
             int[] kernel = kernelRange(KERNEL_RANGE_FILE);
+            String fork = System.getProperty(FORK_PROPERTY);
+            if (fork != null) {
+                int[] slice = slice(fork);
+                return new Ports(slice[0], slice[1], kernel[0], kernel[1], slice[0]);
+            }
             int size = POOL_TO - POOL_FROM + 1;
             int start = POOL_FROM + (int) (ProcessHandle.current().pid() % size);
             return new Ports(POOL_FROM, POOL_TO, kernel[0], kernel[1], start);
@@ -109,6 +123,25 @@ public final class Ports {
         } catch (IOException e) {
             throw new IllegalStateException("cannot bind port 0", e);
         }
+    }
+
+    /**
+     * The first and last port of the slice of fork {@code fork} (a whole number, 1 and up): slice (fork - 1) modulo
+     * {@link #SLICES} of the pool, the slices of equal size and apart.
+     *
+     * @throws IllegalStateException if {@code fork} is not a whole number of at least 1
+     */
+    static int[] slice(String fork) {
+        int n;
+        try {
+            n = Integer.parseInt(fork.strip());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException(FORK_PROPERTY + " names a fork number, 1 and up, was '" + fork + "'", e);
+        }
+        if (n < 1) throw new IllegalStateException(FORK_PROPERTY + " names a fork number, 1 and up, was '" + fork + "'");
+        int per = (POOL_TO - POOL_FROM + 1) / SLICES;
+        int from = POOL_FROM + ((n - 1) % SLICES) * per;
+        return new int[] {from, from + per - 1};
     }
 
     static int[] kernelRange(Path file) {

@@ -341,6 +341,9 @@ class PgIntakeJournalIT {
 
         Future<String> saved = a.start(in, true, JournalWorld.undecided());
         force.awaitReached();
+        // the save's thread enters the set once its append returned, which can be just after the journal began the force:
+        // wait for it, bounded, while the force is still held
+        JournalFixture.until(() -> !openSaves(a).isEmpty(), () -> "the save never entered the open-save set while its force was held");
         List<JournalRef> whileForcing = openSaves(a);   // appended, not yet forced: reserved and written
         force.release();
         JournalFixture.until(() -> commitsHeldBy(gate) == 1, () -> "the save's COMMIT was not seen held at the gate: " + saved);
@@ -369,6 +372,9 @@ class PgIntakeJournalIT {
         HeldFiles.Hold failing = a.files.holdForceAfter("m-unforced-open");
         Future<String> refused = a.start(lost, true, JournalWorld.undecided());
         failing.awaitReached();
+        // the save's thread enters the set once its append returned, which can be just after the journal began the force:
+        // wait for it, bounded, while the force is still held
+        JournalFixture.until(() -> !openSaves(a).isEmpty(), () -> "the save never entered the open-save set while its force was held");
         assertEquals(1, openSaves(a).size(), "an open save while its record waits for the force");
         failing.fail(new IOException("EIO by the test"));
         assertTrue(settled(refused).failed(), "fixture: a record never forced is no save");

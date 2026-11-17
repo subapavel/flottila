@@ -122,7 +122,7 @@ class PgBodiesIT {
              Statement create = admin.createStatement()) {
             create.execute("CREATE DATABASE \"" + database + "\"");
         }
-        // getJdbcUrl() is jdbc:postgresql://host:port/<db> followed by the container's query string (?loggerLevel=OFF)
+        // getJdbcUrl() is jdbc:postgresql://host:port/<db> followed by its query string, if it has one
         String base = pg.getJdbcUrl();
         int query = base.indexOf('?');
         String path = query < 0 ? base : base.substring(0, query);

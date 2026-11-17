@@ -270,4 +270,25 @@ class PortsTest {
             }
         }
     }
+
+    @Test
+    void eachForkDrawsFromASliceOfItsOwnAndTheSlicesDoNotOverlap() {
+        List<int[]> slices = new ArrayList<>();
+        for (int fork = 1; fork <= Ports.SLICES; fork++) slices.add(Ports.slice(String.valueOf(fork)));
+        assertArrayEquals(new int[] {Ports.POOL_FROM, Ports.POOL_FROM + 797}, slices.get(0), "fork 1 starts the pool");
+        for (int i = 0; i < slices.size(); i++) {
+            int[] s = slices.get(i);
+            assertTrue(s[0] >= Ports.POOL_FROM && s[1] <= Ports.POOL_TO && s[0] < s[1], "slice " + (i + 1) + " lies in the pool");
+            if (i > 0) assertTrue(s[0] > slices.get(i - 1)[1], "slice " + (i + 1) + " begins after the one before it ends");
+        }
+        assertArrayEquals(slices.get(0), Ports.slice(String.valueOf(Ports.SLICES + 1)), "the forks past the last slice wrap");
+    }
+
+    @Test
+    void aForkNumberThatIsNotAWholeNumberOfAtLeastOneIsRefused() {
+        for (String bad : List.of("0", "-1", "x", "")) {
+            IllegalStateException e = assertThrows(IllegalStateException.class, () -> Ports.slice(bad), bad);
+            assertTrue(e.getMessage().contains(Ports.FORK_PROPERTY), e.getMessage());
+        }
+    }
 }
