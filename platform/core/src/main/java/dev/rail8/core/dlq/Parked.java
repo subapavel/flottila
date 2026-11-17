@@ -14,8 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A message parked in the dead letter queue (ARCHITECTURE §6: "final failure → DLQ row (by reference to the body)"):
- * the failed step's input envelope by reference — enough to run that step again without any snapshot — with the step,
+ * A message parked in the dead letter queue after its final failure: the failed step's input envelope by reference — enough to run that step again without any snapshot — with the step,
  * the error and the versions the message ran with. Never the bytes.
  *
  * @param messageId the message; one row per message
@@ -24,8 +23,8 @@ import java.util.Optional;
  * @param error the failure, as text
  * @param parkedAt when, on the runtime's clock
  * @param bodyKey where the step's input body lives
- * @param partitionKey the partition key of the work item a worker parked (CORE-14b O7, D-135): what a restart enqueues under; empty
- *                     for an unkeyed item, for a park outside a worker (a step's) and for a row parked before it was kept
+ * @param partitionKey the partition key of the work item a worker parked: what a restart enqueues the message under; empty
+ *                     for an unkeyed item, for a park outside a worker (a step's) and for a row stored without one
  * @since 0.1
  */
 public record Parked(String messageId, String flow, int step, String stepName, String error, Instant parkedAt, Headers headers, Props props, Keys keys,

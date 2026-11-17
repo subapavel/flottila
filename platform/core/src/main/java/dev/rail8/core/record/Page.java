@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * One page of a bounded listing (D-057 a): a listing is never unlimited, so every store hands its rows out a page at a
+ * One page of a bounded listing: a listing is never unlimited, so every store hands its rows out a page at a
  * time — at most {@link #MAX_LIMIT} items, and a cursor to the next page when another item exists. The cursor is opaque:
  * each store owns what it encodes (a position, never an offset), {@link #cursor} and {@link #position} only wrap it in
  * base64url.

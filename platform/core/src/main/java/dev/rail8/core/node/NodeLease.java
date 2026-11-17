@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
- * A node's lease in the {@link Membership} and its self-fence (D-101 (1), (2); F-28), on an injected monotonic clock
+ * A node's lease in the {@link Membership} and its self-fence, on an injected monotonic clock
  * ({@code nanos}, any origin) and {@link Timer}. {@link #start} joins; from then on the node renews every {@code renew}, at most
  * one renew in flight: a period that finds one outstanding sends nothing, and the fence keeps counting from the outstanding
  * send. With {@code s} the clock read just before a join or renew is sent, each renewed answer sets

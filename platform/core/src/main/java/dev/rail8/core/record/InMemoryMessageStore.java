@@ -14,11 +14,11 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The MessageStore in memory: tests, the bench, a dry run. Loss loses monitoring, never a message, so memory is allowed
- * (CLAUDE.md state rule); the durable save is the consumer's. Like the Postgres store, a row is keyed by (message, step, attempt),
- * the first wins, and the timeline lists a message's rows by attempt, then step (FIX-175); every recorded snapshot's keys
- * count, one row per (name, value, message) in the order the message first carried the key; the key search's cursor is
- * the insertion index of the page's last id in that order.
+ * A {@link MessageStore} in memory, for tests, the bench and a dry run. Losing it loses monitoring data, never a message,
+ * so keeping it in memory is allowed; the durable save is the consumer's. Like the Postgres store, a row is keyed by
+ * (message, step, attempt) and the first row for a key wins; the timeline lists a message's rows by attempt, then step.
+ * The keys of every recorded snapshot count for the key search, one entry per (name, value, message) in the order the
+ * messages first carried the key; the search's cursor is the index, in that order, of the page's last id.
  *
  * @since 0.1
  */

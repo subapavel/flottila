@@ -14,19 +14,22 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The at-least-once failure path (ARCHITECTURE §4 lifecycle table, §6): a step's failure parks the step's input in the
- * {@link Dlq} by reference — its body persisted first, then the row (D-062) —, waits for the row to be durable and surfaces
- * as a {@link ParkedException}; a park that fails, its persist included, leaves the original failure to surface with the
- * park's failure suppressed — a message is never dropped silently. A step's failure is any {@link Exception}, a checked one
- * too ({@code Future.await()} rethrows a failed future's checked cause as is, FIX-107), except an {@link InterruptedException}:
- * a cancelled run is not parked, it is rethrown with the interrupt flag restored. An interrupt during the park's own wait
- * (the persist or the row) surfaces the original failure with the {@link InterruptedException} suppressed and the interrupt
- * flag restored (D-098): the cancelling caller still sees its interrupt, and the park may still land. A {@link FencedException}
- * is not parked either (D-101 (2)): the node's fence closed, the message's item is left to whoever runs it next, and the failure
- * passes through as is. An {@link Error} is never caught. (CORE-14a, D-135: the worker's pipeline has no Parking — it parks the
- * ingress itself, only while the node's fence is open — so a Parking is never fenced.)
- * A failure further down the pipeline passes through untouched: the step it happened at parked it. {@link #park} parks a
- * message outside any step's run — the worker's attempts bound (D-055) — and leaves its failure to the caller.
+ * The at-least-once failure path. A step's failure parks the step's input in the {@link Dlq} by reference — its body
+ * persisted first, then the row —, waits for the row to be durable and surfaces as a {@link ParkedException}. A park that
+ * fails, its persist included, leaves the original failure to surface with the park's failure suppressed, so a message is
+ * never dropped silently.
+ *
+ * <p>A step's failure is any {@link Exception}, a checked one too ({@code Future.await()} rethrows a failed future's checked
+ * cause as is), except an {@link InterruptedException}: a cancelled run is not parked, it is rethrown with the interrupt flag
+ * restored. An interrupt during the park's own wait (the persist or the row) surfaces the original failure with the
+ * {@link InterruptedException} suppressed and the interrupt flag restored: the cancelling caller still sees its interrupt,
+ * and the park may still land. A {@link FencedException} is not parked either: the node's fence closed, the message's work
+ * item is left to whichever node runs it next, and the failure passes through as is. An {@link Error} is never caught. The
+ * worker's pipeline has no Parking — the worker parks the ingress itself, and only while the node's fence is open — so a
+ * Parking never sees its own park fenced.
+ *
+ * <p>A failure further down the pipeline passes through untouched: the step it happened at parked it. {@link #park} parks a
+ * message outside any step's run — when a work item has used up its attempts — and leaves its failure to the caller.
  *
  * @since 0.1
  */
@@ -72,16 +75,16 @@ public final class Parking {
 
     /**
      * Parks {@code e}, the input of {@code step}, for {@code failure}; completes with the row once it is durable. The row
-     * refers to {@code e}'s body, so that body is made durable first — persisted in the store it lives in, under its own key
-     * (D-062) — and the row is written only after that completed: a DLQ row implies a durable body. A persist that fails, or
+     * refers to {@code e}'s body, so that body is made durable first — persisted in the store it lives in, under its own
+     * key — and the row is written only after that completed: a DLQ row implies a durable body. A persist that fails, or
      * throws, fails the park with its cause and writes no row. A persist that succeeded tells the run's {@link Trail}, when one
-     * is bound on the calling thread, that the key is durable: the trail does not persist it again (D-066).
+     * is bound on the calling thread, that the key is durable: the trail does not persist it again.
      */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure) {
         return park(e, step, failure, Optional.empty());
     }
 
-    /** {@link #park(Envelope, StepConfig, Throwable)} keeping {@code partitionKey} on the row: a worker's park of a keyed item (CORE-14b O7). */
+    /** {@link #park(Envelope, StepConfig, Throwable)} keeping {@code partitionKey} on the row: a worker's park of a keyed item. */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure, Optional<String> partitionKey) {
         Parked parked = Parked.of(e, step, failure, clock.instant(), versions, partitionKey);
         Optional<Trail> run = Trail.current();   // read here, on the run's thread: the persist answers on another

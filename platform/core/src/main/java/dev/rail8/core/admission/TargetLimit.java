@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
- * A bound on the sends in flight to one target system (D-099): at most {@code maxCalls} permits out at once, shared by every
+ * A bound on the sends in flight to one target system: at most {@code maxCalls} permits out at once, shared by every
  * flow whose {@code to} names the target. Requests only — a message's body is already in its flow's {@link Admission} and a
  * reply is bounded by the endpoint's {@code maxBodyBytes}.
  *
@@ -24,7 +24,7 @@ import java.util.function.UnaryOperator;
  * {@link Timer} with a retryable {@link NackException} ({@code target <t> busy: <n> calls in flight, waited <maxWait>}). A grant
  * only completes the waiter's future, on the thread that freed the permit; a refusal completes it on the timer's thread.
  *
- * <p>{@link #call(Duration, Supplier)} is the message's path (D-100): it waits at most the earlier of {@code maxWait} and the
+ * <p>{@link #call(Duration, Supplier)} is the message's path: it waits at most the earlier of {@code maxWait} and the
  * {@code within} left until the message's deadline — refused then with {@code ..., waited <within> until the message's deadline}
  * when the deadline came first — and a request that would have to wait with nothing left ({@code within} zero or less) is
  * refused at once with {@code ..., the message's deadline has passed}, counted in refused, no bound armed; a free permit is still
@@ -82,7 +82,7 @@ public final class TargetLimit {
 
     /**
      * {@link #call(Duration, Supplier)} whose caller waits for {@code awaited} applied to the send's future instead of the
-     * future itself — one that may end first, a send abandoned at the node's fence (D-113 draft). The permit still follows the
+     * future itself — one that may end first, such as a send abandoned when the node's fence closes. The permit still follows the
      * send's own future: held until that settles, however early the caller stopped waiting.
      */
     public <T> T call(Duration within, Supplier<Future<T>> send, UnaryOperator<Future<T>> awaited) throws Exception {

@@ -4,8 +4,8 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 
 /**
- * The current thread's CPU time, for the per-step CPU figure on the snapshot (ARCHITECTURE §4 and §8; unknown on a virtual
- * thread, F-21). Injected like the clock, so tests drive it.
+ * The current thread's CPU time, for the per-step CPU figure on the snapshot; unknown on a virtual thread. Injected like
+ * the clock, so tests can drive it.
  *
  * @since 0.1
  */
@@ -17,7 +17,7 @@ public interface Meter {
 
     /**
      * The JVM's reading through {@link ThreadMXBean}; {@link Snapshot#CPU_UNKNOWN} where the platform has none for this thread.
-     * On JDK 25 that is every virtual thread, so every step, run on the message's virtual thread, records CPU unknown (F-21).
+     * On JDK 25 that is every virtual thread, so every step, run on the message's virtual thread, records CPU unknown.
      */
     static Meter system() {
         return of(ManagementFactory.getThreadMXBean());

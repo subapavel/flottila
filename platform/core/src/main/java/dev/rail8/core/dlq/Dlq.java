@@ -6,10 +6,10 @@ import io.vertx.core.Future;
 import java.util.Optional;
 
 /**
- * The dead letter queue: state whose loss loses messages, so Postgres in the runtime (CLAUDE.md), in memory for tests.
+ * The dead letter queue. Losing it loses messages, so the runtime keeps it in Postgres; the in-memory one is for tests.
  * A park completes when the row is durable; a second park of the same message is ignored (the first wins).
- * The Postgres DLQ (PgDlq) fails a park with {@link dev.rail8.api.BlobNotFoundException} when no bodies row exists for its
- * body key, even for an id already parked (D-096); the in-memory one checks no body.
+ * The Postgres DLQ fails a park with {@link dev.rail8.api.BlobNotFoundException} when no stored body exists for its body
+ * key, even for an id already parked, so a row never points at a missing body; the in-memory one checks no body.
  *
  * @since 0.1
  */
@@ -18,7 +18,7 @@ public interface Dlq {
     Future<Void> park(Parked parked);
 
     /**
-     * One page of the parked messages, oldest first ({@code parkedAt}, then id; D-057 a). {@code after} is the previous
+     * One page of the parked messages, oldest first ({@code parkedAt}, then id). {@code after} is the previous
      * page's {@link Page#next()} cursor, empty for the first page; the cursor is a position, so a removal before it skips
      * nothing. A {@code limit} outside 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out is an
      * {@link IllegalArgumentException}, thrown or as the failed future's cause.

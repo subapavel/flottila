@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The message path in one place (ARCHITECTURE §4 threading): admit the message — requests <em>and</em> bytes —
+ * The message path in one place: admit the message — requests <em>and</em> bytes —
  * bind its {@link MessageContext}, open its {@link RequestScope} with the context's deadline, run the body,
  * and release the permit whatever happened. Over the budget the caller gets {@link AdmissionRefusedException}
  * at once and nothing runs; a deadline already in the past is a caller error.
@@ -28,6 +28,10 @@ public final class Admitted {
     }
 
     /**
+     * Runs {@code body} for one admitted message. The scope's deadline is {@code clock.instant() + remaining} with
+     * {@code remaining} computed once at entry: equal to the context's deadline on a fake clock, microseconds later on a
+     * real one.
+     *
      * @param admission the flow's budget
      * @param context the message's context; its deadline bounds the scope
      * @param bytes the body size counted against the byte budget
@@ -35,8 +39,6 @@ public final class Admitted {
      * @throws AdmissionRefusedException when the budget has no room now
      * @throws IllegalArgumentException when the body can never fit the budget or the deadline has passed
      * @throws Exception whatever the body throws, after the permit is released
-     * <p>The scope's deadline is {@code clock.instant() + remaining} with {@code remaining} computed once at entry: equal to
-     * the context's deadline on a fake clock, microseconds later on a real one.
      */
     public static <T> T run(Admission admission, MessageContext context, long bytes, Clock clock, Timer timer, Body<T> body) throws Exception {
         Objects.requireNonNull(admission, "admission");
