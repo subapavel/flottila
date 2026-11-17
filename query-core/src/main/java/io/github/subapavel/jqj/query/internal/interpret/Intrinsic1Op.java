@@ -10,7 +10,8 @@ public final class Intrinsic1Op extends Op {
   private final Fn1 fn;
   private final Argument a;
 
-  public Intrinsic1Op(Fn1 fn, Argument a) {
+  public Intrinsic1Op(boolean valueForm, Fn1 fn, Argument a) {
+    super(valueForm);
     this.fn = fn;
     this.a = a;
   }
@@ -19,5 +20,15 @@ public final class Intrinsic1Op extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Object v = fn.apply(state, in, a.read(slots, in));
     return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return fn.apply(state, in, a.read(slots, in));
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, a.read(slots, in)), out);
   }
 }

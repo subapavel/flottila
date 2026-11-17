@@ -22,8 +22,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * The 1 KB differential cases of the bench scenarios (ADR-0019, ADR-0024) in {@code oracle/.../diff/bench.cases}: jqj
  * is timed on the same work jq does only while each case's inline stdin is still its generator's 1 KB document
- * ({@code Inputs.orders}, {@code recs} or {@code ints} of {@code Size.K1}, or #85's {@code KeyProofCost.recs20} of
- * 1 024 bytes), byte for byte, and its command line is the
+ * ({@code Inputs.orders}, {@code recs}, {@code ints} or {@code deep} of {@code Size.K1}, or #85's
+ * {@code KeyProofCost.recs20} of 1 024 bytes), byte for byte, and its command line is the
  * scenario's. The case file has to hold a literal copy, because {@code scripts/oracle-record.sh} records from the file;
  * this test is what ties the copy to the generator.
  */
@@ -37,6 +37,7 @@ class BenchCasesTest {
    */
   static Stream<Arguments> cases() {
     byte[] orders = Inputs.orders(Size.K1);
+    byte[] ints = Inputs.ints(Size.K1);
     return Stream.of(
         argumentSet("bench/G1.1k", "bench/G1.1k", List.of("-c", ".a.b.c"), orders),
         argumentSet("bench/G2.1k", "bench/G2.1k", List.of("-c", Gates.G2), orders),
@@ -46,7 +47,29 @@ class BenchCasesTest {
         argumentSet("bench/G6.pretty.1k", "bench/G6.pretty.1k", List.of("."), orders),
         argumentSet("bench/G7.1k", "bench/G7.1k", List.of("-c", ".a"), orders),
         argumentSet("bench/recs20-print.1k", "bench/recs20-print.1k", List.of("-c", "."), KeyProofCost.recs20(Size.K1.bytes())),
-        argumentSet("bench/recs20-iterate.1k", "bench/recs20-iterate.1k", List.of("-c", ".[]|.[]"), KeyProofCost.recs20(Size.K1.bytes())));
+        argumentSet("bench/recs20-iterate.1k", "bench/recs20-iterate.1k", List.of("-c", ".[]|.[]"), KeyProofCost.recs20(Size.K1.bytes())),
+        argumentSet("bench/recur-T.1k", "bench/recur-T.1k", List.of("-c", Diagnostics.T), ints),
+        argumentSet("bench/recur-E.1k", "bench/recur-E.1k", List.of("-c", Diagnostics.E), ints),
+        argumentSet("bench/recur-Eu.1k", "bench/recur-Eu.1k", List.of("-c", Diagnostics.EU), ints),
+        argumentSet("bench/recur-M.1k", "bench/recur-M.1k", List.of("-c", Diagnostics.M), ints),
+        argumentSet("bench/recur-N.1k", "bench/recur-N.1k", List.of("-c", Diagnostics.N), ints),
+        argumentSet("bench/limit-iter.1k", "bench/limit-iter.1k", List.of("-c", Diagnostics.LIMIT_ITER), ints),
+        argumentSet("bench/limit-recurse.1k", "bench/limit-recurse.1k", List.of("-c", Diagnostics.LIMIT_RECURSE), ints),
+        argumentSet("bench/cap-inline.1k", "bench/cap-inline.1k", List.of("-c", Diagnostics.inlineChain(Diagnostics.INLINE_K)), ints),
+        argumentSet(
+            "bench/cap-inline-over.1k", "bench/cap-inline-over.1k", List.of("-c", Diagnostics.inlineChain(Diagnostics.INLINE_K + 1)), ints),
+        argumentSet(
+            "bench/cap-specialise.1k",
+            "bench/cap-specialise.1k",
+            List.of("-c", Diagnostics.specialiseTree(Diagnostics.SPECIALISE_M)),
+            ints),
+        argumentSet(
+            "bench/cap-specialise-over.1k",
+            "bench/cap-specialise-over.1k",
+            List.of("-c", Diagnostics.specialiseTree(Diagnostics.SPECIALISE_M + 1)),
+            ints),
+        argumentSet("bench/dotdot.1k", "bench/dotdot.1k", List.of("-c", Diagnostics.DOTDOT), orders),
+        argumentSet("bench/dotdot-deep.1k", "bench/dotdot-deep.1k", List.of("-c", Diagnostics.DOTDOT), Inputs.deep(Size.K1)));
   }
 
   @Test
@@ -61,7 +84,20 @@ class BenchCasesTest {
             "bench/G3.1k",
             "bench/G4.1k",
             "bench/recs20-print.1k",
-            "bench/recs20-iterate.1k");
+            "bench/recs20-iterate.1k",
+            "bench/recur-T.1k",
+            "bench/recur-E.1k",
+            "bench/recur-Eu.1k",
+            "bench/recur-M.1k",
+            "bench/recur-N.1k",
+            "bench/limit-iter.1k",
+            "bench/limit-recurse.1k",
+            "bench/cap-inline.1k",
+            "bench/cap-inline-over.1k",
+            "bench/cap-specialise.1k",
+            "bench/cap-specialise-over.1k",
+            "bench/dotdot.1k",
+            "bench/dotdot-deep.1k");
   }
 
   @ParameterizedTest(name = "{argumentSetName}")

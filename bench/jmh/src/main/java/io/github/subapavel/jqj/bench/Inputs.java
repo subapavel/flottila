@@ -11,7 +11,8 @@ import java.util.function.Supplier;
 /**
  * The synthetic inputs of ADR-0019: {@code orders}, the input of G1, G2, G6 and G7,
  * {@code {"orders":[{id,total,k}…],"items":[{sku,price}…],"a":{"b":{"c":"x"}}}}; {@code recs}, the input of G3,
- * {@code [{"k":"k0".."k63","v":n}…]}; and {@code ints}, the input of G4, {@code [0..n-1]}. The bytes are a pure function
+ * {@code [{"k":"k0".."k63","v":n}…]}; {@code ints}, the input of G4, {@code [0..n-1]}; and {@code deep}, the input of
+ * #119's {@code dotdot-deep}, {@code [[…]]}. The bytes are a pure function
  * of the size (the {@code recs} draws come from a {@link Random} of the fixed seed {@link #RECS_SEED}, whose algorithm
  * its Javadoc fixes), so JMH (which generates them in its setup) and {@code bench/jq-ref.sh} (which writes them with
  * {@link #main}) time the same document.
@@ -114,6 +115,20 @@ public final class Inputs {
       doc.append(i);
     }
     return doc.append("]\n").toString().getBytes(US_ASCII);
+  }
+
+  /** The {@code deep} document of {@code n} levels (#119): {@code n} {@code [}, then {@code n} {@code ]} and one LF. */
+  public static byte[] deep(int n) {
+    return new StringBuilder(2 * n + 1).repeat('[', n).repeat(']', n).append('\n').toString().getBytes(US_ASCII);
+  }
+
+  /**
+   * The {@code deep} document of {@code size}: as many levels as fit with the LF ({@code 1k} has 511), then spaces and
+   * one LF up to exactly {@link Size#bytes()}.
+   */
+  public static byte[] deep(Size size) {
+    int n = (size.bytes() - 1) / 2;
+    return padded(new StringBuilder(size.bytes()).repeat('[', n).repeat(']', n), size.bytes());
   }
 
   /** One array of the elements {@code next} gives, as many as fit in {@code size} with its padding and LF. */

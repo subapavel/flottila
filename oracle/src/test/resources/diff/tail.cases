@@ -1,0 +1,133 @@
+# Differential cases (ADR-0020) of #118 "Tail calls as pending jumps" (ADR-0047 and its #118 amendment, ADR-0006,
+# ADR-0046, GLOSSARY "Tail call", "Call kind"): a call in a tail position of a function body, into the caller's
+# recursive group, runs as a pending jump, so neither the Java stack nor the recursion-depth count grows. Every case is
+# required at #118 (oracle/src/test/resources/require/118.txt). Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in tail.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+#
+# The deep cases carry #118's key "limit recursion-depth 16": every compile mode runs under a recursion-depth budget of
+# 16, and the conservative and trampoline runs pass only as Termination(BUDGET, RECURSION_DEPTH), because the
+# conservative compile stores no tail kind (ADR-0018, ADR-0047 #118). Reference jq ignores the key.
+
+# Deep: each is 3 000 000 to 10 000 000 levels on reference jq 1.8.2, far past a depth of 16, so only jumps answer.
+
+# ADR-0046's witness that a jump replaces its activation: #117's copy of until jumps to itself.
+case tail/until-ten-million
+arg -c
+filter 0|until(.>=10000000; .+1)
+stdin null\n
+limit recursion-depth 16
+end
+
+# ADR-0047: a fresh closed closure at each jump, bound with no defining frame.
+case tail/fresh-closure-five-million
+arg -c
+filter def r(f): if .>=5000000 then f else (.+1)|r(.+1) end; 0|r(0)
+stdin null\n
+limit recursion-depth 16
+end
+
+# ADR-0047: closure parameters permuted at each jump stay a jump.
+case tail/permuted-closures-five-million
+arg -c
+filter def r(f;g): if .>=5000000 then [f,g] else (.+1)|r(g;f) end; 0|r(1;2)
+stdin null\n
+limit recursion-depth 16
+end
+
+# recurse(f)'s copy: its call is on the right of a Comma, after a Pipe whose left side is at most one.
+case tail/recurse-three-million
+arg -c
+filter last(limit(3000000; 0|recurse(.+1)))
+stdin null\n
+limit recursion-depth 16
+end
+
+# range/3's copy of while, whose free slots $upto and $by are trailing values of the copy (#117).
+case tail/range-3-five-million
+arg -c
+filter last(range(0;5000000;1))
+stdin null\n
+limit recursion-depth 16
+end
+
+# until's copy with main's slot $n as a trailing value (#117).
+case tail/until-free-slot-five-million
+arg -c
+filter 5000000 as $n|0|until(.>=$n; .+1)
+stdin null\n
+limit recursion-depth 16
+end
+
+# repeat's copy: a bare call on the right of a Comma, with no left context.
+case tail/repeat-five-million
+arg -c
+filter last(limit(5000000; 0|repeat(1)))
+stdin null\n
+limit recursion-depth 16
+end
+
+# TAIL_GROUP: a jumps to b, b jumps to a.
+case tail/group-five-million
+arg -c
+filter def a: def b: .+1|a; if .>=5000000 then . else .+1|b end; 0|a
+stdin null\n
+limit recursion-depth 16
+end
+
+# The right of an Alt is a tail position.
+case tail/alt-right-five-million
+arg -c
+filter def f: if . >= 5000000 then . else empty end // (.+1|f); 0|f
+stdin null\n
+limit recursion-depth 16
+end
+
+# The body of a Bind whose value is at most one is a tail position.
+case tail/bind-body-five-million
+arg -c
+filter def f: if . >= 5000000 then . else (.+1) as $x | $x | f end; 0|f
+stdin null\n
+limit recursion-depth 16
+end
+
+# Shallow: calls that are no tail calls, and repeat's jump, each with the results of reference jq 1.8.2. F-56's three
+# cases are cardinality/* (diff/cardinality.cases), required in require/118.txt.
+
+# ADR-0047 #118: a Bind whose value has more than one result is no tail position; its later values run after the
+# first's recursion.
+case tail/many-valued-bind-is-no-tail-position
+arg -c
+filter def f: if . > 3 then . else ((.+1),(.+10)) as $x | $x | f end; [0|f]
+stdin null\n
+end
+
+# T1: repeat's bare Comma-right call, which the conservative compile's many facts alone would let jump.
+case tail/repeat-reruns-its-closure-on-its-input
+arg -c
+filter [limit(5;1|repeat(.*2))]
+stdin null\n
+end
+
+# A free Break in a closure argument fails condition 4: the call is RECURSIVE.
+case tail/free-break-in-a-closure-is-no-tail-call
+arg -c
+filter [label $out | def r(f): if . >= 3 then f else .+1 | r(., break $out) end; 0 | r(.)]
+stdin null\n
+end
+
+# A Call inside a closure argument's body is never a tail call, and the call that passes it holds a ParamCall.
+case tail/call-inside-a-closure-is-no-tail-call
+arg -c
+filter def r(f): if .>=2 then [f,9] else .+1|r(r(f)) end; 0|r(.)
+stdin null\n
+end
+
+# #118 ruling J4: f's left call of g is at most one but may break out, so it runs in push form (ADR-0008, ruling J3)
+# and f's tail call sets its jump inside g's emit; g's activation must leave that jump to f's (ForeignJumpTest's stack
+# run).
+case tail/breaking-left-call-leaves-the-callers-jump
+arg -c
+filter [label $out | def g: if . == -1 then break $out elif . > 100 then (. - 100 | g) else .+1 end; def f($n): if . >= $n then . else g | f($n) end; 0 | f(5)]
+stdin null\n
+end

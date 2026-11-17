@@ -62,3 +62,94 @@ rc 0
 stdout 0\n"v0"\n2\n"v0"\n4\n"v0"\n6\n"v0"\n8\n"v0"\n10\n"v0"\n12\n"v0"\n14\n"v0"\n16\n"v0"\n18\n"v0"\n20\n"v1"\n22\n"v1"\n24\n"v1"\n26\n"v1"\n28\n"v1"\n30\n"v1"\n32\n"v1"\n34\n"v1"\n36\n"v1"\n38\n"v1"\n40\n"v2"\n42\n"v2"\n44\n"v2"\n46\n"v2"\n48\n"v2"\n50\n"v2"\n52\n"v2"\n54\n"v2"\n56\n"v2"\n58\n"v2"\n60\n"v3"\n62\n"v3"\n64\n"v3"\n66\n"v3"\n68\n"v3"\n70\n"v3"\n72\n"v3"\n74\n"v3"\n76\n"v3"\n78\n"v3"\n80\n"v4"\n82\n"v4"\n84\n"v4"\n86\n"v4"\n88\n"v4"\n90\n"v4"\n92\n"v4"\n94\n"v4"\n96\n"v4"\n98\n"v4"\n
 stderr
 end
+
+case bench/recur-T.1k
+def ab804a41a4d5
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-E.1k
+def 5c9537399e80
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-Eu.1k
+def 8d74c266f5c2
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-M.1k
+def f14dd245cd4c
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-N.1k
+def e98ce356b232
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/limit-iter.1k
+def 424f727a823a
+rc 0
+stdout 282\n
+stderr
+end
+
+case bench/limit-recurse.1k
+def 58b3aa566843
+rc 0
+stdout 282\n
+stderr
+end
+
+case bench/cap-inline.1k
+def 495c1b5adf72
+rc 0
+stdout 16384\n
+stderr
+end
+
+case bench/cap-inline-over.1k
+def 4877c66efdff
+rc 0
+stdout 32768\n
+stderr
+end
+
+case bench/cap-specialise.1k
+def e0d717479a19
+rc 0
+stdout 101637\n
+stderr
+end
+
+case bench/cap-specialise-over.1k
+def 46ab964edf21
+rc 0
+stdout 101638\n
+stderr
+end
+
+case bench/dotdot.1k
+def 8e757bd1ae50
+rc 0
+stdout 118\n
+stderr
+end
+
+case bench/dotdot-deep.1k
+def 45944f43fc53
+rc 0
+stdout 511\n
+stderr
+end

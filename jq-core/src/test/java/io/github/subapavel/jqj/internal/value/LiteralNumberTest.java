@@ -2,6 +2,7 @@ package io.github.subapavel.jqj.internal.value;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.query.run.RunState;
 import java.math.BigDecimal;
 import java.util.Random;
 import java.util.stream.IntStream;
@@ -75,10 +76,10 @@ class LiteralNumberTest {
   void canonicalExponentLiteralsCompareByDecimalValue() {
     // jq-ref 1.8.2, recorded in diff/big-literal.rec: [1E+400 == 1E+401, 1E-400 == 0] -> [false,false],
     // 1E+400 < 1E+401 and 0 < 1E-400 are true; through double both pairs would be equal (#90).
-    assertThat(Numbers.compare(LiteralNumber.ofLexeme("1E+400"), LiteralNumber.ofLexeme("1E+401")))
+    assertThat(Numbers.compare(new RunState(), LiteralNumber.ofLexeme("1E+400"), LiteralNumber.ofLexeme("1E+401")))
         .as("compare 1E+400 with 1E+401")
         .isEqualTo(-1);
-    assertThat(Numbers.compare(LiteralNumber.ofLexeme("1E-400"), LiteralNumber.ofLexeme("0")))
+    assertThat(Numbers.compare(new RunState(), LiteralNumber.ofLexeme("1E-400"), LiteralNumber.ofLexeme("0")))
         .as("compare 1E-400 with 0")
         .isEqualTo(1);
   }

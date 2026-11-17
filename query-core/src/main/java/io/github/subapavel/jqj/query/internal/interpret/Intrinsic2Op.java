@@ -11,7 +11,8 @@ public final class Intrinsic2Op extends Op {
   private final Argument a;
   private final Argument b;
 
-  public Intrinsic2Op(Fn2 fn, Argument a, Argument b) {
+  public Intrinsic2Op(boolean valueForm, Fn2 fn, Argument a, Argument b) {
+    super(valueForm);
     this.fn = fn;
     this.a = a;
     this.b = b;
@@ -21,5 +22,15 @@ public final class Intrinsic2Op extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Object v = fn.apply(state, in, a.read(slots, in), b.read(slots, in));
     return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return fn.apply(state, in, a.read(slots, in), b.read(slots, in));
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, a.read(slots, in), b.read(slots, in)), out);
   }
 }

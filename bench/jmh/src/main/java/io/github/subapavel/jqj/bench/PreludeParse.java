@@ -32,7 +32,7 @@ import org.openjdk.jmh.annotations.Warmup;
 @Threads(1)
 public class PreludeParse {
 
-  /** Parse the prelude's text; the Program is returned so JMH consumes it. */
+  /** Parse the prelude's text; the ParsedFilter is returned so JMH consumes it. */
   @Benchmark
   public Object prelude_cold_parse(Text s) {
     return Parser.parse(s.text);

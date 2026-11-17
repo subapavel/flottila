@@ -1,11 +1,13 @@
 package io.github.subapavel.jqj.internal.parse;
 
+import static io.github.subapavel.jqj.internal.parse.ParseAssertions.allCompile;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.ir;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.parsesToAStub;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.shape;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import io.github.subapavel.jqj.Bindings;
 import io.github.subapavel.jqj.JqCompileException;
@@ -18,21 +20,26 @@ import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
+import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Foreach;
+import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
+import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.value.JqNull;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -61,10 +68,14 @@ class ResolverTest {
    * whose kinds a later ticket lowers (#64 constructions, #65 arithmetic and negation, #66 comparison, {@code and},
    * {@code or}, {@code not} and {@code //}, #67 {@code as}, patterns, {@code ?//}, variables, {@code $__loc__} and
    * format strings, #68 {@code if}, {@code try}, {@code ?}, {@code error}, {@code label} and {@code break}, #69
-   * {@code reduce} and {@code foreach}, #70 {@code def}) ends with {@code | ..}, which still stubs, here and in
-   * {@link #GRAMMAR}.
+   * {@code reduce} and {@code foreach}, #70 {@code def}) ended with {@code | ..}, here and in {@link #GRAMMAR}; #110
+   * built {@code ..} (ADR-0042 amendment for #110), so those entries moved to {@link #PRECEDENCE_COMPILING} and
+   * {@link #GRAMMAR_COMPILING}, which compile. The two assignments stay Stubs until spec 3.
    */
-  private static final List<String> PRECEDENCE =
+  private static final List<String> PRECEDENCE = List.of(".a = null // 2", ".a = true or false");
+
+  /** The PRECEDENCE entries whose only Stub was the {@code ..} after them: each compiles since #110. */
+  private static final List<String> PRECEDENCE_COMPILING =
       List.of(
           "def f: 1; 2 | f | ..",
           "1 | def f: 2; f | ..",
@@ -73,8 +84,6 @@ class ResolverTest {
           "label $out | 1, break $out, 2 | ..",
           "1, 2 | . + 10 | ..",
           "1, null // 2 | ..",
-          ".a = null // 2",
-          ".a = true or false",
           "true or true and false | ..",
           "false == false and false | ..",
           "1 + 1 == 2 | ..",
@@ -108,15 +117,11 @@ class ResolverTest {
    * entries that bound nowhere are jq's compile error ({@link #referencesThatBindNowhereAreJqsCompileError}). #70 wrapped
    * a call of a jq builtin in a user definition whose body is {@code ..}; #71's native table and prelude unwrapped them
    * (ADR-0042): an unbuilt native still stubs, and limit/2, which compiles, moved to {@link
-   * #preludeCallsRunAsJqRefRunsThem}.
+   * #preludeCallsRunAsJqRefRunsThem}. The entries whose only Stub was {@code ..} moved to {@link #GRAMMAR_COMPILING}
+   * when #110 built it.
    */
   private static final List<String> GRAMMAR =
       List.of(
-          "..",
-          "..?",
-          "$__loc__ | ..",
-          ".a and .b | ..",
-          ".a // .b | ..",
           ".a |= .b",
           ".a |= 1 | .b += 2 | .d *= 2 | .e /= 1 | .g //= 3 | .h = 4",
           ".f %= 1 | .c -= 1",
@@ -127,6 +132,24 @@ class ResolverTest {
           // jq-ref 1.8.2, observed 2026-11-13 with -nc:
           // {"if":1,"and":2,"a":3,"b":4,"k":5,"x1":6,"e":7,"__loc__":{"file":"<top-level>","line":1},"c":null}.
           "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, (\"e\"|ascii_downcase): 7, $__loc__, c}",
+          "1 as $v | $$$$v",
+          "module {a:1}; .",
+          "import \"nosuch\" as n; .",
+          "include \"nosuch\"; .",
+          "@json");
+
+  /**
+   * The GRAMMAR entries whose only Stub was {@code ..}, the recursion itself or the {@code | ..} after a construct an
+   * earlier ticket lowered: each compiles since #110 (ADR-0042 amendment for #110). jq-ref runs each (the GRAMMAR
+   * observation above).
+   */
+  private static final List<String> GRAMMAR_COMPILING =
+      List.of(
+          "..",
+          "..?",
+          "$__loc__ | ..",
+          ".a and .b | ..",
+          ".a // .b | ..",
           "1 as $x | {$x: 2} | ..",
           "{a: -1, b: 1 | . + 1} | ..",
           "[] | ..",
@@ -153,19 +176,16 @@ class ResolverTest {
           ".[] as [$a] ?// $a | $a | ..",
           ". as [$a] ?// {$a} ?// $a | $a | ..",
           "reduce .[] as [$a, $b] (0; . + $a * $b) | ..",
-          "1 as $v | $$$$v",
-          "module {a:1}; .",
-          "import \"nosuch\" as n; .",
-          "include \"nosuch\"; .",
           ".. .a",
           "@text \"a\" | ..",
-          "@json",
           "1 # c\n+ 2 | ..");
 
   /**
    * The GRAMMAR entries that bound nowhere, moved here when #70 bound every reference (ADR-0040): a constant called
    * with arguments, another name and a variable no {@code as} binds are jq's compile error, thrown before any lowering,
-   * so the {@code ..} after one never stubs. jq-ref 1.8.2, observed 2026-11-13 with -n: rc 3 and exactly these blocks.
+   * so the Stub after one never fires: {@code $ENV}, unbuilt until spec 7 ({@code ..} served here until #110 built it,
+   * ADR-0042 amendment for #110). jq-ref 1.8.2, observed 2026-11-13 with -n (2026-11-15 for {@code $x | $ENV},
+   * .logs/110-jqref-observe.log): rc 3 and exactly these blocks.
    */
   @Test
   void referencesThatBindNowhereAreJqsCompileError() {
@@ -173,7 +193,7 @@ class ResolverTest {
         Map.of(
             "true(1)", "jq: error: true/1 is not defined at <top-level>, line 1, column 1:\n    true(1)\n    ^^^^",
             "foo", "jq: error: foo/0 is not defined at <top-level>, line 1, column 1:\n    foo\n    ^^^",
-            "$x | ..", "jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x | ..\n    ^^");
+            "$x | $ENV", "jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x | $ENV\n    ^^");
     for (Map.Entry<String, String> e : blocks.entrySet()) {
       assertThatCode(() -> Parser.parse(e.getKey())).as("parse of %s", e.getKey()).doesNotThrowAnyException();
       JqCompileException error =
@@ -182,30 +202,21 @@ class ResolverTest {
     }
   }
 
-  @Test
-  void rangeWithOtherThanTwoBoundsIsAStub() {
-    // #69 lowers range/2 only; range/1 and range/3 are builtin.jq's, from #71's prelude (ADR-0041). jq-ref 1.8.2,
-    // observed 2026-11-13 with -nc: range(5) gives 0 to 4 and range(0; 10; 3) gives 0, 3, 6, 9 (rc 0). Unwrapped at
-    // #71: range/1 is range(0;$x) and runs (preludeCallsRunAsJqRefRunsThem); range/3 calls while/2, a recursive group,
-    // so it stays a Stub until spec 2b (PreludeSignatures.STUBS).
-    parsesToAStub("range(0; 10; 3)");
-    // Witness: two bounds lower.
-    assertThat(shape(ir("range(0; 5)"))).as("IR of range(0; 5)").isEqualTo("range(0; 5)[0,11)");
-  }
-
   /**
    * The entries #70 wrapped in a user definition whose body is {@code ..} until #71's prelude and native table, unwrapped
    * (ADR-0042): limit/2 and range/1 are builtin.jq's and compile, so they left the Stub lists. jq-ref 1.8.2, observed
-   * 2026-11-13 with -nc: {@code [limit(2; 1, 2, 3)]} gives [1,2] and {@code range(5)} gives 0 to 4, rc 0.
+   * 2026-11-13 with -nc: {@code [limit(2; 1, 2, 3)]} gives [1,2] and {@code range(5)} gives 0 to 4, rc 0. range/3,
+   * a Stub until #110: jq-ref 1.8.2, observed 2026-11-15 with -c on null, {@code [range(0; 10; 3)]} gives [0,3,6,9].
    */
   @Test
   void preludeCallsRunAsJqRefRunsThem() {
     assertThat(results("[limit(2; 1, 2, 3)]")).as("results of [limit(2; 1, 2, 3)]").containsExactly("[1,2]");
     assertThat(results("range(5)")).as("results of range(5)").containsExactly("0", "1", "2", "3", "4");
+    assertThat(results("[range(0; 10; 3)]")).as("results of [range(0; 10; 3)]").containsExactly("[0,3,6,9]");
   }
 
   /** The results of {@code filter} on null as compact JSON, through the exported API; asserts that the run completes. */
-  private static List<String> results(String filter) {
+  static List<String> results(String filter) {
     JqEngine engine = JqEngine.builder().build();
     List<String> out = new ArrayList<>();
     boolean ranOut =
@@ -233,15 +244,29 @@ class ResolverTest {
     }
   }
 
+  /** The entries whose only Stub was {@code ..}: since #110 each parses, resolves and compiles. */
   @Test
-  void anInterpolationParsesAndItsLoweringIsAStub() {
-    // jq-ref 1.8.2, observed 2026-11-12 on null: "a1b", "1", "xbnVsbA==", {"a1":2}, null, "3" and "xnull" (rc 0).
-    // The string parts are parsed in #62 (jq's QQSTRING split); lowering an interpolation is #67's (F-35). #67 lowers
-    // one with no format, so those entries end with | .., which still stubs; one with another format than @text stays
-    // a Stub.
-    for (String text : List.of("\"a\\(1)b\" | ..", "\"\\(\"\\(1)\")\" | ..", "@base64 \"x\\(.)\"", "{\"a\\(1)\": 2} | ..", ".\"a\\(1)\" | ..", "\"\\(1 + 2)\" | ..", "@json \"x\\(.)\"")) {
+  void everyEntryWhoseOnlyStubWasTheRecursionCompiles() {
+    allCompile(Stream.concat(PRECEDENCE_COMPILING.stream(), GRAMMAR_COMPILING.stream()).toList());
+  }
+
+  @Test
+  void anInterpolationWithAFormatOtherThanTextParsesAndIsAStub() {
+    // jq-ref 1.8.2, observed 2026-11-12 on null: @base64 "x\(.)" gives "xbnVsbA==" and @json "x\(.)" gives "xnull"
+    // (rc 0). The string parts are parsed in #62 (jq's QQSTRING split); lowering an interpolation is #67's (F-35), and
+    // one with another format than @text stays a Stub. anInterpolationWithNoFormatCompiles is the witness that an
+    // interpolation without a format is no Stub.
+    for (String text : List.of("@base64 \"x\\(.)\"", "@json \"x\\(.)\"")) {
       parsesToAStub(text);
     }
+  }
+
+  @Test
+  void anInterpolationWithNoFormatCompiles() {
+    // jq-ref 1.8.2, observed 2026-11-12 on null: "a1b", "1", {"a1":2}, null and "3" (rc 0). #67 lowers an
+    // interpolation with no format, so these entries ended with | .., which stubbed until #110 and compile since
+    // (ADR-0042 amendment for #110).
+    allCompile(List.of("\"a\\(1)b\" | ..", "\"\\(\"\\(1)\")\" | ..", "{\"a\\(1)\": 2} | ..", ".\"a\\(1)\" | ..", "\"\\(1 + 2)\" | .."));
     // Witness: an escaped backslash before ( is no interpolation (jq-ref -c '"a\\(1)b"' on null -> "a\\(1)b"), so the
     // string is one Const.
     assertThat(shape(ir("\"a\\\\(1)b\""))).as("IR of \"a\\\\(1)b\"").isEqualTo("\"a\\\\(1)b\"[0,9)");
@@ -439,7 +464,9 @@ class ResolverTest {
             Map.entry("label $l | def f: break $l; f", "(label $0 | break $0[18,26))"),
             Map.entry("def f: def g: 3; g; f", "3[14,15)"),
             Map.entry("def f($a): a + $a; f(1)", "(1[21,22) as $0 | _plus(1; $0)[11,17))"),
-            Map.entry("def f: ..; 1", "1[11,12)"),
+            // The dead body held .. until #110 built it; $ENV, unbuilt until spec 7, would stub if f were lowered
+            // (jq-ref 1.8.2, observed 2026-11-15: 'def f: $ENV; 1' on null -> 1).
+            Map.entry("def f: $ENV; 1", "1[13,14)"),
             Map.entry(".?", "(try .[0,1) catch empty[0,2))"));
     for (Map.Entry<String, String> e : shapes.entrySet()) {
       assertThat(shape(ir(e.getKey()))).as("IR of %s", e.getKey()).isEqualTo(e.getValue());
@@ -830,7 +857,7 @@ class ResolverTest {
   }
 
   /** The levels of {@code node} as IrVerifier recurses on it: a leaf is one, and an Intrinsic's arguments count. */
-  private static int levels(Node node) {
+  static int levels(Node node) {
     List<Node> parts =
         switch (node) {
           case Identity _ -> List.of();
@@ -860,12 +887,186 @@ class ResolverTest {
           case Reduce r -> List.of(r.init(), r.each());
           case Foreach f -> List.of(f.init(), f.each());
           case Advance a -> List.of(a.update());
+          case ParamCall _ -> List.of();
+          case Call c -> {
+            List<Node> all = new ArrayList<>(c.closures());
+            all.addAll(c.values());
+            yield all;
+          }
         };
     int deepest = 0;
     for (Node part : parts) {
       deepest = Math.max(deepest, levels(part));
     }
     return 1 + deepest;
+  }
+
+  /** ADR-0040: {@code Resolver.INLINE_CAP}, stated as a literal as InlineCapTest states it. */
+  private static final int CAP = 65_536;
+
+  /**
+   * ADR-0040 #114 amendment, "No call is expanded twice. A compile lowers at most {@code INLINE_CAP} nodes inside
+   * expansions, plus each text once": {@code def f0: .; def f1: f0,f0; …; def f60: f59,f59; f60} would lower 2^61 - 1
+   * nodes inlined. Its text is 182 nodes (f0's one, three in each of the 60 bodies, the main call), so its program,
+   * main and functions, has at most 182 + 65 536 nodes, and the resolution ends within 20 s. Until #114 it was the
+   * cap's Stub.
+   */
+  @Test
+  void doublingChainToF60LowersAtMostSourcePlusCap() {
+    StringBuilder text = new StringBuilder("def f0: .; ");
+    for (int i = 1; i <= 60; i++) {
+      text.append("def f").append(i).append(": f").append(i - 1).append(",f").append(i - 1).append("; ");
+    }
+    String filter = text.append("f60").toString();
+    Program program = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> Resolver.resolve(Parser.parse(filter)), "the resolution of f60");
+    assertThat(nodes(program)).as("nodes of the program of the doubling chain to f60").isLessThanOrEqualTo(182 + CAP);
+  }
+
+  /**
+   * ADR-0040 #114 "Considered and rejected": an exhaustion switch would lower 2^k nodes for {@code def fi(g):
+   * f(i-1)(g|g)}, since an expansion in progress and its closure chain go on past the cap. {@code def f1(g): g|g; def
+   * f2(g): f1(g|g); …; f40(.)}: its text is 161 nodes (three in f1's body, four in each of the 39 others, two in the
+   * main call), so its program has at most 161 + 65 536 nodes, and the resolution ends within 20 s. Reference jq 1.8.2 runs
+   * the chain to f20 and prints null (diff/over-cap.rec {@code over-cap/closure-doubling-20}).
+   */
+  @Test
+  void closureDoublingChainToF40LowersAtMostSourcePlusCap() {
+    StringBuilder text = new StringBuilder("def f1(g): g|g; ");
+    for (int i = 2; i <= 40; i++) {
+      text.append("def f").append(i).append("(g): f").append(i - 1).append("(g|g); ");
+    }
+    String filter = text.append("f40(.)").toString();
+    Program program = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> Resolver.resolve(Parser.parse(filter)), "the resolution of f40(.)");
+    assertThat(nodes(program)).as("nodes of the program of the closure doubling chain to f40").isLessThanOrEqualTo(161 + CAP);
+  }
+
+  /**
+   * ADR-0040 #114 amendment: "A PLAIN call's definition is lifted once and lowered from the worklist. Every later call
+   * of it is a Call, even one whose expansion would fit." {@code def f1: .; def f2: f1; …; def f512: f511; f512, f1}:
+   * the call of f1 inside f512's chain is the 512th nested expansion, so it is a PLAIN Call and the chain above it,
+   * inlined, is that Call. The second call, {@code f1} at the Comma's right, would be the first expansion and fit, but
+   * is a Call of the same function. Until #114 the filter was the nesting Stub. (A depth witness cannot be written in
+   * one body: the parser's nesting bound is far below 512 levels, DEVIATIONS "Parse depth"; and a closure written in
+   * the main filter spends no node of the cap, so no node witness at the main level lifts.)
+   */
+  @Test
+  void aLiftedDefinitionStaysACallWhereItWouldFit() {
+    StringBuilder chain = new StringBuilder("def f1: .; ");
+    for (int i = 2; i <= 512; i++) {
+      chain.append("def f").append(i).append(": f").append(i - 1).append("; ");
+    }
+    String filter = chain.append("f512, f1").toString();
+    Program program = Resolver.resolve(Parser.parse(filter));
+    assertThat(program.main()).as("main tree of %s", shown(filter)).isInstanceOf(Comma.class);
+    assertThat(((Comma) program.main()).left()).as("f512's chain, inlined down to the 512th nested expansion").isInstanceOf(Call.class);
+    assertThat(((Comma) program.main()).right()).as("the call of f1 at the Comma's right, where it would fit").isInstanceOf(Call.class);
+    assertThat(((Call) ((Comma) program.main()).right()).fn()).as("function of the second Call").isEqualTo(((Call) ((Comma) program.main()).left()).fn());
+  }
+
+  /**
+   * K1 of #114: depth counts closures, so a chain that passes a closure on, one level more per call, lifts by depth
+   * before 512 nested expansions. {@code def g1(f): f; def gi(f): g(i-1)(f|.+1); …; 0|g511(.)} nests 511 expansions,
+   * one fewer than the nesting trigger, and its closure would be past {@code MAX_IR_DEPTH}: it was the IR depth Stub
+   * until #114 (F-54). Now some call is a PLAIN Call, every body is within 512 levels, and it gives reference jq 1.8.2's 510
+   * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log; 599 for g600, diff/over-cap.rec).
+   */
+  @Test
+  void aParameterChainLiftsByDepth() {
+    StringBuilder text = new StringBuilder("def g1(f): f; ");
+    for (int i = 2; i <= 511; i++) {
+      text.append("def g").append(i).append("(f): g").append(i - 1).append("(f|.+1); ");
+    }
+    String filter = text.append("0|g511(.)").toString();
+    Program program = Resolver.resolve(Parser.parse(filter));
+    List<Call> calls = new ArrayList<>(calls(program.main()));
+    assertThat(levels(program.main())).as("levels of the main tree of g511").isLessThanOrEqualTo(512);
+    for (Function f : program.functions()) {
+      calls.addAll(calls(f.body()));
+      assertThat(levels(f.body())).as("levels of a lifted body of g511").isLessThanOrEqualTo(512);
+    }
+    assertThat(calls).as("Calls in the program of g511").isNotEmpty();
+    assertThat(results(filter)).as("results of 0|g511(.)").containsExactly("510");
+  }
+
+  /** {@code filter}, or its first 60 characters and its length when it is longer. */
+  private static String shown(String filter) {
+    return filter.length() <= 80 ? filter : filter.substring(0, 60) + "… (" + filter.length() + " chars)";
+  }
+
+  /** The nodes of {@code program}: its main tree's and each function body's. */
+  static int nodes(Program program) {
+    int all = nodes(program.main());
+    for (Function f : program.functions()) {
+      all += nodes(f.body());
+    }
+    return all;
+  }
+
+  /** The nodes of {@code node}'s tree, as {@link #levels} walks it, by a loop. */
+  static int nodes(Node node) {
+    int count = 0;
+    List<Node> pending = new ArrayList<>(List.of(node));
+    while (!pending.isEmpty()) {
+      Node next = pending.removeLast();
+      count++;
+      pending.addAll(parts(next));
+    }
+    return count;
+  }
+
+  /** The Calls of {@code node}'s tree, in pre-order. */
+  static List<Call> calls(Node node) {
+    List<Call> found = new ArrayList<>();
+    List<Node> pending = new ArrayList<>(List.of(node));
+    while (!pending.isEmpty()) {
+      Node next = pending.removeLast();
+      if (next instanceof Call c) {
+        found.add(c);
+      }
+      List<Node> parts = new ArrayList<>(parts(next));
+      Collections.reverse(parts);
+      pending.addAll(parts);
+    }
+    return found;
+  }
+
+  /** The parts of {@code node} that {@link #levels} recurses on, in its order. */
+  static List<Node> parts(Node node) {
+    return switch (node) {
+      case Identity _ -> List.of();
+      case Const _ -> List.of();
+      case Var _ -> List.of();
+      case Break _ -> List.of();
+      case ParamCall _ -> List.of();
+      case Intrinsic i -> i.args();
+      case Pipe p -> List.of(p.left(), p.right());
+      case Comma c -> List.of(c.left(), c.right());
+      case Collect c -> List.of(c.body());
+      case If i -> List.of(i.cond(), i.then(), i.otherwise());
+      case Alt a -> List.of(a.left(), a.right());
+      case Bind b -> List.of(b.value(), b.body());
+      case Binds b -> {
+        List<Node> all = new ArrayList<>(b.values());
+        all.add(b.body());
+        yield all;
+      }
+      case AltBind a -> {
+        List<Node> all = new ArrayList<>(List.of(a.value()));
+        a.alternatives().forEach(alternative -> all.add(alternative.match()));
+        all.add(a.body());
+        yield all;
+      }
+      case Try t -> List.of(t.body(), t.handler());
+      case Label l -> List.of(l.body());
+      case Reduce r -> List.of(r.init(), r.each());
+      case Foreach f -> List.of(f.init(), f.each());
+      case Advance a -> List.of(a.update());
+      case Call c -> {
+        List<Node> all = new ArrayList<>(c.closures());
+        all.addAll(c.values());
+        yield all;
+      }
+    };
   }
 
   /** {@link ParseAssertions#shape} of {@code node} without its Sources. */

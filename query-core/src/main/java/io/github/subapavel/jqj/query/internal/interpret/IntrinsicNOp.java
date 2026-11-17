@@ -13,18 +13,34 @@ public final class IntrinsicNOp extends Op {
   private final FnN fn;
   private final Argument[] args;
 
-  public IntrinsicNOp(FnN fn, Argument[] args) {
+  public IntrinsicNOp(boolean valueForm, FnN fn, Argument[] args) {
+    super(valueForm);
     this.fn = fn;
     this.args = args;
   }
 
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
+    Object v = fn.apply(state, in, values(slots, in));
+    return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return fn.apply(state, in, values(slots, in));
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, values(slots, in)), out);
+  }
+
+  /** The arguments' values for {@code in}, in a new array. */
+  private Object[] values(Object[] slots, Object in) {
     Object[] values = new Object[args.length];
     for (int i = 0; i < values.length; i++) {
       values[i] = args[i].read(slots, in);
     }
-    Object v = fn.apply(state, in, values);
-    return v == CallForm.NONE || out.emit(v);
+    return values;
   }
 }

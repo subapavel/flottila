@@ -7,16 +7,20 @@ import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
+import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Foreach;
+import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
+import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
@@ -25,6 +29,7 @@ import io.github.subapavel.jqj.query.run.Fn1;
 import io.github.subapavel.jqj.query.run.Fn2;
 import io.github.subapavel.jqj.query.run.FnN;
 import io.github.subapavel.jqj.query.run.Many;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -44,10 +49,33 @@ import java.util.Set;
  * unless it is -1 for null, is in scope at its match's leaf, the innermost body of the match's chain of Binds. An
  * Intrinsic's arguments are atomic (Identity, Var or Const), as many as its call form's arity: none for Fn0, one for
  * Fn1, two for Fn2, and any number for an FnN or a Many, which take them as an array.
+ *
+ * <p>A program (ADR-0045 and its #107 amendment) is its main tree and its functions, each body checked on its own
+ * slots, with no node object used twice in the whole program. In a function, slots {@code 0 .. values - 1} are its value
+ * parameters, which it sees as parameters and no slot of its caller; a Break may also name one of them, a Label's
+ * token passed as a value. A ParamCall is only in a function and names one of its closure parameters. A Call names a
+ * function of the program and passes as many closures and values as it declares; its closures are nodes of the
+ * caller's scope, checked in place, though an Advance in one names a loop of that closure's own text; its values are
+ * atomic, and a Var among them may name a Label's slot around the Call, to pass its token.
  */
 final class IrVerifier {
-  /** The nodes seen so far, compared by identity, not by equality. */
-  private final Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+  /** {@link #closures} of the main tree, which is no function. */
+  private static final int MAIN = -1;
+
+  /** The nodes seen so far in the whole program, compared by identity, not by equality. */
+  private final Set<Node> seen;
+
+  /** The program's functions, which a Call names by place. */
+  private final List<Function> functions;
+
+  /** The parameter slots of this body: the main tree's, or the function's value parameters. */
+  private final int parameters;
+
+  /** The closure parameters of the function whose body this is, or {@link #MAIN}. */
+  private final int closures;
+
+  /** The value parameters a Break may name, a token passed in: the function's, and none in the main tree. */
+  private final Set<Integer> tokens = new HashSet<>();
 
   /** The slots the parameters, a Bind or an AltBind of the tree took so far. */
   private final Set<Integer> bound = new HashSet<>();
@@ -58,8 +86,11 @@ final class IrVerifier {
   /** The slots of the Labels around where the walk is: a Break may name them, a Var may not. */
   private final Set<Integer> labels = new HashSet<>();
 
-  /** The state slots of the loops whose each the walk is in and whose Advance it has not met yet. */
-  private final Set<Integer> loops = new HashSet<>();
+  /**
+   * The state slots of the loops whose each the walk is in and whose Advance it has not met yet; none at the start of a
+   * Call's closure.
+   */
+  private Set<Integer> loops = new HashSet<>();
 
   /** The leaf of each match whose alternative the walk has not left, by identity, with its alternative's from-slots. */
   private final Map<Node, List<Integer>> leaves = new IdentityHashMap<>();
@@ -67,24 +98,59 @@ final class IrVerifier {
   /** One more than the largest slot so far. */
   private int slots;
 
-  private IrVerifier(int parameters) {
+  /** The slots the text the walk is in binds: a Call's closure argument's own, without those of a closure inside it. */
+  private List<Integer> own = new ArrayList<>();
+
+  /** The slots each closure argument of the program binds in its own text, by identity. */
+  private final Map<Node, List<Integer>> frames;
+
+  /**
+   * What a backend needs to lay out a program's frames: the slots a run of each body needs, the main tree's first and
+   * then each function's, and the slots each Call's closure argument binds in its own text, by identity.
+   */
+  record Layout(int[] slots, Map<Node, List<Integer>> closures) {}
+
+  private IrVerifier(Set<Node> seen, Map<Node, List<Integer>> frames, List<Function> functions, int parameters, int closures) {
+    this.seen = seen;
+    this.frames = frames;
+    this.functions = functions;
+    this.parameters = parameters;
+    this.closures = closures;
     for (int p = 0; p < parameters; p++) {
       bound.add(p);
       scope.add(p);
+      if (closures != MAIN) {
+        tokens.add(p);
+      }
     }
   }
 
   /**
-   * Checks {@code root}, whose slots {@code 0 .. parameters - 1} are its parameter slots; returns the number of slots a
-   * run of it needs, one more than its largest slot, the parameter slots included.
+   * Checks {@code program}, whose main tree has the parameter slots {@code 0 .. parameters - 1}; returns its layout: the
+   * number of slots a run of each body needs, one more than its largest slot, its parameter slots included, the main
+   * tree's first, then each function's in the program's order; and the slots of each closure argument.
    */
-  static int verify(Node root, int parameters) {
-    IrVerifier verifier = new IrVerifier(parameters);
-    verifier.visit(root);
-    return Math.max(verifier.slots, parameters);
+  static Layout verify(Program program, int parameters) {
+    Set<Node> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+    Map<Node, List<Integer>> frames = new IdentityHashMap<>();
+    List<Function> functions = program.functions();
+    int[] slots = new int[functions.size() + 1];
+    slots[0] = new IrVerifier(seen, frames, functions, parameters, MAIN).body(program.main());
+    for (int i = 0; i < functions.size(); i++) {
+      Function f = functions.get(i);
+      slots[i + 1] = new IrVerifier(seen, frames, functions, f.values(), f.closures()).body(f.body());
+    }
+    return new Layout(slots, frames);
   }
 
-  private void visit(Node node) {
+  /** Checks {@code root}, this verifier's body; the number of slots a run of it needs. */
+  private int body(Node root) {
+    visit(root);
+    return Math.max(slots, parameters);
+  }
+
+  /** The checks every node gets first: it is used once in the program, and a match's leaf has its from-slots in scope. */
+  private void see(Node node) {
     if (!seen.add(node)) {
       throw new IllegalStateException("the node at bytes " + node.source() + " is used twice: the IR must be a tree");
     }
@@ -96,6 +162,10 @@ final class IrVerifier {
         }
       }
     }
+  }
+
+  private void visit(Node node) {
+    see(node);
     // One arm per kind: javac compiles a case of two patterns to a second dispatch for a node that matches neither,
     // a path no node can take.
     switch (node) {
@@ -150,8 +220,18 @@ final class IrVerifier {
         labels.remove(l.slot());
       }
       case Break b -> {
-        if (!labels.contains(b.slot())) {
-          throw new IllegalStateException("the Break of slot " + b.slot() + " at bytes " + b.source() + " is outside the body of a Label of its slot");
+        if (!labels.contains(b.slot()) && !tokens.contains(b.slot())) {
+          throw new IllegalStateException(
+              "the Break of slot " + b.slot() + " at bytes " + b.source() + " is outside the body of a Label of its slot, and its slot is no value parameter of its function");
+        }
+      }
+      case Call c -> call(c);
+      case ParamCall p -> {
+        if (closures == MAIN) {
+          throw new IllegalStateException("the ParamCall at bytes " + p.source() + " is in the main tree, outside every function");
+        }
+        if (p.param() < 0 || p.param() >= closures) {
+          throw new IllegalStateException("the ParamCall at bytes " + p.source() + " runs closure parameter " + p.param() + " of a function of " + closures);
         }
       }
       case Reduce r -> loop(r, r.init(), r.slot(), r.each());
@@ -257,6 +337,44 @@ final class IrVerifier {
       throw new IllegalStateException("the slot " + slot + " of the node at bytes " + node.source() + " is a parameter or is bound twice in the tree");
     }
     slots = Math.max(slots, slot + 1);
+    own.add(slot);
+  }
+
+  /**
+   * The Call {@code c}: a function of the program, as many closures and values as it declares. Its closures are walked
+   * here, in the caller's scope, with no loop open, so an Advance in one names a loop of its own text; its values are
+   * atomic, and a Var that names a Label around the Call passes that Label's token.
+   */
+  private void call(Call c) {
+    if (c.fn() < 0 || c.fn() >= functions.size()) {
+      throw new IllegalStateException("the Call at bytes " + c.source() + " names function " + c.fn() + " of a program of " + functions.size());
+    }
+    Function f = functions.get(c.fn());
+    if (c.closures().size() != f.closures() || c.values().size() != f.values()) {
+      throw new IllegalStateException(
+          "the Call at bytes " + c.source() + " passes " + c.closures().size() + " closures and " + c.values().size() + " values to function " + c.fn() + ", which takes "
+              + f.closures() + " and " + f.values());
+    }
+    Set<Integer> open = loops;
+    List<Integer> text = own;
+    loops = new HashSet<>();
+    for (Node closure : c.closures()) {
+      own = new ArrayList<>();
+      visit(closure);
+      frames.put(closure, own);
+    }
+    own = text;
+    loops = open;
+    for (Node v : c.values()) {
+      if (!(v instanceof Identity || v instanceof Var || v instanceof Const)) {
+        throw new IllegalStateException("a value of the Call at bytes " + c.source() + " is not atomic: " + v);
+      }
+      if (v instanceof Var token && labels.contains(token.slot())) {
+        see(v);
+      } else {
+        visit(v);
+      }
+    }
   }
 
   private void arguments(Intrinsic i) {

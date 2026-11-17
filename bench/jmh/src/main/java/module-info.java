@@ -3,5 +3,7 @@
 @SuppressWarnings("requires-automatic")
 module io.github.subapavel.jqj.bench {
   requires io.github.subapavel.jqj;
+  // CompileMode, the type of Diagnostics' mode (ADR-0020 #119 amendment).
+  requires io.github.subapavel.jqj.query;
   requires jmh.core;
 }

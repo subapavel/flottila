@@ -102,6 +102,15 @@ class CaseFormatTest {
     assertThat(cases("case t/x\nend\n").get(0).jqj().over(recorded).sameAs(recorded)).isTrue();
   }
 
+  /** ADR-0047 #118: {@code limit recursion-depth n} gives the case its recursion-depth budget; a case without it has none. */
+  @Test
+  void aCaseCarriesItsRecursionDepthLimit() {
+    assertThat(cases("case t/x\nfilter .\nlimit recursion-depth 16\nend\n").get(0).recursionDepth()).isEqualTo(16L);
+    assertThat(cases("case t/x\nfilter .\nlimit recursion-depth 1\nend\n").get(0).recursionDepth()).as("the least budget").isEqualTo(1L);
+    assertThat(cases("case t/x\nfilter .\nlimit recursion-depth 2147483647\nend\n").get(0).recursionDepth()).as("the largest budget, Limits' largest int").isEqualTo(2147483647L);
+    assertThat(cases("case t/x\nfilter .\nend\n").get(0).recursionDepth()).isNull();
+  }
+
   @Test
   void theDefIsTwelveHexOfTheSha256OfTheCaseBlock() {
     // printf 'case t/x\nfilter .\nend\n' | sha256sum
@@ -143,6 +152,12 @@ class CaseFormatTest {
         Arguments.argumentSet("jqj-stderr twice", bytes("case t/x\ndeviation a\njqj-stderr\njqj-stderr\nend\n"), "'jqj-stderr' given twice"),
         Arguments.argumentSet("jqj-rc not an integer", bytes("case t/x\ndeviation a\njqj-rc five\nend\n"), "'jqj-rc' needs an integer"),
         Arguments.argumentSet("an unknown jqj key", bytes("case t/x\ndeviation a\njqj-exit 5\nend\n"), "unknown key 'jqj-exit'"),
+        Arguments.argumentSet("limit twice", bytes("case t/x\nlimit recursion-depth 16\nlimit recursion-depth 8\nend\n"), "t.cases:3: case t/x: 'limit' given twice"),
+        Arguments.argumentSet("a limit of another budget", bytes("case t/x\nlimit steps 16\nend\n"), "'limit' needs 'recursion-depth <n>' with an integer n in 1..2147483647, not 'steps 16'"),
+        Arguments.argumentSet("a limit that is no integer", bytes("case t/x\nlimit recursion-depth x\nend\n"), "not 'recursion-depth x'"),
+        Arguments.argumentSet("a limit of zero", bytes("case t/x\nlimit recursion-depth 0\nend\n"), "not 'recursion-depth 0'"),
+        // Limits takes the budget as an int: a larger one is the case's error here, not the runner's at run time.
+        Arguments.argumentSet("a limit past the largest int", bytes("case t/x\nlimit recursion-depth 2147483648\nend\n"), "not 'recursion-depth 2147483648'"),
         Arguments.argumentSet("env without =", bytes("case t/x\nenv K\nend\n"), "'env' needs K=V"),
         Arguments.argumentSet("env with an empty name", bytes("case t/x\nenv =v\nend\n"), "'env' needs K=V"),
         Arguments.argumentSet("a lone backslash", bytes("case t/x\nstdin a\\\nend\n"), "lone"),

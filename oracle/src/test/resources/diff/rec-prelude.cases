@@ -1,0 +1,272 @@
+# Differential cases (ADR-0020) of #110 "S2b.8 The recursive prelude and `..`" (ADR-0042 and its #110 amendment,
+# ADR-0045): a call into a recursive prelude group is a Call of a function lifted once per definition per compile;
+# `..` is recurse/0, which inlines recurse(.[]?) around a Call of recurse/1's r. Every case is required at #110
+# (oracle/src/test/resources/require/110.txt). No case nests deeper than 100 levels (design ruling: deeper `..` waits
+# for S2b.5). Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# rec-prelude.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# `..` and its neighbours: the optional form, a cut by first and limit, a reduce over it.
+
+case rec-prelude/dot-dot
+arg -c
+filter ..
+stdin {"a":[1,{"b":null}],"c":"x"}\n
+end
+
+case rec-prelude/dot-dot-optional
+arg -c
+filter [..?]
+stdin {"a":[1,{"b":null}],"c":"x"}\n
+end
+
+case rec-prelude/first-of-dot-dot
+arg -c
+filter first(..)
+stdin [[1,2],[3]]\n
+end
+
+case rec-prelude/limit-of-dot-dot
+arg -c
+filter [limit(3; ..)]
+stdin [[1,2],[3]]\n
+end
+
+case rec-prelude/reduce-over-dot-dot
+arg -c
+filter reduce .. as $x (0; . + 1)
+stdin {"a":[1,{"b":null}],"c":"x"}\n
+end
+
+case rec-prelude/dot-dot-scalar
+arg -c
+filter [..]
+stdin 1\n
+end
+
+case rec-prelude/dot-dot-empty-containers
+arg -c
+filter [..]
+stdin [[],{}]\n
+end
+
+# The object walk under `..`: a repeated key keeps its first place and its last value; strings with escape sequences
+# and a number no double holds come out as they were read.
+
+case rec-prelude/dot-dot-repeated-key
+arg -c
+filter [..]
+stdin {"a":1,"b":2,"a":{"c":3}}\n
+end
+
+case rec-prelude/dot-dot-escapes-and-big-number
+arg -c
+filter [..]
+stdin {"s":"a\\"\\u00e9\\n","n":100000000000000000000000000001,"t":[1.10]}\n
+end
+
+case rec-prelude/dot-dot-numbers
+arg -c
+filter [..|numbers]
+stdin [1,[2,"x",[3]],{"a":4}]\n
+end
+
+# 100 levels, read and built: two activations per level stay far below the command line's depth budget.
+
+case rec-prelude/dot-dot-100-deep
+arg -c
+filter [..]|length
+stdin [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n
+end
+
+case rec-prelude/dot-dot-100-deep-built
+arg -c
+filter reduce range(99) as $i ([]; [.]) | [..] | length
+stdin null\n
+end
+
+# Shadowing (ADR-0042): a user recurse/1 is not the one recurse/0's prelude body calls, and a user while/2 is not the
+# one range/3's body calls.
+
+case rec-prelude/shadow-recurse-1-dot-dot
+arg -c
+filter def recurse(f): 5; [..]
+stdin [1]\n
+end
+
+case rec-prelude/shadow-recurse-1-recurse-0
+arg -c
+filter def recurse(f): 5; [recurse]
+stdin [1]\n
+end
+
+case rec-prelude/shadow-while-range-3
+arg -c
+filter def while(c; u): 9; [range(0; 3; 1)]
+stdin null\n
+end
+
+# recurse/1 and recurse/2.
+
+case rec-prelude/recurse-field-until-its-error
+arg -c
+filter recurse(.a)
+stdin {"a":{"a":1}}\n
+end
+
+case rec-prelude/recurse-error-caught
+arg -c
+filter [try recurse(.a) catch "caught"]
+stdin {"a":{"a":1}}\n
+end
+
+case rec-prelude/recurse-with-false-condition
+arg -c
+filter [recurse(.+1; . < 0)]
+stdin 0\n
+end
+
+case rec-prelude/recurse-with-condition
+arg -c
+filter [recurse(. * .; . < 20)]
+stdin 2\n
+end
+
+case rec-prelude/limit-of-endless-recurse
+arg -c
+filter [limit(5; 0|recurse(.+1))]
+stdin null\n
+end
+
+case rec-prelude/recurse-twice-in-one-filter
+arg -c
+filter [recurse(.a // empty), recurse(.b // empty)]
+stdin {"a":{"b":1},"b":{"a":2}}\n
+end
+
+# while, until and repeat.
+
+case rec-prelude/while-error-after-results
+arg -c
+filter while(. < 3; if . == 1 then error("w") else . + 1 end)
+stdin 0\n
+end
+
+case rec-prelude/while-empty-update
+arg -c
+filter [while(true; empty)]
+stdin 7\n
+end
+
+case rec-prelude/until-true-never-runs-next
+arg -c
+filter until(true; error("n"))
+stdin 0\n
+end
+
+case rec-prelude/until-error-in-next
+arg -c
+filter until(. > 2; if . == 1 then error("u") else . + 1 end)
+stdin 0\n
+end
+
+case rec-prelude/limit-of-repeat
+arg -c
+filter [limit(5; 1|repeat(.*2))]
+stdin null\n
+end
+
+case rec-prelude/first-of-repeat
+arg -c
+filter first(repeat(1))
+stdin null\n
+end
+
+# range/3: positive, negative and zero steps, and a positive step that never starts.
+
+case rec-prelude/range-3-positive-step
+arg -c
+filter [range(0; 10; 3)]
+stdin null\n
+end
+
+case rec-prelude/range-3-negative-step
+arg -c
+filter [range(0; -5; -2)]
+stdin null\n
+end
+
+case rec-prelude/range-3-zero-step
+arg -c
+filter [range(0; 10; 0)]
+stdin null\n
+end
+
+case rec-prelude/range-3-positive-step-past-upto
+arg -c
+filter [range(5; 0; 1)]
+stdin null\n
+end
+
+case rec-prelude/range-3-generators
+arg -c
+filter [range(0, 1; 3, 4; 2)]
+stdin null\n
+end
+
+# _flatten/1 by name (flatten/0 and flatten/1 are replacing natives, F-31).
+
+case rec-prelude/flatten-impl-depth-1
+arg -c
+filter _flatten(1)
+stdin [1,[2,[3,[4]]]]\n
+end
+
+case rec-prelude/flatten-impl-depth-minus-1
+arg -c
+filter _flatten(-1)
+stdin [1,[2,[3,[4]]]]\n
+end
+
+case rec-prelude/flatten-impl-depth-0
+arg -c
+filter _flatten(0)
+stdin [1,[2,[3,[4]]]]\n
+end
+
+case rec-prelude/flatten-impl-on-a-string
+arg -c
+filter _flatten(1)
+stdin "abc"\n
+end
+
+# combinations/0 and combinations/1.
+
+case rec-prelude/combinations-of-empty
+arg -c
+filter [combinations]
+stdin []\n
+end
+
+case rec-prelude/combinations-with-an-empty-row
+arg -c
+filter [combinations]
+stdin [[1],[]]\n
+end
+
+case rec-prelude/combinations-of-rows
+arg -c
+filter [combinations]
+stdin [[1,2],[3,4]]\n
+end
+
+case rec-prelude/combinations-2
+arg -c
+filter [combinations(2)]
+stdin [0,1]\n
+end
+
+case rec-prelude/combinations-of-an-object
+arg -c
+filter [combinations]
+stdin {"a":[1],"b":[2]}\n
+end

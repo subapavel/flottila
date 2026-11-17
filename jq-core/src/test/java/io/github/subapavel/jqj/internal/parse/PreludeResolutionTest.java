@@ -102,7 +102,7 @@ class PreludeResolutionTest {
   }
 
   private static Binder binder(String filter) {
-    Program p = Parser.parse(filter);
+    ParsedFilter p = Parser.parse(filter);
     return Binder.bind(p.main(), List.of(), p.text());
   }
 

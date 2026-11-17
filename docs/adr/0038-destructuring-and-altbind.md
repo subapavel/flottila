@@ -1,6 +1,6 @@
 # Destructuring lowers to Binds; `?//` is an AltBind over group slots; host variables take the leading slots
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #67; designer draft); completes ADR-0005 (AltBind's fields); amends ADR-0034 (the slot rule); AltBind's rethrow amended by ADR-0039 (#68); which binding errors are reported amended by ADR-0040 (#70); state slots by ADR-0041 (#69)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #67; designer draft); completes ADR-0005 (AltBind's fields); amends ADR-0034 (the slot rule); AltBind's rethrow amended by ADR-0039 (#68); which binding errors are reported amended by ADR-0040 (#70); state slots by ADR-0041 (#69); `Tracking` on pattern steps and an AltBind's value by ADR-0048 (spec 3, F-59)
 
 jq 1.8.2 shares one variable per name across a `?//` chain (`bind_alternation_matchers`). ADR-0034's rule of one Bind per slot cannot express that without copying the body. Every behaviour below that was read from jq's source is recorded on jq-ref by #67's red. Where jq-ref differs, jq-ref wins and only the resolver changes.
 
@@ -38,3 +38,13 @@ jq 1.8.2 shares one variable per name across a `?//` chain (`bind_alternation_ma
 - **Interpolation as a `+` chain**: n − 1 intermediate strings.
 - **Host values as compile-time constants**: a compile per binding, against ADR-0016.
 - **Slots in RunState**: rejected by ADR-0034.
+
+## Amendment (ADR-0048, spec 3)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+A pattern's index steps are Binds marked PATH. An AltBind's value is PATH under a `reduce` or
+`foreach` and VALUE otherwise. In a path variant a step on the untracked bound value raises once per
+source result, and the next alternative runs on that error. Cases: `(.a as [$x] | .b) |= 5` raises
+"…near attempt to access element 0 of [1]"; `{"a":["b"],"b":0,"c":0} | (.a as [$x] ?// $x | if
+($x|type)=="string" then .b else .c end) |= 1` → `{"a":["b"],"b":0,"c":1}` (jq-ref, F-59).

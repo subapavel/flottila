@@ -207,8 +207,10 @@ filter (reduce range(10001) as $_ ([]; [.])) as $x | (reduce range(10001) as $_ 
 stdin null\n
 end
 
-# NaN lies below every number and above true; a pair of NaNs compares as less either way in jq's jv_cmp, and jq's
-# merge sort keeps such a pair in the input's order; min_by replaces on it and max_by does not.
+# NaN lies below every number and above true; a pair of NaNs compares as less either way in jq's jv_cmp. jq 1.8.2
+# sorts with libc qsort, which keeps such a pair in the input's order here, and this case pins jq-ref 1.8.2's order;
+# the merge sort is jqj's own (DEVIATIONS.md, "Order inside a comparison cycle"). min_by replaces on it and max_by
+# does not.
 
 case sort/nan-order
 arg -c

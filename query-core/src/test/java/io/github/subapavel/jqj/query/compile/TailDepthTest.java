@@ -1,9 +1,11 @@
 package io.github.subapavel.jqj.query.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
+import io.github.subapavel.jqj.query.ir.Break;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Identity;
@@ -13,6 +15,7 @@ import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.ir.Pipe;
+import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.query.run.CallForm;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -41,7 +45,12 @@ import org.junit.jupiter.params.provider.EnumSource;
  * bytes, so {@value #PARTS} parts need 640 000 bytes or more, past the thread's 524 288. The tail form keeps a few
  * frames whatever the number of parts. Each Binds chain has parts of one tail kind only, so a classification that loses
  * any one kind nests every part of its chain. Each run first runs a copy of {@value #WARM} parts on the test thread,
- * which links every call site before the small thread runs.
+ * which links every call site before the small thread runs. An overflow ends the run with a Termination: the
+ * executable's run turns the StackOverflowError into one of cause STACK (ADR-0045 #107).
+ *
+ * <p>The Label control holds in CONSERVATIVE only (ADR-0039, ADR-0047 #116 Tail sites): in OPTIMISED a Label no outer
+ * Break names runs by its value form, so the same run fits. The control of both modes fences each condition with a
+ * Label whose body may break to a Label around the whole run.
  */
 class TailDepthTest {
   private static final Source AT = new Source(0, 1);
@@ -104,7 +113,7 @@ class TailDepthTest {
       assertThat(ran(chain(WARM, TailDepthTest::comma), mode)).as("%s: %d Comma parts on the test thread", mode, WARM).isEqualTo("[[0, 50, 99]] in 99 steps");
       assertThat(onSmallThread(() -> ran(chain(PARTS, TailDepthTest::comma), mode)))
           .as("%s: %d Comma parts on a 512 KiB thread", mode, PARTS)
-          .isEqualTo("threw java.lang.StackOverflowError");
+          .isEqualTo("threw io.github.subapavel.jqj.query.run.Termination");
     }
   }
 
@@ -124,24 +133,60 @@ class TailDepthTest {
   @EnumSource(Term.class)
   void aBalancedRunOfTwentyThousandTailTermsOfOneKindFitsA512KiBThread(Term term) throws InterruptedException {
     for (CompileMode mode : CompileMode.values()) {
-      assertThat(ran(and(0, WARM, term, null), mode)).as("%s, %s: %d and-terms on the test thread", term, mode, WARM).isEqualTo("[yes] in 0 steps");
-      assertThat(onSmallThread(() -> ran(and(0, PARTS, term, null), mode))).as("%s, %s: %d and-terms on a 512 KiB thread", term, mode, PARTS).isEqualTo("[yes] in 0 steps");
+      assertThat(ran(and(0, WARM, term, UnaryOperator.identity()), mode)).as("%s, %s: %d and-terms on the test thread", term, mode, WARM).isEqualTo("[yes] in 0 steps");
+      assertThat(onSmallThread(() -> ran(and(0, PARTS, term, UnaryOperator.identity()), mode))).as("%s, %s: %d and-terms on a 512 KiB thread", term, mode, PARTS).isEqualTo("[yes] in 0 steps");
       assertThat(ran(or(0, WARM, term), mode)).as("%s, %s: %d or-terms on the test thread", term, mode, WARM).isEqualTo("[no] in 0 steps");
       assertThat(onSmallThread(() -> ran(or(0, PARTS, term), mode))).as("%s, %s: %d or-terms on a 512 KiB thread", term, mode, PARTS).isEqualTo("[no] in 0 steps");
     }
   }
 
   /**
-   * The control: the same and-run with each If's condition inside a Label no Break names. A Label is no tail emitter
-   * and ticks nothing (ADR-0039), so each branch runs inside its condition's emit.
+   * The control, CONSERVATIVE only (ADR-0047 #116 Tail sites): the same and-run with each If's condition inside a Label
+   * no Break names. A Label is no tail emitter and ticks nothing (ADR-0039), and CONSERVATIVE never runs the value form,
+   * so each branch runs inside its condition's emit.
    */
   @Test
   void theSameBalancedRunWithItsConditionsInLabelsOverflowsA512KiBThread() throws InterruptedException {
+    CompileMode mode = CompileMode.CONSERVATIVE;
+    assertThat(ran(and(0, WARM, Term.CONST, labels(2)), mode)).as("%s: %d and-terms in Labels on the test thread", mode, WARM).isEqualTo("[yes] in 0 steps");
+    assertThat(onSmallThread(() -> ran(and(0, PARTS, Term.CONST, labels(2)), mode)))
+        .as("%s: %d and-terms in Labels on a 512 KiB thread", mode, PARTS)
+        .isEqualTo("threw io.github.subapavel.jqj.query.run.Termination");
+  }
+
+  /**
+   * The same IR as the control above, OPTIMISED (ADR-0047 #116 Tail sites, beside ADR-0039): a Label no outer Break
+   * names is at most one and cannot break out, so it runs by its value form, which returns its condition's value before
+   * the branch runs. The run fits the thread as the run without Labels does.
+   */
+  @Test
+  void theSameBalancedRunWithItsConditionsInLabelsFitsA512KiBThreadWhenOptimised() throws InterruptedException {
+    CompileMode mode = CompileMode.OPTIMISED;
+    assertThat(ran(and(0, WARM, Term.CONST, labels(2)), mode)).as("%s: %d and-terms in Labels on the test thread", mode, WARM).isEqualTo("[yes] in 0 steps");
+    assertThat(onSmallThread(() -> ran(and(0, PARTS, Term.CONST, labels(2)), mode))).as("%s: %d and-terms in Labels on a 512 KiB thread", mode, PARTS).isEqualTo("[yes] in 0 steps");
+  }
+
+  /** The Label of the break-out control's whole run: the first slot past the root's; its fences take the slots after it. */
+  private static final int OUTER = 2;
+
+  /**
+   * The control of both modes (ADR-0047 #116 Tail sites, beside ADR-0039): the same and-run inside {@code label $outer},
+   * each If's condition in a fence {@code label $k | if $1 then break $outer else cond end}. Slot 1 is no, so no Break
+   * runs, but each fence and each If around one may break out, so none runs by its value form and each branch runs
+   * inside its condition's emit in both modes.
+   */
+  @Test
+  void theSameBalancedRunWithItsConditionsInFencesThatBreakOutOverflowsA512KiBThread() throws InterruptedException {
+    assertThatCode(() -> IrVerifier.verify(new Program(rooted(new Label(AT, OUTER, and(0, PARTS, Term.CONST, breakingOut(OUTER, OUTER + 1)))), List.of()), 0))
+        .as("the verifier on %d and-terms in fences that break out", PARTS)
+        .doesNotThrowAnyException();
     for (CompileMode mode : CompileMode.values()) {
-      assertThat(ran(and(0, WARM, Term.CONST, new int[] {2}), mode)).as("%s: %d and-terms in Labels on the test thread", mode, WARM).isEqualTo("[yes] in 0 steps");
-      assertThat(onSmallThread(() -> ran(and(0, PARTS, Term.CONST, new int[] {2}), mode)))
-          .as("%s: %d and-terms in Labels on a 512 KiB thread", mode, PARTS)
-          .isEqualTo("threw java.lang.StackOverflowError");
+      assertThat(ran(new Label(AT, OUTER, and(0, WARM, Term.CONST, breakingOut(OUTER, OUTER + 1))), mode))
+          .as("%s: %d and-terms in fences that break out on the test thread", mode, WARM)
+          .isEqualTo("[yes] in 0 steps");
+      assertThat(onSmallThread(() -> ran(new Label(AT, OUTER, and(0, PARTS, Term.CONST, breakingOut(OUTER, OUTER + 1))), mode)))
+          .as("%s: %d and-terms in fences that break out on a 512 KiB thread", mode, PARTS)
+          .isEqualTo("threw io.github.subapavel.jqj.query.run.Termination");
     }
   }
 
@@ -165,9 +210,14 @@ class TailDepthTest {
     return outcome.get();
   }
 
+  /** {@code yes as $0 | no as $1 | run}. */
+  private static Node rooted(Node run) {
+    return new Bind(AT, new Const(AT, YES), 0, new Bind(AT, new Const(AT, NO), 1, run));
+  }
+
   /** The results of {@code run}, compiled in {@code mode}, inside {@code yes as $0 | no as $1 | …}, and its steps. */
   private static String ran(Node run, CompileMode mode) {
-    Node root = new Bind(AT, new Const(AT, YES), 0, new Bind(AT, new Const(AT, NO), 1, run));
+    Node root = rooted(run);
     RunState state = new RunState();
     state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
     List<Object> results = new ArrayList<>();
@@ -244,15 +294,15 @@ class TailDepthTest {
     return new Comma(AT, inc(slot(k - 1)), call("nothing", (Fn0) (state, in) -> CallForm.NONE));
   }
 
-  /** The terms {@code [from, to)} of {@code term} joined by {@code and}, balanced, all true; with {@code labels}, each If's condition is inside a Label of the next slot from {@code labels[0]}. */
-  private static Node and(int from, int to, Term term, int[] labels) {
+  /** The terms {@code [from, to)} of {@code term} joined by {@code and}, balanced, all true; each If's condition is {@code fence} of it, the left one first. */
+  private static Node and(int from, int to, Term term, UnaryOperator<Node> fence) {
     if (to - from == 1) {
       return term(term, YES);
     }
     int middle = (from + to) >>> 1;
-    Node left = and(from, middle, term, labels);
-    Node right = and(middle, to, term, labels);
-    return new If(AT, fenced(left, labels), new If(AT, fenced(right, labels), new Const(AT, YES), new Const(AT, NO), TRUTH), new Const(AT, NO), TRUTH);
+    Node left = and(from, middle, term, fence);
+    Node right = and(middle, to, term, fence);
+    return new If(AT, fence.apply(left), new If(AT, fence.apply(right), new Const(AT, YES), new Const(AT, NO), TRUTH), new Const(AT, NO), TRUTH);
   }
 
   /** The terms {@code [from, to)} of {@code term} joined by {@code or}, balanced, all false. */
@@ -264,9 +314,19 @@ class TailDepthTest {
     return new If(AT, or(from, middle, term), new Const(AT, YES), new If(AT, or(middle, to, term), new Const(AT, YES), new Const(AT, NO), TRUTH), TRUTH);
   }
 
-  /** {@code cond}, or with {@code labels} {@code cond} inside a Label of slot {@code labels[0]}, the next one taken. */
-  private static Node fenced(Node cond, int[] labels) {
-    return labels == null ? cond : new Label(AT, labels[0]++, cond);
+  /** The fence of the Label control: {@code cond} inside a Label no Break names, of the next slot from {@code first}. */
+  private static UnaryOperator<Node> labels(int first) {
+    int[] next = {first};
+    return cond -> new Label(AT, next[0]++, cond);
+  }
+
+  /**
+   * The fence of the break-out control: {@code label $k | if $1 then break $outer else cond end}, k the next slot from
+   * {@code first}; slot 1 is no, so the Break never runs, but it names the Label around the whole run, not the fence's.
+   */
+  private static UnaryOperator<Node> breakingOut(int outer, int first) {
+    int[] next = {first};
+    return cond -> new Label(AT, next[0]++, new If(AT, new Var(AT, 1), new Break(AT, outer), cond, TRUTH));
   }
 
   /** A term of {@code term} giving {@code value}, yes or no. */

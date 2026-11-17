@@ -1,0 +1,16 @@
+# The required cases of #117 "Specialisation" (ADR-0045 "Amendment (ticket #117)", ADR-0006, ADR-0020): give this
+# file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line;
+# # and blank lines skipped.
+
+# differential: every case of specialise.cases.
+specialise/until-closed
+specialise/while-closed
+specialise/recurse-closed
+specialise/repeat-closed
+specialise/over-inline-cap-recurse
+specialise/over-inline-cap-comma-recurse
+specialise/range-3-free-slots-30000
+specialise/until-free-slot-30000
+specialise/free-break
+specialise/literal-arguments
+specialise/order-param-chain-then-recurse

@@ -1,0 +1,106 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case tail/until-ten-million
+def 92787fc12b77
+rc 0
+stdout 10000000\n
+stderr
+end
+
+case tail/fresh-closure-five-million
+def 50a02e8e3d7f
+rc 0
+stdout 5000001\n
+stderr
+end
+
+case tail/permuted-closures-five-million
+def c6e3f40cd2f6
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case tail/recurse-three-million
+def 3faa0bda709b
+rc 0
+stdout 2999999\n
+stderr
+end
+
+case tail/range-3-five-million
+def 81648bf65928
+rc 0
+stdout 4999999\n
+stderr
+end
+
+case tail/until-free-slot-five-million
+def 2c282eaddb6a
+rc 0
+stdout 5000000\n
+stderr
+end
+
+case tail/repeat-five-million
+def 4ca52be01888
+rc 0
+stdout 1\n
+stderr
+end
+
+case tail/group-five-million
+def fecc4527097c
+rc 0
+stdout 5000000\n
+stderr
+end
+
+case tail/alt-right-five-million
+def 8d3793ff920f
+rc 0
+stdout 5000000\n
+stderr
+end
+
+case tail/bind-body-five-million
+def 1dbdc64d54d5
+rc 0
+stdout 5000000\n
+stderr
+end
+
+case tail/many-valued-bind-is-no-tail-position
+def 7c62667b5e61
+rc 0
+stdout [4,13,12,11,10]\n
+stderr
+end
+
+case tail/repeat-reruns-its-closure-on-its-input
+def 283c05a1cacb
+rc 0
+stdout [2,2,2,2,2]\n
+stderr
+end
+
+case tail/free-break-in-a-closure-is-no-tail-call
+def 05951eef9796
+rc 0
+stdout [3]\n
+stderr
+end
+
+case tail/call-inside-a-closure-is-no-tail-call
+def 3dcd5b2d5ccd
+rc 0
+stdout [[[2,9],9],9]\n
+stderr
+end
+
+case tail/breaking-left-call-leaves-the-callers-jump
+def b825ce1c02ae
+rc 0
+stdout [5]\n
+stderr
+end

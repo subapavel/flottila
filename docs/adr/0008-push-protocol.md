@@ -1,12 +1,13 @@
 # Push protocol: emit's false stops, a break is a Workspace token, two exception classes
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amends ADR-0004, ADR-0005 and ADR-0007; amended by ADR-0015 (issue #11) and ADR-0017 (issue #13); amended by F-32 (two more tick sites); amended by ADR-0030 (run state, #59); amended by ADR-0034 (`run` takes the slots, #63); catch set and label tokens amended by ADR-0039 (#68); reduce and foreach tick at their producer, ADR-0041 (#69); the key proof's ticks, ADR-0044 (#85); Equality's key index, ADR-0044 (#95); a number token's re-scan is uncharged until #97, F-50
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); amends ADR-0004, ADR-0005 and ADR-0007; amended by ADR-0015 (issue #11) and ADR-0017 (issue #13); amended by F-32 (two more tick sites); amended by ADR-0030 (run state, #59); amended by ADR-0034 (`run` takes the slots, #63); catch set and label tokens amended by ADR-0039 (#68); reduce and foreach tick at their producer, ADR-0041 (#69); the key proof's ticks, ADR-0044 (#85); Equality's key index, ADR-0044 (#95); a number token's re-scan is uncharged until #97, F-50; a PLAIN call's tick by F-54, the value form's cardinality by F-56 and its compile mode by ADR-0047 (spec 2b); a number token's read charges, #97 (F-50); the two signatures reworded to ADR-0034's, #116
 
 Results are pushed. `interface Sink { boolean emit(Object v); }` lives in `query-core`. If emit
 returns `false`, that is a stop: the producer emits nothing more and returns `false` at once. The
-interpreter has two forms, `boolean run(Frame, Object in, Sink)` and a value form
-`Object eval(Frame, Object in)` for cardinality one or at most one, which returns `NONE` for no
-result. The bytecode backend fuses `a | b`, and a `Sink` object exists only where results cross
+interpreter has two forms, `boolean run(RunState, Object[] slots, Object in, Sink)` and a value form
+`Object eval(RunState, Object[] slots, Object in)` for cardinality one or at most one (nothing runs after the result, F-56; the
+optimised compile only, ADR-0047), which returns `NONE` for no result. The bytecode backend fuses `a
+| b`, and a `Sink` object exists only where results cross
 into separately compiled code.
 
 - **Label and break use no exceptions.** Each `Label` activation takes a fresh token, held in a
@@ -50,8 +51,9 @@ into separately compiled code.
   - A stop anywhere returns `false` at once.
 - **Budgets:** a step budget and a wall-clock deadline, plus the nesting-depth, bytes-built,
   bytes-written and recursion-depth budgets (ADR-0011).
-  - Steps are charged only at sites the IR defines: a loop back-edge, a tail jump, a `RECURSIVE`
-    or real-closure call. So both backends stop at the same step. A trampoline bounce charges no
+  - Steps are charged only at sites the IR defines: a loop back-edge, a tail jump, a `PLAIN` or
+    `RECURSIVE` call, or a real-closure call (F-54). So both backends stop at the same step. A
+    trampoline bounce charges no
     step.
   - Every native loop whose length depends on the data charges ticks against the step budget, per
     element or per KiB. This
@@ -101,3 +103,14 @@ the first.
 ## Amendment (ADR-0044, ticket #85)
 
 - A read object's key proof ticks once per key entry (one per started KiB of a longer key) and once per compare of its fallback sort (one per started KiB of the shorter key, at least one), the table's probes none; the writer's proof charges through `tickWritten`, and a host accessor's proof (`size()`, `forEach`, Detach) charges no run.
+
+## Amendment (ticket #97, F-50)
+
+A number token read whole ticks once per started KiB of its token. This covers a non-short document
+number's double at each native read, each operand once per call; both tokens of an exact compare, in
+Equality as in Order; and a token copied by `-x` or `length`. A short literal (ADR-0012) and a filter
+literal's cached double charge nothing, and neither does `NumberView.doubleValue()`, the host accessor
+(as ADR-0044). No double is cached per token (ADR-0012 "Values"). Considered: a per-token cache (it
+needs a side table per document, and the exact compare still scans the token); a tick inside
+`doubleValue()` (host reads would charge a run); a tick on short reads (it breaks "an operator on two
+scalars ticks nothing").

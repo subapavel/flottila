@@ -28,6 +28,7 @@ import io.github.subapavel.jqj.internal.value.BuiltArray;
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
 import io.github.subapavel.jqj.internal.value.Equality;
 import io.github.subapavel.jqj.internal.value.Members;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.run.Charges;
 import io.github.subapavel.jqj.query.run.Fn2;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -49,7 +50,7 @@ final class Minus implements Fn2 {
   @Override
   public Object apply(RunState state, Object in, Object l, Object r) {
     return switch (new Operands(l, r)) {
-      case Operands(JqNumber a, JqNumber b) -> new DoubleNumber(a.doubleValue() - b.doubleValue());
+      case Operands(JqNumber a, JqNumber b) -> new DoubleNumber(Numbers.doubleValue(state, a) - Numbers.doubleValue(state, b));
       case Operands(JqArray a, JqArray b) -> difference(state, a, b);
       case Operands(JqNull a, JqNull b) -> throw Arithmetic.cannot(state, a, b, ERROR);
       case Operands(JqNull a, JqBool b) -> throw Arithmetic.cannot(state, a, b, ERROR);

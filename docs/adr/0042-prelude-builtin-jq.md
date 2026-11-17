@@ -1,6 +1,6 @@
 # The prelude is jq's builtin.jq, parsed once per JVM and looked up after the native table
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #71; designer draft); amends ADR-0040 (Binder order) and ADR-0031 (Source of inlined prelude nodes); amended by ADR-0044 (`to_entries` native, #85)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #71; designer draft); amends ADR-0040 (Binder order) and ADR-0031 (Source of inlined prelude nodes); amended by ADR-0044 (`to_entries` native, #85); `_modify/2` and `_assign/2` are replacing natives by ADR-0048 (spec 3); recursive prelude groups lift to Calls by ticket #110
 
 jq 1.8.2's `builtins_bind` binds builtin.jq's definitions, then the bytecoded builtins, then the C functions (`function_list`), and binds each unbound reference to the last binder first. No (name, arity) in builtin.jq is also a C or bytecoded builtin, so looking up natives before the prelude gives jq's result. The only exceptions are F-31's replacing natives (`flatten/0`, `flatten/1`, `inputs/0`), where jqj's native wins by design. Looking natives up first also lets a native-only filter compile without touching the prelude.
 
@@ -35,3 +35,29 @@ jq 1.8.2's `builtins_bind` binds builtin.jq's definitions, then the bytecoded bu
 - **Binding all definitions once per JVM**: a second Binder path, and dead definitions get checked.
 - **A serialised AST at build time**: build work before any measurement asks for it.
 - **"not defined" for an unbuilt native**: jq compiles those filters.
+
+## Amendment (ADR-0048, spec 3)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+`_modify/2` and `_assign/2` are replacing natives like F-31's, lowering to Update (MODIFY, ASSIGN).
+`|=`, `op=`, `//=` and `=` resolve through these names, so a user definition wins (P1): `def
+_modify(p;u): 42; {} | .a += 1`, `.a //= 1` and `.a |= 1` each give `42`, and `def _assign(p;u): 42;
+{} | .a = 1` gives `42` (architect's probes, 2026-11-14). A call by name lowers the same way: `{} |
+_modify(.a;1), _assign(.b;2)` → `{"a":1}`, `{"b":2}`.
+
+## Amendment (ticket #110)
+
+Accepted 2026-11-15, architect under `/run-spec` #106; designer draft. This replaces "In 2a, `..`,
+`recurse`, `paths`, `walk`, `while`, `until` and `repeat` are Stubs".
+
+- A call into a recursive prelude group is a `Call` of a function lifted once per definition per
+  compile, as ADR-0045 lifts a user one. The nodes of its body take the Source of the call that
+  first placed it, in lowering order; closure arguments keep their own Source. So does the lifted
+  `Function` itself, so that `explain()` prints spans of the filter's text, never of `builtin.jq`.
+- `..` lowers to recurse/0's inlined body around a Call of recurse/1's `r` with the closure `.[]?`.
+  A user `recurse` still shadows it.
+- `paths`, `tostream` and `walk` stay Stubs until spec 3, because they need `path/1` and the update
+  operators, not because they recurse.
+- A test that used `..` as its "still a Stub" marker either asserts that the filter compiles now,
+  or moves to another long-lived unbuilt construct (`$ENV`, spec 7).

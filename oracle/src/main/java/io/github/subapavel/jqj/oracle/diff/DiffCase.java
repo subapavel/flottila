@@ -17,11 +17,15 @@ import java.util.Map;
  * options before or after the filter); {@code stdin} once; {@code file <name> <bytes>} and {@code env K=V}, each
  * repeatable; {@code deviation <slug>} once marks a case that pins a {@code DEVIATIONS.md} row (ADR-0020), and only
  * such a case may carry jqj's column of that row: {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}, each at
- * most once. Without {@code stdin} the input is empty.
+ * most once. {@code limit recursion-depth <n>} once runs jqj under a recursion-depth budget of {@code n}, a positive
+ * integer of at most {@link Integer#MAX_VALUE}, in every run of the case, the differential run and each compile mode's (ADR-0047 #118); reference jq
+ * ignores it. Without {@code stdin} the input is empty.
  *
  * @param files file name to content, written into the working directory of each run
  * @param deviation the slug of the deviation the case pins, or null
  * @param jqj jqj's column: every part null unless the case gives its {@code jqj-*} key
+ * @param recursionDepth the recursion-depth budget of {@code limit recursion-depth}, or null when the case has no such
+ *     key
  */
 public record DiffCase(
     String id,
@@ -31,7 +35,20 @@ public record DiffCase(
     Map<String, String> env,
     String deviation,
     JqjColumn jqj,
-    String def) {
+    String def,
+    Long recursionDepth) {
+
+  /** The key that sets a jqj limit for every run of the case (ADR-0047 #118). */
+  private static final String LIMIT = "limit";
+
+  /** The one limit the {@code limit} key names. */
+  private static final String RECURSION_DEPTH = "recursion-depth ";
+
+  /** A case without {@code limit recursion-depth}. */
+  public DiffCase(
+      String id, List<String> args, byte[] stdin, Map<String, byte[]> files, Map<String, String> env, String deviation, JqjColumn jqj, String def) {
+    this(id, args, stdin, files, env, deviation, jqj, def, null);
+  }
 
   /**
    * jqj's column of a deviation case: what jqj gives where it differs from jq-ref on purpose. Each part is null when
@@ -74,9 +91,9 @@ public record DiffCase(
    * The case of one block.
    *
    * @throws IllegalArgumentException naming {@code where} and the line of an unknown key, a repeated {@code stdin},
-   *     {@code deviation} or {@code jqj-*} key, a {@code file} without a name, an {@code env} without {@code =}, a
-   *     {@code jqj-rc} that is not an integer, a malformed escape, or the first {@code jqj-*} key of a case without
-   *     {@code deviation}
+   *     {@code deviation}, {@code limit} or {@code jqj-*} key, a {@code file} without a name, an {@code env} without
+   *     {@code =}, a {@code jqj-rc} that is not an integer, a {@code limit} that is not {@code recursion-depth} and a
+   *     positive integer, a malformed escape, or the first {@code jqj-*} key of a case without {@code deviation}
    */
   public static DiffCase of(String where, CaseFormat.Block block) {
     List<String> args = new ArrayList<>();
@@ -87,6 +104,7 @@ public record DiffCase(
     Integer jqjRc = null;
     byte[] jqjStdout = null;
     byte[] jqjStderr = null;
+    Long recursionDepth = null;
     CaseFormat.Line firstJqj = null;
     for (CaseFormat.Line line : block.lines()) {
       String at = where + ":" + line.number() + ": ";
@@ -129,6 +147,10 @@ public record DiffCase(
             if (jqjStderr != null) throw new IllegalArgumentException("'jqj-stderr' given twice");
             jqjStderr = CaseFormat.unescape(line.value());
           }
+          case LIMIT -> {
+            if (recursionDepth != null) throw new IllegalArgumentException("'limit' given twice");
+            recursionDepth = recursionDepth(line.value());
+          }
           default ->
               throw new IllegalArgumentException(
                   "unknown key '" + line.key() + "': a case holds the command line only; its expected output is"
@@ -145,7 +167,22 @@ public record DiffCase(
               + " deviation case carries jqj's column (ADR-0020)");
     }
     JqjColumn jqj = new JqjColumn(jqjRc, jqjStdout, jqjStderr);
-    return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, jqj, block.def());
+    return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, jqj, block.def(), recursionDepth);
+  }
+
+  /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} an integer in 1..{@link Integer#MAX_VALUE}. */
+  private static long recursionDepth(String value) {
+    String why = "'limit' needs 'recursion-depth <n>' with an integer n in 1.." + Integer.MAX_VALUE + ", not '" + value + "'";
+    if (!value.startsWith(RECURSION_DEPTH)) throw new IllegalArgumentException(why);
+    long n;
+    try {
+      n = Long.parseLong(value.substring(RECURSION_DEPTH.length()));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException(why, e);
+    }
+    // Limits takes the budget as an int, so a larger one is refused here, not when the runner builds the Limits.
+    if (n <= 0 || n > Integer.MAX_VALUE) throw new IllegalArgumentException(why);
+    return n;
   }
 
   /** The environment of a run: exactly {@code HOME=<home> TZ=UTC LC_ALL=C} plus the case's {@code env} (ADR-0020). */

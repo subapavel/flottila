@@ -9,6 +9,7 @@ import io.github.subapavel.jqj.JqFilter;
 import io.github.subapavel.jqj.JqFilterException;
 import io.github.subapavel.jqj.JqSink;
 import io.github.subapavel.jqj.JqSyntaxException;
+import io.github.subapavel.jqj.JqTermination;
 import io.github.subapavel.jqj.JsonDoc;
 import io.github.subapavel.jqj.JsonWriter;
 import io.github.subapavel.jqj.Limits;
@@ -40,8 +41,10 @@ import java.util.function.UnaryOperator;
  * before or after either; {@code --}, after which every argument is the filter or a file. A missing file and an
  * option jq does not know end with jq's text and exit code 2; any other jq option is a Stub with exit code 2. A filter
  * error ends the run with jq's line {@code jq: error (at <name>:N): <text>}, or {@code jq: error (at <name>:N) (not a
- * string): <value>} for a value that is no string (#68), and exit code 5. Without {@code -c} the output is pretty, jq's
- * default indent 2 (#37).
+ * string): <value>} for a value that is no string (#68), and exit code 5; a termination with {@code jq: error:
+ * <message>} and exit code 5 (#197). Without {@code -c} the output is pretty, jq's
+ * default indent 2 (#37). {@code --explain}, a jqj-only flag (#108, ADR-0016), prints the compiled filter's
+ * {@code explain()} text instead of running it, reads no input and exits 0.
  */
 public final class Main {
 
@@ -99,17 +102,34 @@ public final class Main {
    * @throws UncheckedIOException when stdin, stdout or stderr fails
    */
   public static int run(Invocation invocation) {
-    return run(invocation, UnaryOperator.identity());
+    return run(invocation, UnaryOperator.identity(), true);
+  }
+
+  /** As {@link #run(Invocation)}, with {@code limits} instead of {@link Limits#cli()}: the seam the tests end a run by. */
+  static int run(Invocation invocation, Limits limits) {
+    return run(invocation, b -> b.limits(limits), true);
   }
 
   /**
    * As {@link #run(Invocation)}, with the engine built from what {@code engine} makes of the command line's builder
-   * (ADR-0020 amendment for #60): the compile-mode oracle sets its limits and compile mode there.
+   * (ADR-0020 amendment for #60): the compile-mode oracle sets its limits and compile mode there. Unlike
+   * {@link #run(Invocation)} it ends no run on a termination: the oracle reads its cause (F-87).
    *
+   * @throws JqTermination when the run ends with one
    * @throws UncheckedIOException when stdin, stdout or stderr fails
    */
   public static int run(Invocation invocation, UnaryOperator<JqEngine.Builder> engine) {
+    return run(invocation, engine, false);
+  }
+
+  /**
+   * The run of both entries. With {@code endsTerminations} a termination ends the run as jq's resource end does
+   * (#197, F-87, ADR-0017 "Exit codes"): the results so far are flushed, {@code jq: error: <message>} goes to stderr,
+   * and the exit code is the termination's, 5; without it the termination is thrown.
+   */
+  private static int run(Invocation invocation, UnaryOperator<JqEngine.Builder> engine, boolean endsTerminations) {
     boolean compact = false;
+    boolean explain = false;
     boolean optionsDone = false;
     String filter = null;
     String file = null;
@@ -128,6 +148,8 @@ public final class Main {
         String name = arg.substring(2);
         if (name.equals("compact-output")) {
           compact = true;
+        } else if (name.equals("explain")) {
+          explain = true;
         } else if (!name.equals("monochrome-output")) {
           return refuse(invocation, arg, LONG_NOT_BUILT.contains(name));
         }
@@ -150,6 +172,16 @@ public final class Main {
       compiled = built.compile(filter == null ? "." : filter);
     } catch (JqCompileException e) {
       return report(invocation, COMPILE, e.getMessage());
+    }
+    if (explain) {
+      // ADR-0016: a jqj-only flag (DEVIATIONS "--explain"); the input is never read.
+      try {
+        invocation.out().write(compiled.explain().getBytes(UTF_8));
+        invocation.out().flush();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+      return 0;
     }
     Workspace workspace = built.newWorkspace();
     try {
@@ -174,6 +206,13 @@ public final class Main {
           invocation.out().flush();
           String name = file == null ? "<stdin>" : file;
           return report(invocation, FAILED, "jq: error (at " + name + ":" + ErrorLine.of(input) + ")" + message(e.value()));
+        } catch (JqTermination t) {
+          // No run ends with HALT yet: halt and its output are spec 7's (T11).
+          if (!endsTerminations) {
+            throw t;
+          }
+          invocation.out().flush();
+          return report(invocation, t.exitCode(), "jq: error: " + t.getMessage());
         }
       }
       invocation.out().flush();

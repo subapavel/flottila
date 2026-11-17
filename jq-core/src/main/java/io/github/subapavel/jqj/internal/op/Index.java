@@ -30,6 +30,7 @@ import io.github.subapavel.jqj.internal.value.DoubleNumber;
 import io.github.subapavel.jqj.internal.value.Equality;
 import io.github.subapavel.jqj.internal.value.Keyed;
 import io.github.subapavel.jqj.internal.value.Members;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Fn1;
@@ -83,7 +84,7 @@ public final class Index implements Fn1 {
               };
           case JqArray array ->
               switch (k) {
-                case JqNumber n -> element(state, array, n.doubleValue());
+                case JqNumber n -> element(state, array, Numbers.doubleValue(state, n));
                 // parse_slice reads both keys; a missing one is jq's invalid, which is no number.
                 case Keyed bounds ->
                     Slice.sliced(Slice.of(state, array, bounds.get(state, "start"), bounds.get(state, "end")), quiet);

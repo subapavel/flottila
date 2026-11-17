@@ -19,6 +19,7 @@ jq.test#0806a3fc361f	interpreter
 jq.test#09855b854ad2	interpreter
 jq.test#0a5c4a723e20	interpreter
 jq.test#0a789e1d5ab4	interpreter
+jq.test#0bb32124e748	interpreter
 jq.test#0bd63f9b6440	interpreter
 jq.test#0c7b59e55096	interpreter
 jq.test#0ccc787d356d	interpreter
@@ -76,6 +77,7 @@ jq.test#3a02318c5a87	interpreter
 jq.test#3a94f773efd4	interpreter
 jq.test#3b4bc53ebf35	interpreter
 jq.test#3b9948d25fe1	interpreter
+jq.test#3c0d9891d22c	interpreter
 jq.test#3c39874a7395	interpreter
 jq.test#3c7eaffb9aca	interpreter
 jq.test#3d3a7eb53022	interpreter
@@ -94,6 +96,7 @@ jq.test#4828f53331c1	interpreter
 jq.test#4b6e5881d306	interpreter
 jq.test#4b72f080b94b	interpreter
 jq.test#4d4e9fd7bad4	interpreter
+jq.test#4dbbd1dfe7cb	interpreter
 jq.test#4dc145ab0b77	interpreter
 jq.test#4dcdca700612	interpreter
 jq.test#4dd9b0b64b47	interpreter
@@ -103,6 +106,7 @@ jq.test#4fc10dca2848	interpreter
 jq.test#504b626851af	interpreter
 jq.test#50a8dd7ee578	interpreter
 jq.test#51dd8fe1848d	interpreter
+jq.test#529480120c42	interpreter
 jq.test#5391099daec9	interpreter
 jq.test#5482bd8f2a67	interpreter
 jq.test#54dc19661fcb	interpreter
@@ -111,6 +115,7 @@ jq.test#575b2c608904	interpreter
 jq.test#580ed5a815e2	interpreter
 jq.test#58b2cad1b484	interpreter
 jq.test#594b4c8163d6	interpreter
+jq.test#5b9f5544fa88	interpreter
 jq.test#5c3ab1d41394	interpreter
 jq.test#5d4c68b18082	interpreter
 jq.test#5e648b631870	interpreter
@@ -131,6 +136,7 @@ jq.test#659d070cbd30	interpreter
 jq.test#663c20f1ca0d	interpreter
 jq.test#666c81527b86	interpreter
 jq.test#6ad20475b077	interpreter
+jq.test#6b5532332fa0	interpreter
 jq.test#6b9b5e5c13be	interpreter
 jq.test#6cf832b06912	interpreter
 jq.test#6dcfb1c9a7df	interpreter
@@ -207,6 +213,7 @@ jq.test#a1121bdecdc5	interpreter
 jq.test#a1992d239479	interpreter
 jq.test#a1d9d09afbdc	interpreter
 jq.test#a1e1f0a4fe13	interpreter
+jq.test#a26fd564e7de	interpreter
 jq.test#a271da33fe01	interpreter
 jq.test#a33f53dfa710	interpreter
 jq.test#a3fde6bda96a	interpreter
@@ -247,6 +254,7 @@ jq.test#b99a5b261547	interpreter
 jq.test#b99f9c43f5d6	interpreter
 jq.test#b9cbb578cf37	interpreter
 jq.test#b9d51fb64b51	interpreter
+jq.test#b9dde8dddfea	interpreter
 jq.test#ba8f650a5ecb	interpreter
 jq.test#bbfa99fa0166	interpreter
 jq.test#bc202bd96a6b	interpreter
@@ -254,6 +262,7 @@ jq.test#bd1c15c53252	interpreter
 jq.test#bd35acef99a3	interpreter
 jq.test#bd52d188df04	interpreter
 jq.test#bd674648c08f	interpreter
+jq.test#bec2a40c5e77	interpreter
 jq.test#bf2c165a43b3	interpreter
 jq.test#bf36da34ff87	interpreter
 jq.test#bfbd4ab97f65	interpreter
@@ -283,6 +292,7 @@ jq.test#d08d36100c63	interpreter
 jq.test#d0a100bb7aad	interpreter
 jq.test#d0c8f503ef76	interpreter
 jq.test#d2f27494d27c	interpreter
+jq.test#d4e968bdaff6	interpreter
 jq.test#d6286052d26b	interpreter
 jq.test#d6a660e5da12	interpreter
 jq.test#d7164ac49b54	interpreter
@@ -307,6 +317,7 @@ jq.test#e1de014beb31	interpreter
 jq.test#e25e7a33370c	interpreter
 jq.test#e30d7814d724	interpreter
 jq.test#e381aeee8436	interpreter
+jq.test#e3be7cd91456	interpreter
 jq.test#e3ce03da0501	interpreter
 jq.test#e3d73b9ff1ab	interpreter
 jq.test#e3fec0b48f1b	interpreter
@@ -334,6 +345,7 @@ jq.test#f5d06d36099d	interpreter
 jq.test#f9556af5283e	interpreter
 jq.test#f9a2df08b3db	interpreter
 jq.test#fac015c9b4bf	interpreter
+jq.test#fe61ae38e899	interpreter
 jq.test#fe9447adfaef	interpreter
 jq.test#ff68e06c3c7b	interpreter
 man.test#006cf2b52a80	interpreter
@@ -352,6 +364,7 @@ man.test#09855b854ad2	interpreter
 man.test#0ade8296aa15	interpreter
 man.test#0ba9f00a93da	interpreter
 man.test#0c484123fbfc	interpreter
+man.test#0cb4429f73f3	interpreter
 man.test#0cfa14d26395	interpreter
 man.test#11af6b75d24b	interpreter
 man.test#140eaa8e554d	interpreter
@@ -373,7 +386,12 @@ man.test#34c76715696c	interpreter
 man.test#3793b964d73e	interpreter
 man.test#37e59e76d0fc	interpreter
 man.test#3963afd2f8af	interpreter
+man.test#3a256787eb78	interpreter
+man.test#3c0d9891d22c	interpreter
 man.test#42865e81b74e	interpreter
+man.test#42e9e6126d1e	interpreter
+man.test#44201492dec7	interpreter
+man.test#443a8da18aed	interpreter
 man.test#44691d3b8fbd	interpreter
 man.test#4491211cc5bc	interpreter
 man.test#470a4bbfba48	interpreter
@@ -381,6 +399,7 @@ man.test#471bc8807f54	interpreter
 man.test#471ca600c8d6	interpreter
 man.test#47f9f93530b6	interpreter
 man.test#490d2216ccf2	interpreter
+man.test#4979b7fa9ee4	interpreter
 man.test#4a106423ef6a	interpreter
 man.test#4c503ec50e58	interpreter
 man.test#4f52aef61f90	interpreter
@@ -393,6 +412,7 @@ man.test#580ed5a815e2	interpreter
 man.test#5a75c08fb948	interpreter
 man.test#5bc64f426e59	interpreter
 man.test#5bf81149996b	interpreter
+man.test#5ce2f15ada43	interpreter
 man.test#5e789a5c5d46	interpreter
 man.test#617996232d4b	interpreter
 man.test#63841dfe671e	interpreter
@@ -401,6 +421,7 @@ man.test#63fa3b756a2e	interpreter
 man.test#65086de6f514	interpreter
 man.test#653df95494b7	interpreter
 man.test#6a74f4c8f08b	interpreter
+man.test#6a87b42232d2	interpreter
 man.test#6aab4c799b56	interpreter
 man.test#6c815331a494	interpreter
 man.test#6e384b17c186	interpreter
@@ -423,6 +444,8 @@ man.test#81e570f3a96b	interpreter
 man.test#8276eaad760e	interpreter
 man.test#854c4f13ddfe	interpreter
 man.test#880cd80ca7da	interpreter
+man.test#8884598c4b40	interpreter
+man.test#8a997f771965	interpreter
 man.test#8c4f56de95ee	interpreter
 man.test#8e68b00c42c8	interpreter
 man.test#912fff0227a2	interpreter
@@ -432,6 +455,7 @@ man.test#99f352c7bbf8	interpreter
 man.test#9ab267182966	interpreter
 man.test#9bcd89b58e83	interpreter
 man.test#9fa76fabe793	interpreter
+man.test#a2c2194e6937	interpreter
 man.test#a4c781accd63	interpreter
 man.test#a5504f7a733e	interpreter
 man.test#a6f9b7d20aa6	interpreter
@@ -443,6 +467,7 @@ man.test#af84b775de92	interpreter
 man.test#afedb78014d6	interpreter
 man.test#b16c3bcae96a	interpreter
 man.test#b36768b23462	interpreter
+man.test#b591eda20a41	interpreter
 man.test#b64d1b1fb68c	interpreter
 man.test#b6b00326b15a	interpreter
 man.test#b7d5c7e066e6	interpreter
@@ -458,6 +483,7 @@ man.test#c6d4b944d23a	interpreter
 man.test#c767d03f401e	interpreter
 man.test#c7f47a0eac75	interpreter
 man.test#c801ba41e4d2	interpreter
+man.test#c94e6bedb2a6	interpreter
 man.test#cb71a15b95ff	interpreter
 man.test#cf1b0ae15f45	interpreter
 man.test#d0c67c7f2943	interpreter

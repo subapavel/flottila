@@ -15,8 +15,9 @@ import org.junit.jupiter.api.Test;
  * The number ticks of the value order (ADR-0037 "one per started KiB ... of a literal on the BigDecimal path", pinned
  * by the implementer as the #66 red approval's ruling 2 asks): two literals that are not both longs and not both short
  * compare exactly, reading each token whole, so the order charges one tick per started KiB of each token; two longs,
- * two short literals and a literal against a computed number charge nothing, and neither does Equality's compare of
- * the same tokens (ADR-0034 amendment for #65). Each filter wraps its numbers in arrays, so the one element pair is a
+ * two short literals and a literal against a computed number charge nothing. Equality's compare of the same tokens
+ * charges as the order does (#97, F-50: ADR-0034's Equality bullet, ADR-0008 "Amendment (ticket #97, F-50)"; before
+ * it charged only its pair). Each filter wraps its numbers in arrays, so the one element pair is a
  * tick of its own (ComparisonStepsTest); each count is an adjacent pair, N steps complete and N - 1 end with
  * {@code JqTermination(BUDGET, STEPS)}. A token {@code 1.000...} is not canonical, so never short. Every expected result
  * is jq-ref 1.8.2's, observed 2026-11-13 with {@code jq-ref -nc} on the same filter: false for each order below but
@@ -46,9 +47,13 @@ class LiteralOrderStepsTest {
     assertExactSteps("[" + one(1023) + "] > [1 + 0]", 1, "false");
   }
 
+  /**
+   * Both tokens of an exact compare tick in Equality as in Order (#97): the pair and the 2 KiB that 1 025 bytes start
+   * and the 1 KiB that 1 starts, 4 (1 before #97). jq-ref 1.8.2 gives true (observed 2026-11-14, {@code jq-ref -nc}).
+   */
   @Test
-  void equalityOfTheSameTokensChargesOnlyItsPair() {
-    assertExactSteps("[" + one(1023) + "] == [1]", 1, "true");
+  void equalityOfTheSameTokensChargesItsPairAndOneStepPerStartedKiBOfEachToken() {
+    assertExactSteps("[" + one(1023) + "] == [1]", 4, "true");
   }
 
   /**

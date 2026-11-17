@@ -1,6 +1,6 @@
 # Wide constructs bind through one Binds node; and/or runs are balanced; a tail emitter's result is taken first
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #87; designer draft); records F-45; amends ADR-0005 (22 node kinds), ADR-0034 (slot rule; operator and object lowering), ADR-0037 (and/or runs; If), ADR-0038 (patterns, interpolation) and ADR-0040 (value parameters); amended by F-85 (#194: a holder answers a stop)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #87; designer draft); records F-45; amends ADR-0005 (22 node kinds), ADR-0034 (slot rule; operator and object lowering), ADR-0037 (and/or runs; If), ADR-0038 (patterns, interpolation) and ADR-0040 (value parameters); amended by F-85 (#194: a holder answers a stop); "may subsume" closed by ADR-0047 (spec 2b); a `Tracking` per `Binds` value by ADR-0048 (spec 3)
 
 A construct with n parts lowers to n nested Binds (objects, interpolation, patterns, value
 parameters) or to Binds nested in value position (left-associative operators), and `and`/`or` nest
@@ -37,7 +37,8 @@ result before the rest runs.
   both compile modes; no tick or charge changes.
 - **The tail emitter is not ADR-0008's value form.** It adds no `eval` form and reads no analysis
   fact (cardinality, may-break-out); it is a local fast path of the push form. The value form and
-  its analyses stay in 2b (spec-2 grilling round 1, Q1), which may subsume it.
+  its analyses come in 2b (spec-2 grilling round 1, Q1) and do not subsume it: the tail emitter
+  stays in both compile modes as the kind-only floor (ADR-0047).
 - **Still nested**: nested constructs (a construct at or under `BIND_RUN` keeps its nested Binds, so eight nested
   64-pair objects pass 512 levels; one past it is a Binds of a level or two, #93, #94), nested
   definitions and nested value parameters keep their F-44 Stub; a generator part recurses once.

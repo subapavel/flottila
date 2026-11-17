@@ -7,12 +7,23 @@ import io.github.subapavel.jqj.query.run.Sink;
 public final class VarOp extends Op {
   private final int slot;
 
-  public VarOp(int slot) {
+  public VarOp(boolean valueForm, int slot) {
+    super(valueForm);
     this.slot = slot;
   }
 
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(slots[slot]);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return slots[slot];
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, slots[slot]);
   }
 }

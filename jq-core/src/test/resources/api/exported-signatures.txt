@@ -40,6 +40,7 @@ io.github.subapavel.jqj.JqEngine$Builder | public static final class io.github.s
 
 io.github.subapavel.jqj.JqException | public abstract sealed class io.github.subapavel.jqj.JqException extends java.lang.RuntimeException permits io.github.subapavel.jqj.JqCompileException, io.github.subapavel.jqj.JqFilterException, io.github.subapavel.jqj.JqSyntaxException, io.github.subapavel.jqj.JqTermination
 
+io.github.subapavel.jqj.JqFilter | public java.lang.String io.github.subapavel.jqj.JqFilter.explain()
 io.github.subapavel.jqj.JqFilter | public boolean io.github.subapavel.jqj.JqFilter.run(io.github.subapavel.jqj.value.JqValue,io.github.subapavel.jqj.Bindings,io.github.subapavel.jqj.JqSink,io.github.subapavel.jqj.Workspace)
 io.github.subapavel.jqj.JqFilter | public final class io.github.subapavel.jqj.JqFilter
 

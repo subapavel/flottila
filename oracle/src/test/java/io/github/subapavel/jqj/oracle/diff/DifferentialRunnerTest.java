@@ -51,9 +51,42 @@ class DifferentialRunnerTest {
         .extracting(e -> e.c().id())
         .filteredOn(id -> id.startsWith("basics/"))
         .containsExactly(
-            "basics/compact-object", "basics/field-of-array", "basics/file-argument", "basics/index-of-array", "basics/recurse-of-array", "basics/syntax-error-eof");
+            "basics/compact-object", "basics/env-type", "basics/field-of-array", "basics/file-argument", "basics/index-of-array", "basics/recurse-of-array",
+            "basics/syntax-error-eof");
     assertThat(all).extracting(e -> e.c().id()).isSorted().anyMatch(id -> id.startsWith("gen/values-v1/"));
     assertThat(all).allSatisfy(e -> assertThat(e.recording().id()).isEqualTo(e.c().id()));
+  }
+
+  /**
+   * ADR-0047 #118: a case with {@code limit recursion-depth n} runs through the limited entry for {@code n}, never the
+   * plain one, and a runner without a limited entry refuses it before jqj runs. Witness: a case without the key runs
+   * the plain entry.
+   */
+  @Test
+  void aLimitedCaseRunsTheLimitedEntryUnderItsBudget() {
+    DiffCorpus.Entry e = DiffCorpus.load(Corpus.casesDir()).stream().filter(x -> x.c().id().equals("tail/until-ten-million")).findFirst().orElseThrow();
+    assertThat(e.c().recursionDepth()).as("premise: the case's budget").isEqualTo(16L);
+    List<String> entries = new ArrayList<>();
+    DiffRunner runner =
+        new DiffRunner(
+            inv -> {
+              entries.add("plain");
+              return jqj(3, "plain\n", "").applyAsInt(inv);
+            },
+            depth -> {
+              entries.add("limited " + depth);
+              return jqj(0, "10000000\n", "");
+            },
+            scratch,
+            Corpus.deviations());
+
+    assertThat(runner.run(e.c(), e.recording()).kind()).as("the limited entry's run against jq-ref's recording").isEqualTo(Verdict.Kind.PASS);
+    assertThat(entries).as("the entries a limited case ran").containsExactly("limited 16");
+    runner.run(basics("basics/compact-object").c(), null);
+    assertThat(entries).as("witness: a case without the key runs the plain entry").containsExactly("limited 16", "plain");
+    assertThatThrownBy(() -> runner(jqj(0, "10000000\n", "")).run(e.c(), e.recording()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("case tail/until-ten-million: limit recursion-depth, and this runner has no limited entry");
   }
 
   /** An entry standing in for jqj: writes the given bytes and returns rc. */
@@ -71,22 +104,27 @@ class DifferentialRunnerTest {
 
   /**
    * A recorded case whose jq-ref rc differs from jqj's Stub rc. #33 built {@code -c .} and #34 {@code .a} (#33 design
-   * C12, #34 design C4), and #63 builds {@code .[0]} ({@code basics/index-of-array}, which served here until then), so
-   * this runs {@code basics/recurse-of-array}: {@code -c ..} on {@code [1]}, which jq-ref answers with rc 0 and
-   * {@code [1]} then {@code 1} (basics.rec), and which stays a compile Stub (rc 3) after #63.
+   * C12, #34 design C4), #63 {@code .[0]} ({@code basics/index-of-array}) and #110 {@code ..}
+   * ({@code basics/recurse-of-array}, ADR-0042 amendment for #110), each of which served here until then, so this runs
+   * {@code basics/env-type}: {@code -c '$ENV|type'} on {@code null}, which jq-ref answers with rc 0 and
+   * {@code "object"} (basics.rec, recorded 2026-11-15), and which stays a compile Stub (rc 3) until spec 7. The former
+   * case now passes on the command line.
    */
   @Test
   void aRecordedCaseFailsAgainstTheStubShellWithAReadableDiff() {
-    Verdict v = run("basics/recurse-of-array", Main::run);
+    Verdict v = run("basics/env-type", Main::run);
 
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.diff())
-        .contains("basics/recurse-of-array")
+        .contains("basics/env-type")
         .contains("rc      jq-ref 0\n          jqj    3\n")
-        .contains("stdout  jq-ref [1]\\n1\\n\n          jqj    (empty)\n")
+        .contains("stdout  jq-ref \"object\"\\n\n          jqj    (empty)\n")
         .contains("stderr  jq-ref (empty)\n")
         .contains("        jqj    jqj stub: ");
     assertThat(v.detail()).doesNotContain("\n").doesNotContain("\t");
+
+    Verdict recurse = run("basics/recurse-of-array", Main::run);
+    assertThat(recurse.kind()).as("verdict of basics/recurse-of-array since #110, detail '%s'", recurse.detail()).isEqualTo(Verdict.Kind.PASS);
   }
 
   /**

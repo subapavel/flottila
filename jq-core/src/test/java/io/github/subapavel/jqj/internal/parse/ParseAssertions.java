@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import io.github.subapavel.jqj.JqCompileException;
+import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.ir.Advance;
 import io.github.subapavel.jqj.query.ir.Alt;
 import io.github.subapavel.jqj.query.ir.AltBind;
@@ -12,21 +14,25 @@ import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
+import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Foreach;
+import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.value.JqValue;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +51,9 @@ final class ParseAssertions {
 
   private ParseAssertions() {}
 
-  /** The IR of {@code text}: its AST, resolved. */
+  /** The IR of {@code text}: its AST, resolved, the main tree of its program. */
   static Node ir(String text) {
-    return Resolver.resolve(Parser.parse(text));
+    return Resolver.resolve(Parser.parse(text)).main();
   }
 
   /** {@code text} parses, and its resolution is a Stub: a construct the parser accepts and the resolver does not lower. */
@@ -57,6 +63,24 @@ final class ParseAssertions {
         .as("resolve of %s", show(text))
         .isThrownBy(() -> ir(text))
         .withMessageStartingWith(MARK);
+  }
+
+  /**
+   * Each of {@code texts} parses, resolves with no Stub, and the Compiler accepts its program (its verifier checked it):
+   * a construct the resolver lowers whole. The entries that ended with {@code | ..} as their Stub marker assert this
+   * since #110 built {@code ..} (ADR-0042 amendment for #110). The failure lists every text that does not, with what it
+   * threw.
+   */
+  static void allCompile(List<String> texts) {
+    List<String> failed = new ArrayList<>();
+    for (String text : texts) {
+      try {
+        Compiler.compile(Resolver.resolve(Parser.parse(text)), 0, CompileMode.OPTIMISED);
+      } catch (RuntimeException e) {
+        failed.add(show(text) + " -> " + e);
+      }
+    }
+    assertThat(failed).as("texts that do not parse, resolve and compile").isEmpty();
   }
 
   /**
@@ -91,13 +115,24 @@ final class ParseAssertions {
    * (#68) {@code (try body catch handler)}, a Label {@code (label $i | body)}, its slot named as a Bind's is, and a
    * Break {@code break $i} and {@code [s,e)}, naming its Label; a Reduce (#69) {@code (reduce $i = init | each)} and a
    * Foreach {@code (foreach $i = init | each)}, the state slot named as a Bind's is, and an Advance {@code (advance $i |
-   * update)}, naming its loop's state slot. An argument is printed without its Source; a Pipe, Comma, Bind, Binds, If, Alt,
+   * update)}, naming its loop's state slot; a Call (#107) {@code (call fn [closure, ...] (value; ...))} and {@code
+   * [s,e)}, its values printed as an Intrinsic's arguments are, and a ParamCall {@code param j} and {@code [s,e)}, a
+   * value parameter of a function body {@code $?}. An argument is printed without its Source; a Pipe, Comma, Bind, Binds, If, Alt,
    * AltBind, Try, Label, Reduce, Foreach or Advance's own Source is left out (no design fixes it). A Var with no
    * enclosing Bind of its slot, a Break with no enclosing Label of its slot, an Advance with no enclosing loop of its
    * slot, and a from slot no Bind of the match holds, is {@code $?}.
    */
   static String shape(Node node) {
     return shape(node, Map.of(), new int[1]);
+  }
+
+  /** The body of {@code function} as {@link #shape(Node)} prints a tree, its value parameter j named {@code $vj}. */
+  static String shape(Function function) {
+    Map<Integer, String> parameters = new HashMap<>();
+    for (int j = 0; j < function.values(); j++) {
+      parameters.put(j, "$v" + j);
+    }
+    return shape(function.body(), parameters, new int[1]);
   }
 
   /** {@code scope} maps each slot a Bind around {@code node} holds to its name; {@code met} counts the Binds met. */
@@ -162,6 +197,12 @@ final class ParseAssertions {
       case Reduce r -> loop("reduce", r.init(), r.slot(), r.each(), scope, met);
       case Foreach f -> loop("foreach", f.init(), f.slot(), f.each(), scope, met);
       case Advance a -> "(advance " + scope.getOrDefault(a.slot(), "$?") + " | " + shape(a.update(), scope, met) + ")";
+      case Call c -> {
+        StringJoiner closures = new StringJoiner(", ", "[", "]");
+        c.closures().forEach(closure -> closures.add(shape(closure, scope, met)));
+        yield "(call " + c.fn() + " " + closures + " " + arguments(c.values(), scope, met) + ")" + chars(c.source());
+      }
+      case ParamCall p -> "param " + p.param() + chars(p.source());
     };
   }
 

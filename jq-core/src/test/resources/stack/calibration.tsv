@@ -1,0 +1,244 @@
+# The calibration record (ADR-0046 #113), written by CalibrationTest.matrixCellsSwitchBeforeTheBackstop; never edited by hand.
+# cell	tier	kind	thread	mode	shape	D_f	T	b	reserve	U*cold	U*linked	spread	end(U*+1)	control	proof	b_cell	b_cold	intercept	cold
+cell	xint	platform	524288	OPTIMISED	T	24	5	192	286720	11973	12558	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	34	34	96500	19890
+cell	xint	platform	524288	OPTIMISED	E	46	5	192	286720	14965	15668	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	27	27	100010	18981
+cell	xint	platform	524288	OPTIMISED	M	24	5	192	286720	11973	12558	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	34	34	96500	19890
+cell	xint	platform	524288	OPTIMISED	N	27	5	192	286720	20587	21602	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	20	20	91708	20300
+cell	xint	platform	524288	OPTIMISED	W	101	5	192	286720	3907	4129	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	99	99	105518	21978
+cell	xint	platform	524288	OPTIMISED	C	12	5	192	286720	6073	6370	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	66	66	103076	19602
+cell	xint	platform	524288	OPTIMISED	ND	24	5	192	286720	12671	12671	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	24	24	219608	0
+cell	xint	platform	524288	OPTIMISED	recurse	17	5	192	286720	12684	13295	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	32	32	98304	19552
+cell	xint	platform	524288	OPTIMISED	collect	12	5	192	286720	5629	5917	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	71	71	103329	20448
+cell	xint	platform	524288	OPTIMISED	reduce	32	5	192	286720	10222	10726	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	39	39	104726	19656
+cell	xint	platform	524288	OPTIMISED	first-or	17	5	192	286720	5110	5170	0	[7], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	81	104141	4860
+cell	xint	platform	524288	OPTIMISED	hold	102	5	192	286720	18474	19332	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	22	22	96740	18876
+cell	xint	platform	524288	OPTIMISED	collect-descent	116	5	192	286720	3424	3676	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	116	113	84416	29232
+cell	xint	platform	524288	CONSERVATIVE	T	24	5	192	286720	6032	6305	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	66	66	106574	18018
+cell	xint	platform	524288	CONSERVATIVE	E	46	5	192	286720	11621	12134	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	35	35	97988	17955
+cell	xint	platform	524288	CONSERVATIVE	M	24	5	192	286720	6032	6305	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	66	66	106574	18018
+cell	xint	platform	524288	CONSERVATIVE	N	27	5	192	286720	4144	4144	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	101	101	103017	0
+cell	xint	platform	524288	CONSERVATIVE	W	101	5	192	286720	3574	3685	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	113	113	96470	12543
+cell	xint	platform	524288	CONSERVATIVE	C	12	5	192	286720	5116	5358	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	78	78	105428	18876
+cell	xint	platform	524288	CONSERVATIVE	ND	24	5	192	286720	5162	5162	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	81	104222	0
+cell	xint	platform	524288	CONSERVATIVE	recurse	17	5	192	286720	12684	13295	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	32	32	98304	19552
+cell	xint	platform	524288	CONSERVATIVE	collect	12	5	192	286720	5581	5857	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	72	72	101720	19872
+cell	xint	platform	524288	CONSERVATIVE	reduce	32	5	192	286720	5896	6190	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	68	68	101192	19992
+cell	xint	platform	524288	CONSERVATIVE	first-or	17	5	192	286720	4730	4790	0	[7], termination STACK	[], termination STACK	[4371, 4371, 4371]	88	88	101272	5280
+cell	xint	platform	524288	CONSERVATIVE	hold	102	5	192	286720	5162	5162	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	81	97904	0
+cell	xint	platform	524288	CONSERVATIVE	collect-descent	116	5	192	286720	3298	3424	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	119	123	103028	14994
+cell	xint	platform	1048576	OPTIMISED	T	24	5	192	286720	27755	28340	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	34	34	84200	19890
+cell	xint	platform	1048576	OPTIMISED	E	46	5	192	286720	34725	35428	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	27	27	90778	18981
+cell	xint	platform	1048576	OPTIMISED	M	24	5	192	286720	27755	28340	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	34	34	84200	19890
+cell	xint	platform	1048576	OPTIMISED	N	27	5	192	286720	47731	48746	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	20	20	73116	20300
+cell	xint	platform	1048576	OPTIMISED	W	101	5	192	286720	9235	9457	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	99	99	102334	21978
+cell	xint	platform	1048576	OPTIMISED	C	12	5	192	286720	14092	14378	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	66	66	98836	18876
+cell	xint	platform	1048576	OPTIMISED	ND	24	5	192	286720	34729	34703	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	24	24	215128	-624
+cell	xint	platform	1048576	OPTIMISED	recurse	17	5	192	286720	29408	30019	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	32	32	87424	19552
+cell	xint	platform	1048576	OPTIMISED	collect	12	5	192	286720	13057	13333	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	71	71	101081	19596
+cell	xint	platform	1048576	OPTIMISED	reduce	32	5	192	286720	23746	24208	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	39	39	103216	18018
+cell	xint	platform	1048576	OPTIMISED	first-or	17	5	192	286720	11590	11650	0	[7], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	81	103549	4860
+cell	xint	platform	1048576	OPTIMISED	hold	102	5	192	286720	42810	43694	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	22	22	85064	19448
+cell	xint	platform	1048576	OPTIMISED	collect-descent	116	5	192	286720	8086	8212	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	116	113	82528	14616
+cell	xint	platform	1048576	CONSERVATIVE	T	24	5	192	286720	13988	14261	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	66	66	105766	18018
+cell	xint	platform	1048576	CONSERVATIVE	E	46	5	192	286720	26992	27486	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	35	35	84956	17290
+cell	xint	platform	1048576	CONSERVATIVE	M	24	5	192	286720	13988	14261	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	66	66	105766	18018
+cell	xint	platform	1048576	CONSERVATIVE	N	27	5	192	286720	9364	9364	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	101	101	100085	0
+cell	xint	platform	1048576	CONSERVATIVE	W	101	5	192	286720	8236	8347	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	113	113	93952	12543
+cell	xint	platform	1048576	CONSERVATIVE	C	12	5	192	286720	11848	12101	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	78	78	103762	19734
+cell	xint	platform	1048576	CONSERVATIVE	ND	24	5	192	286720	11662	11662	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	81	102010	0
+cell	xint	platform	1048576	CONSERVATIVE	recurse	17	5	192	286720	29408	30019	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	32	32	87424	19552
+cell	xint	platform	1048576	CONSERVATIVE	collect	12	5	192	286720	12937	13201	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	72	72	97240	19008
+cell	xint	platform	1048576	CONSERVATIVE	reduce	32	5	192	286720	13666	13960	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	68	68	97120	19992
+cell	xint	platform	1048576	CONSERVATIVE	first-or	17	5	192	286720	10730	10810	0	[7], termination STACK	[], termination STACK	[9833, 9833, 9833]	88	88	95800	7040
+cell	xint	platform	1048576	CONSERVATIVE	hold	102	5	192	286720	11662	11662	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	81	95692	0
+cell	xint	platform	1048576	CONSERVATIVE	collect-descent	116	5	192	286720	7582	7834	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	119	123	102526	29988
+cell	xint	virtual	524288	OPTIMISED	T	24	5	192	286720	11934	12506	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	34	34	98268	19448
+cell	xint	virtual	524288	OPTIMISED	E	46	5	192	286720	14908	15592	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	27	27	102062	18468
+cell	xint	virtual	524288	OPTIMISED	M	24	5	192	286720	11934	12506	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	34	34	98268	19448
+cell	xint	virtual	524288	OPTIMISED	N	27	5	192	286720	20500	21515	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	20	20	93448	20300
+cell	xint	virtual	524288	OPTIMISED	W	101	5	192	286720	3907	4129	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	99	99	105518	21978
+cell	xint	virtual	524288	OPTIMISED	C	12	5	192	286720	6051	6348	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	66	66	104528	19602
+cell	xint	virtual	524288	OPTIMISED	ND	24	5	192	286720	12620	12620	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	24	24	220832	0
+cell	xint	virtual	524288	OPTIMISED	recurse	17	5	192	286720	12629	13258	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	32	32	99488	20128
+cell	xint	virtual	524288	OPTIMISED	collect	12	5	192	286720	5605	5893	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	71	71	105033	20448
+cell	xint	virtual	524288	OPTIMISED	reduce	32	5	192	286720	10180	10684	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	39	39	106364	19656
+cell	xint	virtual	524288	OPTIMISED	first-or	17	5	192	286720	5070	5150	0	[7], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	81	105761	6480
+cell	xint	virtual	524288	OPTIMISED	hold	102	5	192	286720	18396	19254	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	22	22	98456	18876
+cell	xint	virtual	524288	OPTIMISED	collect-descent	116	5	192	286720	3424	3676	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	116	113	84416	29232
+cell	xint	virtual	524288	CONSERVATIVE	T	24	5	192	286720	6006	6279	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	66	66	108290	18018
+cell	xint	virtual	524288	CONSERVATIVE	E	46	5	192	286720	11583	12077	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	35	35	99983	17290
+cell	xint	virtual	524288	CONSERVATIVE	M	24	5	192	286720	6006	6279	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	66	66	108290	18018
+cell	xint	virtual	524288	CONSERVATIVE	N	27	5	192	286720	4144	4144	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	101	101	103017	0
+cell	xint	virtual	524288	CONSERVATIVE	W	101	5	192	286720	3463	3685	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	113	113	96470	25086
+cell	xint	virtual	524288	CONSERVATIVE	C	12	5	192	286720	5094	5336	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	78	78	107144	18876
+cell	xint	virtual	524288	CONSERVATIVE	ND	24	5	192	286720	5136	5136	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	81	106328	0
+cell	xint	virtual	524288	CONSERVATIVE	recurse	17	5	192	286720	12629	13258	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	32	32	99488	20128
+cell	xint	virtual	524288	CONSERVATIVE	collect	12	5	192	286720	5557	5833	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	72	72	103448	19872
+cell	xint	virtual	524288	CONSERVATIVE	reduce	32	5	192	286720	5854	6148	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	68	68	104048	19992
+cell	xint	virtual	524288	CONSERVATIVE	first-or	17	5	192	286720	4710	4770	0	[7], termination STACK	[], termination STACK	[4354, 4354, 4354]	88	88	103032	5280
+cell	xint	virtual	524288	CONSERVATIVE	hold	102	5	192	286720	5136	5136	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	81	100010	0
+cell	xint	virtual	524288	CONSERVATIVE	collect-descent	116	5	192	286720	3298	3424	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	119	123	103028	14994
+cell	c1	platform	524288	OPTIMISED	T	24	5	192	286720	-	10257	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	41	-	102767	-
+cell	c1	platform	524288	OPTIMISED	E	46	5	192	286720	-	14946	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	28	-	104512	-
+cell	c1	platform	524288	OPTIMISED	M	24	5	192	286720	-	10257	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	41	-	102767	-
+cell	c1	platform	524288	OPTIMISED	N	27	5	192	286720	-	17977	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	24	-	92192	-
+cell	c1	platform	524288	OPTIMISED	W	101	5	192	286720	-	3907	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	105	-	103448	-
+cell	c1	platform	524288	OPTIMISED	C	12	5	192	286720	-	5721	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	73	-	105779	-
+cell	c1	platform	524288	OPTIMISED	ND	24	5	192	286720	-	10546	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	31	-	196618	-
+cell	c1	platform	524288	OPTIMISED	recurse	17	5	192	286720	-	12370	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	34	-	103130	-
+cell	c1	platform	524288	OPTIMISED	collect	12	5	192	286720	-	4981	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	85	-	99883	-
+cell	c1	platform	524288	OPTIMISED	reduce	32	5	192	286720	-	9340	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	45	-	102548	-
+cell	c1	platform	524288	OPTIMISED	first-or	17	5	192	286720	-	4550	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	92	-	104124	-
+cell	c1	platform	524288	OPTIMISED	hold	102	5	192	286720	-	16498	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	26	-	92688	-
+cell	c1	platform	524288	OPTIMISED	collect-descent	116	5	192	286720	-	2542	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	161	-	96350	-
+cell	c1	platform	524288	CONSERVATIVE	T	24	5	192	286720	-	5434	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	77	-	104022	-
+cell	c1	platform	524288	CONSERVATIVE	E	46	5	192	286720	-	11146	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	38	-	98992	-
+cell	c1	platform	524288	CONSERVATIVE	M	24	5	192	286720	-	5434	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	77	-	104022	-
+cell	c1	platform	524288	CONSERVATIVE	N	27	5	192	286720	-	4173	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	100	-	104288	-
+cell	c1	platform	524288	CONSERVATIVE	W	101	5	192	286720	-	2242	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	189	-	81461	-
+cell	c1	platform	524288	CONSERVATIVE	C	12	5	192	286720	-	4852	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	86	-	105984	-
+cell	c1	platform	524288	CONSERVATIVE	ND	24	5	192	286720	-	5110	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	-	108434	-
+cell	c1	platform	524288	CONSERVATIVE	recurse	17	5	192	286720	-	12370	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	34	-	103130	-
+cell	c1	platform	524288	CONSERVATIVE	collect	12	5	192	286720	-	5137	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	82	-	102070	-
+cell	c1	platform	524288	CONSERVATIVE	reduce	32	5	192	286720	-	5140	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	-	105356	-
+cell	c1	platform	524288	CONSERVATIVE	first-or	17	5	192	286720	-	4430	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	95	-	101823	-
+cell	c1	platform	524288	CONSERVATIVE	hold	102	5	192	286720	-	5110	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	81	-	102116	-
+cell	c1	platform	524288	CONSERVATIVE	collect-descent	116	5	192	286720	-	2416	0	[], termination STACK	[], termination STACK	[4371, 4371, 4371]	167	-	101444	-
+cell	c1	platform	1048576	OPTIMISED	T	24	5	192	286720	-	23166	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	41	-	97786	-
+cell	c1	platform	1048576	OPTIMISED	E	46	5	192	286720	-	33794	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	28	-	101056	-
+cell	c1	platform	1048576	OPTIMISED	M	24	5	192	286720	-	23166	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	41	-	97786	-
+cell	c1	platform	1048576	OPTIMISED	N	27	5	192	286720	-	40597	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	24	-	73600	-
+cell	c1	platform	1048576	OPTIMISED	W	101	5	192	286720	-	8902	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	105	-	103261	-
+cell	c1	platform	1048576	OPTIMISED	C	12	5	192	286720	-	12937	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	73	-	103299	-
+cell	c1	platform	1048576	OPTIMISED	ND	24	5	192	286720	-	27666	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	31	-	190186	-
+cell	c1	platform	1048576	OPTIMISED	recurse	17	5	192	286720	-	27910	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	34	-	99058	-
+cell	c1	platform	1048576	OPTIMISED	collect	12	5	192	286720	-	11221	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	85	-	93771	-
+cell	c1	platform	1048576	OPTIMISED	reduce	32	5	192	286720	-	21100	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	45	-	97636	-
+cell	c1	platform	1048576	OPTIMISED	first-or	17	5	192	286720	-	10250	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	92	-	104012	-
+cell	c1	platform	1048576	OPTIMISED	hold	102	5	192	286720	-	37272	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	26	-	76852	-
+cell	c1	platform	1048576	OPTIMISED	collect-descent	116	5	192	286720	-	5818	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	161	-	93202	-
+cell	c1	platform	1048576	CONSERVATIVE	T	24	5	192	286720	-	12298	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	77	-	99782	-
+cell	c1	platform	1048576	CONSERVATIVE	E	46	5	192	286720	-	25301	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	38	-	85390	-
+cell	c1	platform	1048576	CONSERVATIVE	M	24	5	192	286720	-	12298	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	77	-	99782	-
+cell	c1	platform	1048576	CONSERVATIVE	N	27	5	192	286720	-	9422	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	100	-	103676	-
+cell	c1	platform	1048576	CONSERVATIVE	W	101	5	192	286720	-	5017	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	189	-	81274	-
+cell	c1	platform	1048576	CONSERVATIVE	C	12	5	192	286720	-	10957	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	86	-	105242	-
+cell	c1	platform	1048576	CONSERVATIVE	ND	24	5	192	286720	-	11584	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	-	108328	-
+cell	c1	platform	1048576	CONSERVATIVE	recurse	17	5	192	286720	-	27910	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	34	-	99058	-
+cell	c1	platform	1048576	CONSERVATIVE	collect	12	5	192	286720	-	11581	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	82	-	97950	-
+cell	c1	platform	1048576	CONSERVATIVE	reduce	32	5	192	286720	-	11650	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	-	102334	-
+cell	c1	platform	1048576	CONSERVATIVE	first-or	17	5	192	286720	-	9990	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	95	-	97911	-
+cell	c1	platform	1048576	CONSERVATIVE	hold	102	5	192	286720	-	11584	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	81	-	102010	-
+cell	c1	platform	1048576	CONSERVATIVE	collect-descent	116	5	192	286720	-	5566	0	[], termination STACK	[], termination STACK	[9833, 9833, 9833]	167	-	99682	-
+cell	c1	virtual	524288	OPTIMISED	T	24	5	192	286720	-	10218	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	41	-	104366	-
+cell	c1	virtual	524288	OPTIMISED	E	46	5	192	286720	-	14870	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	28	-	106640	-
+cell	c1	virtual	524288	OPTIMISED	M	24	5	192	286720	-	10218	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	41	-	104366	-
+cell	c1	virtual	524288	OPTIMISED	N	27	5	192	286720	-	17890	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	24	-	94280	-
+cell	c1	virtual	524288	OPTIMISED	W	101	5	192	286720	-	3907	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	105	-	103448	-
+cell	c1	virtual	524288	OPTIMISED	C	12	5	192	286720	-	5699	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	73	-	107385	-
+cell	c1	virtual	524288	OPTIMISED	ND	24	5	192	286720	-	10495	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	31	-	198199	-
+cell	c1	virtual	524288	OPTIMISED	recurse	17	5	192	286720	-	12333	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	34	-	104388	-
+cell	c1	virtual	524288	OPTIMISED	collect	12	5	192	286720	-	4957	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	85	-	101923	-
+cell	c1	virtual	524288	OPTIMISED	reduce	32	5	192	286720	-	9298	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	45	-	104438	-
+cell	c1	virtual	524288	OPTIMISED	first-or	17	5	192	286720	-	4530	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	92	-	105964	-
+cell	c1	virtual	524288	OPTIMISED	hold	102	5	192	286720	-	16420	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	26	-	94716	-
+cell	c1	virtual	524288	OPTIMISED	collect-descent	116	5	192	286720	-	2542	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	161	-	96350	-
+cell	c1	virtual	524288	CONSERVATIVE	T	24	5	192	286720	-	5408	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	77	-	106024	-
+cell	c1	virtual	524288	CONSERVATIVE	E	46	5	192	286720	-	11108	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	38	-	100436	-
+cell	c1	virtual	524288	CONSERVATIVE	M	24	5	192	286720	-	5408	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	77	-	106024	-
+cell	c1	virtual	524288	CONSERVATIVE	N	27	5	192	286720	-	4144	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	100	-	107188	-
+cell	c1	virtual	524288	CONSERVATIVE	W	101	5	192	286720	-	2131	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	189	-	102440	-
+cell	c1	virtual	524288	CONSERVATIVE	C	12	5	192	286720	-	4830	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	86	-	107876	-
+cell	c1	virtual	524288	CONSERVATIVE	ND	24	5	192	286720	-	5110	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	-	108434	-
+cell	c1	virtual	524288	CONSERVATIVE	recurse	17	5	192	286720	-	12333	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	34	-	104388	-
+cell	c1	virtual	524288	CONSERVATIVE	collect	12	5	192	286720	-	5113	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	82	-	104038	-
+cell	c1	virtual	524288	CONSERVATIVE	reduce	32	5	192	286720	-	5140	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	-	105356	-
+cell	c1	virtual	524288	CONSERVATIVE	first-or	17	5	192	286720	-	4410	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	95	-	103723	-
+cell	c1	virtual	524288	CONSERVATIVE	hold	102	5	192	286720	-	5110	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	81	-	102116	-
+cell	c1	virtual	524288	CONSERVATIVE	collect-descent	116	5	192	286720	-	2416	0	[], termination STACK	[], termination STACK	[4354, 4354, 4354]	167	-	101444	-
+cell	warm	platform	524288	OPTIMISED	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	OPTIMISED	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	524288	CONSERVATIVE	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[4371, 4371, 4371]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[1000], ran out	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	OPTIMISED	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	platform	1048576	CONSERVATIVE	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[9833, 9833, 9833]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	OPTIMISED	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	T	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	E	46	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	M	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	N	27	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	W	101	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	C	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [10000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	ND	24	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1000], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	recurse	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9999], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	collect	12	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [1], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	reduce	32	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [9998], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	first-or	17	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [7], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	hold	102	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [0], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+cell	warm	virtual	524288	CONSERVATIVE	collect-descent	116	5	192	286720	-	-	-	3 children × 60 runs at the thread's size: [300], ran out	[], termination STACK	[4354, 4354, 4354]	-	-	-	-
+guard	98304
+largest-intercept	220832
+largest-cold	29988
+max-b	192
+reserve	286720
+time-ms	2635552
+jdk	Oracle Corporation 25.0.5.0.3+1-LTS-2
+cpus	4

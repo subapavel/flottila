@@ -70,7 +70,7 @@ class PreludeBindTest {
       assertThat(in).as("the main resource builtin.jq").isNotNull();
       text = new String(in.readAllBytes(), UTF_8);
     }
-    Program library = Parser.parse(text);
+    ParsedFilter library = Parser.parse(text);
     assertThat(library.defs()).as("top-level definitions of builtin.jq").hasSize(106);
     assertThat(forwardReferences(library)).as("calls of a later top-level definition").isEmpty();
   }
@@ -86,7 +86,7 @@ class PreludeBindTest {
   }
 
   /** {@code "f/n -> g/m"} for each call in f's body of a later top-level g/m that no param or nested def of f shadows. */
-  private static List<String> forwardReferences(Program library) {
+  private static List<String> forwardReferences(ParsedFilter library) {
     Map<String, Integer> position = new HashMap<>();
     for (int i = 0; i < library.defs().size(); i++) position.putIfAbsent(signature(library.defs().get(i)), i);
     List<String> found = new ArrayList<>();

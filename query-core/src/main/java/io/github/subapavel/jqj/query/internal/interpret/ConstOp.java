@@ -10,12 +10,23 @@ import io.github.subapavel.jqj.query.run.Sink;
 public final class ConstOp extends Op {
   private final Object value;
 
-  public ConstOp(Object value) {
+  public ConstOp(boolean valueForm, Object value) {
+    super(valueForm);
     this.value = value;
   }
 
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(value);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return value;
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, value);
   }
 }

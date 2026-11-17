@@ -1,6 +1,6 @@
 # Comma, slots and atomic arguments in the IR; call forms as a sealed CallForm
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10); scalar reads amended by #97 (F-50)
 
 #63 is the first ticket to lower constructs that #62's parser builds: comma, indexing, slicing and iteration. They need a sequencing node, a way to hold a computed key while its target runs, and the call forms ADR-0009 names. This ADR fixes those IR and protocol shapes; later tickets extend them with their first user.
 
@@ -11,7 +11,7 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; desig
 - **`Intrinsic(op, args)`** takes atomic arguments (Identity, Var or Const), as many as its form's arity. `Operation(name, CallForm)`, with `sealed CallForm permits Fn0, Fn1, Fn2, Many`; `CallForm.NONE` means no result, and `Many.END` is −1. A Many loop charges one tick per element before its emit.
 - **jq's lowering order** (jq 1.8.2 `parser.y`, `gen_index` and `gen_slice_index`): `t[e]` binds `e` outside `t`, so the key is the outer loop; `t[a:b]` binds `a` outside `b` outside `t`. Constant keys and bounds are passed as Const arguments.
 - **A navigation `?`** (`.a?`, `.[e]?`, `.[]?`, `.[a:b]?`) selects the step's quiet variant when it is lowered, not a Try (ADR-0008, ADR-0009, F-11). The quiet variant drops only the step's own error; errors from its target or key propagate.
-- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008).
+- **Tape walks** charge `tick(entries stepped)` once per walk: `.[n]`, a length on a view, and a field lookup's key scan (ADR-0008). A loop of indexed reads is therefore quadratic in ticks and time; the fix is a spec 6 ticket (F-111, owner 2026-11-16).
 - `Many.key`, an Operation's cardinality, path rule and quiet flag, and the other ADR-0005/0009 facts join with their first user, not before.
 
 ## Considered options
@@ -32,12 +32,12 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; desig
 ## Amendment (2026-11-13, ticket #65)
 
 - **A binary arithmetic operator** `l op r` (`+ - * / %`) lowers to `Bind(r, s_r, Bind(l, s_l, Intrinsic(op, [Var s_l, Var s_r])))`: the right operand is the outer loop, as jq 1.8.2 runs a C function's arguments last-first (`expand_call_arglist`). An Identity or Const operand is passed as an argument without a Bind. `-t` lowers to `Pipe(t, Intrinsic(NEGATE, []))`. The order is pinned by a differential case (`[(1,2)+(10,20)]`) recorded on jq-ref.
-- **Ticks (ADR-0008)**: an operator on two scalars ticks nothing. A string concatenation ticks once per started KiB of its result; array difference once per pair compared, stopping at the first match; `split` once per piece; object `+` once per right-hand entry; object merge `*` once per right-hand entry at every level. Also (#65 standards review), each a loop whose length depends on the data (ADR-0008):
+- **Ticks (ADR-0008)**: an operator on two scalars ticks nothing, beyond a non-short document number's read (#97, F-50: once per started KiB of each such token read, in arithmetic, `range`'s bounds, index and slice bounds, `has`, the number tests, `-x` and `length`; `-x` and `length` also tick for a non-short number the run built, once per started KiB of the token they copy, as ADR-0008's amendment charges every copied token). A string concatenation ticks once per started KiB of its result; array difference once per pair compared, stopping at the first match; `split` once per piece; object `+` once per right-hand entry; object merge `*` once per right-hand entry at every level. Also (#65 standards review), each a loop whose length depends on the data (ADR-0008):
   - array `+` ticks once per element it copies;
   - array difference ticks once per left element even against `[]`;
   - `split` ticks once per started KiB of the input times the started KiB of the separator (at least one), as well as once per piece;
   - object merge `*` and object `+` tick once per left entry they copy;
-  - Equality ticks once per key it counts when it compares object sizes, once per member pair, and once per started KiB of the shorter string when it compares two strings (as ADR-0037's Order);
+  - Equality ticks once per key it counts when it compares object sizes, once per member pair, and once per started KiB of the shorter string when it compares two strings, and once per started KiB of each literal on the exact path (as ADR-0037's Order, #97);
   - string repeat ticks once per started KiB of its result;
   - (#72, F-48) `keys` ticks once per member and once per compare of its key sort (at least 1, one
     per started KiB of the shorter key); `tostring` and `tojson` once per started KiB of output
@@ -53,3 +53,33 @@ Each rate is pinned by two adjacent counts (`ArithmeticStepsTest`, red at 65b717
 ## Amendment (ADR-0044, ticket #85)
 
 - **`Many.loopSlots()`** (default 0, Iterate 1): the slots after a Many's arguments that `first` sets for the later calls of its loop; `IntrinsicManyOp` allocates `args.length + loopSlots` per loop, so `.[]` holds a read object's walk there.
+
+## Amendment (spec 4 grilling round 1, question 12 and M1)
+
+One tick table for spec 4's natives (ADR-0008). A ticket corrects a row only by a finding, and each
+rate is pinned by two adjacent counts.
+
+- Byte loops (the trim family, `startswith`, `endswith`, `utf8bytelength`, the formats, `fromjson`,
+  `strftime`, `strptime`): one per started KiB of max(input, output).
+- `explode`, `implode` and `builtins`: one per element, as every other array copy, not per KiB.
+- `_strindices` and string `contains`: `split`'s rate plus one per index.
+- Array and object `contains`: one per pair plus Equality's. `bsearch`: one per probe plus the
+  compare's.
+- Regex (ADR-0053): one per search call, one per started KiB from the search start to the match end
+  (or to the input's end when nothing matches, the range `f_match` passes), one per started KiB of
+  the pattern at each lookup, compiled or cached (so a run's steps never depend on the cache).
+- Scalar math: none beyond #97's read, except `jn` and `yn`, once per 1 024 steps of any loop that grows with the
+  order (ADR-0051, F-69).
+
+## Amendment (spec 3 grilling round 1, question 10)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+`getpath` and `setpath` tick once per path component; `setpath` also once per element it copies;
+`delpaths` once per path plus the ADR-0037 ticks of each compare of its path sort (as `sort`), once
+per path component it walks and once per element it copies; it compacts each container once. A
+copied level charges CONTAINER plus its slots. PathOf ticks once per component of each path value
+it builds. Update ticks nothing of its own.
+
+Amended at spec 3's ticket approval, grilling-adviser for the owner under the delegation of
+2026-11-14.

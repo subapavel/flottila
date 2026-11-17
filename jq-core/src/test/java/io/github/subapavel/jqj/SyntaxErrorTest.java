@@ -121,13 +121,10 @@ class SyntaxErrorTest {
       assertThat(e.blocks()).as("blocks of %s", show(text)).containsExactly(NOT_GIVEN);
     }
     // Witnesses: a definition followed by a filter is a program (jq-ref 1.8.2, observed 2026-11-12: 'def f: 1; .' on
-    // null -> null, rc 0), which compiles since #70 lowers def; one followed by .., which still stubs, gets past the
-    // not-given check to the Stub; and . alone compiles.
+    // null -> null, rc 0), which compiles since #70 lowers def; one followed by .., which stubbed until #110, compiles
+    // too (jq-ref 1.8.2, observed 2026-11-15: 'def f: 1; ..' on null -> null, rc 0); and . alone compiles.
     assertThat(ENGINE.compile("def f: 1; .")).as("compile of def f: 1; .").isNotNull();
-    assertThatExceptionOfType(JqCompileException.class)
-        .as("compile of def f: 1; ..")
-        .isThrownBy(() -> ENGINE.compile("def f: 1; .."))
-        .withMessageStartingWith(MARK);
+    assertThat(ENGINE.compile("def f: 1; ..")).as("compile of def f: 1; ..").isNotNull();
     assertThat(ENGINE.compile(".")).as("compile of .").isNotNull();
   }
 
@@ -151,14 +148,15 @@ class SyntaxErrorTest {
 
   @Test
   void noStubHidesASyntaxError() {
-    // ADR-0032: each text holds .., a Stub until spec 2b, before its syntax error, and the syntax error comes first.
-    // jq-ref 1.8.2, observed 2026-11-14: each -> rc 3, this one block, then "jq: 1 compile error".
+    // ADR-0032: each text holds $ENV, a Stub until spec 7, before its syntax error, and the syntax error comes first
+    // (.. served here until #110 built it, ADR-0042 amendment for #110). jq-ref 1.8.2, observed 2026-11-15 with -n
+    // (.logs/110-jqref-observe.log): each -> rc 3, this one block, then "jq: 1 compile error".
     onlySyntaxErrors(
-        new SyntaxError(".. +", "end of file", 1, 4, "    .. +\n       ^"),
-        new SyntaxError(".a, .. |", "end of file", 1, 8, "    .a, .. |\n           ^"),
-        new SyntaxError(".. | )", "INVALID_CHARACTER", 1, 6, "    .. | )\n         ^"));
-    // Witness: without the error .. is a Stub (jq-ref -c '..' on [1] -> [1] 1, CompileTest).
-    assertThatExceptionOfType(JqCompileException.class).as("compile of ..").isThrownBy(() -> ENGINE.compile("..")).withMessageStartingWith(MARK);
+        new SyntaxError("$ENV +", "end of file", 1, 6, "    $ENV +\n         ^"),
+        new SyntaxError(".a, $ENV |", "end of file", 1, 10, "    .a, $ENV |\n             ^"),
+        new SyntaxError("$ENV | )", "INVALID_CHARACTER", 1, 8, "    $ENV | )\n           ^"));
+    // Witness: without the error $ENV is a Stub (jq-ref -nc '$ENV|type' -> "object", StubTest).
+    assertThatExceptionOfType(JqCompileException.class).as("compile of $ENV").isThrownBy(() -> ENGINE.compile("$ENV")).withMessageStartingWith(MARK);
   }
 
   @Test
@@ -172,12 +170,9 @@ class SyntaxErrorTest {
         new SyntaxError("\"\\(1]\"", "INVALID_CHARACTER", 1, 5, "    \"\\(1]\"\n        ^"),
         new SyntaxError("\"a\\(1 < 2 < 3)\"", "'<'", 1, 11, "    \"a\\(1 < 2 < 3)\"\n              ^"));
     // Witness: lowering an interpolation stayed a Stub until #67 (F-35); jq-ref -c '"a\(1)b"' on null -> "a1b". #67
-    // lowers it, so the witness ends with | .., which still stubs: without the syntax error the text reaches the
-    // resolver.
-    assertThatExceptionOfType(JqCompileException.class)
-        .as("compile of \"a\\(1)b\" | ..")
-        .isThrownBy(() -> ENGINE.compile("\"a\\(1)b\" | .."))
-        .withMessageStartingWith(MARK);
+    // lowers it, so the witness ended with | .., which stubbed until #110 and compiles since (jq-ref 1.8.2, observed
+    // 2026-11-15 with -c -f on null: "a1b", rc 0): without the syntax error the text reaches the resolver and lowers.
+    assertThat(ENGINE.compile("\"a\\(1)b\" | ..")).as("compile of \"a\\(1)b\" | ..").isNotNull();
   }
 
   /** Each text gives exactly its one syntax block, then "jq: 1 compile error", with its line and column. */

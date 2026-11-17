@@ -7,7 +7,6 @@ import static io.github.subapavel.jqj.Inlining.shown;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,7 +58,11 @@ class OperatorChainTest {
    * gives what jq-ref 1.8.2 gives at its limit, every term being the same (observed 2026-11-13, -nc -f,
    * .logs/94-jqref-edges.log of the test-author's run): null for 6 554 terms of {@code .a+}, false for 3 277 of {@code
    * .a and} and of {@code .a or}, true for 2 185 of {@code .a == .a and}, null for 2 185 of {@code .a //}. A chain whose
-   * operators alternate stays nested and is the IR bound's Stub ({@link #aLongAlternatingChainIsTheIrDepthStub}).
+   * operators alternate stays nested and is the IR bound's Stub ({@link #aLongAlternatingChainIsTheIrDepthStub}). The
+   * last line was a Stub until #114, when a call past the IR bound became a PLAIN Call (F-54): reference jq 1.8.2 prints 600
+   * nulls and then 10 001 brackets, {@code <skipped: too deep>} and 10 001 brackets, 601 lines and 23 022 bytes
+   * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), which {@link Child} joins with {@code ", "} and {@code
+   * JqValue.toJson} prints so too (DeepBuiltArrayTest).
    */
   private static final String EDGES =
       "20000 terms of .a+: null\n"
@@ -70,7 +73,12 @@ class OperatorChainTest {
           + "20000 terms of 1+ and a last +.a: 20000\n"
           + "20000 terms of .a //: null\n"
           + "20000 terms alternating .a+ and .a-: a Stub\n"
-          + "600 chains, then 30001 levels: a Stub\n";
+          + "600 chains, then 30001 levels: "
+          + "null, ".repeat(600)
+          + "[".repeat(10_001)
+          + "<skipped: too deep>"
+          + "]".repeat(10_001)
+          + "\n";
 
   @TempDir Path dir;
 
@@ -179,37 +187,46 @@ class OperatorChainTest {
 
   /**
    * #94 (ADR-0043): a chain is one Binds, a few levels however long, so inside a definition 40 000 terms are no IR
-   * depth Stub, as they were until #94, but the inline cap's: each term and each operator spend a node, 79 999 in all,
-   * past the cap of 65 536 (ADR-0040 "Inline cap", {@link #eachOperatorOfAChainSpendsANode}).
+   * depth Stub, as they were until #94; each term and each operator spend a node, 79 999 in all, past the cap of 65 536
+   * (ADR-0040 "Inline cap", {@link #eachOperatorOfAChainSpendsANode}), so since #114 f's call is a PLAIN Call and the
+   * filter runs; until #114 it was the inline cap's Stub (F-89). Reference jq 1.8.2 gives no result within {@code timeout 10}
+   * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, rc 124), so the result is the jqj column of DEVIATIONS
+   * "Long operator runs": 0, the sum of 40 000 lengths of null.
    */
   @Test
-  void aLongChainInADefinitionIsTheInlineCapStub() throws InterruptedException {
+  void aLongChainInADefinitionRuns() throws InterruptedException {
     String filter = "def f: " + terms(40_000, " + ", "length") + "; f";
-    Throwable thrown = on(LARGE, () -> Inlining.ENGINE.compile(filter));
-    assertThat(thrown).as("what compiling %s threw on a 16 MiB thread", shown(filter)).isInstanceOf(JqCompileException.class);
-    assertThat(thrown.getMessage()).as("message of the compile error of %s", shown(filter)).startsWith(MARK + "a filter that inlines more than 65536 nodes");
+    AtomicReference<List<String>> got = new AtomicReference<>();
+    Throwable thrown = on(LARGE, () -> got.set(results(filter)));
+    assertThat(thrown).as("what running %s threw on a 16 MiB thread", shown(filter)).isNull();
+    assertThat(got.get()).as("results of %s on null", shown(filter)).isEqualTo(List.of("0"));
   }
 
   /**
    * Each operator of a chain spends a node of the inline cap, as its own lowering would: 15 000 chains of three terms
-   * inside a definition are 75 000 nodes, past the cap of 65 536, and its Stub, while their terms alone are 45 000.
+   * inside a definition are 75 000 nodes, past the cap of 65 536, while their terms alone are 45 000; so f's call is
+   * a PLAIN Call, f is lifted (ADR-0040 #114 amendment), and the filter runs. Until #114 it was the cap's Stub (F-89).
+   * Reference jq 1.8.2 rejects the filter with its bytecode limit, rc 3, {@code function compiled to 405012 bytes which is
+   * too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), so the result is the jqj column of that
+   * DEVIATIONS row: the array of 15 000 zeros, each chain's sum of three lengths of null.
    */
   @Test
   void eachOperatorOfAChainSpendsANode() {
     String filter = "def f: [" + terms(15_000, ", ", "(length+length+length)") + "]; f";
-    JqCompileException e = catchThrowableOfType(JqCompileException.class, () -> Inlining.ENGINE.compile(filter));
-    assertThat(e).as("what compiling %s threw", shown(filter)).isNotNull();
-    assertThat(e.getMessage()).as("message of the compile error of %s", shown(filter)).startsWith(MARK + "a filter that inlines more than 65536 nodes");
+    assertThat(Inlining.lifted(filter)).as("lifted functions of %s", shown(filter)).containsExactly("f/0");
+    assertThat(results(filter)).as("results of %s on null", shown(filter)).isEqualTo(List.of("[" + terms(15_000, ",", "0") + "]"));
   }
 
   /**
-   * And no more than one: 13 000 chains of three terms inside a definition are 65 000 nodes, under the cap, and
-   * compile, where two nodes an operator would be 91 000.
+   * And no more than one: 13 000 chains of three terms inside a definition are 65 000 nodes, under the cap, so f's
+   * call is inlined, where two nodes an operator would be 91 000 and lift it. Reference jq 1.8.2 rejects this one too, rc 3,
+   * {@code function compiled to 351012 bytes which is too long} (.logs/114-jqref-probe.log).
    */
   @Test
   void eachOperatorOfAChainSpendsOnlyOneNode() {
     String filter = "def f: [" + terms(13_000, ", ", "(length+length+length)") + "]; f";
     assertThatCode(() -> Inlining.ENGINE.compile(filter)).as("compiling %s", shown(filter)).doesNotThrowAnyException();
+    assertThat(Inlining.lifted(filter)).as("lifted functions of %s", shown(filter)).isEmpty();
   }
 
   /** {@code n} copies of {@code term} joined by {@code separator}. */

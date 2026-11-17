@@ -1,6 +1,6 @@
 # API slice shapes: unlimited budgets, output options, the Stub mark and bench ids
 
-Status: accepted (2026-11-11, architect, on the designer's draft for #24 "S1.02 API slice"); amends ADR-0016 (null and booleans are enums; the exception shapes), ADR-0019 (scenario ids) and ADR-0020 (the Stub verdict); records F-20; bench ids of G2, G3 and G4 added by #74
+Status: accepted (2026-11-11, architect, on the designer's draft for #24 "S1.02 API slice"); amends ADR-0016 (null and booleans are enums; the exception shapes), ADR-0019 (scenario ids) and ADR-0020 (the Stub verdict); records F-20; bench ids of G2, G3 and G4 added by #74; the `OutputOptions` withers by spec 5 round 1 (ADR-0016)
 
 These shapes bind from the first publish (ADR-0016). They were left open by the ADRs and fixed by
 spec 1's API slice, `docs/wayfinder/spec-1-grilling.md` round 1 item 1.
@@ -45,3 +45,8 @@ spec 1's API slice, `docs/wayfinder/spec-1-grilling.md` round 1 item 1.
 - A Stub as a `JqFilterException` (a `try` swallows it, so a case can pass), a `JqTermination` (no
   Cause fits) or a fifth subclass (breaks ADR-0016).
 - Flags in scenario ids (`G6-c`).
+
+## Amendment (spec 5 round 1)
+
+The later ADR-0015 options arrive as the withers of ADR-0016's spec-5 amendment: `indent(int)`,
+`tab()`, `sortKeys()`, `ascii()`, `raw(RawMode)`, `seq()`, `color()` and `color(String)`.

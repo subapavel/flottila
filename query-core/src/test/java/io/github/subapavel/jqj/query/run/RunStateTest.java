@@ -3,6 +3,7 @@ package io.github.subapavel.jqj.query.run;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import io.github.subapavel.jqj.query.internal.interpret.LiftedFunction;
 import io.github.subapavel.jqj.query.run.Termination.Budget;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -356,6 +357,45 @@ class RunStateTest {
     assertThat(state.ints(1 << 20)).as("scratch for 2^20 after a longer ask").isSameAs(kept);
   }
 
+  /**
+   * The recursion-depth count starts afresh at each begin (ADR-0045 #107): a run that ended with an activation still
+   * entered, as a termination leaves it, does not count it against the next run. Under a budget of 1 the next run's
+   * first enter is taken and its second is over.
+   */
+  @Test
+  void eachBeginCountsTheActivationsAfresh() {
+    RunState state = new RunState();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    state.enter();
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    state.enter();
+    assertBudget(state::enter, Budget.RECURSION_DEPTH, "a second enter under a recursion depth of 1");
+  }
+
+  /**
+   * The declared stack bytes are the last begin's (ADR-0030 #109 amendment): {@code Long.MAX_VALUE} before any begin and
+   * after a begin that declares none, 0 when a begin declares 0, and no budget: a run declaring 0 still counts its
+   * steps, and its recursion depth of 1 takes one enter and refuses a second, as any other run's.
+   */
+  @Test
+  void stackBytesAreTheLastBeginsDeclaredStack() {
+    RunState state = new RunState();
+    assertThat(state.stackBytes()).as("stack bytes before any begin").isEqualTo(Long.MAX_VALUE);
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1, 0);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring 0").isZero();
+    state.tick();
+    assertThat(state.steps()).as("steps of a run declaring 0 after one tick").isEqualTo(1);
+    state.enter();
+    assertBudget(state::enter, Budget.RECURSION_DEPTH, "a second enter under a recursion depth of 1, declaring 0");
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring none").isEqualTo(Long.MAX_VALUE);
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, 1, 524_288);
+    assertThat(state.stackBytes()).as("stack bytes of a run declaring 512 KiB").isEqualTo(524_288L);
+  }
+
   /** Asserts that {@code call} ends the run with {@code Termination(BUDGET, budget)} and the budget's message. */
   private static void assertBudget(ThrowingCallable call, Budget budget, String what) {
     Termination t = assertThatExceptionOfType(Termination.class).as("%s", what).isThrownBy(call).actual();
@@ -364,10 +404,68 @@ class RunStateTest {
     assertThat(t.getMessage()).as("message of %s", what).isEqualTo(MESSAGES.get(budget));
   }
 
+  /**
+   * ADR-0046 #111: the units the push-form calls hold reach the unit limit at equality, and each begin starts from no
+   * unit and a limit no call reaches, whatever the run before left (a run the stack backstop ended may leave units).
+   */
+  @Test
+  void unitsReachTheLimitAtEqualityAndBeginClearsThem() {
+    RunState state = new RunState();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    state.limitUnits(5);
+    assertThat(state.addUnits(4)).as("4 units against a limit of 5").isFalse();
+    assertThat(state.addUnits(1)).as("5 units against a limit of 5").isTrue();
+    state.removeUnits(2);
+    assertThat(state.units()).as("units after giving 2 back").isEqualTo(3);
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.units()).as("units after the next begin").isZero();
+    assertThat(state.addUnits(Long.MAX_VALUE / 2)).as("half of Long.MAX_VALUE units after a begin, which sets no limit").isFalse();
+  }
+
+  /**
+   * ADR-0047 and its #118 amendment: the pending jump, the callee, its frame and its input that a JumpOp sets and the
+   * function's entry loop takes, is cleared by {@code end}, so no value stays pinned between runs (ADR-0034), and by
+   * {@code begin}, so a run never starts with a jump another left. {@code clearJump} is how the entry loop takes it.
+   * Witness: between {@code jump} and each clear, the run state holds exactly what was set.
+   */
+  @Test
+  void pendingJumpClearedAtEnd() {
+    RunState state = new RunState();
+    LiftedFunction fn = new LiftedFunction(1, 0);
+    Object[] frame = {"slot 0"};
+    Object in = "the input";
+
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    state.jump(fn, frame, in);
+    assertThat(state.jumpTarget()).as("witness: the target of the jump set in a run").isSameAs(fn);
+    assertThat(state.jumpFrame()).as("witness: the frame of the jump set in a run").isSameAs(frame);
+    assertThat(state.jumpInput()).as("witness: the input of the jump set in a run").isSameAs(in);
+    state.end();
+    assertThat(state.jumpTarget()).as("the target after end").isNull();
+    assertThat(state.jumpFrame()).as("the frame after end").isNull();
+    assertThat(state.jumpInput()).as("the input after end").isNull();
+
+    state.jump(fn, frame, in);
+    assertThat(state.jumpTarget()).as("witness: the target of a jump left outside a run").isSameAs(fn);
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.jumpTarget()).as("the target after the next begin").isNull();
+    assertThat(state.jumpFrame()).as("the frame after the next begin").isNull();
+    assertThat(state.jumpInput()).as("the input after the next begin").isNull();
+
+    state.jump(fn, frame, in);
+    assertThat(state.jumpInput()).as("witness: the input of a second jump in the run").isSameAs(in);
+    state.clearJump();
+    assertThat(state.jumpTarget()).as("the target after clearJump").isNull();
+    assertThat(state.jumpFrame()).as("the frame after clearJump").isNull();
+    assertThat(state.jumpInput()).as("the input after clearJump").isNull();
+  }
+
   /** ADR-0030 and the design approval of #59: the budgets' messages. */
   private static final Map<Budget, String> MESSAGES =
       Map.of(
           Budget.STEPS, "Step budget exceeded",
           Budget.DEADLINE, "Deadline exceeded",
+          Budget.RECURSION_DEPTH, "Recursion-depth budget exceeded",
           Budget.BYTES_WRITTEN, "Bytes-written budget exceeded");
 }

@@ -4,6 +4,302 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## #199: the calibration rule per lowest pair, `b` 192 and reserve 184 320 (ADR-0046 #199), 2026-11-16
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Oracle Corporation 25.0.5.0.3+1-LTS-2 (the record's
+  `jdk` and `machine` rows). Guard pages are 98 304 B.
+- The rule, per ADR-0046 #199:
+  - the slope comes from each shape's lowest platform pair, 256 KiB → 512 KiB;
+  - the intercept and the cold term are taken per cell;
+  - reserve = ceil4K(largest intercept + largest cold) + 32 768.
+- The matrix has 308 cells: 14 shapes × `-Xint`, C1 and warm × platform 256 KiB, 512 KiB and 1 MiB
+  and virtual 512 KiB × both modes. The ticket column has 28 cells.
+- Every calibration child compiles on one long-lived helper thread with a large stack, and runs on
+  the cell's thread (owner, run A stop). A virtual cell waits on the helper by spinning, without
+  parking (owner, second stop).
+- The runs. Every record and log is in the #199 worktree's `.logs/`.
+
+  | run | commit | seed | outcome |
+  |---|---|---|---|
+  | A | `fd2cd74` (compile on the cell's thread) | unseeded | EXECUTED_FAIL: six C1 256 KiB cells hit a compile STACK (F-109) |
+  | A2 | `b090b21` | `199-runA.tsv`, the ten cells unseeded | EXECUTED_FAIL: four virtual cells unstable, 29 virtual `U*` moved; reserve 184 320 |
+  | A3 | `82b23f7` (spin) | `199-runA.tsv`, the ten cells unseeded | VERIFIED_PASS: the ten equal A2, the other 214 equal A; max-b 192, reserve 184 320 |
+  | B | `82b23f7` + constants 192 / 184 320 | A3 | VERIFIED_PASS: all `U*` equal A3, 28/28 edges, 84 warm cells hold; committed unedited as `calibration.tsv` |
+
+- The reserve: the largest intercept is 118 064 (C1 virtual W CONSERVATIVE, `U*` 2131, `s_low`
+  182) and the largest cold term is 30 996. ceil4K(149 060) = 151 552, and 151 552 + 32 768 =
+  184 320. At 512 KiB, `U_f` = 1770 − `D_f` (#113 gave 1237 − `D_f`).
+- `b` is 192. The largest `b_cell` is 189, on C1 W CONSERVATIVE at 512 KiB → 1 MiB. W's 256 KiB
+  pair gives 182.
+- Two virtual C1 cells each had a spread in one run: first-or CONSERVATIVE 20 in A3, and collect
+  OPTIMISED 12 in B. Their `U*` equal run A's. The owner accepted these spreads (ADR-0046, Outcome).
+- The mechanism (`199-mech.log`): a parked `join()` moves a virtual cell's proof from 4355 to 4362,
+  measured 40 frames deep. A spun wait does not move it. The seven-cell hand probe
+  (`199-c3-virtual-probe.log`) gave run A's `U*` on 3 of 3 children for each cell.
+- Per tier (`199-fact-tiers.log`; wall and child-seconds in s; `-Xint` and C1 share the 4-wide
+  pool, and warm runs 1-wide):
+
+  | run | time-ms | `-Xint` wall / child-s | C1 wall / child-s | warm wall / child-s |
+  |---|---|---|---|---|
+  | A3 | 5 178 767 | 1 982 / 1 933 (cold probes 502) | 1 995 / 5 949 | 3 184 / 3 184 |
+  | B | 4 969 441 | 1 835 / 1 696 (cold probes 396) | 1 849 / 5 601 | 3 120 / 3 120 |
+
+  edgeIsExact is outside both runs. Run alone on `82b23f7` it took 230.3 s.
+- C1 ND OPTIMISED at 384 KiB, by hand, 3 children (`199-fact-nd384.log`): `U*` 6891, spread 0.
+
+  | pair | slope | intercepts |
+  |---|---|---|
+  | 256 KiB → 384 KiB | 42 | 104 518 / 102 786 |
+  | 384 KiB → 512 KiB | 42 | 102 786 / 100 340 |
+  | 256 KiB → 512 KiB (record) | 42 | 104 518 / 100 340, virtual 102 482 |
+  | 512 KiB → 1 MiB | 34 | 181 092 / 165 460 |
+
+  Every pair below 512 KiB falls to 100–105 K, against #113's 196 618, 190 186 and 198 199. Only
+  the 512 KiB → 1 MiB pair stays high, which is why the rule takes the lowest pair.
+- ND frames against units (`199-fact-nd-frames.log`, an unmerged spike): about 0.155 Java frames
+  per unit at every edge, for example 4 590 units against 711 frames at 256 KiB and 33 528 against
+  5 163 at 1 MiB. Frames never exceed units, so there is no finding. The ratio does not explain the
+  slope dropping from 33 B to 24 B.
+- Warm alone against warm 2-wide, for F-97 (C5) (`199-fact-warm-width.log`): W CONSERVATIVE,
+  collect-descent CONSERVATIVE and plain-descent CONSERVATIVE at 512 KiB, 3 children × 60 runs each
+  way, with no other JVM running. Every child ended the same both ways, 60 of 60, with proof 4371.
+  The wall time was 28.3 s alone and 13.3 s 2-wide, with 26.1 child-seconds 2-wide.
+- L2 is corroborated: at the 184 320 reserve, the stackBytes-0 tests on a 256 KiB thread pass in the
+  full suite. These are jq-core `TrampolineTest` (lines 122, 160 and 199) and oracle
+  `CompileModesTest` (line 96), in `199-green5.log`.
+- Superseded: #113's reserve of 286 720 below is the old value. `StackUnits` holds 184 320.
+
+## #119: recursion, `limit`, `..`, the caps and the OPTIMISED gain (ADR-0019 #119, ADR-0006, ADR-0011), 2026-11-16
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Intel(R) Xeon(R) Processor @ 2.10GHz, kernel
+  6.18.44-fc-v470, Java HotSpot 25.0.5.0.3+1-LTS-2, `jq-1.8.2`. Commit `746b6a7` (impl/119).
+  `stackBytes` from #113's committed constants: `b` 192, reserve 286 720 (#199 has not merged).
+  Load average 0.52 at the start (16:48:37 UTC) and 0.97 at the end (17:08:31 UTC). Nothing else
+  ran. The verifier's logs, in the impl/119 worktree: `.logs/119-env.log`, `.logs/119-jmh.log`,
+  `.logs/119-jmh.json` (54 rows) and `.logs/119-jqref.log`.
+- JMH: `java -jar bench/jmh/target/benchmarks.jar Diagnostics -bm avgt -f 2 -wi 3 -w 1s -i 5 -r 1s
+  -prof gc -foe true -jvmArgs '-Xms2g -Xmx2g'`, exit 0, with JAVA_TOOL_OPTIONS holding only the
+  proxy and truststore flags. One operation is `Gates.once` under `Limits.embedded()` with `-c`,
+  with the mode set by ADR-0020's reflective hook.
+- Every `# outcome` line is `bytes written`: no cell ended on a termination. The 1e6 recursion cells
+  write 13 bytes, which is `499999500000` and LF, jq-ref's answer.
+- The recursion shapes carry the prefix `[.[]] as $a | ($a|length) as $L |` (owner, Q1a; F-111).
+- jq-ref: `bench/jq-ref.sh`, which reports the per-document time with K = 1 and the start-up time
+  subtracted, as `per_document_us`. It gives no time for Eu at 1e6.
+- Each number is the JMH average per operation, in ms, ± JMH's 99.9 % error, and
+  `gc.alloc.rate.norm` in MiB per operation.
+- Before JMH, cold single-shots in a fresh 2 GiB JVM ended at 2.1 s at most (recur-M CONSERVATIVE)
+  with a peak heap of 282 MiB at most (recur-N). Eu is no longer quadratic. In OPTIMISED, 1e4 took
+  280 ms, 1e5 269 ms and 1e6 1 421 ms, all cold. The log is `.logs/119-shots2-*.log` in the impl/119 worktree.
+
+**Table A: recursion, `limit` and `..`**
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | alloc MiB/op O / C | jq-ref ms/doc |
+|---|---|---|---|---|
+| `recur-T.1e6` | 224 ± 42.786 | 1 552 ± 211 | 244.5 / 557.3 | 1 294 |
+| `recur-E.1e6` | 172 ± 12.733 | 1 459 ± 110 | 168.2 / 458.1 | 943 |
+| `recur-Eu.1e6` | 1 107 ± 188 | 1 414 ± 183 | 343.7 / 458.1 | — |
+| `recur-M.1e6` | 225 ± 23.816 | 1 573 ± 341 | 244.5 / 557.3 | 1 438 |
+| `recur-N.1e6` | 1 540 ± 166 | 1 545 ± 148 | 351.3 / 351.3 | 963 |
+| `limit-iter.1e6` | 75.906 ± 14.880 | 119 ± 20.100 | 53.8 / 137.7 | 767 |
+| `limit-recurse.1e6` | 70.794 ± 5.535 | 908 ± 81.091 | 122.1 / 267.0 | 832 |
+| `dotdot.1k` | 0.006 ± 0.000 | 0.007 ± 0.001 | 0.0 / 0.0 | 0.496 |
+| `dotdot.100k` | 0.578 ± 0.060 | 0.691 ± 0.065 | 0.9 / 1.3 | 5.365 |
+| `dotdot.10m` | 96.730 ± 14.358 | 110 ± 12.803 | 108.3 / 133.1 | 698 |
+| `dotdot-deep.1k` | 0.035 ± 0.003 | 0.045 ± 0.005 | 0.1 / 0.1 | 0.666 |
+| `dotdot-deep.9999` | 0.919 ± 0.061 | 1.175 ± 0.099 | 1.9 / 2.1 | 4.307 |
+
+- In OPTIMISED, T (TAIL_SELF), M (TAIL_GROUP) and E (specialised, `copyOf=`) are 5.5 to 6.4 times
+  faster than jq-ref. N (RECURSIVE) takes 1.6 times jq-ref's time. Eu (unspecialised) takes 1.1 s
+  and has no reference time.
+
+**Table B: the caps** (`cap-inline` k = 15, `cap-inline-over` k = 16,
+`cap-specialise` m = 1 637, `cap-specialise-over` m = 1 638)
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | alloc MiB/op O / C | jq-ref ms/doc |
+|---|---|---|---|---|
+| `cap-inline.1k` | 63.671 ± 5.060 | 49.130 ± 6.947 | 40.9 / 33.6 | 1.901 |
+| `cap-inline-over.1k` | 76.397 ± 10.866 | 51.647 ± 8.270 | 44.0 / 36.4 | 5.200 |
+| `cap-specialise.1k` | 42.750 ± 4.953 | 32.552 ± 2.791 | 55.8 / 52.9 | 42.838 |
+| `cap-specialise-over.1k` | 50.149 ± 7.714 | 31.336 ± 2.392 | 67.3 / 53.0 | 38.816 |
+
+- Table B's number is one whole operation: the compile and the run.
+  - The cap cells are compile-bound: jqj at 31 to 76 ms against jq-ref's 2 to 43 ms.
+  - The over-cap inline row per leaf step, with the compile included as an upper bound:
+    2^15 = 32 768 leaf steps, so 2.33 µs per step in OPTIMISED and 1.58 µs in CONSERVATIVE. At
+    the cap (2^14 steps) the figures are 3.89 µs and 3.00 µs.
+  - OPTIMISED costs 13 to 60 % more than CONSERVATIVE on all four cap cells. That is the price of
+    inlining and specialising at the cap.
+
+**Table C: the OPTIMISED gain** (every Gates cell except G7, plus every cell above; G4 at 10⁴ only;
+the gain is CONSERVATIVE / OPTIMISED)
+
+| cell | OPTIMISED ms/op | CONSERVATIVE ms/op | gain C/O |
+|---|---|---|---|
+| `recur-T.1e6` | 224 | 1 552 | 6.92 |
+| `recur-E.1e6` | 172 | 1 459 | 8.48 |
+| `recur-Eu.1e6` | 1 107 | 1 414 | 1.28 |
+| `recur-M.1e6` | 225 | 1 573 | 6.98 |
+| `recur-N.1e6` | 1 540 | 1 545 | 1.00 |
+| `limit-iter.1e6` | 75.906 | 119 | 1.57 |
+| `limit-recurse.1e6` | 70.794 | 908 | 12.82 |
+| `dotdot.1k` | 0.006 | 0.007 | 1.25 |
+| `dotdot.100k` | 0.578 | 0.691 | 1.20 |
+| `dotdot.10m` | 96.730 | 110 | 1.14 |
+| `dotdot-deep.9999` | 0.919 | 1.175 | 1.28 |
+| `dotdot-deep.1k` | 0.035 | 0.045 | 1.27 |
+| `cap-inline.1k` | 63.671 | 49.130 | 0.77 |
+| `cap-inline-over.1k` | 76.397 | 51.647 | 0.68 |
+| `cap-specialise.1k` | 42.750 | 32.552 | 0.76 |
+| `cap-specialise-over.1k` | 50.149 | 31.336 | 0.62 |
+| `G1.1k` | 0.002 | 0.002 | 0.99 |
+| `G1.100k` | 0.173 | 0.207 | 1.19 |
+| `G1.10m` | 17.617 | 18.774 | 1.07 |
+| `G2.1k` | 0.004 | 0.004 | 1.00 |
+| `G2.100k` | 0.371 | 0.416 | 1.12 |
+| `G2.10m` | 34.398 | 40.034 | 1.16 |
+| `G3.100k` | 2.924 | 3.039 | 1.04 |
+| `G3.10m` | 1 580 | 1 582 | 1.00 |
+| `G4.1e4` | 232 | 221 | 0.95 |
+| `G6.compact.10m` | 36.241 | 37.384 | 1.03 |
+| `G6.pretty.10m` | 51.353 | 46.088 | 0.90 |
+
+- The largest gains: `limit-recurse` 12.8×, the specialised and tail recursions 6.9 to 8.5×,
+  `limit-iter` 1.6×. N gains nothing (1.00), as ADR-0006 expects of a non-tail recursion. The Gates
+  cells lie between 0.90 and 1.19. The caps lose (0.62 to 0.77), because the operation includes
+  the compile.
+- NOT_RUN, owed by spec 3: `walk` and `[paths]`.
+
+## #113: the calibration matrix, `b` 192 and reserve 286 720 (ADR-0046 #113, K1–K8, L1–L4), 2026-11-15
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Temurin 25.0.5 at `/opt/temurin-25` (the record's
+  `jdk` row: Oracle Corporation 25.0.5.0.3+1-LTS-2, `cpus` 4), the only Maven on the host during
+  the committed run. Guard pages 98 304 B (the record's `guard` row). The record has no `machine`
+  row: the harness writes `time-ms`, `jdk` and `cpus` only (a carry for #199's re-run).
+- Command, each run: `./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix -Dchecks.skip=true
+  -Djacoco.skip=true -Dtest=CalibrationTest#matrixCellsSwitchBeforeTheBackstop`, detached. The 234
+  cells: 13 shapes × `-Xint`, C1 (`-Xbatch -XX:TieredStopAtLevel=1`) and warm × platform 512 KiB,
+  platform 1 MiB and virtual on `-Xss512k` × CONSERVATIVE and OPTIMISED; `-Xint` and C1 children
+  4 at a time, warm children one at a time after them. Every later run seeded from the e6f4cc0 record.
+- The four runs, each record kept (cells are `-Xint` and C1 `U*cold`/`U*linked`, 156 per run):
+
+  | run | commit | record | progress log | time | max-b | reserve | outcome |
+  |---|---|---|---|---|---|---|---|
+  | e6f4cc0 | `e6f4cc0`, b 96, reserve 131 072 | `.logs/113-calibration.tsv` | `.logs/113-calibration-progress.log` (unstamped) | 5 547.8 s | 224 | 569 344 | warm rows in the maxima (K1); the seed |
+  | k5 | `078dd0a`, b 192, reserve 286 720 | `.logs/113-calibration-k5.tsv` | `.logs/113-calibration-progress-k5.log` (unstamped) | 2 924.9 s | 192 | 286 720 | 3 C1 U* above e6f4cc0's: +1, +7, +31 (L1) |
+  | l | `061f5cf` | `.logs/113-calibration-l.tsv` | `.logs/113-calibration-progress-l.log` | 2 784.0 s | 192 | 286 720 | EXECUTED_FAIL: passes ran 4 frames deeper than U*+1; 82 U* lower, 43 C1 cells complete at U*+1 |
+  | m | `dd089ac` | `jq-core/src/test/resources/stack/calibration.tsv` (`.logs/113-calibration-m.tsv`) | `.logs/113-calibration-progress-m.log` | 2 635.6 s | 192 | 286 720 | VERIFIED_PASS (`.logs/113-matrix5.log`); all 156 U* equal e6f4cc0's |
+
+- Per tier, from the stamped progress logs (wall: first child start to last child end;
+  child-seconds: the sum of each child's start to end, an `-Xint` cold bisection counted from its
+  start to its last probe). `-Xint` and C1 share the pool, so their walls overlap.
+
+  | run | `-Xint` wall | `-Xint` child-s (78 linked + 78 cold) | C1 wall | C1 child-s (234) | warm wall = child-s (234) |
+  |---|---|---|---|---|---|
+  | l | 1 130 s | 1 515 s | 1 140 s | 3 022 s | 1 644 s |
+  | m | 951 s | 1 057 s | 959 s | 2 763 s | 1 676 s |
+
+- The committed record (m): `max-b` 192 from the largest `b_cell`, 189 (C1 platform 512 KiB
+  CONSERVATIVE W, rounded up to 8 B). `reserve` 286 720 = ceil4K(220 832 + 29 988) + 32 768: the
+  largest intercept 220 832 is `-Xint` virtual 512 KiB OPTIMISED ND, the largest cold term 29 988
+  `-Xint` platform 1 MiB CONSERVATIVE collect-descent (K3). Every C1 cell's 3 children agree (spread
+  0 in all 78), each at its fixed point (L1); all 78 warm cells hold, 3 children × 60 runs at the
+  thread's size. `StackUnits` carries b 192 and reserve 280 KiB (286 720).
+- Pre-checks before m, children started by hand with ChildJvm's flags (`.logs/113-precheck2.log`,
+  3 C1 children each): C1 platform 1 MiB OPTIMISED collect-descent 5818 (passes 5819,5818,5818),
+  C1 virtual 512 KiB CONSERVATIVE W 2131 (2162,2131,2131), C1 virtual 512 KiB CONSERVATIVE collect
+  5113 (5120,5113,5113), and one `-Xint` linked child of platform 512 KiB OPTIMISED ND 12671
+  (12671,12671), each ending STACK at U*+1.
+- Side probe, ND OPTIMISED `-Xint` linked on platform 256 KiB and 384 KiB at `078dd0a`
+  (`.logs/113-side-probe.log`, one child each, 310 s and 321 s): U* 4 715 and 8 693 against
+  512 KiB's 12 671, a slope of 33 B per unit at 256 to 512 KiB, so the 220 832 intercept comes from
+  the slope, and the next run takes its intercept from its lowest pair (L2, #199).
+- In-process and untagged checks at `dd089ac` (`.logs/113-fixpoint-green.log`): `CalibrationTest`
+  13 tests, 21.85 s; `CalibrationRecordTest` 3.
+- The 10 000-deep native check (D4), `nativesCoverTheDeepestEmit`: VERIFIED_PASS
+  (`.logs/113-fixpoint-green.log` at `dd089ac`; again in the ticket gate, `.logs/113-gate-surefire.xml`).
+  On DEEP, each native's first use in its own `-Xint` child on a 512 KiB main thread with 512 KiB
+  declared, both modes: `tojson|length` 19998, `[.,.]|sort|length` 2, `def d: [.[]?|d]|sort;
+  d|tojson|length` 19998, reference jq's values (diff/deep.rec deep/native-*).
+- Tagged, at `24e8f1c` (`./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix
+  -Dtest=CalibrationTest#edgeIsExact+heapPerActivationIsRecorded`, `.logs/113-tagged.log`,
+  `.logs/113-tagged-surefire.xml`): `edgeIsExact` VERIFIED_PASS, 574.6 s (the `-Xint` 512 KiB cold
+  edge of each shape and mode gives the reference result at U* and ends STACK, or STACK after a
+  prefix, at U*+1, each the first run of a fresh child); `heapPerActivationIsRecorded`
+  VERIFIED_PASS, 25.1 s.
+- Heap bytes per live call activation (`.logs/113-calibration-heap.tsv`): one child, platform
+  512 KiB, each held generator of `CalibrationCell.HELD` run to n = 100 000 and 2n = 200 000 live
+  activations (both give n twice, as jq-ref), the used heap read at the first emit after two
+  `System.gc()`; bytes = Δused / Δn. The child's `maxMemory` is 3 586 129 920 B.
+
+  | held filter | mode | stackBytes 0 | stackBytes 512 KiB | 4 194 304 × bytes (512 KiB) |
+  |---|---|---|---|---|
+  | F-held-try16 | OPTIMISED | 888 | 887 | 3 720 347 648 |
+  | F-held-try16 | CONSERVATIVE | 887 | 887 | 3 720 347 648 |
+  | C-held | OPTIMISED | 88 | 88 | 369 098 752 |
+  | C-held | CONSERVATIVE | 87 | 87 | 364 904 448 |
+  | F-held | OPTIMISED | 120 | 120 | 503 316 480 |
+  | F-held | CONSERVATIVE | 115 | 119 | 499 122 176 |
+
+  F-held-try16 at `Limits`' default depth of 4 194 304 would need more heap than this child's
+  `maxMemory`; the default stays open for the owner. The harness records only the slope, not the
+  used heap at n and 2n.
+
+## #111: provisional bytes per unit `b` and reserve (ADR-0046 #111 amendment), 2026-11-15
+
+- Machine: the implementer's container, 4 vCPU, glibc 2.39 (Ubuntu 2.39-0ubuntu8.9), Temurin
+  25.0.5 at `/opt/temurin-25`. Commit `8938e6a` on `impl/111` (spec/106 tip `d36c2a2` merged), no
+  tracked change, classes from `./mvnw -o -B -q -pl jq-core -am compile -Dchecks.skip=true`.
+  Stand-in `b` at that commit: 100 (it sets the resolution of the declared stack only).
+- Command: `bench/stack-units/measure-b.sh > .logs/111-measure-b.log`. Compile mode: OPTIMISED, the
+  engine's default (the public builder sets no other); CONSERVATIVE and virtual threads are #113's
+  (NOT_RUN here).
+- Method (in the script's header): one fresh JVM per cell, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`
+  and `_JAVA_OPTIONS` unset, no agent. The case runs on the launcher's main thread, sized by `-Xss`:
+  it is the process's first thread, so glibc's stack cache cannot hand it a larger stack an ended
+  thread left (the grilling-adviser's case: a 512 KiB thread after a 1 MiB one held 10 729 frames).
+  Proof per cell: a plain recursion to StackOverflowError on that thread first, and each 512 KiB /
+  1 MiB pair must hold 1.5 to 3.5 times the frames, or the run stops INVALID. Under `-Xint` the
+  proof is 4 772 frames at 512 KiB (the adviser's fresh 512 KiB thread: 4 771) and 10 730 at 1 MiB;
+  C1 10 194 and 23 300; warm counts move with the compilation of the recursion (6 958 to 23 300).
+  Then a binary search for the largest `U_f` at which the case completes (the next ends STACK), and
+  per cell `b = ceil((S - 128 KiB) / (U_f + D_f))`; per pair the slope `ceil(512 KiB / ΔU_f)`. C1:
+  `-Xbatch -XX:TieredStopAtLevel=1`; C1 and warm: 30 warm-up runs first. All 24 cells proven.
+
+  | tier | S | collect | reduce | first-or | hold |
+  |---|---|---|---|---|---|
+  | -Xint | 512 KiB | 65 | 61 | 80 | 72 |
+  | C1 only | 512 KiB | 77 | 79 | 91 | 77 |
+  | warm | 512 KiB | 78 | 80 | 87 | 78 |
+  | -Xint | 1 MiB | 67 | 63 | 83 | 75 |
+  | C1 only | 1 MiB | 80 | 82 | 94 | 80 |
+  | warm | 1 MiB | 81 | 82 | 92 | 61 |
+  | -Xint | slope | 69 | 65 | 85 | 77 |
+  | C1 only | slope | 82 | 85 | 96 | 83 |
+  | warm | slope | 83 | 83 | 96 | 53 |
+
+- Largest: 96 (the C1 and warm first-or slopes; largest cell 94, C1 first-or 1 MiB). Provisional
+  `b` = 96, already a multiple of 8. Reserve 128 KiB (96 KiB of guard pages, 32 KiB for natives), a
+  source constant.
+
+
+## #109: the compile-mode oracle's trampoline run in ticket-gate step 1 (F-58), 2026-11-15
+
+- Machine: the implementer's container, 4 vCPU (`nproc` 4), the `claude-cloud-4vcpu` class, unverified
+  as the same host. Branch `impl/109` @ `b89af88` (spec/106 tip `d89de59` merged); compile.txt holds
+  conservative lines only, so before the after-merge regen the Survey judges every case under
+  `trampoline` with an optimised run of its own.
+- Gate step 1 (`gate-ticket.sh 109 …`, `.logs/109-gate2.log`): verify rc 0, 247 351 ms. In it, from
+  `.logs/109-verify.log`: `CompileModeOracleTest` 5 307 tests, 5.301 s; `CompileModeSurveyTest` 7 123
+  tests, 5.794 s.
+- A/B, one run each, `./mvnw -o -B -Pcompile-oracle -pl oracle -am test
+  -Dtest=CompileModeOracleTest,CompileModeSurveyTest -Djacoco.skip=true`: modes conservative and
+  trampoline 8.629 + 5.841 = 14.470 s (`.logs/109-timing-both.log`; an earlier run, log not kept,
+  14.120 s); `MODES` cut to conservative by a local edit, reverted, 8.618 + 1.149 = 9.767 s
+  (`.logs/109-timing-conservative.log`). Added time of the trampoline run: 4.4 to 4.7 s, under 2 % of
+  step 1. One or two runs per side, so no spread; after the regen the Oracle test judges both modes
+  from one optimised run, which should cut it (NOT_RUN).
+
 ## Spec 56 gate run at bba3de4 (F-84), 2026-11-13
 
 - Machine: `claude-cloud-4vcpu`. Command: `gate-spec.sh 56` on `spec/56-core-language-2a` @ `bba3de4`:

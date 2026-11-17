@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.internal.interpret;
 
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Charges;
 import io.github.subapavel.jqj.query.run.Collector;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -29,11 +30,16 @@ public final class CollectOp extends Op {
   private final Op body;
   private final Collector collector;
 
-  public CollectOp(Op body, Collector collector) {
+  public CollectOp(boolean valueForm, Op body, Collector collector) {
+    super(valueForm);
     this.body = body;
     this.collector = collector;
   }
 
+  /**
+   * The body in push form: a Collect is at most one, so it is push form only where it may break out, and then so may
+   * its body (ADR-0007 #112, #115).
+   */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     state.chargeBuilt(Charges.CONTAINER);
@@ -43,6 +49,32 @@ public final class CollectOp extends Op {
       return false;
     }
     return out.emit(collector.collect(elements.values, elements.length));
+  }
+
+  /**
+   * What the collector makes of the body's results, charged as {@link #run} charges them. The body of a value-form
+   * Collect may not break out, so a push body's run ends with true.
+   */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    state.chargeBuilt(Charges.CONTAINER);
+    Elements elements = new Elements(state);
+    if (!body.valueForm) {
+      body.run(state, slots, in, elements);
+    } else {
+      Object v = body.eval(state, slots, in);
+      if (v != CallForm.NONE) {
+        elements.emit(v);
+      }
+    }
+    return collector.collect(elements.values, elements.length);
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.state.chargeBuilt(Charges.CONTAINER);
+    Gather gather = new Gather(under, new Elements(t.state), out);
+    t.start(body, gather, slots, in, gather);
   }
 
   /**
@@ -56,6 +88,36 @@ public final class CollectOp extends Op {
       throw state.overBuilt();
     }
     return (int) Math.min(MAX_LENGTH, Math.max(FIRST, 2L * length));
+  }
+
+  /**
+   * The heap form while the body runs, and the body's sink: each result is stored and answered to go on; when the body
+   * ran out, what the collector makes of them is emitted, and after a break nothing is.
+   */
+  private final class Gather extends HeapForm implements HeapSink {
+    private final Elements elements;
+    private final HeapSink out;
+
+    Gather(HeapForm under, Elements elements, HeapSink out) {
+      super(under);
+      this.elements = elements;
+      this.out = out;
+    }
+
+    @Override
+    public void accept(Trampoline t, HeapForm producer, Object v) {
+      elements.emit(v);
+      t.answer(producer, true);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      if (!more) {
+        t.answer(under, false);
+        return;
+      }
+      t.emit(out, under, collector.collect(elements.values, elements.length));
+    }
   }
 
   /** The results so far, {@code [0, length)} of {@code values}. */

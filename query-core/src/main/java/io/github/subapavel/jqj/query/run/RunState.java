@@ -4,8 +4,9 @@ import io.github.subapavel.jqj.query.run.Termination.Budget;
 import java.util.function.LongSupplier;
 
 /**
- * The budgets of one evaluation (ADR-0030, ADR-0008, ADR-0035): its fuel, the step budget, the deadline and the
- * bytes-built and bytes-written counts, in a phase that is idle, primed or running; its label tokens and break
+ * The budgets of one evaluation (ADR-0030, ADR-0008, ADR-0035, ADR-0045 #107): its fuel, the step budget, the deadline,
+ * the bytes-built and bytes-written counts and the live call activations, in a phase that is idle, primed or running;
+ * the stack bytes the run declares (ADR-0030 #109 amendment); its label tokens and break
  * target (ADR-0039); and a reused scratch of ints (ADR-0044). The engine's Workspace owns one and hands it to each
  * run, so it is never shared between two running evaluations; it is not thread-safe.
  *
@@ -67,6 +68,24 @@ public final class RunState {
   /** The bytes charged since the last begin. */
   private long written;
 
+  /** The running run's recursion-depth budget (ADR-0045 #107, ADR-0046); unlimited outside a run. */
+  private long depthBudget = UNLIMITED;
+
+  /** The live call activations since the last begin: each {@link #enter} not yet left. */
+  private long depth;
+
+  /**
+   * The stack bytes the last begin declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any and after a
+   * begin that declares none: not a budget, and nothing here checks against it.
+   */
+  private long stackBytes = UNLIMITED;
+
+  /** The stack units the live push-form calls hold (ADR-0046 #111 amendment): each {@link #addUnits} not removed. */
+  private long units;
+
+  /** The run's unit limit {@code U_f} (ADR-0046 #111 amendment), {@code Long.MAX_VALUE} until a run sets it. */
+  private long unitLimit = UNLIMITED;
+
   /**
    * The last label token handed out since the last begin: the tokens of a run count from 1 (ADR-0039). A long, so no
    * run reaches its wrap and a token is never 0 or one handed out before.
@@ -75,6 +94,15 @@ public final class RunState {
 
   /** The token a Break marked and its Label has not taken back yet, or 0 for none: a false then is a stop. */
   private long breakTo;
+
+  /** The pending jump's target (ADR-0047 and its #118 amendment), or null when no jump is pending. */
+  private Object jumpTarget;
+
+  /** The pending jump's frame, or null when no jump is pending. */
+  private Object[] jumpFrame;
+
+  /** The pending jump's input, or null when no jump is pending. */
+  private Object jumpInput;
 
   /** The monotonic clock in nanoseconds that the deadline reads: {@link System#nanoTime()} outside the tests. */
   private final LongSupplier clock;
@@ -108,25 +136,53 @@ public final class RunState {
   }
 
   /**
-   * {@link #begin(long, long, long, long)} with the bytes built unlimited.
+   * {@link #begin(long, long, long, long, long)} with the bytes built and the recursion depth unlimited.
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
    */
   public void begin(long steps, long deadlineNanos, long bytesWritten) {
-    begin(steps, deadlineNanos, UNLIMITED, bytesWritten);
+    begin(steps, deadlineNanos, UNLIMITED, bytesWritten, UNLIMITED);
   }
 
   /**
-   * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
-   * the bytes built (ADR-0035) and the bytes written. A primed read's ticks count against it, the writer's outside a
-   * run do not; without a primed read it starts from no tick. The bytes built and written count from zero, the label
-   * tokens from 1, and no break is marked (ADR-0008).
+   * {@link #begin(long, long, long, long, long)} with the recursion depth unlimited.
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
    */
   public void begin(long steps, long deadlineNanos, long bytesBuilt, long bytesWritten) {
+    begin(steps, deadlineNanos, bytesBuilt, bytesWritten, UNLIMITED);
+  }
+
+  /**
+   * {@link #begin(long, long, long, long, long, long)} declaring no stack, {@code Long.MAX_VALUE}: the run's unit limit
+   * is out of any call's reach, so main and every call run in push form, and only the StackOverflowError backstop ends
+   * a run that exhausts its thread (ADR-0046 #111). An in-suite test declares a stack on a thread four times as large
+   * (ADR-0046 "Where the stack is tested").
+   *
+   * @throws IllegalStateException when a run is running on this state, which then stays as it was
+   * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
+   */
+  public void begin(long steps, long deadlineNanos, long bytesBuilt, long bytesWritten, long recursionDepth) {
+    begin(steps, deadlineNanos, bytesBuilt, bytesWritten, recursionDepth, UNLIMITED);
+  }
+
+  /**
+   * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
+   * the bytes built (ADR-0035), the bytes written and the recursion depth, the live call activations (ADR-0045 #107);
+   * then the stack bytes the run declares (ADR-0030 #109 amendment), which {@link #stackBytes()} reads and which are no
+   * budget: the run derives its unit limit from them, and at 0, zero bytes, never unlimited, main and every body run on
+   * the trampoline (ADR-0046 and its #111 amendment); the stack units count from zero. A primed read's ticks count
+   * against it, the
+   * writer's outside a run do not; without a primed read it starts from no tick. The bytes built and written and the
+   * live activations count from zero, the label tokens from 1, no break is marked (ADR-0008) and no jump is pending
+   * (ADR-0047 #118).
+   *
+   * @throws IllegalStateException when a run is running on this state, which then stays as it was
+   * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
+   */
+  public void begin(long steps, long deadlineNanos, long bytesBuilt, long bytesWritten, long recursionDepth, long stackBytes) {
     if (running) {
       throw new IllegalStateException("a run is already running on this run state");
     }
@@ -142,21 +198,111 @@ public final class RunState {
     built = 0;
     writtenBudget = bytesWritten;
     written = 0;
+    depthBudget = recursionDepth;
+    depth = 0;
+    this.stackBytes = stackBytes;
+    units = 0;
+    unitLimit = UNLIMITED;
     labels = 0;
     breakTo = 0;
+    clearJump();
     start = clock.getAsLong();
     refill(kept);
   }
 
   /**
-   * Ends the running run, however it ended: every budget is unlimited until the next {@link #begin}, and
-   * {@link #steps()} goes on from the run's count.
+   * Ends the running run, however it ended: every budget is unlimited until the next {@link #begin}, {@link #steps()}
+   * goes on from the run's count, and a pending jump is cleared, so no value stays pinned between runs (ADR-0047,
+   * ADR-0034).
    */
   public void end() {
     running = false;
     builtBudget = UNLIMITED;
     writtenBudget = UNLIMITED;
+    depthBudget = UNLIMITED;
+    clearJump();
     fill(steps(), UNLIMITED);
+  }
+
+  /**
+   * Sets the pending jump (ADR-0047 and its #118 amendment): a tail call's {@code target}, the {@code frame} of the
+   * activation it jumps from and its {@code in}put. The tail call then returns at once; the entry loop of that
+   * activation, the one running in {@code frame}, takes the jump with {@link #clearJump} and re-enters there, so the
+   * jump holds no Java frame and no further activation.
+   */
+  public void jump(Object target, Object[] frame, Object in) {
+    jumpTarget = target;
+    jumpFrame = frame;
+    jumpInput = in;
+  }
+
+  /** The pending jump's target, or null when no jump is pending. */
+  public Object jumpTarget() {
+    return jumpTarget;
+  }
+
+  /** The frame of the activation the pending jump jumps from, or null when no jump is pending. */
+  public Object[] jumpFrame() {
+    return jumpFrame;
+  }
+
+  /** The pending jump's input, or null when no jump is pending. */
+  public Object jumpInput() {
+    return jumpInput;
+  }
+
+  /** No jump is pending: the entry loop takes the jump, and {@link #begin} and {@link #end} clear it. */
+  public void clearJump() {
+    jumpTarget = null;
+    jumpFrame = null;
+    jumpInput = null;
+  }
+
+  /**
+   * A call activation begins (ADR-0045 #107, ADR-0046): one more live activation, which {@link #leave} ends when the
+   * call ends, by its results running out, a stop, a break or an error, and in push form a termination too; a
+   * termination on the trampoline leaves it counted until the next {@link #begin}. One over the recursion-depth budget
+   * is not counted.
+   *
+   * @throws Termination over the recursion-depth budget
+   */
+  public void enter() {
+    if (depth >= depthBudget) {
+      throw Termination.over(Budget.RECURSION_DEPTH);
+    }
+    depth++;
+  }
+
+  /** The call activation of the last {@link #enter} not left yet ends. */
+  public void leave() {
+    depth--;
+  }
+
+  /**
+   * Sets the running run's unit limit {@code U_f} (ADR-0046 #111 amendment), which the run derives at its start from
+   * its declared stack; {@link #begin} sets it to {@code Long.MAX_VALUE}, which no call reaches.
+   */
+  public void limitUnits(long unitLimit) {
+    this.unitLimit = unitLimit;
+  }
+
+  /**
+   * A push-form call holds {@code units} more stack units until {@link #removeUnits} gives them back (ADR-0046 #111
+   * amendment): true when the units held now reach the unit limit, where the call starts the trampoline.
+   */
+  public boolean addUnits(long units) {
+    this.units += units;
+    return this.units >= unitLimit;
+  }
+
+  /** A push-form call ends and gives back the {@code units} it held. */
+  public void removeUnits(long units) {
+    this.units -= units;
+  }
+
+  /** The stack units the live push-form calls hold now: 0 after each {@link #begin}. */
+  public long units() {
+    return units;
   }
 
   /**
@@ -278,6 +424,14 @@ public final class RunState {
       ints = new int[n];
     }
     return ints;
+  }
+
+  /**
+   * The stack bytes the last {@link #begin} declared (ADR-0030 #109 amendment), {@code Long.MAX_VALUE} before any begin
+   * and after one that declared none.
+   */
+  public long stackBytes() {
+    return stackBytes;
   }
 
   /** The bytes built since the last begin (ADR-0035): each charge {@link #chargeBuilt} counted, none it refused. */

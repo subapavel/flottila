@@ -1,6 +1,6 @@
 # Reduce and Foreach bind a state slot that one Advance takes and refills; range is a Many
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #69; designer draft); amends ADR-0005 (Reduce, Foreach, Advance), ADR-0008 (none of the three ticks), ADR-0034 and ADR-0038 (slot rule); amended by F-43 (#69: the `_state` read, atomic range bounds, the Many args contract); amended by F-85 (#194: the shared empty args array, wording)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #69; designer draft); amends ADR-0005 (Reduce, Foreach, Advance), ADR-0008 (none of the three ticks), ADR-0034 and ADR-0038 (slot rule); amended by F-43 (#69: the `_state` read, atomic range bounds, the Many args contract); amended by F-85 (#194: the shared empty args array, wording); the source's `Tracking` by ADR-0048 (spec 3, F-59)
 
 jq 1.8.2's `gen_reduce` and `gen_foreach` keep the loop state in a fresh variable. The pattern's matchers wrap `LOADVN state; update; STOREV state` (LOADVN loads the value and then nulls the variable). Patterns lower to Binds around a body (ADR-0038), so the update must be a node beneath them. The jq facts were read from jq-1.8.2 source; #69's red records them on jq-ref, and jq-ref wins.
 
@@ -55,3 +55,12 @@ jq 1.8.2's `gen_reduce` and `gen_foreach` keep the loop state in a fresh variabl
 - **A tick per iteration at Advance**: `reduce range(n)` would pay 2n for what its producer already paid.
 - **A range cursor computing start + i**: it rounds once where jq rounds at each step.
 - **range as builtin.jq's recursive form**: it needs recursion (2b), and founding §8 makes range a native loop.
+
+## Amendment (ADR-0048, spec 3)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+`bindP`'s source is PATH, or ITEM for `foreach SRC as $name`. An AltBind source's value is PATH. SRC
+runs in path mode on the loop's input with its paths dropped, except a `$name` item's. Case:
+`path(reduce ([1]|.[]) as $x (0;1)|empty)` raises "…near attempt to iterate through [1]" (jq-ref,
+F-59).

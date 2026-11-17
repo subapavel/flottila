@@ -17,17 +17,38 @@ item variable. jq also accepts some other forms; jqj raises "Invalid path expres
 | `[1] \| path(. as [$a] \| $a)` | `[0]` | error |
 | `{"a":1} \| path(.a \| . as $v \| $v)` | `["a"]` | error |
 | `{"a":true} \| path(.a \| true)` | `["a"]` | error |
+| `{"k":"x"} \| [path(.k \| tostring)]` | `[["k"]]` | error |
+| `{"k":"x"} \| [path(.k \| @text)]` | `[["k"]]` | error |
+| `{"k":1} \| [path(.k \| tonumber)]` | `[["k"]]` | error |
+| `{"k":[1]} \| [path(.k \| delpaths([]))]` | `[["k"]]` | error |
+| `{"k":[1]} \| [path(.k \| setpath([]; .))]` | `[["k"]]` | error |
+| `{"k":true} \| [path(.k \| not \| not)]` | `[["k"]]` | error |
+| `[[5],[6]] \| [path(foreach .[] as $x ?// [$x] (0;1;$x))]` | `[[0],[1]]` | error |
 | `null \| path(reduce 0 as $i (.; .))` | `[]` | error |
 | `[[1],[2]] \| path(foreach (0,1) as $i (.; .; .[$i]))` | `[0]`, `[1]` | error |
 | `{"a":{"a":1}} \| [path(reduce 0 as $i (.; .a) \| empty)]` | `[]` | error |
+| `[[1],[2]] \| [path(foreach .[] as [$a] (0; 1; $a))]` | `[[0,0],[1,0]]` | error |
+| `[[5],[6]] \| [path(foreach .[] as $x (0; $x; .))]` | `[[0],[1]]` | error |
+| `[1,2] \| path(. as [$a,$b] \| $a)` | error "…element 0 of [1,2]" | error "…element 1 of [1,2]" |
+| `["x","y"] \| (. as [$v] ?// $v \| if ($v\|type)=="string" then $v else .[1] end) \|= "Z"` | `["Z","y"]` | `["x","Z"]` |
 
-The last two keep the `reduce`/`foreach` state untracked (ADR-0010): jq restores its one current
-path at every return to the source, so a state path never survives an iteration, and
+The `foreach (0,1)` and `reduce … .a` rows keep the `reduce`/`foreach` state untracked
+(ADR-0010): jq restores its one current path at every return to the source, so a state path never
+survives an iteration, and
 `[[1,2]] | path(reduce (0,1) as $i (.; .[$i]))` raises in jq as well.
+
+The `tostring` to `not | not` rows are spec 3's share of P6 (`trim`, `ltrim` and `rtrim` come with
+spec 4's natives, F-70). In the `foreach … ?//` row only a `foreach … as $name` item keeps its
+path (Tracking ITEM, ADR-0048, F-59), so a destructured item is untracked where jq's matcher keeps
+one. The last four rows are F-59's, added at spec 3's ticket approval by the grilling-adviser for
+the owner under the delegation of 2026-11-14. In the last two rows jq's first matcher step succeeds
+on the tracked input and jqj's raises: jq names its second step, and under `?//` jqj runs the next
+alternative, which gives another path. That is the only row where relaxing the rule later would
+change a result.
 
 Reason: jq decides these by value identity, which jqj's views and identity-free numbers do not
 have. jq's own test files contain no such case. Relaxing the rule later only turns errors into
-results.
+results, except in the `?//` row above.
 
 ## A break is not an error (ADR-0008, issue #7)
 
@@ -90,7 +111,7 @@ jq's limits are higher and of another kind: an array index up to 2^29−1 ("Arra
 strings under 2 GiB, tokens up to 1 GiB, literals up to 999 999 999 characters, and no
 per-document limit. Reason: one `long` per value, as recorded in ADR-0002.
 
-## Streaming, when a host enables it (ADR-0007, issue #6)
+## Streaming, when a host enables it (ADR-0007, ADR-0054, issue #6)
 
 Streaming is off by default; in that mode jqj behaves like jq. When a host enables streaming for an
 eligible filter (`<fixed path> | .[] | rest`):
@@ -99,32 +120,60 @@ eligible filter (`<fixed path> | .[] | rest`):
   seen. jq prints none.
 - **Duplicate keys**: a duplicate of a key on the streamed path is not seen. On
   `{"items":[1],"items":[2]}`, jq gives `2`.
+- **Nothing is read after a stop**: when the sink stops, `stream` returns and reads no further, so
+  a syntax error later in the document is not seen. jq reads the whole document first (on
+  `{"items":[1,2,3],"z":tru}`, `.items[]` gives a parse error and no result, F-4). Its `test:`
+  row comes with spec 5b's streaming ticket.
+
+A target that is no array, or a missing path, is read whole and run (ADR-0054), so no row above
+applies to it.
 
 ## A raw NUL byte outside a string is an error (ADR-0015, issue #11)
 
 | case | filter | input | jq 1.8.2 | jqj |
 | --- | --- | --- | --- | --- |
-| none yet | `-c .` | `1\x002` | `1` | "Invalid character" error at the NUL |
+| none yet | `-c .` | `1\x002` | `1` | nothing printed, "Invalid character" at the NUL, rc 5 |
 | none yet | `-c .` | `[1\x00x,2]` | `[1,2]` | error at the NUL |
-| `json/n_multidigit_number_then_00` (`deviation nul`) | `-c .` | JSONTestSuite `n_multidigit_number_then_00.json` (`123\x00`) | accepted: `123` | rejected |
+| `json/n_multidigit_number_then_00` (`deviation nul`) | `-c .` | JSONTestSuite `n_multidigit_number_then_00.json` (`123\x00`) | `123`, rc 0 | empty stdout, `jq: parse error: Invalid character at line 1, column 4`, rc 5 |
+| none yet | `try fromjson catch .` | `"1\u0000]"` | `"Unmatched ']' at line 1, column 3 (while parsing '1')"` (jq-ref 1.8.2) | "Invalid character" at the NUL; the text also ends `(while parsing '1')` |
 
-Reason: bytes would hide behind a NUL in a host's message; jq's master branch already rejects a NUL
-there (`classify` returns INVALID) with the text "Invalid character" (master source read, not
-run); jqj uses that text, so the row can go once the reference moves past 1.8.2. The reader
-ticket's oracle cases pin line and column.
+Reason: bytes would hide behind a NUL in a host's message. jq's master makes one change to
+`classify`: NUL is class INVALID, and nothing else differs. jq 1.8.2's `scan` already holds
+`case INVALID: return "Invalid character"`, unreached; master's `classify` reaches it (source
+read, not run). jqj follows master: the pending token's value is dropped as for `1]`, and the text
+is "Invalid character". The row can go once the reference moves past 1.8.2. The replay ticket's
+oracle cases pin line and column.
 
 ## Regex limit by time, not by retries (ADR-0017, issue #13)
 
 jq stops a match after Oniguruma's retry limit with the catchable error "Regex failure:
 retry-limit-in-match over" (`("a"*24+"b") | test("^(a+)+$")`). joni has no retry counter, so jqj
-raises the same error when a match exceeds `regexMatchTime` (1 s). The cut-off depends on the
-machine, so some patterns succeed in jqj where jq errors, and the reverse.
+raises the same error when one joni search call exceeds `regexMatchTime` (1 s; a global scan makes
+one call per match, ADR-0053). The cut-off depends on the machine, so some patterns succeed in jqj
+where jq errors, and the reverse.
+
+## Regex dialect (ADR-0053, spec 4)
+
+jqj runs regexes on joni 2.2.9 with `Syntax.PerlNG` and `CAPTURE_GROUP`; jq-ref runs them on its
+builtin Oniguruma. The regex prelude ticket records one case per construct of Oniguruma's syntax
+list and one per compile-error text. Each construct or text where joni differs, and no text mapping
+closes the gap, is a row here.
+
+| case | filter | input | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| (rows added by the regex prelude ticket) | | | | |
+
+Reason: joni is the JVM's port of Oniguruma (ADR-0017), and a patched joni would be a fork outside
+the mutation floors. `builtins-regex-v1` draws only constructs the matrix shows identical.
 
 ## Recursion depth on the command line (ADR-0017, issue #13)
 
-jq-ref completes 10⁷ levels of `def f: if .==0 then 0 else (.-1|f)+1 end`. jqj's command line
-keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶ levels) and ends deeper
-recursion with a termination. Reason: recursion depth bounded by memory, ADR-0011.
+jq-ref 1.8.2 completes 10⁷ levels of `def f: if .==0 then 0 else (.-1|f)+1 end; N | f`: N up to
+10⁷ prints N, rc 0; at 2·10⁷ and 10⁸ it prints `jq: error: cannot allocate memory`, rc 134 (F-87).
+jqj's command line keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶
+levels) and ends deeper recursion with a termination: it flushes the results so far, writes
+`jq: error: Recursion-depth budget exceeded` to stderr and exits 5 (#107, #197). Reason: recursion
+depth bounded by memory, ADR-0011.
 
 ## Parse depth (ADR-0017, issue #81)
 
@@ -174,6 +223,10 @@ no budget applies (ADR-0035). A key below the bound keeps jq's rc 3 (`constant-k
 
 jq prints its configure string; jqj prints its own build string.
 
+Spec 7 round 1 fixes jqj's string, proposed by the grilling-adviser for the owner under the
+delegation of 2026-11-14 (table in "`-h`, `-V` and `--build-configuration` print jqj's own
+text" below).
+
 ## Syntax-error text (ADR-0020, issue #15)
 
 | filter | jq 1.8.2 (stderr) | jqj |
@@ -208,16 +261,46 @@ Reason: these flags describe the program, not a filter's result; jqj is not jq. 
 lines (`jq: Unknown option …`, `Use jq --help for help with command-line options,`) stay
 byte-identical. shtest's cases for these flags become deviation cases.
 
+Spec 7 round 1 fixes the texts, proposed by the grilling-adviser for the owner under the
+delegation of 2026-11-14 (`docs/wayfinder/spec-7-grilling.md`, question 10). jq-ref 1.8.2
+observed; jqj intended:
+
+| case | flag | jq 1.8.2 | jqj |
+| --- | --- | --- | --- |
+| none yet | `-V` / `--version` | `jq-1.8.2` | `jqj-<version>` |
+| none yet | `--build-configuration`, `$JQ_BUILD_CONFIGURATION` | `--host=x86_64-linux-gnu --disable-docs --with-oniguruma=builtin --enable-static --enable-all-static 'CFLAGS=-O2 -pthread -fstack-protector-all' host_alias=x86_64-linux-gnu CC=x86_64-linux-gnu-gcc LDFLAGS=-s CPP=x86_64-linux-gnu-cpp` | `jqj <version> release 25 interpreter` |
+| none yet | `-h` / `--help` | jq's usage text, rc 0 | jqj's own text in `main.c`'s layout with `--explain` added, written fresh, rc 0 |
+
+The build string holds build-time facts only: a runtime Java version would make one filter print
+differently per JVM.
+
+## `--explain` is a jqj-only flag (ADR-0016, #108)
+
+| case | flag | jq 1.8.2 | jqj |
+| --- | --- | --- | --- |
+| none yet | `--explain <filter>` | `jq: Unknown option --explain` and jq's two usage lines, rc 2 | the filter's `JqFilter.explain()` text, no input read, rc 0 |
+
+Reason: the flag shows how jqj compiled a filter, which jq has no equivalent of (ADR-0016, ADR-0018).
+jq's column was observed on jq-ref 1.8.2 (2026-11-15, with and without input). jq-cli's
+`MainExplainTest` pins jqj's column against the API's text. No oracle case pins the row: its
+`jqj-stdout` would hold the whole `explain()` text, which is unstable and which no test pins
+(spec 2b, "What a good test checks"). A filter that does not compile ends with jq's compile error
+and rc 3, as without the flag.
+
 ## Long comma chains (ADR-0034, issue #63)
 
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
 | `depth/comma-10922` (`deviation long-comma-chains`) | `1,1,…,1`, 10 922 commas, on `null` | rc 3, `jq: error: function compiled to 65536 bytes which is too long` | the 10 923 ones, rc 0 |
+| jq-core `InlineCapTest`, `InlineCostKindsTest` | `def f: .; f,f,…`, 65 537 calls, on `null` | rc 3, `jq: error: function compiled to 524294 bytes which is too long` | 65 537 nulls, rc 0 |
 
 jq-ref compiles 10 921 commas (`depth/comma-10921`, matched) and rejects one more with its own bytecode limit: a
 function's code must fit 65 536 bytes. jqj compiles to an IR and an interpreter tree with no such limit, and a long
 chain is bounded at run time by the step budget instead (one tick per right branch, F-32; jq-core
-CommaChainTest pins chains of 10⁴ and 10⁵).
+CommaChainTest pins chains of 10⁴ and 10⁵). A chain of calls whose expansions would pass the inline cap makes the call
+that would pass it a PLAIN Call (ADR-0040 "Amendment (ticket #114)"), so it runs too; jq-ref 1.8.2 rejects the
+`InlineCostKindsTest` chains one call past the most that are inlined with the same limit (observed 2026-11-15, -nc -f):
+524294 bytes for the one-node bodies, 174766 for the three-node ones and 104862 for the five-node ones.
 
 ## Long path chains (F-42, F-44, issue #70)
 
@@ -241,10 +324,12 @@ test thread, and the ticks of the fused and balanced chains. ResolverTest pins t
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
 | jq-core `LongDefRunTest` | `def f0: 0; …; def f9992: 9992; [f0, f9992]`, 9 993 definitions, on `null` | rc 3, `jq: error: memory exhausted at <top-level>, line 1, column 167660` | `[0,9992]`, rc 0 |
+| `over-cap/flat-4097` (`deviation live-definitions`), jq-core `InlineDepthTest` | `def f1: .+1; def f2: f1; …; f4097`, on `null` | rc 3, `jq: error: too many function parameters or local function definitions (max 4095)` | `1`, rc 0 |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) prints `[0,9991]` for 9 992 such definitions and
 rejects one more, rc 3. jqj compiles past that count: `LongDefRunTest` pins 9 993 and 10⁵ definitions compiling
-and running on a 512 KiB stack.
+and running on a 512 KiB stack. jq-ref counts only live definitions, because it drops unreferenced ones. jqj has no
+limit: past 511 nested expansions, a call is PLAIN (ADR-0040 "Amendment (ticket #114)").
 
 ## Long operator runs (ADR-0043, issue #94)
 
@@ -255,6 +340,8 @@ and running on a 512 KiB stack.
 | jq-core `OperatorChainTest` | `.a and .a and …`, 20 000 terms, on `null` | rc 3, `jq: error: function compiled to 399985 bytes which is too long` | `false`, rc 0 |
 | jq-core `OperatorChainTest` | `.a or .a or …`, 20 000 terms, on `null` | rc 3, the same message | `false`, rc 0 |
 | jq-core `OperatorChainTest` | `.a == .a and .a == .a and …`, 20 000 terms, on `null` | rc 3, `jq: error: function compiled to 599985 bytes which is too long` | `true`, rc 0 |
+| jq-core `OperatorChainTest` | `def f: length + length + …`, 40 000 terms; `f`, on `null` | no result within `timeout 10` | `0`, rc 0 |
+| jq-core `OperatorChainTest` | `def f: [(length+length+length), …]`, 15 000 chains, then 13 000; `f`, on `null` | rc 3, `jq: error: function compiled to 405012 bytes which is too long`, and 351012 bytes for 13 000 | the array of 15 000 zeros, rc 0, f lifted; 13 000 compile with f inlined |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-nc -f`) runs 6 554 terms of `.a+` (6 553 after
 `{"a":1} |`, as `IrDepthTest` writes them), 3 277 of `.a and` or `.a or`, 2 185 of `.a == .a and` and 2 185 of `.a //`, and
@@ -271,16 +358,14 @@ jq-ref's limit on a 512 KiB stack in a fresh JVM under three JIT tiers, and `Ope
 
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
-| jq-core `IrDepthTest` | `def f1: [[…[.]…]]; def f2: [[…[f1]…]]; …`, 100 brackets each, 512 brackets around `.` in all: 513 levels, on `null` | 512 nested arrays around `null`, rc 0 | a Stub |
-| jq-core `IrDepthTest` | the same with 30 000 brackets: 30 001 levels | rc 0, printed 10 001 arrays deep and then `<skipped: too deep>` | a Stub |
-| jq-core `IrDepthTest` | `def g1: …; …; def g5: …;` as above, 500 brackets in all, then `def v1($a): g5; def v2($a): v1(.); …; v500(.)`: 500 nested expansions, each binding `$a` | 500 nested arrays around `null`, rc 0 | a Stub |
 | jq-core `IrDepthTest` | `.[.a:][.a:]…`, 2 000 steps, on `null` | `null`, rc 0 | a Stub |
 | jq-core `IrDepthTest` | `.[.a][.a]…`, 10 000 steps, on `null` | rc 5, `jq: error (at <unknown>): Cannot index null with null (null)` | a Stub |
 | jq-core `IrDepthTest` | `.a+.a-.a+…`, 400 terms, the operators alternating, on `null` | rc 5, `jq: error (at <unknown>): null (null) and null (null) cannot be subtracted` | a Stub |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) compiles every row and gives its result. jqj stubs a
-filter of more than `Resolver.MAX_IR_DEPTH` = 512 levels of built IR, the leaf counted, as it stubs the 512th nested
-expansion (ADR-0040 "Inline cap"). The depth is the whole IR's, measured once the lowering is done and wherever the
+filter of more than `Resolver.MAX_IR_DEPTH` = 512 levels of built IR, the leaf counted. A call is not stubbed: one
+whose expansion would pass the bound, or would be the 512th nested expansion, is a PLAIN call (ADR-0040 "Inline cap"
+and "Amendment (ticket #114)"), so the rows left are constructs other than calls. The depth is the whole IR's, measured once the lowering is done and wherever the
 Resolver built a node (ADR-0040 "What counts"): an Ast's own node, the Bind of each value parameter around an
 expansion's body, the Bind of a computed key or bound around the chain before it, and the Pipe trees of a chain. So
 the bound stubs a construct whose IR is as deep as it is wide, up to `Resolver.BIND_RUN` = 64 nested Binds: an
@@ -296,15 +381,15 @@ without values, 4 995 computed keys, 4 368 interpolations, 9 361 variables or ke
 3 276 variables, 4 095 value parameters, and the operator runs of "Long operator runs"; one more is rc 3 there) on a
 512 KiB stack in a fresh JVM, each with jq-ref's result. Nested constructs still stack: a construct under the bound
 is its nested Binds, and one past it a level or two (its Binds, then the value it sits in), so nested wide objects
-take a few levels each; so do nested definitions and nested value parameters, whose Stub stays, and a chain that
+take a few levels each; so do nested definitions and nested value parameters, until a call of them is PLAIN, and a chain that
 alternates operators, such as `.a+.a-.a+…`, which is runs of one operator each (ResolverTest, IrDepthTest). The
 Binder and the Resolver walk an operator chain by a loop (#86, #94), so a chain of any length past the bound is this
 Stub, not a StackOverflowError (jq-core `OperatorChainTest`: 20 000 alternating terms on a 512 KiB stack in a fresh
 JVM, 200 000 on a 16 MiB one). The parser's 512 nesting levels bound one body ("Parse
 depth"); definitions nest one body in another, so without the bound the IR, and the Resolver's recursion over it,
-would be as deep as the inline cap lets them. 30 001 levels overflowed a 512 KiB stack (ADR-0017's `stackBytes`).
-`IrDepthTest` pins 512 levels running and 513, 30 001 levels and the 500 nested expansions a Stub on a 512 KiB stack
-in a fresh JVM, also with C1 only, and every row a Stub on a 16 MiB stack. Spec 2b's calls revisit the bound.
+would be as deep as the inline cap lets them. `IrDepthTest` pins 512 levels, 513, 30 001 levels and the 500 nested
+expansions running (jq-ref's results, the deeper ones through PLAIN calls, #114) on a 512 KiB stack in a fresh JVM at
+three tiers, and every row above a Stub on a 16 MiB stack.
 
 ## Array length limit (ADR-0035, issue #64)
 
@@ -315,3 +400,102 @@ budget is unlimited, as on the command line. Reason: a JVM array holds no more e
 charges each element to the bytes-built budget before storing it (ADR-0035), so a collection that large exhausts any
 real budget first. A termination of its own would add a public cause for a case no run can reach. query-core's tests
 of `CollectOp.grown` pin jqj's side.
+
+## libm last digits (ADR-0051, spec 4)
+
+The 36 computed math builtins print jqj's own last digits, the same on every platform:
+`StrictMath` for `acos`, `asin`, `atan`, `atan2`, `cbrt`, `cos`, `cosh`, `exp`, `expm1`, `hypot`,
+`log`, `log10`, `log1p`, `pow`, `sin`, `sinh`, `tan` and `tanh`; definitions over `StrictMath` for
+`acosh`, `asinh`, `atanh`, `exp2`, `exp10` and `log2`; Arm's port for `erf`; published formulas, or
+the owner's answer on issue #105, for `erfc`, `gamma`, `lgamma`, `lgamma_r`, `tgamma`, `j0`, `j1`,
+`jn`, `y0`, `y1` and `yn`. jq-ref's digits are glibc's on its CPU and change with the CPU's
+features (F-65). Each function's row gives its measured bound in ulp over its recorded sample; the
+math tickets add the rows.
+
+| case | filter | input | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| none yet | `27\|cbrt` | `null` | `3.0000000000000004` | `StrictMath`'s digits, recorded by the computed-math ticket |
+| `test:` the bound test (named by its ticket) | each of the 36 over its recorded sample | — | glibc's digits | within the function's measured ulp bound |
+
+Reason: only jq-ref's own build on its own CPU gives jq-ref's digits. `Math`'s digits are not fixed
+across platforms, and glibc's code is LGPL. jq.test rounds every transcendental it checks
+(lines 847–857).
+
+## Zone abbreviations (ADR-0052, spec 4)
+
+`%Z` prints the JDK's English short name for the zone at that instant, or `±hh[mm]` where the JDK
+has only `GMT±hh:mm`. Offsets come from the JDK's tzdb (F-66). jq-ref prints tzdata's abbreviation
+from the system's zoneinfo. They differ in three ways:
+- LMT eras: the JDK never names one `LMT`;
+- zones whose tzdata abbreviation is not the JDK's English short name; the host-zone ticket lists
+  them by running jq-ref under each `TZ`;
+- the tzdata version: the JDK's tzdb (2026e on JDK 25.0.5) against jq-ref's zoneinfo, for offsets
+  as well as names.
+
+| case | filter | input | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| none yet | `strflocaltime("%Z %z")` on an instant of an LMT era (P4) | — | `LMT +0918` | the JDK's name for that offset, recorded by the host-zone ticket |
+
+An unknown `TZ` is UTC with an empty name (ADR-0052). If jqj does not mirror jq-ref's "unknown
+system failure" there, the host-zone ticket adds its row here.
+
+Reason: the JDK supplies offsets and English names, not tzdata's abbreviations (F-66). A TZif name
+reader would be a second zone source and can come later without rework (ADR-0052).
+
+## `modulemeta` on a module that does not parse (ADR-0017, F-81, spec 7)
+
+Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; jqj intended:
+
+| case | filter | input | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| none yet | `-L lib -nc modulemeta`, `lib/body.jq` holding `def x: 1; x` | `"body"` | stderr `jq: error: jq: error: library should only have function definitions, not a main expression`; stdout `null`, rc 0 | stdout `null`, stderr empty, rc 0 |
+
+A module with a syntax error behaves alike, but its case would compare rc and stdout only
+(ADR-0020).
+
+jq's block is not catchable: `try` does not see it. Reason: the engine writes to no stream of its
+own (ADR-0017), and a compile-error block in the middle of a run has no channel in the host SPI.
+
+## `$ENV` key order on the command line (ADR-0017, spec 7)
+
+Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, question 6). jq-ref 1.8.2 observed; jqj intended:
+
+| case | filter | environment | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| none yet | `-nc '$ENV \| keys_unsorted'` | exactly `B=2 A=1` (`env -i`) | `["B","A"]` (`environ`'s order) | `["A","B"]` |
+
+`env` gives the same object. Reason: the launcher passes `System.getenv()`, whose map has no
+order, so jq-cli sorts the environment by key. Differential cases print `$ENV.X`, `env.X` or
+`keys` only.
+
+## The jq origin on the command line (ADR-0013, ADR-0020, F-81, spec 7)
+
+Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; jqj intended:
+
+| case | how the program is started | jq 1.8.2 `get_jq_origin` | jqj |
+| --- | --- | --- | --- |
+| none yet | by its bare name, found on `PATH` | `"."` | the directory `PATH` found the launcher in |
+
+Started by its full path, as `./jqj` or as `bin/jqj`, jqj gives what jq gives: the launcher passes
+`$(dirname "$0")` unchanged. A script found on `PATH` gets its found path as `$0`, where a binary
+gets its bare name. jq's origin is `dirname(argv[0])`; jqj's is `Invocation.origin`, which the
+launcher sets to `$(dirname "$0")`. Reason: a shell launcher cannot see the bare name it was
+called by, and the found path keeps `$ORIGIN/../lib/jq` beside the program, not the caller.
+Differential cases print only `type` or a suffix of an origin.
+
+## `module not found` with `HOME` unset (ADR-0017, F-81, spec 7)
+
+Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, "Ticket approval (2026-11-14)"). jq-ref 1.8.2 observed; jqj
+intended:
+
+| case | filter | environment | jq 1.8.2 | jqj |
+| --- | --- | --- | --- | --- |
+| none yet | `-n 'import "q" as q; .'` | no `HOME` | `jq: error: module not found: q (Could not expand ~/.jq. (Could not find home directory.))`, rc 3 | `jq: error: module not found: q`, rc 3 |
+
+Reason: the loader SPI gives no reason for a miss (F-81), and a reason channel would widen the
+public SPI for one environment. The recorder always sets `HOME`, so the row is pinned by a `test:`
+method.
