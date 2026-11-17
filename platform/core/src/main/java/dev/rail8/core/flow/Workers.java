@@ -6,7 +6,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The node's started {@link FlowWorker}s by flow (D-121 (a), P2-16a): one registry per node, handed to the builder that builds
+ * The node's started {@link FlowWorker}s by flow: one registry per node, handed to the builder that builds
  * them ({@link FlowBuilder#workers}) and to the node's {@link Intake}. A worker registers at its {@link FlowWorker#start()} and
  * leaves at its {@link FlowWorker#stop()} — a worker started later for the same flow (a redeploy) takes the flow's place, and
  * the earlier one's stop leaves it there. The intake asks {@link #reserve} for a slot of the flow's worker before its insert,

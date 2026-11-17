@@ -1,7 +1,7 @@
 package dev.rail8.core.flow;
 
 /**
- * Work events between the nodes of one pool (D-121 (b), P2-16b): tells a node that rows of a flow wait there for a claim it would
+ * Work events between the nodes of one pool: tells a node that rows of a flow wait there for a claim it would
  * otherwise make only at its next reconciliation ({@link WorkerPolicy#pollInterval()}). Called only after the commit that made the
  * rows claimable is acknowledged, never inside a transaction. The node told wakes the flow's started worker ({@link Workers#wake});
  * a node never acts on what it sent itself. An event is a hint: a lost one costs one reconciliation, never a message.

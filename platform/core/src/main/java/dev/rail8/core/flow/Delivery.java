@@ -23,24 +23,24 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * A flow's consumer handler, per delivery mode (ARCHITECTURE §4 lifecycle table, D-049): what a consumer calls with the
+ * A flow's consumer handler, per delivery mode: what a consumer calls with the
  * ingress envelope and answers its sender by. Every mode first asks the flow's {@link Admission} for the message's request
  * and bytes; without room the answer is a retryable {@link Ack.Nack} before anything runs.
  * <ul>
  * <li><b>sync</b>: the pipeline runs on the caller's (virtual) thread; its result is the {@link Ack.Reply}, its failure fails
  * the returned future with the step's exception as thrown, a checked one included — the consumer maps it (by
  * {@link dev.rail8.api.Fault.Kind}). The answer is returned as soon as the pipeline has returned or thrown; the permit is
- * released once the run's {@link Trail} closed (D-064, F-10). Only the stop deadline's own interrupt is cleared on the
+ * released once the run's {@link Trail} closed. Only the stop deadline's own interrupt is cleared on the
  * caller's thread; any other {@link InterruptedException} fails the future with it and leaves the flag as the pipeline left
- * it — the delivery never sets a cleared flag again: steps and stages restore it before rethrowing, and the caller, whose
- * thread may be reused, sees it on its next blocking call (D-098).</li>
- * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2), and it is one call to the flow's
- * {@link Intake} (D-082): the ingress body made durable, the ingress snapshot with its payload recorded — whatever the
+ * it. The delivery never sets a cleared flag again: steps and stages restore it before rethrowing, and the caller, whose
+ * thread may be reused, sees it on its next blocking call.</li>
+ * <li><b>at-least-once</b>: the durable save is this handler's, never a stage, and it is one call to the flow's
+ * {@link Intake}: the ingress body made durable, the ingress snapshot with its payload recorded — whatever the
  * flow's recording level — and the message queued for its worker under its partition key; only when the intake's save
  * succeeded is the answer {@link Ack.Accepted}, naming the id the save answered — an earlier message's when the arrival's
- * dedupe key (D-084, the prop its component names, read on the envelope as it arrived; no value or {@code ""} is no key, one
+ * dedupe key (the prop its component names, read on the envelope as it arrived; no value or {@code ""} is no key, one
  * that cannot be read a retryable Nack with nothing saved) was taken by it, logged once at INFO. The partition key
- * (D-075, {@code partitionBy}) is evaluated first, inside the save's window, on the envelope as it arrived: no value or
+ * ({@code partitionBy}) is evaluated first, inside the save's window, on the envelope as it arrived: no value or
  * {@code ""} is no key; one over {@value #MAX_PARTITION_KEY_CHARS} characters is a final Nack; a {@link Fault} of kind
  * MALFORMED or INVALID saves the message without a key (its run parks it); any other failure is a retryable Nack — and
  * after either Nack nothing is saved. A save not done within the
@@ -57,8 +57,8 @@ import java.util.function.Function;
  * are buffered — the step whose snapshot crosses that line waits for that flush, and so does a sync answer behind it — and
  * when it ended. Otherwise the answer waits for no persist: the end-of-run persists and rows are awaited only by the permit
  * release (and, for at-most-once, the landing).
- * {@link #stop(Duration)} (D-056) refuses new deliveries, lets those in flight — from the permit until the permit is released —
- * finish until its deadline on the injected {@link Timer}, then cancels them. {@link #close()} (FIX-30) closes the producers
+ * {@link #stop(Duration)} refuses new deliveries, lets those in flight (from the permit until the permit is released)
+ * finish until its deadline on the injected {@link Timer}, then cancels them. {@link #close()} closes the producers
  * the builder created for its pipeline once that stop has completed.
  * Built by {@link FlowBuilder#delivery}; it holds only what the builder handed it, never the {@code Runtime}.
  *
@@ -68,7 +68,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
     private static final System.Logger LOG = System.getLogger(Delivery.class.getName());
 
-    /** The longest partition key an at-least-once delivery enqueues (D-075); a longer one is a final Nack. */
+    /** The longest partition key an at-least-once delivery enqueues; a longer one is a final Nack. */
     static final int MAX_PARTITION_KEY_CHARS = 256;
 
     /** What a mode does with an admitted message. */
@@ -83,7 +83,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         Future<Ack> deliver(Envelope e, Flight flight);
     }
 
-    /** One delivery between its permit and its release (D-056): what {@link #stop} waits for and its deadline cancels. */
+    /** One delivery between its permit and its release: what {@link #stop} waits for and its deadline cancels. */
     private final class Flight {
         private final Admission.Permit permit;
         private final String flow;
@@ -253,14 +253,14 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
     /**
      * At-least-once: {@code intake} saves the envelope as it arrived, with the snapshot {@code ingress} gives (payload kept), for
-     * {@code flow} (D-082); {@code timer} bounds the whole save by {@code saveTimeout} and runs the stop's deadline. The item's
+     * {@code flow}; {@code timer} bounds the whole save by {@code saveTimeout} and runs the stop's deadline. The item's
      * partition key is what {@code partitionKey} gives the envelope as it arrived, on the caller's thread, once the save timeout
-     * was scheduled and before the save is asked (D-075, superseding D-049 b): the flow's {@code partitionBy} extractKey
+     * was scheduled and before the save is asked: the flow's {@code partitionBy} extractKey
      * expression, compiled at build time. The save's dedupe key is what {@code dedupeKey} gives that envelope, read just before
-     * the save is asked — no value or {@code ""} is none (D-084), a failure to read it (a prop of its name but another type) a
-     * retryable Nack with nothing saved — and the Accepted names the id the save answers. The save's
+     * the save is asked (no value or {@code ""} is none, a failure to read it (a prop of its name but another type) a
+     * retryable Nack with nothing saved), and the Accepted names the id the save answers. The save's
      * {@code abandoned} is the answer's future, complete once the answer is decided — by the save timeout or the stop's deadline; its
-     * {@code keepInput} is {@code keepInput}, the flow's {@code RecordingPolicy.keepsBody()} (D-105).
+     * {@code keepInput} is {@code keepInput}, the flow's {@code RecordingPolicy.keepsBody()}.
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
                                 Function<Envelope, Optional<String>> dedupeKey, Intake intake, boolean keepInput, Timer timer, Duration saveTimeout) {
@@ -290,7 +290,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                     return answer.future();
                 }
                 answer.future().onComplete(decided -> timeout.cancel());   // whatever decided it: the save, the key, the stop's deadline
-                // the partition key first, inside the save's window, on the envelope as it arrived (D-075)
+                // the partition key first, inside the save's window, on the envelope as it arrived
                 String key;
                 try {
                     key = partitionKey.apply(e).filter(k -> !k.isEmpty()).orElse(null);
@@ -306,7 +306,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                             + " characters (D-075)", false));
                     return answer.future();
                 }
-                // the component's dedupe prop as it arrived (D-084): no value or "" is no key
+                // the component's dedupe prop as it arrived: no value or "" is no key
                 String dedupe;
                 try {
                     dedupe = dedupeKey.apply(e).filter(k -> !k.isEmpty()).orElse(null);
@@ -314,7 +314,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                     answer.tryComplete(retryable(failure));
                     return answer.future();
                 }
-                // the one save (D-082); a save still running once the answer is decided finds itself abandoned and queues nothing
+                // the one save; a save still running once the answer is decided finds itself abandoned and queues nothing
                 Future<String> saved;
                 try {
                     saved = intake.save(e, ingress.apply(e), flow, key, dedupe, keepInput, answer.future());
@@ -363,14 +363,14 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
-     * Stops the flow's deliveries (D-056): from this call on {@link #apply} answers a retryable Nack before admission; the
+     * Stops the flow's deliveries: from this call on {@link #apply} answers a retryable Nack before admission; the
      * deliveries in flight finish as usual until {@code deadline} on the injected timer, then are cancelled — a sync or
      * at-most-once run's thread is interrupted (a sync failure after that answers a retryable Nack "cancelled: ..." whatever
      * its kind, a reply still returned is kept), a pending at-least-once answer becomes that Nack (its save is abandoned
      * from then on). A zero deadline cancels at once. A sync or at-most-once flight stays in flight until its run's {@link Trail}
      * closed, and the deadline does not cancel that close: a flight whose trail is still closing at the deadline (its run
      * ended before it, or was interrupted by it) is left to close, and stop completes only after that close ends — a close
-     * that never ends holds the stop open, with no bound yet (FIX-49). The future completes when nothing is in flight any
+     * that never ends holds the stop open, with no bound yet. The future completes when nothing is in flight any
      * more — at once when nothing is — and the deadline's timer is cancelled then. A second call returns the same future,
      * whatever its deadline.
      *
@@ -396,7 +396,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
-     * Closes the producers the builder created for this delivery's pipeline (FIX-30) once its {@link #stop} has completed — no
+     * Closes the producers the builder created for this delivery's pipeline once its {@link #stop} has completed — no
      * run of the pipeline is left to send through them then — each once: every call waits for the stop and then for the one
      * close of the producers the first call started, so a later call returns a new future over that same close. A producer whose
      * close fails is logged at WARNING and the others close all the same; the future completes, never fails, once every
@@ -428,7 +428,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         for (Flight f : inFlight) if (f.answer != null) f.answer.tryComplete(cancelled(f.flow, after));
     }
 
-    /** The key's expression could not read the body or the body breaks a rule: the message is saved without a key (D-075). */
+    /** The key's expression could not read the body or the body breaks a rule: the message is saved without a key. */
     private static boolean unreadable(Throwable failure) {
         return failure instanceof Fault f && (f.kind() == Fault.Kind.MALFORMED || f.kind() == Fault.Kind.INVALID);
     }

@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The flow's retry policy for steps marked {@code retryable} (schema v1 {@code retry}, D-040): up to
+ * The flow's retry policy for steps marked {@code retryable} (the flow file's {@code retry}): up to
  * {@code attempts} retries after the first try, exponential backoff from {@code initial} by
  * {@code multiplier}, capped at {@code max}. {@link #NONE} means a failure surfaces at once.
  *

@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 /**
- * A thin fork / join / cancel scope over plain virtual threads (ARCHITECTURE §4): one per in-flight
+ * A thin fork / join / cancel scope over plain virtual threads: one per in-flight
  * message, owned by the message's virtual thread; a timeout or a cancel stops all of its children.
  * To be swapped for {@code StructuredTaskScope} when that leaves preview.
  *

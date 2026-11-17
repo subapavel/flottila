@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 
 /**
- * Content-based router (ARCHITECTURE §4): the first branch whose predicate matches sets {@code prop} to its
+ * Content-based router: the first branch whose predicate matches sets {@code prop} to its
  * value, else {@code otherwise} does; with no match and no {@code otherwise} the message fails — never dropped
  * silently. The decision travels as a prop; a later {@code to … byProp} step acts on it.
  *

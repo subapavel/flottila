@@ -11,9 +11,9 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * Splitter (ARCHITECTURE §4): the parent's body is cut into parts by {@code parts}, every part becomes a child
- * message with its own id — {@code <parent id>.<index>}, the index from 0, so a rerun of the parent (after a takeover, on
- * another node) mints the same child ids and a partner deduping on the message id sees the same key again (D-101 (3)) —
+ * Splitter: the parent's body is cut into parts by {@code parts}, every part becomes a child
+ * message with its own id ({@code <parent id>.<index>}, the index from 0, so a rerun of the parent after a takeover on
+ * another node mints the same child ids and a partner deduping on the message id sees the same key again),
  * the parent's headers, keys and attachments, and the props
  * {@link #PARENT_ID}, {@link #SPLIT_INDEX} and {@link #SPLIT_TOTAL}; each child runs the rest of the pipeline in
  * order, on the parent's thread, and the parent is handed back. A child is the next step of its parent. The

@@ -12,17 +12,17 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * What every {@link WorkSignals} of a node does with its events (D-121 (b) B1–B3), whatever carries them: the payloads it sends
+ * What every {@link WorkSignals} of a node does with its events, whatever carries them: the payloads it sends
  * and how they are paced, and what a payload received wakes. A payload is {@code w1 <sender> <target|*> <flow|*>}, one blank
  * between the fields ({@code *}: every node but the sender, every flow).
  *
- * <p>Sending (B3): the first announce of a {@value #WINDOW_MILLIS} ms window is sent at once (the leading edge) and opens the
+ * <p>Sending: the first announce of a {@value #WINDOW_MILLIS} ms window is sent at once (the leading edge) and opens the
  * window on the timer; the announces later in the window are kept, each distinct payload once, and sent together as one send at
  * its end — more than {@value #FOLD_CAP} of them as the one payload {@code w1 <sender> * *} — which opens the next window; a window
  * that ends with nothing kept closes, and the next announce is a leading edge again. So at most one send leaves per window after
  * the first. What a send does with a failure is the sender's: it is never sent again.
  *
- * <p>Receiving (B1): a payload of this node's own sender wakes nothing (Postgres delivers a node's NOTIFY to its own LISTEN), nor
+ * <p>Receiving: a payload of this node's own sender wakes nothing (Postgres delivers a node's NOTIFY to its own LISTEN), nor
  * one for another node; one for this node or {@code *} wakes the flow's started worker ({@link Workers#wake}), flow {@code *} every
  * started worker ({@link Workers#wakeAll}). A payload not of the {@code w1} form wakes nothing; {@link #receive} answers its prefix
  * — the text before its first blank — the first time that prefix is seen, for one WARNING per distinct prefix, at most
@@ -36,7 +36,7 @@ public final class WorkEvents {
     public static final String FORM = "w1";
     /** Every node but the sender, every flow. */
     public static final String ALL = "*";
-    /** The window's length in milliseconds (B7: a constant, no env key until P2-16c). */
+    /** The window's length in milliseconds; a constant, not configurable. */
     public static final long WINDOW_MILLIS = 50;
     /** The window a leading edge opens. */
     public static final Duration WINDOW = Duration.ofMillis(WINDOW_MILLIS);
