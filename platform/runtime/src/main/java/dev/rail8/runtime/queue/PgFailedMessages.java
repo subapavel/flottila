@@ -37,6 +37,12 @@ import java.util.OptionalInt;
  * instant, the partition key, the body's hash ({@code <algorithm>:<hex>}) and size, the reason when given, the remote address,
  * the failure's text cut to {@link #ERROR_MAX} and whether it was cut ({@code errorCut}).
  *
+ * <p>An end of a message that is not parked marks its oldest work row: the flow read off the message's arrival record (its
+ * {@code messages} row at step 0), then that row of the flow locked; the audit row is written and the row marked with it
+ * ({@code work.cancel_audit}, a waiting row made due now) in one statement. Its audit detail: the flow, the step, the partition
+ * key, the row's seq, the reason when given and the remote address. The node holding the row's live lease ({@code locked_by},
+ * a worker's id being its node's) is the one {@link Stopping} names.
+ *
  * @since 0.1
  */
 public final class PgFailedMessages implements FailedMessages {
@@ -78,6 +84,26 @@ public final class PgFailedMessages implements FailedMessages {
                     returning seq, body_node)
             select (select count(*) from ins), (select seq from ins), (select body_node from ins),
                    exists (select 1 from body_refs where message_id = $1::text and step = 0 and part = 'body' and lost_at is not null)""";
+
+    /**
+     * Message $1's oldest work row of the flow its arrival record names, locked: whether it is held (a stopped row is held too) or
+     * lost, the cancel it is marked with, and its holder when its lease is live.
+     */
+    private static final String OLDEST_ROW = "select seq, flow, step, partition_key, held_at is not null as held, lost_at is not null as lost, cancel_audit,"
+            + " case when locked_until > now() then locked_by end as holder"
+            + " from work where flow = (select flow from messages where id = $1 and step = 0 limit 1) and id = $1 order by seq limit 1 for update";
+
+    /**
+     * The end audited and row $4 marked with it in one statement, a waiting row made due now: actor $2, detail $3, subject
+     * {@code message/<id>}. Answers the audit row's id and instant.
+     */
+    private static final String MARK = "with a as (insert into audit(at, actor, action, subject, detail)"
+            + " values (now(), $2, 'message.cancel', 'message/' || $1::text, $3::jsonb) returning id, at),"
+            + " m as (update work set cancel_audit = (select id from a), available_at = least(available_at, now()) where seq = $4 returning seq)"
+            + " select a.id, a.at, (select count(*) from m) from a";
+
+    /** The audit row $1 of the cancel a row is marked with already. */
+    private static final String FIRST = "select at, actor, detail->>'reason' as reason from audit where id = $1";
 
     /** The stopped rows among $1 deleted. */
     private static final String DELETE_STOPPED = "delete from work where seq = any($1::bigint[]) and stopped_at is not null";
@@ -160,6 +186,51 @@ public final class PgFailedMessages implements FailedMessages {
                     .compose(rows -> rows.rowCount() == 0 ? Future.<Act>succeededFuture(NotParked.INSTANCE)
                             : cancel(tx, PgDlq.parked(rows.iterator().next()), by, given));
         }));
+    }
+
+    /** A parked message cancelled as {@link #cancel} does; any other has its oldest work row marked. */
+    @Override
+    public Future<Act> end(String messageId, Actor by, Optional<String> reason) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(by, "by");
+        Optional<String> given = FailedMessages.reason(reason);
+        return PgTx.inTransaction(pool, tx -> tx.preparedQuery(KEY_OF).execute(Tuple.of(messageId)).compose(keyOf -> {
+            if (keyOf.rowCount() == 0) return mark(tx, messageId, by, given);
+            Row k = keyOf.iterator().next();
+            return locked(tx, k.getString("flow"), k.getString("partition_key"))
+                    .compose(held -> tx.preparedQuery(PARKED).execute(Tuple.of(messageId)))
+                    .compose(rows -> rows.rowCount() == 0 ? mark(tx, messageId, by, given) : cancel(tx, PgDlq.parked(rows.iterator().next()), by, given));
+        }));
+    }
+
+    /**
+     * The end of message {@code messageId} that is not parked: {@link NotParked} without a work row, {@link Unsettled} for a held or
+     * lost one; else its row marked and audited, or for a row marked already its first cancel answered.
+     */
+    private Future<Act> mark(SqlConnection tx, String messageId, Actor by, Optional<String> reason) {
+        return tx.preparedQuery(OLDEST_ROW).execute(Tuple.of(messageId)).compose(rows -> {
+            if (rows.rowCount() == 0) return Future.<Act>succeededFuture(NotParked.INSTANCE);
+            Row w = rows.iterator().next();
+            long seq = w.getLong("seq");
+            if (w.getBoolean("held") || w.getBoolean("lost")) return Future.<Act>succeededFuture(new Unsettled(seq));
+            String flow = w.getString("flow");
+            Optional<String> node = Optional.ofNullable(w.getString("holder"));
+            Long first = w.getLong("cancel_audit");
+            if (first != null) {
+                return tx.preparedQuery(FIRST).execute(Tuple.of(first)).map(audit -> {
+                    Row a = audit.iterator().next();
+                    return new Stopping(new Event(first, a.getOffsetDateTime("at").toInstant(), messageId, flow, a.getString("actor"), Kind.CANCEL,
+                            OptionalInt.empty(), Optional.ofNullable(a.getString("reason")), Optional.empty()), node);
+                });
+            }
+            JsonObject detail = new JsonObject().put("flow", flow).put("step", w.getInteger("step")).put("partitionKey", w.getString("partition_key"))
+                    .put("seq", seq).put("reason", reason.orElse(null)).put("remote", by.remote());
+            return tx.preparedQuery(MARK).execute(Tuple.of(messageId, by.name(), detail, seq)).map(marked -> {
+                Row a = marked.iterator().next();
+                return new Stopping(new Event(a.getLong("id"), a.getOffsetDateTime("at").toInstant(), messageId, flow, by.name(), Kind.CANCEL,
+                        OptionalInt.empty(), reason, Optional.empty()), node);
+            });
+        });
     }
 
     /** The cancel of {@code parked}, its DLQ row locked: refused beside a work row that is not stopped, else its stopped rows deleted. */

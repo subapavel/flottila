@@ -8,8 +8,8 @@ import java.util.Optional;
 
 /**
  * {@link FailedMessages} over an {@link InMemoryWorkQueue} and the DLQ it parks in: the same rules as the Postgres one, each act
- * one step under the queue's monitor. Its events are counted from 1 and kept nowhere; a {@link FailedMessages.Done} names no node,
- * as this queue holds no bodies. Tests and dry runs only.
+ * one step under the queue's monitor. Its events are counted from 1 and kept nowhere but on a marked row; a
+ * {@link FailedMessages.Done} names no node, as this queue holds no bodies. Tests and dry runs only.
  *
  * @since 0.1
  */
@@ -29,5 +29,10 @@ public final class InMemoryFailedMessages implements FailedMessages {
     @Override
     public Future<Act> cancel(String messageId, Actor by, Optional<String> reason) {
         return Future.succeededFuture(queue.cancel(messageId, by, reason));
+    }
+
+    @Override
+    public Future<Act> end(String messageId, Actor by, Optional<String> reason) {
+        return Future.succeededFuture(queue.end(messageId, by, reason));
     }
 }

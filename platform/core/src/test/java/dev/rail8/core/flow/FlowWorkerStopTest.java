@@ -105,8 +105,9 @@ class FlowWorkerStopTest {
     }
 
     static FlowDefinition keyed() {
+        // one in flight: the items run in their order, so the partner's one failure is c1's first send, never c2's
         Map<String, Object> doc = FlowWorkerRetryTest.flow(FlowWorkerRetryTest.retries(0, "1m"), List.of(
-                Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), TO_PARTNER));
+                Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), TO_PARTNER), 1);
         doc.put("partitionBy", "customer");
         return FlowDefinition.from(doc);
     }

@@ -346,13 +346,23 @@ class FlowBuilderSendDeadlineTest {
     @Test
     void aSendPastTheMessageDeadlineIsNotStarted() throws Exception {
         World w = new World(16);
-        FlowBuilder b = w.builder(new ClockFence(w.rt.clock(), T0.plusSeconds(600)));
-        // not retryable: a retryable to would wait out the flow's 1 s backoff on the fake timer before failing again (Retry does
-        // not read the deadline, D-100 "nothing cancels at the deadline yet"); the case is the send's own refusal
+        ClockFence fence = new ClockFence(w.rt.clock(), T0.plusSeconds(600));
+        FlowBuilder b = w.builder(fence);
         Map<String, Object> once = Map.of("type", "to", "name", "partner", "endpoint", "partner");
-        Pipeline late = b.build(flow("sync", "500ms", List.of(TICK, once)), NO_FILES);   // the step before takes all of its 500 ms
+        FlowDefinition def = flow("sync", "500ms", List.of(TICK, once));   // the step before takes all of its 500 ms
 
-        Throwable failure = FlowBuilderTargetTest.failureOf(FlowBuilderTargetTest.run(late, w.message()));
+        // the run's time limit fires as the step before takes the last of its time: the send's step does not start
+        Throwable failure = FlowBuilderTargetTest.failureOf(FlowBuilderTargetTest.run(b.build(def, NO_FILES), w.message()));
+        RunStoppedException stopped = assertInstanceOf(RunStoppedException.class, failure, "past the deadline the run is stopped: " + failure);
+        assertEquals(new Runs.TimeLimit(Duration.ofMillis(500)), stopped.why());
+        assertEquals(List.of(), w.partner.calls, "send(e, d) never called with no time left");
+        assertEquals(List.of(), w.partner.plainCalls, "nor send(e)");
+        assertEquals(0, w.limit().gauge().inFlight(), "no permit kept");
+
+        // a time limit whose timer has not fired yet: the send itself refuses a deadline already passed, the producer not called
+        Timer late = (delay, task) -> () -> true;
+        Pipeline unstopped = w.builder(fence).runs(new Runs(w.rt.clock(), late, LEASE)).build(def, NO_FILES);
+        failure = FlowBuilderTargetTest.failureOf(FlowBuilderTargetTest.run(unstopped, w.message()));
         NackException nack = assertInstanceOf(NackException.class, failure, "past the deadline the send fails with a Nack: " + failure);
         assertTrue(nack.retryable(), "retryable: a rerun gets fresh time: " + nack);
         assertTrue(nack.reason().contains("deadline passed"), nack.reason());
@@ -387,7 +397,8 @@ class FlowBuilderSendDeadlineTest {
         Ack ack = answered.get(5, SECONDS).await(5, SECONDS);
         assertInstanceOf(Ack.Reply.class, ack, "the sync run waited for its reply past the fence: " + ack);
 
-        // a worker fenced by a plain BooleanSupplier: the message's deadline only, and nothing abandons its send
+        // a worker fenced by a plain BooleanSupplier: the message's deadline only, and nothing abandons its send; at the deadline
+        // the run's time limit stops it, and the stopped run ends only once the send it started has settled
         World u = new World(16);
         FlowBuilder ub = u.builder(() -> true);
         FlowDefinition def = flow("at-least-once", "20s", List.of(PROBE, TO));
@@ -398,9 +409,15 @@ class FlowBuilderSendDeadlineTest {
         assertEquals(Duration.ofSeconds(20), held.remaining(), "the message's 20 s");
         u.to(Duration.ofSeconds(21));
         assertEquals(Duration.ofSeconds(-1), held.remaining(), "past the message's deadline: 1 s overdue, for the producer to cut");
+        until(() -> u.seen.size() == 1, () -> "the send's step stopped at the time limit: " + u.seen);
+        RunStoppedException stopped = assertInstanceOf(RunStoppedException.class, u.seen.get(0), "stopped, not abandoned at a fence: " + u.seen.get(0));
+        assertEquals(new Runs.TimeLimit(Duration.ofSeconds(20)), stopped.why());
+        assertEquals(List.of(), u.queue.deferCalls(), "the item is not settled while the send is out");
+        assertEquals(List.of(), u.queue.completeCalls());
         held.reply();
         assertEquals(1, round.await(10, SECONDS));
-        until(() -> u.queue.completes().size() == 1, () -> "the run waited for the reply and completed the item: " + u.queue.completeCalls() + ", seen " + u.seen);
-        assertEquals(List.of(), u.seen, "nothing abandoned");
+        until(() -> u.queue.deferCalls().size() == 1, () -> "the stopped attempt deferred once its send settled: " + u.queue.deferCalls());
+        assertEquals(List.of(), u.queue.completeCalls(), "a time limit is a failed attempt: not completed");
+        assertEquals(List.of(), u.dlqRows(), "nor parked");
     }
 }

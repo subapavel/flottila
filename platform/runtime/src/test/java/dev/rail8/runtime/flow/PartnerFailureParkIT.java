@@ -23,6 +23,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.blob.TieredBlobStore;
@@ -34,6 +35,7 @@ import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.Ports;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
@@ -289,7 +291,10 @@ class PartnerFailureParkIT {
             Runtime runtime = new Runtime(rt.clock(), recordingTimer(), rt.ids(), blobs, rt.hasher(), Map.of(http.scheme(), http));
             Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", partnerUri, Map.of("maxBodyBytes", 65_536L)));
             builder = new FlowBuilder(runtime, List.of(stamp()), List.of(), endpoints)
-                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool));
+                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool))
+                    // the runs' time limits on a timer of their own over the same clock: the recorded timer holds the retries'
+                    // waits, the lease's renewals and the save deadline only
+                    .runs(new Runs(rt.clock(), new FakeTimer(rt.clock()), LEASE));
             worker = builder.retries(new dev.rail8.core.flow.RetryPolicy(0, Duration.ofHours(1), Duration.ofHours(1), 1.0))   // CORE-14a (P6): count 0, the run's failure parks at once
                     .worker(def, NO_FILES, "w-1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
             workers.add(worker);

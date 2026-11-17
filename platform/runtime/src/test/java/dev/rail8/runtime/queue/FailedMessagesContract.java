@@ -7,6 +7,7 @@ import dev.rail8.core.dlq.FailedMessages.Done;
 import dev.rail8.core.dlq.FailedMessages.Event;
 import dev.rail8.core.dlq.FailedMessages.Kind;
 import dev.rail8.core.dlq.FailedMessages.NotParked;
+import dev.rail8.core.dlq.FailedMessages.Stopping;
 import dev.rail8.core.dlq.FailedMessages.Unsettled;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
@@ -35,6 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * behind it; a cancel deletes it, so the key's next row runs: either way the key keeps its order. A parked message without a work
  * row (an unordered one) is retried at the tail of its key and cancelled by its DLQ row alone. An act beside a work row of the
  * message that is not stopped is refused as unsettled, one without a matching DLQ row as not parked; neither writes anything.
+ * An end of a message that is not parked marks its work row with the cancel: the row's hand-outs and its holder's renewals carry
+ * the mark, it is never held or stopped, and a deferred one is due at once.
  * Run by {@code InMemoryFailedMessagesContractTest} and {@code PgFailedMessagesContractIT}.
  */
 @Timeout(60)
@@ -58,6 +61,12 @@ public abstract class FailedMessagesContract {
 
     /** Every live lease of the queue runs out now. */
     protected abstract void expireLeases();
+
+    /**
+     * {@code messageId} arrived in flow t: Postgres, its arrival record (its {@code messages} row at step 0), off which an end reads
+     * its flow; the in-memory queue reads the flow off its rows: nothing.
+     */
+    protected abstract void arrived(String messageId);
 
     protected WorkQueue queue;
 
@@ -87,6 +96,17 @@ public abstract class FailedMessagesContract {
     void parkedOnly(String id, int attempt, String key) {
         kept(id);
         await(dlq().park(ParkedRows.byTheWorker(id, "t", attempt, Optional.ofNullable(key))));
+    }
+
+    /** {@code id} queued in flow t under {@code key} (null: none), its body kept and its arrival recorded. */
+    void queued(String id, String key) {
+        await(queue.enqueue(id, "t", 1, key));
+        kept(id);
+        arrived(id);
+    }
+
+    static Stopping stopping(FailedMessages.Act act) {
+        return assertInstanceOf(Stopping.class, act, "the end marked the row");
     }
 
     WorkQueue.Item claimedOne(String workerId) {
@@ -298,5 +318,97 @@ public abstract class FailedMessagesContract {
         WorkQueue.Item retried = claimedOne(NODE);
         assertNull(retried.partitionKey(), "one row of r1 in flow t, the retry's");
         assertEquals(List.of(), claimable(), "and no other");
+    }
+
+    /**
+     * An end of a queued message marks its row with one cancel event and names no node: no one holds the row. The row's next
+     * hand-out carries the mark; a second end answers the first cancel's event and changes nothing. A bad reason is refused at the
+     * call.
+     */
+    @Test
+    void anEndMarksAQueuedRowWhoseHandOutCarriesTheMark() {
+        queued("q1", null);
+        assertThrows(IllegalArgumentException.class, () -> failed().end("q1", BY, Optional.of("   ")), "a blank reason");
+
+        Stopping first = stopping(await(failed().end("q1", BY, Optional.of("  wrong order  "))));
+        assertEquals(List.of("q1", "t", "ops", Kind.CANCEL, OptionalInt.empty(), Optional.of("wrong order"), Optional.empty()),
+                facts(first.event()), "one cancel event, its reason stripped");
+        assertEquals(Optional.empty(), first.node(), "no one holds the row");
+        assertEquals(first, await(failed().end("q1", new FailedMessages.Actor("bob", "127.0.0.2"), Optional.of("again"))),
+                "a second end answers the first cancel");
+
+        WorkQueue.Item q1 = claimedOne(NODE);
+        assertEquals(Optional.of(new WorkQueue.Cancel(first.event().id(), "ops", Optional.of("wrong order"))), q1.cancel(),
+                "its hand-out carries the mark");
+    }
+
+    /**
+     * An end of a running message names the node holding its lease, which learns of the mark at its next renewal. The marked row is
+     * never held or stopped; deferred, it is due at once and still marked. Once its run completed it, nothing is left to end.
+     */
+    @Test
+    void anEndOfARunningMessageNamesItsHolderWhoLearnsOfItAtItsRenewal() {
+        queued("r1", "K");
+        WorkQueue.Item r1 = claimedOne(NODE);
+        assertEquals(WorkQueue.Renewal.RENEWED, await(queue.renewRow(r1.seq(), r1.attempts(), LEASE)), "not marked yet");
+
+        Stopping s = stopping(await(failed().end("r1", BY, Optional.empty())));
+        assertEquals(Optional.of(NODE), s.node(), "the node holding its lease stops the run");
+        WorkQueue.Cancel mark = new WorkQueue.Cancel(s.event().id(), "ops", Optional.empty());
+        assertEquals(new WorkQueue.Renewal(true, Optional.of(mark)), await(queue.renewRow(r1.seq(), r1.attempts(), LEASE)),
+                "its holder's renewal tells the mark");
+        assertFalse(await(queue.hold(r1.seq(), r1.attempts())), "a marked row is never held");
+        assertFalse(await(queue.stop(r1.seq(), r1.attempts(), ParkedRows.byTheWorker("r1", "t", r1.attempts(), Optional.of("K")))), "nor stopped");
+        assertEquals(Optional.empty(), await(dlq().get("r1")), "nothing parked");
+
+        assertTrue(await(queue.defer(r1.seq(), r1.attempts(), Duration.ofHours(1))), "deferred by its holder");
+        WorkQueue.Item again = claimedOne("n2");
+        assertEquals(List.of(r1.seq(), Optional.of(mark)), List.of(again.seq(), again.cancel()), "due at once, still marked");
+        assertEquals(WorkQueue.Renewal.LOST, await(queue.renewRow(r1.seq(), r1.attempts(), LEASE)), "the first hand-out holds it no more");
+        assertTrue(await(queue.complete(again.seq(), again.attempts())), "its run ends it");
+        assertSame(NotParked.INSTANCE, await(failed().end("r1", BY, Optional.empty())), "nothing is left to end");
+    }
+
+    /** An end of a message waiting for its retry makes its row due now; a holder whose lease ran out is named by no end. */
+    @Test
+    void anEndOfAWaitingMessageMakesItsRowDueNow() {
+        queued("w1", null);
+        WorkQueue.Item w1 = claimedOne(NODE);
+        assertTrue(await(queue.defer(w1.seq(), w1.attempts(), Duration.ofHours(1))), "fixture: w1 waits an hour");
+        queued("e1", null);
+        claimedOne(NODE);
+        expireLeases();
+
+        assertEquals(Optional.empty(), stopping(await(failed().end("e1", BY, Optional.empty()))).node(), "e1's lease ran out: no node");
+        Stopping s = stopping(await(failed().end("w1", BY, Optional.empty())));
+        assertEquals(Optional.empty(), s.node(), "no one holds a waiting row");
+        List<WorkQueue.Item> taken = await(queue.claim("n2", "t", 10, LEASE));
+        assertEquals(List.of("w1", "e1"), taken.stream().map(WorkQueue.Item::messageId).toList(), "both handed out now, in seq order");
+        assertEquals(Optional.of(new WorkQueue.Cancel(s.event().id(), "ops", Optional.empty())), taken.get(0).cancel(), "w1 marked");
+    }
+
+    /**
+     * An end beside a held row is unsettled and marks nothing; one of a stopped message cancels it as a cancel does; one of a
+     * message without a row is not parked.
+     */
+    @Test
+    void anEndOfAHeldRowIsUnsettledOfAStoppedOneACancelOfNoneNotParked() {
+        queued("h1", null);
+        WorkQueue.Item h1 = claimedOne(NODE);
+        assertTrue(await(queue.hold(h1.seq(), h1.attempts())), "fixture: h1 held");
+        assertEquals(new Unsettled(h1.seq()), await(failed().end("h1", BY, Optional.empty())), "a held row is not ended");
+        assertTrue(await(queue.release(h1.seq())), "fixture: h1 released");
+        assertEquals(Optional.empty(), claimedOne(NODE).cancel(), "nothing marked");
+
+        stopped("k1", "K");
+        arrived("k1");
+        await(queue.enqueue("k2", "t", 1, "K"));
+        Event cancelled = done(await(failed().end("k1", BY, Optional.of("sent by hand")))).event();
+        assertEquals(List.of("k1", "t", "ops", Kind.CANCEL, OptionalInt.empty(), Optional.of("sent by hand"), Optional.of("partner down (test)")),
+                facts(cancelled), "a parked message is cancelled");
+        assertEquals(Optional.empty(), await(dlq().get("k1")), "its DLQ row is gone");
+        assertEquals("k2", claimedOne("n2").messageId(), "the key's next row runs");
+
+        assertSame(NotParked.INSTANCE, await(failed().end("none", BY, Optional.empty())), "no row of it");
     }
 }

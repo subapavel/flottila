@@ -17,6 +17,7 @@ import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -241,6 +242,8 @@ class FlowWorkerFastPathTest {
      */
     static final class Line {
         final FakeRuntime rt = FakeRuntime.create();
+        /** The runs' time limits, on a timer of their own over the same clock: {@code rt.timer()} holds the worker's renewals and ticks only. */
+        final Runs runs = new Runs(rt.clock(), new FakeTimer(rt.clock()), WorkerPolicy.DEFAULT.lease());
         final ClosingPartner partner = new ClosingPartner();
         final InMemoryMessageStore store = new InMemoryMessageStore();
         final InMemoryDlq dlq = new InMemoryDlq();
@@ -267,7 +270,7 @@ class FlowWorkerFastPathTest {
             List<StepFactory> factories = new ArrayList<>(List.of(gate, outcome));
             factories.addAll(extra);
             return new FlowBuilder(rt.runtime(), factories, List.of(BuiltInStepsTest.HEADERS), endpoints)
-                    .recording(store, Meter.system()).queue(queue).dlq(dlq);
+                    .recording(store, Meter.system()).queue(queue).dlq(dlq).runs(runs);
         }
 
         /** At-least-once flow {@code orders} with {@code maxInFlight} (the worker's max) and these steps. */

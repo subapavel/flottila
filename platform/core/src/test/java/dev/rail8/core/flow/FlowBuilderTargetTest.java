@@ -19,6 +19,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.dlq.ParkedException;
 import dev.rail8.core.scope.MessageContext;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -146,13 +147,14 @@ class FlowBuilderTargetTest {
             "fast", endpoint("fast", "partner://fast:1/f"),
             "p", endpoint("p", "plain://x/p"));
 
+    /** The builder's runs, their time limits on a timer of their own over the clock: the Runtime's timer holds the maxWaits only. */
     FlowBuilder builder() {
         return new FlowBuilder(rt.withComponent(partner).withComponent(plain).runtime(),
                 List.of(factory("mark", s -> Stage.of(e -> e.withHeader("seen-" + s.name(), "yes"))),
                         factory("choose", s -> Stage.of(e -> e.with(new Key<>("partner"), "shared"))),
                         factory("tick", s -> Stage.of(e -> { rt.clock().advance(TICK); return e; })),
                         factory("hop", s -> FlowBuilderTargetTest.this::hop)),
-                List.of(), ENDPOINTS);
+                List.of(), ENDPOINTS).runs(new Runs(rt.clock(), new FakeTimer(rt.clock()), Duration.ofSeconds(30)));
     }
 
     /** What {@code tick} takes of the message's time: the clock moves on by this inside the step. */
@@ -240,6 +242,9 @@ class FlowBuilderTargetTest {
             return e.getCause();
         }
     }
+
+    /** Runs whose time limits never fire: a case about what a send itself waits, with no run's stop in the way. */
+    final Runs HELD_BACK = new Runs(rt.clock(), (delay, task) -> () -> true, Duration.ofSeconds(30));
 
     static NackException busy(Throwable failure) {
         NackException busy = assertInstanceOf(NackException.class, failure, "busy past maxWait is a NackException: " + failure);
@@ -526,7 +531,7 @@ class FlowBuilderTargetTest {
     @Test
     void aSyncSendToABusyTargetIsRefusedAtTheMessageDeadline() throws Exception {
         Targets targets = targets(rt, 1);
-        FlowBuilder b = builder().targets(targets);
+        FlowBuilder b = builder().targets(targets).runs(HELD_BACK);   // the target's own refusal at the deadline, not the run's stop
         Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
         Delivery sync = b.delivery(flow("deadline", "sync", "2s", List.of(Map.of("type", "tick", "name", "slow"), sendStep("b", false))), NO_FILES);
         partner.holdNext(1);
@@ -556,6 +561,37 @@ class FlowBuilderTargetTest {
     }
 
     /**
+     * A sync message waiting for a busy target when its run's time limit (2 s) passes: the run stops, its request for a permit
+     * leaves the target's queue, nothing of it reaches the partner, and its caller gets a retryable Nack that names the time
+     * limit; the holder's send goes on. The run's time limit is on the Runtime's timer, armed before the request's own bound at
+     * the same instant, so it fires first; that bound may still refuse the request before the stopped run withdraws it.
+     */
+    @Test
+    void aSyncSendWaitingForABusyTargetIsWithdrawnAtItsTimeLimit() throws Exception {
+        Targets targets = targets(rt, 1);
+        FlowBuilder b = builder().targets(targets).runs(new Runs(rt.clock(), rt.timer(), Duration.ofSeconds(30)));
+        Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
+        Delivery sync = b.delivery(flow("deadline", "sync", "2s", List.of(sendStep("b", false))), NO_FILES);
+        partner.holdNext(1);
+        CompletableFuture<Envelope> holding = run(holder, message("holder"));
+        until(() -> partner.inFlight.get() == 1, () -> "the holder's send is out: " + partner.sentIds());
+
+        Envelope in = message("deadline");
+        CompletableFuture<Future<Ack>> answered = DeliveryTest.applyOnVirtualThread(sync, in);
+        until(() -> targets.of(SHARED).gauge().waiting() == 1, () -> "the sync message waits for the target: " + targets.of(SHARED).gauge());
+        rt.clock().advance(Duration.ofSeconds(2));
+
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, answered.get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS), "the caller is answered");
+        assertTrue(nack.retryable(), "a rerun gets fresh time: " + nack);
+        assertTrue(nack.reason().endsWith("stopped: its time limit of PT2S passed"), nack.reason());
+        until(() -> targets.of(SHARED).gauge().waiting() == 0, () -> "the request left the queue: " + targets.of(SHARED).gauge());
+        assertFalse(partner.sentIds().contains(in.id()), "nothing of the stopped message was sent");
+        partner.releaseAll();
+        assertTrue(holding.get(5, TimeUnit.SECONDS).header("replied-by").isPresent(), "the holder's send went on");
+        until(() -> targets.of(SHARED).gauge().inFlight() == 0, () -> "no permit kept: " + targets.of(SHARED).gauge());
+    }
+
+    /**
      * A send that runs where no message context is bound — a step handed the rest of the pipeline to a plain thread of its own —
      * waits the target's maxWait (5 s), not the flow's 2 s: still waiting past the 2 s, refused at exactly 5 s with the maxWait
      * wording. The pipeline itself had its context bound (the hop saw it before handing over, and not after).
@@ -565,7 +601,8 @@ class FlowBuilderTargetTest {
         Targets targets = targets(rt, 1);
         FlowBuilder b = builder().targets(targets);
         Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
-        Pipeline hopping = b.build(flow("hopping", "sync", "2s", List.of(Map.of("type", "hop", "name", "fork"), sendStep("b", false))), NO_FILES);
+        // the run's time limit held back: what is tested is the hopped send's own wait
+        Pipeline hopping = b.runs(HELD_BACK).build(flow("hopping", "sync", "2s", List.of(Map.of("type", "hop", "name", "fork"), sendStep("b", false))), NO_FILES);
         partner.holdNext(1);
         CompletableFuture<Envelope> holding = run(holder, message("holder"));
         until(() -> partner.inFlight.get() == 1, () -> "the holder's send is out: " + partner.sentIds());

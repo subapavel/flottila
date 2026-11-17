@@ -5,6 +5,7 @@ import dev.rail8.api.Stage;
 import dev.rail8.api.Step;
 import dev.rail8.api.Timer;
 import dev.rail8.core.flow.RetryPolicy;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.core.node.FencedException;
 
 import java.util.ArrayList;
@@ -23,8 +24,9 @@ import java.util.concurrent.CountDownLatch;
  * as is, a refused connection's {@link java.net.ConnectException} among them), except an
  * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored and, on an attempt after
  * the first, the earlier attempts' failures suppressed on it in attempt order; and a {@link FencedException}: the
- * node's fence is closed, so no attempt may send, and it is thrown at once with the earlier failures suppressed. An
- * {@link Error} is not a transient failure and is never caught.
+ * node's fence is closed, so no attempt may send, and it is thrown at once with the earlier failures suppressed. A failure
+ * while the message's run is stopped ({@link Runs#why()}: its time limit passed or it was cancelled) is thrown at once too,
+ * with no pause and no further attempt. An {@link Error} is not a transient failure and is never caught.
  *
  * @since 0.1
  */
@@ -49,7 +51,8 @@ public final class Retry {
                         earlier.forEach(failure::addSuppressed);
                         throw failure;
                     }
-                    if (failure instanceof FencedException || attempt > policy.attempts() || !pause(policy.delayBefore(attempt), timer)) {
+                    if (failure instanceof FencedException || attempt > policy.attempts() || Runs.why().isPresent()
+                            || !pause(policy.delayBefore(attempt), timer)) {
                         earlier.forEach(failure::addSuppressed);
                         throw failure;
                     }

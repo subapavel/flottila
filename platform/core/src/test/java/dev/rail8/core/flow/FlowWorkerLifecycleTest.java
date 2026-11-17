@@ -101,7 +101,7 @@ class FlowWorkerLifecycleTest {
     void aWorkerNeedsADlqToParkAnItemPastTheBound() {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder noDlq = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
-                .recording(w.store, Meter.system()).queue(w.queue);
+                .recording(w.store, Meter.system()).queue(w.queue).runs(w.runs);
         String refused = assertThrows(IllegalStateException.class, () -> policy(LEASE, 5).worker(noDlq, def, "w1")).getMessage();
         assertTrue(refused.contains("DLQ") && refused.contains("dlq(...)"), refused);
     }
@@ -223,7 +223,7 @@ class FlowWorkerLifecycleTest {
         DeferredRenewals queue = new DeferredRenewals(w.queue);
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
-                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq);
+                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq).runs(w.runs);
         Envelope in = w.accept(b.delivery(def, NO_FILES));
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
 
@@ -253,7 +253,7 @@ class FlowWorkerLifecycleTest {
         DeferredRenewals queue = new DeferredRenewals(w.queue);
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
-                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq);
+                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq).runs(w.runs);
         Envelope in = w.accept(b.delivery(def, NO_FILES));
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
 

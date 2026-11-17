@@ -28,9 +28,50 @@ import java.util.Optional;
  * cancels the message ({@link dev.rail8.core.dlq.FailedMessages}); {@link #stopped} lists those rows, and neither
  * {@link #held} nor {@link #release} sees them.
  *
+ * <p>An operator's cancel of a message that has not ended marks its row ({@link Cancel}). A marked row is handed out as any
+ * row is and carries its mark ({@link Item#cancel()}), and {@link #renewRow} tells its holder of a mark written while it
+ * runs. A marked row is never held or stopped: {@link #hold} and {@link #stop} answer false for it, and {@link #defer} makes it
+ * due at once, so its next hand-out ends it.
+ *
  * @since 0.1
  */
 public interface WorkQueue {
+
+    /**
+     * An operator's cancel of a row's message, as the row is marked with it.
+     *
+     * @param auditId the cancel's audit row
+     * @param actor who cancelled it, by name
+     * @param reason the reason given, when one was
+     * @since 0.1
+     */
+    record Cancel(long auditId, String actor, Optional<String> reason) {
+
+        public Cancel {
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    /**
+     * A renewal's answer.
+     *
+     * @param renewed whether the lease was extended: false when the caller no longer holds the row
+     * @param cancel the row's cancel, when it is marked with one
+     * @since 0.1
+     */
+    record Renewal(boolean renewed, Optional<Cancel> cancel) {
+
+        /** The answer for a row the caller no longer holds. */
+        public static final Renewal LOST = new Renewal(false, Optional.empty());
+
+        /** The answer for a lease extended on a row that is not marked. */
+        public static final Renewal RENEWED = new Renewal(true, Optional.empty());
+
+        public Renewal {
+            Objects.requireNonNull(cancel, "cancel");
+        }
+    }
 
     /**
      * One queued message, as handed out. Two items are equal when they are the same hand-out — seq, message, flow, step, key
@@ -43,9 +84,20 @@ public interface WorkQueue {
      *               the run is in doubt; 0 on a first hand-out and on a row an operator {@linkplain #release released}
      * @param maxAttempts the row's own bound on its hand-outs, which an operator's retry writes; 0 means the
      *                    flow's bound. Not compared either: it belongs to the row and is the same for each of its hand-outs
+     * @param cancel the operator's cancel the row is marked with, when it is; not compared either
      * @since 0.1
      */
-    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts, int maxAttempts) {
+    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts, int maxAttempts,
+                Optional<Cancel> cancel) {
+
+        public Item {
+            Objects.requireNonNull(cancel, "cancel");
+        }
+
+        /** An item not marked by a cancel. */
+        public Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts, int maxAttempts) {
+            this(seq, messageId, flow, step, partitionKey, attempts, doubts, maxAttempts, Optional.empty());
+        }
 
         /** An item in no doubt, bound by its flow. */
         public Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts) {
@@ -65,7 +117,7 @@ public interface WorkQueue {
             return handOut().hashCode();
         }
 
-        /** What names the hand-out: every component but {@code doubts} and {@code maxAttempts}. */
+        /** What names the hand-out: every component but {@code doubts}, {@code maxAttempts} and {@code cancel}. */
         private List<Object> handOut() {
             return Arrays.asList(seq, messageId, flow, step, partitionKey, attempts);
         }
@@ -275,6 +327,17 @@ public interface WorkQueue {
      * extended; {@code false} when the caller no longer holds the row (claimed again, held, completed or unknown).
      */
     Future<Boolean> renew(long seq, int attempts, Duration lease);
+
+    /**
+     * {@link #renew}, answering with the row's {@link Cancel} when it is marked with one.
+     *
+     * <p>This default renews by {@link #renew} and tells no mark: a queue that keeps none has none to tell.
+     *
+     * @since 0.1
+     */
+    default Future<Renewal> renewRow(long seq, int attempts, Duration lease) {
+        return renew(seq, attempts, lease).map(renewed -> renewed ? Renewal.RENEWED : Renewal.LOST);
+    }
 
     /**
      * Hands {@code seq} back to the claim not before {@code delay} from now, for a scheduled retry, under the same condition

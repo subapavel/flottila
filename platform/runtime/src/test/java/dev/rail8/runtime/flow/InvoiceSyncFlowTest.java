@@ -8,12 +8,14 @@ import dev.rail8.api.Pipeline;
 import dev.rail8.api.StepFactory;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.schemas.Documents;
 import dev.rail8.schemas.Schemas;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.validate.XsdValidationException;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.NoBlockedPlatformThreads;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.buffer.Buffer;
@@ -83,7 +85,9 @@ class InvoiceSyncFlowTest {
         invoice = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")));
         ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         http.replyWith(e -> e.next(rt.store(e, ack)));   // the partner answers with the ack fixture (invoice-sync.test.yaml mocks)
-        pipeline = new FlowBuilder(rt.runtime(), steps(), xml.languages(), endpoints).build(def, DEMO);
+        // the runs' time limits on a timer of their own over the same clock: the loop that drives the clock fires the retries' waits only
+        pipeline = new FlowBuilder(rt.runtime(), steps(), xml.languages(), endpoints)
+                .runs(new Runs(rt.clock(), new FakeTimer(rt.clock()), Duration.ofSeconds(30))).build(def, DEMO);
         assertEquals(2, http.producersBuilt(), "both partner endpoints resolved at build time");
     }
 

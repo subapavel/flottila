@@ -6,10 +6,12 @@ import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
@@ -43,7 +45,7 @@ class PgFailedMessagesContractIT extends FailedMessagesContract {
 
     @Override
     protected WorkQueue emptyQueue() {
-        pool.query("truncate work, dlq, body_refs, journal_segments, audit").execute().await();
+        pool.query("truncate work, dlq, body_refs, journal_segments, audit, messages").execute().await();
         PgWorkQueue queue = new PgWorkQueue(pool);
         failed = new PgFailedMessages(pool, queue);
         return queue;
@@ -62,6 +64,12 @@ class PgFailedMessagesContractIT extends FailedMessagesContract {
     @Override
     protected void kept(String messageId) {
         ParkedRows.keepRef(pool, messageId, NODE);
+    }
+
+    @Override
+    protected void arrived(String messageId) {
+        pool.preparedQuery("insert into messages(id, step, flow, body_hash) values ($1, 0, 't', $2)")
+                .execute(Tuple.of(messageId, Buffer.buffer(new byte[Long.BYTES]))).await();
     }
 
     @Override

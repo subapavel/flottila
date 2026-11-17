@@ -108,6 +108,7 @@ class AdminDlqRestartTest {
             return answer == null ? real.retry(messageId, flow, partitionKey, attempt, by) : answer.get();
         }
         @Override public Future<Act> cancel(String messageId, Actor by, java.util.Optional<String> reason) { return real.cancel(messageId, by, reason); }
+        @Override public Future<Act> end(String messageId, Actor by, java.util.Optional<String> reason) { return real.end(messageId, by, reason); }
     };
     /** The claims the test's queue was asked for: the worker of {@code shop/orders} claims at its start and at each wake. */
     final AtomicInteger claims = new AtomicInteger();

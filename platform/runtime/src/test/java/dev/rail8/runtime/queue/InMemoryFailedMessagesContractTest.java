@@ -46,4 +46,9 @@ class InMemoryFailedMessagesContractTest extends FailedMessagesContract {
     protected void expireLeases() {
         clock.advance(LEASE.plus(Duration.ofSeconds(1)));
     }
+
+    @Override
+    protected void arrived(String messageId) {
+        // the in-memory queue reads a message's flow off its rows
+    }
 }

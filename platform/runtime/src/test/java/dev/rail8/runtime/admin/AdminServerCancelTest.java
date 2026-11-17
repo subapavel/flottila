@@ -70,6 +70,9 @@ class AdminServerCancelTest {
             Act fixed = answer;
             return fixed == null ? real.cancel(messageId, by, reason) : Future.succeededFuture(fixed);
         }
+        @Override public Future<Act> end(String messageId, Actor by, Optional<String> reason) {
+            return real.end(messageId, by, reason);
+        }
     };
     AdminServer admin;
     int port;

@@ -106,9 +106,11 @@ import java.util.function.UnaryOperator;
  * at-most-once run is never fenced, because no other node takes it over.
  *
  * <p>Every pipeline built (by {@link #build}, a sync or at-most-once {@link #delivery}, or a {@link #worker}) starts with
- * a stage that binds the message's {@link MessageContext} for the rest of the run. Its deadline is the run's start on the
- * Runtime's clock, taken when the stage runs, plus the flow's {@code delivery.timeout}, fresh for each run: each sync
- * call and each at-least-once claim.
+ * the {@link Runs#head head} of the node's {@link #runs}: it binds the message's {@link MessageContext} for the rest of the
+ * run, with a deadline of the run's start on the Runtime's clock, taken when the stage runs, plus the flow's
+ * {@code delivery.timeout}, fresh for each run: each sync call and each at-least-once claim. At that deadline, or at an
+ * operator's cancel, the run stops: every step is {@linkplain Runs#guard guarded}, so the step running is interrupted and
+ * no later one starts, and no send starts after it.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language ({@code language}
  * per step, default {@code xpath}), so core never parses a body. This class is the only user of the {@link Runtime}:
@@ -150,6 +152,7 @@ public final class FlowBuilder {
     private Workers workers = new Workers();
     private WorkSignals signals = WorkSignals.NONE;
     private RetryPolicy retries = DEFAULT_RETRIES;
+    private Runs runs;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -161,6 +164,7 @@ public final class FlowBuilder {
         }
         this.endpoints = Map.copyOf(endpoints);
         this.targets = new Targets(Targets.DEFAULTS, Map.of(), runtime.timer());
+        this.runs = new Runs(runtime.clock(), runtime.timer(), WorkerPolicy.DEFAULT.lease());
     }
 
     /** Records a snapshot per step into {@code store}, metered by {@code meter}; without this call nothing is recorded. */
@@ -290,6 +294,15 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * The node's runs, which the flows built from now on run in and an operator's cancel stops; it replaces the runs of an
+     * earlier call. Without a call the builder has runs of its own on the Runtime's clock and timer.
+     */
+    public FlowBuilder runs(Runs runs) {
+        this.runs = Objects.requireNonNull(runs, "runs");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return built(flow, baseDir, OPEN, true).pipeline(true);
@@ -400,7 +413,7 @@ public final class FlowBuilder {
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
         Built built = built(flow, baseDir, fence, false);
         return new FlowWorker(flow.id(), workerId, max, policy, flow.retries().orElse(retries), queue, store, runtime.blobs(), built.pipeline(false),
-                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers, signals);
+                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers, signals, runs);
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {
@@ -511,7 +524,7 @@ public final class FlowBuilder {
                     default -> factoryFor(step).create(step, resources);
                 };
                 if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
-                stage = numbered(stage, step);
+                stage = Runs.guard(numbered(stage, step), step);
                 if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
                 if (parker != null) stage = parker.wrap(stage, step);
                 stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU time includes its wrappers
@@ -520,15 +533,7 @@ public final class FlowBuilder {
         } finally {
             if (!done) Producers.closeAll(flow.id(), opened);   // the flow does not build: nothing it created is left open
         }
-        return new Built(flow, context(flow.timeout(), runtime.clock()), List.copyOf(stages), recorder, new Producers(flow.id(), opened));
-    }
-
-    /**
-     * The head of every pipeline built: binds the context of the message for the rest of the run, with a deadline of the
-     * run's start on {@code clock} plus {@code timeout}.
-     */
-    private static Stage context(Duration timeout, Clock clock) {
-        return (e, rest) -> MessageContext.of(e, clock.instant().plus(timeout)).apply(rest, e);
+        return new Built(flow, runs.head(flow.timeout()), List.copyOf(stages), recorder, new Producers(flow.id(), opened));
     }
 
     /** What a step of {@code flow} is built with; the paths it reads go to the {@link #reads} sink. */
@@ -644,11 +649,14 @@ public final class FlowBuilder {
      * with a retryable {@link NackException} and the producer is not called. Without a message bound it gets {@code send(e)}.
      * With a {@link Fence} the run stops waiting once the fence closes ({@link FencedWait}) and a producer failure landing while
      * it is closed is a {@link FencedException} with that failure as its cause; the permit is held until the producer's own
-     * future settles. Otherwise what the send fails with comes out as is.
+     * future settles. Under the permit a stopped run fails the send with a {@link RunStoppedException} before the producer is
+     * called, and a send it starts is watched by the run, which returns only once that send has settled. Otherwise what the
+     * send fails with comes out as is.
      */
     private record Send(String endpoint, Producer producer, TargetLimit limit, Clock clock, Timer timer, BooleanSupplier fence, Fence bound) {
         Envelope apply(Envelope e) {
             MessageContext context = MessageContext.isBound() ? MessageContext.current() : null;
+            Runs.Run run = Runs.current();
             FencedWait wait = bound == null ? null : new FencedWait(bound, timer, e.id(), endpoint);
             Supplier<Future<Envelope>> send = () -> {
                 if (!fence.getAsBoolean()) {
@@ -659,10 +667,14 @@ public final class FlowBuilder {
                 if (d != null && !d.remaining().isPositive()) {
                     return Future.failedFuture(new NackException("message " + e.id() + " not sent to endpoint '" + endpoint + "': its deadline passed (D-113)", true));
                 }
+                Runs.Why stopped = run == null ? null : run.why();
+                if (stopped != null) return Future.failedFuture(new RunStoppedException(stopped, null));
                 if (wait != null) wait.arm();   // before the producer is called: nothing of the send is out before the fence is watched
                 try {   // a null answer fails here, inside the catch, so its re-read is disarmed too
-                    return Objects.requireNonNull(d == null ? producer.send(e) : producer.send(e, d),
+                    Future<Envelope> sent = Objects.requireNonNull(d == null ? producer.send(e) : producer.send(e, d),
                             () -> "endpoint '" + endpoint + "': the send answered no future");
+                    if (run != null) run.watch(sent);   // the run returns only once it has settled
+                    return sent;
                 } catch (RuntimeException | Error failure) {
                     if (wait != null) wait.disarm();
                     throw failure;

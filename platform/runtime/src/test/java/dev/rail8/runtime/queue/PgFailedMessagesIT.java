@@ -50,7 +50,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * fails {@link BlobNotFoundException} naming {@code <id>/0/body} — {@link BodyLostException} when an accepted loss gave the ref up —
  * unless a work row of the id is unsettled, and changes nothing. A retry finds only a worker's park at step 1 after the attempt
  * read, of that flow, whatever other prop it carries. A stopped row whose body is lost is not retried (it cannot run) but is
- * cancelled. A keyed act takes its key's transaction advisory lock, as every keyed insert and delete does: while another
+ * cancelled. An end of a message that is not parked marks the oldest row of the flow its arrival record names, and refuses a
+ * lost one. A keyed act takes its key's transaction advisory lock, as every keyed insert and delete does: while another
  * transaction holds it the act waits. An act that waits on a DLQ row another transaction deletes finds it gone.
  */
 @Timeout(120)
@@ -84,7 +85,7 @@ class PgFailedMessagesIT {
 
     @BeforeEach
     void clean() {
-        pool.query("truncate work, dlq, body_refs, journal_segments, audit").execute().await();
+        pool.query("truncate work, dlq, body_refs, journal_segments, audit, messages").execute().await();
         rows = new PgWorkQueue(pool, NODE);
         failed = new PgFailedMessages(pool, rows);
     }
@@ -182,6 +183,38 @@ class PgFailedMessagesIT {
         assertTrue(await(new PgDlq(pool).get("k1")).isPresent(), "k1 stays parked");
         assertInstanceOf(FailedMessages.Done.class, await(failed.cancel("k1", BY, Optional.empty())), "a cancel ends it");
         assertEquals(0, ParkedRows.count(pool, "select count(*) from work"), "its lost row is gone with it");
+    }
+
+    /** {@code id} arrived in {@code flow}: its arrival record, its {@code messages} row at step 0. */
+    void arrived(String id, String flow) {
+        pool.preparedQuery("insert into messages(id, step, flow, body_hash) values ($1, 0, $2, $3)")
+                .execute(Tuple.of(id, flow, io.vertx.core.buffer.Buffer.buffer(new byte[Long.BYTES]))).await();
+    }
+
+    /**
+     * An end of a message that is not parked reads its flow off its arrival record and marks the oldest row of that flow alone,
+     * auditing the flow, step, key, seq, reason and remote. Without an arrival record nothing is found; a lost row is not ended.
+     */
+    @Test
+    void anEndMarksTheRowOfItsArrivalsFlowAndRefusesALostOne() throws Exception {
+        rows.enqueue("m-1", "g", 1, null).await();
+        rows.enqueue("m-1", "t", 1, "K").await();
+        assertSame(FailedMessages.NotParked.INSTANCE, await(failed.end("m-1", BY, Optional.empty())), "no arrival record: no flow to read");
+        arrived("m-1", "t");
+
+        FailedMessages.Stopping s = assertInstanceOf(FailedMessages.Stopping.class, await(failed.end("m-1", BY, Optional.of("wrong order"))));
+        long seq = ParkedRows.count(pool, "select seq from work where id = 'm-1' and flow = 't'");
+        assertEquals(List.of("ops", "message.cancel", "message/m-1", new JsonObject().put("flow", "t").put("step", 1).put("partitionKey", "K")
+                .put("seq", seq).put("reason", "wrong order").put("remote", "10.0.0.7")), theAudit());
+        assertEquals(s.event().id(), ParkedRows.count(pool, "select cancel_audit from work where seq = $1", seq), "the row is marked with it");
+        assertEquals(0, ParkedRows.count(pool, "select count(*) from work where flow = 'g' and cancel_audit is not null"), "the older row of flow g is not");
+
+        rows.enqueue("m-2", "t", 1, null).await();
+        arrived("m-2", "t");
+        pool.query("update work set lost_at = now() where id = 'm-2'").execute().await();
+        long lost = ParkedRows.count(pool, "select seq from work where id = 'm-2'");
+        assertEquals(new FailedMessages.Unsettled(lost), await(failed.end("m-2", BY, Optional.empty())), "a lost row is not ended");
+        assertEquals(1, audits(), "and writes nothing");
     }
 
     @Test
