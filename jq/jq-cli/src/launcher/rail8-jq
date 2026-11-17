@@ -1,5 +1,5 @@
 #!/bin/sh
-# The launcher (ADR-0013), copied to target/rail8-jq by package: runs the command line on the module path lib/ beside
+# The launcher, copied to target/rail8-jq by package: runs the command line on the module path lib/ beside
 # it, which package fills with jq-cli, jq-core and their runtime dependencies. Linux only in milestone 1. When
 # JAVA_HOME is set, its bin/java runs it; otherwise the java on PATH.
 lib=$(dirname "$0")/lib

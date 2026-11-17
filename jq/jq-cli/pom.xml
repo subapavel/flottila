@@ -37,7 +37,7 @@
         </executions>
       </plugin>
       <!-- package writes the module path target/lib/ (this jar and its runtime dependencies) and the launcher
-           target/rail8-jq from src/launcher (ADR-0013, #38). -->
+           target/rail8-jq from src/launcher. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
@@ -85,7 +85,7 @@
       </plugin>
       <!-- Unit tests run on the class path (ADR-0013). The *ModulePathTest classes run with jq-cli and jq-core as
            named modules, as the launcher and a host put them on the module path (ADR-0013, ADR-0016, #24, #38). The
-           launcher test runs target/rail8-jq after package (#38). -->
+           launcher test runs target/rail8-jq after package. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

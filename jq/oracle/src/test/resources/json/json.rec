@@ -449,7 +449,7 @@ stderr jq: parse error: Invalid literal at line 1, column 5\n
 end
 
 case json/n_multidigit_number_then_00
-def d159b3b90963
+def b861c1e429fe
 rc 0
 stdout 123\n
 stderr
