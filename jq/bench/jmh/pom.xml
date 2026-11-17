@@ -54,7 +54,7 @@
           </execution>
         </executions>
       </plugin>
-      <!-- target/benchmarks.jar, the jar scripts/gate-spec.sh runs (ADR-0014 spec gate step 3). Version checked on
+      <!-- target/benchmarks.jar, the runnable jar of the benchmarks. Version checked on
            Maven Central 2026-11-11. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

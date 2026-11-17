@@ -12,7 +12,7 @@ fails=0
 check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fails=1; else echo "ok   $1"; fi; }
 
 # --- no command-line list in the scripts that run PIT ---
-for f in scripts/gate-spec.sh ../.github/workflows/jq-nightly.yml; do
+for f in ../.github/workflows/jq-nightly.yml; do
   check "no excludedTestClasses property in $f" "$(grep -c 'excludedTestClasses' "$repo/$f")" 0
 done
 
