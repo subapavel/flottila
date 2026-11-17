@@ -1,0 +1,25 @@
+# A comment cleanup changes comments only. On a pull request whose title starts with "docs(comments)" this job
+# compares every Java, TypeScript, JavaScript and CSS file the pull request touches with the pull request's base
+# and fails when the code, with comments removed and whitespace normalised, is not the same. It runs again when
+# the title is edited, so a pull request cannot gain or lose the check unseen.
+name: comments
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  comment-only:
+    name: comment cleanup changes no code
+    if: startsWith(github.event.pull_request.title, 'docs(comments)')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: The code is unchanged apart from comments
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          git fetch -q --no-tags --depth=1 origin "$base"
+          python3 ci/comment_only_check.py --base "$base" --head HEAD

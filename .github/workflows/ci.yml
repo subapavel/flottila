@@ -88,10 +88,11 @@ jobs:
         run: bin/rail8 validate examples/demo
       - name: The demo package's flow tests pass through the launcher
         run: bin/rail8 test examples/demo
-      - name: Script tests (coverage check, name guard, site checks) and the name guard itself
+      - name: Script tests (coverage check, name guard, comment-only check, site checks) and the name guard itself
         run: |
           set -euo pipefail
           python3 -m unittest ci.test_coverage_check
+          python3 -m unittest ci.test_comment_only_check
           python3 -m unittest ci.test_name_guard
           python3 ci/name_guard.py
           python3 -m unittest ci.test_site
