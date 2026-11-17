@@ -6,55 +6,16 @@
 # History keeps the old name, whole files (D-148).
 docs/DECISIONS.md | * | history: decisions are not rewritten (D-148)
 docs/archive/** | * | history: archived documents (D-148)
-docs/findings/** | * | history: findings are records of what was found (D-148)
-docs/review/** | * | history: review reports of past commits (D-148)
 bench/RESULTS.md | * | history: a recorded number keeps the commit and configuration it was taken with (D-148)
 
-# The changelog of docs/ARCHITECTURE.md is history (D-148): the literals its rows hold, not the whole file.
-docs/ARCHITECTURE.md | -Dflottila.it.postgres | changelog row: the integration-test property as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_BLOB_DURABLE_MAX | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_CPU_SAMPLING | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_* | changelog row: an environment key family as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_INTAKE_GROUP_CONCURRENCY | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_ACCEPT_LOSS | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_COPIES | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_JOURNAL_KEEP_MAX_AGE | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PEER_* | changelog row: an environment key family as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PEER_READS | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_DURABILITY | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_HOST | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_INTAKE | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_QUEUE | changelog rows: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_SIZE | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_POOL_WAIT | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_MODE | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_PG_SSL_ROOT_CERT | changelog row: an environment key as it was then named
-docs/ARCHITECTURE.md | FLOTTILA_TARGET_MAX_CALLS | changelog row: an environment key family as it was then named
-docs/ARCHITECTURE.md | X-Flottila-Actor | changelog row: an HTTP header as it was then named
-docs/ARCHITECTURE.md | flottila test | changelog row: a CLI command as it was then named
-docs/ARCHITECTURE.md | flottila lock | changelog row: a CLI command as it was then named
-docs/ARCHITECTURE.md | 'flottila' | changelog row: a logical-message prefix as it was then named
-docs/ARCHITECTURE.md | flottila-<role>@<nodeId> | changelog row: the Postgres application_name as it was then named
-docs/ARCHITECTURE.md | flottila-api | changelog row: a module as it was then named
-docs/ARCHITECTURE.md | flottila-cli | changelog rows: a module as it was then named
-docs/ARCHITECTURE.md | flottila-schemas | changelog row: a module as it was then named
-docs/ARCHITECTURE.md | flottila-sim | changelog row: a module as it was then named
-docs/ARCHITECTURE.md | flottila-testkit | changelog row: a module as it was then named
-docs/ARCHITECTURE.md | flottila_work | changelog row: a LISTEN/NOTIFY channel as it was then named
-docs/ARCHITECTURE.md | io.flottila.Step | changelog row: a JFR event name as it was then named
-docs/ARCHITECTURE.md | `io.rail8:rail8-*` | changelog row: the Maven coordinates as they were then named (D-154)
-docs/ARCHITECTURE.md | `io.rail8` | changelog row: the package root as it was then named (D-154)
 
 # Applied migrations are byte-identical forever (Flyway checksums); the name stands in their comments only.
 deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's checksum on every deployed database
 
 # The repository's address and its checkout path, in any file, until the owner renames the repository.
 ** | github.com/subapavel/flottila | the repository's address until the owner renames it
-docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as it was called when the owner wrote the brief (D-147)
 
 # The prototype's names, where a live file names the prototype.
-docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
-docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
 platform/archtest/src/test/java/dev/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone
 
 # The rename's own files hold the name as their subject or test data.

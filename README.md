@@ -7,23 +7,21 @@ delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · Clic
 
 **Status: under construction, not usable yet.** Tag `proto-m1` is the milestone-1 state (one
 module, Vert.x 4.5, the flow `HTTP → validate → extractKey → route → XSLT → HTTP` with snapshots,
-DLQ and a Postgres work queue). The tree is being restructured in place to the v3.3
-architecture by an autonomous engineering session; the first thing worth trying by hand arrives at
-the hand-over gate described in `docs/GATE.md`.
+DLQ and a Postgres work queue). What is built and what is planned is in
+`docs/ARCHITECTURE.md`.
 
 To send a message through a local node now: `docs/QUICKSTART.md` (Docker Compose, the demo package, the admin API).
 
 Where to look:
 
-- `docs/ARCHITECTURE.md` — the binding design (amendments block at the top, then the v3.3 text)
-- `docs/GATE.md` — what "you can test the first real iFlow" means
+- `docs/ARCHITECTURE.md` — what the code does today, and what is planned
 - GitHub Issues — the open work
 - `AGENTS.md` — how the work is done (one issue, one session, one pull request, one review)
-- `docs/DECISIONS.md`, `docs/findings/` — what was decided, what deviated
+- `docs/DECISIONS.md` — what was decided
+- `docs/archive/` — earlier documents: the old architecture, the briefs, findings and reviews
 - `agent/cloud/` — the cloud environment the autonomous session runs in
 
-Build at the current state, JDK 25. The repository holds two areas, each built on its own
-(`docs/ARCHITECTURE.md` §12):
+Build at the current state, JDK 25. The repository holds two areas, each built on its own:
 
 - the platform, `platform/` and `bench/` — Maven 3.9: `mvn -B -ntp -f platform/pom.xml verify` for
   the unit tests, with `-Pit` to include the Testcontainers tests (Docker required). Modules:
