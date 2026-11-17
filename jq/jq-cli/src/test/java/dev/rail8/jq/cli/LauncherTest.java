@@ -28,7 +28,7 @@ class LauncherTest {
     try (Stream<Path> jars = Files.list(lib)) {
       assertThat(jars.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".jar")).map(n -> n.replaceFirst("-[0-9].*", "")))
           .as("the jars in %s, without their versions", lib)
-          .contains("jq-cli", "jq-core", "query-core");
+          .contains("rail8-jq-cli", "rail8-jq-core", "rail8-jq-query-core");
     }
   }
 
