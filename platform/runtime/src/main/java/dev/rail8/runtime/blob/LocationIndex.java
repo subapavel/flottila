@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The store's in-memory location index (CORE-3 item 8): key → the ref of its record in this node's journal, at most
+ * The store's in-memory location index: key → the ref of its record in this node's journal, at most
  * {@code max} entries; a put past the bound lets an entry of the oldest segment (the lowest number) go first. Thread-safe.
  */
 final class LocationIndex {

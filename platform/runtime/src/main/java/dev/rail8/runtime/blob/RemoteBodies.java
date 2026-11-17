@@ -8,7 +8,7 @@ import java.io.InputStream;
 import java.util.UUID;
 
 /**
- * Where a body that lies in another node's journal is read from (CORE-5a S7): the store's read order is its own journal, then
+ * Where a body that lies in another node's journal is read from: the store's read order is its own journal, then
  * this, then a retryable {@link RemoteBodyException}. The peer link's reads ({@code dev.rail8.runtime.journal.peer.PeerReads})
  * are the one implementation; a store without them fails such a body retryable at once.
  *

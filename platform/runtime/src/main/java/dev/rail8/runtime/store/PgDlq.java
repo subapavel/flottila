@@ -32,14 +32,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The DLQ over Postgres (ARCHITECTURE §6, §7): one row per parked message in V1's {@code dlq} with V3's columns, written
+ * The DLQ over Postgres: one row per parked message in the {@code dlq} table, written
  * at once — a park is rare and must be durable before the failure surfaces — with no foreign key to {@code messages} (a
- * park never waits on the step rows), but its body's kept ref must be committed first (D-062 persist → park, D-096, D-105):
- * without it the park fails with {@link BlobNotFoundException}. A park adds no record (CORE-3 item 10): it writes its row
+ * park never waits on the step rows), but its body's kept ref must be committed first (persist, then park):
+ * without it the park fails with {@link BlobNotFoundException}. A park adds no record: it writes its row
  * only while the {@code body_refs} row its {@code body_key} names exists with that ref's {@code journal_segments} row, and
  * holds both for key share against retention's and the sweeper's deletes for its one statement, so a DLQ row implies a
- * durable body (D-062). A pre-V12 {@code bodies} row alone admits no park. The first park
- * of a message wins; it keeps the parked item's partition key (V17, CORE-14b O7; null without one). Listed oldest first by V3's {@code (parked_at, id)} index; the cursor is the page's last position —
+ * durable body. A {@code bodies} row alone admits no park. The first park
+ * of a message wins; it keeps the parked item's partition key (null without one). Listed oldest first by the
+ * {@code (parked_at, id)} index; the cursor is the page's last position —
  * {@code parked_at} in microseconds, Postgres' precision, and the id — so a removal before it skips nothing.
  *
  * @since 0.1
@@ -49,7 +50,7 @@ public final class PgDlq implements Dlq {
     private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions,"
             + " partition_key";
     /**
-     * The park, one statement (D-096, CORE-3 item 10): {@code b} holds the {@code body_refs} row {@code body_key} names
+     * The park, one statement: {@code b} holds the {@code body_refs} row {@code body_key} names
      * ({@code $16..$18}) and its segment row for key share — retention's batch and the sweeper's hold the rows they select for
      * update, so the park either waits for that batch and, after a delete, finds no row, or holds the rows first and the batch
      * passes them — and {@code ins} writes the DLQ row only from them ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
@@ -81,9 +82,9 @@ public final class PgDlq implements Dlq {
 
     /**
      * Writes {@code p}'s row unless its id is parked already, and only while the kept ref its {@code body_key} names exists with
-     * its segment row: without one (a pre-V12 {@code bodies} row admits none) the park fails with {@link BlobNotFoundException}
-     * naming the key and writes nothing (D-062, D-096, CORE-4c2) — with {@link BodyLostException} when an accepted loss gave that
-     * ref up ({@code lost_at}, CORE-4c3). A retention batch holding that ref waits the park until it
+     * its segment row: without one (a {@code bodies} row admits none) the park fails with {@link BlobNotFoundException}
+     * naming the key and writes nothing — with {@link BodyLostException} when an accepted loss gave that
+     * ref up ({@code lost_at}). A retention batch holding that ref waits the park until it
      * committed or rolled back.
      */
     @Override
