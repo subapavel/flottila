@@ -36,6 +36,7 @@ import { SaveConflict } from './SaveConflict';
 import { CopyTextButton } from './shared/CopyTextButton';
 import { Signature } from './signature/Signature';
 import { refreshMutation } from './shared/structure-query';
+import { useTestSession } from './shared/test-session';
 import { selectUnsaved, type StudioTab, type WorkingCopyState, type WorkingCopyStore } from './store/working-copy';
 
 /** The tabs the studio shows, in their order, each with its title and icon. */
@@ -137,6 +138,7 @@ export function StudioFrame({ mappingId, api, store, browserState, onSaved, guar
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const labelId = (view: StudioTab) => `${panelId}-${view}`;
+  const testSession = useTestSession(store, api, mappingId, browserState);
 
   const changeTab = useCallback(
     (next: StudioTab) => {
@@ -363,7 +365,7 @@ export function StudioFrame({ mappingId, api, store, browserState, onSaved, guar
             {tab === 'overview' && <MappingOverview mappingId={mappingId} store={store} />}
             {tab === 'definition' &&
               (hasMessages ? (
-                <DefinitionTab mappingId={mappingId} api={api} store={store} browserState={browserState} onChooseMessages={() => changeTab('signature')} />
+                <DefinitionTab mappingId={mappingId} api={api} store={store} session={testSession} browserState={browserState} onChooseMessages={() => changeTab('signature')} />
               ) : (
                 <ChooseMessages onChoose={() => changeTab('signature')} />
               ))}

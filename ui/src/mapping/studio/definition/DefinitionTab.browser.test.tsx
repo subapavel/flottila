@@ -61,7 +61,9 @@ const row = (side: Side, name: string) => fields(side).getByRole('row').filter({
 const viewButton = (side: Side, mode: string) => pane(side).getByRole('group', { name: `${side === 'source' ? 'Source' : 'Target'} message view` }).getByRole('button', { name: mode });
 const tool = (side: Side, name: string) => pane(side).getByRole('toolbar', { name: `${side} tree tools` }).getByRole('button', { name, exact: true });
 const menuItem = (name: string) => page.getByRole('menuitem', { name, exact: true });
-const fieldMapping = () => page.getByRole('region', { name: 'Field mapping' });
+const canvasPanel = () => page.getByRole('region', { name: 'Field mapping canvas' });
+const node = (name: RegExp) => canvasPanel().getByRole('group', { name: 'Mapping canvas' }).getByRole('group', { name });
+const footer = () => canvasPanel().getByText(/nodes · /);
 const button = (name: string) => page.getByRole('button', { name, exact: true });
 
 beforeEach(async () => {
@@ -147,19 +149,21 @@ describe('the Definition tab panes', () => {
     expect(store.getState().selectedTarget).toBe(ORDER_ID);
     await expect.element(field('target', 'OrderId')).toHaveAttribute('aria-pressed', 'true');
     await expect.element(page.getByRole('toolbar', { name: 'Mapping expression' })).toMatchTextContent('/Order/OrderId');
-    await expect.element(fieldMapping()).toHaveTextContent('/Order/OrderId');
+    await expect.element(node(/^Source field OrderId\. Complete/)).toBeVisible();
+    await expect.element(node(/^Target field OrderId\. Complete/)).toBeVisible();
     await field('source', 'Note').click();
     expect(store.getState().selectedTarget).toBe(ORDER_ID);
     await expect.element(field('source', 'Note')).toHaveAttribute('aria-pressed', 'true');
     expect(selectUnsaved(store.getState())).toBe(false);
   });
 
-  test('the mapping expression area asks for a target field while none is selected, and says when the selected one has no mapping', async () => {
+  test('the mapping expression area asks for a target field while none is selected, and shows the target alone when the selected one has no mapping', async () => {
     await renderDefinition();
 
-    await expect.element(fieldMapping()).toHaveTextContent('Select a target field to see its mapping expression.');
+    await expect.element(canvasPanel()).toHaveTextContent('Select a target field to see its mapping expression.');
     await field('target', 'Note').click();
-    await expect.element(fieldMapping()).toHaveTextContent('No mapping for /Order/Note.');
+    await expect.element(node(/^Target field Note\. Incomplete/)).toBeVisible();
+    await expect.element(footer()).toHaveTextContent('1 nodes · 0 connections');
   });
 
   test('in edit mode a source row dropped on a target row adds a source-field box to its mapping and selects it', async () => {
@@ -172,7 +176,8 @@ describe('the Definition tab panes', () => {
     expect(store.getState().selectedTarget).toBe(NOTE);
     expect(selectUnsaved(store.getState())).toBe(true);
     await expect.element(row('target', 'Note').getByRole('img', { name: 'Connected' })).toBeVisible();
-    await expect.element(fieldMapping()).toHaveTextContent('/Order/Note');
+    await expect.element(node(/^Source field Note\. Complete/)).toBeVisible();
+    await expect.element(footer()).toHaveTextContent('2 nodes · 1 connections');
   });
 
   test('in edit mode a double click on a source field adds its box to the selected target field mapping', async () => {
@@ -515,7 +520,8 @@ describe('the orphaned target field mappings', () => {
     expect(store.getState().selectedTarget).toBe(MISSING);
     await expect.element(open()).toHaveAttribute('aria-pressed', 'true');
     await expect.element(page.getByRole('toolbar', { name: 'Mapping expression' })).toMatchTextContent('/Order/Missing');
-    await expect.element(fieldMapping()).toHaveTextContent('/Order/OrderId');
+    await expect.element(node(/^Source field OrderId\. Complete/)).toBeVisible();
+    await expect.element(node(/^Target field Missing\. Complete/)).toBeVisible();
     expect(selectUnsaved(store.getState())).toBe(false);
   });
 
@@ -536,7 +542,7 @@ describe('the orphaned target field mappings', () => {
     expect(store.getState().past).toHaveLength(1);
     expect(store.getState().selectedTarget).toBeNull();
     await expect.element(orphans()).not.toBeInTheDocument();
-    await expect.element(fieldMapping()).toHaveTextContent('Select a target field to see its mapping expression.');
+    await expect.element(canvasPanel()).toHaveTextContent('Select a target field to see its mapping expression.');
 
     store.getState().undo();
 
@@ -552,7 +558,7 @@ describe('the orphaned target field mappings', () => {
 
     await expect.element(orphans()).not.toBeInTheDocument();
     expect(store.getState().selectedTarget).toBe(ORDER_ID);
-    await expect.element(fieldMapping()).toHaveTextContent('/Order/OrderId');
+    await expect.element(node(/^Target field OrderId\. Complete/)).toBeVisible();
   });
 });
 
@@ -612,18 +618,18 @@ describe('the definition bar, the expression header and the field menus', () => 
     await header('Restore split view').click();
     await expect.element(pane('source')).toBeVisible();
     await bar('Maximize message trees').click();
-    await expect.element(fieldMapping()).not.toBeInTheDocument();
+    await expect.element(canvasPanel()).not.toBeInTheDocument();
     await bar('Restore split view').click();
     await header('Minimize mapping expression').click();
-    await expect.element(fieldMapping()).not.toBeInTheDocument();
+    await expect.element(canvasPanel()).not.toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
-    await expect.element(fieldMapping()).toBeVisible();
+    await expect.element(canvasPanel()).toBeVisible();
   });
 
   test('opens in the split view browser state keeps', async () => {
     await renderDefinition({ browserState: memoryBrowserState({ 'user:studio:definition.layout': { view: 'maximized', share: 0.4 } }) });
 
-    await expect.element(fieldMapping()).toBeVisible();
+    await expect.element(canvasPanel()).toBeVisible();
     await expect.element(pane('source')).not.toBeInTheDocument();
   });
 
@@ -720,6 +726,19 @@ describe('the definition bar, the expression header and the field menus', () => 
     await expect.element(page.getByRole('menu', { name: 'Where Used' })).not.toBeInTheDocument();
   });
 
+  test('a field menu opens below its field', async () => {
+    await renderDefinition();
+
+    await field('target', 'Note').click({ button: 'right' });
+
+    const menu = page.getByRole('menu', { name: 'Field actions for Note' });
+    await expect.element(menu).toBeVisible();
+    const at = field('target', 'Note').element().getBoundingClientRect();
+    const opened = menu.element().closest('.pf-v6-c-menu')!.getBoundingClientRect();
+    expect(Math.abs(opened.left - at.left)).toBeLessThan(2);
+    expect(Math.abs(opened.top - at.bottom)).toBeLessThan(2);
+  });
+
   test('the context menu key and Shift+F10 open a field menu too', async () => {
     await renderDefinition();
     await expect.element(field('target', 'Note')).toBeInTheDocument();
@@ -792,13 +811,14 @@ describe('mapping variables, a preview feature', () => {
     await renderRecorded();
     await addVariable('Order', 'total');
     await field('target', 'Variable total').click();
-    await expect.element(fieldMapping()).toHaveTextContent('No mapping for /Order/$total.');
+    await expect.element(node(/^Mapping variable total\. Incomplete/)).toBeVisible();
+    await expect.element(footer()).toHaveTextContent('1 nodes · 0 connections');
 
     await button('Cancel').click();
     await page.getByRole('dialog', { name: 'Discard changes?' }).getByRole('button', { name: 'Discard changes' }).click();
 
     await expect.element(field('target', 'Variable total')).not.toBeInTheDocument();
-    await expect.element(fieldMapping()).toHaveTextContent('Select a target field to see its mapping expression.');
+    await expect.element(canvasPanel()).toHaveTextContent('Select a target field to see its mapping expression.');
   });
 
   test('a JSON property `$total` stays a target field: Add Variable does not take its name, and it selects as a field', async () => {
@@ -816,6 +836,6 @@ describe('mapping variables, a preview feature', () => {
 
     await field('target', '$total').click();
     expect(store.getState().selectedTarget).toBe(`/${ORDER}/$total`);
-    await expect.element(fieldMapping()).toHaveTextContent('No mapping for /Order/$total.');
+    await expect.element(node(/^Target field \$total\. Incomplete/)).toBeVisible();
   });
 });

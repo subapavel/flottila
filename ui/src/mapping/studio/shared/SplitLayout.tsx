@@ -183,14 +183,17 @@ interface SideBySideProps {
   initialShare?: number;
   /** Shown between the panes instead of the divider (the field connections). */
   gutter?: ReactNode;
+  /** Whether the left pane is hidden: the right one then takes the whole width, and no divider shows. */
+  leftHidden?: boolean;
   children: [ReactNode, ReactNode];
 }
 
 /**
  * Two panes side by side with a divider between them, their widths shared as kept under `widthKey`; while a gutter is
- * given it stands between them instead and the panes share the width equally.
+ * given it stands between them instead and the panes share the width equally. A hidden left pane leaves the width to
+ * the right one.
  */
-export function SideBySide({ label, leftId, browserState, widthKey, initialShare = 0.5, gutter, children }: SideBySideProps) {
+export function SideBySide({ label, leftId, browserState, widthKey, initialShare = 0.5, gutter, leftHidden = false, children }: SideBySideProps) {
   const [leftShare, setLeftShare] = useState(() => readPanelPreference(browserState, widthKey, initialShare, isShare));
   const [left, right] = children;
   const availableWidth = (divider: HTMLElement) =>
@@ -198,8 +201,10 @@ export function SideBySide({ label, leftId, browserState, widthKey, initialShare
   const shares = gutter ? [1, 1] : [leftShare, 1 - leftShare];
   return (
     <div style={{ display: 'flex', flex: '1 1 0', minHeight: 0 }}>
-      <div style={area(shares[0]!, MIN_PANE, true)}>{left}</div>
-      {gutter ?? (
+      <div hidden={leftHidden} style={leftHidden ? undefined : area(shares[0]!, MIN_PANE, true)}>
+        {left}
+      </div>
+      {leftHidden ? null : gutter ?? (
         <SplitDivider
           vertical
           label={label}

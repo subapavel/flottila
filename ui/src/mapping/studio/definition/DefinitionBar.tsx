@@ -4,7 +4,6 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
-  ClipboardCopy,
   Content,
   Modal,
   ModalBody,
@@ -21,6 +20,7 @@ import { useState } from 'react';
 import type { BrowserStateStore } from '../browser-state/browser-state';
 import type { FieldPath, MappingModel } from '../../generated/mapping-model';
 import { localPath } from '../../model/field-path';
+import { InstanceTools, type InstanceToolsProps } from '../mock/InstanceTools';
 import { PaneSizeTools } from '../shared/PaneSizeTools';
 import { readPanelPreference, savePanelPreference } from '../shared/panel-preferences';
 import type { SplitView } from '../shared/SplitLayout';
@@ -103,12 +103,25 @@ export function DefinitionBar({ editing, dataFlow, onDataFlow, view, onView, onC
   );
 }
 
-/** The Mapping expression header: its title, the selected target field and the pane size tools. */
-export function ExpressionHeader({ targetField, view, onView }: { targetField: FieldPath | null; view: SplitView; onView: (view: SplitView) => void }) {
+/**
+ * The Mapping expression header: its title and target field, the queue test input (the test instance tools, a preview,
+ * without Generate; a file must parse) and the pane size tools.
+ */
+export function ExpressionHeader({
+  targetField,
+  view,
+  onView,
+  instances,
+}: {
+  targetField: FieldPath | null;
+  view: SplitView;
+  onView: (view: SplitView) => void;
+  instances: Omit<InstanceToolsProps, 'validateFile' | 'selectLabel'>;
+}) {
   return (
-    <Toolbar>
+    <Toolbar role="toolbar" aria-label="Mapping expression">
       <ToolbarContent>
-        <ToolbarGroup role="toolbar" aria-label="Mapping expression" alignItems="center">
+        <ToolbarGroup alignItems="center">
           <ToolbarItem>
             <Title headingLevel="h2" size="md">
               <CodeBranchIcon /> Mapping expression
@@ -117,35 +130,15 @@ export function ExpressionHeader({ targetField, view, onView }: { targetField: F
           <ToolbarItem>
             <code title={targetField ?? undefined}>{targetField === null ? '' : `/${localPath(targetField)}`}</code>
           </ToolbarItem>
-          <ToolbarItem align={{ default: 'alignEnd' }}>
-            <PaneSizeTools pane="mapping expression" label="Expression layout" view={view} onChange={onView} />
-          </ToolbarItem>
         </ToolbarGroup>
+        <ToolbarGroup variant="action-group-plain" role="group" aria-label="Queue test input" alignItems="center">
+          <InstanceTools {...instances} selectLabel="Queue test input" validateFile />
+        </ToolbarGroup>
+        <ToolbarItem align={{ default: 'alignEnd' }}>
+          <PaneSizeTools pane="mapping expression" label="Expression layout" view={view} onChange={onView} />
+        </ToolbarItem>
       </ToolbarContent>
     </Toolbar>
-  );
-}
-
-/**
- * The selected target field's mapping, until the canvas draws it: its expression as text, or what to do while no
- * target field is selected or it has no mapping.
- */
-export function FieldMapping({ model, targetField }: { model: MappingModel; targetField: FieldPath | null }) {
-  const text = targetField === null ? '' : expressionText(model.targetFieldMappings?.[targetField]);
-  return (
-    <Card isFullHeight isCompact component="section" aria-label="Field mapping">
-      <CardBody>
-        {targetField === null ? (
-          <Content component="p">Select a target field to see its mapping expression.</Content>
-        ) : text === '' ? (
-          <Content component="p">No mapping for /{localPath(targetField)}.</Content>
-        ) : (
-          <ClipboardCopy isReadOnly isCode isBlock variant="inline-compact" hoverTip="Copy expression" clickTip="Copied" aria-label="Expression">
-            {text}
-          </ClipboardCopy>
-        )}
-      </CardBody>
-    </Card>
   );
 }
 
