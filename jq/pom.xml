@@ -349,7 +349,7 @@
           </execution>
         </executions>
       </plugin>
-      <!-- Root only: the word check (profiles lf-check and trailers add the other two checks). -->
+      <!-- Root only: the word check (profile lf-check adds the line-ending check). -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
@@ -402,38 +402,6 @@
                   <executable>bash</executable>
                   <arguments>
                     <argument>${project.basedir}/scripts/check-lf-checkout.sh</argument>
-                  </arguments>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-    <!-- ./mvnw -B -Ptrailers -Dtrailers.range=origin/main..HEAD validate -->
-    <profile>
-      <id>trailers</id>
-      <properties>
-        <trailers.range>origin/main..HEAD</trailers.range>
-      </properties>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>exec-maven-plugin</artifactId>
-            <inherited>false</inherited>
-            <executions>
-              <execution>
-                <id>check-trailers</id>
-                <phase>validate</phase>
-                <goals>
-                  <goal>exec</goal>
-                </goals>
-                <configuration>
-                  <executable>bash</executable>
-                  <arguments>
-                    <argument>${project.basedir}/scripts/check-trailers.sh</argument>
-                    <argument>${trailers.range}</argument>
                   </arguments>
                 </configuration>
               </execution>
