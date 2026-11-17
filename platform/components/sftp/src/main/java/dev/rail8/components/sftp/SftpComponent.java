@@ -56,13 +56,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /**
- * The {@code sftp} component (D-076, ARCHITECTURE §7): a polling consumer on the Apache MINA SSHD client; no producer before
- * Phase 4. URI {@code sftp://host[:port, default 22]/dir}; options (validated against {@link #configSchema()}): optional
+ * The {@code sftp} component: a polling consumer on the Apache MINA SSHD client; no producer yet. URI {@code sftp://host[:port, default 22]/dir}; options (validated against {@link #configSchema()}): optional
  * {@code host}, {@code port} (1–65535) and {@code dir}, each of which wins over the URI's own part (a deployed endpoint's URI is
- * only {@code sftp://<id>}, D-086; absent, the URI decides), {@code user},
+ * only {@code sftp://<id>}; absent, the URI decides), {@code user},
  * exactly one of {@code password} / {@code privateKey}, {@code hostKey} (the server key's {@code SHA256:} fingerprint — a
  * mismatch refuses the session, there is no accept-all; in a packaged endpoint as written, a {@code secret://<name>}
- * reference, which the schema lets pass because the deploy checks the config before it resolves secrets, D-081), {@code maxBodyBytes} (set by the deploy, never unlimited), and
+ * reference, which the schema lets pass because the deploy checks the config before it resolves secrets), {@code maxBodyBytes} (set by the deploy, never unlimited), and
  * {@code glob} ({@code *}), {@code intervalMs} (10 000), {@code maxFilesPerPoll} (100), {@code minAgeMs} (0),
  * {@code afterSuccess} ({@code delete} | {@code move}, then {@code moveTo}), {@code connectTimeoutMs} (10 000),
  * {@code ioTimeoutMs} (30 000), optional {@code errorDir} and {@code flow}.
@@ -72,15 +71,15 @@ import java.util.function.Function;
  * server mtime is at least {@code minAgeMs} behind the injected clock, takes the oldest (mtime, name) first, at most
  * {@code maxFilesPerPoll}, one at a time. A file listed above {@code maxBodyBytes} is refused finally without being read;
  * otherwise it streams into the {@link BlobStore} bounded by {@code maxBodyBytes} and goes to the handler on a virtual thread
- * of its own (D-057), the round waiting for the answer. {@link Ack.Accepted} or {@link Ack.Reply} (the durable save is the
+ * of its own, the round waiting for the answer. {@link Ack.Accepted} or {@link Ack.Reply} (the durable save is the
  * handler's) deletes the file or renames it into {@code moveTo} ({@code <name>.<id>} when the name is taken, the id the
- * Accepted names — an earlier message's for a file the save found delivered before, D-084); a file already
- * gone counts as done. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses,
- * §4). A final Nack, or a body above the limit, moves the file to {@code errorDir} if set, else leaves it and never takes it
+ * Accepted names — an earlier message's for a file the save found delivered before); a file already
+ * gone counts as done. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses).
+ * A final Nack, or a body above the limit, moves the file to {@code errorDir} if set, else leaves it and never takes it
  * again in this consumer's life. Any I/O failure ends the round and drops the session; the file stays.
  *
  * <p>One SSH session per consumer, reused across rounds; one MINA client per consumer, its NIO2 pool sized to one thread
- * (transport-internal, D-076). Health is up while at least one consumer runs and none's last round failed to connect or list.
+ * (transport-internal). Health is up while at least one consumer runs and none's last round failed to connect or list.
  *
  * @since 0.1
  */
@@ -108,7 +107,7 @@ public final class SftpComponent implements Component {
              "oneOf":[{"required":["password"]},{"required":["privateKey"]}],
              "if":{"properties":{"afterSuccess":{"const":"move"}},"required":["afterSuccess"]},"then":{"required":["moveTo"]}}""";
 
-    /** The MINA client's NIO2 I/O threads: the minimum (D-076); a consumer's round blocks on its own virtual thread. */
+    /** The MINA client's NIO2 I/O threads: the minimum; a consumer's round blocks on its own virtual thread. */
     static final int NIO_WORKERS = 1;
     static final int DEFAULT_PORT = 22;
 
@@ -136,8 +135,8 @@ public final class SftpComponent implements Component {
     }
 
     /**
-     * The server an endpoint of {@code cfg} reaches (D-099): {@code sftp://host:port} by the {@code host} and {@code port} options
-     * over the URI's parts as a consumer connects (D-086), port 22 by default, lower-cased, never the user or the directory.
+     * The server an endpoint of {@code cfg} reaches: {@code sftp://host:port} by the {@code host} and {@code port} options
+     * over the URI's parts as a consumer connects, port 22 by default, lower-cased, never the user or the directory.
      * An IPv6 host option is bracketed (a URI's host already is). Empty when neither names a host.
      */
     @Override
@@ -148,14 +147,14 @@ public final class SftpComponent implements Component {
         });
     }
 
-    /** Every sftp endpoint polls a directory other nodes may poll too: the node runs its consumer only under the endpoint's lease (D-083). */
+    /** Every sftp endpoint polls a directory other nodes may poll too: the node runs its consumer only under the endpoint's lease. */
     @Override
     public boolean polls(EndpointConfig cfg) {
         return true;
     }
 
     /**
-     * Every sftp endpoint names {@link #FILE_KEY} as its dedupe key (D-084): the same file delivered again — its removal refused
+     * Every sftp endpoint names {@link #FILE_KEY} as its dedupe key: the same file delivered again — its removal refused
      * after the save, another node polling it after a takeover — is the one message it was saved as.
      */
     @Override
@@ -163,7 +162,7 @@ public final class SftpComponent implements Component {
         return Optional.of(FILE_KEY);
     }
 
-    /** Refused: the flow build reports it (D-076). */
+    /** Refused, as the component has no producer yet: the flow build reports it. */
     @Override
     public Producer producer(EndpointConfig cfg) {
         throw new IllegalArgumentException("sftp has no producer before Phase 4");
@@ -182,7 +181,7 @@ public final class SftpComponent implements Component {
         return v == null ? fallback : String.valueOf(v);
     }
 
-    /** The host to connect to: the {@code host} option over the URI's host (D-086: a deployed URI is only {@code sftp://<id>}). */
+    /** The host to connect to: the {@code host} option over the URI's host (a deployed URI is only {@code sftp://<id>}). */
     private static String hostOf(EndpointConfig cfg) {
         return text(cfg.options(), "host", cfg.uri().getHost());
     }
@@ -255,7 +254,7 @@ public final class SftpComponent implements Component {
             Map<String, Object> o = cfg.options();
             this.name = cfg.name();
             URI uri = cfg.uri();
-            // an option wins over the URI part (D-086): a deployed endpoint's URI is only sftp://<id>
+            // an option wins over the URI part: a deployed endpoint's URI is only sftp://<id>
             this.host = hostOf(cfg);
             this.port = portOf(cfg);
             this.dir = text(o, "dir", uri.getPath());
@@ -297,7 +296,7 @@ public final class SftpComponent implements Component {
         }
 
         /**
-         * Stops (D-056): no further round, no new file; the answer in flight is awaited and its delete or move done, then
+         * Stops: no further round, no new file; the answer in flight is awaited and its delete or move done, then
          * the session and the client close. Health no longer counts this consumer from now on.
          */
         @Override
@@ -398,7 +397,7 @@ public final class SftpComponent implements Component {
                     .with(MTIME, file.mtime().toString())
                     .with(FILE_KEY, "sftp://" + host + ":" + port + file.path() + "@" + file.mtime() + "#" + body.hash().hex());
             return switch (answer(in)) {
-                case Ack.Accepted accepted -> done(file, accepted.messageId());   // the message the file is: maybe an earlier one (D-084)
+                case Ack.Accepted accepted -> done(file, accepted.messageId());   // the message the file is: maybe an earlier one
                 case Ack.Reply reply -> done(file, id);
                 case Ack.Nack nack when nack.retryable() -> false;   // the flow is full: the poller pauses until the next round
                 case Ack.Nack nack -> refuse(file, id);
@@ -407,7 +406,7 @@ public final class SftpComponent implements Component {
         }
 
         /**
-         * Calls the handler on a virtual thread of its own (D-057) and waits for its answer; null when the answer failed,
+         * Calls the handler on a virtual thread of its own and waits for its answer; null when the answer failed,
          * the handler threw or answered null ({@link Future#future} catches either).
          */
         private Ack answer(Envelope in) {

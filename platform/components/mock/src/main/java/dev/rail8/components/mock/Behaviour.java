@@ -12,8 +12,8 @@ import java.util.regex.Pattern;
  * What a mocked endpoint does with a message — the {@code mocks} entry of a flow's {@code *.test.yaml} (schema v1
  * {@code behaviour}): answer with a fixture ({@code reply}), after a {@code delay}, or {@code fail} with an HTTP status or
  * a transport fault, from the {@code after}-th send on or on {@code every} n-th send. On the consumer side, {@code files}
- * names the fixtures a polling consumer finds where it polls at its start (D-076); {@code messages} names them the same way
- * (D-080), never beside {@code files}.
+ * names the fixtures a polling consumer finds where it polls at its start; {@code messages} names them the same way, never
+ * beside {@code files}.
  *
  * @param reply the fixture file the reply body comes from; empty = the request echoed
  * @param delay the wait before answering, through the injected timer
@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * @param after the first send (1-based) the failure applies to; 1 = from the start
  * @param every of the sends from {@code after} on, every n-th fails; 1 = every send
  * @param files the fixtures a consumer is fed at its start: a glob over file names (its last segment) in a directory,
- *              resolved against {@code baseDir} (the package root: a path from it, D-078); empty = none
+ *              resolved against {@code baseDir} (the package root: a path from it); empty = none
  * @since 0.1
  */
 public record Behaviour(Optional<Path> reply, Duration delay, Optional<Failure> fail, int after, int every, Optional<Path> files) {
@@ -66,7 +66,7 @@ public record Behaviour(Optional<Path> reply, Duration delay, Optional<Failure> 
 
     /**
      * The schema's {@code behaviour} object; {@code reply} and {@code files} — or {@code messages}, read as {@code files} — resolve
-     * against {@code baseDir} (the package root, D-078).
+     * against {@code baseDir} (the package root).
      *
      * @throws IllegalArgumentException a value the schema does not take, or {@code files} and {@code messages} both given
      */
@@ -82,7 +82,7 @@ public record Behaviour(Optional<Path> reply, Duration delay, Optional<Failure> 
         if (glob != null && node.get("messages") != null) {
             throw new IllegalArgumentException("a behaviour feeds files or messages, not both: files '" + glob + "', messages '" + node.get("messages") + "'");
         }
-        if (glob == null) glob = node.get("messages");   // fixture messages are fed as files are (D-080)
+        if (glob == null) glob = node.get("messages");   // fixture messages are fed as files are
         Optional<Path> files = glob instanceof String f && !f.isEmpty() ? Optional.of(baseDir.resolve(f).normalize()) : Optional.empty();
         return new Behaviour(reply, delay, fail, after, every, files);
     }
