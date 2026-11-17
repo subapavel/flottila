@@ -448,7 +448,7 @@ public final class RunState {
     if (clock.getAsLong() - start > deadline) {
       throw Termination.over(Budget.DEADLINE);
     }
-    // isInterrupted leaves the flag set, so the code that cancelled the run still sees the interrupt afterwards.
+    // isInterrupted leaves the flag set, so the code that runs on this thread after the cancelled run still sees it.
     if (Thread.currentThread().isInterrupted()) {
       throw Termination.cancelled();
     }
