@@ -5,18 +5,17 @@ import dev.rail8.jq.value.JqNumber;
 import java.math.BigDecimal;
 
 /**
- * A number of a document (ADR-0003, ADR-0012, ADR-0016): its document and tape index. Public only so the kind can
- * permit it.
+ * A number of a document: its document and tape index. Public only so the kind can permit it.
  */
 public record NumberView(Document doc, int index) implements JqNumber, Literal {
 
-  /** jq's compact text (ADR-0012): a CANONICAL token's bytes, any other token's canonical form. */
+  /** jq's compact text: a CANONICAL token's bytes, any other token's canonical form. */
   @Override
   public String toJson() {
     return Printer.json(doc, index);
   }
 
-  /** ADR-0012 "Values", ADR-0028: an Infinity literal gives an infinity. */
+  /** Its double; an Infinity literal gives an infinity. */
   @Override
   public double doubleValue() {
     long entry = doc.live()[index];
@@ -50,7 +49,7 @@ public record NumberView(Document doc, int index) implements JqNumber, Literal {
     return negative ? value : -value;
   }
 
-  /** ADR-0028: the canonical form's value, its scale kept; an Infinity literal throws {@code ArithmeticException}. */
+  /** The canonical form's value, its scale kept; an Infinity literal throws {@code ArithmeticException}. */
   @Override
   public BigDecimal decimalValue() {
     long entry = doc.live()[index];
@@ -73,7 +72,7 @@ public record NumberView(Document doc, int index) implements JqNumber, Literal {
     return Tape.span(doc.live()[index]) & Tape.NUMBER_LENGTH;
   }
 
-  /** ADR-0012: a CANONICAL token of at most 15 bytes. */
+  /** Whether it is a CANONICAL token of at most 15 bytes. */
   @Override
   public boolean isShort() {
     int span = Tape.span(doc.live()[index]);

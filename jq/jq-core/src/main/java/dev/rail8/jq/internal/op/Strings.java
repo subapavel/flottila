@@ -38,14 +38,14 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 
 /**
- * The string operators of jq 1.8.2 (jq-ref, recorded: diff/arith-containers.rec, arith-repeat.rec, arith-divmod.rec):
- * {@code +} concatenates, {@code *} with a number repeats, {@code /} splits. Each works on the strings' UTF-8 bytes,
- * jq's string values (a view's are decoded), and charges what it builds before it allocates (ADR-0035 amendment).
+ * The string operators of jq 1.8.2: {@code +} concatenates, {@code *} with a number repeats, {@code /} splits. Each
+ * works on the strings' UTF-8 bytes, jq's string values (a view's are decoded), and charges what it builds before it
+ * allocates.
  */
 final class Strings {
   /**
    * jq's bound on a repeat's result, {@code INT_MAX - sizeof(jvp_string) / 2} bytes, past which it is "Repeat string
-   * result too long" (jq-ref: 2147483638 bytes are built, arith-repeat/too-long-one-byte).
+   * result too long" (the reference jq builds 2147483638 bytes).
    */
   static final long REPEAT_BOUND = Integer.MAX_VALUE - 8;
 
@@ -54,7 +54,7 @@ final class Strings {
 
   private Strings() {}
 
-  /** {@code a + b}: one tick per started KiB of the result (ADR-0034 amendment). */
+  /** {@code a + b}: one tick per started KiB of the result. */
   static BuiltString concat(RunState state, JqString a, JqString b) {
     MemorySegment x = a.utf8();
     MemorySegment y = b.utf8();
@@ -96,11 +96,10 @@ final class Strings {
 
   /**
    * {@code s / separator}, jq's {@code jv_string_split}: an empty separator gives each character of {@code s}; any
-   * other gives the pieces between its occurrences, found left to right without overlap, and one empty piece more
-   * when {@code s} ends with it; an empty {@code s} gives no piece. The array is charged as a container, each piece as
-   * an element and a string before it is built (ADR-0035 amendment). The search ticks once per started KiB of
-   * {@code s} times the started KiB of the separator, which counts as one at least, as an empty one does; each piece
-   * ticks once more (ADR-0034 amendment).
+   * other gives the pieces between its occurrences, found left to right without overlap, and one empty piece more when
+   * {@code s} ends with it; an empty {@code s} gives no piece. The array is charged as a container, each piece as an
+   * element and a string before it is built. The search ticks once per started KiB of {@code s} times the started KiB
+   * of the separator, which counts as one at least, as an empty one does; each piece ticks once more.
    */
   static BuiltArray split(RunState state, JqString s, JqString separator) {
     MemorySegment str = s.utf8();

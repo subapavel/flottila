@@ -13,13 +13,12 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's error texts of navigation, the family of Field, Index, Slice and Iterate (jq-ref, recorded:
- * diff/index.rec, iterate.rec, slice.rec).
+ * jq 1.8.2's error texts of navigation, the family of Field, Index, Slice and Iterate.
  */
 final class NavigationErrors {
   private NavigationErrors() {}
 
-  /** jq's name of {@code v}'s kind. One case per kind of the sealed {@link JqValue} (ADR-0016). */
+  /** jq's name of {@code v}'s kind. One case per kind of the sealed {@link JqValue}. */
   static String kind(JqValue v) {
     return switch (v) {
       case JqNull _ -> "null";

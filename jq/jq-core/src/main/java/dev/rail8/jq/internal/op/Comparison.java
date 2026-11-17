@@ -34,9 +34,9 @@ import dev.rail8.jq.value.JqBool;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's comparison operators (#66, ADR-0037), the family's operations under jq's names. A binary operator's
- * arguments are its left and right operands, and its result a boolean: {@code ==} and {@code !=} by {@link Equality},
- * the four orders by {@link Order}, whose too-deep errors they raise. None builds a value.
+ * jq 1.8.2's comparison operators, the family's operations under jq's names. A binary operator's arguments are its left
+ * and right operands, and its result a boolean: {@code ==} and {@code !=} by {@link Equality}, the four orders by
+ * {@link Order}, whose too-deep errors they raise. None builds a value.
  */
 public final class Comparison {
   /** {@code l == r}. */

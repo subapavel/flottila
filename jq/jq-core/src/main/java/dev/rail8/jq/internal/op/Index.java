@@ -44,12 +44,11 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's {@code .[k]}, its {@code jv_get} (jq-ref, recorded: diff/index.rec, slice.rec): an object and a string key
- * give the key's last value or null; an array and a number give the element, or null for NaN or past either end, a
- * fraction cut toward zero and a negative index counted from the end; an array or a string and an object key give the
- * slice of the key's {@code "start"} and {@code "end"} ({@link Slice}); null and a string, number or object key give
- * null; an array and an array key give the key's {@link #indexes} (#72). Any other pair is jq's error, which the quiet
- * variant {@code .[k]?} drops (ADR-0034).
+ * jq 1.8.2's {@code .[k]}, its {@code jv_get}: an object and a string key give the key's last value or null; an array
+ * and a number give the element, or null for NaN or past either end, a fraction cut toward zero and a negative index
+ * counted from the end; an array or a string and an object key give the slice of the key's {@code "start"} and {@code
+ * "end"} ({@link Slice}); null and a string, number or object key give null; an array and an array key give the key's
+ * {@link #indexes}. Any other pair is jq's error, which the quiet variant {@code .[k]?} drops.
  */
 public final class Index implements Fn1 {
   /** {@code .[k]}. */
@@ -126,11 +125,10 @@ public final class Index implements Fn1 {
 
   /**
    * jq's {@code jv_array_indexes} of the array {@code a} and the array key {@code b}: in order, each index of {@code a}
-   * at which {@code b}'s elements, not none, equal {@code a}'s from there on, overlapping runs included (jq-ref 1.8.2,
-   * recorded: index/array-key-on-array-*, slice/key-array-*-on-array). As jq does, every pair inside {@code a} is
-   * compared, after a pair that differs too, so a too-deep pair raises Equality's error wherever it is; a place past
-   * {@code a}'s end is jq's invalid, equal to nothing. Each pair ticks once (ADR-0008), on top of Equality's own; the
-   * result is a built array of computed numbers, charged as it grows (ADR-0035).
+   * at which {@code b}'s elements, not none, equal {@code a}'s from there on, overlapping runs included, as jq 1.8.2
+   * gives them. As jq does, every pair inside {@code a} is compared, after a pair that differs too, so a too-deep pair
+   * raises Equality's error wherever it is; a place past {@code a}'s end is jq's invalid, equal to nothing. Each pair
+   * ticks once, on top of Equality's own; the result is a built array of computed numbers, charged as it grows.
    */
   private static BuiltArray indexes(RunState state, Members a, Members b) {
     Built.Elements found = new Built.Elements(state);
@@ -163,7 +161,7 @@ public final class Index implements Fn1 {
     return value == null ? JqNull.NULL : value;
   }
 
-  /** The element at {@code i} of {@code array}, or null: a view charges the entries it steps (ADR-0034). */
+  /** The element at {@code i} of {@code array}, or null: a view charges the entries it steps. */
   private static JqValue element(RunState state, JqArray array, double i) {
     if (Double.isNaN(i)) {
       return JqNull.NULL;

@@ -6,24 +6,23 @@ import dev.rail8.jq.value.JqObject;
 import java.util.Arrays;
 
 /**
- * The key proof of a document's object (ADR-0044, GLOSSARY "Key proof"): at the start of each walk it finds which of
- * its key entries repeat an earlier one by their decoded bytes, and gives the {@link ObjectWalk} that takes each key
- * once, at its first place with its last value, as jq does (ADR-0002). What it finds lives as long as that walk.
+ * The key proof of a document's object: at the start of each walk it finds which of its key entries repeat an earlier
+ * one by their decoded bytes, and gives the {@link ObjectWalk} that takes each key once, at its first place with its
+ * last value, as jq does. What it finds lives as long as that walk.
  *
  * <p>Up to {@link #PAIRWISE} key entries, each is compared with the distinct keys before it. Past that, the keys go
- * into an open-addressing table in the run state's scratch ({@link RunState#ints}), a power of two of at least
- * {@link #SLOTS_PER_KEY} slots per key entry and at most {@link #MAX_SLOTS}, each key from its home slot, its
- * {@link #hash} masked, to the next free one. The whole proof may probe {@link #PROBES_PER_KEY} slots per key entry; a
- * probe that compares the bytes of two keys of one length costs one per started KiB of them, at least one. Past that
- * budget (keys built to collide) it sorts the key entries instead, by their unsigned decoded bytes with a stable
- * bottom-up merge sort, jqj's (ADR-0012, F-48), and equal neighbours are repeats. So a proof takes O(key bytes + n log
- * n), never n * n. No repeat leaves the walk without a plan; the first one makes it. A tag-6 key is decoded at most
- * once per proof, the first time a compare or the hash needs its bytes (#85 review).
+ * into an open-addressing table in the run state's scratch ({@link RunState#ints}), a power of two of at least {@link
+ * #SLOTS_PER_KEY} slots per key entry and at most {@link #MAX_SLOTS}, each key from its home slot, its {@link #hash}
+ * masked, to the next free one. The whole proof may probe {@link #PROBES_PER_KEY} slots per key entry; a probe that
+ * compares the bytes of two keys of one length costs one per started KiB of them, at least one. Past that budget (keys
+ * built to collide) it sorts the key entries instead, by their unsigned decoded bytes with a stable bottom-up merge
+ * sort, this engine's own, and equal neighbours are repeats. So a proof takes O(key bytes + n log n), never n * n. No
+ * repeat leaves the walk without a plan; the first one makes it. A tag-6 key is decoded at most once per proof, the
+ * first time a compare or the hash needs its bytes.
  *
- * <p>Ticks (ADR-0008 as amended by ADR-0044): one per key entry, or one per started KiB of a longer key's text, and
- * one per compare of the sort, one per started KiB of the shorter key, at least one; the table's probes charge none.
- * A writer's proof charges through {@link RunState#tickWritten}. A host's accessor proves on a run state of its own, so
- * it charges no run.
+ * <p>Ticks: one per key entry, or one per started KiB of a longer key's text, and one per compare of the sort, one per
+ * started KiB of the shorter key, at least one; the table's probes charge none. A writer's proof charges through {@link
+ * RunState#tickWritten}. A host's accessor proves on a run state of its own, so it charges no run.
  */
 public final class KeyProof {
   /** The most key entries compared pairwise, without a table. */
@@ -55,8 +54,8 @@ public final class KeyProof {
 
   /**
    * The plan of the object at tape index {@code index} of {@code doc} after its proof, as {@link ObjectWalk#plan}: null
-   * when its keys are distinct, so its key entries are its members in source order. The Printer's walk, which keeps
-   * no walk object per printed object (#85).
+   * when its keys are distinct, so its key entries are its members in source order. The Printer's walk, which keeps no
+   * walk object per printed object.
    */
   public static int[] plan(RunState state, Document doc, int index, boolean written) {
     long[] tape = doc.live();
@@ -90,7 +89,7 @@ public final class KeyProof {
     int end = Tape.end(tape, index);
     int n = (int) (entries >>> 1);
     byte[] bytes = doc.bytes();
-    // Each tag-6 key is decoded once, into its ordinal's place, when the proof first needs its bytes (#85 review); with
+    // Each tag-6 key is decoded once, into its ordinal's place, when the proof first needs its bytes; with
     // no tag-6 key there is nothing to keep, and no proof allocates for a key's bytes.
     byte[][] texts = (entries & 1) != 0 ? new byte[n][] : null;
     if (n <= PAIRWISE) {
@@ -112,13 +111,13 @@ public final class KeyProof {
 
   /**
    * The key index of {@code right}, a document's object, for Equality's compare of {@code left}, an object's walk or a
-   * built object, against it (ADR-0044 as amended by #95, GLOSSARY "Key index"). It proves {@code right} once, with the
-   * proof's code and ticks, then looks up each key of {@code left} in walk order, within this call, while the proof's
-   * scratch still holds its pairs, its table or its sorted keys, and stops at the first key {@code right} lacks, or
-   * once it has found as many keys as {@code right} has: a further key of {@code left}, which are distinct, cannot be
-   * among them. A lookup among the pairs or in the table charges nothing, since a found key retraces its own insertion
-   * probes; a lookup among the sorted keys charges one tick per compare, one per started KiB of the shorter key, at
-   * least one. The index keeps no scratch: a nested pair proves again in it.
+   * built object, against it. It proves {@code right} once, with the proof's code and ticks, then looks up each key of
+   * {@code left} in walk order, within this call, while the proof's scratch still holds its pairs, its table or its
+   * sorted keys, and stops at the first key {@code right} lacks, or once it has found as many keys as {@code right}
+   * has: a further key of {@code left}, which are distinct, cannot be among them. A lookup among the pairs or in the
+   * table charges nothing, since a found key retraces its own insertion probes; a lookup among the sorted keys charges
+   * one tick per compare, one per started KiB of the shorter key, at least one. The index keeps no scratch: a nested
+   * pair proves again in it.
    */
   static KeyIndex index(RunState state, ObjectView right, Members left) {
     Document doc = right.doc();

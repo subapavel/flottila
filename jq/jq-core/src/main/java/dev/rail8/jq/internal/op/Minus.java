@@ -40,9 +40,8 @@ import dev.rail8.jq.value.JqObject;
 import dev.rail8.jq.value.JqString;
 
 /**
- * jq 1.8.2's {@code l - r} (jq-ref, recorded: diff/arith-kinds.rec, arith-containers.rec, arith-equal.rec): two
- * numbers give their double difference, two arrays the elements of the left one that equal no element of the right
- * one, by {@link Equality}; any other pair is jq's error.
+ * jq 1.8.2's {@code l - r}: two numbers give their double difference, two arrays the elements of the left one that
+ * equal no element of the right one, by {@link Equality}; any other pair is jq's error.
  */
 final class Minus implements Fn2 {
   private static final String ERROR = "cannot be subtracted";
@@ -91,9 +90,8 @@ final class Minus implements Fn2 {
 
   /**
    * The elements of {@code a} that equal no element of {@code b}, in order: one tick per element of {@code a}, even
-   * against {@code []}, and one per pair compared, stopping at the first equal one (ADR-0034 amendment); a container
-   * charged first, then an element before each kept one enters (ADR-0035 amendment). The slots are as many as {@code a}
-   * has, the builder's own cost.
+   * against {@code []}, and one per pair compared, stopping at the first equal one; a container charged first, then an
+   * element before each kept one enters. The slots are as many as {@code a} has, the builder's own cost.
    */
   private static BuiltArray difference(RunState state, JqArray a, JqArray b) {
     state.chargeBuilt(Charges.CONTAINER);

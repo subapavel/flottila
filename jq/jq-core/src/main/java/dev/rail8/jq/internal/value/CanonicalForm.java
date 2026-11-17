@@ -6,10 +6,9 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 
 /**
- * A literal number's canonical form and values (ADR-0012, ADR-0028; GLOSSARY "Canonical form", "Adjusted exponent",
- * "Exponent limits", "Infinity literal"), computed from its strict token. The token is read as a coefficient D, its
- * digits without leading zeros ("0" when all are zero), and the exponent e of D's last digit; the adjusted exponent is
- * {@code e + |D| - 1}. Inside the exponent limits the text is the General Decimal Arithmetic to-scientific-string of
+ * A literal number's canonical form and values, computed from its strict token. The token is read as a coefficient D,
+ * its digits without leading zeros ("0" when all are zero), and the exponent e of D's last digit; the adjusted exponent
+ * is {@code e + |D| - 1}. Inside the exponent limits the text is the General Decimal Arithmetic to-scientific-string of
  * D and e; the sign of a zero is kept. The exponent is a {@code long} that saturates, so no token wraps round.
  */
 public final class CanonicalForm {
@@ -66,7 +65,7 @@ public final class CanonicalForm {
 
   /**
    * The double of the strict token {@code b[off, off + len)}: an Infinity literal is an infinity, any other literal its
-   * value rounded HALF_EVEN to 17 significant digits, then correctly rounded (ADR-0012 "Values", ADR-0028).
+   * value rounded HALF_EVEN to 17 significant digits, then correctly rounded.
    */
   public static double toDouble(byte[] b, int off, int len) {
     Token t = new Token(b, off, len);
@@ -106,8 +105,8 @@ public final class CanonicalForm {
   }
 
   /**
-   * The decimal value of the strict token {@code b[off, off + len)}: its canonical form's value with that form's
-   * scale, so after the exponent limits; a negative zero gives a zero (ADR-0028).
+   * The decimal value of the strict token {@code b[off, off + len)}: its canonical form's value with that form's scale,
+   * so after the exponent limits; a negative zero gives a zero.
    *
    * @throws ArithmeticException for an Infinity literal, which has no decimal value
    */
@@ -143,10 +142,10 @@ public final class CanonicalForm {
   }
 
   /**
-   * The order of two strict tokens' literals (ADR-0012 "Comparison"): their canonical forms' values, as
-   * {@code BigDecimal.compareTo} orders them, so a negative zero equals zero and a value below the quantum is rounded
-   * first; an Infinity literal lies past every finite literal of its sign, and two Infinity literals of one sign are
-   * equal. Returns -1, 0 or 1. It reads each digit once, where a BigDecimal of a long coefficient takes quadratic time.
+   * The order of two strict tokens' literals: their canonical forms' values, as {@code BigDecimal.compareTo} orders
+   * them, so a negative zero equals zero and a value below the quantum is rounded first; an Infinity literal lies past
+   * every finite literal of its sign, and two Infinity literals of one sign are equal. Returns -1, 0 or 1. It reads
+   * each digit once, where a BigDecimal of a long coefficient takes quadratic time.
    */
   static int compare(byte[] a, int aoff, int alen, byte[] b, int boff, int blen) {
     Token x = rounded(a, aoff, alen);

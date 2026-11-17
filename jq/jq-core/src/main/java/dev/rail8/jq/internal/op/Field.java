@@ -15,9 +15,9 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq's {@code .name} and {@code ."string"} (#34 design section 6, #61): on an object the last value of the key
- * (ADR-0002), or null when there is none, charging one tick per key scanned (ADR-0034); on null, null; on any other
- * kind a {@link FilterException} with jq's text, or no result for the quiet variant {@code .name?} (ADR-0034).
+ * jq's {@code .name} and {@code ."string"}: on an object the last value of the key, or null when there is none,
+ * charging one tick per key scanned; on null, null; on any other kind a {@link FilterException} with jq's text, or no
+ * result for the quiet variant {@code .name?}.
  */
 public final class Field implements Fn0 {
   private final String name;
@@ -25,7 +25,7 @@ public final class Field implements Fn0 {
   /** Whether this is {@code .name?}, which drops its own error. */
   private final boolean quiet;
 
-  /** The key as jq's error text shows it: its JSON text, cut when long (jq-ref 1.8.2, recorded: field/error-name-N). */
+  /** The key as jq's error text shows it: its JSON text, cut when long, as jq 1.8.2 cuts it. */
   private final String shown;
 
   public Field(String name) {

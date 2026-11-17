@@ -36,9 +36,8 @@ import dev.rail8.jq.value.JqObject;
 import dev.rail8.jq.value.JqString;
 
 /**
- * jq 1.8.2's {@code l / r} (jq-ref, recorded: diff/arith-kinds.rec, arith-divmod.rec): two numbers give their double
- * quotient, or jq's error when the divisor is a zero of either sign; two strings the split of the left one; any other
- * pair is jq's error.
+ * jq 1.8.2's {@code l / r}: two numbers give their double quotient, or jq's error when the divisor is a zero of either
+ * sign; two strings the split of the left one; any other pair is jq's error.
  */
 final class Divide implements Fn2 {
   private static final String ERROR = "cannot be divided";

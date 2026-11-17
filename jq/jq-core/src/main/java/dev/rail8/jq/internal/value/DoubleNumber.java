@@ -4,14 +4,14 @@ import dev.rail8.jq.value.JqNumber;
 import java.math.BigDecimal;
 
 /**
- * A number arithmetic computed (ADR-0003, ADR-0012; GLOSSARY "Computed number"): a double, which never becomes literal
- * text, printed in jq's {@code jvp_dtoa_fmt} layout. Public only so the kind can permit it.
+ * A number arithmetic computed: a double, which never becomes literal text, printed in jq's {@code jvp_dtoa_fmt}
+ * layout. Public only so the kind can permit it.
  */
 public final class DoubleNumber implements JqNumber {
-  /** What NaN prints: jq prints it as null (ADR-0012). */
+  /** What NaN prints: jq prints it as null. */
   private static final String NAN = "null";
 
-  /** What an infinity prints after its sign: DBL_MAX (ADR-0012). */
+  /** What an infinity prints after its sign: DBL_MAX. */
   private static final String INFINITY = "1.7976931348623157e+308";
 
   /** The most digits before the point the plain form shows beyond the shortest digits ({@code jvp_dtoa_fmt}). */
@@ -53,7 +53,7 @@ public final class DoubleNumber implements JqNumber {
     return (long) value;
   }
 
-  /** ADR-0028: the value of its printed digits; NaN and the infinities throw {@code ArithmeticException}. */
+  /** The value of its printed digits; NaN and the infinities throw {@code ArithmeticException}. */
   @Override
   public BigDecimal decimalValue() {
     if (!Double.isFinite(value)) {
@@ -63,9 +63,9 @@ public final class DoubleNumber implements JqNumber {
   }
 
   /**
-   * jq's {@code jvp_dtoa_fmt} of a finite {@code d >= 0} (ADR-0012): the shortest digits, as {@link #digits} reads
-   * them from {@code Double.toString}, in exponent form when the point lies before the fourth place after it or more
-   * than 15 places past the last digit, otherwise plain.
+   * jq's {@code jvp_dtoa_fmt} of a finite {@code d >= 0}: the shortest digits, as {@link #digits} reads them from
+   * {@code Double.toString}, in exponent form when the point lies before the fourth place after it or more than 15
+   * places past the last digit, otherwise plain.
    */
   private static String layout(double d) {
     if (d == 0) {
@@ -74,7 +74,7 @@ public final class DoubleNumber implements JqNumber {
     StringBuilder digits = new StringBuilder(24);
     int point = digits(Double.toString(d), digits);
     // Java gives a subnormal two digits where one suffices (4.9E-324): jq's shortest is the next one-digit decimal when
-    // that reads back as d (5e-324); only a 9 rounds so, so the digit below is never the shorter one (#65 probe).
+    // that reads back as d (5e-324); only a 9 rounds so, so the digit below is never the shorter one.
     if (d < Double.MIN_NORMAL && digits.length() == 2) {
       StringBuilder shorter = new StringBuilder(2);
       String text = (digits.charAt(0) - '0' + 1) + ".0E" + (point - 1);

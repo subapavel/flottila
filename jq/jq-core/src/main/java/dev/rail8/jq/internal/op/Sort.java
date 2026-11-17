@@ -41,24 +41,25 @@ import dev.rail8.jq.value.JqNull;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's natives that order an array (#73; jq-ref, recorded: diff/sort.rec): {@code sort}, {@code unique}, {@code
- * min} and {@code max}, and the hidden {@code _sort_by_impl}, {@code _group_by_impl}, {@code _unique_by_impl}, {@code
- * _min_by_impl} and {@code _max_by_impl}, whose argument is the array of keys that builtin.jq's {@code sort_by(f)} and
- * its kin pass as {@code map([f])}. A form without {@code _by} is its own keys. All order the keys by {@link
- * Order#compare}, jq's value order, and raise its "Comparison too deep" (ADR-0029).
+ * jq 1.8.2's natives that order an array: {@code sort}, {@code unique}, {@code min} and {@code max}, and the hidden
+ * {@code _sort_by_impl}, {@code _group_by_impl}, {@code _unique_by_impl}, {@code _min_by_impl} and {@code
+ * _max_by_impl}, whose argument is the array of keys that builtin.jq's {@code sort_by(f)} and its kin pass as {@code
+ * map([f])}. A form without {@code _by} is its own keys. All order the keys by {@link Order#compare}, jq's value order,
+ * and raise its "Comparison too deep".
  *
- * <p>The sorting forms put each member with its key and sort them with a stable merge sort of jqj's own (ADR-0012):
- * runs of 1, 2, 4, … members merged pairwise, the left run's member first unless the right one's key comes strictly
- * before it. jq sorts with libc's {@code qsort} and breaks a tie by the input's order, so the two agree wherever the
- * value order is one: equal keys keep the input's order. A pair of NaNs, which jq's compare puts below each other,
- * keeps the input's order too, as jq-ref's does, since the left one always comes first. Inside a cycle of literal and
- * computed numbers the order is jqj's own (DEVIATIONS.md "Order inside a comparison cycle"). {@code _group_by_impl}
- * then starts a group at each key that jq's {@code jv_equal} ({@link Equality}) finds unequal to the first key of the
- * group before it, and {@code _unique_by_impl} keeps the first member of each such group, both raising its "Equality
- * check too deep". {@code min} keeps the first least key and {@code max} the last greatest, jq's left-to-right scan.
+ * <p>The sorting forms put each member with its key and sort them with a stable merge sort of this engine's own: runs
+ * of 1, 2, 4, … members merged pairwise, the left run's member first unless the right one's key comes strictly before
+ * it. jq sorts with libc's {@code qsort} and breaks a tie by the input's order, so the two agree wherever the value
+ * order is one: equal keys keep the input's order. A pair of NaNs, which jq's compare puts below each other, keeps the
+ * input's order too, as the reference jq's does, since the left one always comes first. Inside a cycle of literal and
+ * computed numbers the order is this engine's own, since there the value order is no order and the two sorts differ.
+ * {@code _group_by_impl} then starts a group at each key that jq's {@code jv_equal} ({@link Equality}) finds unequal to
+ * the first key of the group before it, and {@code _unique_by_impl} keeps the first member of each such group, both
+ * raising its "Equality check too deep". {@code min} keeps the first least key and {@code max} the last greatest, jq's
+ * left-to-right scan.
  *
- * <p>Each ticks once per member it reads, on top of a view's walk, and adds the ticks of each compare and equality check
- * it makes, never one of its own per compare (ADR-0037); the arrays it builds are charged (ADR-0035), its scratch of
+ * <p>Each ticks once per member it reads, on top of a view's walk, and adds the ticks of each compare and equality
+ * check it makes, never one of its own per compare; the arrays it builds are charged to bytes built, its scratch of
  * members and keys is not.
  */
 public final class Sort {
@@ -184,7 +185,7 @@ public final class Sort {
   }
 
   /**
-   * {@code entries} in jq's value order of their keys, by jqj's merge sort ({@link MergeSort#sort}, F-48) with {@link
+   * {@code entries} in jq's value order of their keys, by this engine's merge sort ({@link MergeSort#sort}) with {@link
    * Order#compare}, whose ticks are the sort's.
    */
   private static Entry[] mergeSort(RunState state, Entry[] entries) {
@@ -226,7 +227,7 @@ public final class Sort {
     return best;
   }
 
-  /** An array's length; a view's walk charges its elements (ADR-0034). */
+  /** An array's length; a view's walk charges its elements. */
   private static int length(RunState state, JqArray array) {
     return switch (array) {
       case ArrayView view -> view.length(state);

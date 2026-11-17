@@ -39,19 +39,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * jq 1.8.2's {@code jv_cmp}, the value order every orderer uses (ADR-0037, ADR-0029; GLOSSARY "Value order",
- * "Comparison depth"). Each pair of values lies at a depth, the outermost at 0, and a pair deeper than
- * {@link #MAX_DEPTH} raises jq's catchable "Comparison too deep" before anything else is compared. Then the kinds
- * decide, null below false below true below numbers below strings below arrays below objects; within a kind numbers
- * compare by {@link Numbers}, a NaN side read as null at the same depth; strings by their UTF-8 bytes, unsigned, then
- * by length; arrays element by element, each pair one level deeper, then by length; objects by their key lists, sorted
- * by the same string order, as an array one level deeper whose keys lie two levels deeper, and then by their values in
- * that sorted order, one level deeper. There is no identity check. The walk keeps its open containers on a stack of its
- * own, never in Java frames. It charges one tick per member pair it compares, one per key it collects from each
- * object, and one per started KiB of the shorter of two strings it compares, a key pair included, and the number
- * compare's own; the member walks charge theirs, a view's key proof included (ADR-0044); each key list is sorted by
- * jqj's merge sort ({@link MergeSort}), each compare charging max(1, started KiB of the shorter key), as {@code keys}
- * does (F-53); nothing is charged to bytes built, the sorted key lists included (ADR-0037, design approval O1).
+ * jq 1.8.2's {@code jv_cmp}, the value order every orderer uses. Each pair of values lies at a depth, the outermost at
+ * 0, and a pair deeper than {@link #MAX_DEPTH} raises jq's catchable "Comparison too deep" before anything else is
+ * compared. Then the kinds decide, null below false below true below numbers below strings below arrays below objects;
+ * within a kind numbers compare by {@link Numbers}, a NaN side read as null at the same depth; strings by their UTF-8
+ * bytes, unsigned, then by length; arrays element by element, each pair one level deeper, then by length; objects by
+ * their key lists, sorted by the same string order, as an array one level deeper whose keys lie two levels deeper, and
+ * then by their values in that sorted order, one level deeper. There is no identity check. The walk keeps its open
+ * containers on a stack of its own, never in Java frames. It charges one tick per member pair it compares, one per key
+ * it collects from each object, and one per started KiB of the shorter of two strings it compares, a key pair included,
+ * and the number compare's own; the member walks charge theirs, a view's key proof included; each key list is sorted by
+ * this engine's merge sort ({@link MergeSort}), each compare charging max(1, started KiB of the shorter key), as {@code
+ * keys} does; nothing is charged to bytes built, the sorted key lists included, since an order builds no value.
  */
 public final class Order {
   /** jq's {@code MAX_CMP_DEPTH}. */
@@ -143,8 +142,8 @@ public final class Order {
   /**
    * Two numbers: a NaN side is read as null, so it lies below the other number, a NaN included; any other pair by
    * {@link Numbers#compare(RunState, JqNumber, JqNumber)}, which gives 1, as jq's null on the right does, when only the
-   * right side is NaN: that side is no literal, so the pair compares as doubles, only a non-short view's read charged
-   * (#97). A literal is never NaN.
+   * right side is NaN: that side is no literal, so the pair compares as doubles, only a non-short view's read charged.
+   * A literal is never NaN.
    */
   private static int numbers(RunState state, JqNumber n, JqNumber m) {
     if (n instanceof DoubleNumber d && Double.isNaN(d.doubleValue())) {
@@ -167,7 +166,7 @@ public final class Order {
   /**
    * jq's {@code string_cmp}: the first byte that differs, unsigned, within the shorter length, then the lengths. It
    * charges nothing; {@code keys} (Keys) and the sort of an object's key list in {@link #compare} charge each compare
-   * they make with it (F-53).
+   * they make with it.
    */
   public static int bytes(MemorySegment a, MemorySegment b) {
     long n = Math.min(a.byteSize(), b.byteSize());
@@ -182,9 +181,9 @@ public final class Order {
   private record Key(MemorySegment utf8, int cursor) {}
 
   /**
-   * jq's {@code jv_keys}: the keys of {@code object}, one tick per key collected, sorted by jqj's merge sort ({@link
-   * MergeSort#sort}) by {@link #bytes}, as {@code keys} sorts them: one tick per compare, max(1, started KiB of the
-   * shorter key) (F-53). Two keys of one object's walk are never equal, so the order is that of any sort. The keys are
+   * jq's {@code jv_keys}: the keys of {@code object}, one tick per key collected, sorted by this engine's merge sort
+   * ({@link MergeSort#sort}) by {@link #bytes}, as {@code keys} sorts them: one tick per compare, max(1, started KiB of
+   * the shorter key). Two keys of one object's walk are never equal, so the order is that of any sort. The keys are
    * scratch, never charged to bytes built.
    */
   private static Key[] keys(RunState state, Members object) {

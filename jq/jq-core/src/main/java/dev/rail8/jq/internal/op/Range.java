@@ -35,14 +35,14 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqNumber;
 
 /**
- * jq 1.8.2's {@code range/2} on its two bounds, start and end (ADR-0041; jq-ref, recorded: diff/reduce.rec range2-*):
- * the start itself first, so a literal keeps its form ({@code [range(1.10;3)]} gives {@code [1.10,2.1]}), then each
- * value the double before it plus 1, rounded at each step, while the value's double is below the end's; a bound that is
- * no number raises "Range bounds must be numeric" before any result. Its steps are the caller's, one per value, and
- * each bound's read once, as {@link Numbers#doubleValue} charges it (#97); it charges nothing else.
+ * jq 1.8.2's {@code range/2} on its two bounds, start and end: the start itself first, so a literal keeps its form
+ * ({@code [range(1.10;3)]} gives {@code [1.10,2.1]}), then each value the double before it plus 1, rounded at each
+ * step, while the value's double is below the end's; a bound that is no number raises "Range bounds must be numeric"
+ * before any result. Its steps are the caller's, one per value, and each bound's read once, as {@link
+ * Numbers#doubleValue} charges it; it charges nothing else.
  *
- * <p>A document's number computes its double at each read (ADR-0012), O(its token) for each, so {@link #first} reads
- * each bound's double once and puts both in the end's argument place as {@link Doubles}, which each later step reads.
+ * <p>A document's number computes its double at each read, O(its token) for each, so {@link #first} reads each bound's
+ * double once and puts both in the end's argument place as {@link Doubles}, which each later step reads.
  *
  * <p>The cursor of a later value is that value's double, its bits with every NaN as the one canonical NaN; the first
  * value's is {@link #START}, another NaN's bits, so no double's cursor is it or {@link Many#END}.

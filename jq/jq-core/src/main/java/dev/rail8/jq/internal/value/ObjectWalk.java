@@ -4,13 +4,12 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * One walk of a document's object, made by its {@link KeyProof} (ADR-0044, GLOSSARY "Object walk"): its {@code size}
- * members, each key at its first place with its last value (ADR-0002). With {@code plan} null no key repeats, and the
- * cursor is a key's tape index, its value the next entry. Otherwise {@code plan} holds a pair per member in order, the
- * tape index of its key's first place and that of its last value, and the cursor is the place of a pair in it. No
- * step scans or charges: the proof charged them all. A step after a member checks the document again, since the sink
- * that took the member may have read another one onto the tape (ADR-0026). The walk is no value, and a filter never
- * sees it.
+ * One walk of a document's object, made by its {@link KeyProof}: its {@code size} members, each key at its first place
+ * with its last value. With {@code plan} null no key repeats, and the cursor is a key's tape index, its value the next
+ * entry. Otherwise {@code plan} holds a pair per member in order, the tape index of its key's first place and that of
+ * its last value, and the cursor is the place of a pair in it. No step scans or charges: the proof charged them all. A
+ * step after a member checks the document again, since the sink that took the member may have read another one onto the
+ * tape. The walk is no value, and a filter never sees it.
  */
 public record ObjectWalk(Document doc, int index, int size, int[] plan) implements Members, Keyed {
 

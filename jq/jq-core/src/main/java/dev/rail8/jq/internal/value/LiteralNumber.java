@@ -7,9 +7,8 @@ import java.math.BigDecimal;
 import java.util.Arrays;
 
 /**
- * A literal number written in a filter, a negated literal, or one that {@code tonumber} read (ADR-0012, ADR-0028,
- * ADR-0031; GLOSSARY "Literal number"): its canonical form, its double and whether it fits a long, all computed once,
- * when it is made. Public only so the kind can permit it.
+ * A literal number written in a filter, a negated literal, or one that {@code tonumber} read: its canonical form, its
+ * double and whether it fits a long, all computed once, when it is made. Public only so the kind can permit it.
  */
 public final class LiteralNumber implements JqNumber, Literal {
   /** {@link Long#MAX_VALUE}'s digits: a 19-digit integer fits a long when it is at most these. */
@@ -18,14 +17,14 @@ public final class LiteralNumber implements JqNumber, Literal {
   /** The digits of {@link Long#MIN_VALUE} without its sign: the most a negative 19-digit integer may have. */
   private static final String LONG_MIN = LONG_MAX.substring(0, 18) + "8";
 
-  /** A short token's most bytes (ADR-0012 "Flags"). */
+  /** A short token's most bytes. */
   private static final int SHORT = 15;
 
   /** The strict token of an Infinity literal, without its sign: an adjusted exponent above decNumber's limit. */
   private static final String INFINITY = "1e1000000000";
 
   /**
-   * A strict token of ADR-0012's grammar: a normalised lexeme, which has no sign; the token of a negated literal, which
+   * A strict token of the number grammar: a normalised lexeme, which has no sign; the token of a negated literal, which
    * has one unless its value is a zero; or a normalised text of {@link #ofText}, which keeps its minus sign.
    */
   private final byte[] token;
@@ -43,7 +42,7 @@ public final class LiteralNumber implements JqNumber, Literal {
     this(token, fitsLong(token));
   }
 
-  /** The literal of {@code token}, whose FITS_LONG flag (ADR-0012) is {@code fitsLong}. */
+  /** The literal of {@code token}, whose FITS_LONG flag is {@code fitsLong}. */
   private LiteralNumber(String token, boolean fitsLong) {
     this.token = token.getBytes(US_ASCII);
     StringBuilder text = new StringBuilder();
@@ -69,8 +68,8 @@ public final class LiteralNumber implements JqNumber, Literal {
   }
 
   /**
-   * ADR-0012 FITS_LONG (ADR-0031) of a filter's token: an integer token, never -0, in the long range. A sign is only
-   * ever on a non-zero value. Two digit strings of the same length compare as their values.
+   * The FITS_LONG flag of a filter's token: an integer token, never -0, in the long range. A sign is only ever on a
+   * non-zero value. Two digit strings of the same length compare as their values.
    */
   private static boolean fitsLong(String token) {
     int sign = token.startsWith("-") ? 1 : 0;
@@ -81,8 +80,8 @@ public final class LiteralNumber implements JqNumber, Literal {
   }
 
   /**
-   * The literal of a document's number {@code view}, for a detach (ADR-0039): its token copied, so it outlives the
-   * document, and its FITS_LONG flag the tape's, which is false for a document's {@code -0}.
+   * The literal of a document's number {@code view}, for a detach: its token copied, so it outlives the document, and
+   * its FITS_LONG flag the tape's, which is false for a document's {@code -0}.
    */
   static LiteralNumber copyOf(NumberView view) {
     int off = view.tokenOffset();
@@ -116,14 +115,13 @@ public final class LiteralNumber implements JqNumber, Literal {
   /**
    * jq's {@code tonumber} of a string, its {@code jv_number_with_literal}: the number that the numeric-string grammar
    * of the General Decimal Arithmetic specification, decNumber's, reads from all of {@code text}, or Java {@code null}
-   * when it reads none (written from the grammar, not from decNumber's code; ADR-0012 "tonumber", ADR-0015). That is an
-   * optional sign, then digits with at most one point and at least one digit, then an optional exponent {@code e} or
-   * {@code E} with an optional sign and at least one digit; or {@code Inf} or {@code Infinity}; or {@code NaN} or
-   * {@code sNaN} with a payload of zeros, each in any case. The number is a literal of the strict token the text
-   * normalises to, as {@link #ofLexeme} normalises: {@code +} and the integer part's leading zeros go, a missing integer
-   * part is {@code 0}, a point without digits after it goes, and {@code -} stays, on a zero too ({@code "-0"} gives
-   * {@code -0}). An infinity is an Infinity literal of its sign; a NaN is a computed NaN, as jq makes it (jq-ref 1.8.2,
-   * recorded: natives/tonumber-strings, natives/tonumber-nonfinite). It reads each byte once.
+   * when it reads none (written from the grammar, not from decNumber's code). That is an optional sign, then digits
+   * with at most one point and at least one digit, then an optional exponent {@code e} or {@code E} with an optional
+   * sign and at least one digit; or {@code Inf} or {@code Infinity}; or {@code NaN} or {@code sNaN} with a payload of
+   * zeros, each in any case. The number is a literal of the strict token the text normalises to, as {@link #ofLexeme}
+   * normalises: {@code +} and the integer part's leading zeros go, a missing integer part is {@code 0}, a point without
+   * digits after it goes, and {@code -} stays, on a zero too ({@code "-0"} gives {@code -0}). An infinity is an
+   * Infinity literal of its sign; a NaN is a computed NaN, as jq 1.8.2 makes it. It reads each byte once.
    */
   public static JqNumber ofText(byte[] text) {
     int n = text.length;
@@ -192,7 +190,7 @@ public final class LiteralNumber implements JqNumber, Literal {
     }
     token.append(new String(text, exponent, n - exponent, US_ASCII));
     String strict = token.toString();
-    // An integer token fits a long by its digits, but -0 never does (ADR-0012 FITS_LONG).
+    // An integer token fits a long by its digits, but -0 never does.
     return new LiteralNumber(strict, fitsLong(strict) && !strict.equals("-0"));
   }
 
@@ -217,9 +215,9 @@ public final class LiteralNumber implements JqNumber, Literal {
   }
 
   /**
-   * jq's {@code jv_number_negate} of the literal whose strict token is {@code b[off, off + len)}, decNumber's
-   * {@code decNumberMinus} (ADR-0012): the token with its sign flipped, except that a zero of either sign gives a
-   * positive zero with the same exponent ({@code -0} gives {@code 0}, {@code 0E-7} gives {@code 0E-7}).
+   * jq's {@code jv_number_negate} of the literal whose strict token is {@code b[off, off + len)}, decNumber's {@code
+   * decNumberMinus}: the token with its sign flipped, except that a zero of either sign gives a positive zero with the
+   * same exponent ({@code -0} gives {@code 0}, {@code 0E-7} gives {@code 0E-7}).
    */
   static LiteralNumber negated(byte[] b, int off, int len) {
     String token = new String(b, off, len, US_ASCII);
@@ -234,19 +232,19 @@ public final class LiteralNumber implements JqNumber, Literal {
     return canonical;
   }
 
-  /** jq's compact text: the canonical form (ADR-0012). */
+  /** jq's compact text: the canonical form. */
   @Override
   public String toJson() {
     return new String(canonical, US_ASCII);
   }
 
-  /** jq's printed form (ADR-0016), the canonical form: what a host sees of a detached payload number (ADR-0039). */
+  /** jq's printed form, the canonical form: what a host sees of a detached payload number. */
   @Override
   public String toString() {
     return toJson();
   }
 
-  /** ADR-0012 "Values", ADR-0028: an Infinity literal gives an infinity. */
+  /** Its double; an Infinity literal gives an infinity. */
   @Override
   public double doubleValue() {
     return doubleValue;
@@ -265,7 +263,7 @@ public final class LiteralNumber implements JqNumber, Literal {
     return Long.parseLong(new String(token, US_ASCII));
   }
 
-  /** ADR-0028: the canonical form's value, its scale kept; an Infinity literal throws {@code ArithmeticException}. */
+  /** The canonical form's value, its scale kept; an Infinity literal throws {@code ArithmeticException}. */
   @Override
   public BigDecimal decimalValue() {
     return CanonicalForm.toDecimal(token, 0, token.length);
@@ -292,9 +290,9 @@ public final class LiteralNumber implements JqNumber, Literal {
   }
 
   /**
-   * ADR-0012's short token, as the reader's CANONICAL flag gives it to a view: at most {@link #SHORT} bytes, equal to
-   * the canonical form and without an exponent. A canonical exponent token such as {@code 1E+400}, {@code 1E-400} or
-   * {@code 1.5E-323} has a double (+Infinity, 0, a rounded subnormal) that does not order it as its decimal does.
+   * A short token, as the reader's CANONICAL flag gives it to a view: at most {@link #SHORT} bytes, equal to the
+   * canonical form and without an exponent. A canonical exponent token such as {@code 1E+400}, {@code 1E-400} or {@code
+   * 1.5E-323} has a double (+Infinity, 0, a rounded subnormal) that does not order it as its decimal does.
    */
   private static boolean isShort(byte[] token, byte[] canonical) {
     if (token.length > SHORT || !Arrays.equals(token, canonical)) {

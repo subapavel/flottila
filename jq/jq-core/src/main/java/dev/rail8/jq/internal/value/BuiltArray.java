@@ -9,9 +9,9 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * An array built at run time (#63, decision 1 of its approval; #64): a construction's or a slice's, elements
- * {@code [0, length)} of {@code elements}, each a view or a built value, never written once the array is made. Public
- * only so the kind can permit it. Equality is the object's, never jq's (ADR-0026).
+ * An array built at run time, a construction's or a slice's: elements {@code [0, length)} of {@code elements}, each a
+ * view or a built value, never written once the array is made. Public only so the kind can permit it. Equality is the
+ * object's, never jq's.
  */
 public final class BuiltArray implements JqArray, Members {
   /** The elements, each a {@link JqValue}, in {@code [0, length)}; a collector's array, so it may be longer. */
@@ -20,8 +20,8 @@ public final class BuiltArray implements JqArray, Members {
   private final int length;
 
   /**
-   * The ownership mark of ADR-0022: every built class carries it from the ticket that creates the class, and it stays
-   * null until spec 3 (spec-1 grilling round 1, item 9).
+   * The ownership mark for updates in place: the activation that made the value and may write it without a copy. Every
+   * built class carries it; nothing sets it, so it is always null and no built value is written in place.
    */
   private final Object owner;
 
@@ -35,7 +35,7 @@ public final class BuiltArray implements JqArray, Members {
     this.owner = null;
   }
 
-  /** jq's compact text (ADR-0015). */
+  /** jq's compact text. */
   @Override
   public String toJson() {
     return Printer.json(this);
@@ -46,15 +46,15 @@ public final class BuiltArray implements JqArray, Members {
     return length;
   }
 
-  /** @throws IndexOutOfBoundsException unless {@code 0 <= i < length()} (ADR-0026) */
+  /** @throws IndexOutOfBoundsException unless {@code 0 <= i < length()} */
   @Override
   public JqValue get(int i) {
     return (JqValue) elements[Objects.checkIndex(i, length)];
   }
 
   /**
-   * The elements {@code [from, to)}, {@code 0 <= from <= to <= length()}, as a new array: one tick per element copied
-   * (ADR-0034), and the copy charged as a built container of as many elements before it is allocated (ADR-0035).
+   * The elements {@code [from, to)}, {@code 0 <= from <= to <= length()}, as a new array: one tick per element copied,
+   * and the copy charged as a built container of as many elements before it is allocated.
    */
   public BuiltArray slice(RunState state, int from, int to) {
     state.tick(to - from);

@@ -41,9 +41,8 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's {@code l + r} (jq-ref, recorded: diff/arith-kinds.rec, arith-containers.rec): a null operand gives the
- * other unchanged, the left one first; two numbers their double sum; two strings, two arrays or two objects the
- * concatenation, object {@code +} for objects; any other pair is jq's error.
+ * jq 1.8.2's {@code l + r}: a null operand gives the other unchanged, the left one first; two numbers their double sum;
+ * two strings, two arrays or two objects the concatenation, object {@code +} for objects; any other pair is jq's error.
  */
 final class Plus implements Fn2 {
   private static final String ERROR = "cannot be added";
@@ -83,8 +82,8 @@ final class Plus implements Fn2 {
 
   /**
    * jq's {@code jv_array_concat}: the elements of {@code a}, then those of {@code b}, charged as a container and an
-   * element each before it is allocated; a view's length walk charges its elements (ADR-0034), and the copy ticks once
-   * per element it copies (ADR-0034 amendment for #65).
+   * element each before it is allocated; a view's length walk charges its elements, and the copy ticks once per element
+   * it copies.
    */
   private static BuiltArray concat(RunState state, JqArray a, JqArray b) {
     int n = Slice.length(state, a);

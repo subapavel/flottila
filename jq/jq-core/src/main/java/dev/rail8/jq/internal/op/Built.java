@@ -8,9 +8,9 @@ import java.util.Arrays;
 import java.util.Comparator;
 
 /**
- * The arrays an operator's result is built in, each charged before it is allocated (ADR-0035): a string's bytes as a
- * string, a built array's slots as a container and its elements. A length past what the JVM allocates ends the run
- * with the bytes-built termination instead, whatever the limit.
+ * The arrays an operator's result is built in, each charged before it is allocated: a string's bytes as a string, a
+ * built array's slots as a container and its elements. A length past what the JVM allocates ends the run with the
+ * bytes-built termination instead, whatever the limit.
  */
 final class Built {
   /** The longest array built: {@code jdk.internal.util.ArraysSupport.SOFT_MAX_ARRAY_LENGTH}, below the VMs' limits. */
@@ -36,7 +36,7 @@ final class Built {
     return new Object[(int) length];
   }
 
-  /** The ticks of a loop over {@code bytes} bytes: one per started KiB, the writer's rate (ADR-0008, ADR-0015). */
+  /** The ticks of a loop over {@code bytes} bytes: one per started KiB, the writer's rate. */
   static int kibibytes(long bytes) {
     return (int) ((bytes + 1023) >>> 10);
   }
@@ -56,8 +56,8 @@ final class Built {
   }
 
   /**
-   * A built array whose length is known only once it is full, as a Collect's is (ADR-0034 amendment): the container is
-   * charged when it is made and each element before it is stored (ADR-0035), never the capacity the slots grow to.
+   * A built array whose length is known only once it is full, as a Collect's is: the container is charged when it is
+   * made and each element before it is stored, never the capacity the slots grow to.
    */
   static final class Elements {
     /** The capacity of the first slots, allocated with the first element. */
@@ -80,7 +80,7 @@ final class Built {
       values[length++] = value;
     }
 
-    /** The elements so far, sorted by {@code order} with jqj's merge sort, {@link MergeSort#sort} (F-48). */
+    /** The elements so far, sorted by {@code order} with this engine's merge sort, {@link MergeSort#sort}. */
     void sort(Comparator<Object> order) {
       values = MergeSort.sort(values, length, order);
     }

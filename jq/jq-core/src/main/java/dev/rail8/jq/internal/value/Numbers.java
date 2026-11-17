@@ -4,19 +4,18 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqNumber;
 
 /**
- * The number rules every operator shares (ADR-0012): a native read of a number's double, the one three-way compare,
- * jq's {@code jvp_number_cmp}, which Equality and Order use (ADR-0037, design approval O5), and jq's {@code
- * jv_number_negate} and {@code jv_number_abs}. Each charges one tick per started KiB of a token it reads whole (ADR-0008
- * "Amendment (ticket #97, F-50)"): a read, a non-short view's; a copy by {@code -x} or {@code length}, any non-short
- * literal's, a literal the run built included.
+ * The number rules every operator shares: a native read of a number's double, the one three-way compare, jq's {@code
+ * jvp_number_cmp}, which Equality and Order use, and jq's {@code jv_number_negate} and {@code jv_number_abs}. Each
+ * charges one tick per started KiB of a token it reads whole, so a long token costs what reading it costs: a read, a
+ * non-short view's; a copy by {@code -x} or {@code length}, any non-short literal's, a literal the run built included.
  */
 public final class Numbers {
   private Numbers() {}
 
   /**
-   * The double of {@code n} for a native operator: a non-short view (ADR-0012) computes it from its whole token, so it
-   * first charges {@code state} one tick per started KiB of the token; a short view, a literal number's cached double
-   * and a computed number charge nothing. The host accessor {@link JqNumber#doubleValue()} charges no run.
+   * The double of {@code n} for a native operator: a non-short view computes it from its whole token, so it first
+   * charges {@code state} one tick per started KiB of the token; a short view, a literal number's cached double and a
+   * computed number charge nothing. The host accessor {@link JqNumber#doubleValue()} charges no run.
    */
   public static double doubleValue(RunState state, JqNumber n) {
     charge(state, n);
@@ -24,12 +23,12 @@ public final class Numbers {
   }
 
   /**
-   * jq's {@code jvp_number_cmp} (ADR-0012 "Comparison"): -1, 0 or 1. Two literals compare as exact decimals: by long
-   * when both fit one, by double when both are short, otherwise exactly ({@link CanonicalForm#compare}); any other
-   * pair as doubles, with primitive {@code <} and {@code ==}, so {@code -0} equals {@code 0} and a NaN on either side
-   * gives 1, as in jq. The exact path reads both tokens whole, so there it first charges {@code state} one tick per
-   * started KiB of each token; the double path charges as {@link #doubleValue(RunState, JqNumber)} does, and the long
-   * path nothing (ADR-0037 "Ticks", in Equality as in Order).
+   * jq's {@code jvp_number_cmp}: -1, 0 or 1. Two literals compare as exact decimals: by long when both fit one, by
+   * double when both are short, otherwise exactly ({@link CanonicalForm#compare}); any other pair as doubles, with
+   * primitive {@code <} and {@code ==}, so {@code -0} equals {@code 0} and a NaN on either side gives 1, as in jq. The
+   * exact path reads both tokens whole, so there it first charges {@code state} one tick per started KiB of each token;
+   * the double path charges as {@link #doubleValue(RunState, JqNumber)} does, and the long path nothing, in Equality as
+   * in Order.
    */
   static int compare(RunState state, JqNumber a, JqNumber b) {
     if (a instanceof Literal x && b instanceof Literal y) {
@@ -74,8 +73,8 @@ public final class Numbers {
   }
 
   /**
-   * jq's {@code jv_number_negate}: a literal's negation is a literal (ADR-0012, {@link LiteralNumber#negated}), a
-   * computed number's is its double negated. It charges nothing; {@code -x} calls {@link #negate(RunState, JqNumber)}.
+   * jq's {@code jv_number_negate}: a literal's negation is a literal ({@link LiteralNumber#negated}), a computed
+   * number's is its double negated. It charges nothing; {@code -x} calls {@link #negate(RunState, JqNumber)}.
    */
   public static JqNumber negate(JqNumber n) {
     return switch (n) {
@@ -96,9 +95,8 @@ public final class Numbers {
   /**
    * jq's {@code jv_number_abs}, decNumber's {@code decNumberAbs} for a literal: a literal whose token has a sign is
    * negated ({@link #negate(JqNumber)}), so {@code -0} gives {@code 0} and {@code -1.10} gives {@code 1.10}, and any
-   * other is itself; a computed number's is its double's absolute value, NaN staying NaN (jq-ref 1.8.2, recorded:
-   * natives/length-kinds, natives/length-built). It first charges {@code state} as {@link #negate(RunState, JqNumber)}
-   * does, whether or not it copies the token.
+   * other is itself; a computed number's is its double's absolute value, NaN staying NaN, as in jq 1.8.2. It first
+   * charges {@code state} as {@link #negate(RunState, JqNumber)} does, whether or not it copies the token.
    */
   public static JqNumber abs(RunState state, JqNumber n) {
     chargeCopy(state, n);

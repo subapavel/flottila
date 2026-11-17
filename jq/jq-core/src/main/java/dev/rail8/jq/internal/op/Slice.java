@@ -47,11 +47,11 @@ import java.io.ByteArrayOutputStream;
 import java.lang.foreign.MemorySegment;
 
 /**
- * jq 1.8.2's {@code .[a:b]}, which is {@code jv_get} with the key {@code {"start": a, "end": b}} (jq-ref, recorded:
- * diff/slice.rec): on null, null; on an array its elements {@code [a, b)} as a {@link BuiltArray}, on a string its code
- * points {@code [a, b)}, each bound clamped as jq's {@code parse_slice} does; on any other kind jq's error, which shows
- * the key. A bound that is neither null nor a number is jq's error on an array or a string. The quiet variant
- * {@code .[a:b]?} drops either error (ADR-0034). A missing bound is a Const null.
+ * jq 1.8.2's {@code .[a:b]}, which is {@code jv_get} with the key {@code {"start": a, "end": b}}: on null, null; on an
+ * array its elements {@code [a, b)} as a {@link BuiltArray}, on a string its code points {@code [a, b)}, each bound
+ * clamped as jq's {@code parse_slice} does; on any other kind jq's error, which shows the key. A bound that is neither
+ * null nor a number is jq's error on an array or a string. The quiet variant {@code .[a:b]?} drops either error. A
+ * missing bound is a Const null.
  */
 public final class Slice implements Fn2 {
   /** {@code .[a:b]}. */
@@ -161,7 +161,7 @@ public final class Slice implements Fn2 {
     };
   }
 
-  /** The length of {@code array}: a view walks its tape and charges a tick per element (ADR-0034). */
+  /** The length of {@code array}: a view walks its tape and charges a tick per element. */
   static int length(RunState state, JqArray array) {
     return switch (array) {
       case ArrayView view -> view.length(state);
@@ -170,9 +170,9 @@ public final class Slice implements Fn2 {
   }
 
   /**
-   * The code points {@code [from, to)} of {@code s}, well-formed UTF-8 (ADR-0016), where a code point starts at each
-   * byte that is no continuation byte. Counting them is a loop as long as the string, so it charges one tick per
-   * started KiB, the writer's rate (TextFormat).
+   * The code points {@code [from, to)} of {@code s}, well-formed UTF-8, where a code point starts at each byte that is
+   * no continuation byte. Counting them is a loop as long as the string, so it charges one tick per started KiB, the
+   * writer's rate (TextFormat).
    */
   private static JqValue string(RunState state, JqString s, JqValue from, JqValue to) {
     MemorySegment utf8 = s.utf8();
@@ -213,7 +213,7 @@ public final class Slice implements Fn2 {
    * when negative, and is clamped to {@code [0, length]}, then cut toward zero. The end is the length for null or NaN,
    * counts from the end when negative, is the start when still negative, is clamped to the length, and rounds up a
    * fraction below it; an end before the start is the start. Each number bound's double is read as {@link
-   * Numbers#doubleValue} charges it (#97).
+   * Numbers#doubleValue} charges it.
    */
   static long bounds(RunState state, int length, JqValue from, JqValue to) {
     // A NaN start takes none of the three branches below, as every comparison with NaN is false, and the cast makes
