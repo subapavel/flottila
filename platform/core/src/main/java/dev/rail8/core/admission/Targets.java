@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The node's per-target limits (D-099): one {@link TargetLimit} per target key for the lifetime of this object, made on first
+ * The node's per-target limits: one {@link TargetLimit} per target key for the lifetime of this object, made on first
  * use with the override for its key or else the defaults, so every flow naming a target shares its limit. A component that
  * names no target gets an {@link #unshared()} limit with the defaults — finite, never unlimited, and not listed. A bad limit
  * (not positive) is refused when its {@link TargetLimit} is made.

@@ -3,7 +3,7 @@ package dev.rail8.core.node;
 import java.util.function.BooleanSupplier;
 
 /**
- * A node's self-fence read as time (D-101 (2), D-113 draft): {@link #openNanos()} is what is left until it closes on the node's
+ * A node's self-fence read as time: {@link #openNanos()} is what is left until it closes on the node's
  * monotonic clock, live at each read; it is open exactly while that is positive. It never becomes an {@link java.time.Instant}:
  * the monotonic clock has no wall-clock origin. A sender bounded by it cuts its send once the fence has nothing left.
  *

@@ -2,7 +2,7 @@ package dev.rail8.core.admission;
 
 /**
  * The flow's budget has no room for this message right now: told at once, never waited for, so the
- * endpoint can answer 503 + Retry-After, pause its poller or stop polling (ARCHITECTURE §4). Carries the
+ * endpoint can answer 503 + Retry-After, pause its poller or stop polling. Carries the
  * numbers the answer and the monitoring want.
  *
  * @since 0.1

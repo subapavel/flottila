@@ -25,7 +25,7 @@ public final class InMemoryMembership implements Membership {
     /**
      * One node's row: {@code leaseUntil} null once released; {@code oldFence} the latest previous incarnation's lease end (null:
      * none), before which an item handed out under an older epoch does not run again: that incarnation's fence closed by then,
-     * whatever lease it ran under (D-112).
+     * whatever lease it ran under.
      */
     private record Member(long epoch, Instant leaseUntil, Instant oldFence) {}
 

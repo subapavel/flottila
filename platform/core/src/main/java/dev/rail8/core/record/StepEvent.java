@@ -13,14 +13,13 @@ import jdk.jfr.StackTrace;
 import java.util.Objects;
 
 /**
- * The JFR event {@value #NAME} (F-21, D-094): emitted only by the flows built with {@code FlowBuilder.stepEvents(true)}, which a
- * node does only when it samples CPU time ({@code RAIL8_CPU_SAMPLING}, owner decision 2026-11-03), so a recording on a node
- * without sampling sees none. Such a flow commits one per step a message runs, on the message's thread, from the step's stage
+ * The JFR event {@value #NAME}: emitted only by the flows built with {@code FlowBuilder.stepEvents(true)}, which a node does
+ * only when it samples CPU time ({@code RAIL8_CPU_SAMPLING}), so a recording on a node without sampling sees none. Such a flow commits one per step a message runs, on the message's thread, from the step's stage
  * being entered until it returns or throws — so it spans the rest of the pipeline (the events of one message nest, the innermost
  * is the step running) and the step's retry, numbering, recording and parking wrappers. It carries the flow, the step's number and
  * its name, never a message id. Disabled unless a recording enables it: the node's CPU sampler does, a {@code default} or
- * {@code profile} recording does not. Core only defines and commits it; matching it to CPU-time samples is the runtime's
- * ({@link StepCpu}).
+ * {@code profile} recording does not. This class only defines and commits the event; {@link StepCpu} matches the events to
+ * CPU-time samples.
  *
  * @since 0.1
  */

@@ -13,16 +13,16 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * What a step left behind (ARCHITECTURE §8 write path): the envelope as the step handed it on — or as the step was given it
+ * What a step left behind: the envelope as the step handed it on — or as the step was given it
  * when it failed — with the step's number and name, outcome, timing and the body by reference. Never the bytes.
  *
- * <p>A row is keyed by (message, step, attempt): each attempt of a same-id rerun keeps its own rows (FIX-175).
+ * <p>A row is keyed by (message, step, attempt): each attempt of a rerun under the same id keeps its own rows.
  *
  * @param messageId the message
  * @param flow the flow
  * @param step the step's number (ingress is 0)
- * @param attempt the run of the message this row belongs to, at least 1: a first run's is 1, a rerun's its {@link Envelope#ATTEMPT}
- *                (D-066); a stored row's is its column's, whatever its props say
+ * @param attempt the run of the message this row belongs to, at least 1: a first run's is 1, a rerun's its {@link Envelope#ATTEMPT};
+ *                a stored row's is its column's, whatever its props say
  * @param stepName the step's name ({@code ingress} for 0)
  * @param outcome how the step ended
  * @param error the failure, present iff {@link Outcome#FAILED}
@@ -70,8 +70,8 @@ public record Snapshot(String messageId, String flow, int step, int attempt, Str
     }
 
     /**
-     * A snapshot whose attempt is its props' {@link Envelope#ATTEMPT}: 1 when absent (a first run carries none, a rerun carries 2 on,
-     * D-066); one that is not an int of at least 1 is an IllegalArgumentException.
+     * A snapshot whose attempt is its props' {@link Envelope#ATTEMPT}: 1 when absent (a first run carries none, a rerun carries 2
+     * or more); one that is not an int of at least 1 is an IllegalArgumentException.
      *
      * @since 0.1
      */

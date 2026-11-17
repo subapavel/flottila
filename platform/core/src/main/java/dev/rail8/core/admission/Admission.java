@@ -7,8 +7,8 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Per-flow admission: a budget of in-flight <em>requests and bytes</em> (CLAUDE.md; ARCHITECTURE §4 —
- * "memory, not thread count, is what backpressure protects"). Both limits are finite and positive.
+ * Per-flow admission: a budget of in-flight <em>requests and bytes</em>. Bytes are counted because memory, not the number
+ * of threads, is what backpressure protects. Both limits are finite and positive.
  *
  * <p>{@link #tryAcquire(long)} is the non-blocking path (HTTP answers 503 + Retry-After when it is empty);
  * {@link #acquire(long)} parks the calling virtual thread until the request is admitted (pollers pause).
@@ -19,7 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>Every {@link Permit} releases exactly once, however often it is closed. The lock is held only for
  * bookkeeping; blocking happens on per-waiter conditions, so a release wakes one head waiter, not the
- * whole queue (10k waiters are a bench case, not a thundering herd).
+ * whole queue: ten thousand waiters do not all wake up for one release.
  *
  * @since 0.1
  */

@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Recording per flow, overridable per step (ARCHITECTURE §6; schema v1 {@code recording}): the level says which steps
+ * Recording per flow, overridable per step (the {@code recording} object of a flow definition): the level says which steps
  * leave a snapshot, the payload setting whether the body stays reachable from it. Default: everything, kept —
  * monitoring is the product.
  *

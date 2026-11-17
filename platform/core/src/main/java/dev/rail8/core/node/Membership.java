@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The store of the node leases (D-101 (1)): one row per node with its epoch and its lease, measured by the store's clock. The
- * Postgres one lives in runtime ({@code PgMembership}, V14's {@code nodes}), the in-memory one here ({@link InMemoryMembership}).
+ * The store of the node leases: one row per node with its epoch and its lease, measured by the store's clock. The runtime
+ * keeps it in a Postgres table; {@link InMemoryMembership} is the in-memory one.
  *
  * <p>A row whose lease ran out and that nobody released still renews (a store outage takes nobody over); a released row never
  * renews again — its node's next renew is superseded — and neither does a row of an older epoch (the node restarted).
@@ -25,7 +25,7 @@ public interface Membership {
      * @param live the members whose lease runs now, the renewing one included when renewed
      * @param expired the other members whose lease ran out and that nobody released, by node id
      * @param peers where the peer link of each other member whose lease runs now listens ({@code host:port}), by node id; a
-     *              member that joined without an address is live but not among them (CORE-5a)
+     *              member that joined without an address is live but not among them
      * @since 0.1
      */
     record Renewal(boolean renewed, int live, List<String> expired, Map<String, String> peers) {
@@ -42,7 +42,7 @@ public interface Membership {
 
     /**
      * Joins {@code node} as a new incarnation: its epoch bumped (1 for a node never seen), its lease {@code lease} from now. Its
-     * own unheld work items wait for the previous incarnation's lease to end (its fence closed half its own lease before, D-112);
+     * own unheld work items wait for the previous incarnation's lease to end (its fence closed half its own lease before);
      * {@code lease} plays no part in that wait.
      *
      * @return the new epoch
@@ -56,7 +56,7 @@ public interface Membership {
     Future<List<String>> release(List<String> peers);
 
     /**
-     * Drops what an unanswered renew hangs on (F-28): a membership over a connection closes it — failing the calls on it — and
+     * Drops what an unanswered renew hangs on: a membership over a connection closes it — failing the calls on it — and
      * the next call opens another. {@link NodeLease} asks it of a renew still unanswered half a lease after its send. One with
      * nothing to drop does nothing, which is this default.
      */

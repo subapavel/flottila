@@ -18,7 +18,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The snapshots of one run (D-064, D-066, F-10; ARCHITECTURE §8 write path): bound for the run like the
+ * The snapshots of one run: bound for the run like the
  * {@link dev.rail8.core.scope.MessageContext}, the {@link Recorder} hands each snapshot to it with the body it shows. The
  * buffered snapshots are flushed — persists, then rows — when more than {@value #FLUSH_AT} are buffered and at
  * {@link #close()}, never otherwise. A step waits for a persist only in the first case: the step whose snapshot is the one
@@ -27,11 +27,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * asked for yet is persisted once, in the body's own store, all of them in parallel; once every key the flushed snapshots
  * keep settled, each snapshot goes to its message store, keeping its key only if that key is durable: a row's body key
  * always names a durable body. Rows go through {@link MessageStore#recordWaiting}: a full writer backlog makes them wait
- * for room while the run keeps its permit (D-071, F-13); a row still not written — the store's wait ran out, its commit
+ * for room while the run keeps its admission permit, so a slow store slows intake; a row still not written — the store's wait ran out, its commit
  * failed, the store is closed or threw — is logged at WARNING with its message id, flow, step and cause, never retried.
  * A persist that fails or throws (above the store's durable bound, or any other cause) leaves
  * its rows metadata-only — counted by {@link #metadataOnly()} and logged at WARNING with the message id. Keys that are
- * durable already are not persisted again: the run's seed (what it started from: the ingress, D-058) and those a park
+ * durable already are not persisted again: the run's seed (what it started from: the ingress) and those a park
  * made durable during the run ({@link #durable}).
  *
  * @since 0.1
@@ -90,7 +90,7 @@ public final class Trail {
         if (full) flush().await();
     }
 
-    /** {@code key} was made durable during the run (a park's persist succeeded, D-062): it is not persisted again. */
+    /** {@code key} was made durable during the run (a park's persist succeeded): it is not persisted again. */
     public void durable(BlobKey key) {
         Objects.requireNonNull(key, "key");
         synchronized (this) {

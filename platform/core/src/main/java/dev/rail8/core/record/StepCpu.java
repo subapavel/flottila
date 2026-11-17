@@ -10,9 +10,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * CPU per flow and step from CPU-time samples (F-21, D-094): matches each sample of a virtual thread to the step that ran on that
- * thread when it was taken, and adds up per flow and step the executions, the samples and their CPU. Times are handed in as plain
- * longs (the sampler's stream gives them, see {@code CpuSampler} in the runtime): this class reads no clock and knows no JFR.
+ * CPU per flow and step from CPU-time samples. A virtual thread's CPU time cannot be read directly, so each sample of a
+ * virtual thread is matched to the step that ran on that thread when it was taken, and the executions, the samples and their
+ * CPU are added up per flow and step. Times are handed in as plain longs, as the runtime's CPU sampler reads them from its
+ * event stream: this class reads no clock and knows no JFR.
  *
  * <p>A virtual thread's sample goes to the innermost already-arrived, still-kept step interval of its thread that contains it —
  * the latest start wins, both ends inclusive — else it waits pending. An arriving step counts one execution, claims its thread's
@@ -26,7 +27,7 @@ import java.util.Objects;
  * virtual thread's sample is counted exactly once: {@code samples = attributed + pending + unattributed + dropped}; platform and
  * lost samples are counted apart. A step's CPU is the sum of its samples' own periods, never samples × one period.
  *
- * <p>The recorder hands some events without their thread (FIX-108 review r1): such a step counts its execution, holds no sample and
+ * <p>The JFR recorder hands some events without their thread: such a step counts its execution, holds no sample and
  * is not kept ({@link #stepWithoutThread}); such a sample counts in {@code samples} and is {@code unattributed} at once
  * ({@link #sampleWithoutThread}), whether its thread was virtual or not being unknown.
  *

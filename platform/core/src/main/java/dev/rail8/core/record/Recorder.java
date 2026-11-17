@@ -15,14 +15,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Wraps a step's stage so it leaves a {@link Snapshot} (ARCHITECTURE §6 recording, §8 write path): the step's own time is
- * measured from its start to the moment it hands an envelope on — for a stage that hands on several, to the first — and the
- * snapshot shows that envelope; a stage that hands nothing on ended the message ({@link Snapshot.Outcome#FILTERED}); one that
- * throws is recorded {@link Snapshot.Outcome#FAILED} with the envelope it was given, and the failure goes on. Each snapshot,
- * with the body it shows, goes to the run's {@link Trail} when one is bound (D-064, F-10): persisted and written at the run's
- * end, or earlier when more than {@value Trail#FLUSH_AT} are buffered — the step whose snapshot crosses that line waits for
- * that flush ({@link Trail}). Without one, the snapshot's kept body is persisted in its own store and the row written after that persist, keeping
- * the key only if it succeeded — handed on and not awaited: no step waits for a persist or a commit.
+ * Wraps a step's stage so it leaves a {@link Snapshot}. The step's own time is measured from its start to the moment it
+ * hands an envelope on — for a stage that hands on several, to the first — and the snapshot shows that envelope. A stage
+ * that hands nothing on ended the message ({@link Snapshot.Outcome#FILTERED}); one that throws is recorded
+ * {@link Snapshot.Outcome#FAILED} with the envelope it was given, and the failure is rethrown.
+ *
+ * <p>Each snapshot, with the body it shows, goes to the run's {@link Trail} when one is bound: persisted and written at the
+ * run's end, or earlier when more than {@value Trail#FLUSH_AT} are buffered — the step whose snapshot crosses that line
+ * waits for that flush. Without a trail, the snapshot's kept body is persisted in its own store and the row written after
+ * that, keeping the key only if the persist succeeded; this is not awaited, so no step waits for a persist or a commit.
  *
  * @since 0.1
  */
@@ -56,9 +57,9 @@ public final class Recorder {
 
     /**
      * The snapshot {@link #start} records for {@code e}: at the envelope's own step, under {@code name}, now, the body's key kept
-     * as {@code policy} says. Also what an at-least-once delivery saves and awaits before its ACK (F-2, D-049): the same row,
-     * written by the consumer's handler with the payload kept whatever the flow's recording level. It times nothing: wall 0 and
-     * CPU {@link Snapshot#CPU_UNKNOWN}, never a measured-looking 0 (F-21).
+     * as {@code policy} says. An at-least-once delivery saves the same row and waits for it before it acknowledges the
+     * message, with the payload kept whatever the flow's recording level. It times nothing: wall 0 and CPU
+     * {@link Snapshot#CPU_UNKNOWN}, so it never shows a measured-looking 0.
      */
     public Snapshot startSnapshot(Envelope e, String name, RecordingPolicy policy) {
         Objects.requireNonNull(name, "name");
@@ -84,16 +85,16 @@ public final class Recorder {
                     }
                     return rest.apply(out);
                 });
-            } catch (Throwable failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056); an Error too, recorded and rethrown unchanged (D-111)
+            } catch (Throwable failure) {   // checked ones too (an interrupted await throws InterruptedException undeclared) and Errors: recorded, then rethrown unchanged
                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
                     try {
                         record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
-                    } catch (Throwable recordingFailure) {   // the original is what leaves, whatever recording did (D-111); a throwable cannot suppress itself
+                    } catch (Throwable recordingFailure) {   // the step's failure is what leaves, whatever recording did; a throwable cannot suppress itself
                         if (recordingFailure != failure) failure.addSuppressed(recordingFailure);
                         // The recording failure is deliberately NOT passed to the logger: a handler would have to format it (toString, stack), and
                         // formatting is what threw in the first place; nothing in this catch may be able to replace the original. The cost: this
                         // WARNING carries neither its message nor its stack, only its class, the message id and the step. A log handler that
-                        // throws is FIX-127's decision (contained node-wide at the logging setup), not guarded here.
+                        // throws is not guarded here: the node's logging setup contains that for every logger.
                         LOG.log(System.Logger.Level.WARNING, "Recorder: the FAILED row of message " + e.id() + " at step '" + step.name()
                                 + "' was not recorded (" + recordingFailure.getClass().getName() + "); the step's own failure goes on unchanged");
                     }
