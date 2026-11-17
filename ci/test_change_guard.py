@@ -108,6 +108,32 @@ class ChangeGuardTest(unittest.TestCase):
         self.assertEqual(["mapping/engine/A.java:5: a reference in a comment (D-3): "
                           "say what the code does and why instead"], self.findings(repo, 1))
 
+    def test_in_a_cleaned_folder_every_comment_of_every_file_is_checked(self):
+        untouched = "package a;\n// kept D-1\nclass A {}\n"
+        touched = "package b;\n/** old FIX-2 */\nclass B {\n  int y;\n}\n"
+        other = "package c;\n// old D-4\nclass C {\n  int y;\n}\n"
+        repo = self.repo({"platform/api/src/main/java/A.java": untouched,
+                          "platform/core/src/main/java/B.java": touched,
+                          "platform/core/src/test/java/C.java": other,
+                          "platform/runtime/src/main/java/C.java": other})
+        repo.change({"platform/core/src/main/java/B.java": touched.replace("int y;", "int y; // new D-3"),
+                     "platform/core/src/test/java/C.java": other.replace("int y;", "int z;"),
+                     "platform/runtime/src/main/java/C.java": other.replace("int y;", "int z;")})
+        self.assertEqual([
+            "platform/api/src/main/java/A.java:2: a reference in a comment (D-1): say what the code does and why instead",
+            "platform/core/src/main/java/B.java:2: a reference in a comment (FIX-2): "
+            "say what the code does and why instead",
+            "platform/core/src/main/java/B.java:4: a reference in a comment (D-3): "
+            "say what the code does and why instead",
+        ], self.findings(repo, 3))
+
+    def test_a_clean_cleaned_folder_is_reported_in_the_count(self):
+        repo = self.repo({"platform/api/src/main/java/A.java": "package a;\n// the entry point\nclass A {}\n"})
+        repo.change({"docs/a.md": "text\n"})
+        code, lines = repo.run()
+        self.assertEqual(0, code, "\n".join(lines))
+        self.assertEqual(["change guard: clean, 1 changed files and 1 files of cleaned folders checked"], lines)
+
     def test_a_reference_outside_a_comment_or_a_standard_name_is_not_a_finding(self):
         repo = self.repo()
         repo.change({

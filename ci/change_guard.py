@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Change guard: checks the lines a change adds or modifies, compared with a base commit.
 
-Two checks, each on the added and modified lines only (older lines are left alone):
+Two checks, each on the added and modified lines only (older lines are left alone), with one exception: in the
+folders whose comments have been cleaned (CLEANED below), references in comments are checked in every file, on
+every line, whether the change touches it or not.
 
 1. References in comments. A comment or Javadoc in a Java file under platform/ or mapping/, or a comment in a
    TypeScript, JavaScript or CSS file under mapping/ui/, must explain; it must not point at a task or a decision.
@@ -30,6 +32,9 @@ import subprocess
 import sys
 
 JAVA_ROOTS = ("platform/", "mapping/")
+# Folders whose comments have been cleaned of references: every comment in every file under them is checked, not
+# only the lines a change touches. A cleanup adds its folders to this list.
+CLEANED = ("platform/api/src/main/", "platform/core/src/main/")
 UI_ROOT = "mapping/ui/"
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")
@@ -184,7 +189,8 @@ def colours_in_string(value: str, code_before: str) -> list[str]:
     return found
 
 
-def check(path: str, text: str, changed: set[int]) -> list[str]:
+def check(path: str, text: str, changed: set[int], whole: bool = False) -> list[str]:
+    """The findings on the `changed` lines of one file; with `whole`, references in comments on every line."""
     kind = file_kind(path)
     if kind is None:
         return []
@@ -194,18 +200,19 @@ def check(path: str, text: str, changed: set[int]) -> list[str]:
         return []
     findings = []
     per_line = segments(text, kind)
-    for number in sorted(changed):
+    for number in sorted(changed | set(per_line) if whole else changed):
         parts = per_line.get(number, [])
         refs, cols = [], []
         code_before = ""
+        colours_here = colours and number in changed
         for seg, value in parts:
-            if seg == "comment" and comments:
+            if seg == "comment" and comments and (whole or number in changed):
                 refs += references(value)
-            elif colours and seg == "code" and kind == "style":
+            elif colours_here and seg == "code" and kind == "style":
                 cols += colours_in_style(value)
-            elif colours and seg == "string" and kind == "script":
+            elif colours_here and seg == "string" and kind == "script":
                 cols += colours_in_string(value, code_before)
-            elif colours and seg == "string" and kind == "style":
+            elif colours_here and seg == "string" and kind == "style":
                 cols += colours_in_style(value)
             if seg == "code":
                 code_before = value
@@ -251,11 +258,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     try:
         changed = changed_lines(args.base, args.head)
+        cleaned = {p for p in git("ls-tree", "-r", "-z", "--name-only", args.head, "--", *CLEANED).split("\0")
+                   if p.startswith(CLEANED)}
         findings = []
-        for path in sorted(changed):
+        for path in sorted(set(changed) | cleaned):
             if file_kind(path) is None:
                 continue
-            findings += check(path, git("show", f"{args.head}:{path}"), changed[path])
+            findings += check(path, git("show", f"{args.head}:{path}"), changed.get(path, set()), path in cleaned)
     except RuntimeError as e:
         print(f"CHANGE GUARD: {e}", file=sys.stderr)
         return 2
@@ -264,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     if findings:
         print(f"change guard: {len(findings)} finding(s)")
         return 1
-    print(f"change guard: clean, {len(changed)} changed files checked")
+    print(f"change guard: clean, {len(changed)} changed files and {len(cleaned)} files of cleaned folders checked")
     return 0
 
 
