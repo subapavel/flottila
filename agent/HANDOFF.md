@@ -14,7 +14,7 @@ state: STOPPED BY THE OWNER (2026-11-17, relayed from the owner's session "Rail8
   b. Built-ins: strings, regular expressions, dates and formats first; the exotic math built-ins (the Bessel and gamma families) last.
   c. Command-line parity (input modes, option and usage texts, module search from the home directory) is postponed behind the Rail8 connection and the built-ins.
   d. Long checks (the calibration matrix, mutation testing) run nightly as a report and block no change; a change needs the build with its unit and oracle tests. This answers F-97: the calibration step need not get under 45 minutes, and the 1-wide against 2-wide measurement is not needed for that (it was measured anyway: `bench/RESULTS.md` "#199").
-  e. The embedded recursion-depth default (4 194 304) stays open; the owner decides it after an explanation in the other session. Do not change it.
+  e. Recursion-depth default (owner's follow-up, relayed 2026-11-16 23:14 UTC from the same session): inside Rail8 the default is 10 000, an installation default that a flow may override, like the other limits. The standalone jqj command may keep its high default (4 194 304) for parity with jq. No code change now; the stop holds.
 - other open owner questions at the stop: the F-108 follow-up ticket; the owner-review list `docs/wayfinder/owner-review-2026-11-16.md`; #198 Q2's trigger factor (now computable from `bench/RESULTS.md` "#119").
 - Never run Maven under `ulimit -v` or with `-Xmx` in JAVA_TOOL_OPTIONS (F-91).
 direction: `docs/FOUNDING-ARCHITECTURE.md`. Gate draft: `docs/GATE.md`.
