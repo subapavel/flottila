@@ -319,9 +319,8 @@ public final class Node implements AutoCloseable {
             PgWorkSignals signals = new PgWorkSignals(vertx, connectOptions(pg, "listen", config.nodeId()), pool, opened.node(), workers, timer);
             closeSignals = () -> signals.close().await();
             signals.start().await();
-            // grouped saves on the intake pool; under ha a duplicate commits behind a barrier; the wake and
-            // the announce after a commit are fire-and-forget on the work pool
-            PgIntake intake = new PgIntake(intakePool, blobs, messages, work, workers, timer, config.intakeGroup(), signals, config.pg().durability());
+            // grouped saves on the intake pool; the wake and the announce after a commit are fire-and-forget on the work pool
+            PgIntake intake = new PgIntake(intakePool, blobs, messages, work, workers, timer, config.intakeGroup(), signals);
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets and fence

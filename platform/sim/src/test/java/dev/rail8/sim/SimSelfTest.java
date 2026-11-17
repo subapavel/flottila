@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SimSelfTest {
 
-    /** The checks P2-10a's workload exercises (ONE_ID_PER_DEDUPE_KEY comes with P2-10b). */
+    /** The checks the workload exercises. */
     static final Set<Check> CHECKED_IN_10A = EnumSet.of(PREDICTED, ADMISSION_BOUNDS, KEY_ORDER, ACKED_IS_FINAL, SNAPSHOT_PER_STEP, DRAINED);
 
     /**

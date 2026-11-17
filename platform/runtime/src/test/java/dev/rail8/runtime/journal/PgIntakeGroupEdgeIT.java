@@ -18,7 +18,6 @@ import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
-import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -50,9 +49,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CORE-6b (implementer): the group commit's edges the packet's cases leave open — keyed members of two flows in one group, a
- * lost or refused group COMMIT with a duplicate or another store's bodies among its members, a group whose connection cannot be
- * had, and a BEGIN that fails. Staged as {@link PgIntakeGroupIT} stages its groups: a plug whose COMMIT the relay holds, members
+ * The group commit's edges: a refused group COMMIT with another store's bodies among its members, a group whose connection
+ * cannot be had, and a BEGIN that fails. Staged as {@link PgIntakeGroupIT} stages its groups: a plug whose COMMIT the relay holds, members
  * queued behind it on a fake timer that never fires; every wait bounded, no sleeps.
  */
 @Timeout(180)
@@ -117,12 +115,12 @@ class PgIntakeGroupEdgeIT {
         db.pool().query(statement).execute().await();
     }
 
-    Future<String> call(PgIntake to, Envelope e, String flow, String key) throws Exception {
-        return OnVirtualThread.join(OnVirtualThread.start(() -> to.save(e, JournalWorld.ingress(e), flow, "K-1", key, true, undecided())));
+    Future<String> call(PgIntake to, Envelope e, String flow) throws Exception {
+        return OnVirtualThread.join(OnVirtualThread.start(() -> to.save(e, JournalWorld.ingress(e), flow, "K-1", true, undecided())));
     }
 
-    Future<String> call(String id, String key) throws Exception {
-        return call(intake, a.arrive(id, bytes(1_000, id.hashCode())), FLOW, key);
+    Future<String> call(String id) throws Exception {
+        return call(intake, a.arrive(id, bytes(1_000, id.hashCode())), FLOW);
     }
 
     /** A save alone in the one slot, held at its COMMIT: members called now queue behind it. */
@@ -135,7 +133,7 @@ class PgIntakeGroupEdgeIT {
 
     Plug plug() throws Exception {
         PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> saved = call("m-plug", null);
+        Future<String> saved = call("m-plug");
         commit.awaitReached();
         return new Plug(commit, saved);
     }
@@ -157,66 +155,12 @@ class PgIntakeGroupEdgeIT {
         assertEquals(0, rows("body_refs", id), id + ": no kept ref");
     }
 
-    List<String> keyRows(String flow, String key) {
-        List<String> ids = new ArrayList<>();
-        db.pool().preparedQuery("select message_id from processed_ids where scope = $1 and key_hash = sha256(convert_to($2::text, 'UTF8'))")
-                .execute(Tuple.of(flow, key)).await().forEach(r -> ids.add(r.getString(0)));
-        return ids;
-    }
-
     static void failedWith(Future<String> save, String id, String text) {
         assertTrue(settled(save).failed(), id + " fails: " + save);
         assertTrue(causes(save.cause()).stream().anyMatch(c -> c.contains(text)), id + " fails with '" + text + "': " + causes(save.cause()));
     }
 
     // --- cases
-
-    /** One key in two flows in one group is two messages: each claims its own scope's row and saves; the claims are sorted by flow first. */
-    @Test
-    void theSameKeyInTwoFlowsInOneGroupIsTwoMessages() throws Exception {
-        Plug plug = plug();
-        Future<String> orders = call(intake, a.arrive("m-o", bytes(500, 1)), "shop/orders", "K-same");
-        Future<String> invoices = call(intake, a.arrive("m-i", bytes(500, 2)), "shop/invoices", "K-same");
-        Future<String> second = call(intake, a.arrive("m-o2", bytes(500, 3)), "shop/orders", "K-same");
-        plug.unplug();
-
-        assertEquals("m-o", settled(orders).result(), "the orders arrival claims the key in its flow: " + orders.cause());
-        assertEquals("m-i", settled(invoices).result(), "the invoices arrival claims it in its own: " + invoices.cause());
-        assertEquals("m-o", settled(second).result(), "a second orders arrival is the first's duplicate: " + second.cause());
-        assertEquals(List.of("m-o"), keyRows("shop/orders", "K-same"));
-        assertEquals(List.of("m-i"), keyRows("shop/invoices", "K-same"));
-        nothingOf("m-o2");
-        assertEquals(0, intake.groupStats().reruns(), "one group, committed");
-    }
-
-    /**
-     * A group COMMIT whose reply is lost fails its duplicate too, without leaving it open: only the member writing rows stays open
-     * until its transaction's status is known; the duplicate's body stays local (it was not answered).
-     */
-    @Test
-    void aLostGroupCommitFailsItsDuplicateWithoutLeavingItOpen() throws Exception {
-        assertEquals("m-first", settled(call("m-first", "K-dup")).result());
-        Plug plug = plug();
-        Future<String> writing = call("m-x", null);
-        Future<String> duplicate = call("m-dup", "K-dup");
-        PgWire.Held groupCommit = wire.holdNext(PgWire.query("COMMIT"));
-        plug.unplug();
-        groupCommit.awaitReached();
-        groupCommit.cut();
-
-        assertTrue(settled(writing).failed(), "the member writing rows fails: " + writing);
-        assertTrue(settled(duplicate).failed(), "and its duplicate: every member of a lost COMMIT fails: " + duplicate);
-        assertEquals(1, List.copyOf(intake.openSaves()).size(), "only the member writing rows is open: " + intake.openSaves());
-        assertTrue(a.blobs.location(BlobKey.body("m-dup", 0)).isPresent(), "the duplicate's body is still local");
-
-        groupCommit.abort();
-        SegmentSweepIT.until(() -> count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() "
-                + "and state like 'idle in transaction%'") == 0, () -> "the lost COMMIT's session gone");
-        assertEquals(List.of(), List.copyOf(intake.openSaves()), "its outcome known: none open");
-        nothingOf("m-x");
-        nothingOf("m-dup");
-        assertEquals(List.of("m-first"), keyRows(FLOW, "K-dup"));
-    }
 
     /**
      * A refused group COMMIT whose members' bodies are another store's — no record of this node, so no transaction id is known —
@@ -229,8 +173,8 @@ class PgIntakeGroupEdgeIT {
                 + "if new.id = 'm-e2' then raise exception 'commit refused by the test'; end if; return null; end $$");
         sql("create constraint trigger refuse_at_commit after insert on work deferrable initially deferred for each row execute function refuse_at_commit()");
         Plug plug = plug();
-        Future<String> e1 = call(intake, elsewhere(store, "m-e1"), FLOW, null);
-        Future<String> e2 = call(intake, elsewhere(store, "m-e2"), FLOW, null);
+        Future<String> e1 = call(intake, elsewhere(store, "m-e1"), FLOW);
+        Future<String> e2 = call(intake, elsewhere(store, "m-e2"), FLOW);
         plug.unplug();
 
         for (Future<String> save : List.of(e1, e2)) {
@@ -250,8 +194,8 @@ class PgIntakeGroupEdgeIT {
     void aLostGroupCommitOfAnotherStoresBodiesFailsWithTheLossItself() throws Exception {
         InMemoryBlobStore store = new InMemoryBlobStore(Hasher.sha256(), 1L << 20);
         Plug plug = plug();
-        Future<String> e1 = call(intake, elsewhere(store, "m-l1"), FLOW, null);
-        Future<String> e2 = call(intake, elsewhere(store, "m-l2"), FLOW, null);
+        Future<String> e1 = call(intake, elsewhere(store, "m-l1"), FLOW);
+        Future<String> e2 = call(intake, elsewhere(store, "m-l2"), FLOW);
         PgWire.Held groupCommit = wire.holdNext(PgWire.query("COMMIT"));
         plug.unplug();
         groupCommit.awaitReached();
@@ -274,8 +218,8 @@ class PgIntakeGroupEdgeIT {
     void aLostGroupCommitWithAnotherStoresBodySettlesBothOnceKnown() throws Exception {
         InMemoryBlobStore store = new InMemoryBlobStore(Hasher.sha256(), 1L << 20);
         Plug plug = plug();
-        Future<String> journaled = call("m-j", null);
-        Future<String> other = call(intake, elsewhere(store, "m-e"), FLOW, null);
+        Future<String> journaled = call("m-j");
+        Future<String> other = call(intake, elsewhere(store, "m-e"), FLOW);
         PgWire.Held groupCommit = wire.holdNext(PgWire.query("COMMIT"));
         plug.unplug();
         groupCommit.awaitReached();
@@ -308,10 +252,10 @@ class PgIntakeGroupEdgeIT {
             }
         });
         PgIntake dead = new PgIntake(pool(mute.getLocalPort(), 1), a.blobs, a.messages, a.queue, timer, ONE_SLOT);
-        Future<String> first = call(dead, a.arrive("m-0", bytes(500, 10)), FLOW, null);
+        Future<String> first = call(dead, a.arrive("m-0", bytes(500, 10)), FLOW);
         Socket held = accepted.get(20, TimeUnit.SECONDS);
-        Future<String> m1 = call(dead, a.arrive("m-1", bytes(500, 11)), FLOW, null);
-        Future<String> m2 = call(dead, a.arrive("m-2", bytes(500, 12)), FLOW, null);
+        Future<String> m1 = call(dead, a.arrive("m-1", bytes(500, 11)), FLOW);
+        Future<String> m2 = call(dead, a.arrive("m-2", bytes(500, 12)), FLOW);
         assertFalse(first.isComplete() || m1.isComplete() || m2.isComplete(), "fixture: the first waits for its connection, two queue");
 
         mute.close();   // no more connections
@@ -335,13 +279,13 @@ class PgIntakeGroupEdgeIT {
     void aGroupWhollyDecidedWhileItWaitsForItsConnectionSendsNothing() throws Exception {
         PgIntake two = new PgIntake(counted, a.blobs, a.messages, a.queue, timer, new NodeConfig.IntakeGroup(64, 1L << 20, Duration.ofMillis(50), 2));
         PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> plugged = call(two, a.arrive("m-plug", bytes(500, 20)), FLOW, null);
+        Future<String> plugged = call(two, a.arrive("m-plug", bytes(500, 20)), FLOW);
         commit.awaitReached();
         io.vertx.core.Promise<Void> answer = io.vertx.core.Promise.promise();
         List<Future<String>> decided = new ArrayList<>();
         for (String id : List.of("m-d1", "m-d2")) {
             Envelope e = a.arrive(id, bytes(500, id.hashCode()));
-            decided.add(OnVirtualThread.join(OnVirtualThread.start(() -> two.save(e, JournalWorld.ingress(e), FLOW, "K-1", null, true, answer.future()))));
+            decided.add(OnVirtualThread.join(OnVirtualThread.start(() -> two.save(e, JournalWorld.ingress(e), FLOW, "K-1", true, answer.future()))));
         }
         PgWire.Held connecting = wire.holdNextConnection();
         int mark = wire.mark();
@@ -354,7 +298,7 @@ class PgIntakeGroupEdgeIT {
         // a save after them: its slot is the decided group's once that group is done, its connection that group's second one;
         // P2-16a (D-121 A3): under another key than the plug's, whose held COMMIT holds K-1's lock
         Envelope later = a.arrive("m-after", bytes(500, 21));
-        Future<String> after = OnVirtualThread.join(OnVirtualThread.start(() -> two.save(later, JournalWorld.ingress(later), FLOW, "K-2", null, true, undecided())));
+        Future<String> after = OnVirtualThread.join(OnVirtualThread.start(() -> two.save(later, JournalWorld.ingress(later), FLOW, "K-2", true, undecided())));
         SegmentSweepIT.until(() -> { clock.advance(Duration.ofMillis(50)); return after.isComplete(); }, () -> "the save after them is answered");
         assertTrue(after.succeeded(), "it saved: " + after.cause());
         List<String> sent = PgIntakeRoundTripIT.heads(wire.statementsSince(mark));
@@ -372,7 +316,7 @@ class PgIntakeGroupEdgeIT {
     void aLostBeginFailsTheSaveAndWritesNothing() throws Exception {
         PgWire.Held begin = wire.holdNext(PgWire.query("BEGIN"));
         int mark = wire.mark();
-        Future<String> save = call("m-b", null);
+        Future<String> save = call("m-b");
         begin.awaitReached();
         begin.cut();
 

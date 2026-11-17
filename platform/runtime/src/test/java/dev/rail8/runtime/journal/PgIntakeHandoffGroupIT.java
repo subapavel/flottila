@@ -202,7 +202,7 @@ class PgIntakeHandoffGroupIT {
     Future<String> call(String id, String flow) throws Exception {
         Body body = settled(a.blobs.write(BlobKey.body(id, 0), bytes(1_000, id.hashCode()), JournalWorld.MAX)).result();
         Envelope e = Envelope.ingress(id, flow, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), body);
-        return OnVirtualThread.join(OnVirtualThread.start(() -> intake.save(e, JournalWorld.ingress(e), flow, null, null, true, undecided())));
+        return OnVirtualThread.join(OnVirtualThread.start(() -> intake.save(e, JournalWorld.ingress(e), flow, null, true, undecided())));
     }
 
     /** A save of flow {@code elsewhere} alone in the intake's one commit slot, held at its COMMIT: saves called now form one group. */

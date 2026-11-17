@@ -180,7 +180,7 @@ class TwoNodeWorkEventsIT {
         /** The save of {@code id} under {@code key} (null: none) through this node's intake, settled; its body written to this node's store. */
         Future<String> save(String messageId, String key) {
             Envelope e = world.arrive(messageId, bytes(2_000, messageId.hashCode()));
-            return settled(intake.save(e, JournalWorld.ingress(e), FLOW, key, null, false, undecided()));
+            return settled(intake.save(e, JournalWorld.ingress(e), FLOW, key, false, undecided()));
         }
 
         void close() throws Exception {
@@ -336,7 +336,7 @@ class TwoNodeWorkEventsIT {
         Envelope in = Envelope.ingress("m-far", FLOW, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"),
                 Body.of(a.world.blobs, key, onB.body().hash(), onB.body().size()));   // node-a's store, no local copy: kept already
 
-        Future<String> saved = settled(a.intake.save(in, JournalWorld.ingress(in), FLOW, null, null, false, undecided()));
+        Future<String> saved = settled(a.intake.save(in, JournalWorld.ingress(in), FLOW, null, false, undecided()));
         assertTrue(saved.succeeded(), "saved on node-a: " + saved.cause());
         until(() -> b.hold.entries("m-far").size() == 1, () -> "node-b runs m-far, woken by node-a's save; node-b's claims "
                 + b.claims.calls + " (items " + b.claims.items + ")");
@@ -391,7 +391,7 @@ class TwoNodeWorkEventsIT {
             assertTrue(settled(b.world.blobs.persist(key)).succeeded(), "fixture: durable in node-b's journal");
             Envelope in = Envelope.ingress(id, FLOW, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"),
                     Body.of(a.world.blobs, key, onB.body().hash(), onB.body().size()));   // node-a's store, no local copy: kept already
-            Future<String> saved = settled(intake.save(in, JournalWorld.ingress(in), FLOW, null, null, false, undecided()));
+            Future<String> saved = settled(intake.save(in, JournalWorld.ingress(in), FLOW, null, false, undecided()));
             assertTrue(saved.succeeded(), id + " answered despite the announce's throw: " + saved.cause());
             assertEquals(id, saved.result());
             assertEquals("node-b", row(id).bodyNode(), "fixture: " + id + " written plain, its body on node-b");
@@ -399,7 +399,7 @@ class TwoNodeWorkEventsIT {
         assertEquals(2, tried.get(), "witness: each save's announce was made and threw");
 
         Envelope near = a.world.arrive("m-near", bytes(2_000, 7));
-        Future<String> saved = settled(intake.save(near, JournalWorld.ingress(near), FLOW, null, null, false, undecided()));
+        Future<String> saved = settled(intake.save(near, JournalWorld.ingress(near), FLOW, null, false, undecided()));
         assertTrue(saved.succeeded(), "a later save of node-a's own answered: " + saved.cause());
         until(() -> a.hold.entries("m-near").size() == 1, () -> "m-near runs on node-a: the intake's hand-off goes on; a's claims " + a.claims.calls);
         assertEquals(FakeRuntime.T0, rt.clock().instant(), "no clock advance");
@@ -431,7 +431,7 @@ class TwoNodeWorkEventsIT {
         Future<String> saved;
         String barrier = "w1 test node-z orders";   // of the w1 form, for no node of the case: ignored by both
         try {
-            saved = a.intake.save(in, JournalWorld.ingress(in), FLOW, null, null, false, undecided());
+            saved = a.intake.save(in, JournalWorld.ingress(in), FLOW, null, false, undecided());
             commitReply.awaitReached();   // committed on the server; its acknowledgement held
             a.wire.awaitQuiet();
             assertTrue(a.pool.preparedQuery("select pg_notify('rail8_work', $1)").execute(Tuple.of(barrier))

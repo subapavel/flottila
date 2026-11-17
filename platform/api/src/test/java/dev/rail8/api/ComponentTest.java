@@ -12,11 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
- * P1-09g (D-072): {@link Component#listensOn} — a component that does not say where its consumers listen holds no port. P2-02L
- * (D-083): {@code Component.polls} — a component that does not say its consumers poll is never run under a lease. P2-02D
- * (D-084): {@code Component.dedupeBy} — a component that names no dedupe prop has its arrivals never deduped.
- *
- * <p>The shape assumed (P2-02D): {@code default Optional<Key<String>> dedupeBy(EndpointConfig cfg)}, empty.
+ * The defaults of {@link Component}: a component that does not say where its consumers listen holds no port, one that does
+ * not say its consumers poll is never run under a lease, and one that names no target gets a limit per {@code to}.
  */
 class ComponentTest {
 
@@ -51,15 +48,6 @@ class ComponentTest {
         EndpointConfig cfg = new EndpointConfig("drop", URI.create("sftp://partner.example:22/outbox"), Map.of("intervalMs", 10_000));
 
         assertFalse(BARE.polls(cfg), "by default a consumer is not leased, whatever its endpoint looks like");
-    }
-
-    @Test
-    void dedupeByIsEmptyByDefault() {
-        EndpointConfig cfg = new EndpointConfig("drop", URI.create("sftp://partner.example:22/outbox"),
-                Map.of("intervalMs", 10_000, "dedupeBy", "sftp.fileKey"));
-
-        Optional<Key<String>> dedupe = BARE.dedupeBy(cfg);
-        assertEquals(Optional.empty(), dedupe, "by default no dedupe key, whatever the endpoint's options say");
     }
 
     @Test

@@ -40,13 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code abandoned} is asked — once, just before the enqueue — and false enqueues the item under its partition key; the save
  * succeeds once the item is queued. Abandoned, a failed or throwing persist, record or enqueue: the save's future fails and
  * nothing is queued; the first failure decides at once, without waiting for the other save.
- *
- * P2-02D (D-084): the save answers the id its answer names — the arrived envelope's own; a dedupe key is refused (a failed
- * future, nothing persisted, recorded or queued): every node runs the Postgres intake, the in-memory stores dedupe nothing.
- *
- * <p>The shape assumed: core {@code SequentialIntake(MessageStore, WorkQueue) implements Intake}, package {@code dev.rail8.core.flow};
- * P2-02D: {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}; CORE-4c2 adds {@code boolean keepInput} before
- * {@code abandoned} (D-105: which bodies get a kept ref; this intake has no refs, every case passes true).
+ * The save answers the arrived envelope's own id. This intake keeps no body references, so every case passes
+ * {@code keepInput} true.
  */
 @Timeout(10)
 class SequentialIntakeTest {
@@ -90,7 +85,7 @@ class SequentialIntakeTest {
         store.hold();
         Promise<Void> answer = undecided();
 
-        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", null, true, answer.future());
+        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", true, answer.future());
         assertEquals(List.of(in.body().key()), own.persists(), "the body's persist is asked in its own store");
         assertEquals(1, own.held(), "and held");
         assertEquals(1, store.held(), "the ingress record is asked beside the persist, not after it");
@@ -114,7 +109,7 @@ class SequentialIntakeTest {
         assertEquals(List.of(Recorder.INGRESS), store.timeline(in.id()).await().stream().map(Snapshot::stepName).toList(), "the ingress is recorded");
 
         Envelope unkeyed = arrived();
-        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, null, true, Promise.promise().future()));
+        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, true, Promise.promise().future()));
         assertTrue(unkeyedSave.succeeded());
         assertEquals(unkeyed.id(), unkeyedSave.result());
         assertEquals(null, items.snapshot().get(1).partitionKey(), "no key: an unordered item");
@@ -157,7 +152,7 @@ class SequentialIntakeTest {
         }
 
         AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, true, answer.future())),
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", true, answer.future())),
                 "a store that throws is a failed save, not an exception escaping save");
         Future<String> saved = returned.get();
         if (failure == Failure.ABANDONED) {
@@ -186,24 +181,5 @@ class SequentialIntakeTest {
             assertTrue(own.persisted(in.body().key()), "fixture: the body's persist completed before the answer was read");
         }
         if (failure == Failure.ENQUEUE_FAILS) assertEquals(List.of(in.id()), enqueueCalls, "the enqueue was asked, once");
-    }
-
-    @Test
-    void refusesADedupeKey() {
-        SequentialIntake intake = new SequentialIntake(store, items);
-        Envelope in = arrived();
-        AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", "drop/inbox/a.xml|1730196000000|42", true, undecided().future())),
-                "a dedupe key is a failed save, not an exception escaping save");
-        Future<String> saved = done(returned.get());
-        assertTrue(saved.failed(), "the in-memory stores dedupe nothing: a keyed save is refused, never saved undeduped: " + saved);
-        assertEquals(List.of(), own.persists(), "no body persisted");
-        assertEquals(List.of(), store.timeline(in.id()).await(), "nothing recorded");
-        assertEquals(List.of(), items.snapshot(), "nothing queued");
-
-        Future<String> unkeyed = done(intake.save(in, ingress(in), "orders", "K-7", null, true, Promise.promise().future()));
-        assertTrue(unkeyed.succeeded(), "the same arrival without a key saves: the refusal left nothing in its way: " + unkeyed.cause());
-        assertEquals(in.id(), unkeyed.result());
-        assertEquals(1, items.size());
     }
 }

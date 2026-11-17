@@ -23,9 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -56,13 +53,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * P2-07 (D-088, F-20): the retention job against a real Postgres. A run fixes its cutoff — the injected clock minus the max age
  * — and deletes, in keyset batches of one transaction each that first try the advisory lock: whole messages whose every row is
  * older than the cutoff and that no work row (held or not) and no DLQ row names, with their key rows; then bodies older than
- * the cutoff that no messages row, work row or DLQ {@code body_key} names; then {@code processed_ids} rows older than the cutoff
- * whose message is gone. DLQ rows never age out. Every case runs on a database of its own (FIX-5); the fake clock stands 400
+ * the cutoff that no messages row, work row or DLQ {@code body_key} names. DLQ rows never age out. Every case runs on a database of its own; the fake clock stands 400
  * days ahead of real time, so a cutoff taken from the server's {@code now()} would keep every row a case calls old, and every
  * {@code created_at} is seeded explicitly. The rows a case expects are the rows it seeded minus the ones it names as gone.
  *
- * <p>Shapes these cases read: {@code Run.outcome()} by its name (DONE, SKIPPED, FAILED); {@code Run.messages/keys/bodies/
- * processedIds} count deleted rows of their tables, {@code bodyBytes} the deleted bodies' bytes, {@code kept} the messages rows
+ * <p>Shapes these cases read: {@code Run.outcome()} by its name (DONE, SKIPPED, FAILED); {@code Run.messages/keys/bodies}
+ * count deleted rows of their tables, {@code bodyBytes} the deleted bodies' bytes, {@code kept} the messages rows
  * older than the cutoff a run kept, {@code batches} every batch (transaction) of the run, the last, short one of each phase
  * included; {@code Totals} sums the runs' counts and counts the runs ({@code runs}) and the skipped and failed ones.
  */
@@ -267,21 +263,6 @@ class RetentionIT {
         seeded.add("dlq " + id);
     }
 
-    /** The {@code processed_ids} row of {@code messageId}'s dedupe key, created {@code at}. */
-    void processed(String messageId, Instant created) {
-        db.preparedQuery("insert into processed_ids(scope, key_hash, message_id, created_at) values ('shop/orders', $1, $2, $3)")
-                .execute(Tuple.of(Buffer.buffer(sha256(messageId)), messageId, at(created))).await();
-        seeded.add("processed " + messageId);
-    }
-
-    static byte[] sha256(String s) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     // --- reading
 
     /** Every row of the six tables, labelled as {@code seeded} labels them, sorted. */
@@ -297,17 +278,16 @@ class RetentionIT {
         for (Row r : db.query("select message_id, step, part from body_refs").execute().await()) {
             rows.add("ref " + r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
         }
-        for (Row r : db.query("select message_id from processed_ids").execute().await()) rows.add("processed " + r.getString(0));
         for (Row r : db.query("select id from dlq").execute().await()) rows.add("dlq " + r.getString(0));
         for (Row r : db.query("select id from work").execute().await()) rows.add("work " + r.getString(0));
         rows.sort(null);
         return rows;
     }
 
-    /** The seeded rows of message {@code id}: its messages, key, bodies and processed_ids rows (not its work or DLQ rows). */
+    /** The seeded rows of message {@code id}: its messages, key and bodies rows (not its work or DLQ rows). */
     List<String> rowsOf(String id) {
         List<String> of = seeded.stream().filter(l -> l.startsWith("messages " + id + "@") || l.startsWith("key " + id + " ")
-                || l.startsWith("body " + id + "/") || l.equals("processed " + id)).toList();
+                || l.startsWith("body " + id + "/")).toList();
         assertFalse(of.isEmpty(), "fixture: rows seeded for " + id);
         return of;
     }
@@ -447,30 +427,28 @@ class RetentionIT {
             body("m-old", step, "body", created, 100 * (step + 1));
         }
         body("m-old", 2, "attachment", cutoff.minus(DAY), 400);
-        processed("m-old", cutoff.minus(DAY.multipliedBy(3)));
         message("m-new", 0, cutoff.plus(DAY), "invoiceId=4711");   // the same key value, another message
         body("m-new", 0, cutoff.plus(DAY));
-        processed("m-new", cutoff.plus(DAY));
         Retention r = job(1000);
 
         Retention.Run run = run(r);
 
-        assertEquals(rowsOf("m-new").stream().sorted().toList(), left(), "only the newer message is left, with its key, body and processed id");
+        assertEquals(rowsOf("m-new").stream().sorted().toList(), left(), "only the newer message is left, with its key and body");
         assertEquals("DONE", outcome(run));
         assertEquals(cutoff, run.cutoff(), "the injected clock minus the max age");
-        assertEquals(List.of(3L, 2L, 4L, 1000L, 1L, 0L), List.of(run.messages(), run.keys(), run.bodies(), run.bodyBytes(), run.processedIds(), run.kept()),
-                "messages, keys, bodies, bodyBytes, processedIds, kept");
-        assertEquals(3, run.batches(), "one batch per phase: each scans fewer rows than the batch");
+        assertEquals(List.of(3L, 2L, 4L, 1000L, 0L), List.of(run.messages(), run.keys(), run.bodies(), run.bodyBytes(), run.kept()),
+                "messages, keys, bodies, bodyBytes, kept");
+        assertEquals(2, run.batches(), "one batch per phase: each scans fewer rows than the batch");
         Retention.Totals t = r.totals();
-        assertEquals(List.of(1L, 0L, 0L, 3L, 2L, 4L, 1000L, 1L), List.of((long) t.runs(), (long) t.skipped(), (long) t.failed(), (long) t.messages(),
-                (long) t.keys(), (long) t.bodies(), (long) t.bodyBytes(), (long) t.processedIds()),
-                "runs, skipped, failed, messages, keys, bodies, bodyBytes, processedIds");
+        assertEquals(List.of(1L, 0L, 0L, 3L, 2L, 4L, 1000L), List.of((long) t.runs(), (long) t.skipped(), (long) t.failed(), (long) t.messages(),
+                (long) t.keys(), (long) t.bodies(), (long) t.bodyBytes()),
+                "runs, skipped, failed, messages, keys, bodies, bodyBytes");
         List<Logs.Line> info = logs.at(Level.INFO);
         assertEquals(1, info.size(), "one INFO line per run: " + logs.lines);
         Logs.Line line = info.get(0);
         assertTrue(line.virtual() && line.thread().equals("rail8-retention"),
                 "the run ran on a virtual thread named rail8-retention, not the caller's: " + line.thread() + ", virtual " + line.virtual());
-        for (long n : new long[] {3, 2, 4, 1000, 1}) assertTrue(saysNumber(line.text(), n), "the line has the count " + n + ": " + line.text());
+        for (long n : new long[] {3, 2, 4, 1000}) assertTrue(saysNumber(line.text(), n), "the line has the count " + n + ": " + line.text());
         assertEquals(List.of(), logs.at(Level.WARNING), "nothing failed");
     }
 
@@ -480,17 +458,14 @@ class RetentionIT {
         message("m-new", 1, cutoff.plus(DAY), "invoiceId=1");
         body("m-new", 0, cutoff.plusSeconds(1));
         body("m-new", 1, cutoff.plus(DAY));
-        processed("m-new", cutoff.plusSeconds(1));
         body("o-new", 0, cutoff.plus(MICRO));        // an orphan body, a microsecond younger than the cutoff
-        processed("m-gone", cutoff.plus(MICRO));     // a processed id whose message is gone, a microsecond younger
         message("m-old", 0, cutoff.minus(DAY), "invoiceId=2");   // the witness: the run deletes what is older
         body("m-old", 0, cutoff.minus(DAY));
-        processed("m-old", cutoff.minus(DAY));
 
         Retention.Run run = run(job(1000));
 
         assertEquals(seededWithout(rowsOf("m-old")), left(), "every row younger than the cutoff stays");
-        assertEquals(List.of(1L, 1L, 1L, 1L), List.of(run.messages(), run.keys(), run.bodies(), run.processedIds()), "the witness's rows only");
+        assertEquals(List.of(1L, 1L, 1L), List.of(run.messages(), run.keys(), run.bodies()), "the witness's rows only");
     }
 
     @Test
@@ -499,15 +474,13 @@ class RetentionIT {
         message("m-before", 0, cutoff.minus(MICRO));
         body("o-at", 0, cutoff);
         body("o-before", 0, cutoff.minus(MICRO));
-        processed("g-at", cutoff);
-        processed("g-before", cutoff.minus(MICRO));
 
         Retention.Run run = run(job(1000));
 
-        assertEquals(seededWithout("messages m-before@0", "body o-before/0/body", "processed g-before"), left(),
-                "older than the cutoff goes, a row at it stays: for messages, bodies and processed ids");
+        assertEquals(seededWithout("messages m-before@0", "body o-before/0/body"), left(),
+                "older than the cutoff goes, a row at it stays: for messages and bodies");
         assertEquals(cutoff, run.cutoff());
-        assertEquals(List.of(1L, 1L, 1L), List.of(run.messages(), run.bodies(), run.processedIds()));
+        assertEquals(List.of(1L, 1L), List.of(run.messages(), run.bodies()));
         assertEquals(0L, run.kept(), "m-at is not older than the cutoff: the scan never reads it, so it is not a kept row either");
     }
 
@@ -517,18 +490,16 @@ class RetentionIT {
         message("s-at", 1, cutoff, "invoiceId=1");                 // its last step exactly at the cutoff: not older
         body("s-at", 0, cutoff.minus(DAY));
         body("s-at", 1, cutoff);
-        processed("s-at", cutoff.minus(DAY));
         message("s-after", 0, cutoff.minus(DAY), "invoiceId=2");
         message("s-after", 1, cutoff.plus(Duration.ofHours(1)), "invoiceId=2");
         body("s-after", 0, cutoff.minus(DAY));
-        processed("s-after", cutoff.minus(DAY));
         message("gone", 0, cutoff.minus(DAY), "invoiceId=3");     // the witness: every row older, a microsecond for the last
         message("gone", 1, cutoff.minus(MICRO), "invoiceId=3");
         body("gone", 0, cutoff.minus(DAY));
 
         Retention.Run run = run(job(1000));
 
-        assertEquals(seededWithout(rowsOf("gone")), left(), "a message with a row at or after the cutoff keeps every row, its key, bodies and processed id");
+        assertEquals(seededWithout(rowsOf("gone")), left(), "a message with a row at or after the cutoff keeps every row, its key and bodies");
         assertEquals(2L, run.messages(), "the witness's two rows");
     }
 
@@ -538,22 +509,19 @@ class RetentionIT {
         message("w-open", 1, cutoff.minus(DAY), "invoiceId=1");
         body("w-open", 0, cutoff.minus(DAY.multipliedBy(2)));
         body("w-open", 1, cutoff.minus(DAY));
-        processed("w-open", cutoff.minus(DAY.multipliedBy(2)));
         work("w-open", false);
         message("w-held", 0, cutoff.minus(DAY), "invoiceId=2");   // held for a human (D-055): still open
         body("w-held", 0, cutoff.minus(DAY));
-        processed("w-held", cutoff.minus(DAY));
         work("w-held", true);
         body("w-body-only", 0, cutoff.minus(DAY));                 // a work item whose ingress row is not there: its body stays
         work("w-body-only", false);
         message("done", 0, cutoff.minus(DAY), "invoiceId=3");      // the witness: no work item
         body("done", 0, cutoff.minus(DAY));
-        processed("done", cutoff.minus(DAY));
 
         Retention.Run run = run(job(1000));
 
-        assertEquals(seededWithout(rowsOf("done")), left(), "a work item, held or not, keeps its message, keys, bodies and processed id");
-        assertEquals(List.of(1L, 1L, 1L), List.of(run.messages(), run.bodies(), run.processedIds()));
+        assertEquals(seededWithout(rowsOf("done")), left(), "a work item, held or not, keeps its message, keys and bodies");
+        assertEquals(List.of(1L, 1L), List.of(run.messages(), run.bodies()));
     }
 
     @Test
@@ -562,7 +530,6 @@ class RetentionIT {
         message("p-1", 1, cutoff.minus(DAY), "invoiceId=1");
         body("p-1", 0, cutoff.minus(DAY.multipliedBy(2)));
         body("p-1", 1, cutoff.minus(DAY));
-        processed("p-1", cutoff.minus(DAY.multipliedBy(2)));
         dlq("p-1", "p-1/1/body", cutoff.minus(DAY.multipliedBy(30)));   // parked long ago: a DLQ row never ages out
         message("p-2", 0, cutoff.minus(DAY), "invoiceId=2");
         body("p-2", 0, cutoff.minus(DAY));
@@ -593,29 +560,6 @@ class RetentionIT {
     }
 
     @Test
-    void processedIdsGoOnlyWithOrAfterTheirMessage() {
-        message("with", 0, cutoff.minus(DAY));
-        processed("with", cutoff.minus(DAY));             // goes in the run that deletes its message
-        processed("after", cutoff.minus(DAY));            // its message went before: goes
-        message("straddle", 0, cutoff.minus(DAY));
-        message("straddle", 1, cutoff.plus(DAY));
-        processed("straddle", cutoff.minus(DAY));         // its message stays: so does it
-        message("working", 0, cutoff.minus(DAY));
-        work("working", false);
-        processed("working", cutoff.minus(DAY));
-        message("parked", 0, cutoff.minus(DAY));
-        dlq("parked", null, cutoff.minus(DAY));
-        processed("parked", cutoff.minus(DAY));
-        processed("young", cutoff.plus(DAY));             // its message gone, itself younger than the cutoff: stays
-
-        Retention.Run run = run(job(1000));
-
-        assertEquals(seededWithout("messages with@0", "processed with", "processed after"), left(),
-                "a processed id goes with its message or after it, never while its message stays");
-        assertEquals(2L, run.processedIds());
-    }
-
-    @Test
     void anOrphanBodyOlderThanTheRetentionGoes() {
         body("orphan", 0, "body", cutoff.minus(DAY), 10);
         body("orphan", 0, "invoice.pdf", cutoff.minus(DAY), 20);   // an attachment part: a body row like any other
@@ -632,28 +576,27 @@ class RetentionIT {
 
     @Test
     void batchesAreBoundedAndTheRunFinishes() {
-        noteDeletes("messages", "bodies", "processed_ids");
+        noteDeletes("messages", "bodies");
         for (int i = 1; i <= 4; i++) {
             Instant created = cutoff.minus(DAY.multipliedBy(5 - i));
             message("m-" + i, 0, created, "invoiceId=" + i);
             body("o-" + i, 0, created);          // orphan bodies
-            processed("g-" + i, created);        // processed ids whose messages went before
         }
 
         Retention.Run run = run(job(2));
 
-        assertEquals(List.of(), left(), "all four messages with their keys, all four bodies, all four processed ids are gone");
+        assertEquals(List.of(), left(), "all four messages with their keys and all four bodies are gone");
         assertEquals("DONE", outcome(run));
-        assertEquals(List.of(4L, 4L, 4L, 4L), List.of(run.messages(), run.keys(), run.bodies(), run.processedIds()), "messages, keys, bodies, processedIds");
+        assertEquals(List.of(4L, 4L, 4L), List.of(run.messages(), run.keys(), run.bodies()), "messages, keys, bodies");
         List<String> perTransaction = new ArrayList<>();
         for (Row r : db.query("select tbl, count(*) from deleted_in group by tbl, tx order by min(tx)").execute().await()) {
             perTransaction.add(r.getString(0) + " " + r.getLong(1));
         }
-        assertEquals(List.of("messages 2", "messages 2", "bodies 2", "bodies 2", "processed_ids 2", "processed_ids 2"), perTransaction,
+        assertEquals(List.of("messages 2", "messages 2", "bodies 2", "bodies 2"), perTransaction,
                 "two rows per transaction, one table per transaction, phase after phase: the batch bounds every delete");
         long unlocked = db.query("select count(*) from deleted_in where not advisory").execute().await().iterator().next().getLong(0);
         assertEquals(0L, unlocked, "every deleting transaction held the advisory lock while it deleted");
-        assertEquals(9, run.batches(), "3 batches per phase: 2 rows, 2 rows, then 0 rows (fewer than the batch ends the phase)");
+        assertEquals(6, run.batches(), "3 batches per phase: 2 rows, 2 rows, then 0 rows (fewer than the batch ends the phase)");
     }
 
     /**
@@ -690,8 +633,8 @@ class RetentionIT {
                 "each message's two messages rows and its key row are deleted in one transaction, never split across batches");
         assertEquals("DONE", outcome(run));
         assertEquals(List.of(4L, 2L, 0L), List.of(run.messages(), run.keys(), run.kept()), "messages, keys, kept");
-        assertEquals(4, run.batches(), "messages: the batch that scanned a@0 and b@0 took both messages whole, then one empty batch; "
-                + "one each for bodies and processed ids");
+        assertEquals(3, run.batches(), "messages: the batch that scanned a@0 and b@0 took both messages whole, then one empty batch; "
+                + "one for bodies");
     }
 
     @Test
@@ -708,29 +651,26 @@ class RetentionIT {
         assertEquals(seededWithout("messages d-1@0", "messages d-2@0"), left(), "the rows behind the kept head go");
         assertEquals("DONE", outcome(run));
         assertEquals(List.of(2L, 3L), List.of(run.messages(), run.kept()), "messages, kept");
-        assertEquals(5, run.batches(), "messages in 3 batches (2 kept; 1 kept and 1 deleted; 1 deleted), then one each for bodies and processed ids");
+        assertEquals(4, run.batches(), "messages in 3 batches (2 kept; 1 kept and 1 deleted; 1 deleted), then one for bodies");
     }
 
-    /** The bodies and processed ids phases pass kept rows the same way: their cursors move past the head they keep. */
+    /** The bodies phase passes kept rows the same way: its cursor moves past the head it keeps. */
     @Test
-    void keptBodiesAndProcessedIdsAtTheHeadDoNotStallTheRun() {
-        for (int i = 1; i <= 3; i++) {   // young messages whose body and processed id are old: kept, at the head of both scans
+    void keptBodiesAtTheHeadDoNotStallTheRun() {
+        for (int i = 1; i <= 3; i++) {   // young messages whose body is old: kept, at the head of the scan
             message("k-" + i, 0, cutoff.plus(DAY));
             body("k-" + i, 0, cutoff.minus(DAY.multipliedBy(11 - i)));
-            processed("k-" + i, cutoff.minus(DAY.multipliedBy(11 - i)));
         }
         body("o-1", 0, cutoff.minus(DAY.multipliedBy(2)));
         body("o-2", 0, cutoff.minus(DAY));
-        processed("g-1", cutoff.minus(DAY.multipliedBy(2)));
-        processed("g-2", cutoff.minus(DAY));
 
         Retention.Run run = run(job(2));   // bounded, as above
 
-        assertEquals(seededWithout("body o-1/0/body", "body o-2/0/body", "processed g-1", "processed g-2"), left(), "the rows behind each kept head go");
+        assertEquals(seededWithout("body o-1/0/body", "body o-2/0/body"), left(), "the rows behind the kept head go");
         assertEquals("DONE", outcome(run));
-        assertEquals(List.of(0L, 2L, 2L), List.of(run.messages(), run.bodies(), run.processedIds()), "messages, bodies, processedIds");
-        assertEquals(7, run.batches(), "one empty messages batch, then 5 rows in batches of 2 for bodies (k-1 k-2 | k-3 o-1 | o-2) "
-                + "and the same for processed ids: a cursor that went back would scan more batches");
+        assertEquals(List.of(0L, 2L), List.of(run.messages(), run.bodies()), "messages, bodies");
+        assertEquals(4, run.batches(), "one empty messages batch, then 5 rows in batches of 2 for bodies (k-1 k-2 | k-3 o-1 | o-2): "
+                + "a cursor that went back would scan more batches");
     }
 
     /**
@@ -812,7 +752,7 @@ class RetentionIT {
 
         assertEquals("SKIPPED", outcome(skipped), "the lock is taken: the run is skipped");
         assertEquals(cutoff, skipped.cutoff());
-        assertEquals(List.of(0L, 0L, 0L, 0L, 0L), List.of(skipped.messages(), skipped.keys(), skipped.bodies(), skipped.bodyBytes(), skipped.processedIds()));
+        assertEquals(List.of(0L, 0L, 0L, 0L), List.of(skipped.messages(), skipped.keys(), skipped.bodies(), skipped.bodyBytes()));
         assertEquals(List.of(1L, 1L, 0L), List.of((long) second.totals().runs(), (long) second.totals().skipped(), (long) second.totals().failed()),
                 "runs, skipped, failed");
         assertEquals(1, waiting("relation"), "the skipped run left no statement waiting on the table: only the first job's batch waits");
@@ -828,11 +768,10 @@ class RetentionIT {
     void aLockTakenBetweenBatchesEndsTheRunEarly() {
         message("m-1", 0, cutoff.minus(DAY));          // phase 1
         body("orphan", 0, cutoff.minus(DAY));          // phase 2
-        processed("after", cutoff.minus(DAY));         // phase 3: its message went before
-        Held bodies = lock("bodies");
+        Held messages = lock("messages");
         Retention r = job(1000);
         Future<Retention.Run> running = r.runOnce();
-        until(() -> waiting("relation") == 1, "the bodies batch took the advisory lock and waits on the locked bodies table");
+        until(() -> waiting("relation") == 1, "the messages batch took the advisory lock and waits on the locked messages table");
         Row held = observer.preparedQuery("select l.classid::bigint, l.objid::bigint, l.objsubid from pg_locks l join pg_stat_activity a on a.pid = l.pid "
                 + "where a.datname = $1 and a.wait_event_type = 'Lock' and l.locktype = 'advisory' and l.granted").execute(Tuple.of(database)).await().iterator().next();
         assertEquals(1, held.getInteger(2), "fixture: the lock is taken by one bigint key (objsubid 1)");
@@ -840,19 +779,19 @@ class RetentionIT {
         PgConnection rival = PgConnection.connect(vertx, options(database)).await();
         sessions.add(rival);
         Future<RowSet<Row>> taken = rival.preparedQuery("select pg_advisory_lock($1)").execute(Tuple.of(key));
-        until(() -> waiting("advisory") == 1, "another session queues for the lock the bodies batch holds");
-        bodies.release();
-        await(taken, "the other session's lock");   // granted when the bodies batch committed
+        until(() -> waiting("advisory") == 1, "another session queues for the lock the messages batch holds");
+        messages.release();
+        await(taken, "the other session's lock");   // granted when the messages batch committed
 
         Retention.Run early = await(running, "the run");
 
         assertEquals("SKIPPED", outcome(early), "the next batch found the lock taken by the other session: the run ends there");
-        assertEquals(List.of(1L, 1L, 0L), List.of(early.messages(), early.bodies(), early.processedIds()), "what the committed batches deleted");
-        assertEquals(List.of("processed after"), left(), "the processed id waits for the next run");
+        assertEquals(List.of(1L, 0L), List.of(early.messages(), early.bodies()), "what the committed batches deleted");
+        assertEquals(List.of("body orphan/0/body"), left(), "the orphan body waits for the next run");
         rival.query("select pg_advisory_unlock_all()").execute().await();
         Retention.Run next = run(r);
         assertEquals("DONE", outcome(next));
-        assertEquals(1L, next.processedIds());
+        assertEquals(1L, next.bodies());
         assertEquals(List.of(), left());
     }
 
@@ -926,7 +865,6 @@ class RetentionIT {
     void closeDuringARunEndsItSkippedAfterTheBatchInFlight() {
         message("m-1", 0, cutoff.minus(DAY));    // phase 1: its batch is in flight when close comes
         body("orphan", 0, cutoff.minus(DAY));    // phase 2
-        processed("after", cutoff.minus(DAY));   // phase 3: its message went before
         Held messages = lock("messages");
         Retention r = job(1000);
         Future<Retention.Run> running = r.runOnce();
@@ -939,9 +877,8 @@ class RetentionIT {
         await(closed, "close");
         Retention.Run run = await(running, "the run");
         assertEquals("SKIPPED", outcome(run), "closed while a batch ran: the run ends after that batch and begins no other");
-        assertEquals(List.of(1L, 0L, 0L, 1), List.of(run.messages(), run.bodies(), run.processedIds(), run.batches()),
-                "messages, bodies, processedIds, batches");
-        assertEquals(seededWithout(rowsOf("m-1")), left(), "the batch in flight committed; the orphan body and the processed id stay");
+        assertEquals(List.of(1L, 0L, 1), List.of(run.messages(), run.bodies(), run.batches()), "messages, bodies, batches");
+        assertEquals(seededWithout(rowsOf("m-1")), left(), "the batch in flight committed; the orphan body stays");
         assertEquals(List.of(1L, 1L, 0L), List.of(r.totals().runs(), r.totals().skipped(), r.totals().failed()), "runs, skipped, failed");
     }
 

@@ -43,15 +43,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CORE-4c2 (D-082 restated by D-105, CORE-3 item 6): the intake over the journal. Append → forced → one transaction [dedupe] +
+ * The intake over the journal. Append → forced → one transaction: the
  * ingress record + work item with the ref (+ {@code body_refs} only when the flow keeps its input) → abandoned check → commit →
  * index the ref, release the memory copy. No row naming a body commits before its record is forced, and no statement of the
  * save's transaction is sent before it; a force that fails saves nothing and never reaches the commit. Level none is the
  * record and the work item only: counted at the client, on the wire ({@link PgWire}). A save that rolls back leaves only bytes
  * in the journal no row references, and its body local.
  *
- * <p>Witnesses that survive a rollback: a sequence bumped by BEFORE INSERT triggers on {@code messages}, {@code work},
- * {@code body_refs} and {@code processed_ids}; the transaction of each insert logged by AFTER INSERT triggers. The journal's
+ * <p>Witnesses that survive a rollback: a sequence bumped by BEFORE INSERT triggers on {@code messages}, {@code work} and
+ * {@code body_refs}; the transaction of each insert logged by AFTER INSERT triggers. The journal's
  * files are {@link HeldFiles}: a force is held or failed by the case (the record's message id is plain in its header).
  */
 @Timeout(120)
@@ -81,7 +81,7 @@ class PgIntakeJournalIT {
         db = CaseDatabase.create(pg, vertx, "intake_journal_").migrated();
         sql("create sequence save_inserts");
         sql("create function count_insert() returns trigger language plpgsql as $$ begin perform nextval('save_inserts'); return new; end $$");
-        for (String table : List.of("messages", "work", "body_refs", "processed_ids")) {
+        for (String table : List.of("messages", "work", "body_refs")) {
             sql("create trigger count_" + table + " before insert on " + table + " for each row execute function count_insert()");
         }
     }

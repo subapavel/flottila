@@ -13,8 +13,7 @@ public sealed interface Ack permits Ack.Accepted, Ack.Reply, Ack.Nack {
 
     /**
      * Accepted for processing (async modes): the message is durable, the consumer may ACK irreversibly. {@code messageId} is
-     * the message the arrival is: its own id, or an earlier message's when the durable save found the arrival's dedupe key
-     * ({@link Component#dedupeBy}) taken by that message — the arrival itself was not saved then.
+     * the id the arrival was saved under.
      *
      * @since 0.1
      */

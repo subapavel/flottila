@@ -80,7 +80,7 @@ class InDoubtSettleIT {
     PgWire.Held lostReply(String id, String partition) throws Exception {
         PgWire.Held held = wire.holdNext(PgWire.query("COMMIT"));
         Envelope e = a.arrive(id, bytes(3_000, id.hashCode()));
-        Future<String> save = a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, null, false, undecided());
+        Future<String> save = a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, false, undecided());
         held.awaitReached();
         held.cut();
         assertTrue(settled(save).failed(), "fixture: the save whose commit reply was lost fails");

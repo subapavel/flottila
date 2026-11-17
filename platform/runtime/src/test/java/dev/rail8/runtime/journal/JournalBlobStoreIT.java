@@ -461,7 +461,7 @@ class JournalBlobStoreIT {
         try {
             Buffer bytes = bytes(2_000, 74);
             Envelope e = a.arrive("m-batched", bytes);
-            assertTrue(settled(a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, null, null, false, JournalWorld.undecided())).succeeded(),
+            assertTrue(settled(a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, null, false, JournalWorld.undecided())).succeeded(),
                     "fixture: saved unkeyed at level none");
             List<WorkQueue.Item> claimed = queue.claim("w-1", JournalWorld.FLOW, 1, Duration.ofMinutes(5)).await();
             assertEquals(List.of("m-batched"), claimed.stream().map(WorkQueue.Item::messageId).toList(), "fixture: claimed");

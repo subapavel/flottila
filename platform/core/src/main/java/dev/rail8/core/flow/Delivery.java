@@ -38,9 +38,7 @@ import java.util.function.Supplier;
  * <li><b>at-least-once</b>: the durable save is this handler's, never a stage, and it is one call to the flow's
  * {@link Intake}: the ingress body made durable, the ingress snapshot with its payload recorded — whatever the
  * flow's recording level — and the message queued for its worker under its partition key; only when the intake's save
- * succeeded is the answer {@link Ack.Accepted}, naming the id the save answered — an earlier message's when the arrival's
- * dedupe key (the prop its component names, read on the envelope as it arrived; no value or {@code ""} is no key, one
- * that cannot be read a retryable Nack with nothing saved) was taken by it, logged once at INFO. The partition key
+ * succeeded is the answer {@link Ack.Accepted}, naming the arrival's id. The partition key
  * ({@code partitionBy}) is evaluated first, inside the save's window, on the envelope as it arrived: no value or
  * {@code ""} is no key; one over {@value #MAX_PARTITION_KEY_CHARS} characters is a final Nack; a {@link Fault} of kind
  * MALFORMED or INVALID saves the message without a key (its run parks it); any other failure is a retryable Nack — and
@@ -254,11 +252,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     /**
      * At-least-once over a {@link SequentialIntake}: the envelope's body is persisted in the body's own store, {@code ingress}
      * gives the snapshot to save (payload kept), {@code store} saves it, {@code queue} takes the item for {@code flow} (see
-     * {@link #atLeastOnce(Admission, String, Function, Function, Function, Intake, Timer, Duration)}), without a dedupe key.
+     * {@link #atLeastOnce(Admission, String, Function, Function, Intake, boolean, Timer, Duration)}).
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
                                 MessageStore store, WorkQueue queue, Timer timer, Duration saveTimeout) {
-        return atLeastOnce(admission, flow, ingress, partitionKey, e -> Optional.empty(), new SequentialIntake(store, queue), true, timer, saveTimeout);
+        return atLeastOnce(admission, flow, ingress, partitionKey, new SequentialIntake(store, queue), true, timer, saveTimeout);
     }
 
     /**
@@ -266,18 +264,15 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      * {@code flow}; {@code timer} bounds the whole save by {@code saveTimeout} and runs the stop's deadline. The item's
      * partition key is what {@code partitionKey} gives the envelope as it arrived, on the caller's thread, once the save timeout
      * was scheduled and before the save is asked: the flow's {@code partitionBy} extractKey
-     * expression, compiled at build time. The save's dedupe key is what {@code dedupeKey} gives that envelope, read just before
-     * the save is asked (no value or {@code ""} is none, a failure to read it (a prop of its name but another type) a
-     * retryable Nack with nothing saved), and the Accepted names the id the save answers. The save's
+     * expression, compiled at build time. The Accepted names the arrival's id. The save's
      * {@code abandoned} is the answer's future, complete once the answer is decided — by the save timeout or the stop's deadline; its
      * {@code keepInput} is {@code keepInput}, the flow's {@code RecordingPolicy.keepsBody()}.
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
-                                Function<Envelope, Optional<String>> dedupeKey, Intake intake, boolean keepInput, Timer timer, Duration saveTimeout) {
+                                Intake intake, boolean keepInput, Timer timer, Duration saveTimeout) {
         Objects.requireNonNull(flow, "flow");
         Objects.requireNonNull(ingress, "ingress");
         Objects.requireNonNull(partitionKey, "partitionKey");
-        Objects.requireNonNull(dedupeKey, "dedupeKey");
         Objects.requireNonNull(intake, "intake");
         Objects.requireNonNull(timer, "timer");
         Objects.requireNonNull(saveTimeout, "saveTimeout");
@@ -316,18 +311,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                             + " characters (D-075)", false));
                     return answer.future();
                 }
-                // the component's dedupe prop as it arrived: no value or "" is no key
-                String dedupe;
-                try {
-                    dedupe = dedupeKey.apply(e).filter(k -> !k.isEmpty()).orElse(null);
-                } catch (Throwable failure) {   // a prop of the name but another type, an Error too: an answer, never an exception out of apply
-                    answer.tryComplete(retryable(failure));
-                    return answer.future();
-                }
                 // the one save; a save still running once the answer is decided finds itself abandoned and queues nothing
                 Future<String> saved;
                 try {
-                    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, keepInput, answer.future());
+                    saved = intake.save(e, ingress.apply(e), flow, key, keepInput, answer.future());
                 } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
                     saved = Future.failedFuture(failure);
                 }
@@ -336,12 +323,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                         answer.tryComplete(retryable(done.cause()));
                         return;
                     }
-                    String id = done.result();   // the arrival's own, or the message its dedupe key names
-                    if (!id.equals(e.id())) {
-                        LOG.log(System.Logger.Level.INFO, "message " + e.id() + " of flow " + flow + " was not saved: its dedupe key names message "
-                                + id + ", saved earlier; accepted as " + id + " (D-084)");
-                    }
-                    answer.tryComplete(new Ack.Accepted(id));
+                    answer.tryComplete(new Ack.Accepted(done.result()));
                 });
                 return answer.future();
             }

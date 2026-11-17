@@ -72,9 +72,10 @@ import java.util.function.Function;
  * {@code maxFilesPerPoll}, one at a time. A file listed above {@code maxBodyBytes} is refused finally without being read;
  * otherwise it streams into the {@link BlobStore} bounded by {@code maxBodyBytes} and goes to the handler on a virtual thread
  * of its own, the round waiting for the answer. {@link Ack.Accepted} or {@link Ack.Reply} (the durable save is the
- * handler's) deletes the file or renames it into {@code moveTo} ({@code <name>.<id>} when the name is taken, the id the
- * Accepted names — an earlier message's for a file the save found delivered before); a file already
- * gone counts as done. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses).
+ * handler's) deletes the file or renames it into {@code moveTo} ({@code <name>.<id>} when the name is taken, the id of the
+ * message the file was delivered as); a file already gone counts as done. Nothing is kept to recognise a file delivered
+ * before: a file whose delete or move failed after it was accepted is delivered again in a later round as a new message,
+ * and so is a file uploaded again. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses).
  * A final Nack, or a body above the limit, moves the file to {@code errorDir} if set, else leaves it and never takes it
  * again in this consumer's life. Any I/O failure ends the round and drops the session; the file stays.
  *
@@ -91,8 +92,6 @@ public final class SftpComponent implements Component {
     public static final Key<String> PATH = new Key<>("sftp.path");
     /** The file's server mtime, ISO-8601. */
     public static final Key<String> MTIME = new Key<>("sftp.mtime");
-    /** {@code sftp://host:port/path@mtime#bodyHash}: the same file on every node (the save's duplicate check). */
-    public static final Key<String> FILE_KEY = new Key<>("sftp.fileKey");
 
     static final String CONFIG_SCHEMA = """
             {"type":"object","additionalProperties":false,
@@ -151,15 +150,6 @@ public final class SftpComponent implements Component {
     @Override
     public boolean polls(EndpointConfig cfg) {
         return true;
-    }
-
-    /**
-     * Every sftp endpoint names {@link #FILE_KEY} as its dedupe key: the same file delivered again — its removal refused
-     * after the save, another node polling it after a takeover — is the one message it was saved as.
-     */
-    @Override
-    public Optional<Key<String>> dedupeBy(EndpointConfig cfg) {
-        return Optional.of(FILE_KEY);
     }
 
     /** Refused, as the component has no producer yet: the flow build reports it. */
@@ -390,14 +380,12 @@ public final class SftpComponent implements Component {
                 if (written.cause() instanceof BodyTooLargeException) return refuse(file, id);   // grew past the limit while read
                 throw new IOException("reading " + file.path() + " failed", written.cause());
             }
-            Body body = written.result();
-            Envelope in = Envelope.ingress(id, flow, Headers.empty(), body)
+            Envelope in = Envelope.ingress(id, flow, Headers.empty(), written.result())
                     .with(FILE, file.name())
                     .with(PATH, file.path())
-                    .with(MTIME, file.mtime().toString())
-                    .with(FILE_KEY, "sftp://" + host + ":" + port + file.path() + "@" + file.mtime() + "#" + body.hash().hex());
+                    .with(MTIME, file.mtime().toString());
             return switch (answer(in)) {
-                case Ack.Accepted accepted -> done(file, accepted.messageId());   // the message the file is: maybe an earlier one
+                case Ack.Accepted accepted -> done(file, id);
                 case Ack.Reply reply -> done(file, id);
                 case Ack.Nack nack when nack.retryable() -> false;   // the flow is full: the poller pauses until the next round
                 case Ack.Nack nack -> refuse(file, id);

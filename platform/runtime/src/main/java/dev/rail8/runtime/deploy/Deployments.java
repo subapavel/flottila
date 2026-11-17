@@ -1489,8 +1489,7 @@ public final class Deployments {
     }
 
     /**
-     * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery (its save deduped by the prop its in
-     * endpoint's component names, {@link Component#dedupeBy} — asked first; a throw is the flow's failure), its worker
+     * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery, its worker
      * (at-least-once), its effective hash ({@link FlowHash}: the
      * files those builds read, its endpoints as its consumer and its producers get them); its consumer comes later
      * ({@link #consumers}). A flow that fails after
@@ -1506,8 +1505,7 @@ public final class Deployments {
         builder.reads(reads::add).dependencies(recipe.dependencies().dirs());
         Path baseDir = dir;   // a step's file reference is a path from the package root, wherever the flow file lies
         EndpointConfig consumed = consumed(endpoints.get(def.fromEndpoint()), def);
-        // the save dedupes by the prop the in endpoint's component names, asked as the consumer gets the endpoint
-        Delivery delivery = builder.delivery(def, baseDir, components.get(consumed.scheme()).dedupeBy(consumed));
+        Delivery delivery = builder.delivery(def, baseDir);
         FlowWorker worker = null;
         boolean built = false;
         try {

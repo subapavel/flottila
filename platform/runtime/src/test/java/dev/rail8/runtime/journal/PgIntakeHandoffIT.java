@@ -236,7 +236,7 @@ class PgIntakeHandoffIT {
     /** The save of {@code id} under {@code key} (null: none) through the intake under test, not waited for; its input not kept. */
     Future<String> start(String id, String key) {
         Envelope e = a.arrive(id, bytes(2_000, id.hashCode()));
-        return intake.save(e, JournalWorld.ingress(e), FLOW, key, null, false, undecided());
+        return intake.save(e, JournalWorld.ingress(e), FLOW, key, false, undecided());
     }
 
     record WorkRow(String lockedBy, int attempts, int doubts, boolean leasedForTheLease, String xmin) {}
@@ -383,7 +383,7 @@ class PgIntakeHandoffIT {
 
     /** The save of {@code e} without a key through {@code on}, settled; its input not kept. */
     static Future<String> saved(PgIntake on, Envelope e) {
-        return settled(on.save(e, JournalWorld.ingress(e), FLOW, null, null, false, undecided()));
+        return settled(on.save(e, JournalWorld.ingress(e), FLOW, null, false, undecided()));
     }
 
     /** The node of the journal that {@code id}'s work row names its body in (null: none). */

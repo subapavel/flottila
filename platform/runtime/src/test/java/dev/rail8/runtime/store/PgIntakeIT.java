@@ -13,10 +13,7 @@ import dev.rail8.core.record.RecordingPolicy;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.runtime.node.NodeConfig;
-import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.runtime.journal.JournalRef;
-import dev.rail8.runtime.journal.PgWire;
 import dev.rail8.runtime.journal.TestJournals;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.time.VertxTimer;
@@ -42,7 +39,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
-import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -78,33 +74,18 @@ import static org.junit.jupiter.api.Assertions.fail;
  * backend with {@code pg_terminate_backend(pg_backend_pid())}: the session dies inside the item's insert, before any commit.
  * Every case runs on a database of its own (FIX-5).
  *
- * <p>P2-02D (D-084): a save with a dedupe key first inserts {@code processed_ids(scope, key_hash, message_id, created_at)} — the
- * scope the flow it is given, the key's SHA-256 over its UTF-8 bytes, the arrival's id, the ingress snapshot's start — {@code on
- * conflict do nothing}; a key already taken rolls the save back, never asks {@code abandoned}, evicts the duplicate's local body
- * and answers the first message's id; a key row that is gone by the time it is read is a failed save. A save that fails or is
- * abandoned leaves the key free. A racing duplicate waits on the open first save (READ COMMITTED): its commit makes the duplicate
- * answer the first id, its rollback lets the duplicate save itself. The race is staged without sleeps: a second session holds
- * {@code lock table work in share mode}, so the first save stays open at its item's insert; {@code pg_stat_activity} shows who
- * waits; the second save runs on a second node (its own pool, body store and stores).
+ * <p>A save held open is staged without sleeps: a second session holds {@code lock table work in share mode}, so the save stays
+ * open at its item's insert; {@code pg_stat_activity} shows who waits.
  *
  * <p>The shape assumed: {@code dev.rail8.runtime.store.PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue) implements Intake};
- * P2-02D: {@code Future<String> save(Envelope, Snapshot, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}.
+ * {@code Future<String> save(Envelope, Snapshot, String flow, String partitionKey, boolean keepInput, Future<?> abandoned)}.
  *
  * <p>Expectations changed by CORE-4c2 (D-105, CORE-3 item 6): the body store's durable tier is the node's journal, so a save
  * inserts no {@code bodies} row — the record is forced before the transaction, which commits the ingress row, the item with the
  * ref and, the flow keeping its input (every save here passes {@code keepInput} true, the default policy), the {@code body_refs}
  * row. "The body is durable" reads that row's ref back from the journal ({@link #kept}); "no body row" covers both tables. The
- * shape: {@code save(…, String dedupeKey, boolean keepInput, BooleanSupplier abandoned)}, {@code TieredBlobStore.Config(treeLimit,
- * memoryTier, memoryBudget, durableMax)}, {@code new TieredBlobStore(Config, Hasher, Journal, int tenantKeyId, Pool)}.
- *
- * <p>FIX-137 (D-128, review F3.2): under the {@code ha} profile a group with no row to write (a duplicate alone) commits a
- * transaction holding a transaction id before it answers — the commit record whose synchronous-standby wait covers the earlier
- * save — where {@code local} rolls back and takes no id. Witness: the server's next transaction id (the snapshot's xmax, read by
- * another session, which assigns none) and {@code pg_xact_status} of the id taken; autovacuum is off so only the case moves the
- * counter. A barrier whose statement or commit fails is no answer and a retry is answered: the failure is staged by a
- * {@link PgWire} relay replacing the server's reply. The shape assumed (B3, test-author's proposal): {@code PgIntake(Pool,
- * TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup, WorkSignals, NodeConfig.Pg.Durability)},
- * every other constructor {@code LOCAL}.
+ * shape: {@code TieredBlobStore.Config(treeLimit, memoryTier, memoryBudget, durableMax)}, {@code new TieredBlobStore(Config, Hasher,
+ * Journal, int tenantKeyId, Pool)}.
  */
 @Timeout(60)
 class PgIntakeIT {
@@ -206,7 +187,6 @@ class PgIntakeIT {
     @AfterEach
     void closeTheStores() throws Exception {
         if (held != null) held.close();
-        if (node2 != null) node2.close();
         if (messages != null) messages.close();
         if (journal != null) journal.close();
         if (pool != null) pool.close().await();
@@ -283,9 +263,9 @@ class PgIntakeIT {
                 .startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT);
     }
 
-    /** A save without a dedupe key. */
+    /** A save under the cases' one partition key, its input kept. */
     Future<String> save(Envelope e, Future<?> abandoned) {
-        return settled(intake.save(e, ingress(e), FLOW, "K-1", null, true, abandoned));
+        return settled(intake.save(e, ingress(e), FLOW, "K-1", true, abandoned));
     }
 
     static <T> Future<T> settled(Future<T> f) {
@@ -374,7 +354,7 @@ class PgIntakeIT {
         Envelope first = arrive("m-one", bytes(300, 3));
         Envelope second = arrive("m-two", bytes(400, 4));
 
-        Future<Optional<TieredBlobStore.Location>> whereAtCompletion = settled(intake.save(first, ingress(first), FLOW, "K-1", null, true, Promise.promise().future())
+        Future<Optional<TieredBlobStore.Location>> whereAtCompletion = settled(intake.save(first, ingress(first), FLOW, "K-1", true, Promise.promise().future())
                 .map(v -> blobs.location(first.body().key())));
         assertTrue(whereAtCompletion.succeeded(), "saved: " + whereAtCompletion.cause());
         assertEquals(Optional.empty(), whereAtCompletion.result(), "the local copy is released before the save's future completes");
@@ -420,7 +400,7 @@ class PgIntakeIT {
         Promise<Void> answer = Promise.promise();
 
         holdWork();
-        Future<String> pending = intake.save(in, ingress(in), FLOW, "K-1", null, true, answer.future());
+        Future<String> pending = intake.save(in, ingress(in), FLOW, "K-1", true, answer.future());
         until(() -> lockWaiters() == 1, "the save waits at its item's insert, inside its transaction");
         answer.complete();   // the delivery's answer is decided while the transaction is open
         held.release();
@@ -439,7 +419,7 @@ class PgIntakeIT {
         Snapshot ingress = new Recorder(new InMemoryMessageStore(), Clock.fixed(Instant.parse("2026-10-29T10:00:00.123456Z"), ZoneOffset.UTC), reading, Map.of())
                 .startSnapshot(in, Recorder.INGRESS, RecordingPolicy.DEFAULT);
 
-        Future<String> saved = settled(intake.save(in, ingress, FLOW, "K-1", null, true, Promise.promise().future()));
+        Future<String> saved = settled(intake.save(in, ingress, FLOW, "K-1", true, Promise.promise().future()));
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
         List<String> rows = new ArrayList<>();
         for (Row r : other.preparedQuery("select step, wall_ns, cpu_ns from messages where id = $1").execute(Tuple.of("m-cpu")).await()) {
@@ -494,19 +474,10 @@ class PgIntakeIT {
         assertFalse(work().contains("m-refused-elsewhere/K-1"), "no item: " + work());
     }
 
-    // --- the dedupe key (P2-02D, D-084)
-
-    /** A qualified flow id: the key's scope. */
-    static final String SCOPE = "shop/orders";
-    /** An sftp-shaped file key, with characters outside Latin-1 so the digest's charset matters. */
-    static final String KEY = "drop/inbox/größe-€-1.xml|1730196000000|300";
-    /** When every ingress snapshot of this class started (the fixed clock of {@link #ingress}). */
-    static final Instant STARTED = Instant.parse("2026-10-29T10:00:00.123456Z");
+    // --- a save held open at its item's insert
 
     /** A second session's open transaction holding a lock; {@link #release} rolls it back. */
     Held held;
-    /** A second node over the case database: its own pool of one connection, body store and stores. */
-    Node2 node2;
 
     record Held(io.vertx.sqlclient.SqlConnection connection, io.vertx.sqlclient.Transaction tx, AtomicBoolean released) implements AutoCloseable {
         /** Rolls back once: tx.completion() is a fresh future completed on the connection's context, so it cannot tell. */
@@ -520,18 +491,6 @@ class PgIntakeIT {
         }
     }
 
-    record Node2(Pool pool, TestJournals.Opened journal, TieredBlobStore blobs, PgMessageStore messages, PgIntake intake) implements AutoCloseable {
-        @Override public void close() {
-            messages.close();
-            try {
-                journal.close();
-            } catch (java.io.IOException e) {
-                throw new java.io.UncheckedIOException("node-2's journal did not close", e);
-            }
-            pool.close().await();
-        }
-    }
-
     /** Takes {@code lock table work in share mode} in a transaction of a second session: every insert into work waits for it. */
     Held holdWork() {
         io.vertx.sqlclient.SqlConnection c = other.getConnection().await();
@@ -539,59 +498,6 @@ class PgIntakeIT {
         c.query("lock table work in share mode").execute().await();
         held = new Held(c, tx, new AtomicBoolean());
         return held;
-    }
-
-    Node2 node2() throws java.io.IOException {
-        Pool p = pool(vertx, pg, database);
-        TestJournals.Opened j;
-        try {
-            j = TestJournals.open(other, java.nio.file.Files.createDirectories(spool.resolve("node-2")), "node-2");
-        } catch (java.io.IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("fixture: node-2's journal did not open", e);
-        }
-        TieredBlobStore b = blobs(j, p);
-        PgMessageStore m = new PgMessageStore(p, new VertxTimer(vertx), BatchingWriter.Options.defaults());
-        node2 = new Node2(p, j, b, m, new PgIntake(p, b, m, new PgWorkQueue(p, "node-2")));
-        return node2;
-    }
-
-    /** Like {@link #arrive}, the body written in {@code store}. */
-    static Envelope arriveIn(TieredBlobStore store, String id, Buffer bytes) {
-        Future<Body> written = settled(store.write(BlobKey.body(id, 0), bytes, FLOW_MAX));
-        assertTrue(written.succeeded(), "fixture: written " + written.cause());
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), store.location(BlobKey.body(id, 0)), "fixture: the body is local, in memory");
-        return Envelope.ingress(id, FLOW, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), written.result());
-    }
-
-    Future<String> saveKeyed(PgIntake through, Envelope e, String scope, String key, Future<?> abandoned) {
-        return through.save(e, ingress(e), scope, "K-1", key, true, abandoned);
-    }
-
-    Future<String> saveKeyed(Envelope e, String key, Future<?> abandoned) {
-        return settled(saveKeyed(intake, e, SCOPE, key, abandoned));
-    }
-
-
-    record Processed(String scope, String keyHash, String messageId, Instant createdAt) {}
-
-    /** The processed_ids rows, the hash in hex, by scope then message id. */
-    List<Processed> processed() {
-        List<Processed> out = new ArrayList<>();
-        for (Row r : other.query("select scope, encode(key_hash, 'hex'), message_id, created_at from processed_ids order by scope, message_id").execute().await()) {
-            out.add(new Processed(r.getString(0), r.getString(1), r.getString(2), r.getOffsetDateTime(3).toInstant()));
-        }
-        return out;
-    }
-
-    /** The SHA-256 of {@code key}'s UTF-8 bytes, in hex. */
-    static String sha256(String key) {
-        try {
-            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(key.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     /** Backends of the case database waiting on a lock. */
@@ -608,396 +514,5 @@ class PgIntakeIT {
             Thread.onSpinWait();
             Thread.yield();
         }
-    }
-
-    /** Nothing of message {@code id} in Postgres: no ingress row, no body row, no item (other messages' rows may be there). */
-    void nothingOf(String id) {
-        assertEquals(0, count("messages", id), id + ": no ingress row");
-        assertEquals(0, count("bodies", id), id + ": no body row");
-        assertEquals(0, count("body_refs", id), id + ": no kept ref");
-        assertEquals(0, count("work", id), id + ": no item");
-    }
-
-    /** Message {@code id} saved whole: its ingress row, its kept ref (CORE-4c2: no bodies row) and its item. */
-    void savedWhole(String id) {
-        assertEquals(1, count("messages", id), id + ": the ingress row");
-        assertEquals(1, count("body_refs", id), id + ": the kept ref");
-        assertEquals(0, count("bodies", id), id + ": no bodies row");
-        assertEquals(1, count("work", id), id + ": the item");
-    }
-
-    @Test
-    void aKeySavedTwiceIsOneMessageAndOneItem() {
-        Envelope first = arrive("m-1", bytes(300, 20));
-        Envelope again = arrive("m-2", bytes(300, 20));   // the same file delivered again: a new arrival, a new id
-
-        Future<String> saved = saveKeyed(first, KEY, Promise.promise().future());
-        assertTrue(saved.succeeded(), "saved: " + saved.cause());
-        assertEquals("m-1", saved.result(), "a key no one had: the save answers the arrival's own id");
-        Future<String> duplicate = saveKeyed(again, KEY, Promise.promise().future());
-        assertTrue(duplicate.succeeded(), "a duplicate is a successful save: its sender may ACK — " + duplicate.cause());
-        assertEquals("m-1", duplicate.result(), "a duplicate answers the first message's id");
-
-        savedWhole("m-1");
-        nothingOf("m-2");
-        assertEquals(1, count("messages"), "one ingress row");
-        assertEquals("sha256-64", other.query("select hash_algorithm from messages where id = 'm-1'").execute().await().iterator().next().getString(0),
-                "the ingress row carries its hash's algorithm (V11, D-097): the store's sha256-64");
-        assertEquals(1, count("body_refs"), "one kept ref (CORE-4c2: no bodies row)");
-        assertEquals(List.of("m-1/K-1"), work(), "one item");
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(),
-                "one processed_ids row: the flow's scope, the SHA-256 of the key's UTF-8 bytes, the first id, the ingress snapshot's start");
-    }
-
-    @Test
-    void theSameKeyInAnotherFlowIsAnotherMessage() {
-        Envelope orders = arrive("m-1", bytes(300, 21));
-        Envelope invoices = arrive("m-2", bytes(300, 21));   // both envelopes name flow "orders": the scope is the flow the intake is given
-
-        assertEquals("m-1", settled(saveKeyed(intake, orders, "shop/orders", KEY, Promise.promise().future())).result());
-        Future<String> inInvoices = settled(saveKeyed(intake, invoices, "shop/invoices", KEY, Promise.promise().future()));
-        assertTrue(inInvoices.succeeded(), "saved: " + inInvoices.cause());
-        assertEquals("m-2", inInvoices.result(), "the same key in another flow is no duplicate");
-
-        savedWhole("m-1");
-        savedWhole("m-2");
-        assertEquals(List.of(new Processed("shop/invoices", sha256(KEY), "m-2", STARTED), new Processed("shop/orders", sha256(KEY), "m-1", STARTED)),
-                processed(), "one row per scope");
-    }
-
-    @Test
-    void aDuplicateNeverAsksAbandoned() {
-        assertEquals("m-1", saveKeyed(arrive("m-1", bytes(300, 22)), KEY, Promise.promise().future()).result());
-        Envelope again = arrive("m-2", bytes(300, 22));
-
-        Future<String> duplicate = saveKeyed(again, KEY, Future.succeededFuture());   // its answer decided already: no matter, it commits nothing
-        assertTrue(duplicate.succeeded(), "so its answer is the first id, never an abandoned save: " + duplicate.cause());
-        assertEquals("m-1", duplicate.result());
-        nothingOf("m-2");
-    }
-
-    @Test
-    void anAbandonedFirstSaveLeavesTheKeyFree() {
-        Envelope first = arrive("m-1", bytes(300, 23));
-        Promise<Void> answer = Promise.promise();
-        holdWork();
-        Future<String> pending = saveKeyed(intake, first, SCOPE, KEY, answer.future());
-        until(() -> lockWaiters() == 1, "the save waits at its item's insert, its key row inserted and not committed");
-        answer.complete();
-        held.release();
-        Future<String> abandoned = settled(pending);
-        assertTrue(abandoned.failed(), "an abandoned save fails");
-        assertEquals(List.of(), processed(), "its key row went with the rollback");
-
-        Envelope next = arrive("m-2", bytes(300, 23));
-        Future<String> saved = saveKeyed(next, KEY, Promise.promise().future());
-        assertTrue(saved.succeeded(), "the next arrival with the key saves: " + saved.cause());
-        assertEquals("m-2", saved.result(), "as itself: the abandoned save left the key free");
-        savedWhole("m-2");
-        nothingOf("m-1");
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-2", STARTED)), processed());
-    }
-
-    @Test
-    void aFailedEnqueueLeavesTheKeyFree() {
-        sql("create function refuse_work() returns trigger language plpgsql as $$ begin raise exception 'work refused by the test'; end $$");
-        sql("create trigger refuse_work before insert on work for each row execute function refuse_work()");
-        Future<String> failed = saveKeyed(arrive("m-1", bytes(300, 24)), KEY, Promise.promise().future());
-        assertTrue(failed.failed(), "the enqueue failed: no save");
-        assertTrue(causes(failed.cause()).stream().anyMatch(c -> c.contains("work refused by the test")), "with the enqueue's failure: " + causes(failed.cause()));
-        assertEquals(List.of(), processed(), "its key row went with the rollback");
-
-        sql("drop trigger refuse_work on work");
-        Future<String> saved = saveKeyed(arrive("m-2", bytes(300, 24)), KEY, Promise.promise().future());
-        assertTrue(saved.succeeded(), "saved: " + saved.cause());
-        assertEquals("m-2", saved.result(), "the failed save left the key free");
-        savedWhole("m-2");
-        nothingOf("m-1");
-    }
-
-    @Test
-    void aDuplicateOfACompletedItemStillAnswersTheFirstId() {
-        assertEquals("m-1", saveKeyed(arrive("m-1", bytes(300, 25)), KEY, Promise.promise().future()).result());
-        sql("delete from work where id = 'm-1'");   // the worker completed the message: its item is gone, its rows stay
-        assertEquals(List.of(), work(), "fixture: the item is completed");
-
-        Future<String> duplicate = saveKeyed(arrive("m-2", bytes(300, 25)), KEY, Promise.promise().future());
-        assertTrue(duplicate.succeeded(), "saved: " + duplicate.cause());
-        assertEquals("m-1", duplicate.result(), "the key outlives the item: the first id");
-        assertEquals(List.of(), work(), "no item queued again");
-        nothingOf("m-2");
-    }
-
-    @Test
-    void aKeyOfEightKilobytesIsSavedAndDeduped() {
-        String key = "drop/inbox/" + "€".repeat(2730) + ".xml|1730196000000|300";   // 8 KiB of UTF-8: above a b-tree entry's bound unhashed
-        assertTrue(key.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 8192, "fixture: over 8 KiB");
-
-        Future<String> saved = saveKeyed(arrive("m-1", bytes(300, 26)), key, Promise.promise().future());
-        assertTrue(saved.succeeded(), "a long key is saved: only its 32-byte digest is indexed — " + saved.cause());
-        assertEquals("m-1", saved.result());
-        Future<String> duplicate = saveKeyed(arrive("m-2", bytes(300, 26)), key, Promise.promise().future());
-        assertEquals("m-1", duplicate.result(), "and deduped: " + duplicate.cause());
-        assertEquals(List.of(new Processed(SCOPE, sha256(key), "m-1", STARTED)), processed());
-        assertEquals(List.of("m-1/K-1"), work());
-    }
-
-    @Test
-    void aDuplicatesLocalBodyIsEvicted() {
-        assertEquals("m-1", saveKeyed(arrive("m-1", bytes(300, 27)), KEY, Promise.promise().future()).result());
-        Envelope again = arrive("m-2", bytes(400, 27));
-        assertEquals(400, blobs.memoryInUse(), "fixture: the duplicate's body holds its budget (the first's went with its commit)");
-
-        Future<Optional<TieredBlobStore.Location>> whereAtCompletion = settled(saveKeyed(intake, again, SCOPE, KEY, Promise.promise().future())
-                .map(id -> blobs.location(again.body().key())));
-        assertTrue(whereAtCompletion.succeeded(), "saved: " + whereAtCompletion.cause());
-        assertEquals(Optional.empty(), whereAtCompletion.result(), "the duplicate's local body is evicted before its save completes");
-        assertEquals(0, blobs.memoryInUse(), "with its budget");
-        assertEquals(0, count("bodies", "m-2"), "and never made durable");
-        assertEquals(0, count("body_refs", "m-2"), "no kept ref either");
-    }
-
-    /**
-     * Rewritten by CORE-4c2 (was {@code aDuplicateWhoseEvictionFailsStillAnswersTheFirstId}): the body's record is appended and
-     * forced before the dedupe insert runs (CORE-3 item 6), so a duplicate's body is already in the journal when its key is
-     * found taken — there is no local spool file left whose eviction could fail. A duplicate answers the first id and writes
-     * no row; its record stays in the journal, referenced by nothing (the sweeper's, CORE-4d). Its id is plain in the record's
-     * header, which is how the case finds it in the segment files.
-     */
-    @Test
-    void aDuplicateAnswersTheFirstIdWritesNoRowAndLeavesItsRecordUnreferenced() throws java.io.IOException {
-        assertEquals("m-1", settled(saveKeyed(intake, arrive("m-1", bytes(300, 28)), SCOPE, KEY, Promise.promise().future())).result());
-        Envelope again = arrive("m-duplicate", bytes(900, 28));   // within BOUND: a save, not a refusal
-
-        Future<String> duplicate = settled(saveKeyed(intake, again, SCOPE, KEY, Promise.promise().future()));
-        assertTrue(duplicate.succeeded(), "a duplicate is a save that answers: " + duplicate.cause());
-        assertEquals("m-1", duplicate.result(), "the first id");
-        nothingOf("m-duplicate");
-        assertEquals(0, count("body_refs", "m-duplicate"), "no ref names its record");
-        byte[] id = "m-duplicate".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        boolean inTheJournal = false;
-        try (var walk = java.nio.file.Files.walk(journal.config().dir().resolve("segments"))) {
-            for (Path f : walk.filter(java.nio.file.Files::isRegularFile).toList()) {
-                byte[] all = java.nio.file.Files.readAllBytes(f);
-                for (int at = 0; !inTheJournal && at + id.length <= all.length; at++) {
-                    inTheJournal = java.util.Arrays.equals(all, at, at + id.length, id, 0, id.length);
-                }
-            }
-        }
-        assertTrue(inTheJournal, "its record was appended before the key was found taken (item 6): it stays, unreferenced");
-        assertEquals(Optional.empty(), blobs.location(again.body().key()), "and no local copy is left of it");
-        assertEquals(0, blobs.memoryInUse(), "with its budget");
-    }
-
-    @Test
-    void aDuplicateWhoseFirstRowIsGoneIsAFailedSave() {
-        assertEquals("m-1", saveKeyed(arrive("m-1", bytes(300, 29)), KEY, Promise.promise().future()).result());
-        // the retention job's delete, staged inside the duplicate's own transaction: after its insert found the key taken, before
-        // it reads the first id (a statement trigger fires for an insert that inserted nothing); the save's rollback undoes it
-        sql("create function lose_the_key() returns trigger language plpgsql as $$ begin delete from processed_ids; return null; end $$");
-        sql("create trigger lose_the_key after insert on processed_ids for each statement execute function lose_the_key()");
-
-        Future<String> duplicate = saveKeyed(arrive("m-2", bytes(300, 29)), KEY, Promise.promise().future());
-        assertTrue(duplicate.failed(), "a key taken by a row that is gone names no first id: a failed save, the sender retries — " + duplicate);
-        assertTrue(causes(duplicate.cause()).stream().anyMatch(c -> c.contains("gone")),
-                "failed because the key's row is gone, not by reading a first id that is not there: " + causes(duplicate.cause()));
-        nothingOf("m-2");
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(), "fixture: the delete went with the rollback");
-        assertEquals(List.of("m-1/K-1"), work());
-    }
-
-    @Test
-    void aDuplicateAnswersTheIdOfItsOwnScopeAndKey() {
-        String other = "drop/inbox/other.xml|1730196000000|300";
-        assertEquals("m-1", settled(saveKeyed(intake, arrive("m-1", bytes(300, 32)), "shop/orders", KEY, Promise.promise().future())).result());
-        assertEquals("m-2", settled(saveKeyed(intake, arrive("m-2", bytes(300, 33)), "shop/orders", other, Promise.promise().future())).result());
-        assertEquals("m-3", settled(saveKeyed(intake, arrive("m-3", bytes(300, 34)), "shop/invoices", KEY, Promise.promise().future())).result());
-        assertEquals(3, processed().size(), "fixture: three key rows, two per scope or per key: " + processed());
-
-        Future<String> ordersKey = settled(saveKeyed(intake, arrive("m-4", bytes(300, 32)), "shop/orders", KEY, Promise.promise().future()));
-        Future<String> ordersOther = settled(saveKeyed(intake, arrive("m-5", bytes(300, 33)), "shop/orders", other, Promise.promise().future()));
-        Future<String> invoicesKey = settled(saveKeyed(intake, arrive("m-6", bytes(300, 34)), "shop/invoices", KEY, Promise.promise().future()));
-        assertEquals(List.of("m-1", "m-2", "m-3"), List.of(String.valueOf(ordersKey.result()), String.valueOf(ordersOther.result()),
-                String.valueOf(invoicesKey.result())), "each duplicate answers the id saved under its own scope and key — never another row's: "
-                + List.of(ordersKey, ordersOther, invoicesKey));
-        assertEquals(List.of("m-1/K-1", "m-2/K-1", "m-3/K-1"), work(), "no item for a duplicate");
-        for (String duplicate : List.of("m-4", "m-5", "m-6")) nothingOf(duplicate);
-    }
-
-    @Test
-    void aDuplicateRacingAnOpenSaveAnswersTheFirstIdOnceItCommits() throws java.io.IOException {
-        Node2 second = node2();
-        Envelope first = arrive("m-1", bytes(300, 30));
-        Envelope again = arriveIn(second.blobs(), "m-2", bytes(300, 30));
-
-        holdWork();
-        Future<String> firstSave = saveKeyed(intake, first, SCOPE, KEY, Promise.promise().future());
-        until(() -> lockWaiters() == 1, "the first save waits at its item's insert, its key row inserted and not committed");
-        Future<String> duplicate = saveKeyed(second.intake(), again, SCOPE, KEY, Promise.promise().future());
-        until(() -> lockWaiters() == 2, "the duplicate waits as well: on the first save's open key row");
-        assertFalse(firstSave.isComplete(), "fixture: the first save is open");
-        assertFalse(duplicate.isComplete(), "a duplicate of an open save is not answered while the first is open");
-        assertEquals(List.of(), processed(), "fixture: nothing committed yet");
-
-        held.release();
-        assertEquals("m-1", settled(firstSave).result(), "the first save commits once the lock is gone");
-        Future<String> answered = settled(duplicate);
-        assertTrue(answered.succeeded(), "the duplicate waited for the first's commit, then found the key taken: " + answered.cause());
-        assertEquals("m-1", answered.result(), "and answers the first id");
-        savedWhole("m-1");
-        nothingOf("m-2");
-        assertEquals(List.of("m-1/K-1"), work());
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed());
-        assertEquals(Optional.empty(), second.blobs().location(again.body().key()), "the duplicate's local body on its node is evicted");
-    }
-
-    @Test
-    void aDuplicateRacingAnOpenSaveSavesItselfOnceTheFirstRollsBack() throws java.io.IOException {
-        Node2 second = node2();
-        Envelope first = arrive("m-1", bytes(300, 31));
-        Envelope again = arriveIn(second.blobs(), "m-2", bytes(300, 31));
-
-        holdWork();
-        Promise<Void> firstAnswer = Promise.promise();
-        Future<String> firstSave = saveKeyed(intake, first, SCOPE, KEY, firstAnswer.future());
-        until(() -> lockWaiters() == 1, "the first save waits at its item's insert, its key row inserted and not committed");
-        firstAnswer.complete();   // decided meanwhile: it rolls back instead of committing
-        Future<String> racing = saveKeyed(second.intake(), again, SCOPE, KEY, Promise.promise().future());
-        until(() -> lockWaiters() == 2, "the second save waits as well: on the first save's open key row");
-        assertFalse(racing.isComplete(), "the second save is not answered while the first is open");
-
-        held.release();
-        assertTrue(settled(firstSave).failed(), "the first save is abandoned and rolls back");
-        Future<String> answered = settled(racing);
-        assertTrue(answered.succeeded(), "the key came free with the rollback: the second save goes on — " + answered.cause());
-        assertEquals("m-2", answered.result(), "as itself");
-        savedWhole("m-2");
-        nothingOf("m-1");
-        assertEquals(List.of("m-2/K-1"), work());
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-2", STARTED)), processed());
-    }
-
-    // --- the commit barrier of a group with nothing to write, under ha (FIX-137, D-128)
-
-    /** An intake over {@code through} under {@code profile}: every save a group of one, handing nothing off. */
-    PgIntake intakeUnder(Pool through, NodeConfig.Pg.Durability profile) {
-        return new PgIntake(through, blobs, messages, new PgWorkQueue(through, "node-1"), null, new VertxTimer(vertx), NodeConfig.IntakeGroup.SINGLE,
-                WorkSignals.NONE, profile);
-    }
-
-    /** The id the server assigns next (the snapshot's xmax); reading it assigns none. */
-    long nextXid() {
-        return Long.parseLong(other.query("select pg_snapshot_xmax(pg_current_snapshot())::text").execute().await().iterator().next().getString(0));
-    }
-
-    /** {@code pg_xact_status} of {@code xid}: committed, aborted or in progress. */
-    String xactStatus(long xid) {
-        return other.preparedQuery("select pg_xact_status($1::text::xid8)").execute(Tuple.of(String.valueOf(xid))).await().iterator().next().getString(0);
-    }
-
-    /** Autovacuum off and no worker of it running: the server's id counter moves with the case's own transactions only. */
-    void quiet() {
-        sql("alter system set autovacuum = off");
-        sql("select pg_reload_conf()");
-        until(() -> "off".equals(other.query("show autovacuum").execute().await().iterator().next().getString(0))
-                && other.query("select count(*) from pg_stat_activity where backend_type = 'autovacuum worker'").execute().await().iterator().next().getLong(0) == 0,
-                "fixture: autovacuum off, no worker running");
-    }
-
-    /** The first save of {@link #KEY}, as {@code m-1}, by the case's own intake. */
-    void firstSaveOfTheKey() {
-        Future<String> saved = saveKeyed(arrive("m-1", bytes(300, 30)), KEY, Promise.promise().future());
-        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
-    }
-
-    /** Only {@code m-1} of the key in Postgres: its rows, one processed_ids row naming it. */
-    void onlyTheFirstSave(String... duplicates) {
-        savedWhole("m-1");
-        for (String d : duplicates) nothingOf(d);
-        assertEquals(1, count("messages"), "one ingress row");
-        assertEquals(List.of("m-1/K-1"), work(), "one item");
-        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(), "one key row, the first save's");
-    }
-
-    @Test
-    void underHaADuplicateAloneCommitsATransactionIdBeforeItAnswers() {
-        PgIntake ha = intakeUnder(pool, NodeConfig.Pg.Durability.HA);
-        Future<String> saved = settled(saveKeyed(ha, arrive("m-1", bytes(300, 30)), SCOPE, KEY, Promise.promise().future()));
-        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
-        Envelope again = arrive("m-2", bytes(300, 30));
-        quiet();
-        long next = nextXid();
-
-        Future<String> duplicate = settled(saveKeyed(ha, again, SCOPE, KEY, Promise.promise().future()));
-        assertTrue(duplicate.succeeded(), "a duplicate is a successful save: " + duplicate.cause());
-        assertEquals("m-1", duplicate.result(), "it answers the first message's id");
-        assertEquals(next + 1, nextXid(), "the duplicate's transaction took one transaction id: a commit record, whose wait covers the first save's");
-        assertEquals("committed", xactStatus(next), "and it committed that id, never a rollback");
-        onlyTheFirstSave("m-2");
-    }
-
-    @Test
-    void underLocalADuplicateAloneTakesNoTransactionId() {
-        PgIntake local = intakeUnder(pool, NodeConfig.Pg.Durability.LOCAL);
-        Future<String> saved = settled(saveKeyed(local, arrive("m-1", bytes(300, 30)), SCOPE, KEY, Promise.promise().future()));
-        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
-        Envelope again = arrive("m-2", bytes(300, 30));
-        quiet();
-        long next = nextXid();
-
-        Future<String> duplicate = settled(saveKeyed(local, again, SCOPE, KEY, Promise.promise().future()));
-        assertEquals("m-1", duplicate.result(), "a duplicate answers the first message's id: " + duplicate.cause());
-        assertEquals(next, nextXid(), "under local the duplicate's transaction rolls back holding no transaction id");
-        onlyTheFirstSave("m-2");
-    }
-
-    /** A failure armed on a {@link PgWire}: done once the relay replaced a reply. */
-    interface Armed {
-        void awaitDone() throws InterruptedException;
-    }
-
-    /**
-     * Under ha, over a relay whose reply to what {@code arm} names is replaced by a failure: the duplicate's save fails with
-     * {@code failure} (no answer, so no 202), and the sender's retry with the same key is answered the first id.
-     */
-    void aFailedBarrierIsNoAnswerAndItsRetryIs(java.util.function.Function<PgWire, Armed> arm, String failure) throws Exception {
-        firstSaveOfTheKey();
-        PgWire wire = new PgWire(pg.getHost(), pg.getMappedPort(5432));
-        Pool relayed = PgBuilder.pool().connectingTo(new PgConnectOptions().setHost("127.0.0.1").setPort(wire.port()).setDatabase(database)
-                .setUser(pg.getUsername()).setPassword(pg.getPassword()))
-                .with(new PoolOptions().setMaxSize(1).setConnectionTimeout(POOL_WAIT_SECONDS).setConnectionTimeoutUnit(TimeUnit.SECONDS)).using(vertx).build();
-        try {
-            PgIntake ha = intakeUnder(relayed, NodeConfig.Pg.Durability.HA);
-            Armed armed = arm.apply(wire);
-            Future<String> duplicate = settled(saveKeyed(ha, arrive("m-2", bytes(300, 31)), SCOPE, KEY, Promise.promise().future()));
-            assertTrue(duplicate.failed(), "a failed barrier is no answer: the sender gets no 202 — answered " + duplicate.result());
-            assertTrue(causes(duplicate.cause()).stream().anyMatch(c -> c.contains(failure)), "with the barrier's failure: " + causes(duplicate.cause()));
-            armed.awaitDone();   // witness: the failure is the relay's replaced reply
-
-            Future<String> retried = settled(saveKeyed(ha, arrive("m-3", bytes(300, 32)), SCOPE, KEY, Promise.promise().future()));
-            assertEquals("m-1", retried.result(), "the failure was retryable: the retry answers the first id — " + retried.cause());
-        } finally {
-            wire.close();   // first: a relayed connection open on it would hold the pool's close
-            relayed.close().await();
-        }
-        onlyTheFirstSave("m-2", "m-3");
-    }
-
-    @Test
-    void underHaARefusedBarrierStatementIsNoAnswerAndItsRetryIs() throws Exception {
-        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.errorReplyTo(s -> (s.type() == 'Q' || s.type() == 'P') && s.sql() != null
-                && s.sql().toLowerCase(java.util.Locale.ROOT).contains("pg_current_xact_id"), "XX000", "barrier refused by the test")::awaitDone,
-                "barrier refused by the test");
-    }
-
-    @Test
-    void underHaARefusedBarrierCommitIsNoAnswerAndItsRetryIs() throws Exception {
-        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.errorReplyTo(PgWire.query("COMMIT"), "40001", "commit refused by the test")::awaitDone,
-                "commit refused by the test");
-    }
-
-    @Test
-    void underHaALostBarrierCommitIsNoAnswerAndItsRetryIs() throws Exception {
-        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.fatalReplyTo(PgWire.query("COMMIT"))::awaitDone, "administrator command");
     }
 }

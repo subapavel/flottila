@@ -52,8 +52,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code new TieredBlobStore(Config, Hasher, Journal journal, int tenantKeyId, Pool pool)}: its location index (key → ref) is the
  * store's own, so a second store over the same open journal ({@link #restartedStore()}) starts with an empty index — a store
  * restart with the journal open; {@code new PgWorkQueue(Pool pool, String node)}; core {@code Intake.save(Envelope, Snapshot,
- * String flow, String partitionKey, String dedupeKey, boolean keepInput, Future<?> abandoned)} (CORE-4d: the delivery's answer future;
- * complete = abandoned).
+ * String flow, String partitionKey, boolean keepInput, Future<?> abandoned)} ({@code abandoned}: the delivery's answer
+ * future; complete = abandoned).
  */
 final class JournalWorld implements AutoCloseable {
 
@@ -142,14 +142,14 @@ final class JournalWorld implements AutoCloseable {
                 .startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT);
     }
 
-    /** The save of {@code e} without a dedupe key, partition key {@code K-1}, settled. */
+    /** The save of {@code e} under the cases' one partition key, settled. */
     Future<String> save(Envelope e, boolean keepInput, Future<?> abandoned) {
         return settled(start(e, keepInput, abandoned));
     }
 
     /** The save of {@code e}, not waited for. */
     Future<String> start(Envelope e, boolean keepInput, Future<?> abandoned) {
-        return intake.save(e, ingress(e), FLOW, "K-1", null, keepInput, abandoned);
+        return intake.save(e, ingress(e), FLOW, "K-1", keepInput, abandoned);
     }
 
     // --- reading Postgres (on the given pool: another session's view once committed)

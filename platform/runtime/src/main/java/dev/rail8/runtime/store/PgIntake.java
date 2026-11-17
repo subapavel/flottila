@@ -27,8 +27,6 @@ import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.SqlConnection;
 import io.vertx.sqlclient.Tuple;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -37,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
@@ -61,68 +58,35 @@ import java.util.concurrent.locks.ReentrantLock;
  * group: each member's ingress record ({@link PgMessageStore}, outside its batching writer), its work item naming the record's
  * ref ({@link PgWorkQueue}) and — only when its flow keeps its input ({@code keepInput}) — its body's kept ref ({@code body_refs}).
  * Its statements go in turns, a turn's statements sent together and the next turn sent only once every reply of this one
- * came: BEGIN alone; the claim turn when a member has a dedupe key; the rows — the records as one insert into messages and one
+ * came: BEGIN alone; the rows — the records as one insert into messages and one
  * into message_keys, then each member's item and kept ref in call order (so one partition's items keep the call order); then,
  * after the {@code abandoned} check, COMMIT alone. A failed statement of a turn fails the turn with its own cause (the first
  * failed in the turn's order, never a later statement's aborted transaction) and the transaction rolls back.
  *
- * <p>{@code abandoned} — the delivery's answer — drops a member without a key whose answer is decided when its group is taken and
- * again once the group's connection came: it fails as abandoned, nothing sent for it. After the rows every member writing rows is
+ * <p>{@code abandoned} — the delivery's answer — drops a member whose answer is decided when its group is taken and
+ * again once the group's connection came: it fails as abandoned, nothing sent for it. After the rows every member is
  * asked once more, just before the commit; one complete rolls the group back. Its completion also ends the wait of the body's
  * record for room under {@code RAIL8_JOURNAL_PENDING_BYTES} ({@link TieredBlobStore#forced(dev.rail8.api.BlobKey, Future)}:
  * retryable, nothing reserved).
  *
- * <p>Outcomes. Once the commit is acknowledged each member writing rows has its ref indexed and its local copy gone, then its save
+ * <p>Outcomes. Once the commit is acknowledged each member has its ref indexed and its local copy gone, then its save
  * succeeds with its own id. A group that fails before its commit (a statement, a kept ref's check, a member abandoned at the
- * check) answers nothing from its transaction: a group of one fails with the cause; in a larger one each member without a key whose
+ * check) answers nothing from its transaction: a group of one fails with the cause; in a larger one each member whose
  * answer is decided fails as abandoned and every other member runs again alone, in a transaction of its own ({@link
  * GroupStats#reruns}), so a poison member never fails its neighbours. A commit the server refuses with an error reply of
  * severity ERROR fails every member with its refusal, each out of the open saves. A commit sent whose reply never came (the
- * connection lost) or came as FATAL or PANIC (the session ended, the commit may have landed) fails every member but leaves the
- * members writing rows open, by the transaction id their items' inserts answered, until {@code pg_xact_status} of that id is known — asked at each {@link #openSaves} — or the node
+ * connection lost) or came as FATAL or PANIC (the session ended, the commit may have landed) fails every member but leaves them
+ * open, by the transaction id their items' inserts answered, until {@code pg_xact_status} of that id is known — asked at each {@link #openSaves} — or the node
  * restarts. A save is an open save ({@link #openSaves}) from its record's reservation until its group's commit or rollback is
  * acknowledged, or its force failed. Any failure — of the force, a statement, the commit or the body's own store — fails the
  * save; nothing here throws.
- *
- * <p>A member with a dedupe key is claimed in a turn of its own after BEGIN, two statements over every keyed member of the
- * group sorted by (flow, key) — one lock order, so two groups racing for the same keys never deadlock: the keys' rows in {@code
- * processed_ids} — scope {@code flow}, the SHA-256 of the key's UTF-8 bytes, the id of the first member in call order with that
- * key, the ingress snapshot's start — {@code on conflict do nothing}; then the ids the keys' rows name. A row inserted is that
- * member's: it writes its rows and commits with the group, so a group that fails or is rolled back leaves the key free. A key
- * not inserted is taken — by a committed save, by an open one this statement waited for (READ COMMITTED) and that committed, or by
- * an earlier member of the group: the member writes nothing — no savepoint, its neighbours unaffected — {@code abandoned} is not
- * asked for it, and once the group is done (committed, or — no member writing rows — rolled back, or under {@code ha} committed
- * behind its barrier) this store's copy of its body is
- * evicted (its record, forced already, stays unreferenced in the journal; a body of another store keeps what its persist made
- * durable) and its save succeeds with the id the key's row names. A taken key whose row is gone when read (the retention job)
- * fails its save. A group without a key runs no claim turn.
- *
- * <p>Under the {@code ha} profile ({@link NodeConfig.Pg.Durability#HA}) a group with no row to write sends, after the
- * rows' turn would have been, {@link #BARRIER} alone and then COMMIT. It takes a transaction id and writes one transactional
- * logical message (a WAL record, no row): Postgres makes a commit wait for its synchronous standby only when its transaction holds
- * an id and wrote WAL before the commit record (an id alone commits without waiting), and that wait covers every earlier record,
- * so a duplicate is answered only once the save its key names is on a synchronous standby too (a save committed locally whose
- * wait was ended answers its sender 503 and its retry no 202 before that). EXECUTE on {@code pg_logical_emit_message} is an
- * {@code ha} precondition: the node's start check refuses a role without it, naming the GRANT (PUBLIC has it by default; any
- * {@code wal_level} from {@code replica}). A failed barrier statement — that EXECUTE revoked after the start included — fails
- * the group as any failed statement does; a barrier commit refused or lost fails every member as
- * a commit of no transaction id known does: no answer, each out of the open saves, retryable. Under {@code local} such a group
- * rolls back.
  *
  * @since 0.1
  */
 public final class PgIntake implements Intake {
 
-    /** The keys' rows for their first members, unless a scope holds the key already: a member's id returned is its key claimed. */
-    static final String CLAIM_KEY = "insert into processed_ids(scope, key_hash, message_id, created_at) select s, sha256(convert_to(k, 'UTF8')), m, c "
-            + "from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[]) as c(s, k, m, c) on conflict do nothing returning message_id";
-    /** The message each key names. */
-    static final String FIRST_ID = "select p.scope, c.k, p.message_id from processed_ids p join unnest($1::text[], $2::text[]) as c(s, k) "
-            + "on p.scope = c.s and p.key_hash = sha256(convert_to(c.k, 'UTF8'))";
     /** Each transaction id's status: committed, aborted, in progress, or null for one too old to be known. */
     static final String XACT_STATUS = "select x, pg_xact_status(x::xid8) from unnest($1::text[]) x";
-    /** Under ha, the statement of a group with no row to write: an id taken and a WAL record written, so its commit waits. */
-    static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'rail8', '')";
 
     private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
 
@@ -138,12 +102,12 @@ public final class PgIntake implements Intake {
     public record GroupStats(long groups, long members, long bytes, long reruns) {}
 
     /** A save in a group: what it writes, its body made durable (null: another store's), its weight and its answer. */
-    private record Member(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+    private record Member(Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput,
                           Future<?> abandoned, TieredBlobStore.Durable durable, long weight, Promise<String> answer) {
 
-        /** Without a key and its answer decided: dropped, nothing sent for it (a keyed member still claims, to answer a duplicate). */
+        /** Its answer decided: dropped, nothing sent for it. */
         boolean dropped() {
-            return dedupeKey == null && abandoned.isComplete();
+            return abandoned.isComplete();
         }
 
         /** A member is itself: two saves are two members whatever they carry (and nothing deep is hashed). */
@@ -156,21 +120,10 @@ public final class PgIntake implements Intake {
         }
     }
 
-    /** A key in its scope, ordered by (flow, key): the claim turn's one lock order. */
-    private record Scoped(String flow, String key) implements Comparable<Scoped> {
-        @Override public int compareTo(Scoped o) {
-            int byFlow = flow.compareTo(o.flow);
-            return byFlow != 0 ? byFlow : key.compareTo(o.key);
-        }
-    }
-
-    /** One group's transaction: its members in call order, what its claim turn found, the transaction id its items answered. */
+    /** One group's transaction: its members in call order, the transaction id their items answered. */
     private static final class Group {
         final List<Member> members;
-        final Map<Member, String> firsts = new HashMap<>();   // a key taken: the id its row names
-        final Set<Member> gone = new HashSet<>();             // a key taken by a row that is gone
-        final List<Member> writing = new ArrayList<>();       // the members writing rows
-        final Map<Member, FlowWorker.Slot> slots = new HashMap<>();   // a member writing rows with a hand-off slot reserved
+        final Map<Member, FlowWorker.Slot> slots = new HashMap<>();   // a member with a hand-off slot reserved
         final Map<Member, WorkQueue.Item> leased = new ConcurrentHashMap<>();   // a member whose item was written leased
         final Map<Member, String> elsewhere = new ConcurrentHashMap<>();       // a member whose copied ref lies in another node's journal
         final AtomicReference<String> xid = new AtomicReference<>();
@@ -201,8 +154,6 @@ public final class PgIntake implements Intake {
     private final PgWorkQueue queue;
     private final Workers workers;   // null: no hand-off
     private final WorkSignals signals;
-    /** Under ha a group with no row to write commits behind {@link #BARRIER}; under local it rolls back. */
-    private final boolean barrier;
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
     private final Map<String, List<TieredBlobStore.Durable>> inDoubt = new ConcurrentHashMap<>();
@@ -252,18 +203,6 @@ public final class PgIntake implements Intake {
      */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
                     WorkSignals signals) {
-        this(pool, blobs, messages, queue, workers, timer, group, signals, NodeConfig.Pg.Durability.LOCAL);
-    }
-
-    /**
-     * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup, WorkSignals)} under
-     * the Postgres profile {@code durability}: under {@link NodeConfig.Pg.Durability#HA} a group with no row to write runs
-     * {@link #BARRIER} (a transaction id and one WAL record), so its commit waits for the synchronous standby before its members are
-     * answered; under {@link NodeConfig.Pg.Durability#LOCAL} it rolls back. Every other constructor is {@code LOCAL}.
-     */
-    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
-                    WorkSignals signals, NodeConfig.Pg.Durability durability) {
-        this.barrier = Objects.requireNonNull(durability, "durability") == NodeConfig.Pg.Durability.HA;
         this.signals = Objects.requireNonNull(signals, "signals");
         this.pool = Objects.requireNonNull(pool, "pool");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
@@ -336,7 +275,7 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * {@code saves} in doubt under {@code xid}, as a commit whose reply was lost leaves the members writing rows ({@link #notCommitted});
+     * {@code saves} in doubt under {@code xid}, as a commit whose reply was lost leaves its group's members ({@link #notCommitted});
      * for the tests, which cannot make Postgres assign an id it refuses to answer for.
      */
     void inDoubt(String xid, List<TieredBlobStore.Durable> saves) {
@@ -344,8 +283,7 @@ public final class PgIntake implements Intake {
     }
 
     @Override
-    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                               Future<?> abandoned) {
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput, Future<?> abandoned) {
         Body body = arrived.body();
         boolean ours = body.store() == blobs;
         // from a completed future on, so a store that throws fails the save instead of escaping it
@@ -353,8 +291,8 @@ public final class PgIntake implements Intake {
                 .compose(start -> ours ? blobs.forced(body.key(), abandoned) : body.store().persist(body.key()).map((TieredBlobStore.Durable) null))
                 .compose(durable -> {
                     long weight = PgMessageStore.weight(ingress) + PgMessageStore.utf8(arrived.id()) + PgMessageStore.utf8(flow)
-                            + PgMessageStore.utf8(partitionKey) + PgMessageStore.utf8(dedupeKey);
-                    Member m = new Member(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned, durable, weight, Promise.promise());
+                            + PgMessageStore.utf8(partitionKey);
+                    Member m = new Member(arrived, ingress, flow, partitionKey, keepInput, abandoned, durable, weight, Promise.promise());
                     // fails for a full backlog (never handed to a group) or a failed run, i.e. a throw out of run or its chain, which
                     // the writer makes the batch's failure; a closed writer would fail it too, but this intake never closes its writer
                     writer.save(m).onFailure(refused -> fail(m, refused));
@@ -364,7 +302,7 @@ public final class PgIntake implements Intake {
 
     /**
      * The writer's sink: {@code batch} as a group, answering each member — never failing, never blocking (the window fires on an
-     * event loop). A member without a key whose answer is decided is dropped first, nothing asked for it.
+     * event loop). A member whose answer is decided is dropped first, nothing asked for it.
      */
     private Future<Void> run(List<Member> batch) {
         groups.increment();
@@ -408,9 +346,8 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * {@code g} in one transaction on {@code conn}: committed when a member writes rows and none is abandoned at the check; when no
-     * member writes rows, committed behind {@link #BARRIER} under ha and rolled back with a success under local; else (a failed
-     * statement, the barrier's included) rolled back and failed {@link RolledBack} with the cause. A commit the
+     * {@code g} in one transaction on {@code conn}: committed when no member is abandoned at the check; else (a failed
+     * statement) rolled back and failed {@link RolledBack} with the cause. A commit the
      * server refused with an error reply of severity ERROR (a known abort: the session survives it) fails with its own cause; one
      * whose reply never came, or answered FATAL or PANIC (the session ends; the commit may have landed), fails with {@link InDoubt}
      * once the transaction id is known (a member naming a record), else with its own failure.
@@ -418,13 +355,9 @@ public final class PgIntake implements Intake {
     private Future<Void> transaction(SqlConnection conn, Group g) {
         return conn.begin().transform(began -> {
             if (began.failed()) return Future.<Void>failedFuture(new RolledBack(began.cause()));
-            return Future.<Void>succeededFuture().compose(start -> claim(conn, g))
-                    .compose(claimed -> writes(conn, g))
-                    .compose(written -> written || !barrier ? Future.succeededFuture(written)
-                            : conn.query(BARRIER).execute().map(true))   // nothing written, under ha: an id and a WAL record, so the commit waits
+            return Future.<Void>succeededFuture().compose(start -> writes(conn, g))
                     .transform(done -> {
                         if (done.failed()) return began.result().rollback().transform(rolled -> Future.<Void>failedFuture(new RolledBack(done.cause())));
-                        if (!done.result()) return began.result().rollback().otherwiseEmpty();   // nothing written, under local: the duplicates answer
                         return began.result().commit().recover(lost -> Future.failedFuture(refused(lost) || g.xid.get() == null ? lost   // refused: a known abort
                                 : new InDoubt(g.xid.get(), lost)));
                     });
@@ -432,28 +365,26 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The rows turn over the members writing rows — false, nothing sent, when none does: their records' inserts, then each one's item
-     * and — {@code keepInput}, a body of this store — kept ref, each sent before any reply; then the abandoned check on each. Fails
-     * with the first failed statement's cause in that order, or with the first member found abandoned.
+     * The rows turn over the members: their records' inserts, then each one's item and — {@code keepInput}, a body of this store —
+     * kept ref, each sent before any reply; then the abandoned check on each. Fails with the first failed statement's cause in that
+     * order, or with the first member found abandoned.
      */
-    private Future<Boolean> writes(SqlClient tx, Group g) {
-        for (Member m : g.members) if (!g.firsts.containsKey(m) && !g.gone.contains(m)) g.writing.add(m);
-        if (g.writing.isEmpty()) return Future.succeededFuture(false);
-        List<Future<?>> replies = new ArrayList<>(2 + 2 * g.writing.size());
+    private Future<Void> writes(SqlClient tx, Group g) {
+        List<Future<?>> replies = new ArrayList<>(2 + 2 * g.members.size());
         List<Map.Entry<String, String>> keys = new ArrayList<>();
-        for (Member m : g.writing) {
+        for (Member m : g.members) {
             if (m.partitionKey() != null) keys.add(Map.entry(m.flow(), m.partitionKey()));
             if (workers != null) workers.reserve(m.flow()).ifPresent(slot -> g.slots.put(m, slot));   // just before its insert
         }
         replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key; none without a key
-        replies.add(messages.insert(tx, g.writing.stream().map(Member::ingress).toList()));
-        for (Member m : g.writing) {
+        replies.add(messages.insert(tx, g.members.stream().map(Member::ingress).toList()));
+        for (Member m : g.members) {
             replies.add(enqueue(tx, m, g));
             if (m.keepInput() && m.durable() != null) replies.add(m.durable().keepIn(tx));
         }
         return Future.join(replies).compose(written -> {
-            for (Member m : g.writing) if (m.abandoned().isComplete()) return Future.failedFuture(abandoned(m));
-            return Future.succeededFuture(true);
+            for (Member m : g.members) if (m.abandoned().isComplete()) return Future.failedFuture(abandoned(m));
+            return Future.succeededFuture();
         });
     }
 
@@ -495,7 +426,7 @@ public final class PgIntake implements Intake {
      */
     private void handOff(Group g) {
         Set<String> spilled = new java.util.LinkedHashSet<>();
-        for (Member m : g.writing) {
+        for (Member m : g.members) {
             FlowWorker.Slot slot = g.slots.get(m);
             WorkQueue.Item item = g.leased.get(m);
             if (slot == null) spilled.add(m.flow());
@@ -541,66 +472,13 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The claim turn — nothing to do without a keyed member: the keys' rows for the first member in call order of each key, and the
-     * read of the ids the keys' rows name, sent together sorted by (flow, key), answered once both replied. A member is claimed when
-     * the insert returned its id as its key's first member; any other keyed member's key is taken: into {@code g.firsts} with the
-     * id the read found, or {@code g.gone} when it found none.
-     */
-    private static Future<Void> claim(SqlClient tx, Group g) {
-        TreeMap<Scoped, Member> firstOf = new TreeMap<>();
-        for (Member m : g.members) if (m.dedupeKey() != null) firstOf.putIfAbsent(new Scoped(m.flow(), m.dedupeKey()), m);
-        if (firstOf.isEmpty()) return Future.succeededFuture();
-        int n = firstOf.size(), i = 0;
-        String[] scopes = new String[n], keys = new String[n], ids = new String[n];
-        OffsetDateTime[] created = new OffsetDateTime[n];
-        for (Map.Entry<Scoped, Member> e : firstOf.entrySet()) {
-            scopes[i] = e.getKey().flow();
-            keys[i] = e.getKey().key();
-            ids[i] = e.getValue().arrived().id();
-            created[i++] = e.getValue().ingress().startedAt().atOffset(ZoneOffset.UTC);
-        }
-        Future<RowSet<Row>> inserted = tx.preparedQuery(CLAIM_KEY).execute(Tuple.wrap(new Object[] {scopes, keys, ids, created}));
-        Future<RowSet<Row>> first = tx.preparedQuery(FIRST_ID).execute(Tuple.wrap(new Object[] {scopes, keys}));
-        return Future.join(inserted, first).map(replied -> {
-            Set<String> claimed = new HashSet<>();
-            for (Row r : inserted.result()) claimed.add(r.getString(0));
-            Map<Scoped, String> named = new HashMap<>();
-            for (Row r : first.result()) named.put(new Scoped(r.getString(0), r.getString(1)), r.getString(2));
-            for (Member m : g.members) {
-                if (m.dedupeKey() == null) continue;
-                Scoped key = new Scoped(m.flow(), m.dedupeKey());
-                if (firstOf.get(key) == m && claimed.contains(m.arrived().id())) continue;
-                String id = named.get(key);
-                if (id == null) g.gone.add(m);
-                else g.firsts.put(m, id);
-            }
-            return null;
-        });
-    }
-
-    /**
-     * {@code g} done (committed, or rolled back with no member writing rows): each member writing rows committed and answering its
-     * own id; each with its key taken out of the open saves, its body evicted, answering the id its key's row names; each whose
-     * key's row is gone failed; then the {@linkplain #handOff hand-off}. Completes once every member is answered.
+     * {@code g} committed: each member committed and answering its own id; then the {@linkplain #handOff hand-off}.
      */
     private Future<Void> answered(Group g) {
-        for (Member m : g.writing) if (m.durable() != null) m.durable().committed();   // the ref indexed, the local copy gone: then the runs read it
-        List<Future<String>> answers = new ArrayList<>(g.members.size());
-        for (Member m : g.members) {
-            String first = g.firsts.get(m);
-            if (first != null) {
-                rolledBack(m);
-                blobs.evict(m.arrived().body().key()).map(evicted -> first).onComplete(m.answer()::tryComplete, m.answer()::tryFail);
-            } else if (g.gone.contains(m)) {
-                fail(m, new IllegalStateException("the dedupe key of " + m.arrived().id() + " is taken in flow " + m.flow()
-                        + " by a row that is gone (retention): no message to name; not saved"));
-            } else {
-                m.answer().tryComplete(m.arrived().id());
-            }
-            answers.add(m.answer().future());
-        }
+        for (Member m : g.members) if (m.durable() != null) m.durable().committed();   // the ref indexed, the local copy gone: then the runs read it
+        for (Member m : g.members) m.answer().tryComplete(m.arrived().id());
         handOff(g);   // after the answers: a slot call never decides one
-        return Future.join(answers).<Void>mapEmpty().otherwiseEmpty();
+        return Future.succeededFuture();
     }
 
     /**
@@ -626,14 +504,13 @@ public final class PgIntake implements Intake {
 
     /**
      * {@code g}'s commit failed with {@code cause}: every member fails with it; with the reply lost ({@link InDoubt}) the members
-     * writing rows stay open by its transaction id, the rest — and every member of a commit refused or lost before an id was known —
-     * out of the open saves. Then every slot is given back ({@link #cancelSlots}) and, the commit not refused, each flow with a
+     * stay open by its transaction id; every member of a commit refused or lost before an id was known goes out of the open saves. Then every slot is given back ({@link #cancelSlots}) and, the commit not refused, each flow with a
      * member saved without a slot has its worker woken.
      */
     private void notCommitted(Group g, Throwable cause) {
         List<Member> open = List.of();
         if (cause instanceof InDoubt lost) {
-            open = g.writing;
+            open = g.members;
             List<TieredBlobStore.Durable> durables = new ArrayList<>();
             for (Member m : open) if (m.durable() != null) durables.add(m.durable());
             inDoubt(lost.xid, durables);
@@ -645,7 +522,7 @@ public final class PgIntake implements Intake {
         boolean mayHaveLanded = !refused(cause);   // the doubt registered and every member answered: then the slots
         cancelSlots(g, mayHaveLanded);   // in doubt: each slot's worker claims the row at its lease end, if it landed
         if (mayHaveLanded && workers != null) {
-            for (Member m : g.writing) if (!g.slots.containsKey(m)) workers.wake(m.flow());   // a plain row that may have landed
+            for (Member m : g.members) if (!g.slots.containsKey(m)) workers.wake(m.flow());   // a plain row that may have landed
         }
     }
 

@@ -177,10 +177,10 @@ A row is claimed only when no older row of the same key exists and no other work
 
 ### Duplicates
 
-A component may name a value that identifies what it delivers. Only `sftp` does (host, path,
-modification time and the file's hash). The intake then records that value per flow in
-`processed_ids` and answers a second delivery with the first message's id instead of saving it again.
-HTTP has no deduplication.
+The platform deduplicates nothing: every arrival it accepts is a new message. `sftp` only makes sure
+it does not read the same file twice: once a file is delivered it is deleted or moved. A file whose
+delete or move failed is delivered again in a later round, and a file uploaded again is processed
+again, each as a new message. HTTP has no deduplication either.
 
 When a node dies after sending but before recording the send, the next worker sends again: partners
 see a second delivery with the same `x-message-id`, by which they can drop it.
@@ -193,8 +193,7 @@ with `partitionBy`, this one refuses it. Upgrade every node, then deploy such pa
 `onFailure`; until then this version lists them as failed.
 
 **Planned**
-- Deduplication only where the flow's author asks for it, by a key the author chooses; `sftp` only
-  avoids reading the same file twice and drops its built-in deduplication.
+- Deduplication only where the flow's author asks for it, by a key the author chooses.
 - What happens when a step fails, defined by the flow's author: an error message to a partner, a
   chosen answer to the caller, or a few steps of its own (like an exception subprocess in CPI).
 - What is left in the code from replay is removed.
@@ -210,7 +209,6 @@ Postgres holds everything whose loss would lose a message, and the message histo
 | `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held, stops its key or is cancelled, and where the body is in the journal |
 | `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size), and the business keys for search |
 | `dlq` | parked messages, by reference |
-| `processed_ids` | the delivery identities used against duplicates |
 | `body_refs`, `journal_segments`, `journal_keys`, `journal_nodes`, `journal_losses` | where each durable body is, the journal files, their wrapped encryption keys, and losses an operator accepted |
 | `nodes` | node membership and leases |
 | `deployments` | which package revision is deployed, by archive hash |

@@ -214,8 +214,6 @@ class SftpComponentTest {
         fire(nodeB);
         assertTrue(soon(() -> onB.size() == 2), "node B delivered the file A holds, then the next one: " + files(onB));
         assertEquals(List.of("f1.xml", "f2.xml"), files(onB));
-        assertEquals(onA.get(0).get(SftpComponent.FILE_KEY), onB.get(0).get(SftpComponent.FILE_KEY),
-                "both nodes deliver the same file key: the save drops the second as a duplicate (P2-02D)");
         assertTrue(soon(() -> !sftp.files("/inbox").contains("f1.xml")), "B's Accepted removed f1: " + sftp.files("/inbox"));
         assertNothingLost(dropped, ledger, "B accepted f1 and refused f2 for now");
 
@@ -245,7 +243,7 @@ class SftpComponentTest {
         assertEquals(Set.of("order.xml"), sftp.files("/inbox"), "the delete never happened: the file stays for the next round");
         round(rt);
         assertEquals(List.of("order.xml", "order.xml"), files(seen), "the next round delivers it again");
-        assertEquals(seen.get(0).get(SftpComponent.FILE_KEY), seen.get(1).get(SftpComponent.FILE_KEY), "the same file");
+        assertNotEquals(seen.get(0).id(), seen.get(1).id(), "a new message: nothing recognises the file delivered before");
         assertEquals(Set.of(), sftp.files("/inbox"), "accepted again, deleted this time");
         assertEquals(2, sftp.sessionsCreated(), "the dropped session was replaced by a new one");
     }
@@ -516,7 +514,7 @@ class SftpComponentTest {
     // ---- what the handler sees ----------------------------------------------------------------------------------------
 
     @Test
-    void propsCarryNamePathMtimeAndFileKey() {
+    void propsCarryNamePathAndMtime() {
         sftp.drop("/inbox", "order-1.xml", Buffer.buffer("<order id=\"1\"/>"), Instant.parse("2025-12-31T23:00:00Z"));
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         started(component(rt), inbox(Map.of("flow", "orders/sftp-intake")), accepting(seen));
@@ -526,9 +524,8 @@ class SftpComponentTest {
         assertEquals("order-1.xml", e.get(SftpComponent.FILE).orElse(null), "sftp.file: the name");
         assertEquals("/inbox/order-1.xml", e.get(SftpComponent.PATH).orElse(null), "sftp.path: the full remote path");
         assertEquals("2025-12-31T23:00:00Z", e.get(SftpComponent.MTIME).orElse(null), "sftp.mtime: the server's mtime, ISO-8601");
-        assertEquals("sftp://127.0.0.1:" + sftp.port() + "/inbox/order-1.xml@2025-12-31T23:00:00Z#" + e.body().hash().hex(),
-                e.get(SftpComponent.FILE_KEY).orElse(null), "sftp.fileKey: sftp://host:port/path@mtime#bodyHash");
-        assertEquals(Set.of("sftp.file", "sftp.path", "sftp.mtime", "sftp.fileKey"), e.props().asMap().keySet(), "these four, no size prop (body().size())");
+        assertEquals(Set.of("sftp.file", "sftp.path", "sftp.mtime"), e.props().asMap().keySet(),
+                "these three: no key to recognise the file by, no size prop (body().size())");
         assertEquals(Map.of(), e.headers().asMap(), "no headers");
         assertEquals("<order id=\"1\"/>", e.body().whole().toString());
         assertEquals("orders/sftp-intake", e.flow(), "the flow option names the envelope's flow");
@@ -626,8 +623,6 @@ class SftpComponentTest {
         round(rt);
         assertEquals(List.of("real.xml"), files(seen));
         assertEquals("/inbox/real.xml", seen.get(0).get(SftpComponent.PATH).orElse(null));
-        assertTrue(seen.get(0).get(SftpComponent.FILE_KEY).orElse("").startsWith("sftp://127.0.0.1:" + sftp.port() + "/inbox/real.xml@"),
-                "the file key names the server the options chose: " + seen.get(0).get(SftpComponent.FILE_KEY).orElse(null));
         assertEquals(Set.of("decoy.xml"), sftp.files("/other"));
     }
 
@@ -729,47 +724,21 @@ class SftpComponentTest {
         assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
     }
 
-    // ---- P2-02D (D-084): the save dedupes by the file key ------------------------------------------------------------
-
-    /**
-     * Every sftp endpoint names {@code sftp.fileKey} as its dedupe key: the same file delivered again — its removal refused after
-     * the save, another node polling it after a takeover — is one message. Answered from the config alone.
-     */
+    /** A move whose name is taken in {@code moveTo} is suffixed with the id of the message the file was delivered as. */
     @Test
-    void dedupesByTheFileKey() {
-        SftpComponent component = component(rt);
-        EndpointConfig nowhere = new EndpointConfig("sftp-in", URI.create("sftp://127.0.0.1:1/inbox"),
-                Map.of("user", "rail8", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
-
-        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of())), "the default options");
-        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of("afterSuccess", "move", "moveTo", "/done"))), "moving");
-        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(nowhere), "a partner nobody reaches");
-        assertEquals("sftp.fileKey", component.dedupeBy(nowhere).orElseThrow().name(), "the prop every delivered file carries (propsCarryNamePathMtimeAndFileKey)");
-        assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
-    }
-
-    /**
-     * A duplicate is accepted under the first message's id: a move whose name is taken in {@code moveTo} is suffixed with the id
-     * the Accepted names — the message the file is — not the arrival's own id.
-     */
-    @Test
-    void aTakenMoveNameIsSuffixedWithTheAcceptedId() {
+    void aTakenMoveNameIsSuffixedWithTheMessageId() {
         sftp.mkdir("/done");
         List<Envelope> seen = new CopyOnWriteArrayList<>();
-        started(component(rt), inbox(Map.of("afterSuccess", "move", "moveTo", "/done")), e -> {
-            seen.add(e);
-            // the first arrival is saved as itself; the second is a duplicate of a message saved earlier
-            return Future.succeededFuture(new Ack.Accepted(seen.size() == 1 ? e.id() : "m-first-saved"));
-        });
+        started(component(rt), inbox(Map.of("afterSuccess", "move", "moveTo", "/done")), accepting(seen));
         sftp.drop("/inbox", "x.xml", Buffer.buffer("<first/>"));
         round(rt);
         assertEquals(Set.of("x.xml"), sftp.files("/done"), "fixture: moveTo/x.xml is taken now");
         sftp.drop("/inbox", "x.xml", Buffer.buffer("<second/>"));
         round(rt);
-        assertEquals(2, seen.size(), "fixture: the second file was delivered: " + files(seen));
-        assertNotEquals("m-first-saved", seen.get(1).id(), "fixture: the accepted id is not the arrival's");
-        assertEquals(Set.of("x.xml", "x.xml.m-first-saved"), sftp.files("/done"), "the taken name is suffixed with the accepted id, not " + seen.get(1).id());
-        assertEquals("<second/>", sftp.read("/done/x.xml.m-first-saved"));
+        assertEquals(2, seen.size(), "the file uploaded again was delivered again: " + files(seen));
+        String second = seen.get(1).id();
+        assertEquals(Set.of("x.xml", "x.xml." + second), sftp.files("/done"), "the taken name is suffixed with the second message's id");
+        assertEquals("<second/>", sftp.read("/done/x.xml." + second));
         assertEquals(Set.of(), sftp.files("/inbox"));
     }
 
