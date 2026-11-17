@@ -28,11 +28,11 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The walk-side key proof's cost (#85, ADR-0044), with ADR-0019's operation and settings: ADR-0019's wide-iterate
- * diagnostic ({@code .[]} and {@code -c .} on a flat root object of 78 841 keys, ReaderCost's document of #82), G1, G2
- * and {@code -c .} (G6's filter) on orders at 1k, 100k and 10m, and {@code recs20}, an array of 20-key records, under
- * {@code -c .} and {@code .[]|.[]}. Not a gate scenario: no bench id of ADR-0024. {@link #main} writes the flat and
- * {@code recs20} documents for jq-ref. The results are in bench/RESULTS.md, "#85".
+ * The walk-side key proof's cost, with the gates' operation and settings: the wide-iterate diagnostic ({@code .[]}
+ * and {@code -c .} on a flat root object of 78 841 keys, ReaderCost's flat document), G1, G2 and {@code -c .} (G6's
+ * filter) on orders at 1k, 100k and 10m, and {@code recs20}, an array of 20-key records, under {@code -c .} and
+ * {@code .[]|.[]}. Not a gate scenario: it has no bench id. {@link #main} writes the flat and {@code recs20}
+ * documents for jq-ref.
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -104,7 +104,7 @@ public class KeyProofCost {
     operation();
   }
 
-  /** ADR-0019's operation, in compact output. */
+  /** The gates' operation, in compact output. */
   @Benchmark
   public long operation() {
     return Gates.once(filter, workspace, input, OutputOptions.compact(), out);
@@ -119,7 +119,7 @@ public class KeyProofCost {
     throw new IllegalArgumentException(label);
   }
 
-  /** {@code {"k000000":0,"k000001":1,…}} and an LF: {@link ReaderCost#flat}'s object of {@code keys} keys (#82). */
+  /** {@code {"k000000":0,"k000001":1,…}} and an LF: {@link ReaderCost#flat}'s object of {@code keys} keys. */
   static byte[] flat(int keys) {
     StringBuilder doc = new StringBuilder(keys * 16).append('{');
     for (int i = 0; i < keys; i++) {

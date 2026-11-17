@@ -12,7 +12,7 @@ import org.pitest.plugin.FeatureParameter;
 
 /**
  * PIT feature {@code OWN_SURVIVORS}: a crossModule run mutates only the mutants that the mutated modules' own runs left
- * alive (F-84). Each {@code report} parameter names one module's own {@code mutations.xml}.
+ * alive. Each {@code report} parameter names one module's own {@code mutations.xml}.
  */
 public final class OwnSurvivorsFactory implements MutationInterceptorFactory {
 

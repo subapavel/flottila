@@ -3,8 +3,8 @@ package dev.rail8.jq.oracle.compile;
 import dev.rail8.jq.oracle.diff.Outcome;
 
 /**
- * How one run of a case under one compile ended, as the compile-mode oracle judges it (ADR-0020 amendment for #60).
- * The oracle's tests make these from jqj's own exceptions; the oracle module does not read jq-core.
+ * How one run of a case under one compile ended, as the compile-mode oracle judges it. The oracle's tests make these
+ * from this engine's own exceptions; the oracle module does not read jq-core.
  */
 public sealed interface Run {
 

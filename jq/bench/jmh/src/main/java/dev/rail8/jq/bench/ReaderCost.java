@@ -22,12 +22,10 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The reader's cost bar of #82 (ADR-0002 as amended by F-40, withdrawn): one read of a document onto a reused
- * Workspace, its tape (and on #82's reader its proof table) warmed by a read in setup. The documents are Spike B's at
- * 1 KB, 100 KB and 10 MB (bench/RESULTS.md "Spike B": {@code Docs.make} on {@code spike/field-read}, the field in the
- * middle), whose root objects have 8, 770 and 78 841 keys, and a flat object of 78 841 keys and small integers. The
- * settings are Spike B's. The results are in bench/RESULTS.md, "#82". Not a gate scenario: no bench id of ADR-0024.
- * Ported by #85 from {@code t/82-distinct-keys} at a01fda2, which is deleted at #85's merge.
+ * The reader's cost: one read of a document onto a reused Workspace, its tape (and any key-proof table of the
+ * reader) warmed by a read in setup. The documents are objects of records at 1 KB, 100 KB and 10 MB with the field
+ * {@code "target"} in the middle, whose root objects have 8, 770 and 78 841 keys, and a flat object of 78 841 keys
+ * and small integers. Not a gate scenario: it has no bench id.
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -69,7 +67,7 @@ public class ReaderCost {
     }
   }
 
-  /** Spike B's record {@code i} ({@code Docs.record}): 6 keys, escapes and non-ASCII, nested containers. */
+  /** Record {@code i}: 6 keys, escapes and non-ASCII, nested containers. */
   static String record(int i) {
     return "{\"id\":"
         + (100_000 + i)
@@ -85,7 +83,7 @@ public class ReaderCost {
   }
 
   /**
-   * Spike B's document of about {@code bytes} ({@code Docs.make(bytes, "middle")}): a root object of records under the
+   * The document of about {@code bytes}: a root object of records under the
    * keys {@code k000000}, {@code k000001}, …, with {@code "target":"value-42"} in the middle.
    */
   static byte[] spikeB(int bytes) {

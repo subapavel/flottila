@@ -15,10 +15,10 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The fixed charges of ADR-0035 (#64, F-39): each method builds one empty value as a run builds it, so
+ * The fixed charges of the bytes-built budget: each method builds one empty value as a run builds it, so
  * {@code -prof gc}'s {@code gc.alloc.rate.norm} is the bytes one built container or string allocates besides its
- * elements, entries or UTF-8 bytes. The results are in bench/RESULTS.md; they set {@code Charges.CONTAINER} and
- * {@code Charges.STRING}. Not a gate scenario: no bench id of ADR-0024.
+ * elements, entries or UTF-8 bytes. The results set {@code Charges.CONTAINER} and {@code Charges.STRING}. Not a gate
+ * scenario: it has no bench id.
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)

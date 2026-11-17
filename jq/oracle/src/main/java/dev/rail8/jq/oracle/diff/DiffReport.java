@@ -18,7 +18,7 @@ import java.util.TreeSet;
 
 /**
  * The differential oracle report {@code oracle/target/oracle-reports/differential-<backend>.tsv} and the required
- * cases, as {@code scripts/ratchet.java} reads and writes them (ADR-0020). Report columns: {@code id}, verdict,
+ * cases, as {@code scripts/ratchet.java} reads and writes them. Report columns: {@code id}, verdict,
  * detail, {@code def}.
  */
 public final class DiffReport {
@@ -69,7 +69,7 @@ public final class DiffReport {
   }
 
   /**
-   * The oracle a required id belongs to, read from the shape of the id (ADR-0020's case ids). A require file is shared
+   * The oracle a required id belongs to, read from the shape of the id. A require file is shared
    * by the three oracles, so each takes from it only the ids of its own shape.
    */
   public enum Oracle {
@@ -96,7 +96,7 @@ public final class DiffReport {
 
   /**
    * The required case ids of {@code oracle}: the first column of its ratchet pass list, if it exists, and the ids of
-   * the ticket's {@code -Doracle.require=<file>}, if given, that {@link Oracle#of} gives to {@code oracle}. Blank and
+   * the file {@code -Doracle.require=<file>} names, if given, that {@link Oracle#of} gives to {@code oracle}. Blank and
    * {@code #} lines are skipped.
    *
    * @throws UncheckedIOException when a named require file cannot be read

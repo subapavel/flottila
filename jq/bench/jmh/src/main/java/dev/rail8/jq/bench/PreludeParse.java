@@ -18,9 +18,9 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The cold parse of the prelude (#71, ADR-0042): one {@link Parser#parse} of jq's {@code builtin.jq} in a fresh JVM,
- * the work the prelude's holder class does once per JVM on the first unknown name. Single-shot mode, 10 forks, no
- * warm-up, G7's heap. The results are in bench/RESULTS.md. Not a gate scenario: no bench id of ADR-0024.
+ * The cold parse of the prelude: one {@link Parser#parse} of jq's {@code builtin.jq} in a fresh JVM, the work the
+ * prelude's holder class does once per JVM on the first unknown name. Single-shot mode, 10 forks, no warm-up, G7's
+ * heap. Not a gate scenario: it has no bench id.
  */
 @BenchmarkMode(Mode.SingleShotTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
@@ -41,7 +41,7 @@ public class PreludeParse {
   /** Only the prelude's text exists before the shot; no class of the parser is loaded by the setup. */
   @State(Scope.Thread)
   public static class Text {
-    /** The resource as jq-core's jar carries it; the benchmarks jar runs on the class path (ADR-0013). */
+    /** The resource as jq-core's jar carries it; the benchmarks jar runs on the class path. */
     static final String RESOURCE = "dev/rail8/jq/internal/parse/builtin.jq";
 
     String text;

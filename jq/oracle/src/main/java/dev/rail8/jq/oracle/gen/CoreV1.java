@@ -10,18 +10,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The {@code core-v1} Generator (ADR-0020, #58): a function from a Seed to one differential case, {@code
+ * The {@code core-v1} Generator: a function from a Seed to one differential case, {@code
  * gen/core-v1/<seed>}, whose filter is drawn from a typed grammar of the core language to depth 4 and whose stdin is
  * one small strict JSON document of its own. Like {@link ValuesV1} it uses only the JDK and {@link SplitMix64}, with the
  * seed as the state, integer draws only and no hash iteration. It is frozen at the first merge of {@code
  * diff/gen/core-v1.rec}: a change to any output byte makes it {@code core-v2}.
  *
- * <p>The parameters, approved on #58 (architect, 2026-11-12, from the designer's draft), after the dry run's first
- * tuning step (W_ANY 25 to 15 %, try, try-catch and {@code ?} 2 to 3, empty 2 to 1, select 3 to 2, and the
- * productions above 60 % rc 5 halved: array and object pattern, reduce, {@code N - N}, {@code N / N}, {@code or}),
- * and the owner's delegated decision on #58 (2026-11-12): label 2 to 6 with the {@code K, R} body, the break scope
- * opened in the try handler, the {@code //} left side and the arguments of select, first, limit and map, and no seed
- * with {@code ?//} and also {@code first}, {@code limit} or {@code break}:
+ * <p>The parameters, tuned on a dry run so that fewer seeds end in an error: the productions that ended with rc 5 in
+ * more than 60 % of their seeds there have half weight (array and object pattern, reduce, {@code N - N},
+ * {@code N / N}, {@code or}). A label has the {@code K, R} body; the break scope is opened in the try handler, the
+ * {@code //} left side and the arguments of select, first, limit and map; and no seed has {@code ?//} together with
+ * {@code first}, {@code limit} or {@code break}:
  *
  * <table>
  *   <caption>core-v1</caption>
@@ -46,7 +45,7 @@ import java.util.Set;
  *       {@code {k: V}} with 1–2 keys 5, {@code O + O} 2, {@code O * O} 1, {@code {(S): V}} 1. Z: {@code null}</td></tr>
  *   <tr><td>leaves</td><td>V: {@code .} 8, path 12, {@code $v} 6, literal 4, {@code empty} 1, {@code length} 2,
  *       {@code type}, {@code tostring}, {@code not}, {@code error} 1 each, {@code break $l} 12 when a label is
- *       breakable (the draft's 4 gave breaks in 14 seeds), a call of an arity-0 def or parameter in scope 4. N: number
+ *       breakable (a weight of 4 gave breaks in 14 seeds), a call of an arity-0 def or parameter in scope 4. N: number
  *       6, {@code length} 2, path 2, {@code $v} 2. S: string 6, {@code tostring} 2, {@code type} 1, path 1, {@code $v} 1. B: {@code true}/{@code false} 6, {@code
  *       not} 2, path 1, {@code $v} 1. A: {@code []} or 1–2 scalars 6, path 1, {@code $v} 1. O: {@code {}} or one key
  *       and a scalar 6, {@code .} 1, path 1, {@code $v} 1; each typed leaf also {@code break $l} 4 when a label is
@@ -497,9 +496,9 @@ public final class CoreV1 {
   private record Fn(String name, int arity) {}
 
   /**
-   * The sub-filter places #58's decision names. A closed place drops the labels from outside it, because a catching
-   * construct, a def or {@code error} would lie between such a label and a break. An opened place keeps them, as
-   * every place not named here does. A seed with a {@code ?//} draws no break at all ({@code alt}), so the
+   * The sub-filter places that the break-scope rules name. A closed place drops the labels from outside it, because a
+   * catching construct, a def or {@code error} would lie between such a label and a break. An opened place keeps
+   * them, as every place not named here does. A seed with a {@code ?//} draws no break at all ({@code alt}), so the
    * binding's closed scope is a second guard.
    */
   enum Place {

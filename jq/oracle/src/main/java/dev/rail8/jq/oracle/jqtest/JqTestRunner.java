@@ -6,17 +6,17 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Judges one jqtest case as jq_test.c's {@code run_jq_tests} does (ADR-0020, ADR-0024). The rules, in order:
+ * Judges one jqtest case for this engine as jq_test.c's {@code run_jq_tests} does. The rules, in order:
  *
  * <ol>
- *   <li>an exception that is not jqj's is CRASH;
- *   <li>jqj ending with a Stub, wherever it happens, is FAIL;
+ *   <li>an exception that is not this engine's is CRASH;
+ *   <li>the engine ending with a Stub, wherever it happens, is FAIL;
  *   <li>a FAIL case fails if it compiles. Otherwise its lines are compared with the last compile error block, unless
  *       it is {@code %%FAIL IGNORE MSG} or its first line is a Bison syntax error, which check only that compiling
  *       fails;
  *   <li>any other case fails if it does not compile, if its input or an expected line is invalid, if an expected
- *       value changes through jqj's writer and reader, or on too few results, a mismatch or a superfluous result. An
- *       error after the last expected result passes.
+ *       value changes through the engine's writer and reader, or on too few results, a mismatch or a superfluous
+ *       result. An error after the last expected result passes.
  * </ol>
  */
 public final class JqTestRunner {
@@ -33,7 +33,7 @@ public final class JqTestRunner {
     try {
       return c.mode() == JqTestCase.Mode.RESULTS ? results(c) : compileFails(c);
     } catch (JqjException e) {
-      // Only a Stub gets here: every call into jqj below rethrows a Stub and handles any other JqjException.
+      // Only a Stub gets here: every call into the engine below rethrows a Stub and handles any other JqjException.
       return fail(c, "jqj ended with a Stub: " + e.getMessage());
     } catch (RuntimeException e) {
       return new Verdict(Verdict.Kind.CRASH, oneLine(e.toString()), c.id() + ": CRASH, jqj threw " + e + "\n" + where(c));

@@ -24,7 +24,7 @@ import java.util.StringJoiner;
 
 /**
  * The block syntax shared by case files ({@code <family>.cases}) and recordings ({@code <family>.rec}) of the
- * differential oracle (ADR-0020).
+ * differential oracle.
  *
  * <p>A file is UTF-8 and LF. Outside a block, blank lines and lines starting with {@code #} are skipped. A block runs
  * from {@code case <family>/<name>} to {@code end}; every line between is {@code key value}, split at the first space
@@ -43,7 +43,7 @@ public final class CaseFormat {
   private CaseFormat() {}
 
   /**
-   * The family of a {@code .cases} or {@code .rec} file (ADR-0025): its path below the nearest enclosing directory
+   * The family of a {@code .cases} or {@code .rec} file: its path below the nearest enclosing directory
    * named {@code diff} ({@code diff/gen/values-v1.cases} is {@code gen/values-v1}); its name alone when no directory
    * of the path is named {@code diff}. Either way without the extension.
    */

@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One command-line run as the in-process entry receives it (ADR-0020): the arguments after the program name, the
+ * One command-line run as the in-process entry receives it: the arguments after the program name, the
  * environment, the working directory and the three standard streams. Not exported API.
  */
 public record Invocation(

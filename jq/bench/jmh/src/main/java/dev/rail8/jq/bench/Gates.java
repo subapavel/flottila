@@ -31,12 +31,12 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The gate scenarios G1, G2, G3, G4 at 10⁴, G6 and G7 of ADR-0019 under the bench ids of ADR-0024. A method's name is
+ * The gate scenarios G1, G2, G3, G4 at 10⁴, G6 and G7 under their bench ids. A method's name is
  * its bench id with each {@code .} written {@code _}, because a Java name cannot hold a dot ({@code G1_10m} is
  * {@code G1.10m}). G4's cell is an element count, not a document size: {@code G4.1e4} is 10⁴ elements.
  *
- * <p>The class carries ADR-0019's JMH settings ({@code -bm avgt -f 2 -wi 3 -w 1s -i 5 -r 1s}, a 2 GiB fixed heap, one
- * thread), so {@code java -jar benchmarks.jar -prof gc -rf json} runs them as the ADR says. G7 overrides them with
+ * <p>The class carries the gates' JMH settings ({@code -bm avgt -f 2 -wi 3 -w 1s -i 5 -r 1s}, a 2 GiB fixed heap, one
+ * thread), so {@code java -jar benchmarks.jar -prof gc -rf json} runs them with those settings. G7 overrides them with
  * single-shot mode, 10 forks and no warm-up. A setting given on the command line overrides the annotation for every
  * benchmark, G7 included.
  */
@@ -50,13 +50,13 @@ import org.openjdk.jmh.annotations.Warmup;
 @Threads(1)
 public class Gates {
 
-  /** G2's filter (ADR-0019). */
+  /** G2's filter. */
   static final String G2 = ".orders[] | select(.total > 100) | {id, total}";
 
-  /** G3's filter (ADR-0019, F-33). */
+  /** G3's filter. */
   static final String G3 = "group_by(.k) | map({k: .[0].k, n: length})";
 
-  /** G4's filter (ADR-0019); before in-place updates (spec 3) each step copies the state. */
+  /** G4's filter, which copies the state at each step unless the update is done in place. */
   static final String G4 = "reduce .[] as $x ([]; . + [$x])";
 
   @Benchmark
@@ -152,7 +152,7 @@ public class Gates {
             .start();
     int code = jqj.waitFor();
     // A failed process would be timed as a fast shot. GatesTest covers this check with stand-in launchers; the real
-    // launcher #38 built runs here in the spec gate's JMH step.
+    // launcher runs here in the gate's JMH step.
     if (code != 0) {
       throw new IllegalStateException(s.launcher + " exited with " + code);
     }
@@ -160,7 +160,7 @@ public class Gates {
   }
 
   /**
-   * One operation of ADR-0019: read the document onto the Workspace, run the filter, write each result through
+   * One operation of a gate: read the document onto the Workspace, run the filter, write each result through
    * {@link JsonWriter#sink} into {@code out}. Returns the bytes written so far, which JMH consumes.
    */
   static long once(JqFilter filter, Workspace workspace, MemorySegment input, OutputOptions options, Discard out) {

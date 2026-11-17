@@ -9,10 +9,10 @@ import java.util.Random;
 import java.util.function.Supplier;
 
 /**
- * The synthetic inputs of ADR-0019: {@code orders}, the input of G1, G2, G6 and G7,
+ * The synthetic inputs of the benchmarks: {@code orders}, the input of G1, G2, G6 and G7,
  * {@code {"orders":[{id,total,k}…],"items":[{sku,price}…],"a":{"b":{"c":"x"}}}}; {@code recs}, the input of G3,
  * {@code [{"k":"k0".."k63","v":n}…]}; {@code ints}, the input of G4, {@code [0..n-1]}; and {@code deep}, the input of
- * #119's {@code dotdot-deep}, {@code [[…]]}. The bytes are a pure function
+ * the {@code dotdot-deep} diagnostic, {@code [[…]]}. The bytes are a pure function
  * of the size (the {@code recs} draws come from a {@link Random} of the fixed seed {@link #RECS_SEED}, whose algorithm
  * its Javadoc fixes), so JMH (which generates them in its setup) and {@code bench/jq-ref.sh} (which writes them with
  * {@link #main}) time the same document.
@@ -22,11 +22,11 @@ public final class Inputs {
   /** The seed of the {@code recs} draws. */
   static final long RECS_SEED = 74;
 
-  /** The element count of {@code G4.1e4}, ADR-0019's G4 cell 10⁴. */
+  /** The element count of {@code G4.1e4}, G4's cell 10⁴. */
   public static final int INTS_1E4 = 10_000;
 
   /**
-   * The cell sizes of ADR-0019, as the lower-case labels of ADR-0024's bench ids. They are 1024-based: {@code 1k} is
+   * The cell sizes of the benchmarks, as the lower-case labels of their bench ids. They are 1024-based: {@code 1k} is
    * 1 KiB (1 024 bytes), {@code 100k} is 100 KiB (102 400 bytes), {@code 10m} is 10 MiB (10 485 760 bytes).
    */
   public enum Size {
@@ -117,7 +117,7 @@ public final class Inputs {
     return doc.append("]\n").toString().getBytes(US_ASCII);
   }
 
-  /** The {@code deep} document of {@code n} levels (#119): {@code n} {@code [}, then {@code n} {@code ]} and one LF. */
+  /** The {@code deep} document of {@code n} levels: {@code n} {@code [}, then {@code n} {@code ]} and one LF. */
   public static byte[] deep(int n) {
     return new StringBuilder(2 * n + 1).repeat('[', n).repeat(']', n).append('\n').toString().getBytes(US_ASCII);
   }

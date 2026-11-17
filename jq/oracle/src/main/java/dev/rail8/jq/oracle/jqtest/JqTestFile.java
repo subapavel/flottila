@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reads a jq test file as jq_test.c's {@code run_jq_tests} does (ADR-0020):
+ * Reads a jq test file as jq_test.c's {@code run_jq_tests} does:
  *
  * <ul>
  *   <li>a skip line is blank, or {@code #} after spaces or tabs;

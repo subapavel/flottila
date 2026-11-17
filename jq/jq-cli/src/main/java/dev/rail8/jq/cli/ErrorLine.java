@@ -1,9 +1,11 @@
 package dev.rail8.jq.cli;
 
 /**
- * The N of jq's {@code (at <file>:N)} for an input of one document, from its bytes alone (#34 design section 9; it
- * goes away with #38's input reader). N counts the read blocks that end in LF, up to the block that holds the
- * completing byte (GLOSSARY "Read block", "Completing byte", F-25).
+ * The N of jq's {@code (at <file>:N)} for an input of one document, from its bytes alone. N counts the read blocks
+ * that end in LF, up to the block that holds the completing byte. A read block is what one read of jq's input loop
+ * takes: the bytes through the next LF, or 4091 bytes plus the rest of a UTF-8 character cut there. The completing
+ * byte is the one at which jq's parser holds the whole value: a container's closing bracket, a string's closing
+ * quote, or the byte after a number or literal.
  */
 final class ErrorLine {
   /** The most bytes jq's read takes before an LF: a 4096-byte buffer read with {@code max_gets_len = 4092}. */

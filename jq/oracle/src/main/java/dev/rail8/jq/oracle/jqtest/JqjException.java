@@ -3,11 +3,11 @@ package dev.rail8.jq.oracle.jqtest;
 import dev.rail8.jq.oracle.diff.Verdict;
 import java.util.List;
 
-/** An exception of jqj's, as {@link Jqj} hands it to the runner: its kind, message and compile error blocks. */
+/** An exception of this engine's, as {@link Jqj} hands it to the runner: its kind, message and compile error blocks. */
 public final class JqjException extends RuntimeException {
   private static final long serialVersionUID = 1L;
 
-  /** Which of jqj's four exceptions it was (ADR-0016). */
+  /** Which of the engine's four exceptions it was. */
   public enum Kind {
     COMPILE,
     SYNTAX,
@@ -36,7 +36,7 @@ public final class JqjException extends RuntimeException {
     return blocks;
   }
 
-  /** Whether jqj ended with a Stub: the message carries {@value Verdict#STUB}. */
+  /** Whether the engine ended with a Stub: the message carries {@value Verdict#STUB}. */
   boolean stub() {
     return String.valueOf(getMessage()).contains(Verdict.STUB);
   }
