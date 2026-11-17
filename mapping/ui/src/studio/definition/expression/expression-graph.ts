@@ -6,7 +6,7 @@ import type { WireEnd } from '../../../model/rewire';
 /** The node id of the target field itself; no authoring id has a `:`. */
 export const TARGET = ':target';
 
-/** A box's width and the height of one row of up to three ports (the prototype's `nodeWidth`, `nodeHeight`). */
+/** A box's width and the height of one row of up to three ports. */
 export const NODE_WIDTH = 164;
 const ROW_HEIGHT = 48;
 
@@ -63,7 +63,7 @@ export function wireEnd(node: string, handle: string | null | undefined): WireEn
   return node === TARGET ? 'target' : { box: node, slot: Number((handle ?? portId(0)).slice(2)) };
 }
 
-/** A node's height: one row of 48 px per three ports on its busier side (the prototype's `nodeHeight`). */
+/** A node's height: one row of 48 px per three ports on its busier side. */
 export const nodeHeight = (node: ExpressionNode) => ROW_HEIGHT * Math.max(1, Math.ceil(node.inputs.length / 3));
 
 /** The input names of a box: the catalogue's or the UDF declaration's, else numbered from 1; at least as many as the model has. */
@@ -83,7 +83,7 @@ function boxNode(id: AuthoringId, box: Box, catalogue: FunctionCatalogue, udfs: 
 }
 
 /**
- * The canvas of one target field mapping (the prototype's graph): a node per box in sorted authoring id order, then the
+ * The canvas of one target field mapping: a node per box in sorted authoring id order, then the
  * target; a wire per connected input slot, then the `result` into the target. A target field without a mapping shows its
  * target alone.
  */
@@ -104,7 +104,7 @@ export function expressionGraph(targetField: FieldPath, mapping: TargetFieldMapp
   return { nodes, edges };
 }
 
-/** A node's status mark (the prototype's legend): complete, incomplete or detached (no path to the target). */
+/** A node's status mark: complete, incomplete or detached (no path to the target). */
 export interface NodeState {
   kind: 'complete' | 'incomplete' | 'detached';
   description: string;
@@ -113,7 +113,7 @@ export interface NodeState {
 }
 
 /**
- * Each node's state and the floating boxes (the prototype's `inspectExpression`). Walking from each target: a node with an
+ * Each node's state and the floating boxes. Walking from each target: a node with an
  * unconnected input is incomplete, and so is one that reads an incomplete node; the others it reaches are complete. A box
  * it does not reach is detached and floating. A cycle of a hand-written model reads as incomplete.
  */
@@ -165,7 +165,7 @@ export function inspectExpression({ nodes, edges }: ExpressionGraph): { states: 
   return { states, floating };
 }
 
-/** A box and every box it reads, directly or through others (the prototype's `upstreamIds`). */
+/** A box and every box it reads, directly or through others. */
 export function upstream({ edges }: ExpressionGraph, root: AuthoringId): Set<AuthoringId> {
   const seen = new Set<AuthoringId>();
   const pending = [root];

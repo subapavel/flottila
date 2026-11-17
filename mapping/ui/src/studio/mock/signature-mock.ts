@@ -10,7 +10,7 @@ export const PARAMETERS_ISSUE = 167;
 
 export type Side = 'source' | 'target';
 
-/** A message's occurrence in a multi-message signature, as the prototype offers them. */
+/** A message's occurrence in a multi-message signature. */
 export const OCCURRENCES = ['1', '0..1', '0..unbounded'] as const;
 export type Occurrence = (typeof OCCURRENCES)[number];
 
@@ -45,7 +45,7 @@ export const signatureMockKey = (mappingId: string) => `mapping:${mappingId}:pre
 /** The name of the preview signature's draft among the working copy's preview drafts. */
 export const SIGNATURE_PREVIEW = 'signature';
 
-/** The prototype's moveRow: the rows with `from` swapped with its neighbour `delta` away, or the same rows at an end. */
+/** The rows with `from` swapped with its neighbour `delta` away, or the same rows at an end. */
 export function moveRow<T>(rows: readonly T[], from: number, delta: number): readonly T[] {
   const to = from + delta;
   if (from < 0 || from >= rows.length || to < 0 || to >= rows.length) return rows;
@@ -95,7 +95,7 @@ export function signatureActions(mock: SignatureMockStore) {
     addParameter: (parameter: PreviewParameter) => parameters((rows) => [...rows, parameter]),
     patchParameter: (id: string, patch: Partial<Omit<PreviewParameter, 'id'>>) => parameters((rows) => rows.map((p) => (p.id === id ? { ...p, ...patch } : p))),
     removeParameter: (id: string) => parameters((rows) => rows.filter((p) => p.id !== id)),
-    /** Orders the parameters by name (the prototype's Refresh). */
+    /** Orders the parameters by name (the Refresh tool). */
     sortParameters: () => parameters((rows) => [...rows].sort((a, b) => a.name.localeCompare(b.name))),
   };
 }

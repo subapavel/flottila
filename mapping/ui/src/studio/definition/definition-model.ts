@@ -5,7 +5,7 @@ import { localPath } from '../../model/field-path';
 
 export type Side = 'source' | 'target';
 
-/** The filters of the Filter Tree options, in the prototype's order; the source pane offers the first two. */
+/** The filters of the Filter Tree options, in menu order; the source pane offers the first two. */
 export const FILTERS = [
   'Show Mapped Fields Only',
   'Show Unmapped Fields Only',
@@ -16,8 +16,8 @@ export const FILTERS = [
 
 /**
  * The rows of every field `keep` holds for, by its path, and of each of its ancestors, in tree order, each ancestor shown
- * expanded (the prototype's filter and search). Below a field whose type is already on its path the walk stops, so that a
- * recursive type ends, as `expandAllPaths` stops.
+ * expanded. Below a field whose type is already on its path the walk stops, so that a recursive type ends, as
+ * `expandAllPaths` stops.
  */
 export function keptRows(structure: StructureLoaded, keep: (path: FieldPath, field: FieldDto) => boolean): TreeRow[] {
   const rows: TreeRow[] = [];
@@ -35,7 +35,7 @@ export function keptRows(structure: StructureLoaded, keep: (path: FieldPath, fie
   return rows;
 }
 
-/** A value type as the XSD view names it: `xs:` becomes the prototype's `xsd:`; another name stays as it is. */
+/** A value type as the XSD view names it: `xs:` becomes `xsd:`; another name stays as it is. */
 export const xsdType = (valueType: string) => valueType.replace(/^xs:/, 'xsd:');
 
 /** The kind of a field's type icon: `structure` for a structure field, else its value type's local name. */
@@ -51,7 +51,7 @@ export interface SchemaLine {
 }
 
 /**
- * The XSD of a loaded structure, line by line (the prototype's `schemaLines`): each element with its occurrence, a structure
+ * The XSD of a loaded structure, line by line: each element with its occurrence, a structure
  * field with a complex type of its child elements in a sequence, then its attributes. A structure field whose type is
  * already on its path, or that has no child fields, is written without a type, so a recursive type ends.
  */
@@ -90,7 +90,7 @@ export function schemaLines(structure: StructureLoaded): SchemaLine[] {
 }
 
 /**
- * A target field mapping as text (the prototype's `expression`): its `result` box, a source-field box as its field's path,
+ * A target field mapping as text: its `result` box, a source-field box as its field's path,
  * a function box as its name and its inputs in brackets; an unconnected input is empty. Empty when `result` is null or the
  * field has no mapping.
  */

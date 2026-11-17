@@ -145,7 +145,7 @@ export function DefinitionTab({ mappingId, api, store, session, browserState, on
   const view = dataFlow ? layout.view : 'split';
   const selectedDependencies = selectedTarget !== null && mappings[selectedTarget] !== undefined ? [selectedTarget] : [];
   const usesOf = (path: FieldPath) => Object.keys(mappings).filter((target) => reachedSourceFields(mappings[target]).includes(path));
-  /** The target field menu's previews (the prototype's): grouping, variables and reading one. */
+  /** The target field menu's previews: grouping, variables and reading one. */
   function targetActions(path: FieldPath): MenuItem[] {
     const addVariableItem = action('Add Variable', () => setVariableParent(path), { disabled: !editing || fieldTypes.target.get(path) !== 'structure' });
     if (variables.includes(path)) {
@@ -242,7 +242,7 @@ export function DefinitionTab({ mappingId, api, store, session, browserState, on
               }}
             />
           ) : (
-            // the prototype's workbench: the canvas fills the mapping area and shrinks with it (definition.css)
+            // the workbench: the canvas fills the mapping area and shrinks with it
             <div className="workbench">
               {selectedTarget === null || !catalogue.data ? (
                 <section className="panel canvas-panel" aria-label="Field mapping canvas">

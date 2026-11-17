@@ -1,6 +1,6 @@
 /*
- * The Signature tab's styles: first the rules of studio.css the tab uses (section heads, editor tables, role tiles,
- * tool buttons, the copy surface of the processing log), then signature.css. `.sig-name-cell` and `.preview-badge`
+ * The Signature tab's styles: first the shared rules (section heads, editor tables, role tiles, tool buttons, the copy
+ * surface of the processing log), then the signature's message and parameter tables. `.sig-name-cell` and `.preview-badge`
  * place a preview message's "Preview" badge beside its name.
  */
 .mode-fields {
@@ -169,7 +169,7 @@
   }
 }
 
-/* signature.css */
+/* the signature's message and parameter tables */
 .signature {
   align-content: start;
 }
@@ -324,7 +324,7 @@
   }
 }
 
-/* added: a preview message's badge beside its name */
+/* a preview message's badge beside its name */
 .sig-name-cell {
   display: flex;
   align-items: center;

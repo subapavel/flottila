@@ -12,7 +12,7 @@ import { NODE_WIDTH, nodeHeight, type ExpressionNode, type NodeState, type Port 
 
 const ROLES = { source: 'Source field', function: 'Node function', target: 'Target field' } as const;
 
-/** What a node is, in words (the prototype's `nodeRole`): a mapping variable says so. */
+/** What a node is, in words: a mapping variable says so. */
 export const nodeRole = (node: ExpressionNode) => node.role ?? ROLES[node.kind];
 
 /** The data of a canvas node: the graph node, its state, its field's type and the opener of its parameters. */
@@ -64,7 +64,7 @@ function PortHandle({ node, state, port, index, count, input }: { node: Expressi
 }
 
 /**
- * A box or the target on the canvas (the prototype's MappingNode): its symbol with the state mark, its name, a changed
+ * A box or the target on the canvas: its symbol with the state mark, its name, a changed
  * context or the missing inputs below it, a gear for a function with parameters, and its ports; a deviation note is in its
  * hint only. A source row dropped on
  * a box that takes a remap remaps it; any other drop, such as a catalogue function's, goes on to the canvas.
@@ -80,7 +80,7 @@ export function MappingNode({ id, data, selected }: NodeProps<MappingFlowNode>) 
     previousPorts.current = ports;
   }, [id, ports, refresh]);
   const isFunction = node.kind === 'function';
-  // a variable has no context (the prototype's mapping variable)
+  // a variable has no context
   const isSource = node.kind === 'source' && node.role === undefined;
   const defaultContext = isSource ? (properAncestors(node.path!)[0] ?? '') : '';
   const context = node.context ?? defaultContext;

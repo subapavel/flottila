@@ -488,7 +488,7 @@ describe('the fake ApiClient over the corpus', () => {
     const catalogue = await fakeApiClient().getCatalogue();
 
     expect(catalogue).toEqual(JSON.parse(committed));
-    // witness: spec 2's functions are in it
+    // the context function useOneAsMany is in it
     expect(catalogue.useOneAsMany?.family).toBe('context');
   });
 });

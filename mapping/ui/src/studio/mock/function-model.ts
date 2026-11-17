@@ -1,9 +1,9 @@
 /**
  * The model of the Functions tab, a preview feature until the engine runs user-defined functions: the user-defined
  * functions, Java areas, import instructions and archives of one mapping, kept in the browser only and never in the
- * mapping file. It follows the prototype's functionModel.js in our terms: the method shape is the UDF API's
- * (`MappingRun`, `Context`, `Queue`, `ContextOut`, `@Parameter`), the execution kinds are `EXECUTION_KINDS`, the class
- * name comes from the mapping's name and the Java package from its mapping package.
+ * mapping file. The method shape is the UDF API's (`MappingRun`, `Context`, `Queue`, `ContextOut`, `@Parameter`), the
+ * execution kinds are `EXECUTION_KINDS`, the class name comes from the mapping's name and the Java package from its
+ * mapping package.
  */
 
 /** The Java areas every mapping has, before its functions: shared members, then the two lifecycle methods. */

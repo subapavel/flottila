@@ -30,7 +30,7 @@ import { ViewSwitch } from '../shared/ViewSwitch';
 
 export const VIEW_MODES: readonly ViewMode[] = ['Tree', 'Table', 'Text'];
 
-/** The prototype's row heights: a 28 px cell and its 1 px rule, 33 px from 1550 px wide (studio.css). */
+/** The row heights: a 28 px cell and its 1 px rule, 33 px from 1550 px wide. */
 const ROW_HEIGHT = 29;
 const WIDE_ROW_HEIGHT = 34;
 const WIDE = '(min-width: 1550px)';
@@ -86,7 +86,7 @@ export interface SchemaPaneProps {
 const NO_VARIABLES: readonly FieldPath[] = [];
 const NO_ORPHANS: ReadonlySet<FieldPath> = new Set();
 
-/** A variable's row under its parent's: no type, no children, at most once (the prototype's `0..1`). */
+/** A variable's row under its parent's: no type, no children, at most once (`0..1`). */
 const variableRow = (path: FieldPath, depth: number): TreeRow => ({
   path,
   depth,
@@ -96,7 +96,7 @@ const variableRow = (path: FieldPath, depth: number): TreeRow => ({
 });
 
 /**
- * One message pane of the Definition tab (the prototype's SchemaPane): the message's name, file and format, its Tree,
+ * One message pane of the Definition tab: the message's name, file and format, its Tree,
  * Table and Text views and their tools. The tree and the table are virtualised; the text is the XSD
  * generated from the loaded structure, also virtualised. A search shows the fields whose name matches and their
  * ancestors; the filter the connected, unconnected, directly or indirectly mapped or selected fields and their ancestors;

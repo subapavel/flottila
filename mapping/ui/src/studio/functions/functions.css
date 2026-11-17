@@ -1,9 +1,9 @@
 /*
- * The Functions tab's styles: first the rules of studio.css and signature.css the tab and its dialogs use, in their
- * files' order, then functions.css. `.udf-metadata .preview-badge` centres the Preview badge in the metadata panel.
+ * The Functions tab's styles: first the shared tools, tabs, editor tables and section heads, then the table toolbars,
+ * the archive lookups and the catalog search, then the function editor. `.udf-metadata .preview-badge` centres the Preview badge in the metadata panel.
  */
 
-/* studio.css */
+/* the tool buttons, document tabs, log, editor tables and section heads */
 .def-tool {
   display: inline-flex;
   align-items: center;
@@ -185,7 +185,7 @@
   }
 }
 
-/* signature.css */
+/* the table toolbars, the archive lookups and the catalog search */
 .sig-toolbar {
   display: flex;
   align-items: center;
@@ -310,7 +310,7 @@
   font-size: 13px;
 }
 
-/* functions.css */
+/* the function editor */
 .udf-metadata {
   align-items: center;
 }
@@ -479,7 +479,7 @@
   }
 }
 
-/* added */
+/* the Preview badge in the metadata panel */
 .udf-metadata .preview-badge {
   align-self: center;
   display: inline-flex;

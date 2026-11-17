@@ -47,7 +47,7 @@ export function displayEntry(entry: TraceEntry): DisplayEntry {
 }
 
 /**
- * A queue's size as the prototype's .dq__meta says it, "n contexts, n slots", from the run's totals, so a capped
+ * A queue's size in words, "n contexts, n slots", from the run's totals, so a capped
  * queue counts what it cut too; no other entry, and no entry, has one.
  */
 export function queueSize(entry: TraceEntry | undefined): string | undefined {

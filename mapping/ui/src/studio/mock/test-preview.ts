@@ -6,11 +6,11 @@ import { perWorkingCopy } from './preview-draft';
 /** The follow-up issue of the trace level in test runs, a preview feature. */
 export const TRACE_LEVEL_ISSUE = 171;
 
-/** The prototype's trace levels; the engine's trace has no levels. */
+/** The trace levels offered; the engine's trace has no levels. */
 export const TRACE_LEVELS = ['No trace', 'Warning', 'Info', 'Debug', 'All'] as const;
 export type TraceLevel = (typeof TRACE_LEVELS)[number];
 
-/** The prototype's message header parameters of a test run, with their default values (testData.js `headerDefaults`). */
+/** The message header parameters of a test run, with their default values. */
 export const HEADER_DEFAULTS: Readonly<Record<string, string>> = Object.fromEntries(
   (
     'ConversationId Interface InterfaceNamespace MessageId ProcessingMode Profiling ReceiverName ReceiverNamespace ReceiverParty ' +

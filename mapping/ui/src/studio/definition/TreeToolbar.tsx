@@ -75,7 +75,7 @@ interface TreeToolbarProps {
 }
 
 /**
- * A message pane's tools (the prototype's TreeToolbar): Expand or Collapse Tree, Show Full Path and Filter Tree with its
+ * A message pane's tools: Expand or Collapse Tree, Show Full Path and Filter Tree with its
  * options in the tree and table views; on the target, the mapping column and the selection column with its options; and
  * in every view the search and Save Document Source.
  */

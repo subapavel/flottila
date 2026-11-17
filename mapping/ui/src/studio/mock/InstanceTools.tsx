@@ -29,7 +29,7 @@ export interface InstanceToolsProps {
   editing: boolean;
   /** Whether every tool, the select too, is disabled, as while a run is under way. */
   disabled: boolean;
-  /** Whether a file read must parse as the format before it loads (the prototype's queue test input). */
+  /** Whether a file read must parse as the format before it loads (the queue test input). */
   validateFile?: boolean;
   selectLabel?: string;
 }
@@ -37,7 +37,7 @@ export interface InstanceToolsProps {
 type Dialog = 'add' | 'delete' | null;
 
 /**
- * The test instance tools (the prototype's InstanceTools, a preview): Load Test Instance reads a file or the
+ * The test instance tools (a preview): Load Test Instance reads a file or the
  * `instance.<format>` of a zip into the source document; Add, Save and Delete Test Instance and the select change the
  * mapping's test instance library, a draft of the edit session, in edit mode. The test session follows the
  * current instance. In read mode only the select works: it shows the instance chosen in read mode, else the current one,

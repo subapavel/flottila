@@ -14,7 +14,7 @@ import { readPanelPreference, savePanelPreference } from '../../shared/panel-pre
 import { queueColumns, type QueueCell } from './queue-columns';
 import './queue.css';
 
-/** The most rows the dialog shows, as in the prototype. */
+/** The most rows the dialog shows. */
 const MAX_ROWS = 500;
 const NUMBERS_KEY = 'definition.queue.numbers';
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
@@ -144,7 +144,7 @@ function Cell({ cell }: { cell: QueueCell }) {
 }
 
 /**
- * The Display Queue of a node (the prototype's Queue dialog): the queues the last test run traced
+ * The Display Queue of a node: the queues the last test run traced
  * for its inputs and output, read by authoring id, a row per value and per context's end; the target field adds its
  * occurrences per parent slot. After an edit the trace is a stale trace: it still shows, marked, until the next run.
  * Without a trace it runs the test on the test data, or asks for a test file in edit mode (as SAP Integration

@@ -1,6 +1,5 @@
 /*
- * The Display Queue dialog's styles: `.queue-*` lay out
- * the traced queue (the prototype's .q-* cells), with their values unchanged.
+ * The Display Queue dialog's styles: `.queue-*` lay out the traced queue.
  */
 .queue-bar {
   display: flex;
