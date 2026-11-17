@@ -18,8 +18,8 @@
 #                       compile-mode oracle runs here too, so step 4 sees a compile.txt regression before the merge, F-46)
 #          column       scripts/calibration-cells.sh: step 1 ran the -Xint 512 KiB calibration column, both modes, each
 #                       shape once (CalibrationTest.everyCellSwitchesBeforeTheBackstop, ADR-0046 #113); its cells are
-#                       counted and its time shown, since a forked JVM can die without failing step 1 (F-91). An
-#                       earlier run's column is removed before step 1.
+#                       counted and its time shown, since step 1's exit code says that no test failed, not that the
+#                       column ran. An earlier run's column is removed before step 1.
 #        3 lf, trailers, word, record   LF check, trailer check, word check, oracle recordings changed since <ref>
 #        4 ratchet      java scripts/ratchet.java check --require-compile (step 1 ran the compile-mode oracle, so its
 #                       report is required, F-46)
