@@ -5,9 +5,9 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 /**
- * Where package archives are stored, each once under its SHA-256 (D-070): S3 on a deployed node ({@link S3ArchiveStore}), a
+ * Where package archives are stored, each once under its SHA-256: S3 on a deployed node ({@link S3ArchiveStore}), a
  * directory in dev ({@link DirArchiveStore}). Both calls block: call them on a virtual thread. A key that is not 64 lower-case hex
- * digits is an {@link IllegalArgumentException}. Nothing here deletes an archive (Phase 1).
+ * digits is an {@link IllegalArgumentException}. Nothing here deletes an archive.
  *
  * @since 0.1
  */

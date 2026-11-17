@@ -8,7 +8,7 @@ import java.util.Objects;
 
 /**
  * Applies the schema migrations in {@code deploy/postgres} (packaged as {@code db/migration} on the
- * runtime classpath) with Flyway at runtime start (D-034). Flyway speaks JDBC, so this is the one
+ * runtime classpath) with Flyway at runtime start. Flyway speaks JDBC, so this is the one
  * place the runtime uses the JDBC driver; every other access goes through the Vert.x client.
  *
  * @since 0.1

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**
- * A polling consumer run under its endpoint's poller lease (D-083): the inner consumer polls only between a hold confirmed true
+ * A polling consumer run under its endpoint's poller lease: the inner consumer polls only between a hold confirmed true
  * and t0 + ttl, t0 read before that hold was asked.
  *
  * <p>{@link #start} completes at once and schedules tick 0 on the timer. Each tick runs on a virtual thread of its own, the next
@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  * end, both measured from the last clock read.
  *
  * <p>{@link #stop} cancels the next tick, waits for a tick in flight, stops the inner consumer that runs (its stop awaits the file
- * in flight, D-056), then releases the lease — a failed release is a WARNING, the lease lapses after its ttl — and completes as
+ * in flight), then releases the lease — a failed release is a WARNING, the lease lapses after its ttl — and completes as
  * that inner stop did. An instance whose consumer does not run (never held, lost, lapsed) releases nothing.
  */
 final class LeasedConsumer implements Consumer {

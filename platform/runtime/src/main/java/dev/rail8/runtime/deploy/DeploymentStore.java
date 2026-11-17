@@ -5,7 +5,7 @@ import io.vertx.core.Future;
 import java.util.List;
 
 /**
- * Where the {@link DeploymentRecord}s live (D-070): Postgres on a node ({@link PgDeploymentStore}), memory in dev and tests
+ * Where the {@link DeploymentRecord}s live: Postgres on a node ({@link PgDeploymentStore}), memory in dev and tests
  * ({@link InMemoryDeploymentStore}).
  *
  * @since 0.1

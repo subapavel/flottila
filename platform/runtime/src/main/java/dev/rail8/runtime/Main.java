@@ -25,9 +25,9 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
- * The node's entry point and the one runtime class that names the shipped components and steps (F-4): the http and sftp
+ * The node's entry point and the one runtime class that names the shipped components and steps: the http and sftp
  * components, the xslt steps with the xpath language, the xsd step — explicitly, no ServiceLoader (components need
- * {@code Vertx}, which {@code api} may not name). {@link #shipped()} is the one wiring point, used by the node and the CLI (D-079).
+ * {@code Vertx}, which {@code api} may not name). {@link #shipped()} is the one wiring point, used by the node and the CLI.
  *
  * @since 0.1
  */
@@ -50,7 +50,7 @@ public final class Main {
         }
     }
 
-    /** The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI (D-079). */
+    /** The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI. */
     public static Shipped shipped() {
         SaxonXml xml = new SaxonXml();
         return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer()),
