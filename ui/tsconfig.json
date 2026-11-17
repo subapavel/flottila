@@ -8,9 +8,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "*.ts"]
+  "include": ["src", "server", "*.ts"]
 }
