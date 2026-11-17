@@ -185,6 +185,15 @@ class ValueFormTest {
   }
 
   /**
+   * {@code def f: if . == 0 then 0 else (. - 1 | f) | (0 | f) | . + 1 end; n | f}: the activation case with its second
+   * call off the tail, so in the optimised compile it is a Call, not a jump. It gives 1 for every n above 0.
+   */
+  private static Program activationsOffTheTail(int n) {
+    Node body = ifZero(c(0), new Pipe(AT, new Pipe(AT, dec(), f(0)), new Pipe(AT, new Pipe(AT, c(0), f(0)), inc())));
+    return new Program(new Pipe(AT, c(n), f(0)), List.of(new Function(AT, 0, 0, body)));
+  }
+
+  /**
    * {@code def f: if . > 3 then . else ((. + 1), error("x")) | f end; 0 | f}, F-56's third probe in toy form: the
    * recursion comes after a comma, so f is many and runs on after each result.
    */
@@ -499,8 +508,18 @@ class ValueFormTest {
 
   /** The end of the activation case of {@code n} levels in {@code mode} under a recursion-depth budget of {@code depth}. */
   private static String endOfActivations(int n, CompileMode mode, long depth) throws InterruptedException {
+    return endOfActivations(n, mode, depth, UNLIMITED);
+  }
+
+  /** {@link #endOfActivations(int, CompileMode, long)} with the declared stack {@code stackBytes}. */
+  private static String endOfActivations(int n, CompileMode mode, long depth, long stackBytes) throws InterruptedException {
+    return endOf(activations(n, () -> c(0)), mode, depth, stackBytes);
+  }
+
+  /** The results and the end of {@code program} in {@code mode} under a recursion-depth budget of {@code depth}. */
+  private static String endOf(Program program, CompileMode mode, long depth, long stackBytes) throws InterruptedException {
     return on(BIG, () -> {
-      Outcome o = outcome(activations(n, () -> c(0)), mode, UNLIMITED, NEVER_STOPS, depth, UNLIMITED);
+      Outcome o = outcome(program, mode, UNLIMITED, NEVER_STOPS, depth, stackBytes);
       return o.results() + " " + o.thrown();
     });
   }
@@ -524,6 +543,45 @@ class ValueFormTest {
     for (int n : levels) {
       assertThat(endOfActivations(n, CompileMode.OPTIMISED, n + 1L)).as("n = %d under OPTIMISED at %d activations", n, n + 1).isEqualTo("[0] null");
       assertThat(endOfActivations(n, CompileMode.OPTIMISED, n)).as("n = %d under OPTIMISED at %d activations", n, n).isEqualTo("[] [termination, RECURSION_DEPTH]");
+    }
+  }
+
+  /**
+   * On the trampoline a value-form Call ends its activation at its first result too: it answers that result with a
+   * stop, leaves its activation and then emits the value, so the driver counts what the stack counts. With {@code
+   * stackBytes} 0 every call runs on the driver. The activation case there holds n + 1 live activations at the deepest
+   * in OPTIMISED, the left chain, and 2n + 1 in CONSERVATIVE, whose calls are push form. Its second call is a tail jump
+   * in OPTIMISED, which enters no activation, so the same case with that call off the tail, {@code
+   * activationsOffTheTail}, is what shows the left call ending: n + 1 in OPTIMISED as on the stack, and 2n + 1 in
+   * CONSERVATIVE. Each count is pinned at its edge by the recursion-depth budget: the run gives its result at the count
+   * and ends by the budget one below it.
+   */
+  @Test
+  void valueFormCallOnTheTrampolineEndsItsActivationAtItsResult() throws InterruptedException {
+    int[] levels = {3, 2000};
+    for (int n : levels) {
+      for (long stackBytes : new long[] {UNLIMITED, 0}) {
+        assertThat(endOf(activationsOffTheTail(n), CompileMode.CONSERVATIVE, 2L * n + 1, stackBytes))
+            .as("off the tail, n = %d under CONSERVATIVE with stackBytes %d at %d activations", n, stackBytes, 2 * n + 1)
+            .isEqualTo("[1] null");
+        assertThat(endOf(activationsOffTheTail(n), CompileMode.CONSERVATIVE, 2L * n, stackBytes))
+            .as("off the tail, n = %d under CONSERVATIVE with stackBytes %d at %d activations", n, stackBytes, 2 * n)
+            .isEqualTo("[] [termination, RECURSION_DEPTH]");
+        assertThat(endOf(activationsOffTheTail(n), CompileMode.OPTIMISED, n + 1L, stackBytes))
+            .as("off the tail, n = %d under OPTIMISED with stackBytes %d at %d activations", n, stackBytes, n + 1)
+            .isEqualTo("[1] null");
+        assertThat(endOf(activationsOffTheTail(n), CompileMode.OPTIMISED, n, stackBytes))
+            .as("off the tail, n = %d under OPTIMISED with stackBytes %d at %d activations", n, stackBytes, n)
+            .isEqualTo("[] [termination, RECURSION_DEPTH]");
+      }
+    }
+    for (int n : levels) {
+      assertThat(endOfActivations(n, CompileMode.CONSERVATIVE, 2L * n + 1, 0)).as("n = %d under CONSERVATIVE with stackBytes 0 at %d activations", n, 2 * n + 1).isEqualTo("[0] null");
+      assertThat(endOfActivations(n, CompileMode.CONSERVATIVE, 2L * n, 0)).as("n = %d under CONSERVATIVE with stackBytes 0 at %d activations", n, 2 * n).isEqualTo("[] [termination, RECURSION_DEPTH]");
+    }
+    for (int n : levels) {
+      assertThat(endOfActivations(n, CompileMode.OPTIMISED, n + 1L, 0)).as("n = %d under OPTIMISED with stackBytes 0 at %d activations", n, n + 1).isEqualTo("[0] null");
+      assertThat(endOfActivations(n, CompileMode.OPTIMISED, n, 0)).as("n = %d under OPTIMISED with stackBytes 0 at %d activations", n, n).isEqualTo("[] [termination, RECURSION_DEPTH]");
     }
   }
 
