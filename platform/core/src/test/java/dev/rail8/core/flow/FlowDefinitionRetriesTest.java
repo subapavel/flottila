@@ -34,7 +34,6 @@ class FlowDefinitionRetriesTest {
     static Map<String, Object> doc(String mode, Object retries) {
         Map<String, Object> doc = new HashMap<>(FlowDefinitionTest.demo());
         doc.remove("partitionBy");
-        doc.remove("onFailure");
         Map<String, Object> delivery = new HashMap<>();
         delivery.put("mode", mode);
         if (retries != null) delivery.put("retries", retries);

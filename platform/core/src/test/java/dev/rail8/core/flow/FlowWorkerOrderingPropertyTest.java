@@ -6,7 +6,10 @@ import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.Parked;
+import dev.rail8.core.queue.InMemoryFailedMessages;
+import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
@@ -28,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -37,7 +41,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * at most half a lease (a running item renews every third). Per key, the runs enter in seq order (a rerun of the same item
  * included: never a later item of the key before an earlier one is done) and never overlap, on one worker or across both; once
  * drained every item is settled — the queue empty, every pass or crash-once message sent exactly once, every park parked
- * exactly once and never sent — and no settle was stale.
+ * exactly once and never sent — and no settle was stale. A keyed park stops its key: the drain's operator cancels each stop, so the
+ * key's later messages run after it.
  *
  * <p>Every try builds its own {@link FlowWorkerFastPathTest.Line} (jqwik: nothing lives on the instance). A {@code keys} step
  * ({@link KeyProbe}) runs first and wraps the rest of the pipeline: a run is active for its key from its entry until everything
@@ -47,6 +52,7 @@ class FlowWorkerOrderingPropertyTest {
 
     static final Duration LEASE = FlowWorkerFastPathTest.LEASE;
     static final Map<String, Object> PROBE = Map.of("type", "keys", "name", "keys");
+    static final FailedMessages.Actor BY = new FailedMessages.Actor("ops", "127.0.0.1");
 
     /** One message: its key ({@code null}: none) and its outcome. */
     record Msg(String key, String outcome) {}
@@ -151,9 +157,16 @@ class FlowWorkerOrderingPropertyTest {
             }
 
             line.gate.open();
+            FailedMessages operator = new InMemoryFailedMessages(line.rows);
+            List<String> cancelled = new ArrayList<>();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             while (line.rows.size() > 0) {   // a crashed item waits for its lease: a third of a lease at a time, so a running one renews
                 if (System.nanoTime() - deadline > 0) fail("not drained within 10 s: " + line.rows.snapshot() + "; " + line.queue.events());
+                for (WorkQueue.Stopped stop : line.rows.stopped(Optional.empty(), Page.MAX_LIMIT).await().items()) {
+                    String id = stop.item().messageId();
+                    assertInstanceOf(FailedMessages.Done.class, operator.cancel(id, BY, Optional.empty()).await(), "the operator cancels " + id);
+                    cancelled.add(id);
+                }
                 for (FlowWorker w : workers) w.poll().otherwiseEmpty().await(5, SECONDS);
                 line.gate.joinPassed();
                 if (line.rows.size() > 0) line.rt.clock().advance(LEASE.dividedBy(3));
@@ -175,7 +188,8 @@ class FlowWorkerOrderingPropertyTest {
             }
             assertEquals(0, line.rows.size(), "every item settled: " + line.rows.snapshot());
             List<String> sent = line.sentIds();
-            List<String> parked = line.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(Parked::messageId).toList();
+            List<String> parked = new ArrayList<>(cancelled);   // a cancelled stop was parked, its DLQ row gone with the cancel
+            line.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(Parked::messageId).forEach(parked::add);
             for (int i = 0; i < messages.size(); i++) {
                 String id = ids.get(i);
                 boolean parks = messages.get(i).outcome().equals("park");

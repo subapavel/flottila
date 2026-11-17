@@ -6,6 +6,7 @@ import dev.rail8.api.StepResources;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
 import dev.rail8.api.NackException;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
@@ -56,40 +57,37 @@ import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CORE-14b P8 (D-135; FIX-138's case) on a real Postgres: {@code PgWorkQueue.restart(id, flow, key, k)} deletes the message's DLQ
- * row and inserts its work row — same id, step 1, attempts k, {@code max_attempts} k + 1 — in one transaction. An injected failure
- * of either half (a trigger refusing the work insert; one refusing the DLQ delete: whichever order the two run in, one of them
- * fails after the other ran) leaves the DLQ row and no work row; a restart of a message without a DLQ row (a second restart)
- * writes nothing. Then the worker runs the restarted row once, as attempt 2, under the same id: a partner that applied the first
- * send — its answer lost — and deduplicates by message id sees one effect, where {@code /admin/dlq/{id}/replay}'s new copy would be a second (FIX-138a).
+ * The retry of a parked message on a real Postgres ({@link PgFailedMessages#retry}): a message parked without a work row gets one —
+ * same id, step 1, attempts k, {@code max_attempts} k + 1 — and its DLQ row is deleted and the act audited, in one transaction. An
+ * injected failure of any of its writes (a trigger refusing the work insert, the DLQ delete or the audit insert) leaves the DLQ
+ * row, no work row and no audit row; a retry of a message without a DLQ row (a second retry) writes nothing. Then the worker runs
+ * the retried row once, as attempt 2, under the same id: a partner that applied the first send — its answer lost — and
+ * deduplicates by message id sees one effect.
  *
- * <p>Seams: {@link PgWorkQueue} and {@link PgDlq} over one pool; the worker (flow {@code orders}, {@code delivery.retries} count 0:
- * the first failure parks at once, attempt 1, so k + 1 = 2 lies past the flow's bound of 1) with core's in-memory message store
- * and blob store; the partner a {@link RecordingComponent} at the SPI boundary. The worker is never started: each round is a
- * {@link FlowWorker#poll} whose future completes once its runs settled.
+ * <p>Seams: {@link PgWorkQueue}, {@link PgDlq} and {@link PgFailedMessages} over one pool; the worker (flow {@code orders},
+ * {@code delivery.retries} count 0: the first failure parks at once, attempt 1, so k + 1 = 2 lies past the flow's bound of 1) with
+ * core's in-memory message store and blob store; the partner a {@link RecordingComponent} at the SPI boundary. The worker is never
+ * started: each round is a {@link FlowWorker#poll} whose future completes once its runs settled.
  *
- * <p>O7: the worker's park keeps the item's key ({@code dlq.partition_key}, V17; {@code Parked.partitionKey()}), null / empty for an
- * unkeyed item.
+ * <p>The worker's park keeps the item's key ({@code dlq.partition_key}), none for an unkeyed item; a keyed item's park stops its
+ * key, and its retry runs that row in place.
  *
- * <p>The API assumed: see {@code WorkQueueContract} ({@code WorkQueue.restart}, {@code Item.maxAttempts}); Postgres: false, nothing
- * written, without a DLQ row of the id.
- *
- * <p>FIX-275 (F-57, D-162 (5)), the designer's scenario: a park is two writes, the DLQ row and then the settle of the run's work
- * row W1; {@link Boundary} — the queue as the worker sees it, at the store boundary — fails that settle once, so W1 stays leased
- * beside the DLQ row, and the restart comes then, as {@code /retry} calls it ({@link #retry}). It is refused while W1 is there:
- * {@code dev.rail8.core.queue.UnsettledException} naming W1's seq, the DLQ row kept, one work row. Its two outcomes without the
- * guard: under a bound of 2 the retry's row delivers and W1, handed out again within its bound, delivers too; under a bound of 1
- * W1 comes back past its bound and parks the delivered message again. W1's lease runs on the database clock, so it is moved past
- * by an update of its {@code locked_until} ({@link #expireLease}), never by the fake clock. The flow is unkeyed. The refusal is
- * read by its class name and reflectively ({@link #unsettledSeq}), so this class compiles before the type exists.
+ * <p>A retry before the park's settle landed: an unkeyed park is two writes, the DLQ row and then the settle of the run's work row
+ * W1; {@link Boundary} — the queue as the worker sees it, at the store boundary — fails that settle once, so W1 stays leased beside
+ * the DLQ row, and the retry comes then, as {@code /retry} calls it ({@link #retry}). It is refused while W1 is there:
+ * {@link FailedMessages.Unsettled} naming W1's seq, the DLQ row kept, one work row. Its two outcomes were it not refused: under a
+ * bound of 2 the retry's row delivers and W1, handed out again within its bound, delivers too; under a bound of 1 W1 comes back past
+ * its bound and parks the delivered message again. W1's lease runs on the database clock, so it is moved past by an update of its
+ * {@code locked_until} ({@link #expireLease}), never by the fake clock. The flow is unkeyed.
  */
 @Timeout(120)
-class DlqRestartIT {
+class DlqRetryIT {
 
     static final Duration LEASE = Duration.ofSeconds(30);
     static final String NODE = "node-a";
@@ -102,6 +100,7 @@ class DlqRestartIT {
     final InMemoryMessageStore store = new InMemoryMessageStore();
     PgWorkQueue rows;
     PgDlq dlq;
+    PgFailedMessages failed;
     FlowWorker worker;
 
     @BeforeAll
@@ -125,10 +124,11 @@ class DlqRestartIT {
 
     @BeforeEach
     void wire() {
-        pool.query("truncate work, dlq, body_refs, journal_segments").execute().await();
+        pool.query("truncate work, dlq, body_refs, journal_segments, audit").execute().await();
         rt.withComponent(partner);
         rows = new PgWorkQueue(pool, NODE);
         dlq = new PgDlq(pool);
+        failed = new PgFailedMessages(pool, rows);
         Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
         worker = new FlowBuilder(rt.runtime(), List.of(), List.of(), endpoints).recording(store, Meter.system()).queue(rows).dlq(dlq)
                 .worker(flow(), Path.of(""), NODE, new WorkerPolicy(LEASE, Duration.ofDays(7)));
@@ -138,6 +138,7 @@ class DlqRestartIT {
     void close() throws Exception {
         pool.query("drop trigger if exists refuse_insert on work").execute().await();
         pool.query("drop trigger if exists refuse_delete on dlq").execute().await();
+        pool.query("drop trigger if exists refuse_audit on audit").execute().await();
         worker.stop();
         worker.close().await(20, TimeUnit.SECONDS);
     }
@@ -178,16 +179,19 @@ class DlqRestartIT {
         return dlq.get(id).await();
     }
 
-    /** {@code rows.restart(id, orders, null, k)} fails: the injected failure, nothing changed. */
+    static final FailedMessages.Actor BY = new FailedMessages.Actor("ops", "127.0.0.1");
+
+    /** The retry of {@code id} of {@code orders} after attempt k = 1 fails: the injected failure, nothing changed. */
     void refused(Envelope in, Parked before, String what) {
-        Throwable failed = assertThrows(Throwable.class, () -> rows.restart(in.id(), "orders", null, 1).await(20, TimeUnit.SECONDS), what);
-        assertTrue(String.valueOf(failed.getMessage()).contains("injected failure"), what + ": the restart failed with the injected failure: " + failed);
+        Throwable thrown = assertThrows(Throwable.class, () -> failed.retry(in.id(), "orders", null, 1, BY).await(20, TimeUnit.SECONDS), what);
+        assertTrue(String.valueOf(thrown.getMessage()).contains("injected failure"), what + ": the retry failed with the injected failure: " + thrown);
         assertEquals(Optional.of(before), dlqRow(in.id()), what + ": the DLQ row stays as it was");
         assertEquals(0, workRows(), what + ": no work row");
+        assertEquals(0, ParkedRows.count(pool, "select count(*) from audit"), what + ": no audit row");
     }
 
     @Test
-    void restartIsOneTransactionWithTheSameId() throws Exception {
+    void aRetryIsOneTransactionWithTheSameId() throws Exception {
         partner.failNext(1, () -> new NackException("applied, its answer lost (test)", true));
         Envelope in = queued();
         assertEquals(1, worker.poll().await(20, TimeUnit.SECONDS), "fixture: the first run");
@@ -196,8 +200,8 @@ class DlqRestartIT {
         assertEquals(Optional.of(1), before.props().get(Envelope.ATTEMPT), "fixture: after attempt 1");
         assertEquals(0, workRows(), "fixture: its row completed by the park");
         assertEquals(1, partner.sent().size());
-        assertEquals(Optional.empty(), before.partitionKey(), "O7: an unkeyed item's park keeps no key");
-        assertEquals(1, ParkedRows.count(pool, "select count(*) from dlq where id = $1 and partition_key is null", in.id()), "O7: dlq.partition_key null");
+        assertEquals(Optional.empty(), before.partitionKey(), "an unkeyed item's park keeps no key");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from dlq where id = $1 and partition_key is null", in.id()), "dlq.partition_key null");
 
         pool.query("create trigger refuse_insert before insert on work for each row execute function refuse_test()").execute().await();
         refused(in, before, "the work insert refused");
@@ -205,8 +209,11 @@ class DlqRestartIT {
         pool.query("create trigger refuse_delete before delete on dlq for each row execute function refuse_test()").execute().await();
         refused(in, before, "the DLQ delete refused");
         pool.query("drop trigger refuse_delete on dlq").execute().await();
+        pool.query("create trigger refuse_audit before insert on audit for each row execute function refuse_test()").execute().await();
+        refused(in, before, "the audit insert refused");
+        pool.query("drop trigger refuse_audit on audit").execute().await();
 
-        assertTrue(rows.restart(in.id(), "orders", null, 1).await(20, TimeUnit.SECONDS), "restarted");
+        assertInstanceOf(FailedMessages.Done.class, failed.retry(in.id(), "orders", null, 1, BY).await(20, TimeUnit.SECONDS), "retried");
         assertEquals(Optional.empty(), dlqRow(in.id()), "its DLQ row is gone");
         List<Row> written = new java.util.ArrayList<>();
         for (Row r : pool.query("select id, step, attempts, max_attempts from work").execute().await()) written.add(r);
@@ -214,15 +221,19 @@ class DlqRestartIT {
         Row row = written.get(0);
         assertEquals(Arrays.asList(in.id(), 1, 1, 2), Arrays.asList(row.getString(0), row.getInteger(1), row.getInteger(2), row.getInteger(3)),
                 "same id, step 1, handed out k = 1 times, max_attempts k + 1 = 2");
-        assertFalse(rows.restart(in.id(), "orders", null, 1).await(20, TimeUnit.SECONDS), "no DLQ row any more: a second restart writes nothing");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from audit where action = 'message.retry' and subject = $1", "message/" + in.id()),
+                "one audit row");
+        assertSame(FailedMessages.NotParked.INSTANCE, failed.retry(in.id(), "orders", null, 1, BY).await(20, TimeUnit.SECONDS),
+                "no DLQ row any more: a second retry writes nothing");
         assertEquals(1, workRows(), "still one work row");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from audit"), "still one audit row");
 
-        assertEquals(1, worker.poll().await(20, TimeUnit.SECONDS), "the restarted row is claimed");
+        assertEquals(1, worker.poll().await(20, TimeUnit.SECONDS), "the retried row is claimed");
         assertEquals(2, partner.sent().size(), "sent once more");
         assertEquals(List.of(in.id(), in.id()), partner.sent().stream().map(Envelope::id).toList(), "under the same message id");
         assertEquals(Optional.of(2), partner.sent().get(1).get(Envelope.ATTEMPT), "as attempt k + 1 = 2, past the flow's bound of 1");
         assertEquals(1, partner.sent().stream().map(Envelope::id).distinct().count(), "a partner deduplicating by message id: one effect");
-        assertEquals(0, workRows(), "the restarted run succeeded: completed");
+        assertEquals(0, workRows(), "the retried run succeeded: completed");
         assertEquals(Optional.empty(), dlqRow(in.id()), "not parked again");
     }
 
@@ -237,22 +248,21 @@ class DlqRestartIT {
         }
     };
 
-    /** At-least-once {@code orders} keyed by {@code customer} (header {@code x-customer}), onFailure park; count 0. */
+    /** At-least-once {@code orders} keyed by {@code customer} (header {@code x-customer}); count 0. */
     static FlowDefinition keyedFlow() {
         Map<String, Object> doc = new HashMap<>(Map.of("schemaVersion", 1, "kind", "flow", "id", "orders", "version", "0.1.0"));
         doc.put("from", Map.of("endpoint", "in"));
         doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "1h", "retries", Map.of("count", 0, "interval", "1m")));
         doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 2));
         doc.put("partitionBy", "customer");
-        doc.put("onFailure", "park");
         doc.put("steps", List.of(Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"),
                 Map.of("type", "to", "name", "partner", "endpoint", "partner")));
         return FlowDefinition.from(doc);
     }
 
     /**
-     * O7: the worker's park of a keyed item writes the item's key into {@code dlq.partition_key}, and {@code Parked.partitionKey()}
-     * reads it back; the restart under it writes the work row under that key.
+     * The worker's park of a keyed item writes the item's key into {@code dlq.partition_key}, {@code Parked.partitionKey()} reads it
+     * back, and the item's row stays, stopped; the retry under that key runs the same row in place, bound to attempt 2.
      */
     @Test
     void theWorkersParkKeepsTheItemsKey() throws Exception {
@@ -272,16 +282,17 @@ class DlqRestartIT {
         assertEquals(1, ParkedRows.count(pool, "select count(*) from dlq where id = $1 and partition_key = 'c1'", in.id()),
                 "the park wrote the item's key c1");
         assertEquals(Optional.of("c1"), dlqRow(in.id()).orElseThrow().partitionKey(), "and the DLQ row reads it back");
+        List<Long> stopped = workSeqs(in.id());
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work where id = $1 and partition_key = 'c1' and stopped_at is not null", in.id()),
+                "the item's row stays, stopping its key");
 
-        assertTrue(rows.restart(in.id(), "orders", "c1", 1).await(20, TimeUnit.SECONDS), "restarted under its key");
-        assertEquals(1, ParkedRows.count(pool, "select count(*) from work where id = $1 and partition_key = 'c1' and max_attempts = 2", in.id()),
-                "the work row under the kept key");
+        assertInstanceOf(FailedMessages.Done.class, failed.retry(in.id(), "orders", "c1", 1, BY).await(20, TimeUnit.SECONDS), "retried under its key");
+        assertEquals(stopped, workSeqs(in.id()), "the same row");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work where id = $1 and partition_key = 'c1' and max_attempts = 2 and stopped_at is null",
+                in.id()), "in place under the kept key, bound to attempt 2");
     }
 
-    // --- FIX-275 (F-57, D-162 (5)): a retry before the park's settle landed
-
-    /** The type the refusal is, by name: it does not exist before FIX-275. */
-    static final String UNSETTLED = "dev.rail8.core.queue.UnsettledException";
+    // --- a retry before the park's settle landed
 
     /** What the worker's queue settles a row with: every one of them is a settle the boundary may fail. */
     static final Set<String> SETTLES = Set.of("complete", "completeRow", "completeUnkeyed", "completeAndTakeNext");
@@ -319,8 +330,8 @@ class DlqRestartIT {
     /** F-57's state: the message, the seq of its work row W1 left leased, the DLQ row its park wrote. */
     record Unsettled(Envelope in, long w1, Parked parked) {}
 
-    /** What a restart answered: {@code restarted} when it completed, else the failure it failed with. */
-    record Answer(Boolean restarted, Throwable refused) {}
+    /** What a retry answered: its act when it completed, else the failure it failed with. */
+    record Answer(FailedMessages.Act act, Throwable failure) {}
 
     final List<Envelope> accepted = new CopyOnWriteArrayList<>();
     Boundary boundary;
@@ -360,30 +371,22 @@ class DlqRestartIT {
         return new Unsettled(in, w1, parked);
     }
 
-    /** The restart of {@code id} as {@code /retry} calls it: the DLQ row's flow, its kept key and its attempt k, read first. */
+    /** The retry of {@code id} as {@code /retry} calls it: the DLQ row's flow, its kept key and its attempt k, read first. */
     Answer retry(String id) {
         Parked row = dlqRow(id).orElseThrow(() -> new AssertionError("no DLQ row of " + id + " to retry"));
         int k = row.props().get(Envelope.ATTEMPT).orElseThrow(() -> new AssertionError("the DLQ row of " + id + " has no attempt"));
         try {
-            return new Answer(rows.restart(id, row.flow(), row.partitionKey().orElse(null), k).await(20, TimeUnit.SECONDS), null);
-        } catch (Throwable failed) {
-            return new Answer(null, failed);
+            return new Answer(failed.retry(id, row.flow(), row.partitionKey().orElse(null), k, BY).await(20, TimeUnit.SECONDS), null);
+        } catch (Throwable thrown) {
+            return new Answer(null, thrown);
         }
     }
 
-    /** The first retry of an outcome case: answered true (today) or refused as unsettled; any other answer fails the case. */
+    /** The first retry of an outcome case: done or refused as unsettled; any other answer fails the case. */
     static void tolerated(Answer first) {
-        boolean refused = first.refused() != null && UNSETTLED.equals(first.refused().getClass().getName());
-        if (!Boolean.TRUE.equals(first.restarted()) && !refused) {
-            throw new AssertionError("the first retry answers true or is refused as unsettled: " + first, first.refused());
+        if (!(first.act() instanceof FailedMessages.Done) && !(first.act() instanceof FailedMessages.Unsettled)) {
+            throw new AssertionError("the first retry is done or refused as unsettled: " + first, first.failure());
         }
-    }
-
-    /** {@code failed} is the unsettled refusal of {@code messageId}: its {@code seq()}, read reflectively (the type is new). */
-    static long unsettledSeq(Throwable failed, String messageId) throws ReflectiveOperationException {
-        assertEquals(UNSETTLED, failed == null ? "no failure" : failed.getClass().getName(), "refused as unsettled: " + failed);
-        assertEquals(messageId, failed.getClass().getMethod("messageId").invoke(failed), "the refusal names the message");
-        return (Long) failed.getClass().getMethod("seq").invoke(failed);
     }
 
     /** The seqs of {@code id}'s work rows, in seq order. */
@@ -411,21 +414,22 @@ class DlqRestartIT {
         return accepted.stream().filter(e -> e.id().equals(id)).count();
     }
 
-    /** Acceptance 1: the retry while W1 is unsettled is refused, writes nothing and names W1. Today: true, the DLQ row gone, two rows. */
+    /** The retry while W1 is unsettled is refused, writes nothing and names W1. */
     @Test
     void aRetryBeforeTheParksSettleLandedIsRefused() throws Exception {
         Unsettled s = parkedButNotSettled(1);   // a bound of 2 hand-outs
         String id = s.in().id();
         Answer answer = retry(id);
         assertAll("a retry beside W1, whose settle did not land",
-                () -> assertEquals(s.w1(), unsettledSeq(answer.refused(), id), "refused as unsettled, naming W1's seq; answered " + answer),
+                () -> assertEquals(new FailedMessages.Unsettled(s.w1()), answer.act(), "refused as unsettled, naming W1's seq; answered " + answer),
                 () -> assertEquals(Optional.of(s.parked()), dlqRow(id), "the DLQ row is kept"),
-                () -> assertEquals(List.of(s.w1()), workSeqs(id), "the id has exactly one work row, W1"));
+                () -> assertEquals(List.of(s.w1()), workSeqs(id), "the id has exactly one work row, W1"),
+                () -> assertEquals(0, ParkedRows.count(pool, "select count(*) from audit"), "no audit row"));
     }
 
     /**
-     * Acceptance 2, a bound of 2: after the retry the partner accepts, W1's lease passes, and every row runs. The partner accepts the
-     * message once. Today twice: the retry's row delivers, and W1, handed out again as attempt 2 within its bound, delivers too.
+     * A bound of 2: after the retry the partner accepts, W1's lease passes, and every row runs. The partner accepts the message once;
+     * were the retry not refused, twice: the retry's row delivers, and W1, handed out again as attempt 2 within its bound, too.
      */
     @Test
     void aMessageRetriedBeforeItsParkSettledIsAcceptedByThePartnerOnce() throws Exception {
@@ -443,9 +447,9 @@ class DlqRestartIT {
     }
 
     /**
-     * Acceptance 2, a bound of 1: after the retry the partner accepts, W1's lease passes, every row runs, and — only when the first
-     * retry was refused — a second retry runs once W1 settled. The message is accepted once and is in no list: no DLQ row, no work row.
-     * Today the retry's row delivers, and W1, handed out again past its bound, parks the delivered message again, unsent.
+     * A bound of 1: after the retry the partner accepts, W1's lease passes, every row runs, and — only when the first retry was
+     * refused — a second retry runs once W1 settled. The message is accepted once and is in no list: no DLQ row, no work row. Were the
+     * retry not refused, its row would deliver and W1, handed out again past its bound, would park the delivered message again, unsent.
      */
     @Test
     void aMessageRetriedBeforeItsParkSettledDoesNotComeBackAfterItsDelivery() throws Exception {
@@ -457,9 +461,9 @@ class DlqRestartIT {
         expireLease(s.w1());
         runUntilNothingIsLeft();
         assertEquals(List.of(1, 2), boundary.handOuts(s.w1()), "W1 was claimed again, as attempt 2: past its bound of 1");
-        if (first.refused() != null) {
+        if (first.act() instanceof FailedMessages.Unsettled) {
             Answer second = retry(id);
-            assertEquals(Boolean.TRUE, second.restarted(), "once W1 settled, the retry goes through: " + second);
+            assertInstanceOf(FailedMessages.Done.class, second.act(), "once W1 settled, the retry goes through: " + second);
             runUntilNothingIsLeft();
         }
 

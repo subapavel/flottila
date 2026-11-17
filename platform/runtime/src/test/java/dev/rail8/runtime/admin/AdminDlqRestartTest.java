@@ -11,6 +11,7 @@ import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowBuilder;
@@ -19,8 +20,8 @@ import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.flow.Workers;
+import dev.rail8.core.queue.InMemoryFailedMessages;
 import dev.rail8.core.queue.InMemoryWorkQueue;
-import dev.rail8.core.queue.UnsettledException;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Meter;
@@ -72,17 +73,17 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Rail8): each 422 says why the row is not restarted and names no other route; the route needs the token and runs on a virtual
  * thread, never the event loop.
  *
- * <p>CORE-14b P8 / O8 (implementer's cases) of {@code POST /admin/dlq/{id}/retry} beyond {@code AdminDlqRestartIT}, over in-memory
- * stores: a row whose flow is not deployed here is 409 "flow f is not deployed"; a row of a sync flow, and a row at step 1 without an
- * {@code attempt} of at least 1, are 422 — none of them changes anything; a restart the queue answers false (the row went meanwhile)
- * is 404, one it fails because the ingress body is no longer kept is 409, both with nothing woken or announced. A restart that went
- * through wakes its flow's worker here — which claims and runs it at once, as attempt k + 1, though no timer fired — and announces
- * the flow to every node.
+ * <p>Cases of {@code POST /admin/dlq/{id}/retry} beyond {@code AdminDlqRestartIT}, over in-memory stores: a row whose flow is not
+ * deployed here is 409 "flow f is not deployed"; a row of a sync flow, and a row at step 1 without an {@code attempt} of at least 1,
+ * are 422 — none of them changes anything; a retry the acts answer not parked (the row went meanwhile) is 404, one they fail because
+ * the ingress body is no longer kept is 409, both with nothing woken or announced. A retry that went through wakes its flow's worker
+ * here — which claims and runs it at once, as attempt k + 1, though no timer fired — and announces the flow to every node. A retry
+ * of a message that stops its key runs it in place, before the rows of its key behind it.
  *
  * <p>Seams: a real {@code Deployments} of package {@code shop} ({@code orders} at-least-once, {@code pay} sync, {@code keyed} at-least-once
  * by {@code customer}; its own workers over a
- * queue of their own); the {@link AdminServer} over an {@link InMemoryDlq}, the test's queue (the in-memory one, its restart answer
- * replaceable) and a {@link Workers} registry holding the test's worker of {@code shop/orders} over that queue; the signals record
+ * queue of their own); the {@link AdminServer} over an {@link InMemoryDlq}, the test's queue, the in-memory acts over it (a retry's
+ * answer replaceable) and a {@link Workers} registry holding the test's worker of {@code shop/orders} over that queue; the signals record
  * what they are told (the SPI boundary).
  */
 @Timeout(60)
@@ -92,13 +93,22 @@ class AdminDlqRestartTest {
     final FakeRuntime rt = FakeRuntime.create();
     final InMemoryMessageStore store = new InMemoryMessageStore();
     final InMemoryDlq dlq = new InMemoryDlq();
-    final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock());
+    final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock(), dlq);
+    final FailedMessages real = new InMemoryFailedMessages(rows);
     final Workers workers = new Workers();
     final List<String> announced = new CopyOnWriteArrayList<>();
     final List<String> runs = new CopyOnWriteArrayList<>();
     final Doors doors = new Doors();
-    /** What the queue's restart answers instead of the in-memory one's; null: the in-memory one. */
-    volatile Supplier<Future<Boolean>> restartAnswer;
+    /** What a retry answers instead of the in-memory acts' answer; null: theirs. */
+    volatile Supplier<Future<FailedMessages.Act>> retryAnswer;
+    /** The in-memory acts, a retry answered by {@link #retryAnswer} when set. */
+    final FailedMessages acts = new FailedMessages() {
+        @Override public Future<Act> retry(String messageId, String flow, String partitionKey, int attempt, Actor by) {
+            Supplier<Future<Act>> answer = retryAnswer;
+            return answer == null ? real.retry(messageId, flow, partitionKey, attempt, by) : answer.get();
+        }
+        @Override public Future<Act> cancel(String messageId, Actor by, java.util.Optional<String> reason) { return real.cancel(messageId, by, reason); }
+    };
     /** The claims the test's queue was asked for: the worker of {@code shop/orders} claims at its start and at each wake. */
     final AtomicInteger claims = new AtomicInteger();
     final StepFactory probe = new StepFactory() {
@@ -139,14 +149,14 @@ class AdminDlqRestartTest {
         shop.endpoint("keyed-in", "in", new JsonObject().put("path", "/keyed")).flow("keyed", "1.0.0", "at-least-once", "keyed-in", 65_536, new JsonArray()
                 .add(new JsonObject().put("type", "extractKey").put("name", "key").put("language", "header").put("key", "customer").put("xpath", "x-customer"))
                 .add(new JsonObject().put("type", "probe").put("name", "probe")));
-        shop.flowDoc("keyed").put("partitionBy", "customer").put("onFailure", "park");
+        shop.flowDoc("keyed").put("partitionBy", "customer");
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("archives"))));
         worker = new FlowBuilder(rt.runtime(), List.of(probe), List.of(), Map.of()).recording(store, Meter.system()).queue(queue).dlq(dlq).workers(workers)
                 .worker(orders(), Path.of(""), "node-a", new WorkerPolicy(Duration.ofSeconds(30), Duration.ofDays(7)));
         worker.start();
         WorkSignals signals = (target, flow) -> announced.add(target + " " + flow);
         admin = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.empty()), store, dlq, rt.blobs(), new AdminServer.HealthProbe(Map.of(), () -> 0L),
-                Optional.of(deployments), queue, workers, signals);
+                Optional.of(deployments), queue, acts, Optional.empty(), workers, signals);
         port = admin.start(vertx).await(10, TimeUnit.SECONDS);
     }
 
@@ -172,7 +182,7 @@ class AdminDlqRestartTest {
         return FlowDefinition.from(doc);
     }
 
-    /** The in-memory queue, its restart answered by {@link #restartAnswer} when set. */
+    /** The in-memory queue, its claims counted. */
     final WorkQueue queue = new WorkQueue() {
         @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return rows.enqueue(messageId, flow, step, partitionKey); }
         @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
@@ -185,10 +195,8 @@ class AdminDlqRestartTest {
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
-        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-            Supplier<Future<Boolean>> answer = restartAnswer;
-            return answer == null ? rows.restart(messageId, flow, partitionKey, attempt) : answer.get();
-        }
+        @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return rows.stop(seq, attempts, failure); }
+        @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) { return rows.stopped(after, limit); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return rows.release(seq); }
@@ -333,24 +341,24 @@ class AdminDlqRestartTest {
     }
 
     /**
-     * FIX-263 (moved from the withdrawn replay route's case, D-156): {@code /retry}'s handler runs off the event loop, on a
-     * virtual thread — witnessed where it reaches the store boundary, the queue's restart, by the thread that called it.
+     * {@code /retry}'s handler runs off the event loop, on a virtual thread — witnessed where it reaches the store boundary, the
+     * retry act, by the thread that called it.
      */
     @Test
     void aRetryRunsOnAVirtualThreadNeverTheEventLoop() throws Exception {
         List<String> restartedOn = new CopyOnWriteArrayList<>();
         String id = recorded();
-        restartAnswer = () -> {
+        retryAnswer = () -> {
             Thread t = Thread.currentThread();
             restartedOn.add("virtual=" + t.isVirtual() + " eventLoop=" + io.vertx.core.Context.isOnEventLoopThread() + " " + t);
-            return rows.restart(id, "shop/orders", null, 1);
+            return real.retry(id, "shop/orders", null, 1, new FailedMessages.Actor("unknown", "127.0.0.1"));
         };
         parked(id, "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
 
         Answer a = retry(id);
 
         assertEquals(202, a.status(), "restarted: " + a.json());
-        assertEquals(1, restartedOn.size(), "the queue's restart was asked once: " + restartedOn);
+        assertEquals(1, restartedOn.size(), "the retry act was asked once: " + restartedOn);
         assertTrue(restartedOn.getFirst().startsWith("virtual=true eventLoop=false"), "the route's body runs on a virtual thread: " + restartedOn);
     }
 
@@ -363,7 +371,8 @@ class AdminDlqRestartTest {
     void aRetryNeedsTheToken() throws Exception {
         String token = "s3cret-token";
         AdminServer guarded = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(token)), store, dlq, rt.blobs(),
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, workers, (target, flow) -> announced.add(target + " " + flow));
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, acts, Optional.empty(), workers,
+                (target, flow) -> announced.add(target + " " + flow));
         int guardedPort = guarded.start(vertx).await(10, TimeUnit.SECONDS);
         try {
             String id = recorded();
@@ -392,31 +401,31 @@ class AdminDlqRestartTest {
     }
 
     @Test
-    void aRetryTheQueueAnswersFalseIs404() throws Exception {
+    void aRetryTheActsAnswerNotParkedIs404() throws Exception {
         Parked p = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
-        restartAnswer = () -> Future.succeededFuture(false);
+        retryAnswer = () -> Future.succeededFuture(FailedMessages.NotParked.INSTANCE);
         refused("m-1", p, 404, "any more");
     }
 
     @Test
     void aRetryWhoseIngressBodyIsNoLongerKeptIs409() throws Exception {
         Parked removed = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
-        restartAnswer = () -> Future.failedFuture(new BlobNotFoundException(BlobKey.body("m-1", 0)));
+        retryAnswer = () -> Future.failedFuture(new BlobNotFoundException(BlobKey.body("m-1", 0)));
         refused("m-1", removed, 409, "its ingress body is no longer kept");
         Parked lost = parked("m-2", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
-        restartAnswer = () -> Future.failedFuture(new BodyLostException(BlobKey.body("m-2", 0)));
+        retryAnswer = () -> Future.failedFuture(new BodyLostException(BlobKey.body("m-2", 0)));
         refused("m-2", lost, 409, "its ingress body is no longer kept");
     }
 
     /**
-     * FIX-275 (F-57, D-162 (5)): a restart the queue refuses because a work row of the message is still there — its park's settle has
-     * not landed — is 409: the error names the message and the work item's seq, says it is not settled yet and names no other route;
-     * nothing is woken (the worker claims nothing more than its start claim) or announced, the DLQ row is kept.
+     * A retry the acts refuse because a work row of the message is still there — its park's settle has not landed — is 409: the
+     * error names the message and the work item's seq, says it is not settled yet and names no other route; nothing is woken (the
+     * worker claims nothing more than its start claim) or announced, the DLQ row is kept.
      */
     @Test
     void aRetryBesideAnUnsettledWorkRowIs409() throws Exception {
         Parked p = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
-        restartAnswer = () -> Future.failedFuture(new UnsettledException("m-1", 918_273_645L));
+        retryAnswer = () -> Future.succeededFuture(new FailedMessages.Unsettled(918_273_645L));
         int claimed = claims.get();
         assertEquals(1, claimed, "fixture: the worker's start claim, nothing since");
 
@@ -439,6 +448,26 @@ class AdminDlqRestartTest {
         until(() -> runs.size() == 1, "the worker woken here claims and runs it, no timer fired");
         assertEquals(List.of(in.id() + "@3"), runs, "once, under its id, as attempt k + 1");
         until(() -> rows.size() == 0, "completed");
+    }
+
+    /**
+     * A retry of a message of the keyed flow that stopped its key runs it in place: 202 {@code {id, attempt: 2}}, the key no longer
+     * stopped, and the retried row is claimed first while the row behind it waits; the flow is announced.
+     */
+    @Test
+    void aRetryOfAStoppedKeyRunsItInPlaceBeforeTheRowBehindIt() throws Exception {
+        Duration lease = Duration.ofSeconds(30);
+        WorkQueue.Item k1 = rows.enqueueLeased("k1", "shop/keyed", 1, "c1", "node-a", lease).await().orElseThrow();
+        assertTrue(rows.stop(k1.seq(), k1.attempts(), ParkedRows.byTheWorker("k1", "shop/keyed", 1, Optional.of("c1"))).await(), "fixture: k1 stops c1");
+        rows.enqueue("k2", "shop/keyed", 1, "c1").await();
+
+        Answer a = retry("k1");
+        assertEquals(202, a.status(), "retried: " + a.json());
+        assertEquals(new JsonObject().put("id", "k1").put("attempt", 2), a.json());
+        assertEquals(List.of(), rows.stopped(Optional.empty(), 10).await().items(), "c1 is no longer stopped");
+        assertEquals(List.of("null shop/keyed"), announced, "its flow announced");
+        List<WorkQueue.Item> taken = rows.claim("n2", "shop/keyed", 10, lease).await();
+        assertEquals(List.of(k1.seq()), taken.stream().map(WorkQueue.Item::seq).toList(), "k1 first, in place; k2 waits behind it");
     }
 
     static void until(java.util.function.BooleanSupplier condition, String what) {

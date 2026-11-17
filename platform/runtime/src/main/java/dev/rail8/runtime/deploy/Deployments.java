@@ -95,7 +95,7 @@ import java.util.stream.Stream;
  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
  * another package listens (one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
- * items of it (queued, leased or held: they would never run; a flow whose new yaml does not read is not asked, its own problems
+ * items of it (queued, leased, held or stopped: they would never run; a flow whose new yaml does not read is not asked, its own problems
  * are listed; a queue that cannot answer is the node's failure, and only when every question that failed was one the node's Postgres
  * pool refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable — unless the package has
  * problems: then it is their 422) — and
@@ -1154,7 +1154,7 @@ public final class Deployments {
             leaving.add(f.id());
             Future<Boolean> items = queue.hasItems(f.id());
             if (Boolean.TRUE.equals(items.otherwiseEmpty().await())) {
-                problems.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased or held): this version "
+                problems.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): this version "
                         + "does not run it at-least-once, so they would never run; deploy it once they are done");
             } else if (items.failed()) {
                 String line = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
@@ -1803,7 +1803,7 @@ public final class Deployments {
             queued.add(f.id());
             Future<Boolean> items = queue.hasItems(f.id());
             if (Boolean.TRUE.equals(items.otherwiseEmpty().await())) {
-                held.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once "
+                held.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once "
                         + "they are done");
             } else if (items.failed()) {
                 String unanswered = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());

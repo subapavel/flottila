@@ -1,5 +1,6 @@
 package dev.rail8.core.queue;
 
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
 
@@ -22,7 +23,10 @@ import java.util.Optional;
  * never completed and stays the oldest row of its key, so it blocks the rows behind it until a person deals with it:
  * {@link #held} lists the held rows and {@link #release} hands one back to the claim, whose holder then completes it.
  * A lost row (one whose body was given up) blocks its key the same way and is never handed out: {@link #lost} lists
- * the lost rows and {@link #discard} deletes one and writes an audit row.
+ * the lost rows and {@link #discard} deletes one and writes an audit row. A keyed row whose message failed for good is
+ * {@linkplain #stop stopped}: parked and held in one step, so its key keeps its order and waits until an operator retries or
+ * cancels the message ({@link dev.rail8.core.dlq.FailedMessages}); {@link #stopped} lists those rows, and neither
+ * {@link #held} nor {@link #release} sees them.
  *
  * @since 0.1
  */
@@ -37,7 +41,7 @@ public interface WorkQueue {
      * @param doubts how many of its hand-outs were of a row an earlier holder had been handed and left unsettled, derived from
      *               the row's history rather than written per send: that holder may have sent before it died or was fenced, so
      *               the run is in doubt; 0 on a first hand-out and on a row an operator {@linkplain #release released}
-     * @param maxAttempts the row's own bound on its hand-outs, which a {@linkplain #restart restart} writes; 0 means the
+     * @param maxAttempts the row's own bound on its hand-outs, which an operator's retry writes; 0 means the
      *                    flow's bound. Not compared either: it belongs to the row and is the same for each of its hand-outs
      * @since 0.1
      */
@@ -81,6 +85,25 @@ public interface WorkQueue {
         /** A held row whose queue does not count what it blocks (the in-memory one): {@code blocks} 0. */
         public Held(Item item, Instant heldAt) {
             this(item, heldAt, 0);
+        }
+    }
+
+    /**
+     * One row that stops its key: its message was parked after it failed for good, and the row stays held, the oldest of its
+     * key, until an operator retries or cancels the message.
+     *
+     * @param item the row as last handed out: its attempts are those of the run that failed
+     * @param stoppedAt the instant of the stop
+     * @param blocks the number of rows of its key in its flow behind it, which wait while it stops the key
+     * @param error the parked failure's text; empty when the queue cannot read it (its parked row is gone)
+     * @since 0.1
+     */
+    record Stopped(Item item, Instant stoppedAt, long blocks, Optional<String> error) {
+
+        public Stopped {
+            Objects.requireNonNull(item, "item");
+            Objects.requireNonNull(stoppedAt, "stoppedAt");
+            Objects.requireNonNull(error, "error");
         }
     }
 
@@ -266,33 +289,40 @@ public interface WorkQueue {
     Future<Boolean> defer(long seq, int attempts, Duration delay);
 
     /**
-     * Appends {@code messageId}'s row again after an operator's restart of its park: of {@code flow}, step 1, under
-     * {@code partitionKey} (null: none) at the tail of that key (a new seq behind the key's rows queued meanwhile), due at
-     * once, unleased, as handed out {@code attempt} times (k, the attempts it was parked after) with no doubt and its own
-     * bound {@link Item#maxAttempts()} k + 1: its next hand-out is attempt k + 1, its last; a takeover of that hand-out is
-     * past the bound. {@code true} when appended. A restart while a work row of {@code messageId} in {@code flow} is still
-     * there (a park whose settle has not landed) is refused: it fails {@link UnsettledException} naming that row's seq (the
-     * oldest when there are several) and writes nothing. A queue with a DLQ in its store (Postgres) restarts only a message with the DLQ row of {@code flow}
-     * at step 1 with attempt k, deleting that row and copying its ingress body's kept ref in
-     * the same transaction, and answers in this order: {@code false} without that row, nothing written; then the refusal, its work row
-     * read under {@code partitionKey} when one is given and of any key when none is, the DLQ row kept whatever became of the body;
-     * then a row whose kept ref is gone fails {@code BlobNotFoundException} ({@code BodyLostException} when an accepted loss gave it
-     * up), nothing changed. A queue without one (in memory) reads the id's rows in {@code flow} whatever their key and appends when
-     * there is none.
-     *
-     * @since 0.1
-     */
-    Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt);
-
-    /**
      * Marks {@code seq} held, under the same condition as {@link #renew}: it is never claimed again and blocks its key
      * until a person deals with it. {@code true} when held by this call.
      */
     Future<Boolean> hold(long seq, int attempts);
 
     /**
+     * Parks the message of the keyed row {@code seq} and stops its key, for the current holder, in one step: writes
+     * {@code failure}'s parked row — unless the message is parked already: the first park wins — and holds the row, marked stopped,
+     * under the same condition as {@link #renew}; both or neither. A stopped row is never claimed, renewed, deferred or completed,
+     * stays the oldest row of its key, so every later row of the key waits behind it, and is not {@linkplain #release released}:
+     * only an operator's retry or cancel of its message moves the key on. {@code true} when stopped by this call; {@code false},
+     * nothing written, when the caller no longer holds the row (claimed again, held, completed or unknown), when it has no key, or
+     * when {@code failure} names another message or flow. A queue whose store keeps bodies (Postgres) writes nothing either when no
+     * kept ref of {@code failure}'s body exists: the call fails with {@code BlobNotFoundException} naming its key
+     * ({@code BodyLostException} when an accepted loss gave that ref up).
+     *
+     * @since 0.1
+     */
+    Future<Boolean> stop(long seq, int attempts, Parked failure);
+
+    /**
+     * The stopped rows of every flow a page at a time, in seq order, as {@link #held} pages the held ones: up to {@code limit}
+     * rows after the cursor {@code after}, each with the rows of its key behind it and the parked failure's text, and a cursor to
+     * the next page when another stopped row exists.
+     *
+     * @throws IllegalArgumentException {@code limit} is not 1..{@link Page#MAX_LIMIT}, or {@code after} is not a cursor this
+     *                                  queue hands out — thrown at the call, not as a failed future
+     * @since 0.1
+     */
+    Future<Page<Stopped>> stopped(Optional<String> after, int limit);
+
+    /**
      * The held rows of every flow a page at a time, in seq order: up to {@code limit} rows after the cursor {@code after}, and
-     * a cursor to the next page when another held row exists. The cursor is a position (a seq), never an offset: a row
+     * a cursor to the next page when another held row exists. A {@linkplain #stop stopped} row is not among them. The cursor is a position (a seq), never an offset: a row
      * released or completed meanwhile shifts nothing.
      *
      * @throws IllegalArgumentException {@code limit} is not 1..{@link Page#MAX_LIMIT}, or {@code after} is not a cursor this
@@ -332,12 +362,12 @@ public interface WorkQueue {
     /**
      * Hands a held row back to the claim: clears the hold and the lease, keeps the attempts, so the row is claimable at once
      * and, still the oldest of its key, before the rows behind it. {@code true} only when {@code seq} was held; an unknown,
-     * leased or queued row is left as it was.
+     * leased, queued or {@linkplain #stop stopped} row is left as it was.
      */
     Future<Boolean> release(long seq);
 
     /**
-     * {@link #release} answering what it released: empty when {@code seq} was not held (nothing changed), else the row's flow and
+     * {@link #release} answering what it released: empty when {@code seq} was not held or is stopped (nothing changed), else the row's flow and
      * body node as far as this queue knows them: what the release must wake, here and on the row's node.
      *
      * <p>This default releases by {@link #release} and cannot tell the row: a release answers {@link Released#UNTOLD}.
@@ -349,7 +379,7 @@ public interface WorkQueue {
     }
 
     /**
-     * {@code true} while any row of {@code flow} exists: due, backing off after a lease ran out, leased or held; a completed
+     * {@code true} while any row of {@code flow} exists: due, backing off after a lease ran out, leased, held or stopped; a completed
      * row is gone and never counts, nor does another flow's row. A redeploy that removes an at-least-once flow checks it.
      *
      * @throws NullPointerException {@code flow} is null, thrown at the call, not as a failed future

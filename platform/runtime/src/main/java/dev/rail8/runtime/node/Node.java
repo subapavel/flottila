@@ -34,6 +34,7 @@ import dev.rail8.runtime.journal.peer.PeerServer;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
 import dev.rail8.runtime.lease.ValkeyPollerLeases;
+import dev.rail8.runtime.queue.PgFailedMessages;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.queue.PgWorkSignals;
 import dev.rail8.runtime.store.PgDlq;
@@ -338,7 +339,8 @@ public final class Node implements AutoCloseable {
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
-                    Optional.of(restored), work, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)), workers, signals);
+                    Optional.of(restored), work, new PgFailedMessages(pool, work), sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)),
+                    workers, signals);
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go; its first pass an interval later, on a virtual thread of its own

@@ -124,7 +124,6 @@ class FlowWorkerHandoffTest {
             all.addAll(steps);
             Map<String, Object> doc = FlowWorkerTest.flow(maxInFlight, all);
             doc.put("partitionBy", "customer");
-            doc.put("onFailure", "park");
             return FlowDefinition.from(doc);
         }
 

@@ -1,5 +1,6 @@
 package dev.rail8.sim;
 
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
@@ -50,9 +51,9 @@ final class ClaimCap implements WorkQueue {
 
     @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return queue.defer(seq, attempts, delay); }
 
-    @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-        return queue.restart(messageId, flow, partitionKey, attempt);
-    }
+    @Override public Future<Boolean> stop(long seq, int attempts, Parked failure) { return queue.stop(seq, attempts, failure); }
+
+    @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) { return queue.stopped(after, limit); }
 
     @Override public Future<Boolean> hold(long seq, int attempts) { return queue.hold(seq, attempts); }
 

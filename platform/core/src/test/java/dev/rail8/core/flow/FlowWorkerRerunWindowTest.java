@@ -6,6 +6,7 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Runtime;
 import dev.rail8.core.dlq.InMemoryDlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -147,8 +148,11 @@ class FlowWorkerRerunWindowTest {
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
             return dead ? unanswered() : rows.defer(seq, attempts, delay);
         }
-        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-            return dead ? unanswered() : rows.restart(messageId, flow, partitionKey, attempt);
+        @Override public Future<Boolean> stop(long seq, int attempts, Parked failure) {
+            return dead ? unanswered() : rows.stop(seq, attempts, failure);
+        }
+        @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) {
+            return dead ? unanswered() : rows.stopped(after, limit);
         }
         @Override public Future<Boolean> hold(long seq, int attempts) {
             return dead ? unanswered() : rows.hold(seq, attempts);
@@ -255,7 +259,6 @@ class FlowWorkerRerunWindowTest {
     static FlowDefinition keyed() {
         Map<String, Object> doc = FlowWorkerTest.flow(4, List.of(DeliveryTest.ORDER_KEY, FlowWorkerTest.TO_PARTNER));
         doc.put("partitionBy", "orderId");
-        doc.put("onFailure", "park");
         return FlowDefinition.from(doc);
     }
 

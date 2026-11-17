@@ -69,7 +69,7 @@ public final class CountingQueue implements WorkQueue {
     /** The renew calls so far. */
     public int renews() { return renews.get(); }
 
-    /** Every hasItems call, as {@code "<flow> rows=<n>"}: the rows of that flow (queued, leased or held) when it was asked. */
+    /** Every hasItems call, as {@code "<flow> rows=<n>"}: the rows of that flow (queued, leased, held or stopped) when it was asked. */
     public List<String> hasItemsCalls() { return List.copyOf(hasItemsCalls); }
 
     /** Every row queued, in seq order (leased, held or neither). */
@@ -128,7 +128,9 @@ public final class CountingQueue implements WorkQueue {
         });
     }
 
-    @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
+    @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return inner.stop(seq, attempts, failure); }
+
+    @Override public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return inner.stopped(after, limit); }
 
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
 

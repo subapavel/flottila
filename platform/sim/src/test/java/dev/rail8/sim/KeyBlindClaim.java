@@ -1,5 +1,7 @@
 package dev.rail8.sim;
 
+import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
@@ -17,8 +19,9 @@ import java.util.TreeMap;
  * Broken variant: a claim hands out the due rows in seq order without regard to their key — a row whose key is still leased
  * (its message parked on a Retry backoff after a refused call) is claimed too, so a second message of the key reaches the
  * partner during the first one's retries. Claims stay in seq order, so first receipts keep the order of the sends; everything
- * else is the in-memory queue's (fast path: the oldest due row of the key). A {@link WorkQueue} of its own, built over the
- * public interface only: the in-memory queue's claim always keeps a key serial.
+ * else is the in-memory queue's (fast path: the oldest due row of the key), but for a stop: it parks the message in the
+ * simulation's DLQ and drops its row, so a key never stops and the operator finds nothing to act on. A {@link WorkQueue} of its
+ * own, built over the public interface only: the in-memory queue's claim always keeps a key serial.
  */
 final class KeyBlindClaim implements World {
 
@@ -26,8 +29,8 @@ final class KeyBlindClaim implements World {
 
     @Override public String name() { return NAME; }
 
-    @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
-        return new KeyBlindQueue(clock);
+    @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
+        return new KeyBlindQueue(clock, dlq);
     }
 
     static final class KeyBlindQueue implements WorkQueue {
@@ -40,11 +43,13 @@ final class KeyBlindClaim implements World {
         }
 
         private final Clock clock;
+        private final Dlq dlq;
         private final TreeMap<Long, Row> rows = new TreeMap<>();
         private long nextSeq = 1;
 
-        KeyBlindQueue(Clock clock) {
+        KeyBlindQueue(Clock clock, Dlq dlq) {
             this.clock = Objects.requireNonNull(clock, "clock");
+            this.dlq = Objects.requireNonNull(dlq, "dlq");
         }
 
         @Override public synchronized Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
@@ -94,8 +99,20 @@ final class KeyBlindClaim implements World {
             return Future.failedFuture(new UnsupportedOperationException("the simulation's flows schedule no retries (D-135): nothing defers"));
         }
 
-        @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-            return Future.failedFuture(new UnsupportedOperationException("the simulation restarts no park (D-135)"));
+        /** Parks the message and drops its row, as an unordered park does: no key stops. */
+        @Override public synchronized Future<Boolean> stop(long seq, int attempts, Parked failure) {
+            Row r = rows.get(seq);
+            if (!current(r, attempts) || r.item.partitionKey() == null || !r.item.messageId().equals(failure.messageId())) {
+                return Future.succeededFuture(false);
+            }
+            rows.remove(seq);
+            return dlq.park(failure).map(true);
+        }
+
+        /** None: no key stops here. */
+        @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) {
+            Page.requireLimit(limit);
+            return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
         }
 
         @Override public synchronized Future<Boolean> hold(long seq, int attempts) {

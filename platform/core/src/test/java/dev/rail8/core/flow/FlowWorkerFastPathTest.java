@@ -7,8 +7,10 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepFactory;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
+import dev.rail8.core.queue.InMemoryFailedMessages;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -44,6 +46,7 @@ import java.util.logging.Level;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -207,7 +210,12 @@ class FlowWorkerFastPathTest {
 
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, real(seq, attempts), delay); }
 
-        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
+        @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) {
+            return inner.stop(seq, real(seq, attempts), failure).andThen(r -> events.add("stop " + seq + "@" + attempts + " -> "
+                    + (r.succeeded() ? r.result() : "failed")));
+        }
+
+        @Override public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return inner.stopped(after, limit); }
 
         @Override public Future<Boolean> hold(long seq, int attempts) {
             return inner.hold(seq, real(seq, attempts)).andThen(r -> events.add("hold " + seq + "@" + attempts + " -> "
@@ -228,17 +236,17 @@ class FlowWorkerFastPathTest {
 
     /**
      * Everything one case (or one try of a property) runs on. Flow {@code orders}; the {@code outcome} step does what the
-     * message's {@code outcome} header says: {@code park} (a final step failure, a non-retryable Nack: parked at once, the item completed), {@code crash} (an Error:
+     * message's {@code outcome} header says: {@code park} (a final step failure, a non-retryable Nack: parked at once, its key stopped), {@code crash} (an Error:
      * the item left to its lease), {@code crash-once} (an Error on the first run only), else nothing.
      */
     static final class Line {
         final FakeRuntime rt = FakeRuntime.create();
         final ClosingPartner partner = new ClosingPartner();
         final InMemoryMessageStore store = new InMemoryMessageStore();
-        final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock());
+        final InMemoryDlq dlq = new InMemoryDlq();
+        final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock(), dlq);
         final RecordingWorkQueue recorded = new RecordingWorkQueue(rows, rt.clock());
         final TakeQueue queue = new TakeQueue(recorded);
-        final InMemoryDlq dlq = new InMemoryDlq();
         final RunGate gate = new RunGate();
         final StepFactory outcome = ParkingTest.factory("outcome", s -> Stage.of(e -> {
             String o = e.header("outcome").orElse("pass");
@@ -607,10 +615,10 @@ class FlowWorkerFastPathTest {
 
     /**
      * maxAttempts 2: the fast path hands A2 out with its third attempt (the row as a queue hands it out after two earlier
-     * hand-outs): A2 is not run but parked at step 1 with the attempts exhausted — and, parked, its key goes on: A3 runs.
+     * hand-outs): A2 is not run but parked at step 1 with the attempts exhausted and stops its key, which ends the chain: A3 waits.
      */
     @Test
-    void takenSuccessorPastMaxAttemptsParked() throws Exception {
+    void takenSuccessorPastMaxAttemptsParkedAndStopsItsKey() throws Exception {
         FlowBuilder b = l.builder();
         FlowDefinition def = Line.def(4, STEPS);
         Delivery delivery = b.delivery(def, NO_FILES);
@@ -622,24 +630,27 @@ class FlowWorkerFastPathTest {
         l.gate.open();
 
         w1.poll().await(5, SECONDS);
-        until(() -> l.recorded.claimsInFlight() == 0 && l.rows.size() == 0, () -> "the chain done: " + l.queue.events());
+        until(() -> l.recorded.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "the chain done: " + l.queue.events());
         l.gate.joinPassed();
 
-        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@3", "take 2@3 -> 3@1", "take 3@1 -> none"), l.queue.events(),
-                "A2 handed out with attempt 3 of 2 is settled as parked, under that attempt, and its key goes on; the chain end claims nothing (D-121 A6)");
+        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@3", "stop 2@3 -> true"), l.queue.events(),
+                "A2 handed out with attempt 3 of 2 is parked and stopped under that attempt; the chain ends there");
         assertEquals(List.of(), l.gate.runsOf(a2.id()), "A2 never ran");
-        assertEquals(List.of(a1.id(), a3.id()), l.sentIds());
+        assertEquals(List.of(a1.id()), l.sentIds(), "A3 waits behind A2");
         List<Parked> parked = l.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, parked.size(), "one DLQ row: " + parked);
         assertEquals(a2.id(), parked.get(0).messageId());
         assertEquals(1, parked.get(0).step(), "parked at step 1");
         assertTrue(parked.get(0).error().contains("AttemptsExhaustedException"), parked.get(0).error());
-        assertEquals(0, l.rows.size());
+        assertEquals(List.of(a2.id(), a3.id()), l.rows.snapshot().stream().map(WorkQueue.Item::messageId).toList(), "A2 stopped, A3 behind it");
     }
 
-    /** [A] park-and-continue: A1 fails and is parked — its item is completed through the fast path and A2 runs. */
+    /**
+     * A1 fails for good: parked, its key stopped, so the chain ends and A2 waits; once an operator cancels A1, A2 runs. A1 never
+     * reaches the partner.
+     */
     @Test
-    void aParkedKeyedItemContinuesItsKey() throws Exception {
+    void aParkedKeyedItemStopsItsKeyUntilItIsCancelled() throws Exception {
         FlowBuilder b = l.builder();
         FlowDefinition def = Line.def(4, STEPS);
         Delivery delivery = b.delivery(def, NO_FILES);
@@ -649,13 +660,18 @@ class FlowWorkerFastPathTest {
         l.gate.open();
 
         w1.poll().await(5, SECONDS);
-        until(() -> l.recorded.claimsInFlight() == 0 && l.rows.size() == 0, () -> "the chain done: " + l.queue.events());
-        l.gate.joinPassed();
-
-        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> none"), l.queue.events(), "no backlog known: the chain end claims nothing (D-121 A6)");
+        until(() -> l.recorded.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "the chain done: " + l.queue.events());
+        assertEquals(List.of("claim w1 -> [1@1]", "stop 1@1 -> true"), l.queue.events(), "A1 stopped: the chain ends");
         List<Parked> parked = l.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(List.of(a1.id()), parked.stream().map(Parked::messageId).toList(), "A1 parked");
-        assertEquals(List.of(a2.id()), l.sentIds(), "A2 went on");
+        assertEquals(0, w1.poll().await(5, SECONDS), "A2 waits behind A1");
+
+        FailedMessages.Actor by = new FailedMessages.Actor("ops", "127.0.0.1");
+        assertInstanceOf(FailedMessages.Done.class, new InMemoryFailedMessages(l.rows).cancel(a1.id(), by, Optional.empty()).await(), "A1 cancelled");
+        assertEquals(1, w1.poll().await(5, SECONDS), "A2 is claimed");
+        until(() -> l.rows.size() == 0 && w1.unsettled() == 0, () -> "A2 done: " + l.queue.events());
+        l.gate.joinPassed();
+        assertEquals(List.of(a2.id()), l.sentIds(), "A2 went on after the cancel; A1 never reached the partner");
     }
 
     /**

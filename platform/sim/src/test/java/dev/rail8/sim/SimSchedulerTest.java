@@ -1,6 +1,8 @@
 package dev.rail8.sim;
 
 import dev.rail8.api.Step;
+import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.Intake;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
@@ -102,6 +104,33 @@ class SimSchedulerTest {
     }
 
     /**
+     * A keyed message that fails for good stops its key, and the operator acts on the stop: an ACT unit naming the message, in the
+     * run and not only in the drain. Every partner call refused, each stop is acted on — retried and cancelled in turn, a retried
+     * message stopping again — and the run passes, so the oracle saw each act; seed 0x1 under V1 stops keys and acts on them too.
+     * With no call refused nothing stops and nobody acts.
+     */
+    @Test
+    void aStoppedKeyIsActedOnByTheOperator() {
+        SimSeed seed = new SimSeed(1);
+        Units refused = new Units();
+        Verdict v = run(seed, SimConfig.V1.withRate(FaultKind.REFUSE, 1.0), 200, refused);
+        assertTrue(v.passed(), v::report);
+        List<Unit> acts = refused.units.stream().filter(u -> u.kind() == Unit.Kind.ACT).toList();
+        assertTrue(acts.size() >= 2, () -> "fewer acts than one retry and one cancel: " + acts);
+        assertTrue(acts.stream().allMatch(u -> u.messageId().isPresent()), () -> "an ACT names no message: " + acts);
+        assertTrue(acts.stream().anyMatch(u -> u.tick() < 200), () -> "the operator acted in the drain alone: " + acts);
+
+        Units v1 = new Units();
+        Verdict golden = run(seed, SimConfig.V1, TICKS, v1);
+        assertTrue(golden.passed(), golden::report);
+        assertTrue(v1.units.stream().anyMatch(u -> u.kind() == Unit.Kind.ACT && u.tick() < TICKS), "seed 0x1 under V1 stopped no key in the run");
+
+        Units calm = new Units();
+        assertTrue(run(seed, SimConfig.V1.withRate(FaultKind.REFUSE, 0.0), 200, calm).passed());
+        assertEquals(List.of(), calm.units.stream().filter(u -> u.kind() == Unit.Kind.ACT).toList(), "an ACT with nothing refused");
+    }
+
+    /**
      * The correct world probing every sim call a message thread makes through the seams — transform, intake, queue, onDraw (there
      * is no MessageStore seam: snapshots go through the run's Trail). At such a call the run is runnable, so the driver must park
      * in its quiesce before it starts another unit; and at each unit start the driver waits until no run thread it has seen is
@@ -184,7 +213,7 @@ class SimSchedulerTest {
                     call("save", arrived.id(), () -> sim.save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned));
         }
 
-        @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
+        @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
             return new WorkQueue() {
                 private String id(long seq) { return idsBySeq.get(seq); }
                 private Future<List<Item>> noted(Future<List<Item>> items) {
@@ -209,8 +238,11 @@ class SimSchedulerTest {
                 @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
                     return call("defer", id(seq), () -> sim.defer(seq, attempts, delay));
                 }
-                @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-                    return call("restart", messageId, () -> sim.restart(messageId, flow, partitionKey, attempt));
+                @Override public Future<Boolean> stop(long seq, int attempts, Parked failure) {
+                    return call("stop", id(seq), () -> sim.stop(seq, attempts, failure));
+                }
+                @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) {
+                    return call("stopped", null, () -> sim.stopped(after, limit));
                 }
                 @Override public Future<Boolean> hold(long seq, int attempts) { return call("hold", id(seq), () -> sim.hold(seq, attempts)); }
                 @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return call("held", null, () -> sim.held(after, limit)); }
@@ -241,7 +273,7 @@ class SimSchedulerTest {
             };
         }
 
-        @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
+        @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
             return new WorkQueue() {
                 @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
                     return sim.enqueue(messageId, flow, step, partitionKey);
@@ -262,9 +294,8 @@ class SimSchedulerTest {
                 }
                 @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return sim.renew(seq, attempts, lease); }
                 @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return sim.defer(seq, attempts, delay); }
-                @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-                    return sim.restart(messageId, flow, partitionKey, attempt);
-                }
+                @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return sim.stop(seq, attempts, failure); }
+                @Override public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return sim.stopped(after, limit); }
                 @Override public Future<Boolean> hold(long seq, int attempts) { return sim.hold(seq, attempts); }
                 @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return sim.held(after, limit); }
                 @Override public Future<Boolean> release(long seq) { return sim.release(seq); }

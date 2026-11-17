@@ -1,4 +1,4 @@
-# expect: /
+# expect: /onFailure
 schemaVersion: 1
 kind: flow
 id: f

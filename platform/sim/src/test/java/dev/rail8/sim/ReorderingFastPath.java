@@ -1,5 +1,7 @@
 package dev.rail8.sim;
 
+import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
@@ -16,8 +18,9 @@ import java.util.TreeMap;
 /**
  * Broken variant REORDERING_FAST_PATH (D-143): the same-key fast path ({@link WorkQueue#completeAndTakeNext}) hands out the
  * newest due row of the key instead of its oldest. Everything else keeps the in-memory queue's rules (a claim takes the oldest
- * row of a key that holds no live lease; leases, attempts as fencing tokens, holds). A {@link WorkQueue} of its own, built
- * over the public interface only: the in-memory queue cannot lease a row that is not the oldest of its key.
+ * row of a key that holds no live lease; leases, attempts as fencing tokens, holds), but for a stop: it parks the message in
+ * the simulation's DLQ and drops its row, so a key never stops and the operator finds nothing to act on. A {@link WorkQueue}
+ * of its own, built over the public interface only: the in-memory queue cannot lease a row that is not the oldest of its key.
  */
 final class ReorderingFastPath implements World {
 
@@ -25,8 +28,8 @@ final class ReorderingFastPath implements World {
 
     @Override public String name() { return NAME; }
 
-    @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
-        return new NewestFirstQueue(clock);
+    @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
+        return new NewestFirstQueue(clock, dlq);
     }
 
     /** The in-memory queue's rules with the fast path taking the newest due row of the key. */
@@ -40,11 +43,13 @@ final class ReorderingFastPath implements World {
         }
 
         private final Clock clock;
+        private final Dlq dlq;
         private final TreeMap<Long, Row> rows = new TreeMap<>();
         private long nextSeq = 1;
 
-        NewestFirstQueue(Clock clock) {
+        NewestFirstQueue(Clock clock, Dlq dlq) {
             this.clock = Objects.requireNonNull(clock, "clock");
+            this.dlq = Objects.requireNonNull(dlq, "dlq");
         }
 
         @Override public synchronized Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
@@ -95,8 +100,20 @@ final class ReorderingFastPath implements World {
             return Future.failedFuture(new UnsupportedOperationException("the simulation's flows schedule no retries (D-135): nothing defers"));
         }
 
-        @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-            return Future.failedFuture(new UnsupportedOperationException("the simulation restarts no park (D-135)"));
+        /** Parks the message and drops its row, as an unordered park does: no key stops. */
+        @Override public synchronized Future<Boolean> stop(long seq, int attempts, Parked failure) {
+            Row r = rows.get(seq);
+            if (!current(r, attempts) || r.item.partitionKey() == null || !r.item.messageId().equals(failure.messageId())) {
+                return Future.succeededFuture(false);
+            }
+            rows.remove(seq);
+            return dlq.park(failure).map(true);
+        }
+
+        /** None: no key stops here. */
+        @Override public Future<Page<Stopped>> stopped(Optional<String> after, int limit) {
+            Page.requireLimit(limit);
+            return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
         }
 
         @Override public synchronized Future<Boolean> hold(long seq, int attempts) {

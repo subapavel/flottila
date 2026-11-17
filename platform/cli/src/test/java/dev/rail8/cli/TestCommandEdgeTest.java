@@ -61,6 +61,32 @@ class TestCommandEdgeTest {
     }
 
     /**
+     * A keyed flow whose partner is down: the message is parked and its key stops behind it, waiting for an operator. The case
+     * settles all the same, at the flow time of the unkeyed one (700 ms + 1 s + 700 ms), and counts the park.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aKeyedMessageThatFailsForGoodSettlesWithItsKeyStopped() throws IOException {
+        Path pkg = flowtestWith(tmp, Map.of("async-order.test.yaml", """
+                schemaVersion: 1
+                kind: test
+                flow: async-order
+                cases:
+                  - name: partner down
+                    send: fixtures/order.xml
+                    mocks:
+                      partner: { fail: 503 }
+                    expect: { status: 202, dlq: 1, retries: 7, sent: { partner: { count: 8 } } }
+                """));
+        CliRuns.rewrite(pkg.resolve("flows/async-order.yaml"), Map.of("recording:", "partitionBy: orderId\nrecording:"));
+
+        Ran ran = run("test", pkg.toString());
+
+        assertEquals(List.of("PASS async-order: partner down (flow time 2400ms)", "1 cases: 1 passed, 0 failed"), ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
      * The archive fails (not retryable): the partner is never sent to. {@code count: 0} holds; {@code equals}, {@code contains}
      * and {@code xpath} with {@code equals} on the partner's sends fail — {@code was no send} — never pass on no send at all.
      */
@@ -185,7 +211,7 @@ class TestCommandEdgeTest {
                     send: fixtures/long-key.xml
                     expect: { error: "timed out" }
                 """));
-        CliRuns.rewrite(pkg.resolve("flows/async-order.yaml"), Map.of("recording:", "partitionBy: orderId\nonFailure: park\nrecording:"));
+        CliRuns.rewrite(pkg.resolve("flows/async-order.yaml"), Map.of("recording:", "partitionBy: orderId\nrecording:"));
         Files.writeString(pkg.resolve("fixtures/long-key.xml"), "<Order><Id>" + "k".repeat(300) + "</Id><Customer>Acme Corp</Customer></Order>");
 
         Ran ran = run("test", pkg.toString());

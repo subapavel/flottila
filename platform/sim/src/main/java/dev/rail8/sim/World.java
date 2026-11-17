@@ -3,6 +3,7 @@ package dev.rail8.sim;
 import dev.rail8.api.Ack;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Step;
+import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.Intake;
 import dev.rail8.core.queue.WorkQueue;
@@ -31,11 +32,12 @@ public interface World {
     }
 
     /**
-     * The work queue of the at-least-once flow, given the simulation's in-memory one and the run's clock. The simulation's claim
-     * cap (a claim at most 1, {@code []} to a claim from any thread but the driver) wraps what this returns; the simulation reads
-     * the queue only through {@link WorkQueue}.
+     * The work queue of the at-least-once flow, given the simulation's in-memory one, the run's clock and the DLQ the simulation's
+     * queue parks in (a queue of its own parks there too). The simulation's claim cap (a claim at most 1, {@code []} to a claim
+     * from any thread but the driver) wraps what this returns; the simulation reads the queue only through {@link WorkQueue}, and
+     * its operator retries and cancels only what the simulation's queue stopped.
      */
-    default WorkQueue queue(WorkQueue sim, Clock clock) {
+    default WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
         return sim;
     }
 
@@ -60,12 +62,13 @@ public interface World {
      *
      * @param tick the tick it runs in
      * @param kind what it is
-     * @param messageId the message it starts, releases, wakes or the poll claimed; empty for an ADVANCE or a poll that claimed nothing
+     * @param messageId the message it starts, releases, wakes or acts on, or the poll claimed; empty for an ADVANCE or a poll that
+     *                  claimed nothing
      */
     record Unit(long tick, Kind kind, Optional<String> messageId) {
 
-        /** The driver's units. */
-        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE }
+        /** The driver's units; an ACT is the operator's retry or cancel of a stopped message. */
+        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE, ACT }
     }
 
     /**

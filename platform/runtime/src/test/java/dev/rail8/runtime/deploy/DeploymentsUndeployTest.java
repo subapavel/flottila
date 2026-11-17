@@ -266,7 +266,7 @@ class DeploymentsUndeployTest {
 
     /** The 409 line of an at-least-once flow of the package whose items the work queue holds (P2-02c r2, the packet's text). */
     static String itemsLine(String localFlow) {
-        return "flow '" + localFlow + "' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once they are done";
+        return "flow '" + localFlow + "' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once they are done";
     }
 
     List<String> rowNames() {

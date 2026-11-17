@@ -40,7 +40,7 @@ class RetryBoundsTest {
 
     static FlowDefinition withRetries(FlowDefinition f, Optional<RetryPolicy> retries) {
         return new FlowDefinition(f.id(), f.version(), f.fromEndpoint(), f.deliveryMode(), f.saveTimeout(), f.timeout(), f.maxBodyBytes(),
-                f.maxInFlight(), f.maxInFlightBytes(), f.partitionBy(), f.onFailure(), f.forwardHeaders(), f.retry(), retries, f.recording(), f.steps());
+                f.maxInFlight(), f.maxInFlightBytes(), f.partitionBy(), f.forwardHeaders(), f.retry(), retries, f.recording(), f.steps());
     }
 
     @Test
