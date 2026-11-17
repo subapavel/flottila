@@ -1,0 +1,73 @@
+# Differential cases (ADR-0020) of #116 "S2b.11 Value form in the optimised compile" (ADR-0008, ADR-0047 and its #116
+# amendment, ADR-0046 and its #116 amendment, F-56, GLOSSARY "Run form"): in the optimised compile a node whose
+# cardinality is at most one and that may not break out runs by eval, which returns its one result or none; its push
+# parent, a Call or the run entry emits it. Each case puts a value-form node where a wrong eval would show: a value with
+# no result, a Try or a Label around an eligible body, a downstream error, a Break next to an eligible value, and a deep
+# value-form recursion. Every case is required at #116 (oracle/src/test/resources/require/116.txt). Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in value-form.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# A bound value with no result for some inputs: the body runs only for the values select keeps.
+
+case value-form/a-value-with-no-result-binds-nothing
+arg -c
+filter [.[]|(.a|select(.>1)) as $x|[$x]]
+stdin [{"a":1},{"a":2},{"a":3}]\n
+end
+
+# A Try around an eligible body: its catch takes the body's own error, here tonumber's on "x".
+
+case value-form/try-catches-the-error-of-its-value-body
+arg -c
+filter [.[]|try ((.a|tonumber) as $x|$x+1) catch "bad"]
+stdin [{"a":"1"},{"a":"x"}]\n
+end
+
+# The inner Try's catch is around its body only: the error raised downstream of its result goes to the outer Try.
+
+case value-form/an-inner-try-lets-a-downstream-error-through
+arg -c
+filter [.[]|try (try . catch "inner"|error("down")) catch "outer"]
+stdin [1]\n
+end
+
+# A Label whose body breaks only to it: the break gives no value, so the Bind's body runs for 1 alone.
+
+case value-form/a-label-catches-its-own-break-as-no-value
+arg -c
+filter [.[]|(label $f|if .>1 then break $f else .*10 end) as $x|$x]
+stdin [1,2,3]\n
+end
+
+# A Reduce whose init has no result gives none: the Bind's body never runs.
+
+case value-form/a-reduce-of-an-empty-init-binds-nothing
+arg -c
+filter [(reduce 1 as $x (empty; .)) as $y|$y]
+stdin null\n
+end
+
+# An eligible value beside a Break: the value's result is emitted before the break ends the Label.
+
+case value-form/a-value-before-a-break-is-emitted
+arg -c
+filter [label $out|(1|.+1) as $x|$x, break $out]
+stdin null\n
+end
+
+# A value-form recursion 3000 deep: each level binds the result of the level below.
+
+case value-form/a-value-form-recursion-3000-deep
+arg -c
+filter def f: if .==0 then 0 else (.-1|f) as $x|$x+1 end; 3000|f
+stdin null\n
+end
+
+# X2-dot: X2 (calls/break-through-another-group) with its break replaced by ".": nothing breaks, so the roots of f and
+# g run by eval.
+
+case value-form/x2-dot-calls-into-another-group-by-eval
+arg -c
+filter [label $l|def g: if .>3 then . else .+1|g end; def f: if .>1 then g else .+1|f end; (0|f),7]
+stdin null\n
+end

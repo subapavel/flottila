@@ -1,0 +1,180 @@
+# The required cases of #68 "S2a.18 Control flow: if, try, error, label" (ADR-0020): give this file to the ticket gate
+# as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The implementation merges after #63, #65 (arithmetic), #66 (comparison, If) and #67 (variables, AltBind), which
+# several of these cases also need.
+
+# jqtest: the census cases whose ticket column is S2a.18 (oracle/src/test/resources/census/jqtest.tsv), jq.test lines
+# 205, 1314, 1318, 1322, 1330, 1334, 1338, 1342, 1346, 1350, 1354, 1358, 1362, 1366, 1460, 1464, 1468, 1473, 1477, 1481,
+# 1485, 1493, 1641, 1997, 2001, 2046, 2050, 2054, 2058, 2062, 2346, 2487 and man.test lines 333, 769, 819, 823, 827.
+jq.test#10f201e721c6
+jq.test#200bf2108a0a
+jq.test#206b2c8d53b4
+jq.test#2629edc3cfc2
+jq.test#29ebd7fde9a0
+jq.test#417b92383173
+jq.test#4556621475e5
+jq.test#5482bd8f2a67
+jq.test#5f2c137c6b47
+jq.test#630c96e6c06d
+jq.test#64215a29d656
+jq.test#7492462a71d5
+jq.test#74b630f18468
+jq.test#795130ad714f
+jq.test#86c119064e14
+jq.test#95d9b6f95880
+jq.test#97f5e4dc37e2
+jq.test#98739fd06e44
+jq.test#98ea061a7de8
+jq.test#9b89c2a0890b
+jq.test#a3fde6bda96a
+jq.test#ac3b340cf92a
+jq.test#bc202bd96a6b
+jq.test#bd1c15c53252
+jq.test#ca6db5b09dad
+jq.test#cb2a73a1b2c4
+jq.test#cbb9f985a2b9
+jq.test#cfa8c3136dec
+jq.test#e5bf3a62e06e
+jq.test#e83227797827
+jq.test#f4d4973fa3cf
+jq.test#f9a2df08b3db
+man.test#0337f4ae59f6
+man.test#42865e81b74e
+man.test#44691d3b8fbd
+man.test#cf1b0ae15f45
+man.test#ed511ef408fb
+
+# jqtest: #64's hand-over (comment on #68, 2026-11-13). The census credits jq.test lines 1456 and 1452 to S2a.15, but
+# both need term? (Try); the census credit fix is a carry on #75.
+jq.test#5f103bd8e523
+jq.test#eeb224a1461b
+
+# jqtest: #65's hand-over (comment on #68, 2026-11-13): .[] | (1 / .)? needs Try; removed from require/65.txt.
+man.test#795c6f448225
+
+# differential: #66's hand-over (comment on #68, 2026-11-13): cases that need error/1 or try, in diff/alternative.cases,
+# logic.cases and compare-depth.cases.
+alternative/error-builtin
+alternative/error-builtin-before-a-truthy-result
+alternative/error-builtin-after-a-truthy-result
+alternative/error-builtin-after-a-falsy-result
+alternative/error-builtin-on-the-right
+alternative/error-builtin-right-skipped
+logic/and-false-skips-error-builtin
+logic/or-true-skips-error-builtin
+logic/and-true-runs-error-builtin
+logic/and-left-error-builtin
+compare-depth/arrays-10001-caught
+
+# differential: diff/control.cases, except the cases that need several documents on stdin (spec 5:
+# control/error-each-input, control/error-second-input, control/label-each-input) and -n (control/error-no-input).
+
+# if
+control/if-then-else
+control/if-elif-chain
+control/if-no-else
+control/if-elif-no-else
+control/if-cond-several
+control/if-cond-outer-loop
+control/if-elif-cond-several
+control/if-cond-several-no-else
+control/if-cond-error
+control/if-cond-error-after-result
+control/if-branch-input
+
+# try and ?
+control/try-catch-value
+control/try-no-catch
+control/try-no-error
+control/try-handler-generator
+control/try-handler-input
+control/try-navigation-error
+control/try-per-element
+control/try-downstream-passes
+control/try-nested-downstream
+control/try-triple-downstream
+control/try-inner-downstream
+control/try-inner-downstream-handler
+control/try-op-downstream
+control/try-collect-downstream
+control/try-collect-downstream-caught
+control/try-postfix-downstream
+control/try-handler-raises
+control/try-handler-raises-caught
+control/try-handler-downstream
+control/try-abandons
+control/try-abandons-no-handler
+control/try-postfix-generator
+control/try-postfix-per-element
+
+# O2: green only once #67 (AltBind) lands, which blocks #68.
+control/try-altbind-downstream
+control/try-altbind-inner
+
+# error
+control/error-string
+control/error-input-string
+control/error-null-uncaught
+control/error-null-caught
+control/error-null-input
+control/error-number
+control/error-big-literal
+control/error-big-literal-view
+control/error-false
+control/error-array
+control/error-object-utf8
+control/error-view-payload
+control/error-view-string
+control/error-view-caught
+control/error-nul-string
+control/error-escapes
+control/error-generator-arg
+control/error-long-object
+control/error-long-string
+control/error-after-results
+control/error-forged-break-uncaught
+
+# label and break
+control/label-no-break
+control/label-break-generator
+control/label-collect-break
+control/label-alt-break
+control/label-alt-left-then-break
+control/label-if-break
+control/label-bind-break
+control/label-nested-same-name
+control/label-break-outer
+control/label-break-inner
+control/label-var-shadow
+control/label-break-after-error
+control/label-as-var
+control/break-unknown
+control/break-out-of-scope
+control/break-and-var-unknown
+
+# DEVIATIONS.md "A break is not an error", rows 1 to 4 (deviation break-not-error); row 3, a break through ?//, is the
+# review's ruling 1 (comment on #68).
+control/deviation-try-break
+control/deviation-postfix-break
+control/deviation-altbind-break
+control/deviation-forged-break
+
+# Review ruling 4 (comment on #68): the precedence cases #68 owns, in diff/precedence.cases.
+precedence/catch-takes-a-postfix-term
+precedence/if-is-a-term
+precedence/label-scopes-the-comma
+precedence/negation-below-optional
+precedence/optional-binds-the-term
+precedence/try-takes-a-postfix-term
+
+# Review ruling 4: census rows that need only S2a.11 to S2a.18 but are credited to S2a.20, as census.java lacks the
+# #67 -> #68 edge (a carry): jq.test lines 315, 319, 323, 1499, 2363, 2367 and man.test lines 337, 341, 867.
+jq.test#89a1f7b1b067
+jq.test#a271da33fe01
+jq.test#40e3b3689ad6
+jq.test#05d1a0b3f21a
+jq.test#9610a98460b6
+jq.test#e3fec0b48f1b
+man.test#a6f9b7d20aa6
+man.test#05d1a0b3f21a
+man.test#cb71a15b95ff

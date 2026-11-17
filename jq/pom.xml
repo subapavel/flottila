@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Root: parent and aggregator, not published (ADR-0013, ADR-0014). Plugin and library versions were
+     checked on Maven Central on 2026-11-11 (the evidence comment of ticket #23 lists them). -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.rail8.jq</groupId>
+  <artifactId>rail8-jq-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Rail8 jq</name>
+  <description>The jq language over JSON bytes on Java 25: parent and aggregator.</description>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>query-core</module>
+    <module>jq-core</module>
+    <module>jq-cli</module>
+    <!-- Build tool: oracle's PIT run loads it as a plugin dependency (F-84). -->
+    <module>pit-filter</module>
+    <module>oracle</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+    <!-- The engine's root: the repository holds it as jq/ and keeps the one .mvn/ at its own root, which Maven finds
+         from the root, from jq/ and with -f jq/pom.xml alike. -->
+    <jq.root>${maven.multiModuleProjectDirectory}/jq</jq.root>
+
+    <!-- Plugins -->
+    <maven-clean-plugin.version>3.5.0</maven-clean-plugin.version>
+    <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <!-- Apache-2.0: Error Prone, the static analysis javac runs; a tool on the processor path, not a dependency -->
+    <errorprone.version>2.52.0</errorprone.version>
+    <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
+    <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
+    <maven-install-plugin.version>3.2.0</maven-install-plugin.version>
+    <maven-enforcer-plugin.version>3.7.0</maven-enforcer-plugin.version>
+    <jacoco-maven-plugin.version>0.8.16</jacoco-maven-plugin.version>
+    <pitest-maven.version>1.30.2</pitest-maven.version>
+    <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
+    <license-maven-plugin.version>2.9.0</license-maven-plugin.version>
+    <exec-maven-plugin.version>3.7.0</exec-maven-plugin.version>
+    <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
+
+    <!-- Libraries -->
+    <junit.version>6.1.3</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+    <jmh.version>1.37</jmh.version>
+
+    <!-- Set -Dchecks.skip=true to skip the word check (the Windows job has no bash). -->
+    <checks.skip>false</checks.skip>
+    <!-- JaCoCo fills this in; surefire reads it as @{argLine}. -->
+    <argLine/>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-query-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-cli</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <!-- Every module tests with JUnit and AssertJ; there is no mocking library (ADR-0014). -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>${maven-clean-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>${maven-resources-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>${maven-install-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler-plugin.version}</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+            <!-- JMH's annotation processor runs in bench/jmh (ADR-0014). -->
+            <proc>full</proc>
+            <showWarnings>true</showWarnings>
+            <!-- Error Prone runs inside javac on main and test sources and fails the build on a check of severity
+                 ERROR. Its warning checks are off here: -Werror would turn each of them into a failure. It needs the
+                 javac internals opened in the repository's .mvn/jvm.config. -->
+            <compilerArgs>
+              <arg>-Xlint:all</arg>
+              <arg>-Werror</arg>
+              <arg>-XDcompilePolicy=simple</arg>
+              <arg>--should-stop=ifError=FLOW</arg>
+              <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+              <arg>-Xplugin:ErrorProne -XepDisableAllWarnings</arg>
+            </compilerArgs>
+            <annotationProcessorPaths>
+              <path>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_core</artifactId>
+                <version>${errorprone.version}</version>
+              </path>
+            </annotationProcessorPaths>
+          </configuration>
+        </plugin>
+        <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+          <configuration>
+            <!-- Unit tests run on the class path: white-box access, JaCoCo and PIT stay simple (ADR-0013). -->
+            <useModulePath>false</useModulePath>
+            <argLine>@{argLine}</argLine>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>${maven-enforcer-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-maven</artifactId>
+          <version>${pitest-maven.version}</version>
+          <dependencies>
+            <dependency>
+              <groupId>org.pitest</groupId>
+              <artifactId>pitest-junit5-plugin</artifactId>
+              <version>${pitest-junit5-plugin.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <targetClasses>
+              <param>dev.rail8.jq.*</param>
+            </targetClasses>
+            <targetTests>
+              <param>dev.rail8.jq.*</param>
+            </targetTests>
+            <!-- A ticket that changes only records or interfaces has no mutants (ADR-0014). -->
+            <failWhenNoMutations>false</failWhenNoMutations>
+            <!-- Two minions: F-84 (c); 3 needs a measured peak RSS, 4 is never allowed. -->
+            <threads>2</threads>
+            <outputFormats>
+              <outputFormat>XML</outputFormat>
+              <outputFormat>HTML</outputFormat>
+            </outputFormats>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>license-maven-plugin</artifactId>
+          <version>${license-maven-plugin.version}</version>
+          <configuration>
+            <!-- CLAUDE.md, Dependencies: Apache 2.0, MIT, MIT-0, BSD, EDL 1.0, ISC, 0BSD, MPL 2.0, EPL. -->
+            <failOnMissing>true</failOnMissing>
+            <failOnBlacklist>true</failOnBlacklist>
+            <includedLicenses>
+              <includedLicense>Apache-2.0</includedLicense>
+              <includedLicense>MIT</includedLicense>
+              <includedLicense>MIT-0</includedLicense>
+              <includedLicense>BSD</includedLicense>
+              <includedLicense>EDL-1.0</includedLicense>
+              <includedLicense>ISC</includedLicense>
+              <includedLicense>0BSD</includedLicense>
+              <includedLicense>MPL-2.0</includedLicense>
+              <includedLicense>EPL</includedLicense>
+            </includedLicenses>
+            <licenseMerges>
+              <licenseMerge>Apache-2.0|Apache License, Version 2.0|The Apache License, Version 2.0|The Apache Software License, Version 2.0|Apache 2.0|Apache License 2.0|Apache License v2.0|Apache Software License - Version 2.0</licenseMerge>
+              <licenseMerge>MIT|MIT License|The MIT License|MIT license</licenseMerge>
+              <licenseMerge>BSD|BSD License|BSD-2-Clause|BSD-3-Clause|The BSD License|The BSD 3-Clause License|BSD 3-Clause</licenseMerge>
+              <licenseMerge>EPL|Eclipse Public License v2.0|Eclipse Public License - v 2.0|Eclipse Public License 2.0|EPL-2.0|Eclipse Public License v1.0|EPL-1.0</licenseMerge>
+              <licenseMerge>EDL-1.0|Eclipse Distribution License - v 1.0|EDL 1.0</licenseMerge>
+              <licenseMerge>MPL-2.0|Mozilla Public License 2.0|Mozilla Public License, Version 2.0</licenseMerge>
+            </licenseMerges>
+            <outputDirectory>${project.build.directory}/licenses</outputDirectory>
+            <thirdPartyFilename>THIRD-PARTY.txt</thirdPartyFilename>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>${exec-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${maven-dependency-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <!-- Every module: Java and Maven versions, convergence, the JMH ban (bench/jmh skips this execution). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-common</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9.11,4)</version>
+                </requireMavenVersion>
+                <dependencyConvergence/>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>org.openjdk.jmh</exclude>
+                  </excludes>
+                  <message>JMH is allowed in bench/jmh only (ADR-0014).</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Product modules (query-core, jq-core, jq-cli) switch this one on; it is a no-op elsewhere. -->
+          <execution>
+            <id>enforce-product</id>
+            <phase>none</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>com.fasterxml.jackson.core</exclude>
+                    <exclude>com.fasterxml.jackson.jr</exclude>
+                    <exclude>com.fasterxml.jackson.dataformat</exclude>
+                    <exclude>com.fasterxml.jackson.jakarta.rs</exclude>
+                    <exclude>tools.jackson.core</exclude>
+                    <exclude>com.google.code.gson</exclude>
+                    <exclude>org.json</exclude>
+                    <exclude>com.json</exclude>
+                    <exclude>org.glassfish:jakarta.json</exclude>
+                    <exclude>org.eclipse.parsson</exclude>
+                    <exclude>jakarta.json</exclude>
+                    <exclude>javax.json</exclude>
+                    <exclude>com.alibaba:fastjson</exclude>
+                    <exclude>com.alibaba.fastjson2</exclude>
+                    <exclude>com.jayway.jsonpath</exclude>
+                    <exclude>net.minidev</exclude>
+                    <exclude>com.dslplatform</exclude>
+                    <exclude>org.apache.johnzon</exclude>
+                    <exclude>com.squareup.moshi</exclude>
+                    <exclude>org.noggit</exclude>
+                  </excludes>
+                  <message>No JSON library in a product module (ADR-0013).</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>jacoco-prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Licences of every dependency, test scope included, against CLAUDE.md's list. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>license-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>add-third-party</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Root only: the word check (profiles lf-check and trailers add the other two checks). -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <inherited>false</inherited>
+        <executions>
+          <execution>
+            <id>check-core-neutral</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <skip>${checks.skip}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${project.basedir}/scripts/check-core-neutral.sh</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- JMH lives in bench/jmh and builds only here (ADR-0013). -->
+    <profile>
+      <id>bench</id>
+      <modules>
+        <module>bench/jmh</module>
+      </modules>
+    </profile>
+    <!-- ./mvnw -B -Plf-check validate. Opt-in: the script fails while a tracked file has unstaged changes. -->
+    <profile>
+      <id>lf-check</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <inherited>false</inherited>
+            <executions>
+              <execution>
+                <id>check-lf-checkout</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>bash</executable>
+                  <arguments>
+                    <argument>${project.basedir}/scripts/check-lf-checkout.sh</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- ./mvnw -B -Ptrailers -Dtrailers.range=origin/main..HEAD validate -->
+    <profile>
+      <id>trailers</id>
+      <properties>
+        <trailers.range>origin/main..HEAD</trailers.range>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <inherited>false</inherited>
+            <executions>
+              <execution>
+                <id>check-trailers</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>bash</executable>
+                  <arguments>
+                    <argument>${project.basedir}/scripts/check-trailers.sh</argument>
+                    <argument>${trailers.range}</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

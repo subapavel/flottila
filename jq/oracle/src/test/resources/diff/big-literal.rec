@@ -1,0 +1,85 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case big-literal/ticket-equal
+def accc10b794bb
+rc 0
+stdout [false,false]\n
+stderr
+end
+
+case big-literal/filter-operators
+def f612742261cd
+rc 0
+stdout [true,true,true,true,true,false,true,true,true]\n
+stderr
+end
+
+case big-literal/filter-subnormal
+def de45242791d2
+rc 0
+stdout [false,true,false,true]\n
+stderr
+end
+
+case big-literal/filter-negated
+def dccb8a50f2cc
+rc 0
+stdout [false,true,false,false]\n
+stderr
+end
+
+case big-literal/filter-tonumber
+def 26e8c9064ee5
+rc 0
+stdout [false,false,true,false]\n
+stderr
+end
+
+case big-literal/filter-sort-unique
+def 03b46808803a
+rc 0
+stdout [-1E+401,-1E+400,0,1E-401,1E-400,1E+400,1E+400,1E+401]\n[-1E+401,-1E+400,0,1E-401,1E-400,1E+400,1E+401]\n[1,1,1,1,1,2,1]\n-1E+401\n1E+401\n
+stderr
+end
+
+case big-literal/input-operators
+def a6999ae06973
+rc 0
+stdout [false,false,false,true,true,true,true]\n
+stderr
+end
+
+case big-literal/input-against-filter
+def 7895009bcf6f
+rc 0
+stdout [true,false,false,false,true,true,true]\n
+stderr
+end
+
+case big-literal/input-sort-unique
+def e53c5d22bf48
+rc 0
+stdout [-1E+401,-1E+400,0,1E-401,1E-400,1.5E-323,1.6E-323,1E+400,1E+400,1E+401]\n[-1E+401,-1E+400,0,1E-401,1E-400,1.5E-323,1.6E-323,1E+400,1E+401]\n[1,1,1,1,1,1,1,2,1]\n-1E+401\n1E+401\n
+stderr
+end
+
+case big-literal/input-bound
+def f1d22fb03090
+rc 0
+stdout [false,true,false,false,false]\n
+stderr
+end
+
+case big-literal/input-big-value
+def 7fa7e7088ea8
+rc 0
+stdout [true,false,true,true,false,true]\n
+stderr
+end
+
+case big-literal/input-tiny-value
+def 6fab1d64b588
+rc 0
+stdout [true,false,false,true,false,true]\n
+stderr
+end

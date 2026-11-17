@@ -1,0 +1,109 @@
+# The required cases of #71 "S2a.21 Prelude loader" (ADR-0020, ADR-0042): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The implementation merges after #69 (reduce, foreach, range/2) and #70 (definitions and closures); every case below
+# needs only tickets up to S2a.21 (the census's tickets column, and the filters read one by one by the test-author).
+
+# jqtest: the census cases whose ticket column is S2a.21 (the ticket body's "census cases assigned to S2a.21"):
+# abs/0, map/1, first/1, isempty/1, add/0 and add/1. abs is builtin.jq's `if . < 0 then - . else . end` (#65, #66).
+jq.test#34682b07fbf3
+jq.test#39ee5cf2fe73
+jq.test#504b626851af
+jq.test#575b2c608904
+jq.test#666c81527b86
+jq.test#71b7c7a3680f
+jq.test#73699322fe3c
+jq.test#79db4253efc3
+jq.test#86ce74700313
+jq.test#ddce11ceeba2
+jq.test#e54c99c10120
+man.test#03d4ff4e5b5c
+man.test#5a75c08fb948
+man.test#617996232d4b
+man.test#65086de6f514
+man.test#7a95927e42bc
+man.test#8276eaad760e
+man.test#ae85095d2c2c
+man.test#afedb78014d6
+man.test#c3f05f6a866f
+man.test#c4a7042504d6
+man.test#c7f47a0eac75
+
+# jqtest: the census cases that need range/1, builtin.jq's `def range($x): range(0;$x);` (the #69 hand-over, ADR-0041).
+# The census credits them to S2a.22 until the implementer adds the BLOCKED_BY edge S2a.21 <- S2a.19 (design approval,
+# C2); their tickets column already stops at S2a.21. jq.test#7587b2c9ce99 is [foreach range(5) as $item (0; $item)].
+# man.test#c767d03f401e also needs first/0, last/0 and nth/1, all builtin.jq indexes.
+jq.test#10f41465d752
+jq.test#32a55d66aa4c
+jq.test#3721017d6dac
+jq.test#3b4bc53ebf35
+jq.test#659d070cbd30
+jq.test#7587b2c9ce99
+jq.test#8c17c4284507
+jq.test#943f84e6aa1f
+jq.test#9d9b0ca693b8
+jq.test#9dfa2ccc089a
+jq.test#ae752864b192
+man.test#bafd6a8a746e
+man.test#c767d03f401e
+
+# differential: #65's 15 reduce cases of diff/arith-depth.cases, recorded on t/65-arithmetic. Each is
+# `reduce range(N) as $i (…)` and needs range/1; they arrive on the integration branch with #65's merge.
+arith-depth/reduce-merge-empty-innermost-10000
+arith-depth/reduce-merge-empty-innermost-10001
+arith-depth/reduce-merge-number-innermost-10001
+arith-depth/reduce-merge-number-innermost-10002
+arith-depth/reduce-merge-million
+arith-depth/reduce-merge-shallow-right-10001
+arith-depth/reduce-merge-empty-left-10002
+arith-depth/reduce-equal-arrays-10000
+arith-depth/reduce-equal-arrays-10001
+arith-depth/reduce-equal-objects-10000
+arith-depth/reduce-equal-objects-10001
+arith-depth/reduce-depth-before-kind-10000
+arith-depth/reduce-depth-before-kind-10001
+arith-depth/reduce-depth-million
+arith-depth/reduce-identity-built-10001
+
+# differential: every case of diff/prelude.cases.
+prelude/limit-range
+prelude/limit-zero
+prelude/limit-negative
+prelude/limit-stops-before-error
+prelude/limit-fewer-than-n
+prelude/map
+prelude/map-empty-array
+prelude/map-object-values
+prelude/map-generator
+prelude/map-error
+prelude/map-scalar
+prelude/select
+prelude/select-truthiness
+prelude/select-generator
+prelude/first
+prelude/first-empty
+prelude/first-before-error
+prelude/first-last-nth
+prelude/first-of-empty-array
+prelude/add-numbers
+prelude/add-empty
+prelude/add-strings
+prelude/add-arrays
+prelude/add-object-values
+prelude/add-generator
+prelude/add-type-error
+prelude/any-all-arrays
+prelude/any-all-empty
+prelude/any-all-condition
+prelude/any-all-generator
+prelude/any-stops-before-error
+prelude/all-stops-before-error
+prelude/isempty
+prelude/shadow-map
+prelude/shadow-empty
+prelude/shadow-first
+prelude/shadow-recurse-dotdot
+prelude/bind-error-before-stub
+prelude/bind-error-map-argument
+prelude/bind-error-path-argument
+prelude/bind-error-range-argument
+prelude/bind-error-getpath-argument

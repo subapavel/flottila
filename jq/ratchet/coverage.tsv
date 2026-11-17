@@ -1,0 +1,4 @@
+module	lines %	branches %
+jq-cli	94	100
+jq-core	99	99
+query-core	100	99

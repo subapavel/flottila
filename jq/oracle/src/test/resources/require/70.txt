@@ -1,0 +1,87 @@
+# The required cases of #70 "S2a.20 Definitions and closures" (ADR-0020, ADR-0040): give this file to the ticket gate
+# as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The implementation merges after #65 (arithmetic), #66 (comparison), #67 (variables) and #68 (control flow), which
+# several of these cases also need.
+
+# jqtest: the census cases whose ticket column is S2a.20 (oracle/src/test/resources/census/jqtest.tsv). None of them
+# needs #69, #71 or #72. Definitions: jq.test lines 784, 789, 794, 798, 803, 808, 860, 868, 873, 878, 884.
+jq.test#00658c49c894
+jq.test#3a02318c5a87
+jq.test#4b72f080b94b
+jq.test#4fc10dca2848
+jq.test#5f8a5d811422
+jq.test#9f860637b48a
+jq.test#a33f53dfa710
+jq.test#ba8f650a5ecb
+jq.test#d96f1673c7e1
+jq.test#e3ce03da0501
+jq.test#ec0b49b8c80f
+# Credited to S2a.20 only as the first ticket that follows both #67 and #68 (census rule), with no definition:
+# jq.test lines 1499, 323, 315, 2363, 319, 2367 and man.test lines 341, 337, 867.
+jq.test#05d1a0b3f21a
+jq.test#40e3b3689ad6
+jq.test#89a1f7b1b067
+jq.test#9610a98460b6
+jq.test#a271da33fe01
+jq.test#e3fec0b48f1b
+man.test#05d1a0b3f21a
+man.test#a6f9b7d20aa6
+man.test#cb71a15b95ff
+
+# differential: #62's recordings of a definition's scope (diff/precedence.cases), then every case of diff/defs.cases.
+precedence/def-scopes-the-pipe
+precedence/def-after-a-pipe
+defs/closure-runs-once-per-use
+defs/closure-unused-never-runs
+defs/closure-runs-on-callee-input
+defs/closure-many-and-empty
+defs/value-param-binds-per-result
+defs/value-param-of-empty-runs-nothing
+defs/value-params-first-outermost
+defs/value-param-name-is-a-filter
+defs/value-param-filter-alone
+defs/later-param-of-a-name-wins
+defs/redefinition-shadows
+defs/call-binds-at-its-definition
+defs/arity-is-part-of-the-name
+defs/three-arities
+defs/nested-def-shadows-param
+defs/def-shadows-native-empty
+defs/true-stays-a-constant
+defs/nested-def-captures-param
+defs/nested-def-captures-value-param
+defs/closure-sees-caller-variable
+defs/captured-variable-is-lexical
+defs/break-in-closure-targets-caller-label
+defs/break-in-def-targets-defining-label
+defs/label-is-not-dynamic
+defs/undefined-arity
+defs/param-called-with-arguments
+defs/forward-reference
+defs/dead-def-is-not-checked
+defs/self-reference-keeps-no-def-alive
+defs/closure-argument-is-checked
+defs/main-error-hides-def-body
+defs/main-error-hides-later-def-body
+defs/closure-variable-unbound
+defs/main-error-hides-closure-argument
+defs/main-error-hides-closure-variable
+defs/main-error-hides-error-argument
+defs/def-error-hides-nested-def
+defs/def-levels-in-source-order
+defs/nested-def-and-closure-levels
+defs/one-error-per-reference-not-per-copy
+defs/two-errors-in-one-body
+defs/value-param-body-unbound-variable
+defs/recursive-def-never-expanded
+defs/recursive-def-dead
+defs/closure-of-the-same-def-is-not-recursion
+# Added by the implementer: the hand-overs (a user def hides not and range/2; $a, error($b) reports $a only) and the
+# Binder's order of inner levels.
+defs/def-shadows-native-not
+defs/def-shadows-native-range
+defs/main-variable-error-hides-error-argument
+defs/operator-operands-inner-levels-right-first
+defs/interpolation-inner-levels-last-first
+defs/update-operands-are-inner-levels
+defs/arithmetic-update-value-is-in-the-level

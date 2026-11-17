@@ -1,0 +1,365 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case defs/closure-runs-once-per-use
+def 03c90658a1aa
+rc 0
+stdout [[1,2,1,2]]\n
+stderr
+end
+
+case defs/closure-unused-never-runs
+def eddbc84cdefe
+rc 0
+stdout 0\n
+stderr
+end
+
+case defs/closure-runs-on-callee-input
+def 1571deb3754e
+rc 0
+stdout 2\n
+stderr
+end
+
+case defs/closure-many-and-empty
+def 5e67acee6654
+rc 0
+stdout [1,2]\n[]\n
+stderr
+end
+
+case defs/value-param-binds-per-result
+def a612ebf2b3a1
+rc 0
+stdout [[1,1],[2,2]]\n
+stderr
+end
+
+case defs/value-param-of-empty-runs-nothing
+def 92f569bba028
+rc 0
+stdout []\n
+stderr
+end
+
+case defs/value-params-first-outermost
+def acb2050c14b9
+rc 0
+stdout [[1,0,3],[1,0,4],[2,0,3],[2,0,4]]\n
+stderr
+end
+
+case defs/value-param-name-is-a-filter
+def 54084d3721fd
+rc 0
+stdout [[1,2],[1,2]]\n
+stderr
+end
+
+case defs/value-param-filter-alone
+def 1ee793839ef0
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/later-param-of-a-name-wins
+def 4f70c365749a
+rc 0
+stdout 2\n
+stderr
+end
+
+case defs/redefinition-shadows
+def f54575718535
+rc 0
+stdout 2\n
+stderr
+end
+
+case defs/call-binds-at-its-definition
+def 81c4ca9a92de
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/arity-is-part-of-the-name
+def d3cc917be3ab
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case defs/three-arities
+def d1bba16f998f
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case defs/nested-def-shadows-param
+def 846feffbb887
+rc 0
+stdout 3\n
+stderr
+end
+
+case defs/def-shadows-native-empty
+def b8d752fced96
+rc 0
+stdout [1]\n
+stderr
+end
+
+case defs/true-stays-a-constant
+def 8f4814aa3721
+rc 0
+stdout true\n
+stderr
+end
+
+case defs/nested-def-captures-param
+def ca3e885bf31b
+rc 0
+stdout 5\n
+stderr
+end
+
+case defs/nested-def-captures-value-param
+def e131d1dca9db
+rc 0
+stdout 2\n
+stderr
+end
+
+case defs/closure-sees-caller-variable
+def 2a369f1e216e
+rc 0
+stdout [[1,2]]\n
+stderr
+end
+
+case defs/captured-variable-is-lexical
+def fcedc056f891
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/break-in-closure-targets-caller-label
+def 7a3b5a5e6ec1
+rc 0
+stdout []\n
+stderr
+end
+
+case defs/break-in-def-targets-defining-label
+def c06f9c66bbd1
+rc 0
+stdout [1]\n
+stderr
+end
+
+case defs/label-is-not-dynamic
+def 4d7d87118783
+rc 3
+stdout
+stderr jq: error: $*label-l is not defined at <top-level>, line 1, column 8:\n    def f: break $l; label $l | f\n           ^^^^^^^^\njq: 1 compile error\n
+end
+
+case defs/undefined-arity
+def 1d6fc66b1e24
+rc 3
+stdout
+stderr jq: error: f/1 is not defined at <top-level>, line 1, column 11:\n    def f: 1; f(2)\n              ^\njq: 1 compile error\n
+end
+
+case defs/param-called-with-arguments
+def 249f60605367
+rc 3
+stdout
+stderr jq: error: g/1 is not defined at <top-level>, line 1, column 11:\n    def f(g): g(1); f(.)\n              ^\njq: 1 compile error\n
+end
+
+case defs/forward-reference
+def 11de4d858b6b
+rc 3
+stdout
+stderr jq: error: b/0 is not defined at <top-level>, line 1, column 8:\n    def a: b; def b: 1; a\n           ^\njq: 1 compile error\n
+end
+
+case defs/dead-def-is-not-checked
+def 15918298d1c9
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/self-reference-keeps-no-def-alive
+def 85414c634352
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/closure-argument-is-checked
+def ac014b662d38
+rc 3
+stdout
+stderr jq: error: zz/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): 1; f(zz)\n                   ^^\njq: 1 compile error\n
+end
+
+case defs/main-error-hides-def-body
+def 4a450e07d5ff
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 1:\n    zz1, (def f: zz2; f)\n    ^^^\njq: 1 compile error\n
+end
+
+case defs/main-error-hides-later-def-body
+def 0dc2ba825720
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 25:\n    def f: zz2; def g: zz3; zz1, f, g\n                            ^^^\njq: 1 compile error\n
+end
+
+case defs/closure-variable-unbound
+def c332006fd8a5
+rc 3
+stdout
+stderr jq: error: $nope is not defined at <top-level>, line 1, column 16:\n    def f(g): 1; f($nope)\n                   ^^^^^\njq: 1 compile error\n
+end
+
+case defs/main-error-hides-closure-argument
+def 91fa87836593
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 22:\n    def f(g): g; f(zz2), zz1\n                         ^^^\njq: 1 compile error\n
+end
+
+case defs/main-error-hides-closure-variable
+def 2c520c0ae062
+rc 3
+stdout
+stderr jq: error: zz/0 is not defined at <top-level>, line 1, column 24:\n    def f(g): 1; f($nope), zz\n                           ^^\njq: 1 compile error\n
+end
+
+case defs/main-error-hides-error-argument
+def 8a081fd7d9f8
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 1:\n    zz1, error(zz2)\n    ^^^\njq: 1 compile error\n
+end
+
+case defs/def-error-hides-nested-def
+def 38c0c3acb600
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 20:\n    def f: def g: zz2; zz1, g; f\n                       ^^^\njq: 1 compile error\n
+end
+
+case defs/def-levels-in-source-order
+def 2e4586e2499f
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 8:\n    def f: zz1; def g: zz2; g, f\n           ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 20:\n    def f: zz1; def g: zz2; g, f\n                       ^^^\njq: 2 compile errors\n
+end
+
+case defs/nested-def-and-closure-levels
+def 5d0ad5b88220
+rc 3
+stdout
+stderr jq: error: zz2/0 is not defined at <top-level>, line 1, column 18:\n    def f(g): def h: zz2; g, h; f(zz1)\n                     ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 31:\n    def f(g): def h: zz2; g, h; f(zz1)\n                                  ^^^\njq: 2 compile errors\n
+end
+
+case defs/one-error-per-reference-not-per-copy
+def 22c26f6fc83c
+rc 3
+stdout
+stderr jq: error: zz/0 is not defined at <top-level>, line 1, column 8:\n    def f: zz; f, f\n           ^^\njq: 1 compile error\n
+end
+
+case defs/two-errors-in-one-body
+def 0885ab2c93e0
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 8:\n    def f: zz1 | zz1; f\n           ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 14:\n    def f: zz1 | zz1; f\n                 ^^^\njq: 2 compile errors\n
+end
+
+case defs/value-param-body-unbound-variable
+def ceddbdcec73a
+rc 3
+stdout
+stderr jq: error: $b is not defined at <top-level>, line 1, column 12:\n    def f($a): $b; f(1)\n               ^^\njq: 1 compile error\n
+end
+
+case defs/recursive-def-never-expanded
+def 712cc3d0f01c
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/recursive-def-dead
+def ea14a04f5e35
+rc 0
+stdout 1\n
+stderr
+end
+
+case defs/closure-of-the-same-def-is-not-recursion
+def 47728d9ba438
+rc 0
+stdout null\n
+stderr
+end
+
+case defs/def-shadows-native-not
+def d517d3951d16
+rc 0
+stdout [5,false]\n
+stderr
+end
+
+case defs/def-shadows-native-range
+def 506b59e83075
+rc 0
+stdout [7,1,2]\n
+stderr
+end
+
+case defs/main-variable-error-hides-error-argument
+def 5e99625ffdca
+rc 3
+stdout
+stderr jq: error: $a is not defined at <top-level>, line 1, column 1:\n    $a, error($b)\n    ^^\njq: 1 compile error\n
+end
+
+case defs/operator-operands-inner-levels-right-first
+def c0505796ef35
+rc 3
+stdout
+stderr jq: error: zz2/0 is not defined at <top-level>, line 1, column 25:\n    def f(g): g; f(zz1) + f(zz2)\n                            ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) + f(zz2)\n                   ^^^\njq: 2 compile errors\n
+end
+
+case defs/interpolation-inner-levels-last-first
+def 6a47217b0e09
+rc 3
+stdout
+stderr jq: error: zz2/0 is not defined at <top-level>, line 1, column 28:\n    def f(g): g; "\\(f(zz1))\\(f(zz2))"\n                               ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 19:\n    def f(g): g; "\\(f(zz1))\\(f(zz2))"\n                      ^^^\njq: 2 compile errors\n
+end
+
+case defs/update-operands-are-inner-levels
+def 066b788d99dc
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 1:\n    zz1, (zz2 |= zz3)\n    ^^^\njq: 1 compile error\n
+end
+
+case defs/arithmetic-update-value-is-in-the-level
+def 75986d8ed223
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 1:\n    zz1, (zz3 += zz2)\n    ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 14:\n    zz1, (zz3 += zz2)\n                 ^^^\njq: 2 compile errors\n
+end

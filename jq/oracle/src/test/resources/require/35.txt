@@ -1,0 +1,78 @@
+# The required cases of #35 "S1.13 Strings" (ADR-0020): give this file to the ticket gate as ORACLE_REQUIRE=<absolute
+# path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# json/i_structure_UTF-8_BOM_empty_object is already in ratchet/oracle/json.txt (architect, K4). The 7 surrogate files
+# that jq-ref rejects with rc 5 (json.rec: i_string_1st_surrogate_but_2nd_missing,
+# i_string_1st_valid_surrogate_2nd_invalid, i_string_incomplete_surrogate_and_escape_valid,
+# i_string_incomplete_surrogates_escape_valid, i_string_invalid_lonely_surrogate, i_string_invalid_surrogate,
+# i_string_inverted_surrogates_U+1D11E) end in the malformed-input Stub until spec 5 and are not required (K2).
+
+# jqtest: jq.test program line 58 (. on "Aa\r\n\t\b\fμ"), moved here from #33.
+jq.test#e3d73b9ff1ab
+
+# differential: the family diff/string.cases (table B of the design).
+string/all-escapes
+string/bad-then-escape
+string/bom-document
+string/bom-only
+string/bom-partial-1
+string/bom-partial-2
+string/bom-then-whitespace
+string/controls
+string/cut-lead-at-end
+string/cut-lead-before-escape
+string/cut-lead-mid
+string/escaped-duplicate-key
+string/escaped-duplicate-key-field
+string/escaped-key-field
+string/lone-low-surrogate
+string/mixed-escapes
+string/raw-del
+string/raw-ff
+
+# json: the ticket's 47 JSONTestSuite files without i_structure_UTF-8_BOM_empty_object, 46.
+json/i_object_key_lone_2nd_surrogate
+json/i_string_UTF-8_invalid_sequence
+json/i_string_UTF8_surrogate_U+D800
+json/i_string_incomplete_surrogate_pair
+json/i_string_invalid_utf-8
+json/i_string_iso_latin_1
+json/i_string_lone_second_surrogate
+json/i_string_lone_utf8_continuation_byte
+json/i_string_not_in_unicode_range
+json/i_string_overlong_sequence_2_bytes
+json/i_string_overlong_sequence_6_bytes
+json/i_string_overlong_sequence_6_bytes_null
+json/i_string_truncated-utf-8
+json/n_structure_UTF8_BOM_no_data
+json/y_object_escaped_null_in_key
+json/y_object_string_unicode
+json/y_string_1_2_3_bytes_UTF-8_sequences
+json/y_string_accepted_surrogate_pair
+json/y_string_accepted_surrogate_pairs
+json/y_string_allowed_escapes
+json/y_string_backslash_and_u_escaped_zero
+json/y_string_backslash_doublequotes
+json/y_string_double_escape_a
+json/y_string_double_escape_n
+json/y_string_escaped_control_character
+json/y_string_escaped_noncharacter
+json/y_string_last_surrogates_1_and_2
+json/y_string_nbsp_uescaped
+json/y_string_null_escape
+json/y_string_one-byte-utf-8
+json/y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF
+json/y_string_three-byte-utf-8
+json/y_string_two-byte-utf-8
+json/y_string_uEscape
+json/y_string_uescaped_newline
+json/y_string_unescaped_char_delete
+json/y_string_unicode
+json/y_string_unicodeEscapedBackslash
+json/y_string_unicode_U+10FFFE_nonchar
+json/y_string_unicode_U+1FFFE_nonchar
+json/y_string_unicode_U+200B_ZERO_WIDTH_SPACE
+json/y_string_unicode_U+2064_invisible_plus
+json/y_string_unicode_U+FDD0_nonchar
+json/y_string_unicode_U+FFFE_nonchar
+json/y_string_unicode_escaped_double_quote
+json/y_string_with_del_character

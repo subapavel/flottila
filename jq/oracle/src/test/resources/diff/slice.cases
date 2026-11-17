@@ -1,0 +1,1413 @@
+# Differential cases (ADR-0020) of #63: the slice .[a:b], its quiet variant and the object key {"start","end"};
+# format: oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in slice.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c but slice/built-pretty and
+# slice/built-pretty-empty, which print a BuiltArray indented.
+
+# P1: each form on each kind (null true 1 "abc" [1] {"a":1}).
+
+case slice/one-two-null
+arg -c
+filter .[1:2]
+stdin null\n
+end
+
+case slice/one-two-true
+arg -c
+filter .[1:2]
+stdin true\n
+end
+
+case slice/one-two-number
+arg -c
+filter .[1:2]
+stdin 1\n
+end
+
+case slice/one-two-string
+arg -c
+filter .[1:2]
+stdin "abc"\n
+end
+
+case slice/one-two-array
+arg -c
+filter .[1:2]
+stdin [1]\n
+end
+
+case slice/one-two-object
+arg -c
+filter .[1:2]
+stdin {"a":1}\n
+end
+
+case slice/to-two-null
+arg -c
+filter .[:2]
+stdin null\n
+end
+
+case slice/to-two-true
+arg -c
+filter .[:2]
+stdin true\n
+end
+
+case slice/to-two-number
+arg -c
+filter .[:2]
+stdin 1\n
+end
+
+case slice/to-two-string
+arg -c
+filter .[:2]
+stdin "abc"\n
+end
+
+case slice/to-two-array
+arg -c
+filter .[:2]
+stdin [1]\n
+end
+
+case slice/to-two-object
+arg -c
+filter .[:2]
+stdin {"a":1}\n
+end
+
+case slice/string-from-null
+arg -c
+filter .["x":]
+stdin null\n
+end
+
+case slice/string-from-true
+arg -c
+filter .["x":]
+stdin true\n
+end
+
+case slice/string-from-number
+arg -c
+filter .["x":]
+stdin 1\n
+end
+
+case slice/string-from-string
+arg -c
+filter .["x":]
+stdin "abc"\n
+end
+
+case slice/string-from-array
+arg -c
+filter .["x":]
+stdin [1]\n
+end
+
+case slice/string-from-object
+arg -c
+filter .["x":]
+stdin {"a":1}\n
+end
+
+case slice/one-from-quiet-null
+arg -c
+filter .[1:]?
+stdin null\n
+end
+
+case slice/one-from-quiet-true
+arg -c
+filter .[1:]?
+stdin true\n
+end
+
+case slice/one-from-quiet-number
+arg -c
+filter .[1:]?
+stdin 1\n
+end
+
+case slice/one-from-quiet-string
+arg -c
+filter .[1:]?
+stdin "abc"\n
+end
+
+case slice/one-from-quiet-array
+arg -c
+filter .[1:]?
+stdin [1]\n
+end
+
+case slice/one-from-quiet-object
+arg -c
+filter .[1:]?
+stdin {"a":1}\n
+end
+
+# P3: every pair of bounds s and e from the input (null, fractions, negatives, beyond the length, 1e300, NaN),
+# on an array of 5 and on a string of 5 code points (e-acute and U+1D11E, 2 and 4 bytes).
+
+case slice/array-null-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":null}\n
+end
+
+case slice/array-null-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":1.2}\n
+end
+
+case slice/array-null-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":3.5}\n
+end
+
+case slice/array-null-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":-2}\n
+end
+
+case slice/array-null-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":-10}\n
+end
+
+case slice/array-null-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":10}\n
+end
+
+case slice/array-null-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":1e300}\n
+end
+
+case slice/array-null-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":-1e300}\n
+end
+
+case slice/array-null-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":null,"e":NaN}\n
+end
+
+case slice/array-1.2-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":null}\n
+end
+
+case slice/array-1.2-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":1.2}\n
+end
+
+case slice/array-1.2-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":3.5}\n
+end
+
+case slice/array-1.2-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":-2}\n
+end
+
+case slice/array-1.2-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":-10}\n
+end
+
+case slice/array-1.2-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":10}\n
+end
+
+case slice/array-1.2-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":1e300}\n
+end
+
+case slice/array-1.2-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":-1e300}\n
+end
+
+case slice/array-1.2-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1.2,"e":NaN}\n
+end
+
+case slice/array-3.5-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":null}\n
+end
+
+case slice/array-3.5-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":1.2}\n
+end
+
+case slice/array-3.5-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":3.5}\n
+end
+
+case slice/array-3.5-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":-2}\n
+end
+
+case slice/array-3.5-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":-10}\n
+end
+
+case slice/array-3.5-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":10}\n
+end
+
+case slice/array-3.5-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":1e300}\n
+end
+
+case slice/array-3.5-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":-1e300}\n
+end
+
+case slice/array-3.5-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3.5,"e":NaN}\n
+end
+
+case slice/array-m2-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":null}\n
+end
+
+case slice/array-m2-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":1.2}\n
+end
+
+case slice/array-m2-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":3.5}\n
+end
+
+case slice/array-m2-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":-2}\n
+end
+
+case slice/array-m2-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":-10}\n
+end
+
+case slice/array-m2-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":10}\n
+end
+
+case slice/array-m2-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":1e300}\n
+end
+
+case slice/array-m2-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":-1e300}\n
+end
+
+case slice/array-m2-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-2,"e":NaN}\n
+end
+
+case slice/array-m10-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":null}\n
+end
+
+case slice/array-m10-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":1.2}\n
+end
+
+case slice/array-m10-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":3.5}\n
+end
+
+case slice/array-m10-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":-2}\n
+end
+
+case slice/array-m10-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":-10}\n
+end
+
+case slice/array-m10-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":10}\n
+end
+
+case slice/array-m10-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":1e300}\n
+end
+
+case slice/array-m10-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":-1e300}\n
+end
+
+case slice/array-m10-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-10,"e":NaN}\n
+end
+
+case slice/array-10-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":null}\n
+end
+
+case slice/array-10-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":1.2}\n
+end
+
+case slice/array-10-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":3.5}\n
+end
+
+case slice/array-10-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":-2}\n
+end
+
+case slice/array-10-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":-10}\n
+end
+
+case slice/array-10-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":10}\n
+end
+
+case slice/array-10-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":1e300}\n
+end
+
+case slice/array-10-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":-1e300}\n
+end
+
+case slice/array-10-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":10,"e":NaN}\n
+end
+
+case slice/array-1e300-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":null}\n
+end
+
+case slice/array-1e300-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":1.2}\n
+end
+
+case slice/array-1e300-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":3.5}\n
+end
+
+case slice/array-1e300-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":-2}\n
+end
+
+case slice/array-1e300-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":-10}\n
+end
+
+case slice/array-1e300-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":10}\n
+end
+
+case slice/array-1e300-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":1e300}\n
+end
+
+case slice/array-1e300-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":-1e300}\n
+end
+
+case slice/array-1e300-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":1e300,"e":NaN}\n
+end
+
+case slice/array-m1e300-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":null}\n
+end
+
+case slice/array-m1e300-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":1.2}\n
+end
+
+case slice/array-m1e300-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":3.5}\n
+end
+
+case slice/array-m1e300-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":-2}\n
+end
+
+case slice/array-m1e300-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":-10}\n
+end
+
+case slice/array-m1e300-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":10}\n
+end
+
+case slice/array-m1e300-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":1e300}\n
+end
+
+case slice/array-m1e300-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":-1e300}\n
+end
+
+case slice/array-m1e300-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":-1e300,"e":NaN}\n
+end
+
+case slice/array-nan-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":null}\n
+end
+
+case slice/array-nan-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":1.2}\n
+end
+
+case slice/array-nan-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":3.5}\n
+end
+
+case slice/array-nan-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":-2}\n
+end
+
+case slice/array-nan-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":-10}\n
+end
+
+case slice/array-nan-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":10}\n
+end
+
+case slice/array-nan-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":1e300}\n
+end
+
+case slice/array-nan-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":-1e300}\n
+end
+
+case slice/array-nan-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":NaN,"e":NaN}\n
+end
+
+case slice/string-null-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":null}\n
+end
+
+case slice/string-null-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":1.2}\n
+end
+
+case slice/string-null-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":3.5}\n
+end
+
+case slice/string-null-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":-2}\n
+end
+
+case slice/string-null-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":-10}\n
+end
+
+case slice/string-null-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":10}\n
+end
+
+case slice/string-null-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":1e300}\n
+end
+
+case slice/string-null-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":-1e300}\n
+end
+
+case slice/string-null-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":null,"e":NaN}\n
+end
+
+case slice/string-1.2-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":null}\n
+end
+
+case slice/string-1.2-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":1.2}\n
+end
+
+case slice/string-1.2-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":3.5}\n
+end
+
+case slice/string-1.2-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":-2}\n
+end
+
+case slice/string-1.2-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":-10}\n
+end
+
+case slice/string-1.2-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":10}\n
+end
+
+case slice/string-1.2-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":1e300}\n
+end
+
+case slice/string-1.2-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":-1e300}\n
+end
+
+case slice/string-1.2-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1.2,"e":NaN}\n
+end
+
+case slice/string-3.5-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":null}\n
+end
+
+case slice/string-3.5-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":1.2}\n
+end
+
+case slice/string-3.5-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":3.5}\n
+end
+
+case slice/string-3.5-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":-2}\n
+end
+
+case slice/string-3.5-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":-10}\n
+end
+
+case slice/string-3.5-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":10}\n
+end
+
+case slice/string-3.5-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":1e300}\n
+end
+
+case slice/string-3.5-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":-1e300}\n
+end
+
+case slice/string-3.5-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3.5,"e":NaN}\n
+end
+
+case slice/string-m2-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":null}\n
+end
+
+case slice/string-m2-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":1.2}\n
+end
+
+case slice/string-m2-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":3.5}\n
+end
+
+case slice/string-m2-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":-2}\n
+end
+
+case slice/string-m2-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":-10}\n
+end
+
+case slice/string-m2-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":10}\n
+end
+
+case slice/string-m2-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":1e300}\n
+end
+
+case slice/string-m2-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":-1e300}\n
+end
+
+case slice/string-m2-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-2,"e":NaN}\n
+end
+
+case slice/string-m10-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":null}\n
+end
+
+case slice/string-m10-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":1.2}\n
+end
+
+case slice/string-m10-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":3.5}\n
+end
+
+case slice/string-m10-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":-2}\n
+end
+
+case slice/string-m10-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":-10}\n
+end
+
+case slice/string-m10-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":10}\n
+end
+
+case slice/string-m10-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":1e300}\n
+end
+
+case slice/string-m10-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":-1e300}\n
+end
+
+case slice/string-m10-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-10,"e":NaN}\n
+end
+
+case slice/string-10-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":null}\n
+end
+
+case slice/string-10-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":1.2}\n
+end
+
+case slice/string-10-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":3.5}\n
+end
+
+case slice/string-10-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":-2}\n
+end
+
+case slice/string-10-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":-10}\n
+end
+
+case slice/string-10-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":10}\n
+end
+
+case slice/string-10-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":1e300}\n
+end
+
+case slice/string-10-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":-1e300}\n
+end
+
+case slice/string-10-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":10,"e":NaN}\n
+end
+
+case slice/string-1e300-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":null}\n
+end
+
+case slice/string-1e300-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":1.2}\n
+end
+
+case slice/string-1e300-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":3.5}\n
+end
+
+case slice/string-1e300-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":-2}\n
+end
+
+case slice/string-1e300-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":-10}\n
+end
+
+case slice/string-1e300-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":10}\n
+end
+
+case slice/string-1e300-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":1e300}\n
+end
+
+case slice/string-1e300-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":-1e300}\n
+end
+
+case slice/string-1e300-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":1e300,"e":NaN}\n
+end
+
+case slice/string-m1e300-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":null}\n
+end
+
+case slice/string-m1e300-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":1.2}\n
+end
+
+case slice/string-m1e300-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":3.5}\n
+end
+
+case slice/string-m1e300-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":-2}\n
+end
+
+case slice/string-m1e300-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":-10}\n
+end
+
+case slice/string-m1e300-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":10}\n
+end
+
+case slice/string-m1e300-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":1e300}\n
+end
+
+case slice/string-m1e300-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":-1e300}\n
+end
+
+case slice/string-m1e300-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":-1e300,"e":NaN}\n
+end
+
+case slice/string-nan-null
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":null}\n
+end
+
+case slice/string-nan-1.2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":1.2}\n
+end
+
+case slice/string-nan-3.5
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":3.5}\n
+end
+
+case slice/string-nan-m2
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":-2}\n
+end
+
+case slice/string-nan-m10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":-10}\n
+end
+
+case slice/string-nan-10
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":10}\n
+end
+
+case slice/string-nan-1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":1e300}\n
+end
+
+case slice/string-nan-m1e300
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":-1e300}\n
+end
+
+case slice/string-nan-nan
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":NaN,"e":NaN}\n
+end
+
+# P3: a start after the end, both in range.
+
+case slice/array-start-after-end
+arg -c
+filter .a[.s:.e]
+stdin {"a":[0,1,2,3,4],"s":3,"e":1}\n
+end
+
+case slice/string-start-after-end
+arg -c
+filter .a[.s:.e]
+stdin {"a":"é𝄞é𝄞é","s":3,"e":1}\n
+end
+
+# P3: an object or array key .[k]. An array key on an array is jv_array_indexes, a Stub owned by #72 (not
+# required by #63).
+
+case slice/key-start-end-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":{"start":1,"end":2}}\n
+end
+
+case slice/key-start-end-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":{"start":1,"end":2}}\n
+end
+
+case slice/key-start-only-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":{"start":1}}\n
+end
+
+case slice/key-start-only-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":{"start":1}}\n
+end
+
+case slice/key-empty-object-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":{}}\n
+end
+
+case slice/key-empty-object-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":{}}\n
+end
+
+case slice/key-bad-start-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":{"start":"x","end":2}}\n
+end
+
+case slice/key-bad-start-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":{"start":"x","end":2}}\n
+end
+
+case slice/key-array-one-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":[1]}\n
+end
+
+case slice/key-array-one-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":[1]}\n
+end
+
+case slice/key-array-empty-on-array
+arg -c
+filter .a[.k]
+stdin {"a":[0,1,2,1],"k":[]}\n
+end
+
+case slice/key-array-empty-on-string
+arg -c
+filter .a[.k]
+stdin {"a":"abc","k":[]}\n
+end
+
+# P4: bounds beyond an int on an object.
+
+case slice/big-bounds-on-object
+arg -c
+filter .[100000000000:200000000000]
+stdin {}\n
+end
+
+# P5: the bounds nest a outside b (ADR-0034), and the first bound's error comes first.
+
+case slice/order-bounds
+arg -c
+filter .[(0,1):(2,3)]
+stdin [0,1,2,3]\n
+end
+
+case slice/scope-bound-error-first
+arg -c
+filter .[.a:.b]
+stdin "s"\n
+end
+
+# P1: an array a slice builds (a BuiltArray, decision 1 of the #63 approval) under each navigation step, pretty and
+# in an error.
+
+case slice/built-index
+arg -c
+filter .[1:] | .[0]
+stdin [0,1,2,3]\n
+end
+
+case slice/built-index-negative
+arg -c
+filter .a[1:][.k]
+stdin {"a":[0,1,2,3],"k":-1}\n
+end
+
+case slice/built-index-past-end
+arg -c
+filter .[1:] | .[3]
+stdin [0,1,2,3]\n
+end
+
+case slice/built-slice
+arg -c
+filter .[1:] | .[1:2]
+stdin [0,1,2,3]\n
+end
+
+case slice/built-slice-negative
+arg -c
+filter .a[1:][.s:]
+stdin {"a":[0,1,2,3],"s":-2}\n
+end
+
+case slice/built-iterate
+arg -c
+filter .[1:] | .[]
+stdin [0,[1],{"a":2},"x"]\n
+end
+
+case slice/built-iterate-postfix
+arg -c
+filter .[1:][]
+stdin [0,[1],{"a":2},"x"]\n
+end
+
+case slice/built-iterate-empty
+arg -c
+filter .[9:] | .[]
+stdin [0,1]\n
+end
+
+case slice/built-element-slice
+arg -c
+filter .[1:] | .[0][1:]
+stdin [0,"abc"]\n
+end
+
+case slice/built-pretty
+filter .[1:]
+stdin [0,[1,2],{"a":[]},"x"]\n
+end
+
+case slice/built-pretty-empty
+filter .[9:]
+stdin [0,1]\n
+end
+
+case slice/built-field-error
+arg -c
+filter .[1:] | .a
+stdin [0,1]\n
+end
+
+# P2: a bound or key that is neither null nor a number: an error, and with ? no result, the run going on.
+
+case slice/bad-start-on-array
+arg -c
+filter .["a":]
+stdin [1,2]\n
+end
+
+case slice/bad-end-on-array
+arg -c
+filter .[:"b"]
+stdin [1,2]\n
+end
+
+case slice/quiet-bad-start-on-array
+arg -c
+filter .["a":]?
+stdin [1,2]\n
+end
+
+case slice/quiet-bad-end-on-array
+arg -c
+filter .[:"b"]?
+stdin [1,2]\n
+end
+
+case slice/quiet-bad-start-on-string
+arg -c
+filter .["a":]?
+stdin "abc"\n
+end
+
+case slice/quiet-bad-then-more
+arg -c
+filter .["a":]?, 1
+stdin [1,2]\n
+end
+
+case slice/quiet-bad-bound-from-input
+arg -c
+filter .a[.s:]?
+stdin {"a":[1,2],"s":"x"}\n
+end
+
+case slice/quiet-key-bad-start-on-array
+arg -c
+filter .a[.k]?
+stdin {"a":[0,1,2],"k":{"start":"x","end":2}}\n
+end
+
+# P2: a bound of each other kind: a boolean, an array, an object.
+
+case slice/bound-true-on-array
+arg -c
+filter .[true:2]
+stdin [1,2,3]\n
+end
+
+case slice/bound-array-on-array
+arg -c
+filter .a[.k:2]
+stdin {"a":[1,2,3],"k":[1]}\n
+end
+
+case slice/bound-object-on-array
+arg -c
+filter .a[:.k]
+stdin {"a":[1,2,3],"k":{}}\n
+end
+
+case slice/bound-true-on-string
+arg -c
+filter .[true:2]
+stdin "abc"\n
+end
+
+# #72 (the #63 hand-over): a NaN bound from the filter's nan/0, which a document cannot give until spec 5 (#63's
+# slice/*-nan cases stay reader Stubs): a NaN start is 0 and a NaN end the length, on an array and on a string.
+
+case slice/nan-bounds-on-array
+arg -c
+filter .[:nan], .[nan:], .[nan:nan], .[nan:1], .[1:nan]
+stdin [0,1,2]\n
+end
+
+case slice/nan-bounds-on-built-array
+arg -c
+filter [range(3)] | .[:nan], .[nan:1]
+stdin null\n
+end
+
+case slice/nan-bounds-on-string
+arg -c
+filter .[:nan], .[nan:], .[nan:nan], .[nan:2], .[1:nan]
+stdin "abc"\n
+end
+
+case slice/nan-bounds-on-null
+arg -c
+filter .[nan:], .[:nan]
+stdin null\n
+end
+

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mutations partial="true">
+<mutation detected='false' status='SURVIVED' numberOfTestsRun='2'><sourceFile>Other.java</sourceFile><mutatedClass>example.fixture.Other</mutatedClass><mutatedMethod>size</mutatedMethod><methodDescription>()J</methodDescription><lineNumber>30</lineNumber><mutator>org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator</mutator><indexes><index>6</index></indexes><blocks><block>0</block></blocks><killingTest/><description>replaced long return with 0</description></mutation>
+</mutations>

@@ -1,0 +1,74 @@
+name: jq-ci
+
+# The jq engine's check on every change (jq/): the build with its unit and oracle tests, licences, bans and the
+# query-core word check, in jq/ with the repository's wrapper. It runs when the engine, the root pom, the wrapper,
+# the root .gitattributes, this file or jq-nightly.yml changes. The long checks (mutation tests, the calibration
+# matrix, the comparison with the reference jq, the benchmarks with the ratchet, the script tests and the Windows
+# build) run once a night in jq-nightly.yml as a report that blocks nothing. The platform's ci.yml checks the
+# sign-off of every commit.
+on:
+  pull_request:
+    paths:
+      - 'jq/**'
+      - 'pom.xml'
+      - '.mvn/**'
+      - 'mvnw*'
+      - '.gitattributes'
+      - '.github/workflows/jq-ci.yml'
+      - '.github/workflows/jq-nightly.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'jq/**'
+      - 'pom.xml'
+      - '.mvn/**'
+      - 'mvnw*'
+      - '.gitattributes'
+      - '.github/workflows/jq-ci.yml'
+      - '.github/workflows/jq-nightly.yml'
+
+concurrency:
+  group: jq-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Central rate-limits shared IPs; the Google mirror of Central serves the same artefacts.
+  MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+
+jobs:
+  build:
+    name: jq · build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: jq
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'jq/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          XML
+      # jacoco.skip: coverage is not measured on a change
+      - name: Build, unit and oracle tests, licences, bans, word check
+        run: ../mvnw -B -Djacoco.skip=true verify

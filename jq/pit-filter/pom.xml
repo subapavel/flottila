@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>dev.rail8.jq</groupId>
+    <artifactId>rail8-jq-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>rail8-jq-pit-filter</artifactId>
+  <name>pit-filter</name>
+  <description>Build tool: a PIT mutation filter that keeps only the mutants a module's own PIT run left alive (F-84).</description>
+
+  <dependencies>
+    <!-- Apache 2.0. pitest-maven brings it at run time; provided keeps it out of this jar's dependencies. -->
+    <dependency>
+      <groupId>org.pitest</groupId>
+      <artifactId>pitest-entry</artifactId>
+      <version>${pitest-maven.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- A build tool, not a class-C module: no ratchet line reads a PIT report of it. -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <skip>true</skip>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

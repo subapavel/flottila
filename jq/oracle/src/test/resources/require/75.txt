@@ -1,0 +1,15 @@
+# The required cases of #75 "S2a.25 Census sweep" (ADR-0020, ADR-0033): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+#
+# The sweep: at 884b5e7 (the regen after #73) every one of the 471 census cases of spec 2a is in
+# ratchet/oracle/jqtest.txt (java scripts/census.java gate 56), and so are the 1800 core-v1 seeds of forms 0 to 5,
+# the seeds that need no recursion (ADR-0033). No 2a case is left to pass, to fix or to move.
+
+# jqtest: every census case whose ticket column is S2a.25. #73 requires them too (the hand-over in 73.txt).
+jq.test#0dea8f727204
+jq.test#11af6b75d24b
+jq.test#1672b4ef1199
+jq.test#1ae9d9b70e85
+jq.test#c25920696c9d
+man.test#11af6b75d24b
+man.test#5bf81149996b

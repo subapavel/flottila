@@ -1,0 +1,2227 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case json/i_number_double_huge_neg_exp
+def 90164587d193
+rc 0
+stdout [1.23456E-787]\n
+stderr
+end
+
+case json/i_number_huge_exp
+def 518c0f6fe95d
+rc 0
+stdout [1.7976931348623157e+308]\n
+stderr
+end
+
+case json/i_number_neg_int_huge_exp
+def e98725615a78
+rc 0
+stdout [-1E+9999]\n
+stderr
+end
+
+case json/i_number_pos_double_huge_exp
+def 2d49de42ea31
+rc 0
+stdout [1.5E+9999]\n
+stderr
+end
+
+case json/i_number_real_neg_overflow
+def bff87eb13721
+rc 0
+stdout [-1.23123E+100005]\n
+stderr
+end
+
+case json/i_number_real_pos_overflow
+def 6ad0680db9fc
+rc 0
+stdout [1.23123E+100005]\n
+stderr
+end
+
+case json/i_number_real_underflow
+def 5b38deb68db7
+rc 0
+stdout [1.23E-9999998]\n
+stderr
+end
+
+case json/i_number_too_big_neg_int
+def 53b62d424479
+rc 0
+stdout [-123123123123123123123123123123]\n
+stderr
+end
+
+case json/i_number_too_big_pos_int
+def 325f637276c9
+rc 0
+stdout [100000000000000000000]\n
+stderr
+end
+
+case json/i_number_very_big_negative_int
+def a43f18e98c20
+rc 0
+stdout [-237462374673276894279832749832423479823246327846]\n
+stderr
+end
+
+case json/i_object_key_lone_2nd_surrogate
+def 8767caaeeb9c
+rc 0
+stdout {"�":0}\n
+stderr
+end
+
+case json/i_string_1st_surrogate_but_2nd_missing
+def 1faf5bbdbe92
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 9\n
+end
+
+case json/i_string_1st_valid_surrogate_2nd_invalid
+def 59f22461f7c8
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 15\n
+end
+
+case json/i_string_UTF-16LE_with_BOM
+def afbfa7783bf5
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/i_string_UTF-8_invalid_sequence
+def bc52d4a4cd28
+rc 0
+stdout ["日ш�"]\n
+stderr
+end
+
+case json/i_string_UTF8_surrogate_U+D800
+def 3d884e16ceaa
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_incomplete_surrogate_and_escape_valid
+def 74d0d2c2a512
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 11\n
+end
+
+case json/i_string_incomplete_surrogate_pair
+def a78b68a3c914
+rc 0
+stdout ["�a"]\n
+stderr
+end
+
+case json/i_string_incomplete_surrogates_escape_valid
+def 43a53d753b53
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 17\n
+end
+
+case json/i_string_invalid_lonely_surrogate
+def 5b645652877b
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 9\n
+end
+
+case json/i_string_invalid_surrogate
+def 30f2469dc012
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 12\n
+end
+
+case json/i_string_invalid_utf-8
+def e50376a2c64d
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_inverted_surrogates_U+1D11E
+def 7169138fae42
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 15\n
+end
+
+case json/i_string_iso_latin_1
+def 397f6fc0f0ac
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_lone_second_surrogate
+def dbef0abb3c6d
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_lone_utf8_continuation_byte
+def ce99a2938ec9
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_not_in_unicode_range
+def bf436c4c26d1
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_overlong_sequence_2_bytes
+def a5a507b9f0d0
+rc 0
+stdout ["��"]\n
+stderr
+end
+
+case json/i_string_overlong_sequence_6_bytes
+def ecd5f2a8ff68
+rc 0
+stdout ["������"]\n
+stderr
+end
+
+case json/i_string_overlong_sequence_6_bytes_null
+def ce55281ef3e8
+rc 0
+stdout ["������"]\n
+stderr
+end
+
+case json/i_string_truncated-utf-8
+def c1ec85cbf0d4
+rc 0
+stdout ["�"]\n
+stderr
+end
+
+case json/i_string_utf16BE_no_BOM
+def 0c6b0d270ab1
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 2\n
+end
+
+case json/i_string_utf16LE_no_BOM
+def 132adc2cd023
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/i_structure_500_nested_arrays
+def a307067863be
+rc 0
+stdout [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n
+stderr
+end
+
+case json/i_structure_UTF-8_BOM_empty_object
+def f2fce6230200
+rc 0
+stdout {}\n
+stderr
+end
+
+case json/n_array_1_true_without_comma
+def f7dccfe7086a
+rc 5
+stdout
+stderr jq: parse error: Expected separator between values at line 1, column 8\n
+end
+
+case json/n_array_a_invalid_utf8
+def 8133511dc8f7
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_array_colon_instead_of_comma
+def 897e49cbf191
+rc 5
+stdout
+stderr jq: parse error: ':' not as part of an object at line 1, column 4\n
+end
+
+case json/n_array_comma_after_close
+def 1a44d5ed4bb8
+rc 5
+stdout [""]\n
+stderr jq: parse error: Expected value before ',' at line 1, column 5\n
+end
+
+case json/n_array_comma_and_number
+def 08ab39c35e67
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 2\n
+end
+
+case json/n_array_double_comma
+def 970cc004f656
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 4\n
+end
+
+case json/n_array_double_extra_comma
+def fed99c8c8dc1
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 6\n
+end
+
+case json/n_array_extra_close
+def 277122fc0792
+rc 5
+stdout ["x"]\n
+stderr jq: parse error: Unmatched ']' at line 1, column 6\n
+end
+
+case json/n_array_extra_comma
+def 05dc7c1439bf
+rc 5
+stdout
+stderr jq: parse error: Expected another array element at line 1, column 5\n
+end
+
+case json/n_array_incomplete
+def 0cd98a631f1f
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 4\n
+end
+
+case json/n_array_incomplete_invalid_value
+def e6325ce6fbe0
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 2\n
+end
+
+case json/n_array_inner_array_no_comma
+def 8637e007266f
+rc 5
+stdout
+stderr jq: parse error: Expected separator between values at line 1, column 3\n
+end
+
+case json/n_array_invalid_utf8
+def 29b85874a777
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_array_items_separated_by_semicolon
+def a8ed4ce2499c
+rc 5
+stdout
+stderr jq: parse error: ':' not as part of an object at line 1, column 3\n
+end
+
+case json/n_array_just_comma
+def 6f9b8dbfd0b6
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 2\n
+end
+
+case json/n_array_just_minus
+def 11f977ee16fe
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_array_missing_value
+def 1ae9c06f6f15
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 5\n
+end
+
+case json/n_array_newlines_unclosed
+def 14b800da3b0a
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 3, column 3\n
+end
+
+case json/n_array_number_and_comma
+def 3bae40914427
+rc 5
+stdout
+stderr jq: parse error: Expected another array element at line 1, column 4\n
+end
+
+case json/n_array_number_and_several_commas
+def 48a3ae130ad3
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 4\n
+end
+
+case json/n_array_spaces_vertical_tab_formfeed
+def 5ef0578ce557
+rc 5
+stdout
+stderr jq: parse error: Invalid string: control characters from U+0000 through U+001F must be escaped at line 1, column 5\n
+end
+
+case json/n_array_star_inside
+def 5cd868c24277
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_array_unclosed
+def 7ca1d6cb5b3c
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 3\n
+end
+
+case json/n_array_unclosed_trailing_comma
+def 5fabf45e5dcd
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 3\n
+end
+
+case json/n_array_unclosed_with_new_lines
+def 66260af3b51d
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 3, column 2\n
+end
+
+case json/n_array_unclosed_with_object_inside
+def d961a27b6694
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 3\n
+end
+
+case json/n_incomplete_false
+def 2dc87b9b0af0
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at line 1, column 6\n
+end
+
+case json/n_incomplete_null
+def 5c5204028db5
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at line 1, column 5\n
+end
+
+case json/n_incomplete_true
+def a73f277a1a70
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at line 1, column 5\n
+end
+
+case json/n_multidigit_number_then_00
+def d159b3b90963
+rc 0
+stdout 123\n
+stderr
+end
+
+case json/n_number_++
+def 854bc2e91354
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 8\n
+end
+
+case json/n_number_+1
+def 1bb3d18dfa7a
+rc 0
+stdout [1]\n
+stderr
+end
+
+case json/n_number_+Inf
+def 8f540e56a617
+rc 0
+stdout [1.7976931348623157e+308]\n
+stderr
+end
+
+case json/n_number_-01
+def 994e9d99b99e
+rc 0
+stdout [-1]\n
+stderr
+end
+
+case json/n_number_-1.0.
+def b422887e2ffa
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_-2.
+def 4f6ec22ff47f
+rc 0
+stdout [-2]\n
+stderr
+end
+
+case json/n_number_-NaN
+def a093fb6f6851
+rc 0
+stdout [null]\n
+stderr
+end
+
+case json/n_number_.-1
+def bae73ed9e80c
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_.2e-3
+def 31ca6b3d2dec
+rc 0
+stdout [0.0002]\n
+stderr
+end
+
+case json/n_number_0.1.2
+def 708a2c22862f
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_0.3e+
+def baa4bd375cdf
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_0.3e
+def 5b98ddbd1c64
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_0.e1
+def 72dd75b7aa19
+rc 0
+stdout [0E+1]\n
+stderr
+end
+
+case json/n_number_0_capital_E+
+def dc6702fd2627
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_0_capital_E
+def 28d59562db26
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_number_0e+
+def 7616c5157178
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_0e
+def 877d6cc85d97
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_number_1.0e+
+def 5c45b1729d21
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_1.0e-
+def e3e653bbbaa7
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_1.0e
+def 0e32268e2d88
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_1_000
+def 8ce4298083bb
+rc 5
+stdout
+stderr jq: parse error: Expected separator between values at line 1, column 9\n
+end
+
+case json/n_number_1eE2
+def b8853ecc2e88
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_2.e+3
+def e9ff5e32ce4d
+rc 0
+stdout [2E+3]\n
+stderr
+end
+
+case json/n_number_2.e-3
+def 667b2cdf2d35
+rc 0
+stdout [0.002]\n
+stderr
+end
+
+case json/n_number_2.e3
+def 582d13d21bce
+rc 0
+stdout [2E+3]\n
+stderr
+end
+
+case json/n_number_9.e+
+def 5b6725ec1603
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_Inf
+def 97fbd7b28eb3
+rc 0
+stdout [1.7976931348623157e+308]\n
+stderr
+end
+
+case json/n_number_NaN
+def 74efc4e39b0f
+rc 0
+stdout [null]\n
+stderr
+end
+
+case json/n_number_U+FF11_fullwidth_digit_one
+def 5a99cd0755d6
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_expression
+def d3921516c4c8
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_hex_1_digit
+def 578089b28ed3
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_hex_2_digits
+def 4a4ae1efd2e8
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_infinity
+def e93bd736e531
+rc 0
+stdout [1.7976931348623157e+308]\n
+stderr
+end
+
+case json/n_number_invalid+-
+def 579c4db012ac
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_number_invalid-negative-real
+def b264ac4fe425
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 13\n
+end
+
+case json/n_number_invalid-utf-8-in-bigger-int
+def 017948ebb17d
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_invalid-utf-8-in-exponent
+def df4b772d83c9
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_invalid-utf-8-in-int
+def 5c8a89919587
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_number_minus_infinity
+def e520e940b79c
+rc 0
+stdout [-1.7976931348623157e+308]\n
+stderr
+end
+
+case json/n_number_minus_sign_with_trailing_garbage
+def adeff637c288
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_number_minus_space_1
+def 11ad2ee9333a
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_number_neg_int_starting_with_zero
+def 28147e65c080
+rc 0
+stdout [-12]\n
+stderr
+end
+
+case json/n_number_neg_real_without_int_part
+def 11bc3b4e44e5
+rc 0
+stdout [-0.123]\n
+stderr
+end
+
+case json/n_number_neg_with_garbage_at_end
+def f4ec028b51c9
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_real_garbage_after_e
+def fe0d6d26da32
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_real_with_invalid_utf8_after_e
+def 7bd36e90e9bd
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_number_real_without_fractional_part
+def 7b59e2342043
+rc 0
+stdout [1]\n
+stderr
+end
+
+case json/n_number_starting_with_dot
+def 4fcbc6f020c4
+rc 0
+stdout [0.123]\n
+stderr
+end
+
+case json/n_number_with_alpha
+def d9019df0dbf2
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 8\n
+end
+
+case json/n_number_with_alpha_char
+def 9f76e83dd965
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 25\n
+end
+
+case json/n_number_with_leading_zero
+def b7f6253753a9
+rc 0
+stdout [12]\n
+stderr
+end
+
+case json/n_object_bad_value
+def 00fc7033f0be
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at line 1, column 12\n
+end
+
+case json/n_object_bracket_key
+def b1497fd193ca
+rc 5
+stdout
+stderr jq: parse error: Expected string key before ':' at line 1, column 3\n
+end
+
+case json/n_object_comma_instead_of_colon
+def 0876dc2cba84
+rc 5
+stdout
+stderr jq: parse error: Objects must consist of key:value pairs at line 1, column 5\n
+end
+
+case json/n_object_double_colon
+def 61bb0356a719
+rc 5
+stdout
+stderr jq: parse error: Expected string key before ':' at line 1, column 6\n
+end
+
+case json/n_object_emoji
+def 9918db884b51
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 10\n
+end
+
+case json/n_object_garbage_at_end
+def 3c6cf8e428ea
+rc 5
+stdout
+stderr jq: parse error: Expected separator between values at line 1, column 13\n
+end
+
+case json/n_object_key_with_single_quotes
+def b538a7ba8833
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_object_lone_continuation_byte_in_key_and_trailing_comma
+def 421aca776404
+rc 5
+stdout
+stderr jq: parse error: Expected another key-value pair at line 1, column 10\n
+end
+
+case json/n_object_missing_colon
+def 96569b08fb7c
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 7\n
+end
+
+case json/n_object_missing_key
+def ba6720738e6b
+rc 5
+stdout
+stderr jq: parse error: Expected string key before ':' at line 1, column 2\n
+end
+
+case json/n_object_missing_semicolon
+def bb1d88c61b92
+rc 5
+stdout
+stderr jq: parse error: Expected separator between values at line 1, column 8\n
+end
+
+case json/n_object_missing_value
+def 3d016273247d
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 5\n
+end
+
+case json/n_object_no-colon
+def d7e8a576de4a
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 4\n
+end
+
+case json/n_object_non_string_key
+def b35d71c08555
+rc 5
+stdout
+stderr jq: parse error: Object keys must be strings at line 1, column 3\n
+end
+
+case json/n_object_non_string_key_but_huge_number_instead
+def 8ff306d9c777
+rc 5
+stdout
+stderr jq: parse error: Object keys must be strings at line 1, column 11\n
+end
+
+case json/n_object_repeated_null_null
+def d714a878727e
+rc 5
+stdout
+stderr jq: parse error: Object keys must be strings at line 1, column 6\n
+end
+
+case json/n_object_several_trailing_commas
+def 18e5d82b420b
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 9\n
+end
+
+case json/n_object_single_quote
+def 40034193133a
+rc 5
+stdout
+stderr jq: parse error: Invalid string literal; expected ", but got ' at line 1, column 5\n
+end
+
+case json/n_object_trailing_comma
+def f8795ab6d89a
+rc 5
+stdout
+stderr jq: parse error: Expected another key-value pair at line 1, column 9\n
+end
+
+case json/n_object_trailing_comment
+def c991aa167d7c
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 13\n
+end
+
+case json/n_object_trailing_comment_open
+def 667bdc4c8d6b
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 14\n
+end
+
+case json/n_object_trailing_comment_slash_open
+def 15bb3862ecb6
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 11\n
+end
+
+case json/n_object_trailing_comment_slash_open_incomplete
+def 44737eb1cb79
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 10\n
+end
+
+case json/n_object_two_commas_in_a_row
+def c17de5f41b9f
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 10\n
+end
+
+case json/n_object_unquoted_key
+def e7944097a0e1
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_object_unterminated-value
+def 63dbdae5c928
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 7\n
+end
+
+case json/n_object_with_single_string
+def b9aa2758f1f6
+rc 5
+stdout
+stderr jq: parse error: Objects must consist of key:value pairs at line 1, column 22\n
+end
+
+case json/n_object_with_trailing_garbage
+def 4524a766ee1c
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 10\n
+end
+
+case json/n_single_space
+def 16e27b7464a5
+rc 0
+stdout
+stderr
+end
+
+case json/n_string_1_surrogate_then_escape
+def 8730f2c8c9af
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 11\n
+end
+
+case json/n_string_1_surrogate_then_escape_u
+def 2c03fcf7543a
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 11\n
+end
+
+case json/n_string_1_surrogate_then_escape_u1
+def a1d79f64febf
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 12\n
+end
+
+case json/n_string_1_surrogate_then_escape_u1x
+def ab64d6f6fb64
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 13\n
+end
+
+case json/n_string_accentuated_char_no_quotes
+def 81e760223a97
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_string_backslash_00
+def ecaed8b897c4
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 5\n
+end
+
+case json/n_string_escape_x
+def c4fe10ba4749
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 7\n
+end
+
+case json/n_string_escaped_backslash_bad
+def 04a92325b8e5
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 7\n
+end
+
+case json/n_string_escaped_ctrl_char_tab
+def d6a6bf9b4857
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 5\n
+end
+
+case json/n_string_escaped_emoji
+def e1ef33c0236e
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 8\n
+end
+
+case json/n_string_incomplete_escape
+def 81e94b6b7048
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 5\n
+end
+
+case json/n_string_incomplete_escaped_character
+def 92864e16a931
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX escape at line 1, column 8\n
+end
+
+case json/n_string_incomplete_surrogate
+def 8ccfa6612bc0
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 13\n
+end
+
+case json/n_string_incomplete_surrogate_escape_invalid
+def 22cd7032cab2
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 17\n
+end
+
+case json/n_string_invalid-utf-8-in-escape
+def 14cb879d021c
+rc 5
+stdout
+stderr jq: parse error: Invalid \\uXXXX escape at line 1, column 6\n
+end
+
+case json/n_string_invalid_backslash_esc
+def d69ad6e26304
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 5\n
+end
+
+case json/n_string_invalid_unicode_escape
+def 5a128daf1c32
+rc 5
+stdout
+stderr jq: parse error: Invalid characters in \\uXXXX escape at line 1, column 9\n
+end
+
+case json/n_string_invalid_utf8_after_escape
+def 708b7b68ef30
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 5\n
+end
+
+case json/n_string_leading_uescaped_thinspace
+def 8e5d60cafa21
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 8\n
+end
+
+case json/n_string_no_quotes_with_bad_escape
+def 3d060a322f05
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 4\n
+end
+
+case json/n_string_single_doublequote
+def 17567577eae0
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 1\n
+end
+
+case json/n_string_single_quote
+def b948341d4e28
+rc 5
+stdout
+stderr jq: parse error: Invalid string literal; expected ", but got ' at line 1, column 9\n
+end
+
+case json/n_string_single_string_no_double_quotes
+def bc54dd58ca42
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 3\n
+end
+
+case json/n_string_start_escape_unclosed
+def 3d5ff913003f
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 3\n
+end
+
+case json/n_string_unescaped_ctrl_char
+def 12f25875a700
+rc 5
+stdout
+stderr jq: parse error: Invalid string: control characters from U+0000 through U+001F must be escaped at line 1, column 6\n
+end
+
+case json/n_string_unescaped_newline
+def 735d37af2f5c
+rc 5
+stdout
+stderr jq: parse error: Invalid string: control characters from U+0000 through U+001F must be escaped at line 2, column 5\n
+end
+
+case json/n_string_unescaped_tab
+def f52d7aac8b4f
+rc 5
+stdout
+stderr jq: parse error: Invalid string: control characters from U+0000 through U+001F must be escaped at line 1, column 4\n
+end
+
+case json/n_string_unicode_CapitalU
+def 3143ad9b302b
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 8\n
+end
+
+case json/n_string_with_trailing_garbage
+def 7438bc92591e
+rc 5
+stdout ""\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 3\n
+end
+
+case json/n_structure_100000_opening_arrays
+def f80b6a11e081
+rc 5
+stdout
+stderr jq: parse error: Exceeds depth limit for parsing at line 1, column 10001\n
+end
+
+case json/n_structure_U+2060_word_joined
+def d10f041ed6a9
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_structure_UTF8_BOM_no_data
+def ee541ef36723
+rc 0
+stdout
+stderr
+end
+
+case json/n_structure_angle_bracket_.
+def 0ab672da7174
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 3\n
+end
+
+case json/n_structure_angle_bracket_null
+def e49aa559dc10
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 8\n
+end
+
+case json/n_structure_array_trailing_garbage
+def 4f4ca7ec5db9
+rc 5
+stdout [1]\n
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 4\n
+end
+
+case json/n_structure_array_with_extra_array_close
+def 33103fabad14
+rc 5
+stdout [1]\n
+stderr jq: parse error: Unmatched ']' at line 1, column 4\n
+end
+
+case json/n_structure_array_with_unclosed_string
+def d55369f97e9d
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 6\n
+end
+
+case json/n_structure_ascii-unicode-identifier
+def f232073cd060
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 3\n
+end
+
+case json/n_structure_capitalized_True
+def 8fb1cf304e66
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 6\n
+end
+
+case json/n_structure_close_unopened_array
+def 2113fca32df1
+rc 5
+stdout
+stderr jq: parse error: Unmatched ']' at line 1, column 2\n
+end
+
+case json/n_structure_comma_instead_of_closing_brace
+def 3bc55b1f28a9
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 11\n
+end
+
+case json/n_structure_double_array
+def fc80d06d565c
+rc 0
+stdout []\n[]\n
+stderr
+end
+
+case json/n_structure_end_array
+def 9286270a4b6c
+rc 5
+stdout
+stderr jq: parse error: Unmatched ']' at line 1, column 1\n
+end
+
+case json/n_structure_incomplete_UTF8_BOM
+def 5cc561c16469
+rc 5
+stdout
+stderr jq: parse error: Malformed BOM\n
+end
+
+case json/n_structure_lone-invalid-utf-8
+def d92a29897d29
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 1\n
+end
+
+case json/n_structure_lone-open-bracket
+def 18de72be93ce
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 1\n
+end
+
+case json/n_structure_no_data
+def 584118984047
+rc 0
+stdout
+stderr
+end
+
+case json/n_structure_null-byte-outside-string
+def 1a6fa7c99ad8
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/n_structure_number_with_trailing_garbage
+def 605bca3ac0f8
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 2\n
+end
+
+case json/n_structure_object_followed_by_closing_object
+def 4f06ae840451
+rc 5
+stdout {}\n
+stderr jq: parse error: Unmatched '}' at line 1, column 3\n
+end
+
+case json/n_structure_object_unclosed_no_value
+def 2f3c0e786f98
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 4\n
+end
+
+case json/n_structure_object_with_comment
+def f549fec6a91d
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 17\n
+end
+
+case json/n_structure_object_with_trailing_garbage
+def 6b9969d35377
+rc 0
+stdout {"a":true}\n"x"\n
+stderr
+end
+
+case json/n_structure_open_array_apostrophe
+def 421f41ea5b93
+rc 5
+stdout
+stderr jq: parse error: Invalid string literal; expected ", but got ' at EOF at line 1, column 2\n
+end
+
+case json/n_structure_open_array_comma
+def dee3a7d20981
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 2\n
+end
+
+case json/n_structure_open_array_object
+def 76893f55fab6
+rc 5
+stdout
+stderr jq: parse error: Exceeds depth limit for parsing at line 1, column 16667\n
+end
+
+case json/n_structure_open_array_open_object
+def 6d32608ebec0
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 2\n
+end
+
+case json/n_structure_open_array_open_string
+def 2a4e092d1e5b
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 3\n
+end
+
+case json/n_structure_open_array_string
+def 5f64d53a9f7b
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 4\n
+end
+
+case json/n_structure_open_object
+def 02985a9a9886
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 1\n
+end
+
+case json/n_structure_open_object_close_array
+def 356bab4b8184
+rc 5
+stdout
+stderr jq: parse error: Unmatched ']' at line 1, column 2\n
+end
+
+case json/n_structure_open_object_comma
+def 9ffcc1573884
+rc 5
+stdout
+stderr jq: parse error: Expected value before ',' at line 1, column 2\n
+end
+
+case json/n_structure_open_object_open_array
+def ee66ee65e072
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 2\n
+end
+
+case json/n_structure_open_object_open_string
+def 2a3d1732b0bc
+rc 5
+stdout
+stderr jq: parse error: Unfinished string at EOF at line 1, column 3\n
+end
+
+case json/n_structure_open_object_string_with_apostrophes
+def c854a86863f9
+rc 5
+stdout
+stderr jq: parse error: Invalid string literal; expected ", but got ' at EOF at line 1, column 4\n
+end
+
+case json/n_structure_open_open
+def e98c2b444e01
+rc 5
+stdout
+stderr jq: parse error: Invalid escape at line 1, column 6\n
+end
+
+case json/n_structure_single_eacute
+def a26cd4ba41ca
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 1\n
+end
+
+case json/n_structure_single_star
+def 361e110fb9e9
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 1\n
+end
+
+case json/n_structure_trailing_#
+def 00b13ae0883c
+rc 5
+stdout {"a":"b"}\n
+stderr jq: parse error: Invalid numeric literal at line 1, column 11\n
+end
+
+case json/n_structure_uescaped_LF_before_string
+def 868eeefb3284
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 8\n
+end
+
+case json/n_structure_unclosed_array
+def 4222145f9b26
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 2\n
+end
+
+case json/n_structure_unclosed_array_partial_null
+def 2ff811adc304
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at EOF at line 1, column 12\n
+end
+
+case json/n_structure_unclosed_array_unfinished_false
+def c0b5cf01b426
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at EOF at line 1, column 12\n
+end
+
+case json/n_structure_unclosed_array_unfinished_true
+def 6e0748f3e3d2
+rc 5
+stdout
+stderr jq: parse error: Invalid literal at EOF at line 1, column 12\n
+end
+
+case json/n_structure_unclosed_object
+def 45ae2f5c0329
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 12\n
+end
+
+case json/n_structure_unicode-identifier
+def 88f7243c331f
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at EOF at line 1, column 2\n
+end
+
+case json/n_structure_whitespace_U+2060_word_joiner
+def c731a42d4417
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 5\n
+end
+
+case json/n_structure_whitespace_formfeed
+def bc63d14ec73e
+rc 5
+stdout
+stderr jq: parse error: Invalid numeric literal at line 1, column 3\n
+end
+
+case json/y_array_arraysWithSpaces
+def 06bc4cbb5d79
+rc 0
+stdout [[]]\n
+stderr
+end
+
+case json/y_array_empty-string
+def edc91ab940ab
+rc 0
+stdout [""]\n
+stderr
+end
+
+case json/y_array_empty
+def 4a6dd075a206
+rc 0
+stdout []\n
+stderr
+end
+
+case json/y_array_ending_with_newline
+def ba5c050978b5
+rc 0
+stdout ["a"]\n
+stderr
+end
+
+case json/y_array_false
+def 3d0f64039e7b
+rc 0
+stdout [false]\n
+stderr
+end
+
+case json/y_array_heterogeneous
+def 0eb8c5138052
+rc 0
+stdout [null,1,"1",{}]\n
+stderr
+end
+
+case json/y_array_null
+def 4e84f56c03ae
+rc 0
+stdout [null]\n
+stderr
+end
+
+case json/y_array_with_1_and_newline
+def a711f2877e60
+rc 0
+stdout [1]\n
+stderr
+end
+
+case json/y_array_with_leading_space
+def e6354e7491e1
+rc 0
+stdout [1]\n
+stderr
+end
+
+case json/y_array_with_several_null
+def d3088e088dff
+rc 0
+stdout [1,null,null,null,2]\n
+stderr
+end
+
+case json/y_array_with_trailing_space
+def 0cb62c773994
+rc 0
+stdout [2]\n
+stderr
+end
+
+case json/y_number
+def bcc67f0681ca
+rc 0
+stdout [1.23E+67]\n
+stderr
+end
+
+case json/y_number_0e+1
+def 6480a5604c24
+rc 0
+stdout [0E+1]\n
+stderr
+end
+
+case json/y_number_0e1
+def e7c75e696792
+rc 0
+stdout [0E+1]\n
+stderr
+end
+
+case json/y_number_after_space
+def 400b060926a4
+rc 0
+stdout [4]\n
+stderr
+end
+
+case json/y_number_double_close_to_zero
+def 021834b0a1de
+rc 0
+stdout [-1E-78]\n
+stderr
+end
+
+case json/y_number_int_with_exp
+def 20f3aa08b23b
+rc 0
+stdout [2.0E+2]\n
+stderr
+end
+
+case json/y_number_minus_zero
+def ebd0e0917ed4
+rc 0
+stdout [-0]\n
+stderr
+end
+
+case json/y_number_negative_int
+def 0abf7370478d
+rc 0
+stdout [-123]\n
+stderr
+end
+
+case json/y_number_negative_one
+def 78a80fa0fc1b
+rc 0
+stdout [-1]\n
+stderr
+end
+
+case json/y_number_negative_zero
+def 49a811efcd10
+rc 0
+stdout [-0]\n
+stderr
+end
+
+case json/y_number_real_capital_e
+def d3a94f5e3f92
+rc 0
+stdout [1E+22]\n
+stderr
+end
+
+case json/y_number_real_capital_e_neg_exp
+def dec0918d194c
+rc 0
+stdout [0.01]\n
+stderr
+end
+
+case json/y_number_real_capital_e_pos_exp
+def ac3dad4192c5
+rc 0
+stdout [1E+2]\n
+stderr
+end
+
+case json/y_number_real_exponent
+def 3535556370fa
+rc 0
+stdout [1.23E+47]\n
+stderr
+end
+
+case json/y_number_real_fraction_exponent
+def 38ecd862c7f2
+rc 0
+stdout [1.23456E+80]\n
+stderr
+end
+
+case json/y_number_real_neg_exp
+def 6140890823d4
+rc 0
+stdout [0.01]\n
+stderr
+end
+
+case json/y_number_real_pos_exponent
+def 0ded1eb19036
+rc 0
+stdout [1E+2]\n
+stderr
+end
+
+case json/y_number_simple_int
+def 75348afaeef9
+rc 0
+stdout [123]\n
+stderr
+end
+
+case json/y_number_simple_real
+def 2c460b84a6a4
+rc 0
+stdout [123.456789]\n
+stderr
+end
+
+case json/y_object
+def 5b6385dd1847
+rc 0
+stdout {"asd":"sdf","dfg":"fgh"}\n
+stderr
+end
+
+case json/y_object_basic
+def 9b8249011193
+rc 0
+stdout {"asd":"sdf"}\n
+stderr
+end
+
+case json/y_object_duplicated_key
+def 693651053fae
+rc 0
+stdout {"a":"c"}\n
+stderr
+end
+
+case json/y_object_duplicated_key_and_value
+def 42d0967b62c6
+rc 0
+stdout {"a":"b"}\n
+stderr
+end
+
+case json/y_object_empty
+def 155e09fecd8f
+rc 0
+stdout {}\n
+stderr
+end
+
+case json/y_object_empty_key
+def eaa5fed94332
+rc 0
+stdout {"":0}\n
+stderr
+end
+
+case json/y_object_escaped_null_in_key
+def f6dabc555e90
+rc 0
+stdout {"foo\\u0000bar":42}\n
+stderr
+end
+
+case json/y_object_extreme_numbers
+def 7fe8bfe84525
+rc 0
+stdout {"min":-1.0E+28,"max":1.0E+28}\n
+stderr
+end
+
+case json/y_object_long_strings
+def d285471d3e3a
+rc 0
+stdout {"x":[{"id":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}],"id":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\n
+stderr
+end
+
+case json/y_object_simple
+def bc9f703b2c47
+rc 0
+stdout {"a":[]}\n
+stderr
+end
+
+case json/y_object_string_unicode
+def 04781d8ea084
+rc 0
+stdout {"title":"Полтора Землекопа"}\n
+stderr
+end
+
+case json/y_object_with_newlines
+def 5b952b1dc655
+rc 0
+stdout {"a":"b"}\n
+stderr
+end
+
+case json/y_string_1_2_3_bytes_UTF-8_sequences
+def e10bfc83a276
+rc 0
+stdout ["`Īካ"]\n
+stderr
+end
+
+case json/y_string_accepted_surrogate_pair
+def d9c93d23649e
+rc 0
+stdout ["𐐷"]\n
+stderr
+end
+
+case json/y_string_accepted_surrogate_pairs
+def d1eacce43a16
+rc 0
+stdout ["😹💍"]\n
+stderr
+end
+
+case json/y_string_allowed_escapes
+def 1e774aafa5e3
+rc 0
+stdout ["\\"\\\\/\\b\\f\\n\\r\\t"]\n
+stderr
+end
+
+case json/y_string_backslash_and_u_escaped_zero
+def d5180bcfbbe0
+rc 0
+stdout ["\\\\u0000"]\n
+stderr
+end
+
+case json/y_string_backslash_doublequotes
+def c6522304d8ef
+rc 0
+stdout ["\\""]\n
+stderr
+end
+
+case json/y_string_comments
+def 62c1f6318982
+rc 0
+stdout ["a/*b*/c/*d//e"]\n
+stderr
+end
+
+case json/y_string_double_escape_a
+def 4d2be3bea7f8
+rc 0
+stdout ["\\\\a"]\n
+stderr
+end
+
+case json/y_string_double_escape_n
+def 878b5ac16b08
+rc 0
+stdout ["\\\\n"]\n
+stderr
+end
+
+case json/y_string_escaped_control_character
+def 56559549dc91
+rc 0
+stdout ["\\u0012"]\n
+stderr
+end
+
+case json/y_string_escaped_noncharacter
+def 742655a09a7b
+rc 0
+stdout ["￿"]\n
+stderr
+end
+
+case json/y_string_in_array
+def fd275dce3ccd
+rc 0
+stdout ["asd"]\n
+stderr
+end
+
+case json/y_string_in_array_with_leading_space
+def ab09c606c539
+rc 0
+stdout ["asd"]\n
+stderr
+end
+
+case json/y_string_last_surrogates_1_and_2
+def 66586047f3d5
+rc 0
+stdout ["􏿿"]\n
+stderr
+end
+
+case json/y_string_nbsp_uescaped
+def 7b8be6886774
+rc 0
+stdout ["new line"]\n
+stderr
+end
+
+case json/y_string_nonCharacterInUTF-8_U+10FFFF
+def 030954849c12
+rc 0
+stdout ["􏿿"]\n
+stderr
+end
+
+case json/y_string_nonCharacterInUTF-8_U+FFFF
+def 4e478082c453
+rc 0
+stdout ["￿"]\n
+stderr
+end
+
+case json/y_string_null_escape
+def 420dfa812b2a
+rc 0
+stdout ["\\u0000"]\n
+stderr
+end
+
+case json/y_string_one-byte-utf-8
+def 12135ec43dec
+rc 0
+stdout [","]\n
+stderr
+end
+
+case json/y_string_pi
+def a8d0cefe5817
+rc 0
+stdout ["π"]\n
+stderr
+end
+
+case json/y_string_reservedCharacterInUTF-8_U+1BFFF
+def 15ffd6eeae76
+rc 0
+stdout ["𛿿"]\n
+stderr
+end
+
+case json/y_string_simple_ascii
+def 75bcd3d576bb
+rc 0
+stdout ["asd "]\n
+stderr
+end
+
+case json/y_string_space
+def 19859e26b087
+rc 0
+stdout " "\n
+stderr
+end
+
+case json/y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF
+def da81db5dd011
+rc 0
+stdout ["𝄞"]\n
+stderr
+end
+
+case json/y_string_three-byte-utf-8
+def ce8d2f161d2b
+rc 0
+stdout ["ࠡ"]\n
+stderr
+end
+
+case json/y_string_two-byte-utf-8
+def 2c70fff72c21
+rc 0
+stdout ["ģ"]\n
+stderr
+end
+
+case json/y_string_u+2028_line_sep
+def e9b7a22ab822
+rc 0
+stdout [" "]\n
+stderr
+end
+
+case json/y_string_u+2029_par_sep
+def dc56401ddef9
+rc 0
+stdout [" "]\n
+stderr
+end
+
+case json/y_string_uEscape
+def 0895998f393b
+rc 0
+stdout ["aクリス"]\n
+stderr
+end
+
+case json/y_string_uescaped_newline
+def 7aa64eb088dc
+rc 0
+stdout ["new\\nline"]\n
+stderr
+end
+
+case json/y_string_unescaped_char_delete
+def 308ead3b1039
+rc 0
+stdout ["\\u007f"]\n
+stderr
+end
+
+case json/y_string_unicode
+def cf1eba776887
+rc 0
+stdout ["ꙭ"]\n
+stderr
+end
+
+case json/y_string_unicodeEscapedBackslash
+def 48a61b9f2dc9
+rc 0
+stdout ["\\\\"]\n
+stderr
+end
+
+case json/y_string_unicode_2
+def 4b85980f7bcd
+rc 0
+stdout ["⍂㈴⍂"]\n
+stderr
+end
+
+case json/y_string_unicode_U+10FFFE_nonchar
+def 5b0562f6e09d
+rc 0
+stdout ["􏿾"]\n
+stderr
+end
+
+case json/y_string_unicode_U+1FFFE_nonchar
+def 5fb4ff79c737
+rc 0
+stdout ["🿾"]\n
+stderr
+end
+
+case json/y_string_unicode_U+200B_ZERO_WIDTH_SPACE
+def aafafd742e87
+rc 0
+stdout ["​"]\n
+stderr
+end
+
+case json/y_string_unicode_U+2064_invisible_plus
+def 172f3c8d0962
+rc 0
+stdout ["⁤"]\n
+stderr
+end
+
+case json/y_string_unicode_U+FDD0_nonchar
+def dc2124f1f921
+rc 0
+stdout ["﷐"]\n
+stderr
+end
+
+case json/y_string_unicode_U+FFFE_nonchar
+def ade91bcf8041
+rc 0
+stdout ["￾"]\n
+stderr
+end
+
+case json/y_string_unicode_escaped_double_quote
+def d49f36a9f35a
+rc 0
+stdout ["\\""]\n
+stderr
+end
+
+case json/y_string_utf8
+def f86f562a1ca6
+rc 0
+stdout ["€𝄞"]\n
+stderr
+end
+
+case json/y_string_with_del_character
+def 5cacb0aab834
+rc 0
+stdout ["a\\u007fa"]\n
+stderr
+end
+
+case json/y_structure_lonely_false
+def 6a90be90c82b
+rc 0
+stdout false\n
+stderr
+end
+
+case json/y_structure_lonely_int
+def 9f8a94212cb2
+rc 0
+stdout 42\n
+stderr
+end
+
+case json/y_structure_lonely_negative_real
+def b0131ae7ec1c
+rc 0
+stdout -0.1\n
+stderr
+end
+
+case json/y_structure_lonely_null
+def 32055a1bf748
+rc 0
+stdout null\n
+stderr
+end
+
+case json/y_structure_lonely_string
+def 794510f806ad
+rc 0
+stdout "asd"\n
+stderr
+end
+
+case json/y_structure_lonely_true
+def 73ee7fa44a9e
+rc 0
+stdout true\n
+stderr
+end
+
+case json/y_structure_string_empty
+def dc7fe5b131e0
+rc 0
+stdout ""\n
+stderr
+end
+
+case json/y_structure_trailing_newline
+def d3d34713eed8
+rc 0
+stdout ["a"]\n
+stderr
+end
+
+case json/y_structure_true_in_array
+def e7acf324c92f
+rc 0
+stdout [true]\n
+stderr
+end
+
+case json/y_structure_whitespace_array
+def 52fea88a6619
+rc 0
+stdout []\n
+stderr
+end

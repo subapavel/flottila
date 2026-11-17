@@ -1,0 +1,141 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case compare-depth/arrays-10000-less
+def 8156494eb38e
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/arrays-10001-less
+def a26852d7424d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10001-greater
+def 29bd30c047bf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10001-less-or-equal
+def 33f4c49702a9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10001-greater-or-equal
+def a4937c9b4b89
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10000-wrapped-less
+def bab73aa66753
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/arrays-10001-differ-at-the-top
+def 23c98cd0c604
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/arrays-10001-differ-before-the-depth
+def adb942c40cd2
+rc 0
+stdout true\n
+stderr
+end
+
+case compare-depth/arrays-10001-equal-before-the-depth
+def 76f0060d97da
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10001-collected
+def f27311ff88dc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/arrays-10001-caught
+def ea087273f64f
+rc 0
+stdout "Comparison too deep"\n
+stderr
+end
+
+case compare-depth/arrays-10001-equal
+def fdbdc6455cfd
+rc 0
+stdout true\n
+stderr
+end
+
+case compare-depth/arrays-10001-not-equal
+def 280ee8b2df4b
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/object-at-9998
+def a76afa765953
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/object-at-9999
+def 1d641ba36336
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/object-at-9999-differ-at-the-top
+def d03b27900e1b
+rc 0
+stdout true\n
+stderr
+end
+
+case compare-depth/empty-object-at-9999
+def 77f4893b2b2b
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/empty-object-at-10000
+def 3a42e1ec4321
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end
+
+case compare-depth/object-wrapped-at-the-top
+def e5f24052192f
+rc 0
+stdout false\n
+stderr
+end
+
+case compare-depth/object-wrapped-at-the-top-10001
+def e78e319732a1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Comparison too deep\n
+end

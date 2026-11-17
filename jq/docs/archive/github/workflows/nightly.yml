@@ -1,0 +1,61 @@
+# ADR-0014: PIT on the class-C modules of quality/floors.tsv, on oracle and on jq-cli; uploads the reports, commits nothing.
+# ADR-0046 #113: the calibration-matrix tag at the committed constants, a check only; uploads its tsv, commits nothing.
+name: nightly
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Class-C modules
+        id: modules
+        run: echo "list=$(awk -F'\t' 'NR > 1 && $2 == "C" { printf "%s%s", sep, $1; sep = "," }' quality/floors.tsv)" >> "$GITHUB_OUTPUT"
+      - name: PIT
+        # The crossModule reports of oracle and jq-cli join the class-C modules' own (ADR-0014, #47), as in
+        # scripts/gate-spec.sh. Each module keeps its PIT test exclusions in its own POM.
+        run: ./mvnw -B -pl "${{ steps.modules.outputs.list }},oracle" -am test org.pitest:pitest-maven:mutationCoverage
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: pit-reports
+          path: '*/target/pit-reports/'
+          if-no-files-found: warn
+  calibration:
+    runs-on: ubuntu-24.04
+    # GitHub's job limit. The matrix's children run 4 at a time, its warm children one at a time (CalibrationTest).
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Calibration matrix
+        # As in scripts/gate-spec.sh: its children are agent-free and have no -Xmx or ulimit (F-91).
+        run: ./mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true
+      - name: Cells that ran (F-91)
+        # 3 tiers × 3 threads × 2 modes × the 13 shapes of CalibrationCell.SHAPES, and the run's time.
+        run: scripts/calibration-cells.sh jq-core/target/calibration.tsv cell 234
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: calibration
+          path: |
+            jq-core/target/calibration*.tsv
+            jq-core/target/calibration-progress.log
+          if-no-files-found: warn

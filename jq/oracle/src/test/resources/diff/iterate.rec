@@ -1,0 +1,246 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case iterate/plain-null
+def fd3fd9b16620
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over null (null)\n
+end
+
+case iterate/plain-true
+def 4fc07bccaa09
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over boolean (true)\n
+end
+
+case iterate/plain-number
+def e5081e412fec
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over number (1)\n
+end
+
+case iterate/plain-string
+def fda9edc9618a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abc")\n
+end
+
+case iterate/plain-array
+def 8801d7e2b529
+rc 0
+stdout 1\n
+stderr
+end
+
+case iterate/plain-object
+def 5e16844a2784
+rc 0
+stdout 1\n
+stderr
+end
+
+case iterate/quiet-null
+def 28b3607a6404
+rc 0
+stdout
+stderr
+end
+
+case iterate/quiet-true
+def 79540ca4b2b4
+rc 0
+stdout
+stderr
+end
+
+case iterate/quiet-number
+def 15d32f6b7ae5
+rc 0
+stdout
+stderr
+end
+
+case iterate/quiet-string
+def 20a80c726774
+rc 0
+stdout
+stderr
+end
+
+case iterate/quiet-array
+def f0163b4006ba
+rc 0
+stdout 1\n
+stderr
+end
+
+case iterate/quiet-object
+def 1c25064c810b
+rc 0
+stdout 1\n
+stderr
+end
+
+case iterate/object-order
+def 74dd049def39
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case iterate/empty-object
+def fa72329fc21f
+rc 0
+stdout
+stderr
+end
+
+case iterate/duplicate-keys
+def 1c397570fc5e
+rc 0
+stdout 9\n3\n2\n
+stderr
+end
+
+case iterate/nested-values
+def 5b9241083952
+rc 0
+stdout [1,[2]]\n{"a":{}}\n"s"\nnull\n
+stderr
+end
+
+case iterate/cut-string-20
+def a99715446658
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrst")\n
+end
+
+case iterate/cut-string-21
+def f7eaed38549a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstu")\n
+end
+
+case iterate/cut-string-22
+def 2d6336e83a8f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuv")\n
+end
+
+case iterate/cut-string-23
+def f3e3be8878ce
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvw")\n
+end
+
+case iterate/cut-string-24
+def d2507ec50f5e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx")\n
+end
+
+case iterate/cut-string-25
+def 340e13a45a8c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwxy")\n
+end
+
+case iterate/cut-string-26
+def 8607ac1b31ee
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwxyz")\n
+end
+
+case iterate/cut-string-27
+def 3907eb457dc0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwxyz0")\n
+end
+
+case iterate/cut-string-28
+def dc8269695f05
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-string-29
+def 9faa05945521
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-string-30
+def 349e0359788c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-string-31
+def 8c0385224cdd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-string-32
+def 110241bc8d2a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-e-acute-at-24
+def 8a7f4b21d276
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvw...")\n
+end
+
+case iterate/cut-e-acute-at-25
+def abe3fb27be17
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-e-acute-dump-29
+def e867e2cb8316
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwxyé")\n
+end
+
+case iterate/cut-e-acute-dump-30
+def b39c10f5cd7b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case iterate/cut-number-long
+def d07f07f1b5ea
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot iterate over number (12345678901234567890123456...)\n
+end
+
+case iterate/quiet-downstream-error
+def f2dd36a371fd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end

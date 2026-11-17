@@ -1,0 +1,17 @@
+# The required cases of #90 "Numbers.compare: big and tiny literal tokens compared through double" (ADR-0012,
+# ADR-0020): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# differential: every case of big-literal.cases.
+big-literal/ticket-equal
+big-literal/filter-operators
+big-literal/filter-subnormal
+big-literal/filter-negated
+big-literal/filter-tonumber
+big-literal/filter-sort-unique
+big-literal/input-operators
+big-literal/input-against-filter
+big-literal/input-sort-unique
+big-literal/input-bound
+big-literal/input-big-value
+big-literal/input-tiny-value

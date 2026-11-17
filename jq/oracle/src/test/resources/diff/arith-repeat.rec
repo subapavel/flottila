@@ -1,0 +1,106 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-repeat/counts-number-left
+def fa31b07b28ad
+rc 0
+stdout [null,null,"","","ab","abab"]\n
+stderr
+end
+
+case arith-repeat/counts-number-right
+def 47bf1e4803b8
+rc 0
+stdout [null,null,"","","ab","abab"]\n
+stderr
+end
+
+case arith-repeat/empty-string-many-times
+def 05d5f3ea3add
+rc 0
+stdout ""\n
+stderr
+end
+
+case arith-repeat/negative-zero-count
+def 587d5d6ccc75
+rc 0
+stdout ""\n
+stderr
+end
+
+case arith-repeat/fraction-multibyte-empty
+def 6f6aeb60158d
+rc 0
+stdout ["ab","ééé",""]\n
+stderr
+end
+
+case arith-repeat/nan-count
+def 7c63cba83f9b
+rc 0
+stdout null\n
+stderr
+end
+
+case arith-repeat/over-a-kibibyte
+def 15c896691115
+rc 0
+stdout "abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"\n
+stderr
+end
+
+case arith-repeat/input-number-left
+def cb6fe002bf9e
+rc 0
+stdout "ababab"\n
+stderr
+end
+
+case arith-repeat/too-long-one-byte
+def 82f9b15db2ee
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-two-bytes
+def af9a268b05a5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-three-bytes
+def d50d15602088
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-literal-past-double
+def dcdfd6a6075f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-past-int-max
+def 31ac04bdbab9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-fraction-past-int-max
+def 6cfb97d858dc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case arith-repeat/too-long-input
+def 25e79154bec9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end

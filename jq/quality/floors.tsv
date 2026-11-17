@@ -1,0 +1,4 @@
+module	class	lines	branches	mutation
+query-core	C	90	80	80
+jq-core	C	90	80	80
+jq-cli	-	80	-	-

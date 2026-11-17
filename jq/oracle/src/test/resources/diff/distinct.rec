@@ -1,0 +1,631 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case distinct/eight-iterate
+def c7822479aa51
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n
+stderr
+end
+
+case distinct/eight-dot
+def 2f715eadeec5
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+stderr
+end
+
+case distinct/eight-k0
+def c6cc405ac7bd
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/eight-k8
+def b939dd3c57ef
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/eight-zz
+def 0b5d5c835df8
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/nine-iterate
+def 31386a19ee1d
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n8\n
+stderr
+end
+
+case distinct/nine-dot
+def d9c78e69928c
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+stderr
+end
+
+case distinct/nine-k0
+def 364526320a27
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/nine-k8
+def 4d7875cd3508
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/nine-zz
+def 6d200210fca4
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/nine-repeat-first-iterate
+def 720884ad4496
+rc 0
+stdout 9\n1\n2\n3\n4\n5\n6\n7\n8\n
+stderr
+end
+
+case distinct/nine-repeat-first-dot
+def af87a3334146
+rc 0
+stdout {"k0":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+stderr
+end
+
+case distinct/nine-repeat-first-k0
+def c78829f7a75d
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/nine-repeat-first-k8
+def 97c375d15798
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/nine-repeat-first-zz
+def d6826411ad72
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/nine-repeat-middle-iterate
+def 56901725e6e3
+rc 0
+stdout 0\n1\n2\n3\n9\n5\n6\n7\n8\n
+stderr
+end
+
+case distinct/nine-repeat-middle-dot
+def 354fb40d740c
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":9,"k5":5,"k6":6,"k7":7,"k8":8}\n
+stderr
+end
+
+case distinct/nine-repeat-middle-k0
+def 95338f28d597
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/nine-repeat-middle-k8
+def ac498cdbdb04
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/nine-repeat-middle-zz
+def 57688df46c99
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/nine-repeat-last-iterate
+def 11bcaa0f0524
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n9\n
+stderr
+end
+
+case distinct/nine-repeat-last-dot
+def 0545b9093a33
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":9}\n
+stderr
+end
+
+case distinct/nine-repeat-last-k0
+def 4e523894a753
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/nine-repeat-last-k8
+def 6155eba25e2f
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/nine-repeat-last-zz
+def 57b199c5b0a7
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/eight-and-a-repeat-iterate
+def e038ede56006
+rc 0
+stdout 8\n1\n2\n3\n4\n5\n6\n7\n
+stderr
+end
+
+case distinct/eight-and-a-repeat-dot
+def dd98dc5545e1
+rc 0
+stdout {"k0":8,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+stderr
+end
+
+case distinct/eight-and-a-repeat-k0
+def bf99a6659ee6
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/eight-and-a-repeat-k8
+def 93e27efbaa2f
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/eight-and-a-repeat-zz
+def 41033f7ee44c
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/abaa-iterate
+def 36c05f8e19f5
+rc 0
+stdout 4\n2\n
+stderr
+end
+
+case distinct/abaa-dot
+def 24950e5f89cd
+rc 0
+stdout {"a":4,"b":2}\n
+stderr
+end
+
+case distinct/abaa-k0
+def c283ad66bfa7
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/abaa-k8
+def 6dc4e4e5d577
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/abaa-zz
+def af27fbe2c73c
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/abaa-a
+def 8d12dd45009e
+rc 0
+stdout 4\n
+stderr
+end
+
+case distinct/ten-copies-iterate
+def 067c0f01f9ca
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/ten-copies-dot
+def 83aee6579808
+rc 0
+stdout {"k0":9}\n
+stderr
+end
+
+case distinct/ten-copies-k0
+def 2a68b06cbe65
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/ten-copies-k8
+def a11c15eb476e
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/ten-copies-zz
+def 6bd220f2f214
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/wide-around-repeat-iterate
+def a05b09b0139c
+rc 0
+stdout {"k0":10,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n1\n2\n3\n4\n5\n6\n7\n8\n9\n
+stderr
+end
+
+case distinct/wide-around-repeat-dot
+def b2bc637f5da2
+rc 0
+stdout {"k0":{"k0":10,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+stderr
+end
+
+case distinct/wide-around-repeat-k0
+def 0d5f2429f365
+rc 0
+stdout {"k0":10,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+stderr
+end
+
+case distinct/wide-around-repeat-k8
+def 9a897fb0b10c
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/wide-around-repeat-zz
+def c6e2bcbcc578
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/repeat-around-wide-iterate
+def 0295c0d9b521
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n1\n2\n3\n4\n5\n6\n7\n8\n10\n
+stderr
+end
+
+case distinct/repeat-around-wide-dot
+def 53b7f396d594
+rc 0
+stdout {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":10}\n
+stderr
+end
+
+case distinct/repeat-around-wide-k0
+def f99db77d9f05
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+stderr
+end
+
+case distinct/repeat-around-wide-k8
+def 1c4227c0a4d0
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/repeat-around-wide-zz
+def ba2c9225be73
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/escaped-repeat-iterate
+def fcfd79ebda22
+rc 0
+stdout 9\n1\n2\n3\n4\n5\n6\n7\n8\n
+stderr
+end
+
+case distinct/escaped-repeat-dot
+def 6b63755c1c50
+rc 0
+stdout {"a":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+stderr
+end
+
+case distinct/escaped-repeat-k0
+def 7bd089091056
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/escaped-repeat-k8
+def cefad1ea172a
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/escaped-repeat-zz
+def 74419e25faaf
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/escaped-repeat-a
+def fbfd0708eca7
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/escaped-distinct-iterate
+def c6ef8c2ae4f1
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n20\n
+stderr
+end
+
+case distinct/escaped-distinct-dot
+def cd13aaa46375
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k20":20}\n
+stderr
+end
+
+case distinct/escaped-distinct-k0
+def e2c21353217a
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/escaped-distinct-k8
+def 995048abae9d
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/escaped-distinct-zz
+def 047cf010383e
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/twenty-iterate
+def f4d61ad96ff6
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n
+stderr
+end
+
+case distinct/twenty-dot
+def 572f8fbdcde7
+rc 0
+stdout {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+stderr
+end
+
+case distinct/twenty-k0
+def f10aa392e093
+rc 0
+stdout 0\n
+stderr
+end
+
+case distinct/twenty-k8
+def 5298d2b1fe03
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/twenty-zz
+def 2bfd7df87ec7
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/twenty-repeat-iterate
+def 113c9300055e
+rc 0
+stdout 20\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n
+stderr
+end
+
+case distinct/twenty-repeat-dot
+def e64eef5c26fa
+rc 0
+stdout {"k0":20,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+stderr
+end
+
+case distinct/twenty-repeat-k0
+def a5abd6d56b24
+rc 0
+stdout 20\n
+stderr
+end
+
+case distinct/twenty-repeat-k8
+def f8db4d839db2
+rc 0
+stdout 8\n
+stderr
+end
+
+case distinct/twenty-repeat-zz
+def a5f1c627e175
+rc 0
+stdout null\n
+stderr
+end
+
+case distinct/three-iterate-iterate
+def d9d46f468e5c
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n1\n2\n3\n4\n5\n6\n7\n8\n9\n1\n2\n3\n4\n5\n6\n7\n8\n
+stderr
+end
+
+case distinct/pretty-nine
+def 3395f0b8a922
+rc 0
+stdout {\n  "k0": 0,\n  "k1": 1,\n  "k2": 2,\n  "k3": 3,\n  "k4": 4,\n  "k5": 5,\n  "k6": 6,\n  "k7": 7,\n  "k8": 8\n}\n
+stderr
+end
+
+case distinct/pretty-nine-repeat-first
+def 482dd06dd21a
+rc 0
+stdout {\n  "k0": 9,\n  "k1": 1,\n  "k2": 2,\n  "k3": 3,\n  "k4": 4,\n  "k5": 5,\n  "k6": 6,\n  "k7": 7,\n  "k8": 8\n}\n
+stderr
+end
+
+case distinct/pretty-wide-around-repeat
+def 3b5658527334
+rc 0
+stdout {\n  "k0": {\n    "k0": 10,\n    "k1": 1,\n    "k2": 2,\n    "k3": 3,\n    "k4": 4,\n    "k5": 5,\n    "k6": 6,\n    "k7": 7,\n    "k8": 8,\n    "k9": 9\n  },\n  "k1": 1,\n  "k2": 2,\n  "k3": 3,\n  "k4": 4,\n  "k5": 5,\n  "k6": 6,\n  "k7": 7,\n  "k8": 8,\n  "k9": 9\n}\n
+stderr
+end
+
+case distinct/pretty-repeat-around-wide
+def a01b3ef2f3de
+rc 0
+stdout {\n  "k0": {\n    "k0": 0,\n    "k1": 1,\n    "k2": 2,\n    "k3": 3,\n    "k4": 4,\n    "k5": 5,\n    "k6": 6,\n    "k7": 7,\n    "k8": 8,\n    "k9": 9\n  },\n  "k1": 1,\n  "k2": 2,\n  "k3": 3,\n  "k4": 4,\n  "k5": 5,\n  "k6": 6,\n  "k7": 7,\n  "k8": 8,\n  "k9": 10\n}\n
+stderr
+end
+
+case distinct/colliding16-iterate
+def 0aa2bf57ee09
+rc 0
+stdout 0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n
+stderr
+end
+
+case distinct/colliding16-dot
+def a436b0601cb0
+rc 0
+stdout {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+stderr
+end
+
+case distinct/colliding16-keys
+def 1b4dc533f684
+rc 0
+stdout ["AaAaAaAa","AaAaAaBB","AaAaBBAa","AaAaBBBB","AaBBAaAa","AaBBAaBB","AaBBBBAa","AaBBBBBB","BBAaAaAa","BBAaAaBB","BBAaBBAa","BBAaBBBB","BBBBAaAa","BBBBAaBB","BBBBBBAa","BBBBBBBB"]\n
+stderr
+end
+
+case distinct/colliding16-to-entries
+def 7be98c242f80
+rc 0
+stdout [{"key":"AaAaAaAa","value":0},{"key":"BBAaAaAa","value":1},{"key":"AaBBAaAa","value":2},{"key":"BBBBAaAa","value":3},{"key":"AaAaBBAa","value":4},{"key":"BBAaBBAa","value":5},{"key":"AaBBBBAa","value":6},{"key":"BBBBBBAa","value":7},{"key":"AaAaAaBB","value":8},{"key":"BBAaAaBB","value":9},{"key":"AaBBAaBB","value":10},{"key":"BBBBAaBB","value":11},{"key":"AaAaBBBB","value":12},{"key":"BBAaBBBB","value":13},{"key":"AaBBBBBB","value":14},{"key":"BBBBBBBB","value":15}]\n
+stderr
+end
+
+case distinct/colliding16-repeat-iterate
+def 2b07e69e5cb1
+rc 0
+stdout 16\n1\n2\n3\n4\n5\n6\n17\n8\n9\n10\n11\n12\n13\n14\n15\n
+stderr
+end
+
+case distinct/colliding16-repeat-dot
+def cf490a1f2ca6
+rc 0
+stdout {"AaAaAaAa":16,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":17,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+stderr
+end
+
+case distinct/to-entries-array
+def 384805496b38
+rc 0
+stdout [{"key":0,"value":10},{"key":1,"value":20}]\n
+stderr
+end
+
+case distinct/to-entries-null
+def 1916b22deeba
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) has no keys\n
+end
+
+case distinct/to-entries-number
+def 38adaa7b8fac
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) has no keys\n
+end
+
+case distinct/to-entries-repeat
+def 31ba789bf5e0
+rc 0
+stdout [{"key":"k0","value":9},{"key":"k1","value":1},{"key":"k2","value":2},{"key":"k3","value":3},{"key":"k4","value":4},{"key":"k5","value":5},{"key":"k6","value":6},{"key":"k7","value":7},{"key":"k8","value":8}]\n
+stderr
+end
+
+case distinct/repeat-length
+def 3c8df15d5eeb
+rc 0
+stdout 9\n
+stderr
+end
+
+case distinct/repeat-plus
+def 7b02107a8ada
+rc 0
+stdout [{"k0":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":10},{"z":-1,"k0":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}]\n
+stderr
+end
+
+case distinct/repeat-equal
+def 742ec9d4a7c8
+rc 0
+stdout [true,true,false]\n
+stderr
+end

@@ -1,0 +1,153 @@
+# The exported surface of jq-core (module dev.rail8.jq), written by hand from the approved
+# API slice of ticket #24 (ADR-0016, ADR-0017, ADR-0024). ExportedApiTest renders the compiled module
+# and diffs it against this file; never regenerate it from the code.
+#
+# One line per module directive ("module | <directive>"), per public type of an exported package
+# ("<binary name> | <Class.toGenericString()> [extends <generic superclass>] [implements|extends
+# <generic interfaces>] [permits <exported permitted subclasses, sorted>]") and per public or protected,
+# non-synthetic declared constructor, method or field ("<binary name> | <toGenericString()>").
+# Blank lines and lines starting with # are ignored; order does not matter.
+
+module | exports dev.rail8.jq
+module | exports dev.rail8.jq.host
+module | exports dev.rail8.jq.value
+module | module dev.rail8.jq
+module | requires dev.rail8.jq.query
+module | requires mandated java.base
+
+dev.rail8.jq.Bindings | public final class dev.rail8.jq.Bindings
+dev.rail8.jq.Bindings | public static dev.rail8.jq.Bindings$Builder dev.rail8.jq.Bindings.builder()
+dev.rail8.jq.Bindings$Builder | public dev.rail8.jq.Bindings dev.rail8.jq.Bindings$Builder.build()
+dev.rail8.jq.Bindings$Builder | public dev.rail8.jq.Bindings$Builder dev.rail8.jq.Bindings$Builder.put(java.lang.String,dev.rail8.jq.value.JqValue)
+dev.rail8.jq.Bindings$Builder | public static final class dev.rail8.jq.Bindings$Builder
+
+dev.rail8.jq.JqCompileException | public final class dev.rail8.jq.JqCompileException extends dev.rail8.jq.JqException
+dev.rail8.jq.JqCompileException | public int dev.rail8.jq.JqCompileException.column()
+dev.rail8.jq.JqCompileException | public int dev.rail8.jq.JqCompileException.line()
+dev.rail8.jq.JqCompileException | public dev.rail8.jq.JqCompileException(java.lang.String,int,int)
+dev.rail8.jq.JqCompileException | public dev.rail8.jq.JqCompileException(java.util.List<java.lang.String>,int,int)
+dev.rail8.jq.JqCompileException | public java.util.List<java.lang.String> dev.rail8.jq.JqCompileException.blocks()
+
+dev.rail8.jq.JqEngine | public final class dev.rail8.jq.JqEngine
+dev.rail8.jq.JqEngine | public dev.rail8.jq.JqFilter dev.rail8.jq.JqEngine.compile(java.lang.String)
+dev.rail8.jq.JqEngine | public dev.rail8.jq.JqFilter dev.rail8.jq.JqEngine.compile(java.lang.String,java.util.Set<java.lang.String>)
+dev.rail8.jq.JqEngine | public dev.rail8.jq.Workspace dev.rail8.jq.JqEngine.newWorkspace()
+dev.rail8.jq.JqEngine | public static dev.rail8.jq.JqEngine$Builder dev.rail8.jq.JqEngine.builder()
+dev.rail8.jq.JqEngine$Builder | public dev.rail8.jq.JqEngine dev.rail8.jq.JqEngine$Builder.build()
+dev.rail8.jq.JqEngine$Builder | public dev.rail8.jq.JqEngine$Builder dev.rail8.jq.JqEngine$Builder.host(dev.rail8.jq.host.Host)
+dev.rail8.jq.JqEngine$Builder | public dev.rail8.jq.JqEngine$Builder dev.rail8.jq.JqEngine$Builder.limits(dev.rail8.jq.Limits)
+dev.rail8.jq.JqEngine$Builder | public static final class dev.rail8.jq.JqEngine$Builder
+
+dev.rail8.jq.JqException | public abstract sealed class dev.rail8.jq.JqException extends java.lang.RuntimeException permits dev.rail8.jq.JqCompileException, dev.rail8.jq.JqFilterException, dev.rail8.jq.JqSyntaxException, dev.rail8.jq.JqTermination
+
+dev.rail8.jq.JqFilter | public java.lang.String dev.rail8.jq.JqFilter.explain()
+dev.rail8.jq.JqFilter | public boolean dev.rail8.jq.JqFilter.run(dev.rail8.jq.value.JqValue,dev.rail8.jq.Bindings,dev.rail8.jq.JqSink,dev.rail8.jq.Workspace)
+dev.rail8.jq.JqFilter | public final class dev.rail8.jq.JqFilter
+
+dev.rail8.jq.JqFilterException | public final class dev.rail8.jq.JqFilterException extends dev.rail8.jq.JqException
+dev.rail8.jq.JqFilterException | public dev.rail8.jq.JqFilterException(dev.rail8.jq.value.JqValue)
+dev.rail8.jq.JqFilterException | public dev.rail8.jq.value.JqValue dev.rail8.jq.JqFilterException.value()
+
+dev.rail8.jq.JqSink | public abstract boolean dev.rail8.jq.JqSink.emit(dev.rail8.jq.value.JqValue)
+dev.rail8.jq.JqSink | public abstract interface dev.rail8.jq.JqSink
+
+dev.rail8.jq.JqSyntaxException | public final class dev.rail8.jq.JqSyntaxException extends dev.rail8.jq.JqException
+dev.rail8.jq.JqSyntaxException | public int dev.rail8.jq.JqSyntaxException.column()
+dev.rail8.jq.JqSyntaxException | public int dev.rail8.jq.JqSyntaxException.line()
+dev.rail8.jq.JqSyntaxException | public dev.rail8.jq.JqSyntaxException(java.lang.String,long,int,int)
+dev.rail8.jq.JqSyntaxException | public long dev.rail8.jq.JqSyntaxException.offset()
+
+dev.rail8.jq.JqTermination | public final class dev.rail8.jq.JqTermination extends dev.rail8.jq.JqException
+dev.rail8.jq.JqTermination | public int dev.rail8.jq.JqTermination.exitCode()
+dev.rail8.jq.JqTermination | public dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination.budget()
+dev.rail8.jq.JqTermination | public dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination.cause()
+dev.rail8.jq.JqTermination | public dev.rail8.jq.JqTermination(dev.rail8.jq.JqTermination$Cause,int,dev.rail8.jq.value.JqValue,dev.rail8.jq.JqTermination$Budget)
+dev.rail8.jq.JqTermination | public dev.rail8.jq.value.JqValue dev.rail8.jq.JqTermination.value()
+dev.rail8.jq.JqTermination$Budget | public static final enum dev.rail8.jq.JqTermination$Budget extends java.lang.Enum<dev.rail8.jq.JqTermination$Budget>
+dev.rail8.jq.JqTermination$Budget | public static final dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.BYTES_BUILT
+dev.rail8.jq.JqTermination$Budget | public static final dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.BYTES_WRITTEN
+dev.rail8.jq.JqTermination$Budget | public static final dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.DEADLINE
+dev.rail8.jq.JqTermination$Budget | public static final dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.RECURSION_DEPTH
+dev.rail8.jq.JqTermination$Budget | public static final dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.STEPS
+dev.rail8.jq.JqTermination$Budget | public static dev.rail8.jq.JqTermination$Budget dev.rail8.jq.JqTermination$Budget.valueOf(java.lang.String)
+dev.rail8.jq.JqTermination$Budget | public static dev.rail8.jq.JqTermination$Budget[] dev.rail8.jq.JqTermination$Budget.values()
+dev.rail8.jq.JqTermination$Cause | public static final enum dev.rail8.jq.JqTermination$Cause extends java.lang.Enum<dev.rail8.jq.JqTermination$Cause>
+dev.rail8.jq.JqTermination$Cause | public static final dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.BUDGET
+dev.rail8.jq.JqTermination$Cause | public static final dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.CANCELLED
+dev.rail8.jq.JqTermination$Cause | public static final dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.HALT
+dev.rail8.jq.JqTermination$Cause | public static final dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.STACK
+dev.rail8.jq.JqTermination$Cause | public static final dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.STALE_VIEW
+dev.rail8.jq.JqTermination$Cause | public static dev.rail8.jq.JqTermination$Cause dev.rail8.jq.JqTermination$Cause.valueOf(java.lang.String)
+dev.rail8.jq.JqTermination$Cause | public static dev.rail8.jq.JqTermination$Cause[] dev.rail8.jq.JqTermination$Cause.values()
+
+dev.rail8.jq.JsonDoc | public final class dev.rail8.jq.JsonDoc implements java.lang.AutoCloseable
+dev.rail8.jq.JsonDoc | public dev.rail8.jq.value.JqValue dev.rail8.jq.JsonDoc.root()
+dev.rail8.jq.JsonDoc | public void dev.rail8.jq.JsonDoc.close()
+
+dev.rail8.jq.JsonWriter | public final class dev.rail8.jq.JsonWriter
+dev.rail8.jq.JsonWriter | public static dev.rail8.jq.JqSink dev.rail8.jq.JsonWriter.sink(dev.rail8.jq.Workspace,java.io.OutputStream,dev.rail8.jq.OutputOptions)
+dev.rail8.jq.JsonWriter | public static dev.rail8.jq.JqSink dev.rail8.jq.JsonWriter.sink(dev.rail8.jq.Workspace,java.nio.channels.WritableByteChannel,dev.rail8.jq.OutputOptions)
+
+dev.rail8.jq.Limits | public final boolean dev.rail8.jq.Limits.equals(java.lang.Object)
+dev.rail8.jq.Limits | public final int dev.rail8.jq.Limits.hashCode()
+dev.rail8.jq.Limits | public final java.lang.String dev.rail8.jq.Limits.toString()
+dev.rail8.jq.Limits | public final record dev.rail8.jq.Limits extends java.lang.Record
+dev.rail8.jq.Limits | public int dev.rail8.jq.Limits.nestingDepth()
+dev.rail8.jq.Limits | public int dev.rail8.jq.Limits.recursionDepth()
+dev.rail8.jq.Limits | public dev.rail8.jq.Limits(long,java.time.Duration,int,int,long,long,java.time.Duration,long)
+dev.rail8.jq.Limits | public java.time.Duration dev.rail8.jq.Limits.deadline()
+dev.rail8.jq.Limits | public java.time.Duration dev.rail8.jq.Limits.regexMatchTime()
+dev.rail8.jq.Limits | public long dev.rail8.jq.Limits.bytesBuilt()
+dev.rail8.jq.Limits | public long dev.rail8.jq.Limits.bytesWritten()
+dev.rail8.jq.Limits | public long dev.rail8.jq.Limits.stackBytes()
+dev.rail8.jq.Limits | public long dev.rail8.jq.Limits.steps()
+dev.rail8.jq.Limits | public static final java.time.Duration dev.rail8.jq.Limits.UNLIMITED_TIME
+dev.rail8.jq.Limits | public static final long dev.rail8.jq.Limits.UNLIMITED
+dev.rail8.jq.Limits | public static dev.rail8.jq.Limits dev.rail8.jq.Limits.cli()
+dev.rail8.jq.Limits | public static dev.rail8.jq.Limits dev.rail8.jq.Limits.embedded()
+
+dev.rail8.jq.OutputOptions | public final class dev.rail8.jq.OutputOptions
+dev.rail8.jq.OutputOptions | public static dev.rail8.jq.OutputOptions dev.rail8.jq.OutputOptions.compact()
+dev.rail8.jq.OutputOptions | public static dev.rail8.jq.OutputOptions dev.rail8.jq.OutputOptions.pretty()
+
+dev.rail8.jq.Workspace | public final class dev.rail8.jq.Workspace
+dev.rail8.jq.Workspace | public dev.rail8.jq.JsonDoc dev.rail8.jq.Workspace.read(java.lang.foreign.MemorySegment)
+
+dev.rail8.jq.host.Host | public final class dev.rail8.jq.host.Host
+dev.rail8.jq.host.Host | public static dev.rail8.jq.host.Host dev.rail8.jq.host.Host.sandboxed()
+
+dev.rail8.jq.value.JqArray | public abstract int dev.rail8.jq.value.JqArray.length()
+dev.rail8.jq.value.JqArray | public abstract dev.rail8.jq.value.JqValue dev.rail8.jq.value.JqArray.get(int)
+dev.rail8.jq.value.JqArray | public abstract sealed interface dev.rail8.jq.value.JqArray extends dev.rail8.jq.value.JqValue
+
+dev.rail8.jq.value.JqBool | public boolean dev.rail8.jq.value.JqBool.value()
+dev.rail8.jq.value.JqBool | public final enum dev.rail8.jq.value.JqBool extends java.lang.Enum<dev.rail8.jq.value.JqBool> implements dev.rail8.jq.value.JqValue
+dev.rail8.jq.value.JqBool | public java.lang.String dev.rail8.jq.value.JqBool.toJson()
+dev.rail8.jq.value.JqBool | public static final dev.rail8.jq.value.JqBool dev.rail8.jq.value.JqBool.FALSE
+dev.rail8.jq.value.JqBool | public static final dev.rail8.jq.value.JqBool dev.rail8.jq.value.JqBool.TRUE
+dev.rail8.jq.value.JqBool | public static dev.rail8.jq.value.JqBool dev.rail8.jq.value.JqBool.valueOf(java.lang.String)
+dev.rail8.jq.value.JqBool | public static dev.rail8.jq.value.JqBool[] dev.rail8.jq.value.JqBool.values()
+
+dev.rail8.jq.value.JqNull | public final enum dev.rail8.jq.value.JqNull extends java.lang.Enum<dev.rail8.jq.value.JqNull> implements dev.rail8.jq.value.JqValue
+dev.rail8.jq.value.JqNull | public java.lang.String dev.rail8.jq.value.JqNull.toJson()
+dev.rail8.jq.value.JqNull | public static final dev.rail8.jq.value.JqNull dev.rail8.jq.value.JqNull.NULL
+dev.rail8.jq.value.JqNull | public static dev.rail8.jq.value.JqNull dev.rail8.jq.value.JqNull.valueOf(java.lang.String)
+dev.rail8.jq.value.JqNull | public static dev.rail8.jq.value.JqNull[] dev.rail8.jq.value.JqNull.values()
+
+dev.rail8.jq.value.JqNumber | public abstract boolean dev.rail8.jq.value.JqNumber.fitsLong()
+dev.rail8.jq.value.JqNumber | public abstract double dev.rail8.jq.value.JqNumber.doubleValue()
+dev.rail8.jq.value.JqNumber | public abstract java.math.BigDecimal dev.rail8.jq.value.JqNumber.decimalValue()
+dev.rail8.jq.value.JqNumber | public abstract long dev.rail8.jq.value.JqNumber.longValue()
+dev.rail8.jq.value.JqNumber | public abstract sealed interface dev.rail8.jq.value.JqNumber extends dev.rail8.jq.value.JqValue
+
+dev.rail8.jq.value.JqObject | public abstract int dev.rail8.jq.value.JqObject.size()
+dev.rail8.jq.value.JqObject | public abstract dev.rail8.jq.value.JqValue dev.rail8.jq.value.JqObject.get(java.lang.String)
+dev.rail8.jq.value.JqObject | public abstract sealed interface dev.rail8.jq.value.JqObject extends dev.rail8.jq.value.JqValue
+dev.rail8.jq.value.JqObject | public abstract void dev.rail8.jq.value.JqObject.forEach(java.util.function.BiConsumer<? super java.lang.String, ? super dev.rail8.jq.value.JqValue>)
+
+dev.rail8.jq.value.JqString | public abstract java.lang.String dev.rail8.jq.value.JqString.value()
+dev.rail8.jq.value.JqString | public abstract java.lang.foreign.MemorySegment dev.rail8.jq.value.JqString.utf8()
+dev.rail8.jq.value.JqString | public abstract sealed interface dev.rail8.jq.value.JqString extends dev.rail8.jq.value.JqValue
+
+dev.rail8.jq.value.JqValue | public abstract java.lang.String dev.rail8.jq.value.JqValue.toJson()
+dev.rail8.jq.value.JqValue | public abstract sealed interface dev.rail8.jq.value.JqValue permits dev.rail8.jq.value.JqArray, dev.rail8.jq.value.JqBool, dev.rail8.jq.value.JqNull, dev.rail8.jq.value.JqNumber, dev.rail8.jq.value.JqObject, dev.rail8.jq.value.JqString

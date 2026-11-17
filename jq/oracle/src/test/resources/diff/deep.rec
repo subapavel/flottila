@@ -1,0 +1,127 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case deep/collect
+def 71e5bf020824
+rc 0
+stdout 1\n
+stderr
+end
+
+case deep/reduce
+def 7885be395d4a
+rc 0
+stdout 9998\n
+stderr
+end
+
+case deep/first-or
+def 2b4e835596d5
+rc 0
+stdout 7\n
+stderr
+end
+
+case deep/hold
+def d2a6796d1419
+rc 0
+stdout 0\n
+stderr
+end
+
+case deep/downstream-error-reenters-the-alt-bind
+def 022b2a66c58f
+rc 0
+stdout [[1]]\n
+stderr
+end
+
+case deep/downstream-break-stops-the-forms
+def f394cccaebf9
+rc 0
+stdout [1]\n
+stderr
+end
+
+case deep/nested-drivers
+def ae28ab897d1d
+rc 0
+stdout 1000\n
+stderr
+end
+
+case deep/shape-t
+def 21fe65a0e68b
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-e
+def 535c99a6ee15
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-m
+def ef0bc17e1ca5
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-n
+def 78da9fdeabd2
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-w
+def 7cad82afd7bc
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-c
+def 19cf1bc07fd9
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-recurse
+def 7b002c3f56be
+rc 0
+stdout 9999\n
+stderr
+end
+
+case deep/shape-collect-descent
+def 6d7513b4bb8c
+rc 0
+stdout 300\n
+stderr
+end
+
+case deep/native-tojson
+def 1c84ac770cc4
+rc 0
+stdout 19998\n
+stderr
+end
+
+case deep/native-sort
+def 554c50541aef
+rc 0
+stdout 2\n
+stderr
+end
+
+case deep/native-sort-at-depth
+def 88035c4d4d3c
+rc 0
+stdout 19998\n
+stderr
+end

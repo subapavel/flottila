@@ -1,0 +1,155 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case bench/G1.1k
+def cf34a15087e3
+rc 0
+stdout "x"\n
+stderr
+end
+
+case bench/G6.compact.1k
+def e04071d3afa9
+rc 0
+stdout {"orders":[{"id":0,"total":0.13,"k":"k0"},{"id":1,"total":79.32,"k":"k1"},{"id":2,"total":158.51,"k":"k2"},{"id":3,"total":37.7,"k":"k3"},{"id":4,"total":116.89,"k":"k4"},{"id":5,"total":196.08,"k":"k5"},{"id":6,"total":75.27,"k":"k6"},{"id":7,"total":154.46,"k":"k7"},{"id":8,"total":33.65,"k":"k8"},{"id":9,"total":112.84,"k":"k9"},{"id":10,"total":192.03,"k":"k10"},{"id":11,"total":71.22,"k":"k11"},{"id":12,"total":150.41,"k":"k12"},{"id":13,"total":29.6,"k":"k13"},{"id":14,"total":108.79,"k":"k14"},{"id":15,"total":187.98,"k":"k15"}],"items":[{"sku":"s0","price":1},{"sku":"s1","price":4731},{"sku":"s2","price":9461},{"sku":"s3","price":4192},{"sku":"s4","price":8922},{"sku":"s5","price":3653},{"sku":"s6","price":8383},{"sku":"s7","price":3114},{"sku":"s8","price":7844},{"sku":"s9","price":2575},{"sku":"s10","price":7305},{"sku":"s11","price":2036},{"sku":"s12","price":6766},{"sku":"s13","price":1497},{"sku":"s14","price":6227},{"sku":"s15","price":958}],"a":{"b":{"c":"x"}}}\n
+stderr
+end
+
+case bench/G6.pretty.1k
+def 6fe68dc9ed09
+rc 0
+stdout {\n  "orders": [\n    {\n      "id": 0,\n      "total": 0.13,\n      "k": "k0"\n    },\n    {\n      "id": 1,\n      "total": 79.32,\n      "k": "k1"\n    },\n    {\n      "id": 2,\n      "total": 158.51,\n      "k": "k2"\n    },\n    {\n      "id": 3,\n      "total": 37.7,\n      "k": "k3"\n    },\n    {\n      "id": 4,\n      "total": 116.89,\n      "k": "k4"\n    },\n    {\n      "id": 5,\n      "total": 196.08,\n      "k": "k5"\n    },\n    {\n      "id": 6,\n      "total": 75.27,\n      "k": "k6"\n    },\n    {\n      "id": 7,\n      "total": 154.46,\n      "k": "k7"\n    },\n    {\n      "id": 8,\n      "total": 33.65,\n      "k": "k8"\n    },\n    {\n      "id": 9,\n      "total": 112.84,\n      "k": "k9"\n    },\n    {\n      "id": 10,\n      "total": 192.03,\n      "k": "k10"\n    },\n    {\n      "id": 11,\n      "total": 71.22,\n      "k": "k11"\n    },\n    {\n      "id": 12,\n      "total": 150.41,\n      "k": "k12"\n    },\n    {\n      "id": 13,\n      "total": 29.6,\n      "k": "k13"\n    },\n    {\n      "id": 14,\n      "total": 108.79,\n      "k": "k14"\n    },\n    {\n      "id": 15,\n      "total": 187.98,\n      "k": "k15"\n    }\n  ],\n  "items": [\n    {\n      "sku": "s0",\n      "price": 1\n    },\n    {\n      "sku": "s1",\n      "price": 4731\n    },\n    {\n      "sku": "s2",\n      "price": 9461\n    },\n    {\n      "sku": "s3",\n      "price": 4192\n    },\n    {\n      "sku": "s4",\n      "price": 8922\n    },\n    {\n      "sku": "s5",\n      "price": 3653\n    },\n    {\n      "sku": "s6",\n      "price": 8383\n    },\n    {\n      "sku": "s7",\n      "price": 3114\n    },\n    {\n      "sku": "s8",\n      "price": 7844\n    },\n    {\n      "sku": "s9",\n      "price": 2575\n    },\n    {\n      "sku": "s10",\n      "price": 7305\n    },\n    {\n      "sku": "s11",\n      "price": 2036\n    },\n    {\n      "sku": "s12",\n      "price": 6766\n    },\n    {\n      "sku": "s13",\n      "price": 1497\n    },\n    {\n      "sku": "s14",\n      "price": 6227\n    },\n    {\n      "sku": "s15",\n      "price": 958\n    }\n  ],\n  "a": {\n    "b": {\n      "c": "x"\n    }\n  }\n}\n
+stderr
+end
+
+case bench/G7.1k
+def c6e8cbfd94f1
+rc 0
+stdout {"b":{"c":"x"}}\n
+stderr
+end
+
+case bench/G2.1k
+def c0b79b927e3a
+rc 0
+stdout {"id":2,"total":158.51}\n{"id":4,"total":116.89}\n{"id":5,"total":196.08}\n{"id":7,"total":154.46}\n{"id":9,"total":112.84}\n{"id":10,"total":192.03}\n{"id":12,"total":150.41}\n{"id":14,"total":108.79}\n{"id":15,"total":187.98}\n
+stderr
+end
+
+case bench/G3.1k
+def a24d626b409a
+rc 0
+stdout [{"k":"k1","n":1},{"k":"k13","n":2},{"k":"k15","n":2},{"k":"k18","n":1},{"k":"k19","n":1},{"k":"k2","n":1},{"k":"k21","n":1},{"k":"k24","n":2},{"k":"k25","n":2},{"k":"k26","n":1},{"k":"k27","n":2},{"k":"k29","n":2},{"k":"k3","n":1},{"k":"k32","n":1},{"k":"k33","n":2},{"k":"k35","n":1},{"k":"k37","n":1},{"k":"k39","n":1},{"k":"k4","n":1},{"k":"k40","n":1},{"k":"k41","n":1},{"k":"k43","n":1},{"k":"k46","n":1},{"k":"k47","n":1},{"k":"k5","n":1},{"k":"k53","n":3},{"k":"k54","n":1},{"k":"k55","n":1},{"k":"k56","n":1},{"k":"k59","n":1},{"k":"k6","n":1},{"k":"k62","n":1},{"k":"k7","n":1},{"k":"k8","n":2},{"k":"k9","n":1}]\n
+stderr
+end
+
+case bench/G4.1k
+def 3a6965e1801f
+rc 0
+stdout [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279,280,281,282]\n
+stderr
+end
+
+case bench/recs20-print.1k
+def 91210dfa148b
+rc 0
+stdout [{"f00":0,"f01":"v0","f02":2,"f03":"v0","f04":4,"f05":"v0","f06":6,"f07":"v0","f08":8,"f09":"v0","f10":10,"f11":"v0","f12":12,"f13":"v0","f14":14,"f15":"v0","f16":16,"f17":"v0","f18":18,"f19":"v0"},{"f00":20,"f01":"v1","f02":22,"f03":"v1","f04":24,"f05":"v1","f06":26,"f07":"v1","f08":28,"f09":"v1","f10":30,"f11":"v1","f12":32,"f13":"v1","f14":34,"f15":"v1","f16":36,"f17":"v1","f18":38,"f19":"v1"},{"f00":40,"f01":"v2","f02":42,"f03":"v2","f04":44,"f05":"v2","f06":46,"f07":"v2","f08":48,"f09":"v2","f10":50,"f11":"v2","f12":52,"f13":"v2","f14":54,"f15":"v2","f16":56,"f17":"v2","f18":58,"f19":"v2"},{"f00":60,"f01":"v3","f02":62,"f03":"v3","f04":64,"f05":"v3","f06":66,"f07":"v3","f08":68,"f09":"v3","f10":70,"f11":"v3","f12":72,"f13":"v3","f14":74,"f15":"v3","f16":76,"f17":"v3","f18":78,"f19":"v3"},{"f00":80,"f01":"v4","f02":82,"f03":"v4","f04":84,"f05":"v4","f06":86,"f07":"v4","f08":88,"f09":"v4","f10":90,"f11":"v4","f12":92,"f13":"v4","f14":94,"f15":"v4","f16":96,"f17":"v4","f18":98,"f19":"v4"}]\n
+stderr
+end
+
+case bench/recs20-iterate.1k
+def afdd215693a2
+rc 0
+stdout 0\n"v0"\n2\n"v0"\n4\n"v0"\n6\n"v0"\n8\n"v0"\n10\n"v0"\n12\n"v0"\n14\n"v0"\n16\n"v0"\n18\n"v0"\n20\n"v1"\n22\n"v1"\n24\n"v1"\n26\n"v1"\n28\n"v1"\n30\n"v1"\n32\n"v1"\n34\n"v1"\n36\n"v1"\n38\n"v1"\n40\n"v2"\n42\n"v2"\n44\n"v2"\n46\n"v2"\n48\n"v2"\n50\n"v2"\n52\n"v2"\n54\n"v2"\n56\n"v2"\n58\n"v2"\n60\n"v3"\n62\n"v3"\n64\n"v3"\n66\n"v3"\n68\n"v3"\n70\n"v3"\n72\n"v3"\n74\n"v3"\n76\n"v3"\n78\n"v3"\n80\n"v4"\n82\n"v4"\n84\n"v4"\n86\n"v4"\n88\n"v4"\n90\n"v4"\n92\n"v4"\n94\n"v4"\n96\n"v4"\n98\n"v4"\n
+stderr
+end
+
+case bench/recur-T.1k
+def ab804a41a4d5
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-E.1k
+def 5c9537399e80
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-Eu.1k
+def 8d74c266f5c2
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-M.1k
+def f14dd245cd4c
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/recur-N.1k
+def e98ce356b232
+rc 0
+stdout 39903\n
+stderr
+end
+
+case bench/limit-iter.1k
+def 424f727a823a
+rc 0
+stdout 282\n
+stderr
+end
+
+case bench/limit-recurse.1k
+def 58b3aa566843
+rc 0
+stdout 282\n
+stderr
+end
+
+case bench/cap-inline.1k
+def 495c1b5adf72
+rc 0
+stdout 16384\n
+stderr
+end
+
+case bench/cap-inline-over.1k
+def 4877c66efdff
+rc 0
+stdout 32768\n
+stderr
+end
+
+case bench/cap-specialise.1k
+def e0d717479a19
+rc 0
+stdout 101637\n
+stderr
+end
+
+case bench/cap-specialise-over.1k
+def 46ab964edf21
+rc 0
+stdout 101638\n
+stderr
+end
+
+case bench/dotdot.1k
+def 8e757bd1ae50
+rc 0
+stdout 118\n
+stderr
+end
+
+case bench/dotdot-deep.1k
+def 45944f43fc53
+rc 0
+stdout 511\n
+stderr
+end

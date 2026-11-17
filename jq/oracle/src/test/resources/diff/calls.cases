@@ -1,0 +1,252 @@
+# Differential cases (ADR-0020) of #107 "S2b.3 Calls, Program, frames and real closures" (ADR-0045 and its #107
+# amendment, ADR-0005, ADR-0039, ADR-0040, ADR-0046): a call into a recursive group runs as a Call to its lifted
+# function, each Call and each real-closure invocation in a frame of its own, a closure in the frame it was written in,
+# captured variables, closure parameters and label tokens passed as trailing parameters. Every case is required at #107
+# (oracle/src/test/resources/require/107.txt). The cases after "API witnesses" record the jq-ref results that jq-core's
+# RecursionDepthTest, CallStepsTest and StackBackstopTest assert. Format: oracle/src/main/java/dev/rail8/jq/
+# oracle/diff/DiffCase.java. Expected outputs live in calls.rec, written by scripts/oracle-record.sh only. Ids are
+# immutable.
+
+# frames (ADR-0045 "Frames", M2): nested invocations of one closure keep their own cells
+
+case calls/closure-frames-nested-invocations
+arg -c
+filter def r(f): if .>40 then . else f|r(f|.) end; [0|r(. as $i|(1,2) as $x|(10,20) as $y|$i+$x+$y)]
+stdin null\n
+end
+
+case calls/closure-of-a-closure-binds-per-frame
+arg -c
+filter def r(f): if . > 2 then f else (. + 1 | r(. as $y | (. + 1 | f) | . + $y)) end; 0 | r(.)
+stdin null\n
+end
+
+# captures (GLOSSARY "Capture"): outer variables, an enclosing closure parameter, a $name parameter
+
+case calls/nested-def-captures-closure-param
+arg -c
+filter def k(g): def r: if . > 1 then g else (. + 1 | r) end; r; [0 | k(10), k(20)]
+stdin null\n
+end
+
+case calls/captures-outer-variables
+arg -c
+filter 1 as $x | 2 as $y | def h: [$x, $y]; def r: if . > 2 then h + [.] else (. + 1 | r) end; 0 | r
+stdin null\n
+end
+
+case calls/value-params-bind-around-the-call
+arg -c
+filter def r($a; $b): if $a > 9 then [$a, $b] else r($a + 10; $b) end; [r(1,2; 3,4)]
+stdin null\n
+end
+
+case calls/value-param-name-is-callable
+arg -c
+filter def r($n): if $n <= 0 then [n] else r($n - 1) end; r(1)
+stdin null\n
+end
+
+# groups
+
+case calls/mutual-recursion-through-a-nested-def
+arg -c
+filter def ev: def od: if . == 0 then false else . - 1 | ev end; if . == 0 then true else . - 1 | od end; [range(6) | ev]
+stdin null\n
+end
+
+case calls/closure-passed-to-itself-never-runs
+arg -c
+filter def f(g): 1; def r: f(r); r
+stdin null\n
+end
+
+case calls/limit-of-an-endless-recursion
+arg -c
+filter [limit(3; def r: ., (. + 1 | r); 0 | r)]
+stdin null\n
+end
+
+case calls/recursion-inside-reduce
+arg -c
+filter def d: reduce .[]? as $x (0; . + ($x | d) + 1); [[[]],[]] | d
+stdin null\n
+end
+
+# labels (ADR-0005: a label is a per-activation token, captured like a variable; ADR-0039)
+
+case calls/break-in-closure-targets-callers-activation
+arg -c
+filter def f(g): label $l | (g, 10, (if . < 1 then (. + 1 | f(break $l)), 20 else 30 end)); [0 | f(empty)]
+stdin null\n
+end
+
+case calls/break-out-of-a-recursion
+arg -c
+filter [label $l | def f: if . > 2 then break $l else (. + 1 | f) + 1 end; 5, (0 | f), 6]
+stdin null\n
+end
+
+case calls/captured-label-per-activation
+arg -c
+filter [range(3) as $i | label $l | def f: if . > $i then break $l else ., (. + 1 | f) end; 0 | f]
+stdin null\n
+end
+
+case calls/captured-label-through-a-closure-param
+arg -c
+filter [label $l | def w(f): if . > 5 then break $l else ., (f | w(f)) end; 0 | w(. + 2)]
+stdin null\n
+end
+
+# errors (ADR-0008, ADR-0039: a Try catches what its body raises, not what runs downstream)
+
+case calls/try-in-a-recursion-lets-a-downstream-error-pass
+arg -c
+filter def f: try (if . > 0 then . - 1 | f else . end) catch "caught"; 2 | f | error("down")
+stdin null\n
+end
+
+case calls/try-in-a-recursion-catches-its-body
+arg -c
+filter def f: try (if . > 0 then (. - 1 | f) | error("down") else . end) catch "caught"; 1 | f
+stdin null\n
+end
+
+case calls/error-out-of-a-recursion-is-caught
+arg -c
+filter def r: if . > 2 then error("x") else (. + 1 | r) end; try (0 | r) catch .
+stdin null\n
+end
+
+# API witnesses: F = def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f, and its kin
+
+case calls/depth-99
+arg -c
+filter def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f
+stdin 99\n
+end
+
+case calls/depth-100
+arg -c
+filter def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f
+stdin 100\n
+end
+
+case calls/two-deep-calls-in-sequence
+arg -c
+filter def f: if . == 0 then 0 else (. - 1 | f) + 1 end; [(99 | f), (99 | f)]
+stdin null\n
+end
+
+case calls/passed-on-closure-98
+arg -c
+filter def r(f): if . == 0 then f else (. - 1 | r(f)) + 0 end; r(0)
+stdin 98\n
+end
+
+case calls/passed-on-closure-99
+arg -c
+filter def r(f): if . == 0 then f else (. - 1 | r(f)) + 0 end; r(0)
+stdin 99\n
+end
+
+case calls/inlined-wrapper-around-a-recursive-call
+arg -c
+filter def w(g): g; def f: if . == 0 then 0 else w(. - 1 | f) + 1 end; f
+stdin 99\n
+end
+
+case calls/inlined-calls-only
+arg -c
+filter def g: . + 1; def h: g | g; [h, h]
+stdin 0\n
+end
+
+case calls/error-leaving-deep-calls
+arg -c
+filter def f: if . == 0 then error("x") else (. - 1 | f) + 1 end; [range(3) | try (99 | f) catch .]
+stdin null\n
+end
+
+case calls/break-leaving-deep-calls
+arg -c
+filter [range(3) | (label $l | def f: if . == 0 then break $l else (. - 1 | f) + 1 end; 99 | f), .]
+stdin null\n
+end
+
+case calls/one-call-on-0
+arg -c
+filter def f: if . == 0 then 0 else (. - 1 | f) + 1 end; 0 | f
+stdin null\n
+end
+
+case calls/no-call-on-0
+arg -c
+filter 0 | if . == 0 then 0 else (. - 1 | 0) + 1 end
+stdin null\n
+end
+
+case calls/three-calls-on-2
+arg -c
+filter def f: if . == 0 then 0 else (. - 1 | f) + 1 end; 2 | f
+stdin null\n
+end
+
+case calls/no-call-on-2
+arg -c
+filter 2 | if . == 0 then 0 else (. - 1 | if . == 0 then 0 else (. - 1 | if . == 0 then 0 else (. - 1 | 0) + 1 end) + 1 end) + 1 end
+stdin null\n
+end
+
+case calls/closure-run-at-depth-0
+arg -c
+filter def r(f): if . == 0 then f else (. - 1 | r(f)) end; 0 | r(5)
+stdin null\n
+end
+
+case calls/closure-never-run-at-depth-0
+arg -c
+filter def r(f): if . == 0 then 5 else (. - 1 | r(f)) end; 0 | r(5)
+stdin null\n
+end
+
+case calls/closure-run-at-depth-2
+arg -c
+filter def r(f): if . == 0 then f else (. - 1 | r(f)) end; 2 | r(5)
+stdin null\n
+end
+
+case calls/closure-never-run-at-depth-2
+arg -c
+filter def r(f): if . == 0 then 5 else (. - 1 | r(f)) end; 2 | r(5)
+stdin null\n
+end
+
+case calls/break-to-a-captured-label
+arg -c
+filter [label $l | def f: if . > 2 then break $l else (. + 1 | f) end; 0 | f]
+stdin null\n
+end
+
+case calls/empty-instead-of-a-break
+arg -c
+filter [label $l | def f: if . > 2 then empty else (. + 1 | f) end; 0 | f]
+stdin null\n
+end
+
+# may break out (#115, ADR-0007 "Amendment (ticket #115)"): a Break to a captured label reached only through a group's
+# fixpoint (X1: od breaks, ev calls od) or through a Call into another group (X2: f calls g, which breaks). Guards at
+# #115; S2b.11's value form must keep both off it.
+
+case calls/break-through-a-mutual-recursion
+arg -c
+filter [label $l | def ev: def od: if . == 0 then break $l else . - 1 | ev end; if . == 0 then true else . - 1 | od end; (5 | ev), 7]
+stdin null\n
+end
+
+case calls/break-through-another-group
+arg -c
+filter [label $l | def g: if . > 3 then break $l else . + 1 | g end; def f: if . > 1 then g else . + 1 | f end; (0 | f), 7]
+stdin null\n
+end

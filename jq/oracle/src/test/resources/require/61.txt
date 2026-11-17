@@ -1,0 +1,71 @@
+# The required cases of #61 "S2a.11 Literals and the full lexer" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# Interpolation is #67's (F-35): no case here holds one.
+
+# jqtest: the census cases of S2a.11 (oracle/src/test/resources/census/jqtest.tsv), jq.test program lines 8, 12, 16,
+# 20, 54, 62 (%%FAIL "u\vw"), 168 (."foo"."bar") and 816.
+jq.test#00bd6269df2a
+jq.test#023a4f8e4728
+jq.test#052feb93dd6b
+jq.test#05d369c853a6
+jq.test#350f3cad33e6
+jq.test#5391099daec9
+jq.test#6f6d2a098114
+jq.test#844e1c574b9c
+
+# differential: the family diff/literal.cases.
+literal/access-dot-digit-is-number
+literal/access-dot-space-string
+literal/access-escaped-key
+literal/access-field-e0
+literal/access-long-name-error
+literal/access-string-missing
+literal/access-string-term-field
+literal/comment-at-end
+literal/comment-continued
+literal/comment-continued-crlf
+literal/comment-cr-is-no-line-end
+literal/comment-escaped-backslash
+literal/comment-lf
+literal/error-backslash-crlf
+literal/error-backslash-e-acute
+literal/error-backslash-lf
+literal/error-backslash-tab
+literal/error-byte-column
+literal/error-escape-mid
+literal/error-high-surrogate-alone
+literal/error-high-surrogate-then-escape
+literal/error-line-3
+literal/error-two-blocks
+literal/error-u-not-hex
+literal/error-u-short
+literal/false
+literal/format-text-21-digits
+literal/format-text-array
+literal/format-text-null
+literal/format-text-number
+literal/format-text-object
+literal/format-text-string
+literal/null
+literal/number-21-digits
+literal/number-below-lower-limit
+literal/number-exponent
+literal/number-exponent-1000
+literal/number-infinity-literal
+literal/number-integer
+literal/number-leading-dot
+literal/number-leading-dot-zero-exponent
+literal/number-leading-zeros
+literal/number-small
+literal/number-trailing-dot
+literal/number-trailing-dot-exponent
+literal/number-trailing-zero
+literal/number-zero-exponent
+literal/number-zeros-around-point
+literal/string-empty
+literal/string-escapes
+literal/string-lone-low-surrogate
+literal/string-raw-lf
+literal/string-raw-tab
+literal/string-surrogate-pair
+literal/true

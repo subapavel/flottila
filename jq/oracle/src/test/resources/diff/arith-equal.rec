@@ -1,0 +1,113 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-equal/zero-and-computed-negative-zero
+def bf121f43b849
+rc 0
+stdout [[],[],[]]\n
+stderr
+end
+
+case arith-equal/input-negative-zero-and-zero
+def 2789a8863df6
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/one-and-one-point-zero
+def ed6f83bc950a
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/input-one-and-one-point-zero
+def caccc75b856a
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/big-literals-past-17-digits
+def b5e5d2289dcf
+rc 0
+stdout [[100000000000000000001],[],[1.000000000000000000001]]\n
+stderr
+end
+
+case arith-equal/input-big-literals-past-17-digits
+def bf6ffcec10a9
+rc 0
+stdout [100000000000000000001]\n
+stderr
+end
+
+case arith-equal/input-big-literal-and-computed
+def 02164fe3f1c6
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/above-two-pow-53-literal-and-computed
+def 56bbeed6ff7b
+rc 0
+stdout [[9007199254740993],[]]\n
+stderr
+end
+
+case arith-equal/nan-equals-nothing
+def 75a05ba2adf9
+rc 0
+stdout [null]\n
+stderr
+end
+
+case arith-equal/infinity-literals
+def a2533b0a868a
+rc 0
+stdout [[],[-1.7976931348623157e+308],[]]\n
+stderr
+end
+
+case arith-equal/finite-literals-past-double
+def 6ee401cec765
+rc 0
+stdout [[],[1E+1000],[1E+400],[]]\n
+stderr
+end
+
+case arith-equal/kinds-differ
+def cdade9eb4684
+rc 0
+stdout [[1],[null],[[]]]\n
+stderr
+end
+
+case arith-equal/containers
+def 16a4797fc581
+rc 0
+stdout [[],[{"a":1}],[[1,2]]]\n
+stderr
+end
+
+case arith-equal/input-escaped-and-plain-string
+def 334abc669905
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/read-repeated-key-last-value
+def 8e569a7c0555
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-equal/read-repeated-key-first-value
+def 75e348595415
+rc 0
+stdout [1]\n
+stderr
+end

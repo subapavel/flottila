@@ -1,0 +1,93 @@
+# ADR-0014: pull requests and pushes to main and spec/**; cancels per ref; Linux on ubuntu-24.04 with Temurin 25.
+# workflow_dispatch is an addition to the ADR so a branch that is not a pull request can be run by hand.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'spec/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trailers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Script tests
+        run: |
+          set -e
+          bash scripts/test/trailers-test.sh
+          bash scripts/test/trailers-root-test.sh
+          bash scripts/test/trailer-range-test.sh
+      # scripts/trailer-range.sh chooses the range (#51): FROM is the pull request's base or the push's before-SHA.
+      - name: Range check
+        env:
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -e
+          git fetch --no-tags origin main
+          range=$(bash scripts/trailer-range.sh "$EVENT" "$SHA" "$FROM")
+          echo "range $range"
+          bash scripts/check-trailers.sh "$range"
+
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Reference jq 1.8.2
+        run: |
+          set -e
+          curl -fsSL -o jq-ref https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+          echo "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f  jq-ref" | sha256sum -c -
+          sudo install -m 755 jq-ref /usr/local/bin/jq-ref
+          rm jq-ref
+          jq-ref --version
+      # ADR-0020: every recording against jq-ref, not only those a ticket changed.
+      - name: Recordings (oracle-record.sh --verify)
+        run: bash scripts/oracle-record.sh --verify $(git ls-files -- 'oracle/src/test/resources/**/*.rec')
+      # Needs git, Java 25 (ratchet.java, javac), jq-ref and the stub-driven gate scripts; all are provided above.
+      - name: Script tests (every scripts/test/*-test.sh)
+        run: |
+          set -e
+          bash scripts/check-script-tests.sh
+          for t in scripts/test/*-test.sh; do
+            echo "== $t"
+            bash "$t"
+          done
+      - name: Verify (all modules, benchmarks included)
+        run: ./mvnw -B -Pbench verify
+      - name: LF check (the word check runs in verify)
+        run: ./mvnw -B -Plf-check validate
+      - name: Ratchet
+        run: java scripts/ratchet.java check
+
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      # Proves only that checkout and build work; the word check needs bash.
+      - run: .\mvnw.cmd -B -q -DskipTests "-Dchecks.skip=true" verify

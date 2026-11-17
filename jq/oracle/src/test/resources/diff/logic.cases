@@ -1,0 +1,185 @@
+# Differential cases (ADR-0020) of #66 "S2a.16 Comparison and sort order": and, or and not over jq 1.8.2's truth
+# (GLOSSARY "Truthy": neither false nor null). ADR-0037: a and b is If(a, If(b, T, F), F), a or b is If(a, T, If(b, T,
+# F)) and not is If(., F, T), so the left side is the outer loop and the right side runs only for a left result that
+# does not decide. A run-time navigation error (.a or .[0] on a string, #63) witnesses whether a side runs; the cases
+# named *-error-builtin use error/1, which is #68's, and are required there. Format: oracle/src/main/java/io/github/
+# subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in logic.rec, written by scripts/oracle-record.sh only.
+# Ids are immutable.
+
+# truthiness
+
+case logic/not-truthiness
+arg -c
+filter [(1, null, false, 0, "", [], {}, true) | not]
+stdin null\n
+end
+
+case logic/and-truthiness
+arg -c
+filter [(1, 0, "", [], {}, true, null, false) and true]
+stdin null\n
+end
+
+case logic/or-truthiness
+arg -c
+filter [(1, 0, "", [], {}, true, null, false) or false]
+stdin null\n
+end
+
+case logic/not-of-the-document
+arg -c
+filter [.[] | not]
+stdin [0,null,false,"",{}]\n
+end
+
+case logic/results-are-booleans
+arg -c
+filter [1 and "a", null or 2, "x" or null, [] and {}]
+stdin null\n
+end
+
+# generators: the left side outer
+
+case logic/and-generators
+arg -c
+filter [(true,false) and (true,false)]
+stdin null\n
+end
+
+case logic/or-generators
+arg -c
+filter [(true,false) or (true,false)]
+stdin null\n
+end
+
+case logic/and-left-outer
+arg -c
+filter [(false, true) and (1, null)]
+stdin null\n
+end
+
+case logic/or-left-outer
+arg -c
+filter [(null, 1) or (false, 2)]
+stdin null\n
+end
+
+case logic/and-left-outer-error
+arg -c
+filter [(true, .a) and (false, .[0])]
+stdin "s"\n
+end
+
+case logic/or-left-outer-error
+arg -c
+filter [(false, .a) or (true, .[0])]
+stdin "s"\n
+end
+
+case logic/not-generator
+arg -c
+filter [(true, false, null, 1) | not]
+stdin null\n
+end
+
+# short circuit: the right side runs only when the left result does not decide
+
+case logic/and-false-skips-the-right
+arg -c
+filter [false and .a]
+stdin "s"\n
+end
+
+case logic/and-null-skips-the-right
+arg -c
+filter [null and .a]
+stdin "s"\n
+end
+
+case logic/and-true-runs-the-right
+arg -c
+filter [true and .a]
+stdin "s"\n
+end
+
+case logic/or-true-skips-the-right
+arg -c
+filter [true or .a]
+stdin "s"\n
+end
+
+case logic/or-number-skips-the-right
+arg -c
+filter [0 or .a]
+stdin "s"\n
+end
+
+case logic/or-false-runs-the-right
+arg -c
+filter [false or .a]
+stdin "s"\n
+end
+
+case logic/and-left-error
+arg -c
+filter [.a and true]
+stdin "s"\n
+end
+
+case logic/or-left-error
+arg -c
+filter [.a or true]
+stdin "s"\n
+end
+
+# no result on a side
+
+case logic/and-no-left-result
+arg -c
+filter [.[] and true]
+stdin []\n
+end
+
+case logic/and-no-right-result
+arg -c
+filter [true and .[]]
+stdin []\n
+end
+
+case logic/or-no-right-result
+arg -c
+filter [false or .[]]
+stdin []\n
+end
+
+case logic/or-no-right-result-skipped
+arg -c
+filter [true or .[]]
+stdin []\n
+end
+
+# with error/1 (#68)
+
+case logic/and-false-skips-error-builtin
+arg -c
+filter [false and error("x")]
+stdin null\n
+end
+
+case logic/or-true-skips-error-builtin
+arg -c
+filter [true or error("x")]
+stdin null\n
+end
+
+case logic/and-true-runs-error-builtin
+arg -c
+filter [true and error("x")]
+stdin null\n
+end
+
+case logic/and-left-error-builtin
+arg -c
+filter [error("x") and true]
+stdin null\n
+end
