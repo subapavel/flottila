@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// Unit tests run in node; component tests (*.browser.test.tsx) run in Chromium through vitest.browser.config.ts.
+// Unit tests run in node; component tests (*.browser.test.tsx) are left out here and run in Chromium on their own.
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
