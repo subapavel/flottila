@@ -1,10 +1,10 @@
 package dev.rail8.core.queue;
 
 /**
- * A restart of a parked message refused because a work row of it is still there (F-57, D-162 (5)): work item {@link #seq()} of
- * message {@link #messageId()} in the restart's flow — a park whose settle has not landed, its row left to its lease — so the
- * restart wrote nothing; once that row settled the restart finds the DLQ row as it was. It becomes a value of the act's answer in
- * FIX-276. The message names both.
+ * Thrown when the restart of a parked message is refused because a work row of the message is still there: work item
+ * {@link #seq()} of message {@link #messageId()} in the restart's flow, typically a park whose settle has not landed yet and
+ * whose row waits for its lease to run out. The restart writes nothing; once that row is settled, a new restart finds the
+ * dead-letter row unchanged. The exception's message names both the message id and the seq.
  *
  * @since 0.1
  */
