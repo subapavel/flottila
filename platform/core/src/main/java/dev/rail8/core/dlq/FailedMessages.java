@@ -99,7 +99,8 @@ public interface FailedMessages {
     }
 
     /**
-     * Refused: a work row of the message is there and is not stopped, so the message is not done with yet. Nothing was written.
+     * Refused: a work row of the message is there that the act cannot work on — one that is not stopped, so the message is not
+     * done with yet, or for a retry a stopped one whose body is lost. Nothing was written.
      *
      * @param seq that row's seq (the oldest when there are several)
      * @since 0.1

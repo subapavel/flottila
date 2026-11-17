@@ -780,7 +780,7 @@ public final class AdminServer {
     private Reply cancel(RoutingContext ctx, FailedMessages failed) {
         String id = ctx.pathParam("id");
         FailedMessages.Actor by = by(ctx.request());
-        Optional<String> reason = reason(ctx.body());
+        Optional<String> reason = reason(ctx.request(), ctx.body());
         FailedMessages.Act act = failed.cancel(id, by, reason).await();
         return switch (act) {
             case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not cancelled: its work item " + u.seq() + " is not settled yet"));
@@ -797,10 +797,14 @@ public final class AdminServer {
     /**
      * A cancel's reason: no body is none; any other body is {@code {"reason": "<text>"}} with no other member, the text 1 to
      * {@link FailedMessages#REASON_MAX} characters after stripping, else a 400 — an empty object and a null reason among them.
+     * Multipart form data is such a 400 too, never a cancel without a reason: the body handler parses it as a form and buffers
+     * none of it, so it would read as no body.
      */
-    private static Optional<String> reason(RequestBody body) {
-        if (body.isEmpty()) return Optional.empty();
+    private static Optional<String> reason(HttpServerRequest req, RequestBody body) {
         String shape = "the body is none or {\"reason\": \"<1 to " + FailedMessages.REASON_MAX + " characters>\"}";
+        String type = req.getHeader(HttpHeaders.CONTENT_TYPE);
+        if (type != null && type.toLowerCase(java.util.Locale.ROOT).startsWith("multipart/form-data")) throw new Refused(shape + ": it is a form");
+        if (body.isEmpty()) return Optional.empty();
         Object json;
         try {
             json = io.vertx.core.json.Json.decodeValue(body.buffer());

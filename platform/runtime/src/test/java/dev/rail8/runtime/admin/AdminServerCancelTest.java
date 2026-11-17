@@ -167,6 +167,31 @@ class AdminServerCancelTest {
         assertEquals(200, longest.statusCode(), "witness: 1024 characters are a reason: " + longest.body());
     }
 
+    /**
+     * A form body is not buffered as JSON, so it never reads as "no body": multipart form data is 400 and changes nothing, as an
+     * empty form is; a request that declares no content (an empty body with Content-Length 0) is a cancel without a reason.
+     */
+    @Test
+    void aFormBodyIs400AndAnEmptyBodyIsNoReason() throws Exception {
+        start(Optional.empty());
+        stopped("k1");
+        Parked kept = dlq.get("k1").await().orElseThrow();
+        String boundary = "rail8-test-boundary";
+        String form = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"reason\"\r\n\r\nduplicate\r\n--" + boundary + "--\r\n";
+
+        HttpResponse<String> multipart = send("POST", "/admin/dlq/k1/cancel", form, Map.of("Content-Type", "multipart/form-data; boundary=" + boundary));
+        assertEquals(400, multipart.statusCode(), multipart.body());
+        assertTrue(new JsonObject(multipart.body()).getString("error").startsWith("bad request: "), multipart.body());
+        HttpResponse<String> urlencoded = send("POST", "/admin/dlq/k1/cancel", "reason=duplicate", Map.of("Content-Type", "application/x-www-form-urlencoded"));
+        assertEquals(400, urlencoded.statusCode(), urlencoded.body());
+        assertEquals(List.of(), asked, "no act was asked");
+        assertEquals(Optional.of(kept), dlq.get("k1").await(), "k1 stays parked");
+
+        HttpResponse<String> empty = send("POST", "/admin/dlq/k1/cancel", "", Map.of("Content-Type", "application/x-www-form-urlencoded"));
+        assertEquals(200, empty.statusCode(), "witness: an empty body is no body: " + empty.body());
+        assertEquals(List.of("k1 unknown 127.0.0.1 -"), asked, "no reason");
+    }
+
     @Test
     void aBodyAbove8KiBIs413() throws Exception {
         start(Optional.empty());
