@@ -115,10 +115,10 @@ class ChangeGuardTest(unittest.TestCase):
         repo = self.repo({"platform/api/src/main/java/A.java": untouched,
                           "platform/core/src/main/java/B.java": touched,
                           "platform/core/src/test/java/C.java": other,
-                          "platform/components/src/main/java/C.java": other})
+                          "mapping/engine/src/main/java/C.java": other})
         repo.change({"platform/core/src/main/java/B.java": touched.replace("int y;", "int y; // new D-3"),
                      "platform/core/src/test/java/C.java": other.replace("int y;", "int z;"),
-                     "platform/components/src/main/java/C.java": other.replace("int y;", "int z;")})
+                     "mapping/engine/src/main/java/C.java": other.replace("int y;", "int z;")})
         self.assertEqual([
             "platform/api/src/main/java/A.java:2: a reference in a comment (D-1): say what the code does and why instead",
             "platform/core/src/main/java/B.java:2: a reference in a comment (FIX-2): "

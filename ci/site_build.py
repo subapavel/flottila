@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assembles the static website for rail8.dev (BRAND-6) into a directory that GitHub Pages serves.
+"""Assembles the static website for rail8.dev into a directory that GitHub Pages serves.
 
 Usage:
   python3 ci/site_build.py <out-dir>     (from anywhere; paths are taken from this file's repository)

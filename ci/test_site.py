@@ -1,4 +1,4 @@
-"""Tests for ci/site_check.py and ci/site_build.py — the static website at rail8.dev (BRAND-6).
+"""Tests for ci/site_check.py and ci/site_build.py — the static website at rail8.dev.
 
 Run: python3 -m unittest ci.test_site  (from the repository root; also run by the CI build job and the site workflow)
 

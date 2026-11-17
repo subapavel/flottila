@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Ledger table-shape guard (FIX-139): every row of every markdown table in docs/archive/agent/BACKLOG.md and
+"""Ledger table-shape guard: every row of every markdown table in docs/archive/agent/BACKLOG.md and
 docs/DECISIONS.md must end with an unescaped pipe and split, on pipes not preceded by a backslash, into
 the header's cell count (BACKLOG: exactly; DECISIONS: at most, legacy rows without a Reason cell are
 tolerated). Counting pipes is not the check: a stray separator paid for by a missing closing pipe has the
 header's pipe count and the wrong cell count, and GitHub drops the cell it cannot place. An unterminated
 trailing fragment counts as a cell. Reports every bad row (file, line, expected, actual), exits non-zero.
 
-It also catches one content collision the shape rule cannot see (FIX-209): within one ledger file no id may
+It also catches one content collision the shape rule cannot see: within one ledger file no id may
 be the id cell of more than one row. Two sessions in parallel each read the same highest id and each take
 the next one; the merge is the first moment one file holds both rows. A row allocates an id only when it
 sits inside a table and is neither that table's header nor a separator, and the id it allocates is its first

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""JaCoCo no-decrease gate (CLAUDE.md "Coverage floors … No decrease on any push").
+"""JaCoCo no-decrease gate: no module's line or branch coverage falls on a push.
 
 Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates), computes line and branch coverage in percent
 rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
 previous main commit in CI, HEAD locally). A module whose coverage dropped by more than TOLERANCE
-percentage points (D-029 noise band; the JaCoCo floors in the poms stay exact) fails the check; a
+percentage points (a noise band; the JaCoCo floors in the poms stay exact) fails the check; a
 module that has compiled classes (other than package-info) but no report fails too, because
 jacoco:check silently skips a module in which no test ran. New modules without a baseline pass.
-`--write` writes every value as measured (D-050, no high-water mark): the committed baseline describes
+`--write` writes every value as measured (no high-water mark): the committed baseline describes
 the tree it is committed with; TOLERANCE is the tolerance of the comparison, never of the file.
 
 Usage:
@@ -30,13 +30,13 @@ BASELINE = Path("ci") / "coverage-baseline.json"
 REPORT = Path("target") / "site" / "jacoco" / "jacoco.xml"
 CLASSES = Path("target") / "classes"
 COUNTERS = {"line": "LINE", "branch": "BRANCH"}
-# modules allowed to have classes without a JaCoCo report; empty since P0-09 removed flottila-m1 — keep it empty
+# modules allowed to have classes without a JaCoCo report; keep it empty
 IGNORED: frozenset[str] = frozenset()
-# D-029: timing-dependent branches (e.g. the testkit's thread-state sampler) move by about one branch
+# timing-dependent branches (e.g. the testkit's thread-state sampler) move by about one branch
 # between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
 # floors in the poms stay hard.
 TOLERANCE = 2.0
-# the mapping engine (BRAND-3) has its own gates: this guard reads platform/ and bench/, never a module under mapping/
+# the mapping engine has its own gates: this guard reads platform/ and bench/, never a module under mapping/
 FOREIGN = "mapping"
 
 
@@ -115,7 +115,7 @@ def check_baseline(current: dict[str, dict[str, float]], committed: dict[str, di
 
 
 def write_baseline(current: dict[str, dict[str, float]], path: Path) -> None:
-    """Writes the measurement as measured, always (D-050): the committed file describes the tree it is
+    """Writes the measurement as measured, always: the committed file describes the tree it is
     committed with, nothing remembered from earlier trees. TOLERANCE is the check's band, never the
     file's. Modules no longer measured are dropped."""
     path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")

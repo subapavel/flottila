@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Old-name guard (BRAND-4, D-148, D-149, D-154): the product's old name, `flottila`, and its old namespace,
+"""Old-name guard: the product's old name, `flottila`, and its old namespace,
 `io.rail8`, do not come back.
 
 Scans every file git tracks (`git ls-files -z` at the top level of the working directory; untracked and
@@ -38,7 +38,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# the old name in any letter case, or the old namespace (D-154) not inside a longer word
+# the old name in any letter case, or the old namespace not inside a longer word
 _NAMESPACE = r"(?<![A-Za-z0-9_])io(?:\.|/|\\\.|\\\\\.)rail8"
 NAME = re.compile("(?i:flottila)|" + _NAMESPACE, re.ASCII)
 NAME_BYTES = re.compile(b"(?i:flottila)|" + _NAMESPACE.encode("ascii"))
