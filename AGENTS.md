@@ -3,8 +3,8 @@
 Rules for every agent in this repository (Claude Code, Codex, any other). Rail8 is an open-source
 integration platform whose goal is "find anything, fast": what it stores about messages is set for
 each flow, and it has no replay. Java 25, Vert.x 5.1, PostgreSQL, ClickHouse, Valkey, S3; Apache 2.0.
-`docs/ARCHITECTURE.md` is the binding design: read the sections your change touches, never the
-whole file. Everything in the repository is in English.
+`docs/ARCHITECTURE.md` describes what the code does today and what is planned: read the parts your
+change touches. Everything in the repository is in English.
 
 ## How to work
 

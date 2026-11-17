@@ -19,7 +19,7 @@
     </license>
   </licenses>
 
-  <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by rail8-archtest): api <- core <- runtime;
+  <!-- Dependency direction (enforced by rail8-archtest): api <- core <- runtime;
        components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit. -->
   <modules>
     <module>api</module>
@@ -183,7 +183,7 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <!-- XSLT 3.0 / XPath 3.1 for the xslt step (ARCHITECTURE §13: Saxon-HE; EE as a plugin) -->
+        <!-- XSLT 3.0 / XPath 3.1 for the xslt step (Saxon-HE) -->
         <groupId>net.sf.saxon</groupId>
         <artifactId>Saxon-HE</artifactId>
         <version>${saxon.version}</version>
