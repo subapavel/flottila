@@ -96,6 +96,18 @@ describe('the mapping expression canvas', () => {
     expect(selectUnsaved(store.getState())).toBe(false);
   });
 
+  test('a menu opened elsewhere closes the open one: a field menu gives way to a node menu', async () => {
+    await renderCanvas();
+    await expect.element(node(/^Source field OrderId/)).toBeVisible();
+    await targetRow('Note').getByRole('button', { name: 'Note', exact: true }).click({ button: 'right' });
+    await expect.element(page.getByRole('menu', { name: 'Field actions for Note' })).toBeVisible();
+
+    await node(/^Source field OrderId/).click({ button: 'right' });
+
+    await expect.element(page.getByRole('menu', { name: 'Node actions for OrderId' })).toBeVisible();
+    await expect.element(page.getByRole('menu', { name: 'Field actions for Note' })).not.toBeInTheDocument();
+  });
+
   test("a node's menu opens where it was clicked", async () => {
     await renderCanvas();
     const box = node(/^Source field OrderId/);
