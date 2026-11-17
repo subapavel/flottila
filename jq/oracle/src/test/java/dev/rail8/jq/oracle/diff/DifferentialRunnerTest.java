@@ -59,7 +59,7 @@ class DifferentialRunnerTest {
 
   /**
    * ADR-0047 #118: a case with {@code limit recursion-depth n} runs through the limited entry for {@code n}, never the
-   * plain one, and a runner without a limited entry refuses it before jqj runs. Witness: a case without the key runs
+   * plain one, and a runner without a limited entry refuses it before the engine runs. Witness: a case without the key runs
    * the plain entry.
    */
   @Test
@@ -71,11 +71,11 @@ class DifferentialRunnerTest {
         new DiffRunner(
             inv -> {
               entries.add("plain");
-              return jqj(3, "plain\n", "").applyAsInt(inv);
+              return engine(3, "plain\n", "").applyAsInt(inv);
             },
             depth -> {
               entries.add("limited " + depth);
-              return jqj(0, "10000000\n", "");
+              return engine(0, "10000000\n", "");
             },
             scratch,
             Corpus.deviations());
@@ -84,13 +84,13 @@ class DifferentialRunnerTest {
     assertThat(entries).as("the entries a limited case ran").containsExactly("limited 16");
     runner.run(basics("basics/compact-object").c(), null);
     assertThat(entries).as("witness: a case without the key runs the plain entry").containsExactly("limited 16", "plain");
-    assertThatThrownBy(() -> runner(jqj(0, "10000000\n", "")).run(e.c(), e.recording()))
+    assertThatThrownBy(() -> runner(engine(0, "10000000\n", "")).run(e.c(), e.recording()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("case tail/until-ten-million: limit recursion-depth, and this runner has no limited entry");
   }
 
-  /** An entry standing in for jqj: writes the given bytes and returns rc. */
-  private static ToIntFunction<Invocation> jqj(int rc, String stdout, String stderr) {
+  /** An entry standing in for the engine: writes the given bytes and returns rc. */
+  private static ToIntFunction<Invocation> engine(int rc, String stdout, String stderr) {
     return inv -> {
       try {
         inv.out().write(stdout.getBytes(UTF_8));
@@ -103,12 +103,9 @@ class DifferentialRunnerTest {
   }
 
   /**
-   * A recorded case whose jq-ref rc differs from jqj's Stub rc. #33 built {@code -c .} and #34 {@code .a} (#33 design
-   * C12, #34 design C4), #63 {@code .[0]} ({@code basics/index-of-array}) and #110 {@code ..}
-   * ({@code basics/recurse-of-array}, ADR-0042 amendment for #110), each of which served here until then, so this runs
-   * {@code basics/env-type}: {@code -c '$ENV|type'} on {@code null}, which jq-ref answers with rc 0 and
-   * {@code "object"} (basics.rec, recorded 2026-11-15), and which stays a compile Stub (rc 3) until spec 7. The former
-   * case now passes on the command line.
+   * A recorded case whose jq-ref rc differs from the engine's Stub rc: {@code basics/env-type}, {@code -c '$ENV|type'}
+   * on {@code null}, which jq-ref answers with rc 0 and {@code "object"} (basics.rec, recorded 2026-11-15), and which
+   * the engine ends with a compile Stub (rc 3).
    */
   @Test
   void aRecordedCaseFailsAgainstTheStubShellWithAReadableDiff() {
@@ -117,10 +114,10 @@ class DifferentialRunnerTest {
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.diff())
         .contains("basics/env-type")
-        .contains("rc      jq-ref 0\n          jqj    3\n")
-        .contains("stdout  jq-ref \"object\"\\n\n          jqj    (empty)\n")
+        .contains("rc      jq-ref 0\n          engine 3\n")
+        .contains("stdout  jq-ref \"object\"\\n\n          engine (empty)\n")
         .contains("stderr  jq-ref (empty)\n")
-        .contains("        jqj    jqj stub: ");
+        .contains("        engine rail8-jq stub: ");
     assertThat(v.detail()).doesNotContain("\n").doesNotContain("\t");
 
     Verdict recurse = run("basics/recurse-of-array", Main::run);
@@ -136,10 +133,10 @@ class DifferentialRunnerTest {
    */
   @Test
   void aRecordedSyntaxErrorCaseIsFailAgainstAStubShellAndPassesOnTheCommandLine() {
-    String stub = "jqj stub: the filter's END token at byte 4 is not built yet";
-    Verdict onStderr = run("basics/syntax-error-eof", jqj(3, "", stub + "\n"));
+    String stub = "rail8-jq stub: the filter's END token at byte 4 is not built yet";
+    Verdict onStderr = run("basics/syntax-error-eof", engine(3, "", stub + "\n"));
     assertThat(onStderr.kind()).as("verdict of a shell whose stderr is the Stub").isEqualTo(Verdict.Kind.FAIL);
-    assertThat(onStderr.diff()).as("diff of a shell whose stderr is the Stub").contains("jqj ended with a Stub").contains("rc      same").contains("stdout  same");
+    assertThat(onStderr.diff()).as("diff of a shell whose stderr is the Stub").contains("the engine ended with a Stub").contains("rc      same").contains("stdout  same");
 
     Verdict thrown =
         run(
@@ -148,7 +145,7 @@ class DifferentialRunnerTest {
               throw new JqCompileException(stub, 1, 1);
             });
     assertThat(thrown.kind()).as("verdict of a shell that throws the Stub").isEqualTo(Verdict.Kind.FAIL);
-    assertThat(thrown.detail()).as("detail of a shell that throws the Stub").startsWith("jqj ended with a Stub");
+    assertThat(thrown.detail()).as("detail of a shell that throws the Stub").startsWith("the engine ended with a Stub");
 
     Verdict real = run("basics/syntax-error-eof", Main::run);
     assertThat(real.kind()).as("verdict of the command line since #62").isEqualTo(Verdict.Kind.PASS);
@@ -157,7 +154,7 @@ class DifferentialRunnerTest {
 
   @Test
   void aStubIsFailEvenWhereTheSyntaxErrorRuleComparesOnlyRcAndStdout() {
-    Verdict v = run("basics/syntax-error-eof", jqj(3, "", "jqj stub: the parser is not built yet\n"));
+    Verdict v = run("basics/syntax-error-eof", engine(3, "", "rail8-jq stub: the parser is not built yet\n"));
 
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.detail()).contains("Stub");
@@ -165,10 +162,10 @@ class DifferentialRunnerTest {
 
   @Test
   void aSyntaxErrorCaseComparesRcAndStdoutOnly() {
-    Verdict pass = run("basics/syntax-error-eof", jqj(3, "", "jq: error: jqj's own syntax error text\n"));
+    Verdict pass = run("basics/syntax-error-eof", engine(3, "", "jq: error: the engine's own syntax error text\n"));
     assertThat(pass.kind()).isEqualTo(Verdict.Kind.PASS);
     assertThat(pass.detail()).contains("stderr not compared");
-    assertThat(run("basics/syntax-error-eof", jqj(2, "", "")).kind()).isEqualTo(Verdict.Kind.FAIL);
+    assertThat(run("basics/syntax-error-eof", engine(2, "", "")).kind()).isEqualTo(Verdict.Kind.FAIL);
   }
 
   @Test
@@ -192,13 +189,13 @@ class DifferentialRunnerTest {
   @Test
   void stderrIsComparedByteForByteOutsideSyntaxErrors() {
     String recorded = "jq: error (at <stdin>:0): Cannot index array with string (\"a\")\n";
-    assertThat(run("basics/field-of-array", jqj(5, "", recorded)).kind()).isEqualTo(Verdict.Kind.PASS);
+    assertThat(run("basics/field-of-array", engine(5, "", recorded)).kind()).isEqualTo(Verdict.Kind.PASS);
 
-    Verdict v = run("basics/field-of-array", jqj(5, "", "jq: error (at <stdin>:1): Cannot index array with string (\"a\")\n"));
+    Verdict v = run("basics/field-of-array", engine(5, "", "jq: error (at <stdin>:1): Cannot index array with string (\"a\")\n"));
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.diff()).contains("stderr  jq-ref " + CaseFormat.escape(recorded.getBytes(UTF_8))).contains("rc      same");
 
-    Verdict fromTheFirstByte = run("basics/field-of-array", jqj(5, "", "other\n"));
+    Verdict fromTheFirstByte = run("basics/field-of-array", engine(5, "", "other\n"));
     assertThat(fromTheFirstByte.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(fromTheFirstByte.detail()).isEqualTo("stderr differs at byte 0");
   }
@@ -246,9 +243,9 @@ class DifferentialRunnerTest {
   void aCaseChangedAfterItsRecordingIsStale() {
     DiffCorpus.Entry e = basics("basics/compact-object");
     DiffCase edited =
-        new DiffCase(e.c().id(), e.c().args(), "{\"b\":1}\n".getBytes(UTF_8), e.c().files(), e.c().env(), null, DiffCase.JqjColumn.NONE, "000000000000");
+        new DiffCase(e.c().id(), e.c().args(), "{\"b\":1}\n".getBytes(UTF_8), e.c().files(), e.c().env(), null, DiffCase.EngineColumn.NONE, "000000000000");
 
-    Verdict v = runner(jqj(0, "{\"a\":1}\n", "")).run(edited, e.recording());
+    Verdict v = runner(engine(0, "{\"a\":1}\n", "")).run(edited, e.recording());
 
     assertThat(v.kind()).isEqualTo(Verdict.Kind.STALE);
     assertThat(v.detail()).contains("000000000000").contains(e.recording().def());
@@ -258,7 +255,7 @@ class DifferentialRunnerTest {
   void aCaseWithoutARecordingIsStale() {
     DiffCorpus.Entry e = basics("basics/compact-object");
 
-    assertThat(runner(jqj(0, "{\"a\":1}\n", "")).run(e.c(), null).kind()).isEqualTo(Verdict.Kind.STALE);
+    assertThat(runner(engine(0, "{\"a\":1}\n", "")).run(e.c(), null).kind()).isEqualTo(Verdict.Kind.STALE);
   }
 
   @Test
@@ -267,7 +264,7 @@ class DifferentialRunnerTest {
     // served here until #37 built the pretty output it needs.
     DiffCase stub =
         new DiffCase(
-            "test/arg-stub", List.of("--arg", "x", "1", "."), "{\"a\":1}\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "000000000000");
+            "test/arg-stub", List.of("--arg", "x", "1", "."), "{\"a\":1}\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "000000000000");
 
     Verdict v = runner(Main::run).run(stub, null);
 
@@ -277,11 +274,11 @@ class DifferentialRunnerTest {
 
   @Test
   void theDiffOfALongOrLateDifferenceShowsAWindowAroundIt() {
-    Verdict longOutput = run("basics/compact-object", jqj(0, "x".repeat(1000), ""));
-    assertThat(longOutput.diff()).contains("jqj    " + "x".repeat(200) + "... (1000 bytes)");
+    Verdict longOutput = run("basics/compact-object", engine(0, "x".repeat(1000), ""));
+    assertThat(longOutput.diff()).contains("engine " + "x".repeat(200) + "... (1000 bytes)");
 
-    Verdict late = run("basics/field-of-array", jqj(5, "", "jq: error (at <stdin>:0): Cannot index array with string (\"b\")\n"));
-    assertThat(late.diff()).contains("first difference at byte 59").contains("jq-ref ...").contains("jqj    ...");
+    Verdict late = run("basics/field-of-array", engine(5, "", "jq: error (at <stdin>:0): Cannot index array with string (\"b\")\n"));
+    assertThat(late.diff()).contains("first difference at byte 59").contains("jq-ref ...").contains("engine ...");
   }
 
   @Test
@@ -299,12 +296,12 @@ class DifferentialRunnerTest {
         run(
             "basics/compact-object",
             inv -> {
-              throw new IllegalStateException("jqj stub: the command line is not built yet");
+              throw new IllegalStateException("rail8-jq stub: the command line is not built yet");
             });
     assertThat(stub.kind()).isEqualTo(Verdict.Kind.FAIL);
   }
 
-  /** A test-local deviation case: {@code -c .} with the given {@code deviation} and {@code jqj-*} lines. */
+  /** A test-local deviation case: {@code -c .} with the given {@code deviation} and {@code engine-*} lines. */
   private static DiffCase deviationCase(String lines) {
     String text = "case t/deviation\narg -c\nfilter .\n" + lines + "end\n";
     return DiffCase.of("t.cases", CaseFormat.parse("t.cases", "t", text.getBytes(UTF_8)).get(0));
@@ -316,49 +313,49 @@ class DifferentialRunnerTest {
   }
 
   @Test
-  void aDeviationCaseIsComparedWithItsJqjKeysAndWithTheRecordingWhereAKeyIsAbsent() {
-    DiffCase c = deviationCase("deviation nul\njqj-rc 5\njqj-stdout\n");
+  void aDeviationCaseIsComparedWithItsEngineKeysAndWithTheRecordingWhereAKeyIsAbsent() {
+    DiffCase c = deviationCase("deviation nul\nengine-rc 5\nengine-stdout\n");
 
-    Verdict jqjsColumn = runner(jqj(5, "", "")).run(c, acceptedByJqRef(c));
-    assertThat(jqjsColumn.kind()).isEqualTo(Verdict.Kind.PASS);
+    Verdict enginesColumn = runner(engine(5, "", "")).run(c, acceptedByJqRef(c));
+    assertThat(enginesColumn.kind()).isEqualTo(Verdict.Kind.PASS);
 
-    Verdict jqRefsColumn = runner(jqj(0, "123\n", "")).run(c, acceptedByJqRef(c));
+    Verdict jqRefsColumn = runner(engine(0, "123\n", "")).run(c, acceptedByJqRef(c));
     assertThat(jqRefsColumn.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(jqRefsColumn.detail()).isEqualTo("rc 0, expect 5; stdout differs at byte 0");
     assertThat(jqRefsColumn.diff())
-        .contains("t/deviation: FAIL against deviation nul's jqj-* keys, the recording where one is absent\n")
-        .contains("rc      expect 5\n          jqj    0\n")
-        .contains("stdout  expect (empty)\n          jqj    123\\n\n");
+        .contains("t/deviation: FAIL against deviation nul's engine-* keys, the recording where one is absent\n")
+        .contains("rc      expect 5\n          engine 0\n")
+        .contains("stdout  expect (empty)\n          engine 123\\n\n");
 
-    // No jqj-stderr: the recorded stderr, empty, is what jqj must print.
-    Verdict stderr = runner(jqj(5, "", "jq: error\n")).run(c, acceptedByJqRef(c));
+    // No engine-stderr: the recorded stderr, empty, is what the engine must print.
+    Verdict stderr = runner(engine(5, "", "jq: error\n")).run(c, acceptedByJqRef(c));
     assertThat(stderr.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(stderr.detail()).isEqualTo("stderr differs at byte 0");
   }
 
-  /** ADR-0020: a recording equal to the case's jqj column fails as "deviation gone", whatever jqj gives. */
+  /** A recording equal to the case's engine column fails as "deviation gone", whatever the engine gives. */
   @Test
-  void aDeviationCaseWhoseRecordingEqualsItsJqjKeysFailsAsDeviationGone() {
-    DiffCase c = deviationCase("deviation nul\njqj-rc 0\njqj-stdout 123\\n\n");
+  void aDeviationCaseWhoseRecordingEqualsItsEngineKeysFailsAsDeviationGone() {
+    DiffCase c = deviationCase("deviation nul\nengine-rc 0\nengine-stdout 123\\n\n");
 
-    Verdict v = runner(jqj(0, "123\n", "")).run(c, acceptedByJqRef(c));
+    Verdict v = runner(engine(0, "123\n", "")).run(c, acceptedByJqRef(c));
 
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.detail()).isEqualTo("deviation gone");
-    assertThat(v.diff()).startsWith("t/deviation: FAIL, deviation gone: jq-ref's recording equals the jqj-* keys of deviation nul");
+    assertThat(v.diff()).startsWith("t/deviation: FAIL, deviation gone: jq-ref's recording equals the engine-* keys of deviation nul");
   }
 
   @Test
   void aCaseWithoutDeviationIsComparedWithTheRecordingUnderJqRefsName() {
-    Verdict v = run("basics/compact-object", jqj(1, "", ""));
+    Verdict v = run("basics/compact-object", engine(1, "", ""));
 
     assertThat(v.detail()).startsWith("rc 1, jq-ref 0;");
     assertThat(v.diff()).startsWith("basics/compact-object: FAIL\n").contains("rc      jq-ref 0\n");
   }
 
   @Test
-  void aDeviationSlugThatNamesNoRowOfDeviationsMdIsAnErrorBeforeJqjRuns() {
-    DiffCase c = deviationCase("deviation no-such-row\njqj-rc 5\n");
+  void aDeviationSlugThatNamesNoRowOfDeviationsMdIsAnErrorBeforeTheEngineRuns() {
+    DiffCase c = deviationCase("deviation no-such-row\nengine-rc 5\n");
     boolean[] ran = new boolean[1];
     DiffRunner r =
         runner(

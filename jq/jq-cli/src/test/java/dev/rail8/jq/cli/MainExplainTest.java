@@ -16,7 +16,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code jqj --explain <filter>} (#108, ADR-0016): a jqj-only flag (DEVIATIONS "--explain"). It prints the API's
+ * {@code rail8-jq --explain <filter>}: an engine-only flag (DEVIATIONS "--explain"). It prints the API's
  * {@code explain()} text and exits 0 without reading input. The text is the API's, so it is compared with the API's
  * own, never with a written text.
  */

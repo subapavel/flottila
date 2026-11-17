@@ -1,6 +1,6 @@
 # Deviations from the reference jq
 
-Behaviours where jqj differs from the reference jq (1.8.2) on purpose, each with its reason and the
+Behaviours where the engine differs from the reference jq (1.8.2) on purpose, each with its reason and the
 decision that made it. A difference not listed here is a bug. Every row is pinned by an oracle case or a named test
 that checks both columns. The row format is ADR-0020's; a row gains its `case` column in the
 ticket that writes its pinning case. A row's `case` cell names the case and its slug, as
@@ -10,9 +10,9 @@ ticket that writes its pinning case. A row's `case` cell names the case and its 
 
 `path(f)`, `paths`, `|=` and the other assignments accept a path result only if it comes from the
 tracked position through navigation steps and input-preserving control flow, or from the `foreach`
-item variable. jq also accepts some other forms; jqj raises "Invalid path expression" for them:
+item variable. jq also accepts some other forms; the engine raises "Invalid path expression" for them:
 
-| filter | jq 1.8.2 | jqj |
+| filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- |
 | `[1] \| path(. as [$a] \| $a)` | `[0]` | error |
 | `{"a":1} \| path(.a \| . as $v \| $v)` | `["a"]` | error |
@@ -42,20 +42,20 @@ spec 4's natives, F-70). In the `foreach … ?//` row only a `foreach … as $na
 path (Tracking ITEM, ADR-0048, F-59), so a destructured item is untracked where jq's matcher keeps
 one. The last four rows are F-59's, added at spec 3's ticket approval by the grilling-adviser for
 the owner under the delegation of 2026-11-14. In the last two rows jq's first matcher step succeeds
-on the tracked input and jqj's raises: jq names its second step, and under `?//` jqj runs the next
+on the tracked input and the engine's raises: jq names its second step, and under `?//` the engine runs the next
 alternative, which gives another path. That is the only row where relaxing the rule later would
 change a result.
 
-Reason: jq decides these by value identity, which jqj's views and identity-free numbers do not
+Reason: jq decides these by value identity, which the engine's views and identity-free numbers do not
 have. jq's own test files contain no such case. Relaxing the rule later only turns errors into
 results, except in the `?//` row above.
 
 ## A break is not an error (ADR-0008, issue #7)
 
 In jq, `break $l` raises the error `{"__jq":n}`, where `n` is a per-process label counter. A `try`,
-a `?` or a `?//` around it can catch it. In jqj a break is a stop signal and no catch set holds it:
+a `?` or a `?//` around it can catch it. In the engine a break is a stop signal and no catch set holds it:
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | `control/deviation-try-break` (`deviation break-not-error`) | `[label $f \| 1, (try (break $f) catch .), 2]` | `[1,{"__jq":0},2]` | `[1]` |
 | `control/deviation-postfix-break` (`deviation break-not-error`) | `[label $f \| 1, (break $f)?, 2]` | `[1,2]` | `[1]` |
@@ -69,25 +69,25 @@ files contain no break under `try`, `?` or `?//`.
 
 ## `last/1` has no path variant (ADR-0009, issue #7)
 
-| filter | jq 1.8.2 | jqj |
+| filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- |
 | `[1] \| path(last(.))` | `[]` | error |
 
-Reason: jq bytecodes `last/1` and tracks its one path; jqj makes it a native, and a jq-text
+Reason: jq bytecodes `last/1` and tracks its one path; the engine makes it a native, and a jq-text
 definition would differ the same way. `[1,2] | path(last(.[]))` raises in both.
 
 ## Order inside a comparison cycle (ADR-0012, issue #9)
 
 jq compares two literals as exact decimals and every other pair as doubles. So two literals with
 the same double, plus a computed number equal to both, form a cycle. Inside such a cycle, the result
-of `sort`, `sort_by`, `unique`, `unique_by` and `group_by` is jqj's own; `unique` and `group_by`
+of `sort`, `sort_by`, `unique`, `unique_by` and `group_by` is the engine's own; `unique` and `group_by`
 can also group differently (`[(1e20+0),100000000000000000001,100000000000000000000] | unique` →
 `[1e+20]` on jq). `min`, `max` and their `_by` forms match jq. jq's order comes from libc `qsort`,
-jqj's from its own bottom-up merge sort (#73: runs of 1, 2, 4, … merged pairwise). Outside a cycle
+The engine's from its own bottom-up merge sort (#73: runs of 1, 2, 4, … merged pairwise). Outside a cycle
 the two agree, NaN pairs included: jq-ref keeps a NaN pair in input order because its `qsort` takes
-the left entry there, which a different libc need not do; jqj's merge sort keeps it by rule:
+the left entry there, which a different libc need not do; the engine's merge sort keeps it by rule:
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | `sort/deviation-cycle-sort` (`deviation comparison-cycle`) | `[100000000000000000001,(1e20+0),100000000000000000000] \| sort` | the input unchanged | `[100000000000000000000,100000000000000000001,1e+20]` |
 | `sort/deviation-cycle-unique` (`deviation comparison-cycle`) | `[100000000000000000001,(1e20+0),100000000000000000000] \| unique` | `[100000000000000000001,100000000000000000000]` | `[100000000000000000000,100000000000000000001]` |
@@ -97,11 +97,11 @@ the left entry there, which a different libc need not do; jqj's merge sort keeps
 
 Reason: `==` and `<` stay identical to jq's. A total order would change
 `(100000000000000000001+0) == 100000000000000000001` from true to false, and imitating `qsort` would
-tie jqj to one binary.
+tie the engine to one binary.
 
 ## Size limits of the tape (ADR-0002)
 
-jqj raises a jq error beyond these limits:
+The engine raises a jq error beyond these limits:
 - 2^31−3 bytes per document (F-12);
 - 2^28−1 bytes per string, quotes included (F-21);
 - 2^24−1 bytes per number literal (jq allows up to 999 999 999 digits);
@@ -113,7 +113,7 @@ per-document limit. Reason: one `long` per value, as recorded in ADR-0002.
 
 ## Streaming, when a host enables it (ADR-0007, ADR-0054, issue #6)
 
-Streaming is off by default; in that mode jqj behaves like jq. When a host enables streaming for an
+Streaming is off by default; in that mode the engine behaves like jq. When a host enables streaming for an
 eligible filter (`<fixed path> | .[] | rest`):
 
 - **Results before a late error are kept**: results are emitted before a later syntax error is
@@ -130,7 +130,7 @@ applies to it.
 
 ## A raw NUL byte outside a string is an error (ADR-0015, issue #11)
 
-| case | filter | input | jq 1.8.2 | jqj |
+| case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `-c .` | `1\x002` | `1` | nothing printed, "Invalid character" at the NUL, rc 5 |
 | none yet | `-c .` | `[1\x00x,2]` | `[1,2]` | error at the NUL |
@@ -140,26 +140,26 @@ applies to it.
 Reason: bytes would hide behind a NUL in a host's message. jq's master makes one change to
 `classify`: NUL is class INVALID, and nothing else differs. jq 1.8.2's `scan` already holds
 `case INVALID: return "Invalid character"`, unreached; master's `classify` reaches it (source
-read, not run). jqj follows master: the pending token's value is dropped as for `1]`, and the text
+read, not run). The engine follows master: the pending token's value is dropped as for `1]`, and the text
 is "Invalid character". The row can go once the reference moves past 1.8.2. The replay ticket's
 oracle cases pin line and column.
 
 ## Regex limit by time, not by retries (ADR-0017, issue #13)
 
 jq stops a match after Oniguruma's retry limit with the catchable error "Regex failure:
-retry-limit-in-match over" (`("a"*24+"b") | test("^(a+)+$")`). joni has no retry counter, so jqj
+retry-limit-in-match over" (`("a"*24+"b") | test("^(a+)+$")`). joni has no retry counter, so the engine
 raises the same error when one joni search call exceeds `regexMatchTime` (1 s; a global scan makes
-one call per match, ADR-0053). The cut-off depends on the machine, so some patterns succeed in jqj
+one call per match, ADR-0053). The cut-off depends on the machine, so some patterns succeed in the engine
 where jq errors, and the reverse.
 
 ## Regex dialect (ADR-0053, spec 4)
 
-jqj runs regexes on joni 2.2.9 with `Syntax.PerlNG` and `CAPTURE_GROUP`; jq-ref runs them on its
+The engine runs regexes on joni 2.2.9 with `Syntax.PerlNG` and `CAPTURE_GROUP`; jq-ref runs them on its
 builtin Oniguruma. The regex prelude ticket records one case per construct of Oniguruma's syntax
 list and one per compile-error text. Each construct or text where joni differs, and no text mapping
 closes the gap, is a row here.
 
-| case | filter | input | jq 1.8.2 | jqj |
+| case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | (rows added by the regex prelude ticket) | | | | |
 
@@ -170,18 +170,18 @@ the mutation floors. `builtins-regex-v1` draws only constructs the matrix shows 
 
 jq-ref 1.8.2 completes 10⁷ levels of `def f: if .==0 then 0 else (.-1|f)+1 end; N | f`: N up to
 10⁷ prints N, rc 0; at 2·10⁷ and 10⁸ it prints `jq: error: cannot allocate memory`, rc 134 (F-87).
-jqj's command line keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶
+The engine's command line keeps the recursion-depth budget (4 194 304 live activations, at least 10⁶
 levels) and ends deeper recursion with a termination: it flushes the results so far, writes
 `jq: error: Recursion-depth budget exceeded` to stderr and exits 5 (#107, #197). Reason: recursion
 depth bounded by memory, ADR-0011.
 
 ## Parse depth (ADR-0017, issue #81)
 
-jq's parser stops when its Bison stack is full (YYMAXDEPTH, 10 000 states) with `memory exhausted`, rc 3. jqj's
+jq's parser stops when its Bison stack is full (YYMAXDEPTH, 10 000 states) with `memory exhausted`, rc 3. The engine's
 stops at 512 nesting levels, with jq's `memory exhausted` block at the token that opens level 513, rc 3. Both
-sides are recorded on 1.8.2; jqj's boundary is pinned by jq-core ParseDepthTest:
+sides are recorded on 1.8.2; the engine's boundary is pinned by jq-core ParseDepthTest:
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | `depth/paren-9994` (`deviation parse-depth`) | 9994 parentheses around `1` | `1` | rc 3, `memory exhausted` at column 129 |
 | `depth/paren-9995` (`deviation parse-depth`) | 9995 parentheses | rc 3, `memory exhausted` at column 9997 | rc 3, column 129 |
@@ -191,14 +191,14 @@ sides are recorded on 1.8.2; jqj's boundary is pinned by jq-core ParseDepthTest:
 | `depth/object-3332` (`deviation parse-depth`) | 3332 objects | rc 3, column 16658 | rc 3, column 641 |
 | `depth/pipe-10000` (`deviation parse-depth`) | `1\|1\|…\|1`, 10 000 pipes | rc 3, column 9997 | rc 3, column 1021 |
 
-jqj accepts 127 parentheses, brackets or objects and 509 pipes, `-` or `try`. Reason: jqj's parser is recursive
+The engine accepts 127 parentheses, brackets or objects and 509 pipes, `-` or `try`. Reason: the engine's parser is recursive
 descent (ADR-0032), so its depth is Java stack, and the engine starts no thread (ADR-0017). 9994 parentheses need
 about 20 MB of stack; 512 levels fit a 512 KiB stack (ADR-0017's `stackBytes`) with about a third to spare.
 
 ## Huge constant keys (ADR-0035, issue #65)
 
 jq folds a computed object key whole at parse time, so a key that folds to an array or an object is its compile
-error, rc 3, however much the fold builds. jqj folds each node of a filter at most once, and every fold of one
+error, rc 3, however much the fold builds. The engine folds each node of a filter at most once, and every fold of one
 compile, the key checks and the literals a fold builds included, shares one budget of 1 MiB of bytes built and 2^20
 steps (ADR-0035, bd34167, 31aca88). A key the budget does not hold is left to the run, which raises the same text
 with rc 5 when it reaches the key, and gives the filter's other outputs, rc 0, when it never does. When another key
@@ -208,7 +208,7 @@ built, rc 3 as in jq) and `constant-key-cap/check-edge-over` (1048589 bytes, 13 
 jq-core HugeConstantKeyTest pins that a compile past the bound allocates no gigabyte, and the compile budget's bytes,
 steps and literal charges:
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | `constant-key-cap/check-edge-over` (`deviation huge-constant-keys`) | `{(("x"*21395)/"x"):1}` | rc 3, `Cannot use array (["","","","","","","","",...]) as object key` at column 3 | rc 5, the same text at run time |
 | `constant-key-cap/huge-split` (`deviation huge-constant-keys`) | `{(("x"*2000000)/"x"):1}` | rc 3, the same text | rc 5, the same text at run time |
@@ -221,81 +221,81 @@ no budget applies (ADR-0035). A key below the bound keeps jq's rc 3 (`constant-k
 
 ## `$JQ_BUILD_CONFIGURATION` (ADR-0017, issue #13)
 
-jq prints its configure string; jqj prints its own build string.
+jq prints its configure string; the engine prints its own build string.
 
-Spec 7 round 1 fixes jqj's string, proposed by the grilling-adviser for the owner under the
-delegation of 2026-11-14 (table in "`-h`, `-V` and `--build-configuration` print jqj's own
+Spec 7 round 1 fixes the engine's string, proposed by the grilling-adviser for the owner under the
+delegation of 2026-11-14 (table in "`-h`, `-V` and `--build-configuration` print the engine's own
 text" below).
 
 ## Syntax-error text (ADR-0020, issue #15)
 
-| filter | jq 1.8.2 (stderr) | jqj |
+| filter | jq 1.8.2 (stderr) | Rail8 jq |
 | --- | --- | --- |
-| `. as [] \| null` | `jq: error: syntax error, unexpected ']', expecting BINDING or '[' or '{' at <top-level>, line 1, column 7:` … `jq: 1 compile error`, rc 3 | jqj's own syntax-error text, rc 3 |
+| `. as [] \| null` | `jq: error: syntax error, unexpected ']', expecting BINDING or '[' or '{' at <top-level>, line 1, column 7:` … `jq: 1 compile error`, rc 3 | The engine's own syntax-error text, rc 3 |
 
 Reason: jq's syntax-error text comes from Bison's LALR tables (expecting lists that depend on the
-parser state, several errors after recovery); jqj's Pratt parser (founding §3) writes its own. A
+parser state, several errors after recovery); the engine's Pratt parser (founding §3) writes its own. A
 case whose recording says `syntax error` compares rc and stdout only.
 
-jqj's syntax block is jq's with its expecting list cut (ADR-0032). Its lexical blocks and the
+The engine's syntax block is jq's with its expecting list cut (ADR-0032). Its lexical blocks and the
 blocks of the two recovery productions it builds match jq's exactly: `'.' error` and `'.' IDENT
 error` (`try .["field"] instead of .field for unusually named fields`), and `error ':' DictExpr`
-(`May need parentheses around object key expression`). Where jq recovers by a production jqj does
-not build yet, jqj stops, and jq's blocks after that point are missing. These are the messages
+(`May need parentheses around object key expression`). Where jq recovers by a production the engine does
+not build yet, the engine stops, and jq's blocks after that point are missing. These are the messages
 `Possibly unterminated 'if' statement` (`if . then 1`), `Possibly unterminated 'try' statement`
 (`try 1 catch ]`), `break requires a label to break to` (`break 1`) and an object pattern's `May
 need parentheses around object key expression` (`. as {1+2: $x} | 1`). They are also the silent
 `'(' error ')'`, `'[' error ']'`, `Term '[' error ']'` and `'{' error '}'`, after which jq goes on
-and reports later errors (`(1 2) | 3 | 4 5`). jqj's blocks are then a prefix of jq's.
-ParserEdgesTest pins jqj's blocks for each example.
+and reports later errors (`(1 2) | 3 | 4 5`). The engine's blocks are then a prefix of jq's.
+ParserEdgesTest pins the engine's blocks for each example.
 
-## `-h`, `-V` and `--build-configuration` print jqj's own text (ADR-0023, issue #17)
+## `-h`, `-V` and `--build-configuration` print the engine's own text (ADR-0023, issue #17)
 
-| flag | jq 1.8.2 | jqj |
+| flag | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- |
-| `-h` / `--help` | jq's usage text | jqj's usage text (written by spec 7) |
-| `-V` / `--version` | `jq-1.8.2` | jqj's version (written by spec 7) |
-| `--build-configuration` | jq's build string, as `$JQ_BUILD_CONFIGURATION` | jqj's build string |
+| `-h` / `--help` | jq's usage text | The engine's usage text (written by spec 7) |
+| `-V` / `--version` | `jq-1.8.2` | The engine's version (written by spec 7) |
+| `--build-configuration` | jq's build string, as `$JQ_BUILD_CONFIGURATION` | The engine's build string |
 
-Reason: these flags describe the program, not a filter's result; jqj is not jq. jq's rc-2 usage
+Reason: these flags describe the program, not a filter's result; the engine is not jq. jq's rc-2 usage
 lines (`jq: Unknown option …`, `Use jq --help for help with command-line options,`) stay
 byte-identical. shtest's cases for these flags become deviation cases.
 
 Spec 7 round 1 fixes the texts, proposed by the grilling-adviser for the owner under the
 delegation of 2026-11-14 (`docs/wayfinder/spec-7-grilling.md`, question 10). jq-ref 1.8.2
-observed; jqj intended:
+observed; the engine intended:
 
-| case | flag | jq 1.8.2 | jqj |
+| case | flag | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
-| none yet | `-V` / `--version` | `jq-1.8.2` | `jqj-<version>` |
-| none yet | `--build-configuration`, `$JQ_BUILD_CONFIGURATION` | `--host=x86_64-linux-gnu --disable-docs --with-oniguruma=builtin --enable-static --enable-all-static 'CFLAGS=-O2 -pthread -fstack-protector-all' host_alias=x86_64-linux-gnu CC=x86_64-linux-gnu-gcc LDFLAGS=-s CPP=x86_64-linux-gnu-cpp` | `jqj <version> release 25 interpreter` |
-| none yet | `-h` / `--help` | jq's usage text, rc 0 | jqj's own text in `main.c`'s layout with `--explain` added, written fresh, rc 0 |
+| none yet | `-V` / `--version` | `jq-1.8.2` | `rail8-jq-<version>` |
+| none yet | `--build-configuration`, `$JQ_BUILD_CONFIGURATION` | `--host=x86_64-linux-gnu --disable-docs --with-oniguruma=builtin --enable-static --enable-all-static 'CFLAGS=-O2 -pthread -fstack-protector-all' host_alias=x86_64-linux-gnu CC=x86_64-linux-gnu-gcc LDFLAGS=-s CPP=x86_64-linux-gnu-cpp` | `engine <version> release 25 interpreter` |
+| none yet | `-h` / `--help` | jq's usage text, rc 0 | The engine's own text in `main.c`'s layout with `--explain` added, written fresh, rc 0 |
 
 The build string holds build-time facts only: a runtime Java version would make one filter print
 differently per JVM.
 
-## `--explain` is a jqj-only flag (ADR-0016, #108)
+## `--explain` is an engine-only flag (ADR-0016, #108)
 
-| case | flag | jq 1.8.2 | jqj |
+| case | flag | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | none yet | `--explain <filter>` | `jq: Unknown option --explain` and jq's two usage lines, rc 2 | the filter's `JqFilter.explain()` text, no input read, rc 0 |
 
-Reason: the flag shows how jqj compiled a filter, which jq has no equivalent of (ADR-0016, ADR-0018).
+Reason: the flag shows how the engine compiled a filter, which jq has no equivalent of (ADR-0016, ADR-0018).
 jq's column was observed on jq-ref 1.8.2 (2026-11-15, with and without input). jq-cli's
-`MainExplainTest` pins jqj's column against the API's text. No oracle case pins the row: its
-`jqj-stdout` would hold the whole `explain()` text, which is unstable and which no test pins
+`MainExplainTest` pins the engine's column against the API's text. No oracle case pins the row: its
+`engine-stdout` would hold the whole `explain()` text, which is unstable and which no test pins
 (spec 2b, "What a good test checks"). A filter that does not compile ends with jq's compile error
 and rc 3, as without the flag.
 
 ## Long comma chains (ADR-0034, issue #63)
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | `depth/comma-10922` (`deviation long-comma-chains`) | `1,1,…,1`, 10 922 commas, on `null` | rc 3, `jq: error: function compiled to 65536 bytes which is too long` | the 10 923 ones, rc 0 |
 | jq-core `InlineCapTest`, `InlineCostKindsTest` | `def f: .; f,f,…`, 65 537 calls, on `null` | rc 3, `jq: error: function compiled to 524294 bytes which is too long` | 65 537 nulls, rc 0 |
 
 jq-ref compiles 10 921 commas (`depth/comma-10921`, matched) and rejects one more with its own bytecode limit: a
-function's code must fit 65 536 bytes. jqj compiles to an IR and an interpreter tree with no such limit, and a long
+function's code must fit 65 536 bytes. The engine compiles to an IR and an interpreter tree with no such limit, and a long
 chain is bounded at run time by the step budget instead (one tick per right branch, F-32; jq-core
 CommaChainTest pins chains of 10⁴ and 10⁵). A chain of calls whose expansions would pass the inline cap makes the call
 that would pass it a PLAIN Call (ADR-0040 "Amendment (ticket #114)"), so it runs too; jq-ref 1.8.2 rejects the
@@ -304,13 +304,13 @@ that would pass it a PLAIN Call (ADR-0040 "Amendment (ticket #114)"), so it runs
 
 ## Long path chains (F-42, F-44, issue #70)
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | jq-core `LongPathChainTest` | `.a.a…`, 10⁵ steps of `.a`, on `null` | rc 3, `jq: error: function compiled to 300002 bytes which is too long` | `null`, on a 512 KiB stack |
 | jq-core `LongPathChainTest` | `.[0][0]…`, 10⁵ steps of `[0]`, on `null` | rc 3, the same message | `null`, on a 512 KiB stack |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) prints `null` for 21 844 steps of `.a` and for 21 844
-of `[0]`, and rejects one more of either with the bytecode limit of "Long comma chains". jqj lowers a postfix chain
+of `[0]`, and rejects one more of either with the bytecode limit of "Long comma chains". The engine lowers a postfix chain
 by a loop and pipes a chain of more than 64 nodes balanced (`Resolver.PIPE_CHAIN`); a run of more than 512 steps of
 one result or none (field reads, constant indexes and constant slices) becomes one step that takes them in turn
 (F-44). Its cost in ticks is the nested chain's. `LongPathChainTest` pins 10⁵ steps of each of `.a`, `[0]`, `["k"]`,
@@ -321,19 +321,19 @@ test thread, and the ticks of the fused and balanced chains. ResolverTest pins t
 
 ## Long definition runs (F-44, issue #70)
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | jq-core `LongDefRunTest` | `def f0: 0; …; def f9992: 9992; [f0, f9992]`, 9 993 definitions, on `null` | rc 3, `jq: error: memory exhausted at <top-level>, line 1, column 167660` | `[0,9992]`, rc 0 |
 | `over-cap/flat-4097` (`deviation live-definitions`), jq-core `InlineDepthTest` | `def f1: .+1; def f2: f1; …; f4097`, on `null` | rc 3, `jq: error: too many function parameters or local function definitions (max 4095)` | `1`, rc 0 |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) prints `[0,9991]` for 9 992 such definitions and
-rejects one more, rc 3. jqj compiles past that count: `LongDefRunTest` pins 9 993 and 10⁵ definitions compiling
-and running on a 512 KiB stack. jq-ref counts only live definitions, because it drops unreferenced ones. jqj has no
+rejects one more, rc 3. The engine compiles past that count: `LongDefRunTest` pins 9 993 and 10⁵ definitions compiling
+and running on a 512 KiB stack. jq-ref counts only live definitions, because it drops unreferenced ones. The engine has no
 limit: past 511 nested expansions, a call is PLAIN (ADR-0040 "Amendment (ticket #114)").
 
 ## Long operator runs (ADR-0043, issue #94)
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | jq-core `OperatorChainTest` | `.a // .a // …`, 20 000 terms, on `null` | rc 3, `jq: error: memory exhausted at <top-level>, line 1, column 29989` | `null`, rc 0 |
 | jq-core `OperatorChainTest` | `.a+.a+…`, 20 000 terms, on `null` | rc 3, `jq: error: function compiled to 199995 bytes which is too long` | `null`, rc 0 |
@@ -346,7 +346,7 @@ limit: past 511 nested expansions, a call is PLAIN (ADR-0040 "Amendment (ticket 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-nc -f`) runs 6 554 terms of `.a+` (6 553 after
 `{"a":1} |`, as `IrDepthTest` writes them), 3 277 of `.a and` or `.a or`, 2 185 of `.a == .a and` and 2 185 of `.a //`, and
 rejects one more with the bytecode limit of "Long comma chains", rc 3; 20 000 terms of `.a //`, which nests to the
-right, fill its Bison stack first ("Parse depth"). jqj compiles to an IR with no such limit, so an operator run past
+right, fill its Bison stack first ("Parse depth"). The engine compiles to an IR with no such limit, so an operator run past
 jq's limits runs, as a long comma chain does. A run of one arithmetic or comparison operator whose nested form has
 more than `Resolver.BIND_RUN` = 64 Binds is one Binds, and a run of more than 64 terms of `and`, `or` or `//` is joined
 balanced, about 2·log₂ n levels deep (ADR-0043); the parser reads a run of `//` by a loop, so it takes no nesting level
@@ -356,13 +356,13 @@ jq-ref's limit on a 512 KiB stack in a fresh JVM under three JIT tiers, and `Ope
 
 ## IR depth (F-44, ADR-0040, issue #70)
 
-| case | filter | jq 1.8.2 | jqj |
+| case | filter | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- |
 | jq-core `IrDepthTest` | `.[.a:][.a:]…`, 2 000 steps, on `null` | `null`, rc 0 | a Stub |
 | jq-core `IrDepthTest` | `.[.a][.a]…`, 10 000 steps, on `null` | rc 5, `jq: error (at <unknown>): Cannot index null with null (null)` | a Stub |
 | jq-core `IrDepthTest` | `.a+.a-.a+…`, 400 terms, the operators alternating, on `null` | rc 5, `jq: error (at <unknown>): null (null) and null (null) cannot be subtracted` | a Stub |
 
-jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) compiles every row and gives its result. jqj stubs a
+jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) compiles every row and gives its result. The engine stubs a
 filter of more than `Resolver.MAX_IR_DEPTH` = 512 levels of built IR, the leaf counted. A call is not stubbed: one
 whose expansion would pass the bound, or would be the 512th nested expansion, is a PLAIN call (ADR-0040 "Inline cap"
 and "Amendment (ticket #114)"), so the rows left are constructs other than calls. The depth is the whole IR's, measured once the lowering is done and wherever the
@@ -394,16 +394,16 @@ three tiers, and every row above a Stub on a 16 MiB stack.
 ## Array length limit (ADR-0035, issue #64)
 
 jq 1.8.2 raises "Array index too large" when an array grows past an index of 2^29−1, as `jv_array_append` does
-when it collects one more result (`jv_array_set`, src/jv.c:1020). jqj ends a collection that would pass
+when it collects one more result (`jv_array_set`, src/jv.c:1020). The engine ends a collection that would pass
 `Integer.MAX_VALUE − 8` elements with exit 5 and "Bytes-built budget exceeded". It does so even when the bytes-built
 budget is unlimited, as on the command line. Reason: a JVM array holds no more elements than that. Also, a collector
 charges each element to the bytes-built budget before storing it (ADR-0035), so a collection that large exhausts any
 real budget first. A termination of its own would add a public cause for a case no run can reach. query-core's tests
-of `CollectOp.grown` pin jqj's side.
+of `CollectOp.grown` pin the engine's side.
 
 ## libm last digits (ADR-0051, spec 4)
 
-The 36 computed math builtins print jqj's own last digits, the same on every platform:
+The 36 computed math builtins print the engine's own last digits, the same on every platform:
 `StrictMath` for `acos`, `asin`, `atan`, `atan2`, `cbrt`, `cos`, `cosh`, `exp`, `expm1`, `hypot`,
 `log`, `log10`, `log1p`, `pow`, `sin`, `sinh`, `tan` and `tanh`; definitions over `StrictMath` for
 `acosh`, `asinh`, `atanh`, `exp2`, `exp10` and `log2`; Arm's port for `erf`; published formulas, or
@@ -412,7 +412,7 @@ the owner's answer on issue #105, for `erfc`, `gamma`, `lgamma`, `lgamma_r`, `tg
 features (F-65). Each function's row gives its measured bound in ulp over its recorded sample; the
 math tickets add the rows.
 
-| case | filter | input | jq 1.8.2 | jqj |
+| case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `27\|cbrt` | `null` | `3.0000000000000004` | `StrictMath`'s digits, recorded by the computed-math ticket |
 | `test:` the bound test (named by its ticket) | each of the 36 over its recorded sample | — | glibc's digits | within the function's measured ulp bound |
@@ -432,11 +432,11 @@ from the system's zoneinfo. They differ in three ways:
 - the tzdata version: the JDK's tzdb (2026e on JDK 25.0.5) against jq-ref's zoneinfo, for offsets
   as well as names.
 
-| case | filter | input | jq 1.8.2 | jqj |
+| case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `strflocaltime("%Z %z")` on an instant of an LMT era (P4) | — | `LMT +0918` | the JDK's name for that offset, recorded by the host-zone ticket |
 
-An unknown `TZ` is UTC with an empty name (ADR-0052). If jqj does not mirror jq-ref's "unknown
+An unknown `TZ` is UTC with an empty name (ADR-0052). If the engine does not mirror jq-ref's "unknown
 system failure" there, the host-zone ticket adds its row here.
 
 Reason: the JDK supplies offsets and English names, not tzdata's abbreviations (F-66). A TZif name
@@ -445,9 +445,9 @@ reader would be a second zone source and can come later without rework (ADR-0052
 ## `modulemeta` on a module that does not parse (ADR-0017, F-81, spec 7)
 
 Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
-(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; jqj intended:
+(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; the engine intended:
 
-| case | filter | input | jq 1.8.2 | jqj |
+| case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `-L lib -nc modulemeta`, `lib/body.jq` holding `def x: 1; x` | `"body"` | stderr `jq: error: jq: error: library should only have function definitions, not a main expression`; stdout `null`, rc 0 | stdout `null`, stderr empty, rc 0 |
 
@@ -460,9 +460,9 @@ own (ADR-0017), and a compile-error block in the middle of a run has no channel 
 ## `$ENV` key order on the command line (ADR-0017, spec 7)
 
 Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
-(`docs/wayfinder/spec-7-grilling.md`, question 6). jq-ref 1.8.2 observed; jqj intended:
+(`docs/wayfinder/spec-7-grilling.md`, question 6). jq-ref 1.8.2 observed; the engine intended:
 
-| case | filter | environment | jq 1.8.2 | jqj |
+| case | filter | environment | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `-nc '$ENV \| keys_unsorted'` | exactly `B=2 A=1` (`env -i`) | `["B","A"]` (`environ`'s order) | `["A","B"]` |
 
@@ -473,15 +473,15 @@ order, so jq-cli sorts the environment by key. Differential cases print `$ENV.X`
 ## The jq origin on the command line (ADR-0013, ADR-0020, F-81, spec 7)
 
 Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
-(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; jqj intended:
+(`docs/wayfinder/spec-7-grilling.md`, question 4). jq-ref 1.8.2 observed; the engine intended:
 
-| case | how the program is started | jq 1.8.2 `get_jq_origin` | jqj |
+| case | how the program is started | jq 1.8.2 `get_jq_origin` | Rail8 jq |
 | --- | --- | --- | --- |
 | none yet | by its bare name, found on `PATH` | `"."` | the directory `PATH` found the launcher in |
 
-Started by its full path, as `./jqj` or as `bin/jqj`, jqj gives what jq gives: the launcher passes
+Started by its full path, as `./rail8-jq` or as `bin/rail8-jq`, the engine gives what jq gives: the launcher passes
 `$(dirname "$0")` unchanged. A script found on `PATH` gets its found path as `$0`, where a binary
-gets its bare name. jq's origin is `dirname(argv[0])`; jqj's is `Invocation.origin`, which the
+gets its bare name. jq's origin is `dirname(argv[0])`; the engine's is `Invocation.origin`, which the
 launcher sets to `$(dirname "$0")`. Reason: a shell launcher cannot see the bare name it was
 called by, and the found path keeps `$ORIGIN/../lib/jq` beside the program, not the caller.
 Differential cases print only `type` or a suffix of an origin.
@@ -489,10 +489,10 @@ Differential cases print only `type` or a suffix of an origin.
 ## `module not found` with `HOME` unset (ADR-0017, F-81, spec 7)
 
 Proposed by the grilling-adviser for the owner under the delegation of 2026-11-14
-(`docs/wayfinder/spec-7-grilling.md`, "Ticket approval (2026-11-14)"). jq-ref 1.8.2 observed; jqj
+(`docs/wayfinder/spec-7-grilling.md`, "Ticket approval (2026-11-14)"). jq-ref 1.8.2 observed; the engine
 intended:
 
-| case | filter | environment | jq 1.8.2 | jqj |
+| case | filter | environment | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
 | none yet | `-n 'import "q" as q; .'` | no `HOME` | `jq: error: module not found: q (Could not expand ~/.jq. (Could not find home directory.))`, rc 3 | `jq: error: module not found: q`, rc 3 |
 

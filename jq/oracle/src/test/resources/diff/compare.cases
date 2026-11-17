@@ -3,8 +3,8 @@
 # amendment for #65, ADR-0037), and the parse-time fold of a comparison of two constants as an object key (ADR-0036,
 # ADR-0037: and, or and // are not folded). The depth boundaries are compare-depth.cases; and, or and not are
 # logic.cases; // is alternative.cases. A case named nan-* computes NaN with #65's arithmetic; the NaN rows belong to
-# #72 (#66 design approval, O4), so none is required at #66 (require/66.txt). Format: oracle/src/main/java/io/github/
-# subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in compare.rec, written by scripts/oracle-record.sh
+# #72 (#66 design approval, O4), so none is required at #66 (require/66.txt). Format: oracle/src/main/java/
+# dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in compare.rec, written by scripts/oracle-record.sh
 # only. Ids are immutable.
 
 # kind order and every operator on every kind pair: 7 x 7 results, the right operand outer

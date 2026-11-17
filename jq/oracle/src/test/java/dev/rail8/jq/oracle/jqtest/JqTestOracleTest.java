@@ -89,8 +89,8 @@ class JqTestOracleTest {
           threads.add(Thread.currentThread());
           frames.add(StackProbe.frames());
         };
-    Jqj jqj =
-        new Jqj() {
+    Engine engine =
+        new Engine() {
           @Override
           public Filter compile(String program) {
             probe.run();
@@ -107,7 +107,7 @@ class JqTestOracleTest {
             throw new AssertionError("a case without expected results reads none");
           }
         };
-    JqTestRunner runner = JqTestCorpus.runner(jqj);
+    JqTestRunner runner = JqTestCorpus.runner(engine);
     JqTestCase c = new JqTestCase("t.test#000000000000", 1, JqTestCase.Mode.RESULTS, "empty", "null", List.of());
 
     assertThat(runner.run(c).kind()).as("the first case's verdict").isEqualTo(Verdict.Kind.PASS);

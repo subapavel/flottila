@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * ADR-0042 "Native table" and F-31: every builtin signature jq 1.8.2 writes in C or bytecode, plus jqj's replacing
+ * The native table: every builtin signature jq 1.8.2 writes in C or bytecode, plus the engine's replacing
  * natives, each built or unbuilt (GLOSSARY "Native table", "Unbuilt native"). {@link NativeTable#signatures()} is the
  * table's {@code name/arity} set. The expected lists were derived by the test-author from jq 1.8.2's sources fetched
  * raw from https://raw.githubusercontent.com/jqlang/jq/jq-1.8.2/src/ on 2026-11-13, with the input not counted in the

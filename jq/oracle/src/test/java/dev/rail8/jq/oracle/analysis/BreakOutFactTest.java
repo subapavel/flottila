@@ -67,7 +67,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Not watched, and counted: the places where only an atomic node may stand, an AltBind match's Bind chain, a bare
  * ParamCall a Call passes on and an Advance, where the verifier may refuse the probe (CardinalityBoundsTest). Any
- * other refusal is a failure. A {@code label} filter jqj does not compile has nothing to watch and is counted; every
+ * other refusal is a failure. A {@code label} filter the engine does not compile has nothing to watch and is counted; every
  * core-v1 seed must compile.
  *
  * <p>Seam (the design's): {@code Executable.facts()} and {@code Facts.mayBreakOut(int body, int id)}, -1 for main, by
@@ -191,9 +191,9 @@ class BreakOutFactTest {
       program = Resolver.resolve(Parser.parse(filter));
     } catch (JqCompileException e) {
       if (mustCompile) {
-        throw new AssertionError("jqj does not compile " + filter, e);
+        throw new AssertionError("the engine does not compile " + filter, e);
       }
-      count("label filters jqj does not compile");
+      count("label filters the engine does not compile");
       return;
     }
     // The optimised compile's facts number the program it froze, the specialised one (#117): its nodes are watched,

@@ -136,7 +136,7 @@ filter group_by(.o) | map(length)
 stdin [{"o":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"i":0},{"o":{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},"i":1},{"o":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},"i":2},{"o":{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},"i":3},{"o":{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0},"i":4},{"o":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"i":5}]\n
 end
 
-# An array indexed by an array, which index, rindex and indices take for an array: each place where the objects equal those of the index, in order (jqj's prelude index still ends in a Stub through _strindices).
+# An array indexed by an array, which index, rindex and indices take for an array: each place where the objects equal those of the index, in order (the engine's prelude index still ends in a Stub through _strindices).
 case key-index/array-index-of-object
 arg -c
 filter .[1] as $n | .[0] | .[[$n]], .[[$n, $n]], .[[{}]]

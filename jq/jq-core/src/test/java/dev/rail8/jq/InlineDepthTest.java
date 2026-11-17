@@ -50,8 +50,8 @@ class InlineDepthTest {
   /**
    * DEVIATIONS "Long definition runs" (row of {@code over-cap/flat-4097}): reference jq 1.8.2 rejects 4 097 live definitions,
    * rc 3, {@code too many function parameters or local function definitions (max 4095)} (recorded in
-   * diff/over-cap.rec), and runs 4 095 to {@code 1} (.logs/114-jqref-probe.log). jqj has no such limit: past 511
-   * nested expansions a call is PLAIN, so the chain runs and gives the row's jqj column, {@code 1}.
+   * diff/over-cap.rec), and runs 4 095 to {@code 1} (.logs/114-jqref-probe.log). The engine has no such limit: past 511
+   * nested expansions a call is PLAIN, so the chain runs and gives the row's engine column, {@code 1}.
    */
   @Test
   void aChainOf4097LiveDefinitionsRuns() {

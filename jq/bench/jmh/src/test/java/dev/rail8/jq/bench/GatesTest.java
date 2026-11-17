@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The G2, G3 and G4 scenarios' states run one operation within {@code Limits.embedded()} and write what jq writes; and
- * {@link Gates#G7_process_1k}'s exit-code check, against stand-in launchers named by {@code jqj.launcher}: a shot whose
+ * {@link Gates#G7_process_1k}'s exit-code check, against stand-in launchers named by {@code rail8.jq.launcher}: a shot whose
  * process fails must not be timed as a result. The real launcher runs in the spec gate's JMH step.
  */
 class GatesTest {
@@ -30,18 +30,18 @@ class GatesTest {
     return p;
   }
 
-  /** Runs one G7.process shot with {@code jqj.launcher} set to {@code launcher}, restoring the property after. */
+  /** Runs one G7.process shot with {@code rail8.jq.launcher} set to {@code launcher}, restoring the property after. */
   private static int shot(Path launcher) throws IOException, InterruptedException {
-    String before = System.getProperty("jqj.launcher");
-    System.setProperty("jqj.launcher", launcher.toString());
+    String before = System.getProperty("rail8.jq.launcher");
+    System.setProperty("rail8.jq.launcher", launcher.toString());
     Gates.ColdFile state;
     try {
       state = new Gates.ColdFile();
     } finally {
       if (before == null) {
-        System.clearProperty("jqj.launcher");
+        System.clearProperty("rail8.jq.launcher");
       } else {
-        System.setProperty("jqj.launcher", before);
+        System.setProperty("rail8.jq.launcher", before);
       }
     }
     state.setUp();

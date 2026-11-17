@@ -7,7 +7,7 @@ import java.util.List;
  * message, its position, the source line and carets), joined by LF, then {@code jq: N compile error} or
  * {@code jq: N compile errors}. Its line and column are the first block's, 1-based and counted in bytes of the filter's
  * UTF-8: the line is the LFs before the error plus 1, the column the bytes since that line's start plus 1. A Stub ends
- * with one too, whose message is its one block and starts with the Stub mark, {@code "jqj stub: "}.
+ * with one too, whose message is its one block and starts with the Stub mark, {@code "rail8-jq stub: "}.
  */
 public final class JqCompileException extends JqException {
   private static final long serialVersionUID = 1L;

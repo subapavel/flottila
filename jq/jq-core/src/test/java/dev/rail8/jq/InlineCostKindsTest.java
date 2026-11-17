@@ -18,7 +18,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * (ADR-0040 #114 amendment), so the filter runs; until #114 it was the cap's Stub. Reference jq 1.8.2 rejects every one of
  * those longer chains with its bytecode limit, rc 3 ({@code function compiled to 524294 bytes which is too long} for
  * the one-node bodies, 174766 for the three-node ones and 104862 for the five-node ones, observed 2026-11-15 with -nc
- * -f, .logs/114-jqref-probe.log), so their results are the jqj column of DEVIATIONS "Long comma chains": one body's
+ * -f, .logs/114-jqref-probe.log), so their results are the engine's column of DEVIATIONS "Long comma chains": one body's
  * result per call. Each body is of one kind: a parse constant, a native call, a chain of field steps, an operator chain, an
  * alternative chain, a destructuring and an object construction. A field step on the input has no target of its own
  * (the leading dot is the step's), so {@code .a.b.c} is three nodes. The value is internal, so this test states it as
@@ -74,7 +74,7 @@ class InlineCostKindsTest {
    * pins each count exactly. Each body reaches no definition but f, so every lifting order lifts f and the row names it
    * (F-106). Each body's result on null is reference jq's (1.8.2, {@code def f: <body>; [f]} with -nc -f, observed
    * 2026-11-15, .logs/114-jqref-arms.log); an empty result is no result. The longer chains are past reference jq's
-   * bytecode limit, as in {@link #theMostCallsOfABodyThatFitAreInlinedAndOneMoreLiftsIt}, so the counts are the jqj
+   * bytecode limit, as in {@link #theMostCallsOfABodyThatFitAreInlinedAndOneMoreLiftsIt}, so the counts are the engine
    * column of DEVIATIONS "Long comma chains".
    */
   @ParameterizedTest(name = "{0}")

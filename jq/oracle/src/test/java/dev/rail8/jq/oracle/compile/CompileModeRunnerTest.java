@@ -101,15 +101,15 @@ class CompileModeRunnerTest {
 
   @Test
   void aStubOnEitherSideFails() {
-    Verdict stderr = CompileModeRunner.judge("dot/x", ended(0, "", ""), ended(3, "", "jqj stub: the builtin f/0 is not built yet\n"));
-    Verdict thrown = CompileModeRunner.judge("dot/x", new Run.Threw(new IllegalStateException("jqj stub: g is not built yet")), ended(0, "", ""));
+    Verdict stderr = CompileModeRunner.judge("dot/x", ended(0, "", ""), ended(3, "", "rail8-jq stub: the builtin f/0 is not built yet\n"));
+    Verdict thrown = CompileModeRunner.judge("dot/x", new Run.Threw(new IllegalStateException("rail8-jq stub: g is not built yet")), ended(0, "", ""));
 
     assertThat(stderr.kind()).as("verdict of a Stub in stderr").isEqualTo(Verdict.Kind.FAIL);
-    assertThat(stderr.detail()).as("detail of a Stub in stderr").isEqualTo("stub: the conservative run reached a Stub: jqj stub: the builtin f/0 is not built yet\\n");
+    assertThat(stderr.detail()).as("detail of a Stub in stderr").isEqualTo("stub: the conservative run reached a Stub: rail8-jq stub: the builtin f/0 is not built yet\\n");
     assertThat(thrown.kind()).as("verdict of a Stub thrown").isEqualTo(Verdict.Kind.FAIL);
     assertThat(thrown.detail())
         .as("detail of a Stub thrown")
-        .isEqualTo("stub: the optimised run reached a Stub: java.lang.IllegalStateException: jqj stub: g is not built yet");
+        .isEqualTo("stub: the optimised run reached a Stub: java.lang.IllegalStateException: rail8-jq stub: g is not built yet");
   }
 
   @Test
@@ -125,7 +125,7 @@ class CompileModeRunnerTest {
   @Test
   void aCrashComesBeforeAStubAndAStubBeforeATermination() {
     Run crash = new Run.Threw(new IllegalStateException("boom"));
-    Run stub = ended(3, "", "jqj stub: f\n");
+    Run stub = ended(3, "", "rail8-jq stub: f\n");
     Run terminated = new Run.Terminated("BUDGET STEPS");
 
     assertThat(CompileModeRunner.judge("dot/x", stub, crash).kind()).as("a Stub against a crash").isEqualTo(Verdict.Kind.CRASH);
@@ -141,7 +141,7 @@ class CompileModeRunnerTest {
   void theTrampolineRunIsJudgedAgainstTheOptimisedRun() {
     Verdict same = CompileModeRunner.judge("heap/x", ended(0, "[1]\n", ""), "trampoline", ended(0, "[1]\n", ""));
     Verdict rc = CompileModeRunner.judge("heap/x", ended(0, "", ""), "trampoline", ended(5, "", "jq: error (at <stdin>:0): x\n"));
-    Verdict stub = CompileModeRunner.judge("heap/x", ended(0, "", ""), "trampoline", ended(3, "", "jqj stub: f\n"));
+    Verdict stub = CompileModeRunner.judge("heap/x", ended(0, "", ""), "trampoline", ended(3, "", "rail8-jq stub: f\n"));
     Verdict crash = CompileModeRunner.judge("heap/x", ended(0, "", ""), "trampoline", new Run.Threw(new IllegalStateException("boom")));
 
     assertThat(same.kind()).as("verdict of a trampoline run equal to the optimised one").isEqualTo(Verdict.Kind.PASS);
@@ -149,7 +149,7 @@ class CompileModeRunnerTest {
     assertThat(same.diff()).as("diff of that pass").isEmpty();
     assertThat(rc.kind()).as("verdict of a trampoline run that disagrees").isEqualTo(Verdict.Kind.FAIL);
     assertThat(rc.detail()).as("detail of an rc and stderr disagreement").isEqualTo("disagree: rc 0 optimised, 5 trampoline; stderr differs at byte 0");
-    assertThat(stub.detail()).as("detail of a Stub in the trampoline run").isEqualTo("stub: the trampoline run reached a Stub: jqj stub: f\\n");
+    assertThat(stub.detail()).as("detail of a Stub in the trampoline run").isEqualTo("stub: the trampoline run reached a Stub: rail8-jq stub: f\\n");
     assertThat(crash.kind()).as("verdict of an exception out of the trampoline run").isEqualTo(Verdict.Kind.CRASH);
     assertThat(crash.detail()).as("detail of that exception").isEqualTo("the trampoline run threw java.lang.IllegalStateException: boom");
   }
@@ -179,7 +179,7 @@ class CompileModeRunnerTest {
     Verdict ended = CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "trampoline", ended(0, "1\n", ""), true);
     Verdict steps = CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "conservative", new Run.Terminated("BUDGET STEPS"), true);
     Verdict optimised = CompileModeRunner.judge("tail/x", depth, "conservative", depth, true);
-    Verdict stub = CompileModeRunner.judge("tail/x", ended(0, "", ""), "conservative", ended(3, "", "jqj stub: f\n"), true);
+    Verdict stub = CompileModeRunner.judge("tail/x", ended(0, "", ""), "conservative", ended(3, "", "rail8-jq stub: f\n"), true);
 
     assertThat(pass.kind()).as("verdict of a depth end under the key").isEqualTo(Verdict.Kind.PASS);
     assertThat(pass.detail()).as("detail of that pass").isEmpty();
@@ -226,11 +226,11 @@ class CompileModeRunnerTest {
         Arguments.argumentSet("equal", ended(0, "1\n", ""), ended(0, "1\n", "")),
         Arguments.argumentSet("disagreement", ended(0, "1\n", ""), ended(0, "2\n", "")),
         Arguments.argumentSet("termination", ended(0, "1\n", ""), new Run.Terminated("BUDGET STEPS")),
-        Arguments.argumentSet("stub in stderr", ended(0, "", ""), ended(3, "", "jqj stub: f\n")),
-        Arguments.argumentSet("stub thrown", ended(0, "", ""), new Run.Threw(new IllegalStateException("jqj stub: g"))),
+        Arguments.argumentSet("stub in stderr", ended(0, "", ""), ended(3, "", "rail8-jq stub: f\n")),
+        Arguments.argumentSet("stub thrown", ended(0, "", ""), new Run.Threw(new IllegalStateException("rail8-jq stub: g"))),
         Arguments.argumentSet("crash", ended(0, "", ""), new Run.Threw(new IllegalStateException("boom"))),
-        Arguments.argumentSet("crash against a stub", ended(3, "", "jqj stub: f\n"), new Run.Threw(new IllegalStateException("boom"))),
-        Arguments.argumentSet("stub against a termination", new Run.Terminated("STACK"), ended(3, "", "jqj stub: f\n")));
+        Arguments.argumentSet("crash against a stub", ended(3, "", "rail8-jq stub: f\n"), new Run.Threw(new IllegalStateException("boom"))),
+        Arguments.argumentSet("stub against a termination", new Run.Terminated("STACK"), ended(3, "", "rail8-jq stub: f\n")));
   }
 
   @ParameterizedTest(name = "{argumentSetName}")

@@ -57,7 +57,7 @@ class InlineCapTest {
 
   /**
    * One more call would spend the (CAP + 1)th node, so it is a PLAIN Call, and the filter runs: DEVIATIONS "Long comma
-   * chains", whose jqj column is 65 537 nulls; reference jq 1.8.2 rejects the chain with its bytecode limit, rc 3, {@code
+   * chains", whose engine's column is 65 537 nulls; reference jq 1.8.2 rejects the chain with its bytecode limit, rc 3, {@code
    * function compiled to 524294 bytes which is too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log).
    * Until #114 it was the cap's Stub.
    */

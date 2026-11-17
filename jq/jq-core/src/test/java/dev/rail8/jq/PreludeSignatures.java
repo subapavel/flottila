@@ -34,7 +34,7 @@ public final class PreludeSignatures {
           "ascii_downcase/0", "ascii_upcase/0", "truncate_stream/1", "fromstream/1", "tostream/0", "walk/1", "pick/1",
           "debug/1", "INDEX/2", "INDEX/1", "JOIN/2", "JOIN/3", "JOIN/4", "IN/1", "IN/2");
 
-  /** F-31 (ADR-0006 amendment) and ADR-0044 (#85, to_entries/0): the prelude definitions a jqj native replaces. */
+  /** The prelude definitions an engine native replaces. */
   public static final Set<String> REPLACED = Set.of("flatten/0", "flatten/1", "inputs/0", "to_entries/0");
 
   /**

@@ -67,7 +67,7 @@ class MainTerminationTest {
   @Test
   void aStepTerminationFlushesTheResultsWritesJqsLineAndExitsFive() {
     // jq-ref 1.8.2, observed 2026-11-14: printf 'null\n' | jq-ref -c '1, (range(1000000) | empty)' -> rc 0, stdout 1
-    // and LF. jqj's 1 000 steps let the read and the first result through and end inside the range.
+    // and LF. The engine's 1 000 steps let the read and the first result through and end inside the range.
     List<String> log = new ArrayList<>();
     Invocation invocation = compactOnNull("1, (range(1000000) | empty)", logging("out", log), logging("err", log));
 
@@ -83,7 +83,7 @@ class MainTerminationTest {
   @Test
   void aBytesBuiltTerminationFlushesTheResultsWritesJqsLineAndExitsFive() {
     // jq-ref 1.8.2, observed 2026-11-14: printf 'null\n' | jq-ref -c '1, ([range(1000)] | empty)' -> rc 0, stdout 1
-    // and LF. jqj's 100 bytes built end inside the array of 1 000 slots (DEVIATIONS "Array length limit").
+    // and LF. The engine's 100 bytes built end inside the array of 1 000 slots (DEVIATIONS "Array length limit").
     List<String> log = new ArrayList<>();
     Invocation invocation = compactOnNull("1, ([range(1000)] | empty)", logging("out", log), logging("err", log));
 

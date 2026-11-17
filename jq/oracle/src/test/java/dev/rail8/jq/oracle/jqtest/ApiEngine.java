@@ -35,7 +35,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * The jqtest oracle's jqj: the public API (ADR-0016) with {@link Limits#embedded()} without the deadline and
+ * The jqtest oracle's engine: the public API with {@link Limits#embedded()} without the deadline and
  * {@link Host#sandboxed()} (ADR-0020, ADR-0024). It lives with the tests because the oracle module does not read
  * jq-core.
  *
@@ -43,7 +43,7 @@ import java.util.function.Supplier;
  * result is compared by {@link JqNumber#decimalValue()}, its printed digits, where jq compares doubles. That differs
  * only for an expected literal with more digits than its double prints.
  */
-final class ApiJqj implements Jqj {
+final class ApiEngine implements Engine {
 
   // ADR-0020:50: the host is to carry UTC, a ModuleLoader over jq/tests/modules, debug discarded and, for man.test,
   // environment({PAGER=less}); the API has no environment or ModuleLoader yet, so it is the sandbox for every file.
@@ -58,9 +58,9 @@ final class ApiJqj implements Jqj {
 
   @Override
   public Filter compile(String program) {
-    JqFilter filter = jqj(() -> engine.compile(program));
+    JqFilter filter = engine(() -> engine.compile(program));
     return (input, sink) ->
-        jqj(
+        engine(
             () -> {
               run(filter, input, sink);
               return null;
@@ -76,7 +76,7 @@ final class ApiJqj implements Jqj {
 
   @Override
   public JvValue read(String json) {
-    return jqj(
+    return engine(
         () -> {
           try (JsonDoc doc = engine.newWorkspace().read(utf8(json))) {
             return copy(doc.root());
@@ -86,7 +86,7 @@ final class ApiJqj implements Jqj {
 
   @Override
   public JvValue reread(String json) {
-    return jqj(
+    return engine(
         () -> {
           Workspace workspace = engine.newWorkspace();
           ByteArrayOutputStream written = new ByteArrayOutputStream();
@@ -103,8 +103,8 @@ final class ApiJqj implements Jqj {
     return MemorySegment.ofArray(text.getBytes(UTF_8));
   }
 
-  /** Calls jqj; one of its exceptions becomes a {@link JqjException}, any other passes. */
-  private static <T> T jqj(Supplier<T> call) {
+  /** Calls the engine; one of its exceptions becomes an {@link EngineException}, any other passes. */
+  private static <T> T engine(Supplier<T> call) {
     try {
       return call.get();
     } catch (JqException e) {
@@ -112,13 +112,13 @@ final class ApiJqj implements Jqj {
     }
   }
 
-  /** The runner's view of jqj's four exceptions; it reads no value, so it cannot meet a Stub itself. */
-  static JqjException translate(JqException e) {
+  /** The runner's view of the engine's four exceptions; it reads no value, so it cannot meet a Stub itself. */
+  static EngineException translate(JqException e) {
     return switch (e) {
-      case JqCompileException c -> new JqjException(JqjException.Kind.COMPILE, c.getMessage(), c.blocks());
-      case JqSyntaxException s -> new JqjException(JqjException.Kind.SYNTAX, s.getMessage(), List.of());
-      case JqFilterException _ -> new JqjException(JqjException.Kind.FILTER, "error", List.of());
-      case JqTermination t -> new JqjException(JqjException.Kind.TERMINATION, t.cause() + " exit " + t.exitCode(), List.of());
+      case JqCompileException c -> new EngineException(EngineException.Kind.COMPILE, c.getMessage(), c.blocks());
+      case JqSyntaxException s -> new EngineException(EngineException.Kind.SYNTAX, s.getMessage(), List.of());
+      case JqFilterException _ -> new EngineException(EngineException.Kind.FILTER, "error", List.of());
+      case JqTermination t -> new EngineException(EngineException.Kind.TERMINATION, t.cause() + " exit " + t.exitCode(), List.of());
     };
   }
 

@@ -4,10 +4,10 @@ import java.util.function.Predicate;
 
 /**
  * What the jqtest runner needs of this engine, Rail8's jq. The oracle's tests implement it over the public API; the
- * oracle module does not read jq-core, so the runner sees only this. Every method throws {@link JqjException} for an
+ * oracle module does not read jq-core, so the runner sees only this. Every method throws {@link EngineException} for an
  * exception of the engine's and lets any other exception through.
  */
-public interface Jqj {
+public interface Engine {
 
   /** Compiles a program. */
   Filter compile(String program);

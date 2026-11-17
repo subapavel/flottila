@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** jq's jv_equal over the oracle's copies of values (ADR-0020): independent of jqj's {@code ==}. */
+/** jq's jv_equal over the oracle's copies of values: independent of the engine's {@code ==}. */
 class JvEqualTest {
 
   private static Num literal(String digits) {

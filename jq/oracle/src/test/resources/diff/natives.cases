@@ -216,7 +216,7 @@ filter keys
 stdin "abc"\n
 end
 
-# flatten/0 and flatten/1, jqj's natives in place of builtin.jq's (F-31): .[] of the input, each array element spliced
+# flatten/0 and flatten/1, the engine's natives in place of builtin.jq's (F-31): .[] of the input, each array element spliced
 # while the depth, less one per level, is not 0; flatten/1 first raises for a depth below 0 in the value order.
 
 case natives/flatten

@@ -10,7 +10,7 @@ import dev.rail8.jq.JqSyntaxException;
  */
 public final class Stub {
   /** The mark every Stub message starts with. */
-  public static final String PREFIX = "jqj stub: ";
+  public static final String PREFIX = "rail8-jq stub: ";
 
   private Stub() {}
 

@@ -43,7 +43,7 @@ class NativeStepsTest {
   }
 
   /**
-   * keys_unsorted ticks once per key; keys once more per compare of its sort, the compares of jqj's bottom-up merge sort
+   * keys_unsorted ticks once per key; keys once more per compare of its sort, the compares of the engine's bottom-up merge sort
    * (F-48): two keys one, three two, four in order four (TimSort makes three), eight as {@code dhbfaegc} seventeen
    * (TimSort makes eighteen).
    */

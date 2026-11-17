@@ -23,29 +23,29 @@ public final class JqTestRunner {
 
   private static final String SYNTAX_ERROR = "jq: error: syntax error";
 
-  private final Jqj jqj;
+  private final Engine engine;
 
-  public JqTestRunner(Jqj jqj) {
-    this.jqj = jqj;
+  public JqTestRunner(Engine engine) {
+    this.engine = engine;
   }
 
   public Verdict run(JqTestCase c) {
     try {
       return c.mode() == JqTestCase.Mode.RESULTS ? results(c) : compileFails(c);
-    } catch (JqjException e) {
-      // Only a Stub gets here: every call into the engine below rethrows a Stub and handles any other JqjException.
-      return fail(c, "jqj ended with a Stub: " + e.getMessage());
+    } catch (EngineException e) {
+      // Only a Stub gets here: every call into the engine below rethrows a Stub and handles any other EngineException.
+      return fail(c, "the engine ended with a Stub: " + e.getMessage());
     } catch (RuntimeException e) {
-      return new Verdict(Verdict.Kind.CRASH, oneLine(e.toString()), c.id() + ": CRASH, jqj threw " + e + "\n" + where(c));
+      return new Verdict(Verdict.Kind.CRASH, oneLine(e.toString()), c.id() + ": CRASH, the engine threw " + e + "\n" + where(c));
     }
   }
 
   private Verdict compileFails(JqTestCase c) {
-    JqjException error;
+    EngineException error;
     try {
-      jqj.compile(c.program());
+      engine.compile(c.program());
       return fail(c, "compiled, but the case expects a compile error");
-    } catch (JqjException e) {
+    } catch (EngineException e) {
       if (e.stub()) throw e;
       error = e;
     }
@@ -73,10 +73,10 @@ public final class JqTestRunner {
   }
 
   private Verdict results(JqTestCase c) {
-    Jqj.Filter filter;
+    Engine.Filter filter;
     try {
-      filter = jqj.compile(c.program());
-    } catch (JqjException e) {
+      filter = engine.compile(c.program());
+    } catch (EngineException e) {
       if (e.stub()) throw e;
       return fail(c, "the program does not compile: " + e.getMessage());
     }
@@ -86,22 +86,22 @@ public final class JqTestRunner {
       JvValue value;
       JvValue again;
       try {
-        value = jqj.read(text);
-        again = jqj.reread(text);
-      } catch (JqjException e) {
+        value = engine.read(text);
+        again = engine.reread(text);
+      } catch (EngineException e) {
         if (e.stub()) throw e;
         return fail(c, "expected result " + (k + 1) + " is invalid: " + e.getMessage());
       }
-      if (!JvEqual.equal(value, again)) return fail(c, "expected result " + (k + 1) + " is " + again.text() + " after jqj's writer and reader");
+      if (!JvEqual.equal(value, again)) return fail(c, "expected result " + (k + 1) + " is " + again.text() + " after the engine's writer and reader");
       expected.add(value);
     }
     Collector results = new Collector(expected);
     String error = "";
     try {
       filter.run(c.input(), results);
-    } catch (JqjException e) {
+    } catch (EngineException e) {
       if (e.stub()) throw e;
-      if (e.kind() == JqjException.Kind.SYNTAX) return fail(c, "the input is invalid: " + e.getMessage());
+      if (e.kind() == EngineException.Kind.SYNTAX) return fail(c, "the input is invalid: " + e.getMessage());
       // An error ends the results; after the last expected one it passes, as in jq_test.c.
       error = ", then " + e.kind() + " " + e.getMessage();
     }

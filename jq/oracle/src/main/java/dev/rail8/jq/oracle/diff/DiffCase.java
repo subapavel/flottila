@@ -16,14 +16,14 @@ import java.util.Map;
  * <p>Keys: {@code arg} and {@code filter} are the command-line arguments in the order they appear (a case may put
  * options before or after the filter); {@code stdin} once; {@code file <name> <bytes>} and {@code env K=V}, each
  * repeatable; {@code deviation <slug>} once marks a case that pins a {@code DEVIATIONS.md} row, and only such a case
- * may carry this engine's column of that row: {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}, each at most
+ * may carry the engine's column of that row: {@code engine-rc}, {@code engine-stdout} and {@code engine-stderr}, each at most
  * once. {@code limit recursion-depth <n>} once runs this engine under a recursion-depth budget of {@code n}, a
  * positive integer of at most {@link Integer#MAX_VALUE}, in every run of the case, the differential run and each
  * compile mode's; the reference jq ignores it. Without {@code stdin} the input is empty.
  *
  * @param files file name to content, written into the working directory of each run
  * @param deviation the slug of the deviation the case pins, or null
- * @param jqj this engine's column: every part null unless the case gives its {@code jqj-*} key
+ * @param engine the engine's column: every part null unless the case gives its {@code engine-*} key
  * @param recursionDepth the recursion-depth budget of {@code limit recursion-depth}, or null when the case has no such
  *     key
  */
@@ -34,7 +34,7 @@ public record DiffCase(
     Map<String, byte[]> files,
     Map<String, String> env,
     String deviation,
-    JqjColumn jqj,
+    EngineColumn engine,
     String def,
     Long recursionDepth) {
 
@@ -46,22 +46,22 @@ public record DiffCase(
 
   /** A case without {@code limit recursion-depth}. */
   public DiffCase(
-      String id, List<String> args, byte[] stdin, Map<String, byte[]> files, Map<String, String> env, String deviation, JqjColumn jqj, String def) {
-    this(id, args, stdin, files, env, deviation, jqj, def, null);
+      String id, List<String> args, byte[] stdin, Map<String, byte[]> files, Map<String, String> env, String deviation, EngineColumn engine, String def) {
+    this(id, args, stdin, files, env, deviation, engine, def, null);
   }
 
   /**
    * This engine's column of a deviation case: what it gives where it differs from jq-ref on purpose. Each part is
    * null when the case has no key for it.
    *
-   * @param rc {@code jqj-rc}
-   * @param stdout {@code jqj-stdout}, unescaped
-   * @param stderr {@code jqj-stderr}, unescaped
+   * @param rc {@code engine-rc}
+   * @param stdout {@code engine-stdout}, unescaped
+   * @param stderr {@code engine-stderr}, unescaped
    */
-  public record JqjColumn(Integer rc, byte[] stdout, byte[] stderr) {
+  public record EngineColumn(Integer rc, byte[] stdout, byte[] stderr) {
 
-    /** The column of a case without {@code jqj-*} keys. */
-    public static final JqjColumn NONE = new JqjColumn(null, null, null);
+    /** The column of a case without {@code engine-*} keys. */
+    public static final EngineColumn NONE = new EngineColumn(null, null, null);
 
     /**
      * Whether every part this column gives equals that part of jq-ref's recording, so the deviation is gone.
@@ -91,9 +91,9 @@ public record DiffCase(
    * The case of one block.
    *
    * @throws IllegalArgumentException naming {@code where} and the line of an unknown key, a repeated {@code stdin},
-   *     {@code deviation}, {@code limit} or {@code jqj-*} key, a {@code file} without a name, an {@code env} without
-   *     {@code =}, a {@code jqj-rc} that is not an integer, a {@code limit} that is not {@code recursion-depth} and a
-   *     positive integer, a malformed escape, or the first {@code jqj-*} key of a case without {@code deviation}
+   *     {@code deviation}, {@code limit} or {@code engine-*} key, a {@code file} without a name, an {@code env} without
+   *     {@code =}, a {@code engine-rc} that is not an integer, a {@code limit} that is not {@code recursion-depth} and a
+   *     positive integer, a malformed escape, or the first {@code engine-*} key of a case without {@code deviation}
    */
   public static DiffCase of(String where, CaseFormat.Block block) {
     List<String> args = new ArrayList<>();
@@ -101,11 +101,11 @@ public record DiffCase(
     Map<String, byte[]> files = new LinkedHashMap<>();
     Map<String, String> env = new LinkedHashMap<>();
     String deviation = null;
-    Integer jqjRc = null;
-    byte[] jqjStdout = null;
-    byte[] jqjStderr = null;
+    Integer engineRc = null;
+    byte[] engineStdout = null;
+    byte[] engineStderr = null;
     Long recursionDepth = null;
-    CaseFormat.Line firstJqj = null;
+    CaseFormat.Line firstEngine = null;
     for (CaseFormat.Line line : block.lines()) {
       String at = where + ":" + line.number() + ": ";
       try {
@@ -131,21 +131,21 @@ public record DiffCase(
             if (line.value().isEmpty()) throw new IllegalArgumentException("'deviation' needs a slug");
             deviation = line.value();
           }
-          case "jqj-rc" -> {
-            if (jqjRc != null) throw new IllegalArgumentException("'jqj-rc' given twice");
+          case "engine-rc" -> {
+            if (engineRc != null) throw new IllegalArgumentException("'engine-rc' given twice");
             try {
-              jqjRc = Integer.parseInt(line.value());
+              engineRc = Integer.parseInt(line.value());
             } catch (NumberFormatException e) {
-              throw new IllegalArgumentException("'jqj-rc' needs an integer, not '" + line.value() + "'", e);
+              throw new IllegalArgumentException("'engine-rc' needs an integer, not '" + line.value() + "'", e);
             }
           }
-          case "jqj-stdout" -> {
-            if (jqjStdout != null) throw new IllegalArgumentException("'jqj-stdout' given twice");
-            jqjStdout = CaseFormat.unescape(line.value());
+          case "engine-stdout" -> {
+            if (engineStdout != null) throw new IllegalArgumentException("'engine-stdout' given twice");
+            engineStdout = CaseFormat.unescape(line.value());
           }
-          case "jqj-stderr" -> {
-            if (jqjStderr != null) throw new IllegalArgumentException("'jqj-stderr' given twice");
-            jqjStderr = CaseFormat.unescape(line.value());
+          case "engine-stderr" -> {
+            if (engineStderr != null) throw new IllegalArgumentException("'engine-stderr' given twice");
+            engineStderr = CaseFormat.unescape(line.value());
           }
           case LIMIT -> {
             if (recursionDepth != null) throw new IllegalArgumentException("'limit' given twice");
@@ -159,15 +159,15 @@ public record DiffCase(
       } catch (IllegalArgumentException e) {
         throw new IllegalArgumentException(at + "case " + block.id() + ": " + e.getMessage(), e);
       }
-      if (firstJqj == null && line.key().startsWith("jqj-")) firstJqj = line;
+      if (firstEngine == null && line.key().startsWith("engine-")) firstEngine = line;
     }
-    if (firstJqj != null && deviation == null) {
+    if (firstEngine != null && deviation == null) {
       throw new IllegalArgumentException(
-          where + ":" + firstJqj.number() + ": case " + block.id() + ": '" + firstJqj.key() + "' needs 'deviation': only a"
-              + " deviation case carries jqj's column (ADR-0020)");
+          where + ":" + firstEngine.number() + ": case " + block.id() + ": '" + firstEngine.key() + "' needs 'deviation': only a"
+              + " deviation case carries the engine's column (ADR-0020)");
     }
-    JqjColumn jqj = new JqjColumn(jqjRc, jqjStdout, jqjStderr);
-    return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, jqj, block.def(), recursionDepth);
+    EngineColumn engine = new EngineColumn(engineRc, engineStdout, engineStderr);
+    return new DiffCase(block.id(), List.copyOf(args), stdin == null ? new byte[0] : stdin, files, env, deviation, engine, block.def(), recursionDepth);
   }
 
   /** The budget of a {@code limit} line's value {@code recursion-depth <n>}, {@code n} an integer in 1..{@link Integer#MAX_VALUE}. */

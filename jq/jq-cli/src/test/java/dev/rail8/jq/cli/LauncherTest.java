@@ -15,8 +15,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What {@code package} writes (ADR-0013, spec story 51): the module path {@code target/lib/} and the launcher
- * {@code target/jqj}, which runs the command line from it. It needs the launcher test execution of this module's
- * build, after {@code package}; the system properties {@code jqj.launcher} and {@code jqj.lib} name the two.
+ * {@code target/rail8-jq}, which runs the command line from it. It needs the launcher test execution of this module's
+ * build, after {@code package}; the system properties {@code rail8.jq.launcher} and {@code rail8.jq.lib} name the two.
  */
 class LauncherTest {
 
@@ -24,7 +24,7 @@ class LauncherTest {
 
   @Test
   void theModulePathHoldsTheThreeModules() throws IOException {
-    Path lib = Path.of(System.getProperty("jqj.lib"));
+    Path lib = Path.of(System.getProperty("rail8.jq.lib"));
     try (Stream<Path> jars = Files.list(lib)) {
       assertThat(jars.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".jar")).map(n -> n.replaceFirst("-[0-9].*", "")))
           .as("the jars in %s, without their versions", lib)
@@ -40,18 +40,18 @@ class LauncherTest {
     File out = dir.resolve("out").toFile();
     File err = dir.resolve("err").toFile();
     ProcessBuilder launch =
-        new ProcessBuilder(System.getProperty("jqj.launcher"), "-c", ".a", "in.json")
+        new ProcessBuilder(System.getProperty("rail8.jq.launcher"), "-c", ".a", "in.json")
             .directory(dir.toFile())
             .redirectInput(Redirect.from(new File("/dev/null")))
             .redirectOutput(out)
             .redirectError(err);
     // A JVM started with JAVA_TOOL_OPTIONS set prints "Picked up JAVA_TOOL_OPTIONS: ..." on stderr; a build host may set it.
     launch.environment().remove("JAVA_TOOL_OPTIONS");
-    Process jqj = launch.start();
+    Process engine = launch.start();
 
-    assertThat(jqj.waitFor(60, TimeUnit.SECONDS)).as("the launcher ends within 60 s").isTrue();
+    assertThat(engine.waitFor(60, TimeUnit.SECONDS)).as("the launcher ends within 60 s").isTrue();
     assertThat(Files.readString(err.toPath())).as("stderr").isEmpty();
-    assertThat(jqj.exitValue()).as("exit code").isZero();
+    assertThat(engine.exitValue()).as("exit code").isZero();
     assertThat(Files.readString(out.toPath())).as("stdout").isEqualTo("1\n");
   }
 }

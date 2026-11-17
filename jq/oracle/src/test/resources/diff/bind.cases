@@ -3,7 +3,7 @@
 # elements last first, object entries in source order, each key run on the value at its own level), absent parts and
 # nulls, non-container errors, repeated names, the `?//` alternatives (which error starts the next one, the last
 # one's error, a group name inside a key), $__loc__, unbound variables and the variable keys {$x} and {$x: v}.
-# jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
+# jq's -n is not built in the engine's command line yet, so a filter that ignores its input runs on stdin null. Format:
 # oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in bind.rec, written
 # by scripts/oracle-record.sh only. Ids are immutable.
 

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 /**
  * {@code JqEngine.compile} on a filter jq's grammar rejects (ADR-0032, GLOSSARY "Syntax error", "Recovery message",
  * "Error block"). The parse collects its errors and throws them before resolution, so no Stub hides one. A syntax
- * block is jqj's own text up to the token (DEVIATIONS "Syntax-error text"): only {@code syntax error, unexpected <jq
+ * block is the engine's own text up to the token (DEVIATIONS "Syntax-error text"): only {@code syntax error, unexpected <jq
  * token name>} must match jq's, then jq's position, source line and carets (ADR-0031). A recovery block and the
  * "not given" message match jq's text exactly. The command line's rc and stdout are checked by diff/syntax.cases;
  * this test checks what the differential oracle does not compare for a syntax error: the exception's blocks, line
@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  */
 class SyntaxErrorTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   /** jq's text for a program with no top-level filter, which is no syntax error (ADR-0032). */
   private static final String NOT_GIVEN = "jq: error: Top-level program not given (try \".\")";
@@ -188,7 +188,7 @@ class SyntaxErrorTest {
   }
 
   /**
-   * A syntax block: jq's {@code syntax error, unexpected <token>} part, any text of jqj's own, then jq's position,
+   * A syntax block: jq's {@code syntax error, unexpected <token>} part, any text of the engine's own, then jq's position,
    * source line and carets ({@code position} starts at {@code line }).
    */
   private static void syntaxBlock(String block, String what, String unexpected, String position) {

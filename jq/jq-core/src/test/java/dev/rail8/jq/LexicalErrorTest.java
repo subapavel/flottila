@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  */
 class LexicalErrorTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   private static final JqEngine ENGINE = JqEngine.builder().build();
 

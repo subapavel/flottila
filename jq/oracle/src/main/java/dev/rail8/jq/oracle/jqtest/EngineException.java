@@ -3,8 +3,8 @@ package dev.rail8.jq.oracle.jqtest;
 import dev.rail8.jq.oracle.diff.Verdict;
 import java.util.List;
 
-/** An exception of this engine's, as {@link Jqj} hands it to the runner: its kind, message and compile error blocks. */
-public final class JqjException extends RuntimeException {
+/** An exception of the engine's, as {@link Engine} hands it to the runner: its kind, message and compile error blocks. */
+public final class EngineException extends RuntimeException {
   private static final long serialVersionUID = 1L;
 
   /** Which of the engine's four exceptions it was. */
@@ -22,7 +22,7 @@ public final class JqjException extends RuntimeException {
   private final List<String> blocks;
 
   /** @param blocks the compile error blocks, in order; empty for the other kinds */
-  public JqjException(Kind kind, String message, List<String> blocks) {
+  public EngineException(Kind kind, String message, List<String> blocks) {
     super(message, null, false, false);
     this.kind = kind;
     this.blocks = List.copyOf(blocks);

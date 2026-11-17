@@ -2,8 +2,8 @@
 # (GLOSSARY "Truthy": neither false nor null). ADR-0037: a and b is If(a, If(b, T, F), F), a or b is If(a, T, If(b, T,
 # F)) and not is If(., F, T), so the left side is the outer loop and the right side runs only for a left result that
 # does not decide. A run-time navigation error (.a or .[0] on a string, #63) witnesses whether a side runs; the cases
-# named *-error-builtin use error/1, which is #68's, and are required there. Format: oracle/src/main/java/io/github/
-# subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in logic.rec, written by scripts/oracle-record.sh only.
+# named *-error-builtin use error/1, which is #68's, and are required there. Format: oracle/src/main/java/
+# dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in logic.rec, written by scripts/oracle-record.sh only.
 # Ids are immutable.
 
 # truthiness

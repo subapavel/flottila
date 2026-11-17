@@ -24,13 +24,13 @@ class DeviationsTest {
             "",
             "Prose that quotes `deviation prose` is no row.",
             "",
-            "| case | filter | input | jq 1.8.2 | jqj |",
+            "| case | filter | input | jq 1.8.2 | Rail8 jq |",
             "| --- | --- | --- | --- | --- |",
             "| `json/a` (`deviation one`) | `-c .` | `1` | `1` | error |",
             "| none yet | `-c .` | `[1]` | `1` | error |",
             "| `t/b` (`deviation two`), `t/c` (`deviation three`) | `-c .` | `2` | `2` | error |",
             "| `a \\| b` (`deviation piped`) | `.` | `3` | `3` | error |",
-            "| `t/d` | `.` | `4` | `4` | `deviation jqj-cell` |",
+            "| `t/d` | `.` | `4` | `4` | `deviation engine-cell` |",
             ""),
         UTF_8);
 

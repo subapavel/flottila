@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * The 1 KB differential cases of the bench scenarios (ADR-0019, ADR-0024) in {@code oracle/.../diff/bench.cases}: jqj
+ * The 1 KB differential cases of the bench scenarios in {@code oracle/.../diff/bench.cases}: the engine
  * is timed on the same work jq does only while each case's inline stdin is still its generator's 1 KB document
  * ({@code Inputs.orders}, {@code recs}, {@code ints} or {@code deep} of {@code Size.K1}, or #85's
  * {@code KeyProofCost.recs20} of 1 024 bytes), byte for byte, and its command line is the

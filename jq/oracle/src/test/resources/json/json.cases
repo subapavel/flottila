@@ -2,7 +2,7 @@
 # 1ef36fa01286573e846ac449e8683f8833c5b26a (MIT, Nicolas Seriot; see LICENSE-JSONTestSuite and NOTICE),
 # each run as `-c . <file>`. Case id: json/<file name without .json>; its label is the prefix y_, n_ or i_.
 # Expected outputs live in json.rec, written by scripts/oracle-record.sh only. Ids are immutable.
-# A deviation case adds jqj's column of its DEVIATIONS.md row as jqj-* lines (ADR-0020); json.rec stays jq-ref's.
+# A deviation case adds the engine's column of its DEVIATIONS.md row as engine-* lines (ADR-0020); json.rec stays jq-ref's.
 
 case json/i_number_double_huge_neg_exp
 arg -c
@@ -458,8 +458,8 @@ filter .
 arg n_multidigit_number_then_00.json
 file n_multidigit_number_then_00.json 123\x00
 deviation nul
-jqj-rc 5
-jqj-stdout
+engine-rc 5
+engine-stdout
 end
 
 case json/n_number_++

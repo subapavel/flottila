@@ -48,58 +48,58 @@ class CaseFormatTest {
     assertThat(cases("case t/x\nend\n").get(0).deviation()).isNull();
   }
 
-  /** ADR-0020: a deviation case carries jqj's column as {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}. */
+  /** A deviation case carries the engine's column as {@code engine-rc}, {@code engine-stdout} and {@code engine-stderr}. */
   @Test
-  void aDeviationCaseCarriesJqjsColumnInItsJqjKeys() {
-    DiffCase.JqjColumn all = cases("case t/x\njqj-rc 5\ndeviation nul\njqj-stdout\njqj-stderr e\\x00\\n\nend\n").get(0).jqj();
+  void aDeviationCaseCarriesTheEnginesColumnInItsEngineKeys() {
+    DiffCase.EngineColumn all = cases("case t/x\nengine-rc 5\ndeviation nul\nengine-stdout\nengine-stderr e\\x00\\n\nend\n").get(0).engine();
 
     assertThat(all.rc()).isEqualTo(5);
     assertThat(all.stdout()).isEmpty();
     assertThat(all.stderr()).isEqualTo(new byte[] {'e', 0, '\n'});
 
-    DiffCase.JqjColumn rcOnly = cases("case t/x\ndeviation nul\njqj-rc 5\nend\n").get(0).jqj();
+    DiffCase.EngineColumn rcOnly = cases("case t/x\ndeviation nul\nengine-rc 5\nend\n").get(0).engine();
     assertThat(rcOnly.rc()).isEqualTo(5);
     assertThat(rcOnly.stdout()).isNull();
     assertThat(rcOnly.stderr()).isNull();
 
-    DiffCase.JqjColumn none = cases("case t/x\nfilter .\nend\n").get(0).jqj();
+    DiffCase.EngineColumn none = cases("case t/x\nfilter .\nend\n").get(0).engine();
     assertThat(none.rc()).isNull();
     assertThat(none.stdout()).isNull();
     assertThat(none.stderr()).isNull();
   }
 
-  /** ADR-0020: the deviation is gone when every part jqj's column gives equals that part of the recording. */
+  /** The deviation is gone when every part the engine's column gives equals that part of the recording. */
   @Test
-  void jqjsColumnMatchesTheRecordingWhenEveryPartItGivesEqualsIt() {
+  void enginesColumnMatchesTheRecordingWhenEveryPartItGivesEqualsIt() {
     Outcome recorded = new Outcome(0, bytes("123\n"), bytes("w\n"));
 
-    assertThat(column("jqj-rc 0\n").matches(recorded)).isTrue();
-    assertThat(column("jqj-rc 5\n").matches(recorded)).isFalse();
-    assertThat(column("jqj-stdout 123\\n\n").matches(recorded)).isTrue();
-    assertThat(column("jqj-stdout 123\\n\njqj-rc 5\n").matches(recorded)).isFalse();
-    assertThat(column("jqj-stdout\n").matches(recorded)).isFalse();
-    assertThat(column("jqj-stderr w\\n\n").matches(recorded)).isTrue();
-    assertThat(column("jqj-stderr w\\n\njqj-stdout\n").matches(recorded)).isFalse();
-    assertThat(column("jqj-stderr x\n").matches(recorded)).isFalse();
-    assertThat(column("").matches(recorded)).as("no jqj-* key: jqj's column is the recording").isTrue();
+    assertThat(column("engine-rc 0\n").matches(recorded)).isTrue();
+    assertThat(column("engine-rc 5\n").matches(recorded)).isFalse();
+    assertThat(column("engine-stdout 123\\n\n").matches(recorded)).isTrue();
+    assertThat(column("engine-stdout 123\\n\nengine-rc 5\n").matches(recorded)).isFalse();
+    assertThat(column("engine-stdout\n").matches(recorded)).isFalse();
+    assertThat(column("engine-stderr w\\n\n").matches(recorded)).isTrue();
+    assertThat(column("engine-stderr w\\n\nengine-stdout\n").matches(recorded)).isFalse();
+    assertThat(column("engine-stderr x\n").matches(recorded)).isFalse();
+    assertThat(column("").matches(recorded)).as("no engine-* key: the engine's column is the recording").isTrue();
   }
 
-  private static DiffCase.JqjColumn column(String jqjLines) {
-    return cases("case t/x\ndeviation nul\n" + jqjLines + "end\n").get(0).jqj();
+  private static DiffCase.EngineColumn column(String engineLines) {
+    return cases("case t/x\ndeviation nul\n" + engineLines + "end\n").get(0).engine();
   }
 
-  /** Each key of jqj's column replaces jq-ref's part of the recording; an absent key keeps jq-ref's. */
+  /** Each key of the engine's column replaces jq-ref's part of the recording; an absent key keeps jq-ref's. */
   @Test
-  void jqjsColumnReplacesOnlyThePartsItGives() {
+  void enginesColumnReplacesOnlyThePartsItGives() {
     Outcome recorded = new Outcome(0, bytes("123\n"), bytes("w\n"));
 
-    Outcome rc = cases("case t/x\ndeviation nul\njqj-rc 5\nend\n").get(0).jqj().over(recorded);
+    Outcome rc = cases("case t/x\ndeviation nul\nengine-rc 5\nend\n").get(0).engine().over(recorded);
     assertThat(rc.sameAs(new Outcome(5, bytes("123\n"), bytes("w\n")))).isTrue();
 
-    Outcome streams = cases("case t/x\ndeviation nul\njqj-stdout\njqj-stderr e\nend\n").get(0).jqj().over(recorded);
+    Outcome streams = cases("case t/x\ndeviation nul\nengine-stdout\nengine-stderr e\nend\n").get(0).engine().over(recorded);
     assertThat(streams.sameAs(new Outcome(0, bytes(""), bytes("e")))).isTrue();
 
-    assertThat(cases("case t/x\nend\n").get(0).jqj().over(recorded).sameAs(recorded)).isTrue();
+    assertThat(cases("case t/x\nend\n").get(0).engine().over(recorded).sameAs(recorded)).isTrue();
   }
 
   /** ADR-0047 #118: {@code limit recursion-depth n} gives the case its recursion-depth budget; a case without it has none. */
@@ -144,14 +144,14 @@ class CaseFormatTest {
         Arguments.argumentSet("stdin twice", bytes("case t/x\nstdin 1\nstdin 2\nend\n"), "'stdin' given twice"),
         Arguments.argumentSet("deviation twice", bytes("case t/x\ndeviation a\ndeviation b\nend\n"), "'deviation' given twice"),
         Arguments.argumentSet("deviation without a slug", bytes("case t/x\ndeviation\nend\n"), "'deviation' needs a slug"),
-        Arguments.argumentSet("jqj-rc without deviation", bytes("case t/x\nfilter .\njqj-rc 5\njqj-stdout\nend\n"), "t.cases:3: case t/x: 'jqj-rc' needs 'deviation'"),
-        Arguments.argumentSet("jqj-stdout without deviation", bytes("case t/x\njqj-stdout 1\nend\n"), "t.cases:2: case t/x: 'jqj-stdout' needs 'deviation'"),
-        Arguments.argumentSet("jqj-stderr without deviation", bytes("case t/x\njqj-stderr e\nend\n"), "t.cases:2: case t/x: 'jqj-stderr' needs 'deviation'"),
-        Arguments.argumentSet("jqj-rc twice", bytes("case t/x\ndeviation a\njqj-rc 5\njqj-rc 2\nend\n"), "'jqj-rc' given twice"),
-        Arguments.argumentSet("jqj-stdout twice", bytes("case t/x\ndeviation a\njqj-stdout\njqj-stdout\nend\n"), "'jqj-stdout' given twice"),
-        Arguments.argumentSet("jqj-stderr twice", bytes("case t/x\ndeviation a\njqj-stderr\njqj-stderr\nend\n"), "'jqj-stderr' given twice"),
-        Arguments.argumentSet("jqj-rc not an integer", bytes("case t/x\ndeviation a\njqj-rc five\nend\n"), "'jqj-rc' needs an integer"),
-        Arguments.argumentSet("an unknown jqj key", bytes("case t/x\ndeviation a\njqj-exit 5\nend\n"), "unknown key 'jqj-exit'"),
+        Arguments.argumentSet("engine-rc without deviation", bytes("case t/x\nfilter .\nengine-rc 5\nengine-stdout\nend\n"), "t.cases:3: case t/x: 'engine-rc' needs 'deviation'"),
+        Arguments.argumentSet("engine-stdout without deviation", bytes("case t/x\nengine-stdout 1\nend\n"), "t.cases:2: case t/x: 'engine-stdout' needs 'deviation'"),
+        Arguments.argumentSet("engine-stderr without deviation", bytes("case t/x\nengine-stderr e\nend\n"), "t.cases:2: case t/x: 'engine-stderr' needs 'deviation'"),
+        Arguments.argumentSet("engine-rc twice", bytes("case t/x\ndeviation a\nengine-rc 5\nengine-rc 2\nend\n"), "'engine-rc' given twice"),
+        Arguments.argumentSet("engine-stdout twice", bytes("case t/x\ndeviation a\nengine-stdout\nengine-stdout\nend\n"), "'engine-stdout' given twice"),
+        Arguments.argumentSet("engine-stderr twice", bytes("case t/x\ndeviation a\nengine-stderr\nengine-stderr\nend\n"), "'engine-stderr' given twice"),
+        Arguments.argumentSet("engine-rc not an integer", bytes("case t/x\ndeviation a\nengine-rc five\nend\n"), "'engine-rc' needs an integer"),
+        Arguments.argumentSet("an unknown engine key", bytes("case t/x\ndeviation a\nengine-exit 5\nend\n"), "unknown key 'engine-exit'"),
         Arguments.argumentSet("limit twice", bytes("case t/x\nlimit recursion-depth 16\nlimit recursion-depth 8\nend\n"), "t.cases:3: case t/x: 'limit' given twice"),
         Arguments.argumentSet("a limit of another budget", bytes("case t/x\nlimit steps 16\nend\n"), "'limit' needs 'recursion-depth <n>' with an integer n in 1..2147483647, not 'steps 16'"),
         Arguments.argumentSet("a limit that is no integer", bytes("case t/x\nlimit recursion-depth x\nend\n"), "not 'recursion-depth x'"),

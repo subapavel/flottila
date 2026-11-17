@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The compile-mode oracle's reach into jqj (ADR-0020 amendment for #60): the hook on the engine's builder, its limits,
+ * The compile-mode oracle's reach into the engine: the hook on the engine's builder, its limits,
  * and how a run through the command line or the public API ends.
  *
  * <p>The trampoline test (#109) assumes {@code static UnaryOperator<JqEngine.Builder> CompileModes.trampoline()}, the
@@ -60,7 +60,7 @@ class CompileModesTest {
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 512 * 1024L));
   }
 
-  /** jqj's F (CallRuns.F): reference jq 1.8.2 gives N on N for N up to 10^7 (F-87), 9999 on 9999 (observed 2026-11-15, #109). */
+  /** The engine's F (CallRuns.F): reference jq 1.8.2 gives N on N for N up to 10^7, 9999 on 9999 (observed 2026-11-15). */
   private static final String F = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
 
   /** The thread of a run that must hold 9 999 levels only on the driver: DeepRuns' small stack. */
@@ -101,7 +101,7 @@ class CompileModesTest {
         .as("the trampoline run's limits")
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 0));
 
-    DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d");
     assertEnded(onSmallStack(() -> CompileModes.cli(deep, scratch, CompileModes.trampoline())), "the trampoline run of F on 9999 on a 256 KiB thread", 0, "9999\n", "");
 
     Limits l = CompileModes.limits();
@@ -119,8 +119,8 @@ class CompileModesTest {
   @Test
   void aLimitedCaseRunsEveryHookUnderItsBudget(@TempDir Path scratch) {
     List<String> args = List.of("-c", "def f: if . >= 100 then . else .+1|f end; 0|f");
-    DiffCase limited = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d", 16L);
-    DiffCase plain = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    DiffCase limited = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d", 16L);
+    DiffCase plain = new DiffCase("t/tail", args, "null\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d");
 
     assertEnded(CompileModes.cli(limited, scratch, CompileModes.hook(CompileMode.OPTIMISED)), "the optimised run under the key", 0, "100\n", "");
     assertThat(CompileModes.cli(limited, scratch, CompileModes.hook(CompileMode.CONSERVATIVE))).as("the conservative run under the key").isEqualTo(new Run.Terminated("BUDGET RECURSION_DEPTH"));
@@ -140,7 +140,7 @@ class CompileModesTest {
   }
 
   private static DiffCase compactDot(String stdin) {
-    return new DiffCase("t/compact-dot", List.of("-c", "."), stdin.getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
+    return new DiffCase("t/compact-dot", List.of("-c", "."), stdin.getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.EngineColumn.NONE, "d");
   }
 
   private static JqTestCase dot(String input) {
@@ -208,7 +208,7 @@ class CompileModesTest {
   }
 
   @Test
-  void anExceptionThatIsNotJqjsIsThrown(@TempDir Path scratch) {
+  void anExceptionThatIsNotTheEnginesIsThrown(@TempDir Path scratch) {
     UnaryOperator<JqEngine.Builder> broken =
         b -> {
           throw new IllegalArgumentException("boom");
@@ -224,7 +224,7 @@ class CompileModesTest {
     JqTestCase compiles = new JqTestCase("t.test#000000000003", 1, JqTestCase.Mode.FAIL_IGNORE_MSG, ".", null, List.of());
 
     // jq-ref 1.8.2, observed 2026-11-12: jq-ref -n '$x' -> rc 3, first line
-    //   "jq: error: $x is not defined at <top-level>, line 1, column 1:". jqj's text is the compile exception's message.
+    //   "jq: error: $x is not defined at <top-level>, line 1, column 1:". The engine's text is the compile exception's message.
     Run failed = CompileModes.api(undefined, CompileModes.hook(CompileMode.OPTIMISED));
     assertThat(failed).as("the run of a program that does not compile").isInstanceOf(Run.Ended.class);
     assertThat(((Run.Ended) failed).outcome().rc()).as("its exit code").isEqualTo(3);

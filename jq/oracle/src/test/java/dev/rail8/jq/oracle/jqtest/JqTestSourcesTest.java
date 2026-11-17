@@ -15,7 +15,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * jq's files under {@code jq/tests/} are byte for byte jq 1.8.2's (ADR-0020, ADR-0021): every file but jqj's own
+ * jq's files under {@code jq/tests/} are byte for byte jq 1.8.2's: every file but the engine's own
  * {@code SOURCES.sha256} and {@code NOTICE} has a line there with its SHA-256, and every line names a file.
  */
 class JqTestSourcesTest {

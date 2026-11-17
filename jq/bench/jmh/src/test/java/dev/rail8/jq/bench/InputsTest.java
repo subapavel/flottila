@@ -48,7 +48,7 @@ class InputsTest {
   }
 
   /**
-   * The digests freeze the generator: jqj's JMH times and jq-ref's times are comparable across commits only while the
+   * The digests freeze the generator: the engine's JMH times and jq-ref's times are comparable across commits only while the
    * bytes stay the same. A changed generator is a new input, recorded as such in bench/RESULTS.md.
    */
   static Stream<Arguments> digests() {

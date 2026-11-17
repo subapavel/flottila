@@ -482,7 +482,7 @@ public class ratchet {
     return r.scale() < 0 ? r.setScale(0).toPlainString() : r.toPlainString();
   }
 
-  /** A line with an empty tolerance% is skipped (ADR-0019, ADR-0023). Lower is better: the score is jqj's time. */
+  /** A line with an empty tolerance% is skipped. Lower is better: the score is the engine's time. */
   static void checkBench() throws IOException {
     Map<String, String[]> old = table("bench.tsv");
     List<Bench> now = null;

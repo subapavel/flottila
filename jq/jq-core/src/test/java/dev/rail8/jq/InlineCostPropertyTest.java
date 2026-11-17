@@ -19,8 +19,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Inlining costs nothing (ADR-0040 "Cost": an inlined call, closure or value parameter ticks nothing and builds
  * nothing; GLOSSARY "Closure"): for a random body B with holes and a random closure A, {@code def f(g): B; f(A)} gives
  * what B with each hole replaced by {@code (A)} gives, in results and error, in steps and in bytes built. Both sides
- * are jqj's, so the expected side is the one without a definition; the constructs are those built before #70 (#63,
- * #64), and the input is null. A body may have no hole, so A is never run. Steps and bytes built are the least budget
+ * are the engine's, so the expected side is the one without a definition; the constructs are a fixed early subset of
+ * the language, and the input is null. A body may have no hole, so A is never run. Steps and bytes built are the least budget
  * a run completes under, an error included; {@code 1, (…)} and {@code [0], (…)} make both at least one, since a budget
  * is never 0 (ADR-0024).
  */

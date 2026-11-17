@@ -190,7 +190,7 @@ class OperatorChainTest {
    * depth Stub, as they were until #94; each term and each operator spend a node, 79 999 in all, past the cap of 65 536
    * (ADR-0040 "Inline cap", {@link #eachOperatorOfAChainSpendsANode}), so since #114 f's call is a PLAIN Call and the
    * filter runs; until #114 it was the inline cap's Stub (F-89). Reference jq 1.8.2 gives no result within {@code timeout 10}
-   * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, rc 124), so the result is the jqj column of DEVIATIONS
+   * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, rc 124), so the result is the engine's column of DEVIATIONS
    * "Long operator runs": 0, the sum of 40 000 lengths of null.
    */
   @Test
@@ -207,7 +207,7 @@ class OperatorChainTest {
    * inside a definition are 75 000 nodes, past the cap of 65 536, while their terms alone are 45 000; so f's call is
    * a PLAIN Call, f is lifted (ADR-0040 #114 amendment), and the filter runs. Until #114 it was the cap's Stub (F-89).
    * Reference jq 1.8.2 rejects the filter with its bytecode limit, rc 3, {@code function compiled to 405012 bytes which is
-   * too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), so the result is the jqj column of that
+   * too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), so the result is the engine's column of that
    * DEVIATIONS row: the array of 15 000 zeros, each chain's sum of three lengths of null.
    */
   @Test

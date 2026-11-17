@@ -9,7 +9,7 @@ package dev.rail8.jq.oracle.diff;
 public record Verdict(Kind kind, String detail, String diff) {
 
   /** The mark every Stub message carries; both runners score a run that ends with it FAIL. */
-  public static final String STUB = "jqj stub: ";
+  public static final String STUB = "rail8-jq stub: ";
 
   public enum Kind {
     PASS,

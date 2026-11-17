@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
  * spec 4 for {@code ltrimstr}.
  */
 class PreludeStubTest {
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
   private static final JqEngine ENGINE = JqEngine.builder().build();
 
   /**

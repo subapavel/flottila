@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
  */
 class CompileTest {
   /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
-  private static final String MARK = "jqj stub: ";
+  private static final String MARK = "rail8-jq stub: ";
 
   /** jq-ref 1.8.2, observed 2026-11-11: printf '[1]' | jq-ref -c "$(printf ' \t\r\n.\n\t ')" -> [1] (rc 0). */
   private static final String DOT_IN_WHITESPACE = " \t\r\n.\n\t ";

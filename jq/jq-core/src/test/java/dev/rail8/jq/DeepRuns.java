@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Deep built values and runs on a small stack, for the depth limits of ADR-0029 at the public API. No filter of spec 2a
- * builds 10 000 levels in one run (no reduce before #69, and jqj's parser nests at most 127 objects or arrays, #81), so
+ * builds 10 000 levels in one run (the engine's parser nests at most 127 objects or arrays), so
  * a value is wrapped by repeated runs of a 100-level filter, each run's result the next one's input, as
  * DeepBuiltArrayTest does. Each depth run happens on a thread with a 256 KiB stack: Java recursion per level would end
  * there as a StackOverflowError long before 10 000 levels, so a result or jq's error shows the explicit stack.
