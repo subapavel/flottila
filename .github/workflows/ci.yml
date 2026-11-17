@@ -79,9 +79,11 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      # jacoco.skip: coverage is measured only in the nightly coverage job, so a fall in coverage never blocks a change
+      # jacoco.skip: coverage is measured only in the nightly coverage job, so a fall in coverage never blocks a change.
+      # -T 1C: modules that do not depend on each other build at the same time; inside a module the test classes are spread
+      # over one test JVM per core (rail8.test.forks in platform/pom.xml).
       - name: Verify (unit tests, integration tests with Testcontainers, ArchUnit)
-        run: mvn -B -ntp -f platform/pom.xml verify -Pit -Djacoco.skip=true
+        run: mvn -B -ntp -T 1C -f platform/pom.xml verify -Pit -Djacoco.skip=true
       - name: The demo package validates through the launcher
         run: bin/rail8 validate examples/demo
       - name: The demo package's flow tests pass through the launcher

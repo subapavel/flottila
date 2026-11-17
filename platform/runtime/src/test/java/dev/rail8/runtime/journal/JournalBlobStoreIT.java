@@ -10,7 +10,7 @@ import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.blob.TieredBlobStore;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.testkit.DurableBlobStoreContract;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,7 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class JournalBlobStoreIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static CaseDatabase db;
 

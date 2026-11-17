@@ -18,7 +18,7 @@ import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.runtime.queue.PgWorkSignals;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -33,7 +33,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -75,7 +74,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(180)
 class PgWorkSignalsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration QUIET = Duration.ofMinutes(10);
     static final Duration WINDOW = Duration.ofMillis(50);

@@ -4,7 +4,7 @@ import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.runtime.journal.PgWire;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -22,7 +22,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -66,7 +65,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class PgWorkQueueBatchedCompletionIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final String FLOW = "orders";
     static final String NODE = "n1";
     static final Duration LEASE = Duration.ofMinutes(5);

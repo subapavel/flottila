@@ -2,7 +2,7 @@ package dev.rail8.runtime.node;
 
 import dev.rail8.core.node.Membership;
 import dev.rail8.runtime.journal.PgWire;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgConnection;
@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class PgMembershipPeersIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Duration L = Duration.ofSeconds(30);
     static Vertx vertx;
     PgConnection admin;

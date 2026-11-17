@@ -7,7 +7,7 @@ import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.crypto.SecretKey;
 import java.io.EOFException;
@@ -45,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(180)
 class NodeReplEpochIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final UUID JOURNAL_B = UUID.fromString("0b0b0b0b-0000-4000-8000-0000000005b1");
     static final long EPOCH_B = 5;
     static Vertx vertx;

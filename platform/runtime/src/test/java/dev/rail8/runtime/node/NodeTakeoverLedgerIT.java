@@ -1,7 +1,7 @@
 package dev.rail8.runtime.node;
 
 import dev.rail8.testkit.Ports;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -77,7 +76,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class NodeTakeoverLedgerIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Duration BOUND = Duration.ofSeconds(120);
     static final String A = "node-a";
     static final String B = "node-b";

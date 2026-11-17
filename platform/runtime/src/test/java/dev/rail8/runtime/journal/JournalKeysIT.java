@@ -1,7 +1,7 @@
 package dev.rail8.runtime.journal;
 
 import dev.rail8.runtime.node.OnVirtualThread;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgConnection;
@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -54,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class JournalKeysIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
 
     static final SecretKey MASTER = new SecretKeySpec(material(101, 32), "AES");

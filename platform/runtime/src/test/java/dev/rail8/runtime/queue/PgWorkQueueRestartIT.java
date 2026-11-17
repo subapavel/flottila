@@ -9,7 +9,7 @@ import dev.rail8.api.Props;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.store.PgDlq;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -24,7 +24,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -50,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 class PgWorkQueueRestartIT {
 
     static final String NODE = "node-a";
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
     PgWorkQueue rows;

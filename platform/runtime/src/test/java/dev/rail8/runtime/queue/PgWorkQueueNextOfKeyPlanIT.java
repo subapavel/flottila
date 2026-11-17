@@ -5,7 +5,7 @@ import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.core.queue.WorkQueue.Completion;
 import dev.rail8.core.queue.WorkQueue.Item;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -21,7 +21,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -45,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgWorkQueueNextOfKeyPlanIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final int DEPTH = 50_000;
     static final int KEYS = 100;
     static final String NODE = "n1";

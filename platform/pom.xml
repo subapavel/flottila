@@ -72,6 +72,9 @@
 
     <!-- surefire: JaCoCo's prepare-agent prepends its -javaagent to this property -->
     <argLine></argLine>
+    <!-- test JVMs run side by side, one per core: test classes of one module are spread over them. -Drail8.test.forks=1 runs
+         them one after another. -->
+    <rail8.test.forks>1C</rail8.test.forks>
   </properties>
 
   <dependencyManagement>
@@ -277,6 +280,7 @@
           <version>${maven-surefire.version}</version>
           <configuration>
             <argLine>@{argLine}</argLine>
+            <forkCount>${rail8.test.forks}</forkCount>
             <trimStackTrace>false</trimStackTrace>
           </configuration>
         </plugin>
@@ -286,6 +290,7 @@
           <version>${maven-surefire.version}</version>
           <configuration>
             <argLine>@{argLine}</argLine>
+            <forkCount>${rail8.test.forks}</forkCount>
             <trimStackTrace>false</trimStackTrace>
           </configuration>
         </plugin>
@@ -406,12 +411,36 @@
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-failsafe-plugin</artifactId>
+            <!-- Two runs: every IT class not tagged "serial" on the parallel test JVMs, then the classes tagged "serial" (a
+                 measurement of CPU or time that other tests on the same cores would skew) in one JVM, with no other test of
+                 the module running. verify fails the build on a failure of either. -->
             <executions>
               <execution>
-                <goals>
-                  <goal>integration-test</goal>
-                  <goal>verify</goal>
-                </goals>
+                <id>integration-test</id>
+                <goals><goal>integration-test</goal></goals>
+                <configuration>
+                  <excludedGroups>serial</excludedGroups>
+                  <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary.xml</summaryFile>
+                </configuration>
+              </execution>
+              <execution>
+                <id>integration-test-serial</id>
+                <goals><goal>integration-test</goal></goals>
+                <configuration>
+                  <groups>serial</groups>
+                  <forkCount>1</forkCount>
+                  <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary-serial.xml</summaryFile>
+                </configuration>
+              </execution>
+              <execution>
+                <id>verify</id>
+                <goals><goal>verify</goal></goals>
+                <configuration>
+                  <summaryFiles>
+                    <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary.xml</summaryFile>
+                    <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary-serial.xml</summaryFile>
+                  </summaryFiles>
+                </configuration>
               </execution>
             </executions>
           </plugin>

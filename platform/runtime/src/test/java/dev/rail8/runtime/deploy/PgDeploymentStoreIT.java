@@ -1,7 +1,7 @@
 package dev.rail8.runtime.deploy;
 
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -10,7 +10,6 @@ import io.vertx.sqlclient.PoolOptions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -32,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class PgDeploymentStoreIT extends DeploymentStoreContract {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
 

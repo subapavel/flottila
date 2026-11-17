@@ -3,7 +3,7 @@ package dev.rail8.runtime.journal;
 import dev.rail8.api.BlobKey;
 import dev.rail8.api.Envelope;
 import dev.rail8.runtime.blob.TieredBlobStore;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Tuple;
@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,7 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class JournalBoundIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final long MAX = 1L << 20;
     static final long EDGE = MAX - MAX / 16;          // 983 040
     static final double EIGHTY = 0.8 * MAX;           // 838 860.8

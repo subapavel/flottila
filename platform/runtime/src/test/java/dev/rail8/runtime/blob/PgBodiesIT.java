@@ -14,7 +14,7 @@ import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.journal.TestJournals;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -37,7 +37,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,7 +85,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgBodiesIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger cases = new AtomicInteger();
     static final Hasher HASHER = Hasher.sha256();
     static final long BOUND = 1000;   // the durable bound of every store here

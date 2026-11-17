@@ -562,7 +562,8 @@ public final class NodeBenchMain {
     private static NodeConfig nodeConfig(Options o, Path data, int echo) {
         return NodeConfig.from(Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "node-bench"),
                 Map.entry("RAIL8_JOURNAL_KEY", JOURNAL_KEY),
-                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_DATA_DIR", data.toString()), Map.entry("RAIL8_PG_HOST", o.host()),
+                Map.entry("RAIL8_ADMIN_PORT", "0"), Map.entry("RAIL8_PEER_PORT", "0"), Map.entry("RAIL8_DATA_DIR", data.toString()),
+                Map.entry("RAIL8_PG_HOST", o.host()),
                 Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()), Map.entry("RAIL8_PG_USER", o.user()),
                 Map.entry("RAIL8_PG_PASSWORD", o.password()), Map.entry("RAIL8_CPU_SAMPLING", o.cpuSampling()),
                 Map.entry("RAIL8_TARGET_LIMITS", "http://127.0.0.1:" + echo + "=" + (o.scenario() == Scenario.SYNC ? o.concurrency() : inFlight(o)))));

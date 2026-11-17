@@ -6,7 +6,7 @@ import dev.rail8.runtime.journal.PgWire;
 import dev.rail8.runtime.node.PgMembership;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -50,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgWorkQueueStatementsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Instant T0 = Instant.parse("2026-11-05T08:00:00Z");
     static final Duration L = Duration.ofSeconds(30);
     static final Duration R = Duration.ofSeconds(5);

@@ -4,7 +4,7 @@ import dev.rail8.api.BlobKey;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.db.Migrations;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpMethod;
@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -48,7 +47,7 @@ class LostBodyAdminIT {
 
     static final String LOST = "body lost by ACCEPT_LOSS";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
     static HttpClientAgent client;

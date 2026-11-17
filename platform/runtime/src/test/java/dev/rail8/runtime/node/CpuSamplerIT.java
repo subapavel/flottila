@@ -32,6 +32,7 @@ import jdk.jfr.RecordingState;
 import jdk.jfr.StackTrace;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -108,6 +109,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * JDK scheduler, is gone).
  */
 @EnabledOnOs(OS.LINUX)
+@Tag("serial")   // measures CPU: runs alone, never beside the module's other test JVMs
 class CpuSamplerIT {
 
     static final Duration PERIOD = Duration.ofMillis(2);

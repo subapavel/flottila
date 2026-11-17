@@ -11,7 +11,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.store.PgIntake;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -27,7 +27,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class PgIntakeAnnounceGroupIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
 
     @TempDir Path tmp;
@@ -162,7 +161,9 @@ class PgIntakeAnnounceGroupIT {
                 "each member answered its id despite the throw");
         assertEquals("node-b", bodyNode("m-far-1"), "fixture: written plain, its body on node-b");
         assertEquals("node-b", bodyNode("m-far-2"));
-        assertEquals(2, tried.get(), "an announce per member: the first threw, the next one was still made");
+        // the announces run after the members are answered: wait for them, bounded
+        JournalFixture.until(() -> tried.get() == 2 && !announced.isEmpty(), () -> "an announce per member: the first threw, the next one was still made; "
+                + tried.get() + " made");
         assertEquals(List.of("node-b " + FLOW), announced, "the member after the throw announced to its body's node");
     }
 
@@ -179,6 +180,8 @@ class PgIntakeAnnounceGroupIT {
         assertTrue(saves.get(0).succeeded(), "m-far answered: " + saves.get(0).cause());
         assertTrue(saves.get(1).succeeded(), "m-near answered: " + saves.get(1).cause());
         assertEquals("m-near", saves.get(1).result());
+        // the announce runs after the members are answered: wait for it, bounded
+        JournalFixture.until(() -> tried.get() >= 1, () -> "witness: m-far's announce was made and threw");
         assertEquals(1, tried.get(), "witness: m-far's announce was made and threw; m-near is node-a's own, announced nowhere");
         assertEquals(List.of(), List.copyOf(a.blobs.openSaves()), "no save left open: m-near committed, never rolled back");
         assertEquals(List.of(), List.copyOf(intake.openSaves()), "nothing in doubt");

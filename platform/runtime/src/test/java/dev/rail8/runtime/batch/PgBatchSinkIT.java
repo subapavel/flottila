@@ -2,7 +2,7 @@ package dev.rail8.runtime.batch;
 
 import dev.rail8.core.batch.BatchingWriter;
 import dev.rail8.runtime.time.VertxTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -15,7 +15,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,7 +32,7 @@ class PgBatchSinkIT {
 
     record Item(String id, int n) {}
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
 

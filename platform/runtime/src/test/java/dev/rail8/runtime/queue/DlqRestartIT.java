@@ -19,7 +19,7 @@ import dev.rail8.core.record.RecordingPolicy;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -36,7 +36,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -94,7 +93,7 @@ class DlqRestartIT {
 
     static final Duration LEASE = Duration.ofSeconds(30);
     static final String NODE = "node-a";
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
 

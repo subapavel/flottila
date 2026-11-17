@@ -5,7 +5,7 @@ import dev.rail8.api.Hasher;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -90,7 +89,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeJournalIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
 
     static final String KEY = "RAIL8_JOURNAL_KEY";
@@ -164,6 +163,7 @@ class NodeJournalIT {
         env.put("RAIL8_ENV", rail8Env);
         env.put("RAIL8_NODE_ID", NODE_ID);
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));

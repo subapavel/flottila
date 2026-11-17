@@ -1,6 +1,6 @@
 package dev.rail8.runtime.node;
 
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgConnection;
@@ -10,7 +10,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -36,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeFailStopIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final String NODE = "node-failstop";
     static Vertx vertx;
 
@@ -70,6 +69,7 @@ class NodeFailStopIT {
         env.put("RAIL8_ENV", "dev");
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));

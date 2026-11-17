@@ -29,7 +29,7 @@ import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -48,7 +48,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -106,7 +105,7 @@ class DlqBodiesIT {
     /** The ingress header that sets the size of the body {@code rewrite} hands on. */
     static final String H_SIZE = "x-size";
     static final Duration LEASE = Duration.ofSeconds(30);
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them, lease expiry
 

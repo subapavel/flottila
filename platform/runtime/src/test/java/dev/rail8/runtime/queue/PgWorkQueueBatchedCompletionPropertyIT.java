@@ -3,7 +3,7 @@ package dev.rail8.runtime.queue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -22,7 +22,6 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.lifecycle.AfterContainer;
 import net.jqwik.api.lifecycle.BeforeContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -50,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class PgWorkQueueBatchedCompletionPropertyIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger TRIES = new AtomicInteger();
     static final Duration LEASE = Duration.ofMinutes(5);
     static Vertx vertx;

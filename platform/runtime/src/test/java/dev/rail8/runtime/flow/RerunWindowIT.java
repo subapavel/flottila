@@ -18,7 +18,7 @@ import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -40,7 +40,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -84,7 +83,7 @@ class RerunWindowIT {
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration BOUND = Duration.ofSeconds(20);
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: fixtures, and the rows as another session sees them
 

@@ -10,7 +10,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.store.PgIntake;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -28,7 +28,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -78,7 +77,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(180)
 class PgIntakeGroupIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
 
     static final String FLOW = JournalWorld.FLOW;

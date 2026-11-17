@@ -61,6 +61,7 @@ class LedgerMainPartsTest {
         assertEquals(Path.of("/data/n2"), node.dataDir());
         assertEquals("ledger-node-2", node.nodeId());
         assertEquals(0, node.admin().port());
+        assertEquals(0, node.peer().port(), "the peer link on any free port: two nodes on one host");
         assertFalse(node.deployed(), "env dev: the run's nodes are not deployed ones");
         assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 21), node.pg(), "the RAIL8_PG_POOL_SIZE default, 5 intake + 16 work (F-33)");
 

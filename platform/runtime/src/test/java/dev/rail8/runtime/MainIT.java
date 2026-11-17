@@ -4,7 +4,7 @@ import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.testkit.Ports;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -22,7 +22,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -61,7 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MainIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;      // the test's own: the observer and the holder live on it, never on the Vert.x the stopper closes
     static Pool observer;
@@ -120,6 +119,7 @@ class MainIT {
         env.put("RAIL8_ENV", "ci");
         env.put("RAIL8_NODE_ID", "main-it");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(adminPort));
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));

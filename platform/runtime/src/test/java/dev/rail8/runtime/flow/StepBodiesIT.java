@@ -29,7 +29,7 @@ import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -47,7 +47,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -101,7 +100,7 @@ class StepBodiesIT {
     static final int ABOVE = 5000;   // spill, above the durable bound
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration STOP_BOUND = Duration.ofHours(1);   // on the fake timer: never reached, a stop waits for its flights
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them, lease expiry
 

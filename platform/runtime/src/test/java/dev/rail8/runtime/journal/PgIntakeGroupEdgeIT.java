@@ -12,7 +12,7 @@ import dev.rail8.runtime.store.PgIntake;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.InMemoryBlobStore;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -26,7 +26,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -59,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(180)
 class PgIntakeGroupEdgeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static final String FLOW = JournalWorld.FLOW;
     static final NodeConfig.IntakeGroup ONE_SLOT = new NodeConfig.IntakeGroup(64, 1L << 20, Duration.ofMillis(50), 1);

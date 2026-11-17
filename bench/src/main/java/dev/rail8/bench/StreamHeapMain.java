@@ -220,13 +220,16 @@ public final class StreamHeapMain {
                 StreamHeapNode.class.getName());
     }
 
-    /** The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its data directory, the run's journal key. */
+    /**
+     * The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its data directory, the run's journal key,
+     * the peer link on any free port.
+     */
     static Map<String, String> nodeEnv(Options o, Path data, int admin) {
         return Map.ofEntries(Map.entry("RAIL8_ENV", "dev"), Map.entry("RAIL8_NODE_ID", "stream-heap-node"),
                 Map.entry("RAIL8_ADMIN_PORT", String.valueOf(admin)), Map.entry("RAIL8_DATA_DIR", data.toString()),
                 Map.entry("RAIL8_PG_HOST", o.host()), Map.entry("RAIL8_PG_PORT", String.valueOf(o.port())), Map.entry("RAIL8_PG_DATABASE", o.db()),
                 Map.entry("RAIL8_PG_USER", o.user()), Map.entry("RAIL8_PG_PASSWORD", o.password()),
-                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY));
+                Map.entry("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY), Map.entry("RAIL8_PEER_PORT", "0"));
     }
 
     /**

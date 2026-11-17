@@ -119,6 +119,7 @@ class StreamHeapMainPartsTest {
         NodeConfig node = NodeConfig.from(env);
         assertEquals(Path.of("/data/node"), node.dataDir());
         assertEquals(4321, node.admin().port());
+        assertEquals(0, node.peer().port(), "the peer link on any free port");
         assertEquals("db.local", node.pg().host());
         assertEquals(6543, node.pg().port());
         assertEquals("x_bench", node.pg().database());
