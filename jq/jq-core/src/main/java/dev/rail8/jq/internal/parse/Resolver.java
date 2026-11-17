@@ -73,75 +73,71 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Lowers a parsed filter to IR (GLOSSARY "Resolver", ADR-0032), pass 2 after the {@link Binder} (ADR-0040). Built so
- * far (#33, #34, #61, #63): {@code .}; a field by name or by a plain string, {@code .[k]}, {@code .[a:b]} and {@code
- * .[]}, each with its quiet variant {@code ?} (ADR-0034), and a chain of them and {@code |}, which nest as {@code
- * Pipe(term, Intrinsic)}; {@code ,}; parentheses, which make no node; a number or plain string literal, and {@code
- * true}, {@code false} and {@code null}, each a Const; a bare {@code @text}; {@code empty}; and (#64) {@code [e]}, a
- * Collect, and {@code {k: v, ...}}, its pairs bound key-outer around one construction; and (#65) {@code + - * / %},
- * right operand outer, and {@code -t}, each result of {@code t} negated; and (#66) {@code == != < > <= >=}, right
- * operand outer, {@code and}, {@code or} and {@code not}, each an If, and {@code //}, an Alt, both on jq's truth
- * (ADR-0037); and (#67, ADR-0038) {@code E as p | body}, its pattern lowered to Binds in jq's matcher order, and {@code
- * E as p1 ?// p2 ... | body}, an AltBind; {@code $name}, a Var of its slot, a host variable's a parameter slot; {@code
- * $__loc__}, a Const; and a string with interpolations, an Intrinsic of Interpolate over its parts; and (#68, ADR-0039)
- * {@code if ... elif ... else ... end}, nested Ifs, {@code try}, {@code catch} and a postfix {@code ?} on a term that is
- * no step, a Try, {@code error} and {@code error(f)}, and {@code label $name | ...} and {@code break $name}, a Label
- * and a Break of its slot; and (#69, ADR-0041) {@code reduce} and {@code foreach}, a Reduce or Foreach around its
- * pattern's Binds and the Advance of its state slot, and {@code range(a; b)}, an Intrinsic of Range; and (#70,
- * ADR-0040) {@code def}, which makes no node: a call of a definition is its body, inlined; and (#71, ADR-0042) a call
- * of a prelude definition, inlined so too, {@code ..} a call of recurse/0 (#110), and an unbuilt native, a Stub; and (#72) the language
- * natives, each an Intrinsic of its operation, {@code last(f)} a Reduce over f. Every other kind is a Stub.
+ * Lowers a parsed filter to IR, pass 2 after the {@link Binder}: {@code .}; a field by name or by a plain string,
+ * {@code .[k]}, {@code .[a:b]} and {@code .[]}, each with its quiet variant {@code ?}, and a chain of them and
+ * {@code |}, which nest as {@code Pipe(term, Intrinsic)}; {@code ,}; parentheses, which make no node; a number or plain
+ * string literal, and {@code true}, {@code false} and {@code null}, each a Const; a bare {@code @text}; {@code empty};
+ * {@code [e]}, a Collect, and {@code {k: v, ...}}, its pairs bound key-outer around one construction;
+ * {@code + - * / %}, right operand outer, and {@code -t}, each result of {@code t} negated; {@code == != < > <= >=},
+ * right operand outer, {@code and}, {@code or} and {@code not}, each an If, and {@code //}, an Alt, both on jq's truth;
+ * {@code E as p | body}, its pattern lowered to Binds in jq's matcher order, and {@code E as p1 ?// p2 ... | body}, an
+ * AltBind; {@code $name}, a Var of its slot, a host variable's a parameter slot; {@code $__loc__}, a Const; and a
+ * string with interpolations, an Intrinsic of Interpolate over its parts; {@code if ... elif ... else ... end}, nested
+ * Ifs, {@code try}, {@code catch} and a postfix {@code ?} on a term that is no step, a Try, {@code error} and
+ * {@code error(f)}, and {@code label $name | ...} and {@code break $name}, a Label and a Break of its slot;
+ * {@code reduce} and {@code foreach}, a Reduce or Foreach around its pattern's Binds and the Advance of its state slot,
+ * and {@code range(a; b)}, an Intrinsic of Range; {@code def}, which makes no node: a call of a definition is its body,
+ * inlined; a call of a prelude definition, inlined so too, {@code ..} a call of recurse/0, and an unbuilt native, a
+ * Stub; and the language natives, each an Intrinsic of its operation, {@code last(f)} a Reduce over f. Every other kind
+ * is a Stub.
  *
  * <p>A key or bound that is a Const or a Var is the step's argument; any other is bound around the step's target, the
- * key outside the target and {@code a} outside {@code b} (ADR-0034, jq's {@code gen_index} and {@code
- * gen_slice_index}). A comma chain is lowered without recursion over its length: the parser's left-nested spine is
- * flattened by a loop and built again balanced, so its depth is about log2 of its length, with the same results and
- * ticks (F-32). A chain of postfix steps and a run of definitions are lowered by loops too (F-42, #70): a chain's
- * nodes are piped balanced past {@link #PIPE_CHAIN} of them, and a run of more than {@link #STEP_RUN} steps of one
- * result or none is one step that calls them in turn ({@link StepRun}), so a chain's depth does not grow with its
- * length (F-44), with the same results and ticks.
+ * key outside the target and {@code a} outside {@code b}, as jq's {@code gen_index} and {@code gen_slice_index} do. A
+ * comma chain is lowered without recursion over its length: the parser's left-nested spine is flattened by a loop and
+ * built again balanced, so its depth is about log2 of its length, with the same results and ticks. A chain of postfix
+ * steps and a run of definitions are lowered by loops too: a chain's nodes are piped balanced past {@link #PIPE_CHAIN}
+ * of them, and a run of more than {@link #STEP_RUN} steps of one result or none is one step that calls them in turn
+ * ({@link StepRun}), so a chain's depth does not grow with its length, with the same results and ticks.
  *
  * <p>The Binder has bound every reference and thrown jq's binding errors, so each name found here has its declaration
  * in the environment ({@link Env}): a slot, a closure or a definition's body. A call of a definition lowers its body in
  * the environment the definition was written in, plus its parameters, with fresh slots for each copy; a filter
  * parameter is the caller's closure, lowered in the caller's environment on the callee's input at each use, and a value
- * parameter {@code $a} is also a Bind of it around the body, the first parameter outermost (ADR-0040), and past {@link
- * #BIND_RUN} of them their one Binds (ADR-0043), as an object's, an interpolation's and a pattern's Binds are.
+ * parameter {@code $a} is also a Bind of it around the body, the first parameter outermost, and past {@link #BIND_RUN}
+ * of them their one Binds, as an object's, an interpolation's and a pattern's Binds are.
  *
- * <p>A call of a definition in a recursive group, of the filter's text, of the prelude or nested in a prelude body, is a
- * Call of its lifted function (ADR-0045 #107, ADR-0042 amendment for #110, GLOSSARY "Lifted function"), every other
- * call stays inlined: the first call places the definition in the program's functions, once per compile, and its body
- * is lowered after the main filter, from a worklist, once for every call. A function's parameters are its own, then its
- * captures in the Binder's order ({@link Binder#captures}): a value parameter and a value capture each a value slot,
- * the first at 0; a filter parameter, a value parameter a call names, and a closure capture each a closure, which a call
- * of it in the body runs as a ParamCall. One compile spends at most {@link #INLINE_CAP} nodes inside expansions, and
- * nests at most {@link #EXPANSIONS} - 1 of them (GLOSSARY "Inline cap"): a call whose expansion measure ({@link
- * ExpansionMeasure}) would pass the cap or {@link #MAX_IR_DEPTH}, or that would be the {@link #EXPANSIONS}th nested
- * expansion, is a PLAIN Call of its definition, lifted once, and so is every later call of it (ADR-0040 "Amendment
- * (ticket #114)", F-54). Any other construct past {@link #MAX_IR_DEPTH} levels of IR makes the filter a Stub (F-44).
- * Nesting and depth restart at 0 in each function (#106 "Functions in the IR"). A Stub is thrown at once.
+ * <p>A call of a definition in a recursive group, of the filter's text, of the prelude or nested in a prelude body, is
+ * a Call of its lifted function; every other call stays inlined: the first call places the definition in the program's
+ * functions, once per compile, and its body is lowered after the main filter, from a worklist, once for every call. A
+ * function's parameters are its own, then its captures in the Binder's order ({@link Binder#captures}): a value
+ * parameter and a value capture each a value slot, the first at 0; a filter parameter, a value parameter a call names,
+ * and a closure capture each a closure, which a call of it in the body runs as a ParamCall. One compile spends at most
+ * {@link #INLINE_CAP} nodes inside expansions, and nests at most {@link #EXPANSIONS} - 1 of them: a call whose
+ * expansion measure ({@link ExpansionMeasure}) would pass the cap or {@link #MAX_IR_DEPTH}, or that would be the
+ * {@link #EXPANSIONS}th nested expansion, is a PLAIN Call of its definition, lifted once, and so is every later call of
+ * it. Any other construct past {@link #MAX_IR_DEPTH} levels of IR makes the filter a Stub. Nesting and depth restart at
+ * 0 in each function. A Stub is thrown at once.
  *
- * <p>A prelude definition's body is written in no environment of the filter's, and every node lowered from it takes
- * the Source of the filter's call that reached the prelude, while a closure argument of the filter keeps its own
- * (ADR-0042 "Source", amending ADR-0031): {@link #here} gives each new node its Source. A lifted body's nodes take the
- * Source of the call that first placed it (ADR-0042 amendment for #110).
+ * <p>A prelude definition's body is written in no environment of the filter's, and every node lowered from it takes the
+ * Source of the filter's call that reached the prelude, while a closure argument of the filter keeps its own:
+ * {@link #here} gives each new node its Source. A lifted body's nodes take the Source of the call that first placed it.
  */
 public final class Resolver {
-  /** jq's message for a program with no top-level filter, which is no syntax error (ADR-0032). */
+  /** jq's message for a program with no top-level filter, which is no syntax error. */
   private static final String NOT_GIVEN = "jq: error: Top-level program not given (try \".\")";
 
-  /** ADR-0040: how many nodes one compile lowers inside expansions, definition bodies and closures, at most. */
+  /** How many nodes one compile lowers inside expansions, definition bodies and closures, at most. */
   static final int INLINE_CAP = 65_536;
 
-  /** ADR-0040: the nesting of expansions that is a PLAIN Call, the 512th (#70 red ruling: 511 nested are inlined; #114). */
+  /** The nesting of expansions that is a PLAIN Call, the 512th: 511 nested expansions are inlined. */
   static final int EXPANSIONS = 512;
 
   /**
-   * ADR-0040 "IR depth" and "What counts" (F-44): the most levels of built IR a filter may have, the leaf counted
-   * ({@code [[.]]} has three); a call whose expansion would pass it is a PLAIN Call (#114), and any other construct
-   * past it makes the filter a Stub, since nested expansions and chains of computed keys would otherwise stack the IR, and the Resolver's, IrVerifier's and the Compiler's
-   * recursion on it, as deep as the inline cap lets them. The depth is the whole built IR's, as IrVerifier recurses on
-   * it ({@link #within}), so every node counts wherever the Resolver built it: in an Ast's lowering, as a value
+   * The most levels of built IR a filter may have, the leaf counted ({@code [[.]]} has three); a call whose expansion
+   * would pass it is a PLAIN Call, and any other construct past it makes the filter a Stub, since nested expansions and
+   * chains of computed keys would otherwise stack the IR, and the Resolver's, IrVerifier's and the Compiler's recursion
+   * on it, as deep as the inline cap lets them. The depth is the whole built IR's, as IrVerifier recurses on it
+   * ({@link #within}), so every node counts wherever the Resolver built it: in an Ast's lowering, as a value
    * parameter's Bind around an expansion, as a chain's Bind of a computed key, or in a balanced Pipe or Comma tree. The
    * lowering also stops when it is inside more levels than this ({@link #levels}), so that its own recursion ends
    * before it builds the IR that would be measured too deep.
@@ -151,7 +147,7 @@ public final class Resolver {
   /**
    * What the lowering and the measure throw past {@link #MAX_IR_DEPTH}: one instance, made with the class, with no
    * message, cause or stack trace, so the throw allocates and loads nothing at depth; {@link #resolve(ParsedFilter, List)}
-   * turns it into the Stub where the compile has unwound (F-44).
+   * turns it into the Stub where the compile has unwound.
    */
   private static final TooDeep TOO_DEEP = new TooDeep();
 
@@ -165,35 +161,34 @@ public final class Resolver {
   }
 
   /**
-   * The longest run of steps of one result or none that stays steps of their own: the parser's nesting bound, so a
-   * run nests no more calls when it runs than the nesting the parser takes. A longer run is one {@link StepRun} (F-42,
-   * F-44).
+   * The longest run of steps of one result or none that stays steps of their own: the parser's nesting bound, so a run
+   * nests no more calls when it runs than the nesting the parser takes. A longer run is one {@link StepRun}, so a long
+   * run cannot overflow the stack.
    */
   static final int STEP_RUN = Parser.MAX_DEPTH;
 
   /**
    * The most nodes of a chain that stay a Pipe chain, as deep as they are many; more are piped balanced, about log2 of
-   * their number deep (F-44). An eighth of {@link #MAX_IR_DEPTH}, so a chain's own nesting leaves most of the bound
+   * their number deep. An eighth of {@link #MAX_IR_DEPTH}, so a chain's own nesting leaves most of the bound
    * to what it is inside: a Pipe chain of {@link #STEP_RUN} steps with arguments would be past the bound alone.
    */
   static final int PIPE_CHAIN = MAX_IR_DEPTH / 8;
 
   /**
-   * ADR-0043: the most nested Binds a construct lowers to: an object, an interpolation, a pattern, the value parameters
-   * of an expansion, or a run of one arithmetic or comparison operator ({@link #binds}). Past it the construct is one
-   * Binds, a level however wide, its values in the order the nested form runs them. It counts Binds, not parts: a term,
-   * key or value passed as it is takes none. {@link #PIPE_CHAIN}, so a construct below it keeps the nested form and its
-   * pins.
+   * The most nested Binds a construct lowers to: an object, an interpolation, a pattern, the value parameters of an
+   * expansion, or a run of one arithmetic or comparison operator ({@link #binds}). Past it the construct is one Binds,
+   * a level however wide, its values in the order the nested form runs them. It counts Binds, not parts: a term, key or
+   * value passed as it is takes none. {@link #PIPE_CHAIN}, so a construct below it keeps the nested form and its pins.
    */
   static final int BIND_RUN = PIPE_CHAIN;
 
   /** A key or bound that is passed as a Const argument, so it takes no slot and no Bind. */
   private static final int NO_SLOT = -1;
 
-  /** The slots taken so far: the parameters', then each Bind's and AltBind's in turn (ADR-0034, ADR-0038). */
+  /** The slots taken so far: the parameters', then each Bind's and AltBind's in turn. */
   private int slots;
 
-  /** The compile's fold budget, carried from the parser (ADR-0035). */
+  /** The compile's fold budget, carried from the parser. */
   private final ConstantKey folds;
 
   /** The filter's text: it gives each {@code $__loc__} its line. */
@@ -202,7 +197,7 @@ public final class Resolver {
   /** What pass 1 bound each reference to. */
   private final Binder binder;
 
-  /** The expansion measure of the filter's texts, which decides whether a call is inlined (ADR-0040 #114). */
+  /** The expansion measure of the filter's texts, which decides whether a call is inlined. */
   private final ExpansionMeasure measure;
 
   /** The declarations in scope where the lowering is, innermost first. */
@@ -223,7 +218,7 @@ public final class Resolver {
 
   /**
    * The Source of every node the lowering builds now: the filter's call that reached the prelude, while the lowering is
-   * in text of the prelude's; null in the filter's own text, where each node takes its own (ADR-0042 "Source").
+   * in text of the prelude's; null in the filter's own text, where each node takes its own.
    */
   private Source site;
 
@@ -242,7 +237,7 @@ public final class Resolver {
   /**
    * A definition in a recursive group, lifted to a function of the program: its environment where it is written,
    * which its body is lowered in, its captures, and the {@link #site} of the call that placed it, which its body's
-   * nodes take: null for a definition of the filter's text (ADR-0042 amendment for #110).
+   * nodes take: null for a definition of the filter's text.
    */
   private record Lifted(Ast.FuncDef def, Env defining, List<Binder.Capture> captures, Source site) {}
 
@@ -255,8 +250,8 @@ public final class Resolver {
 
   /**
    * A body, the environment it was written in and the {@link #site} it was written at: a filter argument, lowered in
-   * its caller's environment (GLOSSARY "Closure"), or a definition's body, lowered in its definition's; or, with no
-   * body, closure parameter {@code param} of the function whose body the lowering is in, which runs as a ParamCall.
+   * its caller's environment, or a definition's body, lowered in its definition's; or, with no body, closure parameter
+   * {@code param} of the function whose body the lowering is in, which runs as a ParamCall.
    */
   private record Closure(Ast body, Env env, Source site, int param, ExpansionMeasure.Form measured) {}
 
@@ -271,7 +266,7 @@ public final class Resolver {
 
   /**
    * A postfix step of a chain, its keys and bounds lowered: a step on its target's results, one whose computed keys are
-   * bound around it and its target, or a {@code ?} on its target (F-44, ADR-0040 "Chains").
+   * bound around it and its target, or a {@code ?} on its target.
    */
   private sealed interface Peeled {}
 
@@ -308,8 +303,8 @@ public final class Resolver {
 
   /**
    * The IR program of {@code filter} with the host variables {@code parameters}, each in scope in the whole filter, in
-   * the parameter slot of its place in the list (ADR-0038: the engine passes the declared names sorted): its main tree,
-   * and the lifted functions its calls into recursive groups reach.
+   * the parameter slot of its place in the list (the engine passes the declared names sorted): its main tree, and the
+   * lifted functions its calls into recursive groups reach.
    *
    * @throws JqCompileException jq's not-given error when the filter has only definitions, jq's binding errors, or a
    *     Stub
@@ -319,8 +314,8 @@ public final class Resolver {
   }
 
   /**
-   * A program and the name of each of its functions, by its place, as jq names a definition: {@code name/arity}
-   * (#108, for {@code explain()}).
+   * A program and the name of each of its functions, by its place, as jq names a definition: {@code name/arity}, for
+   * {@code explain()}.
    */
   public record Resolved(Program program, List<String> names) {
     public Resolved {
@@ -339,8 +334,8 @@ public final class Resolver {
 
   /**
    * {@link #resolved(ParsedFilter, List)} with {@code spentBefore} nodes of the compile's inline cap spent before the
-   * lowering starts, so the expansions have {@link #INLINE_CAP} - {@code spentBefore} left: the seam of the expansion
-   * measure's property (#114).
+   * lowering starts, so the expansions have {@link #INLINE_CAP} - {@code spentBefore} left, so a test can check the
+   * expansion measure against what the lowering spends.
    *
    * @throws JqCompileException as {@link #resolve(ParsedFilter, List)}
    */
@@ -359,7 +354,7 @@ public final class Resolver {
     }
     try {
       Node root = resolver.lower(filter.main());
-      // The whole IR, measured once at the top of the stack (ADR-0040 "What counts").
+      // The whole IR, measured once at the top of the stack.
       within(root, MAX_IR_DEPTH);
       List<Function> functions = new ArrayList<>();
       List<String> names = new ArrayList<>();
@@ -377,8 +372,8 @@ public final class Resolver {
 
   /**
    * The function of {@code f}: its body lowered in its environment where it is written, its own parameters in scope,
-   * then its captures as {@link #captured}, on slots of its own from 0, inside no expansion and at no level (ADR-0045
-   * #107 "Parameters"), at the site it was placed at (ADR-0042 amendment for #110).
+   * then its captures as {@link #captured}, on slots of its own from 0, inside no expansion and at no level, at the
+   * site it was placed at.
    */
   private Function function(Lifted f) {
     slots = 0;
@@ -397,21 +392,21 @@ public final class Resolver {
     }
     int values = slots;
     env = inner;
-    // Nesting and depth restart at 0 in each function (#106 "Functions in the IR", ADR-0040, F-54). A lowering that
-    // ends restores the site, the levels and the expansions it is inside, so the levels and the expansions are the main
-    // filter's start again, no level and no expansion; the site is the one the function was placed at.
+    // Nesting and depth restart at 0 in each function. A lowering that ends restores the site, the levels and the
+    // expansions it is inside, so the levels and the expansions are the main filter's start again, no level and no
+    // expansion; the site is the one the function was placed at.
     site = f.site();
     Node body = lower(f.def().body());
     within(body, MAX_IR_DEPTH);
-    // A Source is text of the filter's (ADR-0031): a prelude function's is its placing call's, as its nodes' are.
+    // A Source is text of the filter's: a prelude function's is its placing call's, as its nodes' are.
     return new Function(here(f.def().source()), closures, values, body);
   }
 
   /**
    * The IR of {@code ast}. Every level of the lowering's recursion has a frame of this method, so it only tests and
    * passes {@code ast} on, and its frame stays small in any JIT state; {@link #built} and {@link #stub} keep their
-   * frames small too (#86: a C1-compiled lowering ran past a 512 KiB stack before the bound's 513th level could stub,
-   * IrDepthTest).
+   * frames small too: with larger frames a C1-compiled lowering runs past a 512 KiB stack before the bound's 513th
+   * level can stub.
    */
   private Node lower(Ast ast) {
     if (ast instanceof Ast.Paren) {
@@ -429,14 +424,14 @@ public final class Resolver {
     return built(ast);
   }
 
-  /** {@code ..}: jq's parser.y lowers it to a call of recurse/0, which the Binder bound (ADR-0042 "Recursion"). */
+  /** {@code ..}: jq's parser.y lowers it to a call of recurse/0, which the Binder bound. */
   private Node recurse(Ast dots) {
     return call(dots, new Ast.Call(dots.source(), "recurse", List.of()));
   }
 
   /**
-   * The node of its own that {@code ast}, of a kind {@link #lower} does not pass on, builds: an expansion pays for it
-   * (ADR-0040 "Inline cap"), and it is one level deeper.
+   * The node of its own that {@code ast}, of a kind {@link #lower} does not pass on, builds: an expansion pays for it,
+   * and it is one level deeper.
    */
   private Node built(Ast ast) {
     spend();
@@ -474,7 +469,7 @@ public final class Resolver {
           case Ast.Break _ -> new Break(here(ast.source()), find(binder.binding(ast)).slot());
           case Ast.Reduce _ -> reduce((Ast.Reduce) ast);
           case Ast.Foreach _ -> foreach((Ast.Foreach) ast);
-          // Each other kind belongs to a later ticket (spec 2a and 2b).
+          // Every other kind is not built: a Stub.
           default -> throw unbuilt(ast);
         };
     levels--;
@@ -497,7 +492,7 @@ public final class Resolver {
     return operators(b);
   }
 
-  /** The Stub of a kind, or of a format or an operator, that belongs to a later ticket (spec 2a and 2b). */
+  /** The Stub of a kind, or of a format or an operator, that is not built. */
   private JqCompileException unbuilt(Ast ast) {
     return stub("the ", ast.getClass().getSimpleName(), " at byte ", here(ast.source()).start());
   }
@@ -506,7 +501,7 @@ public final class Resolver {
    * The Stub of {@code what}, its parts joined. Every Stub of the lowering is made here, by a loop, so this method is
    * too large for C1 to inline (35 bytes of bytecode, C1MaxInlineSize): a string concatenation's linked call site, or
    * {@link Stub#unbuilt}'s, inlined into a method the lowering recurses through put its force-inlined code into that
-   * method's frame, and the 500 nested value parameters of IrDepthTest past a C1-compiled 512 KiB stack (#86).
+   * method's frame, and so put 500 nested value parameters past a C1-compiled 512 KiB stack.
    */
   private static JqCompileException stub(Object... what) {
     StringBuilder message = new StringBuilder();
@@ -576,15 +571,15 @@ public final class Resolver {
 
   /**
    * The Source of a node built now for the text at {@code own}: {@code own} in the filter's text, and the {@link #site}
-   * of the call that reached the prelude in text of the prelude's (ADR-0042 "Source").
+   * of the call that reached the prelude in text of the prelude's.
    */
   private Source here(Source own) {
     return site == null ? own : site;
   }
 
   /**
-   * Spends one node of the compile's inline cap when the lowering is inside an expansion; past the cap, a Stub. Since
-   * #114 an expansion starts only when its measure fits the cap, so the Stub is a backstop no filter reaches (F-90).
+   * Spends one node of the compile's inline cap when the lowering is inside an expansion; past the cap, a Stub. An
+   * expansion starts only when its measure fits the cap, so the Stub is a backstop no filter reaches.
    */
   private void spend() {
     if (depth > 0 && ++inlined > INLINE_CAP) {
@@ -631,8 +626,8 @@ public final class Resolver {
   }
 
   /**
-   * A call of the native {@code n} (ADR-0040's native table, ADR-0041's {@code range/2}, #72's language natives, #73's
-   * sort and its kin), one arm a line: an operation on the input, or on one argument ({@link #withArgument}), or {@link #last}.
+   * A call of the native {@code n}, one arm a line: an operation on the input, or on one argument
+   * ({@link #withArgument}), or {@link #last}.
    */
   private Node natively(Binder.Native n, Ast.Call c) {
     Source at = here(c.source());
@@ -674,9 +669,8 @@ public final class Resolver {
 
   /**
    * The call {@code c} of a native of one argument, the Fn1 {@code op} on each result of it: an Identity, Const or Var
-   * argument passed as it is, any other bound around the call, as an operator's operand is (ADR-0034 amendment for
-   * #65). {@code has(k)}'s key, {@code flatten($x)}'s depth and the keys of {@code _sort_by_impl} and its kin lower
-   * so.
+   * argument passed as it is, any other bound around the call, as an operator's operand is. {@code has(k)}'s key,
+   * {@code flatten($x)}'s depth and the keys of {@code _sort_by_impl} and its kin lower so.
    */
   private Node withArgument(Ast.Call c, Operation op) {
     Node arg = lower(c.args().getFirst());
@@ -685,9 +679,9 @@ public final class Resolver {
   }
 
   /**
-   * {@code last(f)}, jq's bytecoded {@code gen_last_1} (#72): {@code Reduce(UNSET, s, Bind(f, v, Advance(s, $v)))}
-   * piped into {@link Last}, so the state slot holds f's last result, or {@link Last#UNSET} when f gave none, which
-   * {@link Last} drops (ADR-0041's Reduce and Advance).
+   * {@code last(f)}, jq's bytecoded {@code gen_last_1}: {@code Reduce(UNSET, s, Bind(f, v, Advance(s, $v)))} piped into
+   * {@link Last}, so the state slot holds f's last result, or {@link Last#UNSET} when f gave none, which {@link Last}
+   * drops.
    */
   private Node last(Ast.Call c) {
     Source at = here(c.source());
@@ -699,13 +693,13 @@ public final class Resolver {
   }
 
   /**
-   * The call {@code c} of {@code def}, inlined (ADR-0040): its body lowered in {@code defining}, its definition's
-   * environment, at {@code bodySite}, plus its parameters, each bound to its argument's closure in the caller's
-   * environment, a closure that is a parameter of the caller passed on as it is; each value parameter's closure is also
-   * lowered here, on the call's input, and bound to a slot of its own around the body, the first parameter outermost.
-   * A definition in a recursive group, of the filter's text or the prelude's, is not inlined: it is lifted ({@link
-   * #lift}) at {@code bodySite} and the call is a Call of it (ADR-0042 amendment for #110). So is a definition whose
-   * call would not {@link #fit}: a PLAIN Call, and every later call of it is a Call too (ADR-0040 #114 amendment).
+   * The call {@code c} of {@code def}, inlined: its body lowered in {@code defining}, its definition's environment, at
+   * {@code bodySite}, plus its parameters, each bound to its argument's closure in the caller's environment, a closure
+   * that is a parameter of the caller passed on as it is; each value parameter's closure is also lowered here, on the
+   * call's input, and bound to a slot of its own around the body, the first parameter outermost. A definition in a
+   * recursive group, of the filter's text or the prelude's, is not inlined: it is lifted ({@link #lift}) at
+   * {@code bodySite} and the call is a Call of it. So is a definition whose call would not {@link #fit}: a PLAIN Call,
+   * and every later call of it is a Call too.
    */
   private Node expand(Ast.FuncDef def, Ast.Call c, Env defining, Source bodySite) {
     if (binder.recursive(def) || !fit(def, c, defining)) {
@@ -730,8 +724,8 @@ public final class Resolver {
       }
       inner = new Env(p, valueSlots[i], argument, inner);
     }
-    // Each value parameter's Bind is a level around the body, or their one Binds is one level past BIND_RUN of them
-    // (ADR-0043), so the body's first node of its own, which every body builds, stops the lowering past MAX_IR_DEPTH
+    // Each value parameter's Bind is a level around the body, or their one Binds is one level past BIND_RUN of them,
+    // so the body's first node of its own, which every body builds, stops the lowering past MAX_IR_DEPTH
     // as early as its levels do.
     int around = binds > BIND_RUN ? 1 : binds;
     levels += around;
@@ -754,11 +748,11 @@ public final class Resolver {
   }
 
   /**
-   * Whether the call {@code c} of {@code def}, written in {@code defining}, is inlined (ADR-0040 #114 amendment): it is
-   * not the {@link #EXPANSIONS}th nested expansion, the nodes its expansion measure gives fit what is left of {@link
-   * #INLINE_CAP}, and the levels it gives fit what is left of {@link #MAX_IR_DEPTH}. The measure takes each argument's
-   * closure here, each parameter outside {@code def} its body runs as {@code defining} holds it, and each closure
-   * capture as {@link #invoke} would pass it.
+   * Whether the call {@code c} of {@code def}, written in {@code defining}, is inlined: it is not the
+   * {@link #EXPANSIONS}th nested expansion, the nodes its expansion measure gives fit what is left of
+   * {@link #INLINE_CAP}, and the levels it gives fit what is left of {@link #MAX_IR_DEPTH}. The measure takes each
+   * argument's closure here, each parameter outside {@code def} its body runs as {@code defining} holds it, and each
+   * closure capture as {@link #invoke} would pass it.
    */
   private boolean fit(Ast.FuncDef def, Ast.Call c, Env defining) {
     if (depth + 1 >= EXPANSIONS) {
@@ -785,12 +779,12 @@ public final class Resolver {
   }
 
   /**
-   * The call {@code c} of the lifted function at {@code place} (ADR-0045 #107 "Parameters"), its arguments in the
-   * order {@link #function} gives its parameters. Each value parameter's argument is lowered here, on the call's input,
-   * and bound to a slot of its own around the Call, the first outermost, or past {@link #BIND_RUN} of them in their one
-   * Binds, and the Call passes a Var of it; each value capture is a Var of its slot here, a label's its token. A filter
-   * parameter's argument, a called value parameter's, and each closure capture's closure are the Call's closures, a
-   * closure parameter of the caller passed on as its ParamCall, not wrapped.
+   * The call {@code c} of the lifted function at {@code place}, its arguments in the order {@link #function} gives its
+   * parameters. Each value parameter's argument is lowered here, on the call's input, and bound to a slot of its own
+   * around the Call, the first outermost, or past {@link #BIND_RUN} of them in their one Binds, and the Call passes a
+   * Var of it; each value capture is a Var of its slot here, a label's its token. A filter parameter's argument, a
+   * called value parameter's, and each closure capture's closure are the Call's closures, a closure parameter of the
+   * caller passed on as its ParamCall, not wrapped.
    */
   private Node invoke(int place, Ast.Call c) {
     Lifted f = lifted.get(place);
@@ -892,7 +886,7 @@ public final class Resolver {
   /**
    * A run of definitions, {@code def f: ...; def g: ...; body}, by a loop, since the parser nests a long top-level run
    * as deep as it is long: each definition makes no node, only its body's closure in the environment where it is
-   * written, which its calls lower (ADR-0040).
+   * written, which its calls lower.
    */
   private Node definitions(Ast.Def d) {
     Env outer = env;
@@ -923,12 +917,12 @@ public final class Resolver {
   }
 
   /**
-   * A chain of postfix steps, by a loop (F-42): first each step from the outermost in, its keys and bounds lowered
-   * before its target as jq places them; then the term the chain starts from; then each step around the node so far,
-   * from the innermost out. A step without a target stands alone; a bracket step on the leading dot of {@code .[...]}
-   * stands alone, spanning the dot too. {@code t."a\(f)"} is {@code t[k]} with the string as its key (jq's {@code
-   * gen_index}); a postfix {@code ?} on a term that is no step is a Try with {@code empty} as its handler (ADR-0039).
-   * Each step but the outermost, which {@link #lower} paid for, spends a node of the inline cap.
+   * A chain of postfix steps, by a loop: first each step from the outermost in, its keys and bounds lowered before its
+   * target as jq places them; then the term the chain starts from; then each step around the node so far, from the
+   * innermost out. A step without a target stands alone; a bracket step on the leading dot of {@code .[...]} stands
+   * alone, spanning the dot too. {@code t."a\(f)"} is {@code t[k]} with the string as its key (jq's {@code gen_index});
+   * a postfix {@code ?} on a term that is no step is a Try with {@code empty} as its handler. Each step but the
+   * outermost, which {@link #lower} paid for, spends a node of the inline cap.
    */
   private Node chain(Ast outermost) {
     ArrayDeque<Peeled> steps = new ArrayDeque<>();
@@ -996,14 +990,14 @@ public final class Resolver {
   }
 
   /**
-   * The IR of a chain, its steps added innermost first, so its depth does not grow with its length (F-44): its nodes
-   * piped, a Pipe chain while there are at most {@link #PIPE_CHAIN} of them and balanced past that, as Pipe is
-   * associative; a run of more than {@link #STEP_RUN} steps of one result or none is one {@link StepRun}, which calls
-   * them in turn; and a {@code ?} covers every link before it. A {@code ?} after another covers the first's Try too, so
-   * only the last is built: {@code try (try X catch empty | S) catch empty} gives what {@code try (X | S) catch empty}
-   * gives, as both end at X's first error or S's, and a Try charges nothing (TryOp). A step with computed keys binds
-   * them around the links so far and itself, which then are one node, so each such step nests one Bind deeper, and its
-   * depth counts toward {@link #MAX_IR_DEPTH} (F-44).
+   * The IR of a chain, its steps added innermost first, so its depth does not grow with its length: its nodes piped, a
+   * Pipe chain while there are at most {@link #PIPE_CHAIN} of them and balanced past that, as Pipe is associative; a
+   * run of more than {@link #STEP_RUN} steps of one result or none is one {@link StepRun}, which calls them in turn;
+   * and a {@code ?} covers every link before it. A {@code ?} after another covers the first's Try too, so only the last
+   * is built: {@code try (try X catch empty | S) catch empty} gives what {@code try (X | S) catch empty} gives, as both
+   * end at X's first error or S's, and a Try charges nothing (TryOp). A step with computed keys binds them around the
+   * links so far and itself, which then are one node, so each such step nests one Bind deeper, and its depth counts
+   * toward {@link #MAX_IR_DEPTH}.
    */
   private final class Links {
     /** The chain so far, first to last: a node (the term, or a Bind of computed keys) or a step not built yet. */
@@ -1162,22 +1156,22 @@ public final class Resolver {
   }
 
   /**
-   * Whether {@code op} is lowered by {@link #operators}: {@code + - * / %} (#65), {@code == != < > <= >=}, {@code
-   * and}, {@code or} and {@code //} (#66).
+   * Whether {@code op} is lowered by {@link #operators}: {@code + - * / %}, {@code == != < > <= >=}, {@code and},
+   * {@code or} and {@code //}.
    */
   private static boolean chained(BinOp op) {
     return ConstantKey.arithmetic(op) != null || ConstantKey.comparison(op) != null || op == BinOp.AND || op == BinOp.OR || op == BinOp.ALTERNATIVE;
   }
 
   /**
-   * {@code top}, a {@link #chained} operator, and the chained operators down its left operands, by a loop (#86): the
+   * {@code top}, a {@link #chained} operator, and the chained operators down its left operands, by a loop: the
    * parser builds a left-associative chain in a loop, as long as the filter. Each operator spends a node, as its own
    * {@link #lower} would; {@link #built} has spent {@code top}'s and its level. An arithmetic one whose operands fold
    * ({@link ConstantKey#constant}) ends the chain: it is the term the chain starts from, and {@link #lower} makes it
    * that Const. That term is lowered first, then the chain is lowered run by run from the innermost operator out, a run
    * being the operators of one {@link BinOp} next to each other ({@link #run}). No operator but {@code top} adds a level
    * while its operands are lowered: the chain adds no frame to the lowering's recursion, and the measure of the whole IR
-   * ({@link #within}) stubs a chain whose nested runs are too deep (#94).
+   * ({@link #within}) stubs a chain whose nested runs are too deep.
    */
   private Node operators(Ast.Binary top) {
     if (folded(top) instanceof Const whole) {
@@ -1203,12 +1197,12 @@ public final class Resolver {
 
   /**
    * The {@code operators} of one {@link BinOp}, outermost first, on {@code left}, the innermost one's lowered left
-   * operand: each right operand is lowered from the innermost operator out, then the run is built (ADR-0043). A {@code
-   * //} is a run's only operator, the outermost of its chain, and nests to the right ({@link #definedOr}). A run of
-   * {@code and} or {@code or} of more than {@link #PIPE_CHAIN} terms is joined balanced ({@link #tree}), both being
-   * associative under ADR-0037's lowering; one of an arithmetic or comparison operator whose nested form has more than
-   * {@link #BIND_RUN} Binds is one Binds ({@link #binds}); any other run is its operators lowered one by one, as {@link
-   * #operator} lowers each.
+   * operand: each right operand is lowered from the innermost operator out, then the run is built. A {@code //} is a
+   * run's only operator, the outermost of its chain, and nests to the right ({@link #definedOr}). A run of {@code and}
+   * or {@code or} of more than {@link #PIPE_CHAIN} terms is joined balanced ({@link #tree}), both being associative as
+   * they are lowered here; one of an arithmetic or comparison operator whose nested form has more than
+   * {@link #BIND_RUN} Binds is one Binds ({@link #binds}); any other run is its operators lowered one by one, as
+   * {@link #operator} lowers each.
    */
   private Node run(List<Ast.Binary> operators, Node left) {
     BinOp op = operators.getFirst().op();
@@ -1250,10 +1244,10 @@ public final class Resolver {
   }
 
   /**
-   * The run of an arithmetic or comparison operator on {@code terms}, its leftmost first, as one Binds (ADR-0043), in
-   * the order its nested form runs: the right operands from the outermost operator in, then the leftmost term, then
-   * each operator's result from the innermost out; the outermost operator is the body. A term that is passed as it is
-   * takes no value, as in the nested form.
+   * The run of an arithmetic or comparison operator on {@code terms}, its leftmost first, as one Binds, in the order
+   * its nested form runs: the right operands from the outermost operator in, then the leftmost term, then each
+   * operator's result from the innermost out; the outermost operator is the body. A term that is passed as it is takes
+   * no value, as in the nested form.
    */
   private Node binds(List<Ast.Binary> operators, List<Node> terms) {
     int n = operators.size();
@@ -1294,7 +1288,7 @@ public final class Resolver {
    * node, as its own {@link #lower} would; {@link #built} has spent {@code top}'s. The terms are lowered in their order,
    * then a run of at most {@link #PIPE_CHAIN} of them nests to the right as the parser built it, and a longer one is
    * joined balanced ({@link #tree}): Alt is associative, as it emits each truthy left result and runs its right side
-   * only if there was none, catching nothing (ADR-0037).
+   * only if there was none, catching nothing.
    */
   private Node definedOr(Ast.Binary top, Node first) {
     List<Ast.Binary> run = new ArrayList<>();
@@ -1321,7 +1315,7 @@ public final class Resolver {
 
   /**
    * The terms {@code [from, to)}, at least one, joined by {@code op}, {@code and}, {@code or} or {@code //}, as a
-   * balanced tree, each half one operand (ADR-0043); the left half takes the middle term.
+   * balanced tree, each half one operand; the left half takes the middle term.
    */
   private Node tree(BinOp op, List<Node> terms, int from, int to) {
     if (to - from == 1) {
@@ -1333,7 +1327,7 @@ public final class Resolver {
     return joined(op, here(new Source(left.source().start(), right.source().end())), left, right);
   }
 
-  /** The Const of {@code b} when it is an arithmetic operator whose operands fold (#65), or null. */
+  /** The Const of {@code b} when it is an arithmetic operator whose operands fold, or null. */
   private Const folded(Ast.Binary b) {
     return ConstantKey.arithmetic(b.op()) != null && folds.constant(b) instanceof JqValue value ? new Const(here(b.source()), value) : null;
   }
@@ -1349,9 +1343,9 @@ public final class Resolver {
   /** {@code l op r} at {@code at} for {@code op} {@code and}, {@code or} or {@code //}: an If or an Alt. */
   private Node joined(BinOp op, Source at, Node left, Node right) {
     return switch (op) {
-      // {@code l and r} (ADR-0037): {@code if l then (if r then true else false) else false}, the left side outer.
+      // {@code l and r}: {@code if l then (if r then true else false) else false}, the left side outer.
       case AND -> when(at, left, when(here(right.source()), right, bool(at, true), bool(at, false)), bool(at, false));
-      // {@code l or r} (ADR-0037): {@code if l then true else (if r then true else false)}, the left side outer.
+      // {@code l or r}: {@code if l then true else (if r then true else false)}, the left side outer.
       case OR -> when(at, left, bool(at, true), when(here(right.source()), right, bool(at, true), bool(at, false)));
       default -> new Alt(at, left, right, JqTruth.TRUTHY);
     };
@@ -1365,9 +1359,8 @@ public final class Resolver {
   /**
    * {@code l op r} at {@code at} as the call of {@code operation} on its operands: {@code r} bound outside {@code l},
    * so the right operand is the outer loop, as jq's {@code gen_binop} runs it, an Identity, Const or Var operand passed
-   * as an argument without a Bind (ADR-0034 amendment for #65, ADR-0037, ADR-0038). The left operand was lowered
-   * first, as the Binder walks it. A comparison is lowered so even when both sides are constants (design approval O6
-   * of #66).
+   * as an argument without a Bind. The left operand was lowered first, as the Binder walks it. A comparison is lowered
+   * so even when both sides are constants, as the run gives the same boolean a fold would.
    */
   private Node applied(Source at, Operation operation, Node left, Node right) {
     int rightSlot = operandSlot(right);
@@ -1386,14 +1379,14 @@ public final class Resolver {
     return operand instanceof Identity || operand instanceof Const || operand instanceof Var;
   }
 
-  /** {@code not} (ADR-0037, design approval C2): {@code if . then false else true}. */
+  /** {@code not}: {@code if . then false else true}. */
   private static Node not(Source at) {
     return when(at, new Identity(at), bool(at, false), bool(at, true));
   }
 
   /**
-   * {@code if c then a elif c2 then b else d end} (ADR-0039): nested Ifs on jq's truth, an elif the If of its else and a
-   * missing else an Identity, lowered in source order.
+   * {@code if c then a elif c2 then b else d end}: nested Ifs on jq's truth, an elif the If of its else and a missing
+   * else an Identity, lowered in source order.
    */
   private Node conditional(Ast.If i) {
     Node cond = lower(i.cond());
@@ -1403,9 +1396,9 @@ public final class Resolver {
   }
 
   /**
-   * {@code try body catch handler} at {@code at}, and {@code try body} with a null handler, which takes {@code empty}
-   * (ADR-0039). The body is lowered first. A navigation step's {@code ?} is its quiet variant (ADR-0034), which the
-   * parser marks on the step, and a {@code ?} on any other term is a step of its {@link #chain}.
+   * {@code try body catch handler} at {@code at}, and {@code try body} with a null handler, which takes {@code empty}.
+   * The body is lowered first. A navigation step's {@code ?} is its quiet variant, which the parser marks on the step,
+   * and a {@code ?} on any other term is a step of its {@link #chain}.
    */
   private Node attempt(Source at, Ast body, Ast handler) {
     Node lowered = lower(body);
@@ -1414,8 +1407,8 @@ public final class Resolver {
   }
 
   /**
-   * {@code label $name | body} (ADR-0039): a slot of its own for the activation's token, which a {@code break} the
-   * Binder bound to this label reads.
+   * {@code label $name | body}: a slot of its own for the activation's token, which a {@code break} the Binder bound to
+   * this label reads.
    */
   private Node label(Ast.Label l) {
     int slot = slots++;
@@ -1427,10 +1420,10 @@ public final class Resolver {
   }
 
   /**
-   * {@code reduce SRC as P (I; U)} (ADR-0041): {@code Reduce(I, s, bindP(SRC, Advance(s, U)))}, with a state slot s of
-   * its own and {@link #bound}'s Bind or AltBind as bindP; U runs on {@link #state} of the slot's value, and so does
-   * what the Reduce emits, so a state an empty update left is jq's null. SRC and I see the scope outside, U the
-   * pattern's names too. They are lowered in jq's order, I first, then SRC, P's keys and U.
+   * {@code reduce SRC as P (I; U)}: {@code Reduce(I, s, bindP(SRC, Advance(s, U)))}, with a state slot s of its own and
+   * {@link #bound}'s Bind or AltBind as bindP; U runs on {@link #state} of the slot's value, and so does what the
+   * Reduce emits, so a state an empty update left is jq's null. SRC and I see the scope outside, U the pattern's names
+   * too. They are lowered in jq's order, I first, then SRC, P's keys and U.
    */
   private Node reduce(Ast.Reduce r) {
     Node init = lower(r.init());
@@ -1442,9 +1435,9 @@ public final class Resolver {
   }
 
   /**
-   * {@code foreach SRC as P (I; U; E)} (ADR-0041): {@code Foreach(I, s, bindP(SRC, Advance(s, U) | E))}, and without
-   * an extract {@code Foreach(I, s, bindP(SRC, Advance(s, U)))}; U runs on {@link #state} of the slot's value, and
-   * scopes and order are {@link #reduce}'s, E last. Each result is an update's, so none is an empty state.
+   * {@code foreach SRC as P (I; U; E)}: {@code Foreach(I, s, bindP(SRC, Advance(s, U) | E))}, and without an extract
+   * {@code Foreach(I, s, bindP(SRC, Advance(s, U)))}; U runs on {@link #state} of the slot's value, and scopes and
+   * order are {@link #reduce}'s, E last. Each result is an update's, so none is an empty state.
    */
   private Node foreach(Ast.Foreach f) {
     Node init = lower(f.init());
@@ -1468,15 +1461,14 @@ public final class Resolver {
     return new Advance(at, state, pipe(state(at), lower(update)));
   }
 
-  /** {@link LoopState}: jq's null for the empty state an Advance leaves (founding §14), any other value as it is. */
+  /** {@link LoopState}: jq's null for the empty state an Advance leaves, any other value as it is. */
   private static Intrinsic state(Source at) {
     return new Intrinsic(at, LoopState.OP, List.of());
   }
 
   /**
-   * {@code range(A; B)} (ADR-0041): the call of {@link Range} on its bounds, B bound inside A, so the start is the outer
-   * loop, an Identity, Const or Var bound passed as an argument without a Bind, as an operator's operand is (ADR-0034
-   * amendment for #65).
+   * {@code range(A; B)}: the call of {@link Range} on its bounds, B bound inside A, so the start is the outer loop, an
+   * Identity, Const or Var bound passed as an argument without a Bind, as an operator's operand is.
    */
   private Node range(Ast.Call c) {
     Node start = lower(c.args().get(0));
@@ -1513,7 +1505,7 @@ public final class Resolver {
   }
 
   /**
-   * One Binds at {@code source} around {@code body} (ADR-0043): each of {@code values} whose slot in {@code slots} is no
+   * One Binds at {@code source} around {@code body}: each of {@code values} whose slot in {@code slots} is no
    * {@link #NO_SLOT}, bound to it, the first outermost, as {@link #bind} nests them from the last in.
    */
   private static Binds oneBinds(Source source, Node[] values, int[] slots, Node body) {
@@ -1543,15 +1535,15 @@ public final class Resolver {
     return new Var(here(at), find(declaration).slot());
   }
 
-  /** {@code $__loc__} at {@code at}: its location, a constant (ADR-0038, jq's {@code gen_loc_object}). */
+  /** {@code $__loc__} at {@code at}: its location, a constant, as jq's {@code gen_loc_object} makes it. */
   private Const location(Source at) {
     Source loc = here(at);
     return new Const(loc, ConstantKey.location(text.line(loc.start())));
   }
 
   /**
-   * {@code E as p | body} or {@code E as p1 ?// p2 ... | body} (ADR-0038): {@code E} is lowered in the scope outside,
-   * and each of its results is bound to a slot of its own, on which the patterns match.
+   * {@code E as p | body} or {@code E as p1 ?// p2 ... | body}: {@code E} is lowered in the scope outside, and each of
+   * its results is bound to a slot of its own, on which the patterns match.
    */
   private Node binding(Ast.Bind b) {
     Node value = lower(b.value());
@@ -1560,8 +1552,8 @@ public final class Resolver {
 
   /**
    * {@code value}, lowered already, bound to a slot of its own and taken apart by {@code patterns} around the node
-   * {@code body} lowers in the patterns' scope (ADR-0038): a Bind for one pattern, an AltBind for a {@code ?//} chain.
-   * {@code E as p | body} and the source and pattern of a {@code reduce} or {@code foreach} (ADR-0041) lower so.
+   * {@code body} lowers in the patterns' scope: a Bind for one pattern, an AltBind for a {@code ?//} chain.
+   * {@code E as p | body} and the source and pattern of a {@code reduce} or {@code foreach} lower so.
    */
   private Node bound(Source source, Node value, List<Ast.Pattern> patterns, Supplier<Node> body) {
     int slot = slots++;
@@ -1590,7 +1582,7 @@ public final class Resolver {
    * The {@code ?//} chain, an AltBind: one group slot per name of all its patterns, in the body's scope. Each
    * alternative is its match's Binds around an Identity, the leaf, which emits once per match. At each match a group
    * slot takes the slot of the name's latest store, or, for a name the alternative never stores, the slot of one Const
-   * null bound around the chain: jq-core never passes -1, since query-core's null is no jq value (§14).
+   * null bound around the chain: jq-core never passes -1, since query-core's null is no jq value.
    */
   private Node alternatives(Source source, Node value, int slot, List<Ast.Pattern> patterns, Supplier<Node> lowerBody) {
     Map<String, Object> groups = binder.groups(patterns);
@@ -1627,11 +1619,11 @@ public final class Resolver {
   }
 
   /**
-   * The match of {@code pattern} on the value in {@code level}, its steps appended in jq's matcher order (ADR-0038):
-   * a name stores the level's slot; an array's elements, last first, each the level's {@code .[i]}; an object's
-   * entries in source order, each its key, run on the level's value, then the level's {@code .[key]}, which {@code
-   * $name} stores before its own pattern matches it. Each step is jq's non-quiet index, so an absent key or index and a
-   * null give null and any other value raises. Each element spends a node of the inline cap.
+   * The match of {@code pattern} on the value in {@code level}, its steps appended in jq's matcher order: a name stores
+   * the level's slot; an array's elements, last first, each the level's {@code .[i]}; an object's entries in source
+   * order, each its key, run on the level's value, then the level's {@code .[key]}, which {@code $name} stores before
+   * its own pattern matches it. Each step is jq's non-quiet index, so an absent key or index and a null give null and
+   * any other value raises. Each element spends a node of the inline cap.
    */
   private void match(Ast.Pattern pattern, int level, Match match) {
     spend();
@@ -1682,8 +1674,8 @@ public final class Resolver {
   }
 
   /**
-   * {@code body} inside the Binds of {@code steps}, the first outermost: a Bind per step, or one Binds at {@code source}
-   * past {@link #BIND_RUN} steps (ADR-0043), its values in the same order.
+   * {@code body} inside the Binds of {@code steps}, the first outermost: a Bind per step, or one Binds at
+   * {@code source} past {@link #BIND_RUN} steps, its values in the same order.
    */
   private static Node nest(Source source, List<Step> steps, Node body) {
     if (steps.size() > BIND_RUN) {
@@ -1703,11 +1695,11 @@ public final class Resolver {
   }
 
   /**
-   * A string literal: without interpolation a Const of its text, whatever its format (jq-ref 1.8.2, observed
-   * 2026-11-13: {@code @base64 "k"} is {@code "k"}); with one, an Intrinsic of Interpolate on its parts, each text part
-   * a Const and each interpolation bound around it unless atomic, the last part outermost, as jq loops (ADR-0038,
-   * jq-ref: {@code "\(1,2)\(3,4)"} gives 13, 23, 14, 24); past {@link #BIND_RUN} bound parts, one Binds, the last part
-   * first (ADR-0043). Only {@code @text} or no format is built with interpolations.
+   * A string literal: without interpolation a Const of its text, whatever its format (in jq 1.8.2 {@code @base64 "k"}
+   * is {@code "k"}); with one, an Intrinsic of Interpolate on its parts, each text part a Const and each interpolation
+   * bound around it unless atomic, the last part outermost, as jq loops ({@code "\(1,2)\(3,4)"} gives 13, 23, 14, 24);
+   * past {@link #BIND_RUN} bound parts, one Binds, the last part first. Only {@code @text} or no format is built with
+   * interpolations.
    */
   private Node string(Ast.Str s) {
     if (plain(s)) {
@@ -1735,7 +1727,7 @@ public final class Resolver {
     }
     Node body = new Intrinsic(here(s.source()), Interpolate.OP, args);
     if (binds > BIND_RUN) {
-      // One Binds (ADR-0043), the last part outermost, as the nested Binds below are.
+      // One Binds, the last part outermost, as the nested Binds below are.
       Node[] lastFirst = new Node[parts.size()];
       int[] lastFirstSlots = new int[parts.size()];
       for (int i = 0; i < parts.size(); i++) {
@@ -1750,7 +1742,7 @@ public final class Resolver {
     return body;
   }
 
-  /** {@code [body]}: its body's results collected into a built array (ADR-0034 amendment); {@code []} is a constant. */
+  /** {@code [body]}: its body's results collected into a built array; {@code []} is a constant. */
   private Node array(Ast.ArrayCons a) {
     if (a.body() == null) {
       return new Const(here(a.source()), new BuiltArray(new Object[0], 0));
@@ -1759,14 +1751,14 @@ public final class Resolver {
   }
 
   /**
-   * {@code {k: v, ...}} (ADR-0034 amendment): each key bound outside its own value, each pair outside the next, a
-   * constant string key and an Identity, Const or Var value passed as arguments without a Bind. Any other key, a
-   * variable's or a Const null standing for an unstored group name among them, is bound and checked once its pair has
-   * its value, before the next pair runs. A site whose keys are all constant strings builds on its shape, the distinct
-   * keys in their first place, with one argument per key, the value of its last pair; an earlier pair of a repeated key
-   * still runs, for its results. Any other site passes a key and a value per pair. The key of {@code {$x: v}} is the
-   * variable's value (jq-ref, recorded: bind/object-var-key); a shorthand is {@link #shorthand}. Each pair spends a node
-   * of the inline cap. Past {@link #BIND_RUN} Binds the pairs are one Binds in the same order ({@link #pairBinds}).
+   * {@code {k: v, ...}}: each key bound outside its own value, each pair outside the next, a constant string key and an
+   * Identity, Const or Var value passed as arguments without a Bind. Any other key, a variable's or a Const null
+   * standing for an unstored group name among them, is bound and checked once its pair has its value, before the next
+   * pair runs. A site whose keys are all constant strings builds on its shape, the distinct keys in their first place,
+   * with one argument per key, the value of its last pair; an earlier pair of a repeated key still runs, for its
+   * results. Any other site passes a key and a value per pair. The key of {@code {$x: v}} is the variable's value, as
+   * in jq; a shorthand is {@link #shorthand}. Each pair spends a node of the inline cap. Past {@link #BIND_RUN} Binds
+   * the pairs are one Binds in the same order ({@link #pairBinds}).
    */
   private Node object(Ast.ObjectCons o) {
     List<Ast.Pair> pairs = o.pairs();
@@ -1804,7 +1796,7 @@ public final class Resolver {
 
   /**
    * The pairs of an object whose nested form has more than {@link #BIND_RUN} Binds, as one Binds around {@code body},
-   * its construction (ADR-0043), in the order the nested form runs them: per pair its computed key, its value unless
+   * its construction, in the order the nested form runs them: per pair its computed key, its value unless
    * passed as an argument, and the check of its computed key, a value of the Binds bound to a new slot no node reads,
    * since the check gives its input back; then the next pair.
    */
@@ -1832,7 +1824,7 @@ public final class Resolver {
   /**
    * A key that is no {@code $x: v}: a name, the {@code $name} of a shorthand or a pattern, and {@code $__loc__} are
    * constant strings; a string or {@code (query)} is lowered, so a plain string is a Const, which the parser found a
-   * string (ADR-0036).
+   * string.
    */
   private Node key(Ast.Key key) {
     return switch (key) {
@@ -1847,8 +1839,8 @@ public final class Resolver {
   /**
    * The value of a shorthand pair, whose key {@link #key} lowered to {@code name}, bound to {@code slot} when computed:
    * a name or a constant string is the field of its key; {@code $x} the variable; {@code $__loc__} its location; a
-   * string with an interpolation the input's {@code .[k]} of the key's own result, so the key runs once (jq-ref 1.8.2,
-   * observed 2026-11-13: {@code {"\("a","b")"}} on {@code {"a":1,"b":2}} gives {@code {"a":1}} and {@code {"b":2}}).
+   * string with an interpolation the input's {@code .[k]} of the key's own result, so the key runs once (in jq 1.8.2
+   * {@code {"\("a","b")"}} on {@code {"a":1,"b":2}} gives {@code {"a":1}} and {@code {"b":2}}).
    */
   private Node shorthand(Ast.Key key, Node name, int slot) {
     if (key instanceof Ast.NameKey k) {
@@ -1871,7 +1863,7 @@ public final class Resolver {
   /**
    * The construction of a site whose keys are all Consts of strings: its shape, the distinct keys in their first place,
    * and per key the value of its last pair. Keys compare by their UTF-8 bytes, each found among the distinct keys
-   * before it through a map by those bytes (ADR-0043), not a scan of them.
+   * before it through a map by those bytes, not a scan of them.
    */
   private Intrinsic shaped(Source source, Node[] keys, Node[] values, int[] valueSlots) {
     List<JqString> shape = new ArrayList<>();

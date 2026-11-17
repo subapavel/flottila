@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * ADR-0042's prelude (GLOSSARY "Prelude"): jq 1.8.2's builtin.jq, the resource beside this class, parsed once per JVM
+ * The prelude: jq 1.8.2's builtin.jq, the resource beside this class, parsed once per JVM
  * by a holder class on the first lookup, with no setting of any Engine, and indexed by {@code name/arity}. The AST is
  * shared read-only; each compile binds and lowers only the definitions its filter reaches ({@link Binder}). A filter
  * that needs no prelude definition never looks one up, so it never parses the file.
@@ -22,7 +22,7 @@ final class Prelude {
 
   /** The parsed file, made when the class is first used. */
   private static final class Library {
-    /** The definitions by signature. builtin.jq's signatures are distinct (PreludeBindTest). */
+    /** The definitions by signature. builtin.jq's signatures are distinct, so no definition hides another. */
     static final Map<String, Ast.FuncDef> INDEX;
 
     /** The signatures in file order. */

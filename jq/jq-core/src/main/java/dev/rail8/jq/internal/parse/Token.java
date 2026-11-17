@@ -25,9 +25,9 @@
 package dev.rail8.jq.internal.parse;
 
 /**
- * A token of the filter text: its kind and its UTF-8 bytes {@code [start, end)} (ADR-0031). A FIELD's name is its
- * bytes after the dot; a string literal is a STRING_START, its parts and a STRING_END. The kinds are jq 1.8.2's
- * lexer's ({@code src/lexer.l}), named after the parser's token names where it has them.
+ * A token of the filter text: its kind and its UTF-8 bytes {@code [start, end)}. A FIELD's name is its bytes after
+ * the dot; a string literal is a STRING_START, its parts and a STRING_END. The kinds are jq 1.8.2's lexer's
+ * ({@code src/lexer.l}), named after the parser's token names where it has them.
  */
 record Token(Kind kind, int start, int end) {
   /** Each kind with the name jq's parser gives it in a syntax error ({@code parser.y}'s token names and aliases). */
@@ -91,7 +91,7 @@ record Token(Kind kind, int start, int end) {
     STRING_START("QQSTRING_START"),
     /** A run of a string literal's bytes that are neither {@code \\} nor {@code "}. */
     TEXT("QQSTRING_TEXT"),
-    /** An escape run (GLOSSARY) that jq's checks pass. */
+    /** An escape run, the longest run of escape sequences, that jq's checks pass. */
     ESCAPES("QQSTRING_TEXT"),
     /** An escape run that jq's checks reject; the lexer has collected its error block. */
     INVALID_ESCAPES("QQSTRING_TEXT"),

@@ -50,20 +50,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The parser-action check of a computed object key (ADR-0036, GLOSSARY "Constant key"): a key jq folds to a constant
- * that is no string is jq's error. jq folds what its grammar builds as one constant (jq-ref 1.8.2, observed
- * 2026-11-13): a number, a string without interpolation (its format applies to none), {@code true}, {@code false} and
- * {@code null}; parentheses; a pipe one side of which is {@code .} alone; an array of constants joined by commas that
- * nest to the left only ({@code [(1,2),3]}, not {@code [1,(2,3)]}); and an object whose keys are names, strings or
- * constant strings and whose values are constants, folded as a construction is (a repeated key keeps its first place
- * and its last value). {@code $__loc__} folds too, to its {@link #location} (#67, ADR-0038), and so does the pair
- * {@code $__loc__} of an object, to the key {@code "__loc__"} and that value (jq-ref: {@code {({$__loc__}): 1}} is rc
- * 3). Nothing else folds: {@code 1|2}, {@code -1}, {@code 1?}, {@code [.]} and an object with any other shorthand pair
- * or a variable as a key or a value are known only at run time. An arithmetic operator on two constants folds to its result (#65, {@link #binary}), which the
- * resolver lowers to a Const too; a comparison of two constants folds to its boolean (#66), which the resolver leaves
- * to the run (design approval O6). One instance holds one compile's folds (ADR-0035 amendments, #65 third and fourth
- * reviews): each node is folded at most once, its result kept, and every fold charges one run state with the
- * compile's budget; a {@link ParsedFilter} carries it from the parser to the resolver.
+ * The parser-action check of a computed object key: a key jq folds to a constant that is no string is jq's error. jq
+ * folds what its grammar builds as one constant (as jq 1.8.2 does): a number, a string without interpolation (its
+ * format applies to none), {@code true}, {@code false} and {@code null}; parentheses; a pipe one side of which is
+ * {@code .} alone; an array of constants joined by commas that nest to the left only ({@code [(1,2),3]}, not
+ * {@code [1,(2,3)]}); and an object whose keys are names, strings or constant strings and whose values are constants,
+ * folded as a construction is (a repeated key keeps its first place and its last value). {@code $__loc__} folds too, to
+ * its {@link #location}, and so does the pair {@code $__loc__} of an object, to the key {@code "__loc__"} and that
+ * value (jq-ref: {@code {({$__loc__}): 1}} is rc 3). Nothing else folds: {@code 1|2}, {@code -1}, {@code 1?},
+ * {@code [.]} and an object with any other shorthand pair or a variable as a key or a value are known only at run time.
+ * An arithmetic operator on two constants folds to its result ({@link #binary}), which the resolver lowers to a Const
+ * too; a comparison of two constants folds to its boolean, which the resolver leaves to the run, as the run gives the
+ * same boolean. One instance holds one compile's folds, so that no fold work goes uncharged and none is done twice:
+ * each node is folded at most once, its result kept, and every fold charges one run state with the compile's budget; a
+ * {@link ParsedFilter} carries it from the parser to the resolver.
  */
 final class ConstantKey {
   /** What {@code .} alone folds to: a pipe drops it. */
@@ -81,7 +81,7 @@ final class ConstantKey {
           BinOp.DIVIDE, Arithmetic.DIVIDE,
           BinOp.MODULO, Arithmetic.MODULO);
 
-  /** The comparison operators, which jq folds too, and their operations (#66). */
+  /** The comparison operators, which jq folds too, and their operations. */
   private static final Map<BinOp, Operation> COMPARISON =
       Map.of(
           BinOp.EQUAL, Comparison.EQUAL,
@@ -92,10 +92,10 @@ final class ConstantKey {
           BinOp.GREATER_EQUAL, Comparison.GREATER_EQUAL);
 
   /**
-   * The bytes the operators of a Const's whole fold may build together (ADR-0035 amendment: no fold result larger than
-   * 4 KiB): a string of 4096 bytes with its fixed charge, so 4096 bytes fold and 4097 do not; any other value is held
-   * to the same charges. The literals of the filter text are no fold results, so they count against the compile's
-   * budget only.
+   * The bytes the operators of a Const's whole fold may build together, so that no fold result is larger than 4 KiB and
+   * a larger one is left for the run to build and charge: a string of 4096 bytes with its fixed charge, so 4096 bytes
+   * fold and 4097 do not; any other value is held to the same charges. The literals of the filter text are no fold
+   * results, so they count against the compile's budget only.
    */
   static final long FOLD_BYTES = Charges.STRING + 4096;
 
@@ -147,7 +147,7 @@ final class ConstantKey {
 
   /**
    * jq's {@code $__loc__} on {@code line} ({@code gen_loc_object}): {@code {"file":"<top-level>","line":line}}, the line
-   * counting LF only (ADR-0038).
+   * counting LF only.
    */
   static JqValue location(int line) {
     return new BuiltObject(new JqString[] {FILE, LINE}, new Object[] {TOP_LEVEL, LiteralNumber.ofLexeme(Integer.toString(line))});
@@ -157,7 +157,7 @@ final class ConstantKey {
    * jq's message for the key {@code query} when it folds to a constant that is no string, or null. jq folds without a
    * cap, so the check takes the fold whatever its size, as long as the compile's budget holds it: jq-ref gives rc 3 for
    * {@code {(("x"*5000)/"x"):1}}. Past the compile's budget the key is left to the run, which raises the same text with
-   * rc 5 (DEVIATIONS "Huge constant keys").
+   * rc 5: a fold without a bound would let an untrusted filter make the compile allocate gigabytes.
    */
   String error(Ast query) {
     return fold(query) instanceof JqValue value && !(value instanceof JqString) ? ObjectKey.message(state, value) : null;
@@ -176,12 +176,12 @@ final class ConstantKey {
    * kept: a fold that raises, or that would build or step past the compile's budget, is none, and so is each fold
    * around it.
    *
-   * <p>An operator jq folds is folded by a loop down its left operands that are such operators (#86): the parser
-   * builds a left-associative chain in a loop, as long as the filter. The term the chain starts from is folded first,
-   * then each operator from the innermost out, each kept as its own fold would keep it: every one of them starts its
-   * fold where the outermost does. None of those operators is kept yet, since an operator's fold is asked for before
-   * its operands' (a computed key's by the parser, an operator's by the resolver, outermost first), and a fold keeps
-   * the whole chain below it.
+   * <p>An operator jq folds is folded by a loop down its left operands that are such operators, not by recursion: the
+   * parser builds a left-associative chain in a loop, as long as the filter. The term the chain starts from is folded
+   * first, then each operator from the innermost out, each kept as its own fold would keep it: every one of them starts
+   * its fold where the outermost does. None of those operators is kept yet, since an operator's fold is asked for
+   * before its operands' (a computed key's by the parser, an operator's by the resolver, outermost first), and a fold
+   * keeps the whole chain below it.
    */
   private Object fold(Ast ast) {
     Kept known = kept.get(ast);
@@ -253,12 +253,12 @@ final class ConstantKey {
   }
 
   /**
-   * jq's {@code constant_fold} of {@code + - * / %} and (#66) {@code == != < > <= >=} (GLOSSARY "Fold"): the operator
-   * on two constants, computed now as the run would, charging the compile's budget, the bytes it builds counted for
-   * {@link #constant}'s cap; a comparison builds none. A fold that raises, or that would build or step past the budget,
-   * is none ({@link #fold}): the run computes it, raising or building and charging there. {@code and}, {@code or} and
-   * {@code //} are not folded (ADR-0037). {@code b}'s left operand has folded to {@code left}; its right one is folded
-   * now.
+   * jq's {@code constant_fold} of {@code + - * / %} and {@code == != < > <= >=}: the operator on two constants,
+   * computed now as the run would, charging the compile's budget, the bytes it builds counted for {@link #constant}'s
+   * cap; a comparison builds none. A fold that raises, or that would build or step past the budget, is none
+   * ({@link #fold}): the run computes it, raising or building and charging there. {@code and}, {@code or} and
+   * {@code //} are not folded, as jq does not fold them. {@code b}'s left operand has folded to {@code left}; its right
+   * one is folded now.
    */
   private Object binary(Ast.Binary b, JqValue left) {
     if (!(fold(b.right()) instanceof JqValue right)) {
@@ -302,7 +302,7 @@ final class ConstantKey {
     return string(value.toByteArray());
   }
 
-  /** The string of {@code bytes}, charged before it is built (ADR-0035 amendment: a fold's literals are charged). */
+  /** The string of {@code bytes}, charged before it is built: a literal a fold builds is charged as any built value. */
   private JqString string(byte[] bytes) {
     state.chargeBuilt(Charges.STRING + bytes.length);
     return BuiltString.of(bytes);
