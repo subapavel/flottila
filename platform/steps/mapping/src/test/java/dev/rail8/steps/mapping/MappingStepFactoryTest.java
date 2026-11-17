@@ -152,8 +152,8 @@ class MappingStepFactoryTest {
         rewrite(pkg.resolve(FORMAT_NUM), "../structures/src-orders.xsd", "common@1.4.0:/structures/src-orders.xsd");
         IllegalArgumentException x = assertThrows(IllegalArgumentException.class,
                 () -> factory.create(step(FORMAT_NUM), resources(pkg, 65536, Map.of())));
-        assertTrue(x.getMessage().startsWith("step 'toInvoice'") && x.getMessage().contains("common@1.4.0:/structures/src-orders.xsd"),
-                x.getMessage());
+        assertTrue(x.getMessage().startsWith("step 'toInvoice'") && x.getMessage().contains("common@1.4.0:/structures/src-orders.xsd")
+                && x.getMessage().contains("does not read yet"), x.getMessage());
     }
 
     @Test
