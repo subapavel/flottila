@@ -59,10 +59,11 @@ import java.util.function.BooleanSupplier;
  * What the trail could not persist or write never changes what is done with the item.
  *
  * <p><b>Cancel.</b> An item marked by an operator's cancel ({@link WorkQueue.Item#cancel()}) ends: a run of one marked at its
- * claim starts already stopped ({@link Runs#stoppedFromStart}), so its first step records the cancel; a mark the lease's
- * renewal ({@link WorkQueue#renewRow}) or a later claim tells of stops the run that is going ({@link Runs#stop}). Either way, and
- * for a run stopped by a cancel taken on this node, the item is completed once its run returned — after its sends settled —
- * whatever the run did, and it is never parked, past its bound or not.
+ * claim, or learnt before its run is registered, starts already stopped ({@link Runs#stoppedFromStart}), so its first step
+ * records the cancel; a mark the lease's renewal ({@link WorkQueue#renewRow}) or a later claim tells of after that stops the run
+ * that is going ({@link Runs#stop}). Either way, and for a run stopped by a cancel taken on this node, the item is completed once
+ * its run returned — after its sends settled — whatever the run did, and it is not parked, past its bound or not: before it parks
+ * an item without a key, the worker asks the queue for its mark, and the queue refuses the stop of a keyed one that is marked.
  *
  * <p><b>Retries, then park.</b> The worker runs under a {@link RetryPolicy}: the flow's {@code delivery.retries}, else
  * the node's default ({@link FlowBuilder#retries}). Its count bounds the hand-outs of an item to count + 1, runs whose
@@ -666,14 +667,14 @@ public final class FlowWorker {
      * Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. Anything
      * that fails before the run — the timeline read, the rebuild — leaves the item to its lease (past the bound: holds it); the
      * run's failure is {@link #failed}'s to judge. An item marked by an operator's cancel — at its claim, or by a renewal or a
-     * claim while it runs, or a run that stopped for a cancel — ends: it is completed whatever its run did, and is never
-     * parked. One marked at its claim runs already stopped, so its first step records the cancel and nothing of the flow runs.
+     * claim while it runs, or a run that stopped for a cancel — ends: it is completed whatever its run did, and is not parked
+     * (an unkeyed park asks the queue for the mark first). One marked by the time its run is registered runs already stopped, so
+     * its first step records the cancel and nothing of the flow runs.
      */
     private Verdict verdict(Lease lease) {
         WorkQueue.Item item = lease.item;
         String id = item.messageId();
-        WorkQueue.Cancel marked = lease.cancel();
-        boolean exhausted = marked == null && item.attempts() > bound(item);
+        boolean exhausted = lease.cancel() == null && item.attempts() > bound(item);
         Envelope ingress;
         try {
             // the timeline is in attempt order: the first ingress row is attempt 1's, what arrived, never a later attempt's
@@ -691,8 +692,10 @@ public final class FlowWorker {
                 }
                 AttemptsExhaustedException past = new AttemptsExhaustedException(id, item.attempts(), bound(item));
                 if (item.partitionKey() != null) return Verdict.stop(parking.prepare(ingress, firstStep, past, Optional.of(item.partitionKey())).await());
-                parking.park(ingress, firstStep, past, Optional.empty()).await();
-                return Verdict.COMPLETE;
+                if (markNow(lease) == null) {
+                    parking.park(ingress, firstStep, past, Optional.empty()).await();
+                    return Verdict.COMPLETE;
+                }   // marked meanwhile: the run below starts stopped, and its first step records the cancel
             }
         } catch (Throwable failure) {
             if (exhausted && !(failure instanceof FencedException)) return Verdict.hold(failure);   // fenced: not a failed park, never held
@@ -704,8 +707,7 @@ public final class FlowWorker {
         Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress body durable
         try {
             Envelope from = ingress;
-            if (marked == null) trail.apply(pipeline, from);
-            else Runs.stoppedFromStart(cancelled(marked), () -> trail.apply(pipeline, from));
+            Runs.stoppedFromStart(lease::stopping, () -> trail.apply(pipeline, from));   // a mark learnt by now: stopped from its start
         } catch (Throwable thrown) {   // a checked one too: await() rethrows a failed future's checked cause as is
             failure = thrown;
         } finally {   // an Error too: a crashed run's bodies and rows are kept, and a rerun re-records what is missing
@@ -717,7 +719,16 @@ public final class FlowWorker {
                     + " and ends (work item " + item.seq() + ", attempt " + item.attempts() + ")");
             return Verdict.COMPLETE;
         }
-        return failure == null ? Verdict.COMPLETE : failed(item, ingress, failure);
+        return failure == null ? Verdict.COMPLETE : failed(lease, ingress, failure);
+    }
+
+    /**
+     * The mark of {@code lease}'s item as the queue has it now, kept by the lease; null when it is not marked. Asked before a park of
+     * an item without a key, which is written apart from its settle: the queue cannot refuse it for a marked row as it refuses a stop.
+     */
+    private WorkQueue.Cancel markNow(Lease lease) {
+        lease.learnt(queue.renewRow(lease.item.seq(), lease.token(), policy.lease()).await().cancel());
+        return lease.cancel();
     }
 
     /** The stop a run of an item marked with {@code cancel} gets. */
@@ -740,10 +751,12 @@ public final class FlowWorker {
      * {@link Error} is no failed attempt — left to its lease; a failure that is final ({@link #isFinal}) or that of the last hand-out
      * the bound allows parks {@code ingress} at the flow's first step with the {@link Envelope#ATTEMPT} it failed at — only while the
      * node's fence is open, and a park that fails leaves the item to its lease —, an unkeyed item's park written here and its item
-     * completed, a keyed item's row prepared here and written with its stop by the settle; any other is deferred by the wait before
-     * the next retry, {@link RetryPolicy#delayBefore delayBefore(attempt)}.
+     * completed, unless the queue answers it is marked by a cancel by then (completed, not parked), a keyed item's row prepared here
+     * and written with its stop by the settle; any other is deferred by the wait before the next retry,
+     * {@link RetryPolicy#delayBefore delayBefore(attempt)}.
      */
-    private Verdict failed(WorkQueue.Item item, Envelope ingress, Throwable failure) {
+    private Verdict failed(Lease lease, Envelope ingress, Throwable failure) {
+        WorkQueue.Item item = lease.item;
         String run = "message " + item.messageId() + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts() + " of " + bound(item) + ")";
         if (failure instanceof FencedException || failure instanceof InterruptedException || failure instanceof Error) {
             LOG.log(System.Logger.Level.WARNING, run + ", no failed attempt, and is left to its lease (" + policy.lease() + "): " + failure, failure);
@@ -761,6 +774,11 @@ public final class FlowWorker {
         try {
             Envelope failed = ingress.with(Envelope.ATTEMPT, item.attempts());
             if (item.partitionKey() != null) return Verdict.stop(parking.prepare(failed, firstStep, failure, Optional.of(item.partitionKey())).await());
+            WorkQueue.Cancel cancel = markNow(lease);
+            if (cancel != null) {
+                LOG.log(System.Logger.Level.INFO, run + ", was cancelled by " + cancel.actor() + " meanwhile and ends, not parked: " + failure);
+                return Verdict.COMPLETE;
+            }
             parking.park(failed, firstStep, failure, Optional.empty()).await();
             return Verdict.COMPLETE;   // the DLQ row is the failure's record
         } catch (Throwable parkFailure) {   // an interrupted await too: the park may still land, the rerun parks again
@@ -944,6 +962,9 @@ public final class FlowWorker {
 
         synchronized WorkQueue.Cancel cancel() { return cancel; }
 
+        /** The stop the run of the item gets for the cancel this lease knows of; null when it knows of none. */
+        synchronized Runs.Cancelled stopping() { return cancel == null ? null : cancelled(cancel); }
+
         /** {@code found}, the mark a claim or a renewal answered: true when it is news to this lease, which keeps it from now on. */
         private synchronized boolean learnt(Optional<WorkQueue.Cancel> found) {
             if (cancel != null || found.isEmpty()) return false;
@@ -953,7 +974,7 @@ public final class FlowWorker {
 
         /** The run of the item, on this node, stopped by the cancel this lease knows of. */
         void stopRun() {
-            runs.stop(item.messageId(), cancelled(cancel()));
+            runs.stop(item.messageId(), stopping());
         }
 
         synchronized void renewLater() {

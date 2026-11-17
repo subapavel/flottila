@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * A flow's consumer handler, per delivery mode: what a consumer calls with the
@@ -106,6 +107,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             }
         }
 
+        /** {@code run} on the flight's thread: a run there that was stopped no longer waits for its sends once the stop's deadline came. */
+        private <T> T run(Supplier<T> run) {
+            return Runs.releasedBy(deadlineCame.future(), run);
+        }
+
         /** The permit back, once, and the flight out of the stop's sight — the stop done when it was the last. */
         private void land() {
             permit.close();
@@ -132,6 +138,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     private final Object lock = new Object();
     private final Set<Flight> flights = new HashSet<>();      // guarded by lock: admitted and not landed
     private Promise<Void> stopped;                             // guarded by lock: null until stop
+    private final Promise<Void> deadlineCame = Promise.promise();   // completed at the stop's deadline: a stopped run in flight stops waiting for its sends
     private Duration deadline;                                 // guarded by lock
     private Timer.Cancellable deadlineTimer;                   // guarded by lock: scheduled by a stop with deliveries in flight
     private boolean cancelling;                                // guarded by lock: the deadline has come
@@ -173,7 +180,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 Exception failure = null;
                 Ack.Nack cancel;
                 try {
-                    reply = trail.apply(pipeline, e);
+                    reply = flight.run(() -> trail.apply(pipeline, e));
                 } catch (Exception thrown) {   // an interrupted await throws InterruptedException, sneakily
                     failure = thrown;
                 } finally {
@@ -217,7 +224,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 Trail trail = new Trail(List.of());
                 Exception dropped = null;
                 try {
-                    trail.apply(pipeline, e);
+                    flight.run(() -> trail.apply(pipeline, e));
                 } catch (Exception failure) {   // an interrupted await throws InterruptedException, sneakily
                     dropped = failure;
                 } finally {
@@ -416,7 +423,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         return stop.future().compose(done -> producers.close());
     }
 
-    /** The stop's deadline: every sync and at-most-once run in flight is interrupted, every pending at-least-once answer is the cancel's Nack. */
+    /**
+     * The stop's deadline: every sync and at-most-once run in flight is interrupted, and one its time limit or a cancel stopped no
+     * longer waits for its sends; every pending at-least-once answer is the cancel's Nack.
+     */
     private void cancelInFlight() {
         List<Flight> inFlight;
         Duration after;
@@ -428,6 +438,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             for (Flight f : inFlight) if (f.thread != null) f.thread.interrupt();
         }
         // outside the lock: completing an answer runs the consumer's callbacks, and the flight lands
+        deadlineCame.tryComplete();
         for (Flight f : inFlight) if (f.answer != null) f.answer.tryComplete(cancelled(f.flow, after));
     }
 
