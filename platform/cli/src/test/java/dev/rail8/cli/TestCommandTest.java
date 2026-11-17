@@ -78,6 +78,13 @@ class TestCommandTest {
             "PASS order: not json (flow time 0ms)",
             "4 cases: 4 passed, 0 failed");
 
+    /** The {@code mapping} fixture: orders mapped by a mapping step, a body that is not XML, and a data error. */
+    static final List<String> MAPPING_REPORT = List.of(
+            "PASS orders: orders mapped (flow time 0ms)",
+            "PASS orders: not xml (flow time 0ms)",
+            "PASS orders: a quantity that is no decimal (flow time 0ms)",
+            "3 cases: 3 passed, 0 failed");
+
     @TempDir Path tmp;
 
     /** A copy of {@code flowtest} under {@code tmp} without its test documents, with {@code docs} (file name under flows/ → text) instead. */
@@ -122,6 +129,20 @@ class TestCommandTest {
         Ran ran = run("test", FIXTURES.resolve("jq").toString());
 
         assertEquals(JQ_REPORT, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
+     * A flow with a mapping step runs the message end to end: the mapping file and its schemas are read from the package, the
+     * partner receives the mapping's XML, a body that is not XML is the sender's fault (400) and a data error the flow's (500),
+     * with nothing sent.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aFlowWithAMappingStepRunsTheMessageEndToEnd() {
+        Ran ran = run("test", FIXTURES.resolve("mapping").toString());
+
+        assertEquals(MAPPING_REPORT, ran.outLines(), ran.toString());
         assertEquals(0, ran.exit(), ran.toString());
     }
 

@@ -9,6 +9,7 @@ import dev.rail8.runtime.node.ComponentContext;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.steps.jq.JqStepFactory;
+import dev.rail8.steps.mapping.MappingStepFactory;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import io.vertx.core.Vertx;
@@ -41,7 +42,7 @@ public final class Main {
      * languages.
      *
      * @param components builds the shipped components (http, sftp) over a node's context; never a mock
-     * @param steps the shipped step factories: the xslt steps, the xsd step, then the jq step
+     * @param steps the shipped step factories: the xslt steps, the xsd step, the jq step, then the mapping step
      * @param languages the shipped expression languages (xpath)
      */
     public record Shipped(Function<ComponentContext, List<Component>> components, List<StepFactory> steps, List<Expressions> languages) {
@@ -59,7 +60,7 @@ public final class Main {
      */
     public static Shipped shipped(int jqMaxRecursionDepth) {
         SaxonXml xml = new SaxonXml();
-        List<StepFactory> steps = Stream.of(xml.steps(), new XsdValidate().steps(), List.<StepFactory>of(new JqStepFactory(jqMaxRecursionDepth)))
+        List<StepFactory> steps = Stream.of(xml.steps(), new XsdValidate().steps(), List.<StepFactory>of(new JqStepFactory(jqMaxRecursionDepth), new MappingStepFactory()))
                 .flatMap(List::stream).toList();
         return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer()),
                 new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())), steps, xml.languages());

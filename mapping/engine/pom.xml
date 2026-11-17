@@ -26,6 +26,7 @@
     <module>mapping</module>
     <module>xslt-export</module>
     <module>api</module>
+    <module>embed</module>
     <module>oracle</module>
   </modules>
 

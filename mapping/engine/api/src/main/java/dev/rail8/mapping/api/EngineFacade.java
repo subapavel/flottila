@@ -26,6 +26,7 @@ import dev.rail8.mapping.xslt.export.XsltExporter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -418,6 +419,24 @@ public final class EngineFacade {
    */
   public byte[] run(CompiledMapping mapping, byte[] input) throws MalformedInputException {
     return run(mapping, input, new Tracer());
+  }
+
+  /**
+   * Runs one input message through a compiled mapping at {@code now}, reporting to no tracer, and
+   * writes the target message to {@code out}. The facade's clock is not read. Nothing is written
+   * before the whole input has been read; after an error, what {@code out} holds is undefined.
+   *
+   * @param now the time every date function sees; its offset is the run's time zone
+   * @throws MalformedInputException when the input is not well-formed in the mapping's input
+   *     format: XML, without a DOCTYPE, or JSON, without a duplicate key
+   * @throws IOException when {@code out} cannot be written, as {@code out} throws it
+   * @throws MappingRunException when the run meets a runtime error in its data, with its code and
+   *     authoring id
+   * @throws java.util.concurrent.CancellationException when the thread is interrupted
+   */
+  public void run(CompiledMapping mapping, byte[] input, OutputStream out, OffsetDateTime now)
+      throws MalformedInputException, IOException {
+    mapping.executable().run(new ByteArrayInputStream(input), out, new Tracer(), now);
   }
 
   /** {@link #run}, reporting to {@code tracer}, at the time the clock gives as it starts. */

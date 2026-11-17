@@ -28,13 +28,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * {@code Main.shipped(int)} is the one place that names what a node ships — the node ({@code Main.start}) and
  * the CLI both take it from there. It ships the http and sftp components (no mock: a node never names one), the xslt steps of
- * {@link SaxonXml}, the xsd step of {@link XsdValidate} and the jq step, in that order, and the xpath language. Its argument is the
+ * {@link SaxonXml}, the xsd step of {@link XsdValidate}, the jq step and the mapping step, in that order, and the xpath language. Its argument is the
  * jq step's recursion depth for a flow that sets none.
  */
 class MainShippedTest {
 
     @Test
-    void shippedIsTheHttpAndSftpComponentsTheXsltXsdAndJqStepsAndXpath() {
+    void shippedIsTheHttpAndSftpComponentsTheXsltXsdJqAndMappingStepsAndXpath() {
         Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
         FakeRuntime rt = FakeRuntime.create();
         Vertx vertx = Vertx.vertx();
@@ -46,8 +46,8 @@ class MainShippedTest {
             vertx.close().await();
         }
         List<String> wired = Stream.concat(Stream.concat(new SaxonXml().steps().stream(), new XsdValidate().steps().stream()).map(StepFactory::type),
-                Stream.of("jq")).toList();
-        assertEquals(wired, shipped.steps().stream().map(StepFactory::type).toList(), "the step types Main wired: SaxonXml's, XsdValidate's, then jq");
+                Stream.of("jq", "mapping")).toList();
+        assertEquals(wired, shipped.steps().stream().map(StepFactory::type).toList(), "the step types Main wired: SaxonXml's, XsdValidate's, jq, then mapping");
         assertEquals(new SaxonXml().languages().stream().map(Expressions::language).toList(),
                 shipped.languages().stream().map(Expressions::language).toList(), "SaxonXml's languages");
         assertEquals(List.of("xpath"), shipped.languages().stream().map(Expressions::language).toList(), "xpath");

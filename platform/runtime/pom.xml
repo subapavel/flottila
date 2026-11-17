@@ -191,6 +191,10 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-step-mapping</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-http</artifactId>
     </dependency>
     <dependency>

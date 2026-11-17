@@ -1,0 +1,7 @@
+#!/bin/sh
+# install-mapping: installs the mapping engine's embedding API (mapping/engine/embed and the engine modules under it) into the
+# local Maven repository, without its tests, which mapping-ci runs. The platform's mapping step depends on it: run this once
+# before building the platform, and again after a change under mapping/engine/. Usage: bin/install-mapping
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec "$root/mvnw" -B -ntp -q -f "$root/mapping/pom.xml" -pl engine/embed -am install -DskipTests

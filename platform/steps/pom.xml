@@ -19,6 +19,7 @@
     <module>xslt</module>
     <module>validate</module>
     <module>jq</module>
+    <module>mapping</module>
   </modules>
 
 </project>

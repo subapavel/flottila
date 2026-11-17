@@ -52,5 +52,5 @@ Vert.x documentation comes from Context7: library `/eclipse-vertx/vert.x` (core,
   real component and its mock.
 - Integration tests use Testcontainers (`PostgresImage` for the pinned Postgres) and run with
   `-Pit`. Run the modules you touched:
-  `mvn -B -ntp -q -f platform/pom.xml verify -Pit -pl :<module> -am`, after `bin/install-jq` once (the
-  jq step depends on the engine in `jq/`).
+  `mvn -B -ntp -q -f platform/pom.xml verify -Pit -pl :<module> -am`, after `bin/install-jq` and
+  `bin/install-mapping` once (the jq and mapping steps depend on the engines in `jq/` and `mapping/`).

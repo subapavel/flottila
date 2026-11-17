@@ -81,6 +81,20 @@ class ModuleBoundaryViolationTest {
         assertDoesNotThrow(() -> Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(simOnly), "sim -> api, core, testkit and sim are allowed");
         assertDoesNotThrow(() -> Rules.NOTHING_DEPENDS_ON_SIM.check(simOnly), "sim -> sim is allowed");
     }
+    // --- the mapping engine: only the mapping step depends on it, and only on its embedding API
+    @Test void aModuleOtherThanTheMappingStepDependingOnTheEngineIsCaught() {
+        assertFails(Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE, "RuntimeDependsOnTheMappingEngine");
+    }
+    @Test void theMappingStepReachingPastTheEmbeddingApiIsCaught() {
+        assertFails(Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API, "MappingStepUsesTheEngineFacade");
+    }
+    @Test void theMappingStepUsingTheEmbeddingApiIsAllowed() {
+        JavaClasses stepOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(dev.rail8.steps.mapping.violation.MappingStepUsesTheEmbeddingApi.class);
+        assertDoesNotThrow(() -> Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(stepOnly), "the step may depend on the engine");
+        assertDoesNotThrow(() -> Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API.check(stepOnly), "through its embedding API");
+    }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
 
     @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAComponent"); }

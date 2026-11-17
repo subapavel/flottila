@@ -1,0 +1,25 @@
+schemaVersion: 1
+kind: test
+flow: orders
+mocks:
+  partner: { reply: fixtures/ack.json }
+cases:
+  - name: orders mapped
+    send: fixtures/orders.xml
+    expect:
+      status: 200
+      steps: 3
+      sent:
+        partner: { count: 1, equals: '<?xml version="1.0" encoding="UTF-8"?><Out><All>7</All><All>12</All></Out>' }
+  - name: not xml
+    send: fixtures/not-xml.json
+    expect:
+      status: 400
+      sent:
+        partner: { count: 0 }
+  - name: a quantity that is no decimal
+    send: fixtures/no-decimal.xml
+    expect:
+      status: 500
+      sent:
+        partner: { count: 0 }
