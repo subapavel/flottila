@@ -45,7 +45,9 @@ CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtim
            "mapping/engine/xslt-export/src/main/", "mapping/service/src/main/",
            # the UI's sources except src/generated, whose comments come from the contract's schemas
            "mapping/ui/src/api/", "mapping/ui/src/app/", "mapping/ui/src/model/", "mapping/ui/src/studio/",
-           "mapping/ui/src/file-names.test.ts", "mapping/ui/src/import-boundaries.test.ts")
+           "mapping/ui/src/file-names.test.ts", "mapping/ui/src/import-boundaries.test.ts",
+           "jq/jq-core/src/main/", "jq/query-core/src/main/", "jq/jq-cli/src/main/", "jq/oracle/src/main/",
+           "jq/pit-filter/src/main/", "jq/bench/jmh/src/main/")
 UI_ROOT = "mapping/ui/"
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")
