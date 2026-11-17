@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The segments of other nodes' journals this node holds (CORE-5b1 "Holder disk"):
+ * The segments of other nodes' journals this node holds:
  * {@code $RAIL8_JOURNAL_DIR/replicas/<owner>/<journal id>/<n>.part} while a replica is written, {@code <n>.seg} once sealed,
  * byte for byte the owner's {@code segments/<n>.seg}. Their files and reservations count in the journal's bytes
  * ({@link Journal#bytes()}) beside its own segments: an OPEN reserves its {@code length} and is refused
@@ -64,7 +64,7 @@ public final class Replicas {
      *                                  {@code length} is below it; nothing reserved or created
      * @throws ReplicaMismatch          n is held sealed, or its {@code .part} is not exactly {@code header}; nothing changed
      * @throws JournalFullException     the replicas or the journal have no room for {@code length}; nothing created
-     * @throws IOException              a create, write or force failed: the {@code .part} kept (CORE-5b1 C2), counted at its size
+     * @throws IOException              a create, write or force failed: the {@code .part} kept, counted at its size
      */
     public Replica open(String owner, UUID journalId, long n, long length, byte[] header) throws IOException {
         if (!NODE_ID.matcher(owner).matches()) {   // a path element below: never "..", never "a/b"
@@ -108,8 +108,8 @@ public final class Replicas {
     }
 
     /**
-     * A create failed with {@code failure}: its file, if it opened one, is closed and counted at the bytes it holds (C2; r1 R2:
-     * a torn header write's included) in place of the {@code reserved} bytes; a failing close is suppressed into {@code failure}.
+     * A create failed with {@code failure}: its file, if it opened one, is closed and counted at the bytes it holds (a torn
+     * header write's included) in place of the {@code reserved} bytes; a failing close is suppressed into {@code failure}.
      */
     private void failed(JournalIo.Owned ch, long reserved, Throwable failure) {
         long holds = 0;

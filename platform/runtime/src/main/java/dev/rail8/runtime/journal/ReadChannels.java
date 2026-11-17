@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * The read channels of a journal (CORE-3 item 8): one per segment, shared by every pread of it, at most {@code max} kept
+ * The read channels of a journal: one per segment, shared by every pread of it, at most {@code max} kept
  * open ({@code RAIL8_JOURNAL_READ_CHANNELS}). A read that needs one more closes the least recently used first; a channel
  * still read when it is put out is closed by its last read. A read that fails drops its channel (closed once no read uses
  * it), so the next read of that segment opens a fresh one. {@link #close()} closes every one; a read afterwards is refused.
@@ -107,7 +107,7 @@ final class ReadChannels implements Closeable {
 
     /**
      * Drops segment {@code segment}'s channel, if one is kept: out of the set at once, closed now or by its last read in flight, so
-     * the inode of a swept segment's unlinked file goes (CORE-4d); a later read of that segment opens a fresh one.
+     * the inode of a swept segment's unlinked file goes; a later read of that segment opens a fresh one.
      */
     void drop(long segment) throws IOException {
         lock.lock();

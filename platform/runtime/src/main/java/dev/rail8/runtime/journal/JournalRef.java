@@ -1,7 +1,7 @@
 package dev.rail8.runtime.journal;
 
 /**
- * Where a record lies: its segment, its offset in the segment file and its encoded length (CORE-3 items 1, 2 and 4). Known
+ * Where a record lies: its segment, its offset in the segment file and its encoded length. Known
  * when {@link Journal#append} returns, before the record is written, and when {@link Journal#spill} returns.
  *
  * @param segment  the segment number n ({@code segments/<n>.seg})

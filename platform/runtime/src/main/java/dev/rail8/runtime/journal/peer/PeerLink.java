@@ -16,15 +16,15 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * One peer link's socket (CORE-5 S1, S2), either side: on open it sends its HELLO, answers the peer's HELLO with its proof and
+ * One peer link's socket, either side: on open it sends its HELLO, answers the peer's HELLO with its proof and
  * is established once the peer's proof holds; every later frame is checked (sequence, tag) on the socket's event loop before
  * its {@link Receiver} sees it, and a frame that fails — a bad tag, a length out of range, anything the protocol refuses — closes
- * the link. Until the link is proven a frame is at most a HELLO long, after the peer's HELLO at most a proof (r2 R1): a longer
+ * the link. Until the link is proven a frame is at most a HELLO long, after the peer's HELLO at most a proof: a longer
  * length is refused at its four bytes. Writes go out sealed in sequence order under one lock, from any thread.
  *
  * <p>A watchdog on the injected timer closes the link when it is not established within {@code RAIL8_PEER_TIMEOUT}, and
  * when the receiver waits for an answer and nothing moved — no bytes, no new wait, no resume, no bytes taken by a read's
- * consumer — for a whole timeout. A link its reader paused is no exception (r2 R3): one whose consumer takes nothing for a
+ * consumer — for a whole timeout. A link its reader paused is no exception: one whose consumer takes nothing for a
  * whole timeout closes and its reads fail; one whose consumer still drains stays.
  */
 final class PeerLink {
@@ -33,7 +33,7 @@ final class PeerLink {
     interface Receiver {
         /**
          * The peer's proof held, on the link's event loop, before {@link #established()} completes and before any later frame;
-         * a throw closes the link (CORE-5b1: a repl link's owner and epoch are checked here).
+         * a throw closes the link (a repl link's owner and epoch are checked here).
          */
         default void established(PeerLink link) throws PeerRefusedException { }
 
@@ -115,7 +115,7 @@ final class PeerLink {
 
     /**
      * Marks the link closing for {@code why} (the first reason wins) without touching its socket: a send fails from now on and
-     * a later {@link #close} queues nothing; {@link #reset} then ends the socket (CORE-5b1 r1: a superseded repl link).
+     * a later {@link #close} queues nothing; {@link #reset} then ends the socket (as for a superseded repl link).
      */
     void abandon(IOException why) {
         ending(why);
@@ -251,7 +251,7 @@ final class PeerLink {
         if (closing == null) watchdog = timer.schedule(timeout, this::watch);
     }
 
-    /** The watchdog's look, every timeout: a link not established, or waiting without progress (paused or not, R3), closes. */
+    /** The watchdog's look, every timeout: a link not established, or waiting without progress (paused or not), closes. */
     private void watch() {
         long now = progress.get();
         boolean stalled = !established.future().succeeded() || (receiver.waiting() && now == seen);

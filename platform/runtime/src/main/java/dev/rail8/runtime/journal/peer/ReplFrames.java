@@ -9,7 +9,7 @@ import java.util.Arrays;
 import java.util.UUID;
 
 /**
- * The payloads of the repl channel (CORE-5b1 "Wire"), big-endian, inside framing v1: what an owner sends a holder (OPEN, DATA,
+ * The payloads of the repl channel, big-endian, inside framing v1: what an owner sends a holder (OPEN, DATA,
  * SEAL) and what the holder answers (RECEIPT, REFUSE). Every frame starts with its segment's address, {@code u16 L · owner
  * UTF-8 (1..63 bytes) · journal id (u64 msb, u64 lsb) · n u64 (≥ 1)}. A payload not of its layout — a byte short or long, an
  * address out of its bounds, a DATA of no byte or past {@value #DATA_MAX}, a REFUSE detail past {@value #DETAIL_MAX} bytes — is
@@ -23,11 +23,11 @@ import java.util.UUID;
  * REFUSE 8  = A · reason u8 (1 FULL, 2 FAILED, 3 MISMATCH) · u16 len · detail UTF-8
  * </pre>
  *
- * No DATA(n) goes before RECEIPT OPENED(n); HAVE (7) is CORE-5b3's, type 9 is reserved.
+ * No DATA(n) goes before RECEIPT OPENED(n); types 7 (HAVE, not sent yet) and 9 are reserved.
  */
 final class ReplFrames {
 
-    /** The most bytes one DATA carries (a wire constant, D-139). */
+    /** The most bytes one DATA carries (a wire constant: owner and holder must agree on it). */
     static final int DATA_MAX = 4 << 20;
     /** The most bytes of a REFUSE's detail. */
     static final int DETAIL_MAX = 512;

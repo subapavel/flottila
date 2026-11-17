@@ -1,7 +1,7 @@
 package dev.rail8.runtime.journal;
 
 /**
- * One entry of a sealed segment's footer index (CORE-3 item 1): what the record is and where it lies.
+ * One entry of a sealed segment's footer index: what the record is and where it lies.
  *
  * @param messageId the record's message id
  * @param step      the record's step

@@ -4,13 +4,12 @@ import java.time.Duration;
 import java.util.Objects;
 
 /**
- * The segment sweeper's settings (CORE-3 items 10 and 14), each finite and range-checked; a refusal names its key.
+ * The segment sweeper's settings, each finite and range-checked; a refusal names its key.
  *
  * @param interval   {@code RAIL8_JOURNAL_SWEEP_INTERVAL} (PT10S, PT1S..PT1H): from the end of a pass to the next one
  * @param grace      {@code RAIL8_JOURNAL_SWEEP_GRACE} (PT1M, PT1S..PT1H): a segment is a candidate this long after its seal
  *                   (by its trailer's sealed ms; after a restart, since the start)
  * @param keepMaxAge {@code RAIL8_JOURNAL_KEEP_MAX_AGE} (PT1H, PT1M..P1D): a kept ref pins its segment while it is younger
- *                   (the interim until CORE-10, CORE-3 item 14)
  * @since 0.1
  */
 public record SweepConfig(Duration interval, Duration grace, Duration keepMaxAge) {
