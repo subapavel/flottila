@@ -58,7 +58,6 @@ class LedgerCheckTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "docs" / "archive" / "agent").mkdir(parents=True)
-        (self.root / "docs").mkdir(exist_ok=True)
 
     def tearDown(self):
         self.tmp.cleanup()

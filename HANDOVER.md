@@ -125,7 +125,7 @@ is done as well.
 2. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
 3. **P2-07b**: payload reads of a body removed by retention answer 409 (the row's replay half left with D-156).
 
-Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (docs/archive/agent/BACKLOG.md).
+Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open work (GitHub Issues).
 
 ## 9. Stretch (GATE.md) — not reached
 
