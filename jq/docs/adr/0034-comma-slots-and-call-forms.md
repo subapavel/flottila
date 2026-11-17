@@ -110,13 +110,19 @@ of a read array was quadratic in ticks and time.
   larger than the length, so more walks come before the build, but the total stays linear in the
   array's entries.
 - **No table.** An array of more than 2^24 elements, or whose table the bytes-built budget cannot
-  take (`RunState.fits`), gets no table in that run and its reads go on walking. No run ends
-  because of a table.
-- **Replacing an entry.** A new entry replaces the entry with no table whose walks stepped the
-  fewest elements, the least recently used among equals. Only when every entry has a table is the
-  least recently used one replaced. One-off reads therefore replace each other, not the array a
-  loop reads. A rebuild after its array was replaced is charged again: bytes built count
-  allocations.
+  take (`RunState.fits`), gets no table while its entry lasts and its reads go on walking. A table
+  the bytes-built budget cannot take is never built; a built table's bytes count against the run's
+  later allocations like any other allocation.
+- **Replacing an entry.** The memo counts its reads, every read and every length, entered or not,
+  and each entry keeps the count at its last read. If the least recently used entry has not been
+  read in the last 64 reads (`AGE`, 16 times the slots), a new entry replaces it. Otherwise it
+  replaces the entry with no table whose walks stepped the fewest elements, the least recently
+  used among equals, and only when every entry has a table the least recently used one. One-off
+  reads therefore replace each other, not the array a loop reads, and arrays no longer read give
+  up their entries, with a table or refused one. A replaced entry loses its count with its table,
+  so a rebuild again follows walks that cost more than it, and the cost bound holds with rebuilds.
+  A rebuild is charged again: bytes built count allocations. If loops that read five or more
+  arrays at once turn out to matter, the slots are the knob, not the age.
 - **Unchanged.** Slices, iteration and the host's accessors keep their costs. `first`, `last` and
   `nth($n)` are `.[0]`, `.[-1]` and `.[$n]`, and `has(n)` on an array reads through the same path,
   so they get the tables too. The step default (spec 6) is set on these costs.
