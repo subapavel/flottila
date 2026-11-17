@@ -506,22 +506,31 @@ attempt and every attempt step by step: outcome, start, wall and CPU time, paylo
 The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
 attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
 
+The Mappings screen lists the mappings of the mapping service's workspace, finds them and creates
+them, and opens each one in a tab of its own, so that several mappings can be open at once. A
+mapping's tab is the mapping studio: it opens read-only; Edit, then Save (with `If-Match`, and a
+dialog when the file changed on disk), Cancel and Check; and its Overview tab, with the mapping's
+details and description. Closing the tab of a mapping with unsaved changes asks first. The
+studio's other tabs are still in the separate studio below, and move into this one tab by tab.
+
 No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
 passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
 `http://127.0.0.1:8081`), as the node answers no browser: it takes only GET and POST from its own
 pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops every header but
 `Accept` and `Content-Type`, and adds the token from `RAIL8_ADMIN_TOKEN` itself, so the browser
-never holds it.
+never holds it. The mapping studio's `/api` requests go to the mapping service on the same machine
+(port `QUARKUS_HTTP_PORT`, default 8080).
 
-The admin API answers JSON and refuses browsers. The mapping studio in `mapping/ui` is a separate
-application: React with PatternFly 6, the expression canvas on React Flow. Its screens are a list of
-mappings and a studio with overview, definition, test, signature and functions tabs. `site/` is the
+The admin API answers JSON and refuses browsers. The old mapping studio in `mapping/ui` is a
+separate application: React with PatternFly 6, the expression canvas on React Flow. Its screens are
+a list of mappings and a studio with overview, definition, test, signature and functions tabs. `site/` is the
 project's public web page.
 
 **Planned**
 - Finding messages by flow and time, which the admin API cannot search by yet.
 - A server for the UI outside development, holding the token and talking to the node the same way.
-- The mapping studio rebuilt inside it.
+- The rest of the mapping studio rebuilt inside it: the Signature, Definition, Test and Functions
+  tabs, then `mapping/ui` removed.
 - Plugins add their screens through a form generated from their JSON Schema.
 - Writing a view of a payload (how a body is shown), later and simply.
 

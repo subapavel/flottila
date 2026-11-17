@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { adminProxy } from './server/adminProxy.ts';
+import { mappingServiceTarget } from './server/mappingService.ts';
 
 // The development server listens on localhost only, on a fixed port, so the origins its own pages send are known.
 const port = 5173;
@@ -28,5 +29,13 @@ function adminApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), adminApi()],
-  server: { host: 'localhost', port, strictPort: true },
+  server: {
+    host: 'localhost',
+    port,
+    strictPort: true,
+    // the mapping studio's /api requests go to the mapping service
+    proxy: { '/api': mappingServiceTarget(process.env) },
+    // the mapping studio's fake service reads its fixtures from the mapping corpus and contract
+    fs: { allow: ['.', '../mapping/corpus', '../mapping/contract'] },
+  },
 });

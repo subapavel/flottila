@@ -8,6 +8,10 @@ on:
       - 'ui/**'
       - 'mapping/ui/scripts/check-licences.mjs'
       - 'mapping/ui/scripts/licence-exceptions.json'
+      # the mapping studio's types are a copy of these, and its fake service reads the corpus and the contract
+      - 'mapping/ui/src/generated/**'
+      - 'mapping/corpus/**'
+      - 'mapping/contract/**'
       - '.github/workflows/ui-ci.yml'
   push:
     branches: [main]
@@ -15,6 +19,10 @@ on:
       - 'ui/**'
       - 'mapping/ui/scripts/check-licences.mjs'
       - 'mapping/ui/scripts/licence-exceptions.json'
+      # the mapping studio's types are a copy of these, and its fake service reads the corpus and the contract
+      - 'mapping/ui/src/generated/**'
+      - 'mapping/corpus/**'
+      - 'mapping/contract/**'
       - '.github/workflows/ui-ci.yml'
 
 concurrency:
