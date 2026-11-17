@@ -51,9 +51,10 @@ import org.junit.jupiter.params.provider.MethodSource;
  * <p>The ticket gate runs the {@code -Xint} 512 KiB column, both modes, each shape once at the committed constants as
  * the first run of its own fresh child ({@link #everyCellSwitchesBeforeTheBackstop}). The {@code calibration-matrix}
  * tag (the spec gate and nightly) runs every cell: {@code -Xint} and C1 on platform 256 KiB, 512 KiB and 1 MiB and on
- * virtual threads, warm on the last three, × 2 modes × the 14 {@link CalibrationCell#SHAPES}, 308 cells. The constants are measured in {@code -Xint} and C1, proven in warm (the adviser's K1): a
- * warm search runs while the JIT compiles, so its edge is not the thread's. An {@code -Xint} cell's {@code U*} is its
- * cold edge, one bisection over fresh children, each probe the first run of its own, with the linked edge, after two
+ * virtual threads, warm on the last three, × 2 modes × the 14 {@link CalibrationCell#SHAPES}, 308 cells. The constants
+ * are measured in {@code -Xint} and C1, proven in warm: a warm search runs while the JIT compiles, so its edge is not
+ * the thread's. An {@code -Xint} cell's {@code U*} is its cold edge, one bisection over fresh children, each probe the
+ * first run of its own, with the linked edge, after two
  * linking runs, beside it; a C1 cell's is the smallest of 3 warmed children. A child's search, C1's and the linked one,
  * repeats from its own result until two consecutive passes agree on {@code U*}, and a cell with a child that has no
  * such fixed point after {@value CalibrationCell#PASSES} passes is INVALID (the adviser's L1). At {@code U* + 1} a cell
@@ -64,7 +65,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * {@code target/calibration-progress.log} a line when a child or a cold search starts, and each child's rows as it
  * ends, every line led by its ISO-8601 UTC instant.
  *
- * <p>Each cell proves its thread's size (D2): the plain recursion count of its thread, against the count of the next
+ * <p>Each cell proves its thread's size: the plain recursion count of its thread, against the count of the next
  * platform thread up of its tier (the 1 MiB thread against 512 KiB, a virtual one against 1 MiB), must be 1.5 to 3.5
  * times smaller (the deep-stack measurements: {@code -Xint} 4 772 frames at
  * 512 KiB and 10 730 at 1 MiB; a 512 KiB thread on a cached larger stack reached 10 729). The probe's recursion is
@@ -242,10 +243,9 @@ class CalibrationTest {
    * Each platform cell proves against the next thread up, the 1 MiB one, the top, against 512 KiB, and a virtual cell
    * against 1 MiB; {@link #proven} over each cell's proofs. On {@code -Xint} counts: 1641 frames at 256 KiB (a side
    * probe of the 256 KiB thread), 4371 at 512 KiB, 9833 at 1 MiB and 4354 on the virtual thread (the committed
-   * record). Each cell is proven; a 512 KiB stack under a 256 KiB label (the
-   * cached-stack case of D2) is INVALID, which the 1 MiB thread cannot see (4371 against 9833 is in the band). A 1 MiB
-   * stack under the 512 KiB label fails that cell and the two that prove against it, 256 KiB and 1 MiB; one under the
-   * virtual label fails the virtual cell.
+   * record). Each cell is proven; a 512 KiB stack under a 256 KiB label (a cached larger stack) is INVALID, which the
+   * 1 MiB thread cannot see (4371 against 9833 is in the band). A 1 MiB stack under the 512 KiB label fails that cell
+   * and the two that prove against it, 256 KiB and 1 MiB; one under the virtual label fails the virtual cell.
    */
   @Test
   void aCellProvesAgainstTheNextThreadUp() {
@@ -261,7 +261,7 @@ class CalibrationTest {
 
   /** Each of an {@code -Xint} W CONSERVATIVE cell's four threads, proven or INVALID, given each one's proof. */
   private static String ladder(long frames256KiB, long frames512KiB, long frames1MiB, long framesVirtual) {
-    List<CellThread> threads = List.of(new CellThread("platform", SMALLEST), new CellThread("platform", SMALL), new CellThread("platform", LARGE), new CellThread("virtual", SMALL));
+    List<CellThread> threads = MEASURED_THREADS;
     List<Long> frames = List.of(frames256KiB, frames512KiB, frames1MiB, framesVirtual);
     Shape w = shape("W");
     Map<String, List<Long>> proofs = new HashMap<>();
@@ -808,10 +808,10 @@ class CalibrationTest {
    * c2 over the full matrix (the {@code calibration-matrix} tag), at the committed constants, measured in {@code -Xint}
    * and C1, proven in warm (K1). Every cell is proven. An {@code -Xint} or C1 cell's {@code U_f} at the thread's size is
    * at most its edge, the cold one for {@code -Xint}, where the edge + 1 ends STACK after a prefix of the reference
-   * results ({@link #provenVerdict}, L3); a flat cell, whose control completes, has no edge. A child compiles on its
+   * results ({@link #provenVerdict}); a flat cell, whose control completes, has no edge. A child compiles on its
    * helper thread, so a child that prints a {@code compile} row in place of its rows fails its cell. The cold and linked
    * slopes of each {@code -Xint} pair agree within {@value #SLOPES_AGREE} B. A C1 cell's {@code U*} is the smallest of
-   * 3 fresh warmed children, each child's search at its fixed point (L1), and the spread is recorded (D3). A warm cell
+   * 3 fresh warmed children, each child's search at its fixed point, and the spread is recorded. A warm cell
    * holds when each of its {@value #WARM_CHILDREN} children gives reference jq's result in each of its {@value
    * #WARM_RUNS} runs at the thread's size ({@link #warmVerdict}); one STACK fails the test, naming the cell, the child
    * and the run. {@code -Xint} and C1 children run 4 at a time, warm children one at a time after them; each search
@@ -820,7 +820,7 @@ class CalibrationTest {
    * from {@link CalibrationRecordTest#derived} (adjacent-pair slopes, the lowest pair's intercepts), and
    * per warm cell the check's verdict in the {@code end} column; a result longer than {@value #SHOWN} characters prints
    * as {@link #shown}. Its {@code max-b} and {@code reserve} rows are {@link CalibrationRecordTest#maxima} of the {@code
-   * -Xint} and C1 rows. A fresh run asserts one way (K7): its {@code b} and reserve are at most the constants.
+   * -Xint} and C1 rows. A fresh run asserts one way: its {@code b} and reserve are at most the constants.
    */
   @Test
   @Tag("calibration-matrix")
@@ -964,7 +964,7 @@ class CalibrationTest {
    * The edge is exact (the {@code calibration-matrix} tag): on {@code -Xint}, a 512 KiB main thread, in each mode, the
    * cold edge {@code U*} of a bisection over fresh children gives reference jq's result as the first run of another
    * fresh child, and {@code U* + 1} ends STACK after a prefix of the reference results as the first run of a third
-   * ({@link #exactEdgeWant}, L3). The bisection starts from the committed record's {@code U*cold} where the record has
+   * ({@link #exactEdgeWant}). The bisection starts from the committed record's {@code U*cold} where the record has
    * the cell; each line also goes to the progress log.
    */
   @Test
@@ -1239,7 +1239,7 @@ class CalibrationTest {
     return Arrays.stream(printed.split("\n")).map(l -> l.split("\t")).filter(r -> r.length > 9 && r[0].equals("warm") && r[2].equals(id)).toList();
   }
 
-  /** The verdict of a cell whose thread is not proven (D2): its proofs and those of the thread it proves against. */
+  /** The verdict of a cell whose thread is not proven: its proofs and those of the thread it proves against. */
   private static String invalid(Map<String, List<Long>> proofs, Tier tier, CellThread thread, CompileMode mode, Shape shape) {
     CellThread against = provesAgainst(thread);
     return "INVALID " + proofs.get(key(tier, thread, mode) + " " + shape.id()) + " frames; " + against + " " + proofs.get(key(tier, against, mode) + " " + shape.id());
@@ -1335,7 +1335,7 @@ class CalibrationTest {
   }
 
   /**
-   * D2: every child of the cell proves its thread against {@link #provesAgainst}: a cell below that thread against its
+   * Every child of the cell proves its thread against {@link #provesAgainst}: a cell below that thread against its
    * smallest proof, the 1 MiB cell, above it, against its largest.
    */
   private static boolean proven(Map<String, List<Long>> proofs, Tier tier, CellThread thread, CompileMode mode, Shape shape) {

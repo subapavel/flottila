@@ -110,8 +110,8 @@ final class CalibrationCell {
   static final String PLAIN_DESCENT = plainDescent();
 
   /**
-   * Reference jq 1.8.2's result for {@link #PLAIN_DESCENT} on null, IrDepthTest's {@code NESTED_30001} (diff/over-cap.rec
-   * {@code over-cap/depth-30001}): 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets.
+   * Reference jq 1.8.2's output for {@link #PLAIN_DESCENT} on null, the same text as IrDepthTest's {@code
+   * NESTED_30001}: 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets.
    */
   static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
 

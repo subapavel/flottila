@@ -40,7 +40,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * U*cold)} of an {@code -Xint} cell (ADR-0046 #113 "Rulings on the red", O1), rounded up to 4 KiB, plus 32 KiB, and
  * never below the record's guard pages plus 32 KiB; there is no {@code T} term (D1).
  *
- * <p>The lowest-pair rule (GLOSSARY "Lowest pair") replaces the 512 KiB → 1 MiB chord: {@link
+ * <p>The lowest-pair rule replaces the 512 KiB → 1 MiB chord: {@link
  * #maxima} recomputes every number from the rows' {@code U*}. Per tier, mode and shape each adjacent pair of platform
  * threads has the slope {@code s = ceilDiv(ΔS, ΔU*linked)}; a platform row's {@code b_cell} is the largest {@code s},
  * a virtual row's the lowest pair's {@code s_low}; the intercept {@code S - s_low·(U*linked + D_f)} is taken on the
@@ -92,7 +92,8 @@ class CalibrationRecordTest {
    * 256 KiB rows), its slope {@code s_low}. A platform row's {@code b_cell} is the largest {@code s} of its group; a virtual row's
    * is {@code s_low}. The intercept {@code S - s_low·(U*linked + D_f)} is the lowest pair's rows' and the virtual row's,
    * no other platform row's. The cold term {@code b_cell·(U*linked - U*cold)} is a row's with a numeric {@code U*cold},
-   * an {@code -Xint} row's. {@code b_cold} is the same rule on the pairs' {@code U*cold}. Warm rows get nothing (K1).
+   * an {@code -Xint} row's. {@code b_cold} is the same rule on the pairs' {@code U*cold}. Warm rows get
+   * nothing: they are checks, not measures.
    */
   static List<Derived> derived(List<String[]> cells) {
     Map<String, List<Integer>> groups = new LinkedHashMap<>();
@@ -201,7 +202,7 @@ class CalibrationRecordTest {
         }
       }
     }
-    assertThat(covered).as("the cells of the record %s: -Xint and C1 on platform 256 KiB, 512 KiB, 1 MiB and virtual, warm on the last three, both modes, each shape (ADR-0046 #199)", RECORD).containsExactlyInAnyOrderElementsOf(matrix);
+    assertThat(covered).as("the cells of the record %s: -Xint and C1 on platform 256 KiB, 512 KiB, 1 MiB and virtual, warm on the last three, both modes, each shape", RECORD).containsExactlyInAnyOrderElementsOf(matrix);
     assertThat(record.summary()).as("the record's summary rows").containsKey("guard");
     long guard = Long.parseLong(record.summary().get("guard"));
     Maxima maxima = maxima(record.cells(), guard);
@@ -231,10 +232,9 @@ class CalibrationRecordTest {
   }
 
   /**
-   * L2's oracle: {@code -Xint} OPTIMISED ND on the older record's three rows (written at b 192 and reserve 286 720,
-   * verbatim) and a side probe's 256 KiB row ({@code -Xint -Xss256k}, linked {@code U*} 4715, proof 1641; it measured
-   * no cold edge, so
-   * {@code U*cold} is {@code -}, and no matrix filled its derived columns). Linked {@code U*} 4715, 12 671 and 34 703 on
+   * The lowest pair's intercepts on {@code -Xint} OPTIMISED ND: the older record's three rows (written at b 192 and
+   * reserve 286 720, verbatim) and a side probe's 256 KiB row ({@code -Xint -Xss256k}, linked {@code U*} 4715, proof
+   * 1641; it measured no cold edge, so {@code U*cold} is {@code -}, and no matrix filled its derived columns). Linked {@code U*} 4715, 12 671 and 34 703 on
    * the platform threads, 12 620 on the virtual one, D_f 24. {@code s_low = ceilDiv(262 144, 7956) = 33}, {@code s_up =
    * ceilDiv(524 288, 22 032) = 24}, so {@code b_cell} is 33. The intercepts at 33: 105 757 (256 KiB), 105 353 (512 KiB)
    * and 107 036 (virtual); the 1 MiB row gives none. The cold terms: 0, 0, and 33·(34 703 - 34 729) on the 1 MiB row.
@@ -343,10 +343,10 @@ class CalibrationRecordTest {
    * proof lists: each row with its 512 KiB, 1 MiB and virtual partners from that record, so a helper that recomputes from {@code U*} sees each
    * pair. That record has no 256 KiB row, so each group's lowest pair is its 512 KiB → 1 MiB pair. A flat C1 row, which
    * is not that record's and has no partner there, gives nothing. The largest slope is C1's W CONSERVATIVE pair,
-   * {@code ceilDiv(524 288, 5017 - 2242)} = 189, so {@code b} is 192 (K2), not the warm W's 220 (2971 → 5360), which
+   * {@code ceilDiv(524 288, 5017 - 2242)} = 189, so {@code b} is 192, not the warm W's 220 (2971 → 5360), which
    * gives 224. The reserve is 220 832, {@code -Xint}'s virtual ND OPTIMISED intercept at the pair's 24 (12 671 → 34 703),
    * plus 29 988, {@code -Xint}'s 1 MiB collect-descent CONSERVATIVE cold term at 119 (3424 → 7834), rounded up to
-   * 253 952, plus 32 768: 286 720 (K3). The warm ND OPTIMISED virtual row's intercept at the warm pair's 1 (20 454 → 4 203
+   * 253 952, plus 32 768: 286 720. The warm ND OPTIMISED virtual row's intercept at the warm pair's 1 (20 454 → 4 203
    * 835), 503 810, would make it 569 344, the reserve row that run wrote. These numbers stay the older record's: a
    * move to the new rule's numbers would weaken the test.
    */
