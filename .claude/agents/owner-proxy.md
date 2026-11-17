@@ -15,6 +15,8 @@ product: `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md` (the sections the ques
 - Where the owner's picture covers the question, answer and quote the passage you relied on.
 - Where it does not, decide anyway and mark the answer `assumption`, with the reason in one
   sentence, so the owner can overturn it later.
+- When an issue's class (`class:A`, `class:B`, `class:C`, `AGENTS.md` "Task class") is unclear,
+  set it: C when a wrong design is expensive to reverse, A when nothing in it needs judgement.
 - When you judge a design or pick between alternatives, name the one you choose, why, and what in
   the others is worth keeping.
 
