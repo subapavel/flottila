@@ -43,7 +43,7 @@ stderr
 end
 
 case over-cap/flat-4097
-def 92e6b77503fb
+def 0b5c5bfc8bb4
 rc 3
 stdout
 stderr jq: error: too many function parameters or local function definitions (max 4095)\njq: 1 compile error\n

@@ -547,28 +547,28 @@ stderr jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x, b
 end
 
 case control/deviation-try-break
-def 639417fb98c2
+def e733e04ab945
 rc 0
 stdout [1,{"__jq":0},2]\n
 stderr
 end
 
 case control/deviation-postfix-break
-def defa9a1cd6dd
+def a46aca23cd08
 rc 0
 stdout [1,2]\n
 stderr
 end
 
 case control/deviation-altbind-break
-def ac905d1d09d3
+def a60941751973
 rc 0
 stdout [1,[1]]\n
 stderr
 end
 
 case control/deviation-forged-break
-def d7f4dab4192b
+def 977caaa513e3
 rc 0
 stdout [1]\n
 stderr

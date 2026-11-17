@@ -232,21 +232,21 @@ stderr
 end
 
 case sort/deviation-cycle-sort
-def 5a5e4bda602b
+def 27eb43a59707
 rc 0
 stdout [100000000000000000001,1e+20,100000000000000000000]\n
 stderr
 end
 
 case sort/deviation-cycle-unique
-def 49aba943fa43
+def 741238fa0094
 rc 0
 stdout [100000000000000000001,100000000000000000000]\n
 stderr
 end
 
 case sort/deviation-cycle-group-by
-def f7fba065587c
+def c96b7acc9624
 rc 0
 stdout [[100000000000000000001,1e+20],[100000000000000000000]]\n
 stderr

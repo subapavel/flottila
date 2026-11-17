@@ -162,21 +162,21 @@ stderr jq: error (at <stdin>:1): array (["","","","","","","","",...]) and objec
 end
 
 case constant-key-cap/huge-split
-def b688fffd8a61
+def 785253eb1eaa
 rc 3
 stdout
 stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*2000000)/"x"):1}\n      ^^^^^^^^^^^^^^^^^\njq: 1 compile error\n
 end
 
 case constant-key-cap/check-edge-over
-def 6406bad92d36
+def 6ff15ed7770b
 rc 3
 stdout
 stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*21395)/"x"):1}\n      ^^^^^^^^^^^^^^^\njq: 1 compile error\n
 end
 
 case constant-key-cap/check-whole-fold
-def 89f69c522de9
+def 533ee06bba6a
 rc 3
 stdout
 stderr jq: error: Cannot use array (["xxxxxxxxxxxxxxxxxxxxxxx...]) as object key at <top-level>, line 1, column 3:\n    {([("x"*1000000),("x"*1000000)]):1}\n      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\njq: 1 compile error\n
@@ -204,14 +204,14 @@ stderr
 end
 
 case constant-key-cap/check-after-the-compile-budget
-def a20a90a00894
+def c32ace1740b5
 rc 3
 stdout
 stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}\n      ^^^^^^^^^^^^^^^\njq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 25:\n    {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}\n                            ^^^^^^^^^^^^^^\njq: 2 compile errors\n
 end
 
 case constant-key-cap/unreached-huge-key
-def 270bfb65ba03
+def 1c9208089958
 rc 3
 stdout
 stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 15:\n    1, (empty | {(("x"*2000000)/"x"):1})\n                  ^^^^^^^^^^^^^^^^^\njq: 1 compile error\n
