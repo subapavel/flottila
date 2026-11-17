@@ -223,6 +223,8 @@ jobs:
           # CREATEDB: bench/run.sh creates the rail8_bench database itself
           sudo -u postgres psql -c "CREATE ROLE rail8 LOGIN CREATEDB PASSWORD 'rail8';"
           sudo -u postgres psql -c "CREATE DATABASE rail8 OWNER rail8;"
+      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
+        run: bin/install-jq
       - name: Run the harness (bench/run.sh from P0-10; fails on a > 20 % regression once a baseline exists)
         run: |
           bench/run.sh
