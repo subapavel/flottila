@@ -51,12 +51,11 @@ import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
 
 /**
- * jq 1.8.2's natives of keys (#72; jq-ref, recorded: diff/natives.rec has-*, keys-*): {@code has(k)}, {@code keys} and
- * {@code keys_unsorted}, and builtin.jq's {@code to_entries} as a native (#85, ADR-0044; distinct.rec to-entries-*).
- * They tick where their loop depends on the data (ADR-0008): {@code has} as its lookup does
- * (ADR-0034) and as {@link Numbers#doubleValue} reads a number key (#97), {@code keys} and {@code keys_unsorted} once per key or index, on top of a view's walk, and {@code keys}
- * once more per compare of its sort for each started KiB of the shorter key, at least one; the arrays they build are
- * charged (ADR-0035).
+ * jq 1.8.2's natives of keys: {@code has(k)}, {@code keys} and {@code keys_unsorted}, and builtin.jq's {@code
+ * to_entries} as a native. They tick where their loop depends on the data: {@code has} as its lookup does and as {@link
+ * Numbers#doubleValue} reads a number key, {@code keys} and {@code keys_unsorted} once per key or index, on top of a
+ * view's walk, and {@code keys} once more per compare of its sort for each started KiB of the shorter key, at least
+ * one; the arrays they build are charged to bytes built.
  */
 public final class Keys {
   /** {@code has(k)}, its argument the key. */
@@ -119,8 +118,7 @@ public final class Keys {
 
   /**
    * jq's {@code jv_keys} ({@code sorted}) or {@code jv_keys_unsorted}: an array's indices; an object's keys, each at
-   * its first place (ADR-0002), sorted by jq's {@code string_cmp} when {@code sorted}; any other kind jq's "has no
-   * keys".
+   * its first place, sorted by jq's {@code string_cmp} when {@code sorted}; any other kind jq's "has no keys".
    */
   private static BuiltArray keys(RunState state, JqValue v, boolean sorted) {
     return switch (v) {
@@ -169,10 +167,10 @@ public final class Keys {
   }
 
   /**
-   * builtin.jq's {@code to_entries}, {@code [keys_unsorted[] as $k | {key: $k, value: .[$k]}]}, in one walk (ADR-0044,
-   * ADR-0042 as amended): an object's members after its proof, each key with its last value; an array's elements, each
-   * with its index; any other kind {@code keys_unsorted}'s error. One tick per entry, on top of a view's proof; the array
-   * and each entry are charged as the definition's collect and object construction charge them (ADR-0035).
+   * builtin.jq's {@code to_entries}, {@code [keys_unsorted[] as $k | {key: $k, value: .[$k]}]}, in one walk: an
+   * object's members after its proof, each key with its last value; an array's elements, each with its index; any other
+   * kind {@code keys_unsorted}'s error. One tick per entry, on top of a view's proof; the array and each entry are
+   * charged as the definition's collect and object construction charge them.
    */
   private static BuiltArray entries(RunState state, JqValue v) {
     Members members =

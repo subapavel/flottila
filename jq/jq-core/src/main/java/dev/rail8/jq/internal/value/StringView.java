@@ -8,12 +8,12 @@ import dev.rail8.jq.value.JqString;
 import java.lang.foreign.MemorySegment;
 
 /**
- * A string of a document (ADR-0003, ADR-0016): its document and tape index. Public only so the kind can permit it.
- * A tag-6 string is decoded at each access and never stored (ADR-0015 amendment, #35).
+ * A string of a document: its document and tape index. Public only so the kind can permit it. A tag-6 string is decoded
+ * at each access and never stored.
  */
 public record StringView(Document doc, int index) implements JqString {
 
-  /** jq's compact text (ADR-0015). */
+  /** jq's compact text. */
   @Override
   public String toJson() {
     return Printer.json(doc, index);
@@ -25,7 +25,7 @@ public record StringView(Document doc, int index) implements JqString {
     return text(doc.bytes, entry);
   }
 
-  /** Tag 5: a read-only slice of the document's bytes, without a copy (ADR-0016); tag 6: a read-only decoded copy. */
+  /** Tag 5: a read-only slice of the document's bytes, without a copy; tag 6: a read-only decoded copy. */
   @Override
   public MemorySegment utf8() {
     long entry = doc.live()[index];

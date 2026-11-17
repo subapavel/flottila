@@ -13,12 +13,11 @@ import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
 
 /**
- * jq's string interpolation {@code "a\(f)b"} and {@code @text "a\(f)b"} (ADR-0038, jq-ref 1.8.2, recorded:
- * diff/interpolation.rec): its arguments are the literal's parts in order, its text parts as strings and one value per
- * interpolation, each as {@code tostring} gives it, a string's text as it is and any other value its compact text. The
- * dumps and the copy are loops as long as the result, so it charges one tick per started KiB of the result, as a
- * concatenation does (ADR-0034 amendment), and then the string, STRING plus the total length, before it allocates
- * (ADR-0035 amendment). A read object's key proof in a dump charges the run's state (ADR-0044 as amended).
+ * jq 1.8.2's string interpolation {@code "a\(f)b"} and {@code @text "a\(f)b"}: its arguments are the literal's parts in
+ * order, its text parts as strings and one value per interpolation, each as {@code tostring} gives it, a string's text
+ * as it is and any other value its compact text. The dumps and the copy are loops as long as the result, so it charges
+ * one tick per started KiB of the result, as a concatenation does, and then the string, STRING plus the total length,
+ * before it allocates. A read object's key proof in a dump charges the run's state.
  */
 public final class Interpolate implements FnN {
   /** The interpolation of a literal, its parts the arguments. */

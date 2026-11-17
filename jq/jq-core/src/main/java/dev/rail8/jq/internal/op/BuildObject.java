@@ -8,11 +8,10 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqString;
 
 /**
- * jq's object construction {@code {k: v, ...}} once each pair has its key and value (ADR-0034 amendment, ADR-0003):
- * a site whose keys are all constant builds on its shape, the key list it shares, with one argument per key, the
- * value of its last pair; any other site builds a growable object from a key and a value per pair, a key the
- * {@link ObjectKey} check found a string. Either charges a container and an entry per pair before it allocates
- * (ADR-0035).
+ * jq's object construction {@code {k: v, ...}} once each pair has its key and value: a site whose keys are all constant
+ * builds on its shape, the key list it shares, with one argument per key, the value of its last pair; any other site
+ * builds a growable object from a key and a value per pair, a key the {@link ObjectKey} check found a string. Either
+ * charges a container and an entry per pair before it allocates.
  */
 public final class BuildObject implements FnN {
   /** The construction of a site with a computed key: a key and a value per pair. */

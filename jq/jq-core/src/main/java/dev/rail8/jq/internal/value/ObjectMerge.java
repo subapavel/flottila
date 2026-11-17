@@ -36,14 +36,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * jq 1.8.2's object {@code +} ({@code jv_object_merge}) and object merge {@code *} ({@code jvp_object_merge_recursive};
- * GLOSSARY "Object merge"): a growable object of the left object's entries, then each entry of the right one in its
+ * jq 1.8.2's object {@code +} ({@code jv_object_merge}) and object merge {@code *} ({@code
+ * jvp_object_merge_recursive}): a growable object of the left object's entries, then each entry of the right one in its
  * key order, a key the left has keeping its place with the right value. Merge goes into the two values of a key when
  * both are objects, building their merge in place of the left value; past {@link #MAX_DEPTH} levels of that it raises
- * jq's catchable "Object merge too deep" (ADR-0029). Each level is a frame of its own stack, never a Java frame. Each
- * level charges a container, then an entry per distinct key as it enters (ADR-0035 amendment), and one tick per entry
- * of its right object and one per left entry it copies, for object {@code +} and merge {@code *} alike (ADR-0034
- * amendment). A view's own walks charge theirs, its key proof (ADR-0044).
+ * jq's catchable "Object merge too deep". Each level is a frame of its own stack, never a Java frame. Each level
+ * charges a container, then an entry per distinct key as it enters, and one tick per entry of its right object and one
+ * per left entry it copies, for object {@code +} and merge {@code *} alike. A view's own walks charge theirs, its key
+ * proof included.
  */
 public final class ObjectMerge {
   /** jq's {@code MAX_OBJECT_MERGE_DEPTH}. */

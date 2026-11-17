@@ -7,13 +7,13 @@ import dev.rail8.jq.value.JqArray;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * An array of a document (ADR-0003, ADR-0016): its document and tape index. Public only so the kind can permit it.
- * Equality is the record's, never jq's (ADR-0026). The host's accessors walk the tape for nothing; the walks a filter
- * makes take its run state and charge it the elements they step, once per walk (ADR-0008, ADR-0034).
+ * An array of a document: its document and tape index. Public only so the kind can permit it. Equality is the record's,
+ * never jq's. The host's accessors walk the tape for nothing; the walks a filter makes take its run state and charge it
+ * the elements they step, once per walk.
  */
 public record ArrayView(Document doc, int index) implements JqArray, Members {
 
-  /** jq's compact text (ADR-0015). */
+  /** jq's compact text. */
   @Override
   public String toJson() {
     return Printer.json(doc, index);
@@ -30,7 +30,7 @@ public record ArrayView(Document doc, int index) implements JqArray, Members {
     return length;
   }
 
-  /** @throws IndexOutOfBoundsException unless {@code 0 <= i < length()} (ADR-0026) */
+  /** @throws IndexOutOfBoundsException unless {@code 0 <= i < length()} */
   @Override
   public JqValue get(int i) {
     long[] tape = doc.live();
@@ -72,7 +72,7 @@ public record ArrayView(Document doc, int index) implements JqArray, Members {
   /**
    * The elements {@code [from, to)}, {@code 0 <= from <= to <= length()}, as a built array of their values: {@code to}
    * ticks, for the walk to {@code from} and the copy, charged before either, and the copy charged as a built container
-   * of as many elements before it is allocated (ADR-0035).
+   * of as many elements before it is allocated.
    */
   public BuiltArray slice(RunState state, int from, int to) {
     state.tick(to);

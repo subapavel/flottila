@@ -12,9 +12,8 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's {@code -t} on each result, its {@code _negate} (jq-ref, recorded: diff/arith-numbers.rec): a number's
- * negation ({@link Numbers#negate(RunState, JqNumber)}, which charges a non-short literal's token, #97), and jq's error
- * for any other kind.
+ * jq 1.8.2's {@code -t} on each result, its {@code _negate}: a number's negation ({@link Numbers#negate(RunState,
+ * JqNumber)}, which charges a non-short literal's token), and jq's error for any other kind.
  */
 final class Negate implements Fn0 {
   private static final String ERROR = "cannot be negated";

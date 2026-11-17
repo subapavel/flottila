@@ -13,9 +13,9 @@ import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq's {@code .[]} (jq-ref 1.8.2, recorded: diff/iterate.rec): the {@link Members} of an array or an object, in order;
- * on any other kind jq's error, which the quiet variant {@code .[]?} drops (ADR-0034). A document's object is walked
- * through its {@link KeyProof} (ADR-0044). The loop holds the members in its one loop slot, and the cursor is theirs.
+ * jq 1.8.2's {@code .[]}: the {@link Members} of an array or an object, in order; on any other kind jq's error, which
+ * the quiet variant {@code .[]?} drops. A document's object is walked through its {@link KeyProof}. The loop holds the
+ * members in its one loop slot, and the cursor is theirs.
  */
 public final class Iterate implements Many {
   /** {@code .[]}. */

@@ -7,16 +7,16 @@ import dev.rail8.jq.value.JqString;
 import java.lang.foreign.MemorySegment;
 
 /**
- * A string built at run time (#34 design section 7), such as jq's error texts: UTF-8 bytes {@code [0, length)} of
- * {@code bytes}. Public only so the kind can permit it.
+ * A string built at run time, such as jq's error texts: UTF-8 bytes {@code [0, length)} of {@code bytes}. Public only
+ * so the kind can permit it.
  */
 public final class BuiltString implements JqString {
   private final byte[] bytes;
   private final int length;
 
   /**
-   * The ownership mark of ADR-0022: every built class carries it from the ticket that creates the class, and it stays
-   * null until spec 3 (spec-1 grilling round 1, item 9).
+   * The ownership mark for updates in place: the activation that made the value and may write it without a copy. Every
+   * built class carries it; nothing sets it, so it is always null and no built value is written in place.
    */
   private final Object owner;
 
@@ -36,7 +36,7 @@ public final class BuiltString implements JqString {
     return new BuiltString(utf8, utf8.length);
   }
 
-  /** jq's compact text (ADR-0015, jq's re-escape). */
+  /** jq's compact text, re-escaped as jq does. */
   @Override
   public String toJson() {
     return Printer.json(this);

@@ -8,16 +8,16 @@ import dev.rail8.jq.value.JqValue;
 import java.util.function.BiConsumer;
 
 /**
- * An object of a document (ADR-0003, ADR-0016): its document and tape index. Public only so the kind can permit it.
- * Its entries alternate key and value. The tape keeps repeated keys, and jq keeps a key's first place with its last
- * value (ADR-0002), so the view is no {@link Members}: every walk of it begins with its {@link KeyProof}, whose
- * {@link ObjectWalk} takes each key once (ADR-0044). Keys are one when their decoded bytes are (#35): {@code
- * "\\u0061"} and {@code "a"} are one key. A field read scans every key, since the last one wins, and needs no proof.
- * The host's {@link #size()} and {@link #forEach} prove on a run state of their own and charge no run (ADR-0016).
+ * An object of a document: its document and tape index. Public only so the kind can permit it. Its entries alternate
+ * key and value. The tape keeps repeated keys, and jq keeps a key's first place with its last value, so the view is no
+ * {@link Members}: every walk of it begins with its {@link KeyProof}, whose {@link ObjectWalk} takes each key once.
+ * Keys are one when their decoded bytes are: {@code "\\u0061"} and {@code "a"} are one key. A field read scans every
+ * key, since the last one wins, and needs no proof. The host's {@link #size()} and {@link #forEach} prove on a run
+ * state of their own and charge no run.
  */
 public record ObjectView(Document doc, int index) implements JqObject, Keyed {
 
-  /** jq's compact text (ADR-0015). */
+  /** jq's compact text. */
   @Override
   public String toJson() {
     return Printer.json(doc, index);
@@ -28,15 +28,14 @@ public record ObjectView(Document doc, int index) implements JqObject, Keyed {
     return KeyProof.walk(new RunState(), this, false).size();
   }
 
-  /** The value of the last {@code key}, or Java {@code null} when the object has no such key (ADR-0026). */
+  /** The value of the last {@code key}, or Java {@code null} when the object has no such key. */
   @Override
   public JqValue get(String key) {
     return valueAt((int) find(key));
   }
 
   /**
-   * {@link #get(String)} for a filter: one tick per key scanned, which is every key, since the last one wins (ADR-0034,
-   * decision 3 of #63's approval).
+   * {@link #get(String)} for a filter: one tick per key scanned, which is every key, since the last one wins.
    */
   @Override
   public JqValue get(RunState state, String key) {
@@ -74,7 +73,8 @@ public record ObjectView(Document doc, int index) implements JqObject, Keyed {
 
   /**
    * Each key at its first place, decoded, with its last value, through its walk. Each step after a call checks the
-   * document again: the action may have read another document onto this tape (ADR-0016, STALE_VIEW).
+   * document again: the action may have read another document onto this tape, and a dropped one ends the run with
+   * STALE_VIEW.
    */
   @Override
   public void forEach(BiConsumer<? super String, ? super JqValue> action) {

@@ -30,11 +30,11 @@ import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.RunState;
 
 /**
- * The end of jq 1.8.2's {@code last(f)} (#72; jq-ref, recorded: diff/natives.rec last-*): the resolver lowers it to a
- * reduce over {@code f} whose state starts at {@link #UNSET} and takes each result of {@code f}, so it holds the last
- * one, or still {@link #UNSET} when {@code f} gave none; this operation then gives that state, or no result for {@link
- * #UNSET}, as jq's {@code is_empty} flag does. An error or a break in {@code f} passes, as the reduce passes it. It
- * ticks and charges nothing: {@code last(f)} costs what {@code f} costs.
+ * The end of jq 1.8.2's {@code last(f)}: the resolver lowers it to a reduce over {@code f} whose state starts at {@link
+ * #UNSET} and takes each result of {@code f}, so it holds the last one, or still {@link #UNSET} when {@code f} gave
+ * none; this operation then gives that state, or no result for {@link #UNSET}, as jq's {@code is_empty} flag does. An
+ * error or a break in {@code f} passes, as the reduce passes it. It ticks and charges nothing: {@code last(f)} costs
+ * what {@code f} costs.
  */
 public final class Last implements Fn0 {
   /** {@code last(f)}'s end. */

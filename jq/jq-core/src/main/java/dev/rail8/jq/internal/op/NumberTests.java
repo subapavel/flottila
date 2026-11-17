@@ -34,11 +34,11 @@ import dev.rail8.jq.value.JqNumber;
 import java.util.function.DoublePredicate;
 
 /**
- * jq 1.8.2's natives of numbers (#72; jq-ref, recorded: diff/natives.rec nan-infinite, number-tests-*, have): {@code
- * nan} and {@code infinite}, computed numbers whatever the input; {@code isnan}, {@code isinfinite} and {@code
- * isnormal}, the C tests of a number's double, false for any other kind; and {@code have_decnum} and {@code
- * have_literal_numbers}, true, as jq-ref's build has decNumber (GLOSSARY "Build configuration", ADR-0012). None ticks
- * or charges, except a test's read of a non-short view's double ({@link Numbers#doubleValue}, #97).
+ * jq 1.8.2's natives of numbers: {@code nan} and {@code infinite}, computed numbers whatever the input; {@code isnan},
+ * {@code isinfinite} and {@code isnormal}, the C tests of a number's double, false for any other kind; and {@code
+ * have_decnum} and {@code have_literal_numbers}, true, as the reference jq's build has decNumber and this engine keeps
+ * literal numbers as it does. None ticks or charges, except a test's read of a non-short view's double ({@link
+ * Numbers#doubleValue}).
  */
 public final class NumberTests {
   /** {@code nan}. */

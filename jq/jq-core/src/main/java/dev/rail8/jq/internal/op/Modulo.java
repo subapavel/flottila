@@ -36,10 +36,10 @@ import dev.rail8.jq.value.JqObject;
 import dev.rail8.jq.value.JqString;
 
 /**
- * jq 1.8.2's {@code l % r} (jq-ref, recorded: diff/arith-kinds.rec, arith-divmod.rec): on two numbers NaN when either
- * is NaN; otherwise both are cut toward zero to integers that saturate at the long range, as jq's {@code dtoi} does
- * (Java's cast does the same), a divisor that cuts to zero is jq's error, and any other gives the remainder, which
- * takes the dividend's sign (0 for a divisor of -1). Any other pair is jq's error.
+ * jq 1.8.2's {@code l % r}: on two numbers NaN when either is NaN; otherwise both are cut toward zero to integers that
+ * saturate at the long range, as jq's {@code dtoi} does (Java's cast does the same), a divisor that cuts to zero is
+ * jq's error, and any other gives the remainder, which takes the dividend's sign (0 for a divisor of -1). Any other
+ * pair is jq's error.
  */
 final class Modulo implements Fn2 {
   private static final String ERROR = "cannot be divided (remainder)";

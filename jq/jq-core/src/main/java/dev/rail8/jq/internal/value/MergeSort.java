@@ -4,8 +4,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 
 /**
- * jqj's own stable merge sort (ADR-0012), whose compares are the ones a sort ticks for (F-48, F-53): each caller's
- * {@code order} charges its compares, the sort itself charges nothing.
+ * This engine's own stable merge sort, whose compares are the ones a sort ticks for: each caller's {@code order}
+ * charges its compares, the sort itself charges nothing.
  */
 public final class MergeSort {
   private MergeSort() {}
@@ -13,9 +13,8 @@ public final class MergeSort {
   /**
    * The first {@code n} of {@code items} in {@code order}, stable: a bottom-up merge sort, whose every merge takes the
    * left run's item unless {@code order} of the left item and the right one is positive. Its compares are the ones a
-   * sort ticks for (F-48): in {@code sort} and its kin (Sort), in {@code keys} (Keys), and in the sort of an object's
-   * key list by {@link Order#compare} (F-53). The result is {@code items} or a scratch array of {@code n}, neither
-   * charged.
+   * sort ticks for: in {@code sort} and its kin (Sort), in {@code keys} (Keys), and in the sort of an object's key list
+   * by {@link Order#compare}. The result is {@code items} or a scratch array of {@code n}, neither charged.
    */
   public static <T> T[] sort(T[] items, int n, Comparator<? super T> order) {
     T[] from = items;

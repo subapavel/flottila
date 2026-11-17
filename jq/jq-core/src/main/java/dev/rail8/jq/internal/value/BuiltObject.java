@@ -9,15 +9,15 @@ import dev.rail8.jq.value.JqValue;
 import java.util.function.BiConsumer;
 
 /**
- * An object built at run time (ADR-0003, #64): its key list, distinct keys in their first place, and the last value of
- * each, never written once the object is made. The key list is its construction site's shape when every key there is
- * constant, shared by every object the site builds, or its own for a growable object, whose keys a run computes
- * (GLOSSARY "Shape", "Growable object"). A key is a document's string or a built one. A lookup compares up to 8 keys
- * in order; past 8, either form looks up through an index the object builds on its first lookup (ADR-0003, #83).
- * Public only so the kind can permit it. Equality is the object's, never jq's (ADR-0026).
+ * An object built at run time: its key list, distinct keys in their first place, and the last value of each, never
+ * written once the object is made. The key list is its construction site's shape when every key there is constant,
+ * shared by every object the site builds, or its own for a growable object, whose keys a run computes. A key is a
+ * document's string or a built one. A lookup compares up to 8 keys in order; past 8, either form looks up through an
+ * index the object builds on its first lookup. Public only so the kind can permit it. Equality is the object's, never
+ * jq's.
  */
 public final class BuiltObject implements JqObject, Members, Keyed {
-  /** The most keys a lookup compares in order; past it, a lookup probes an index (ADR-0003). */
+  /** The most keys a lookup compares in order; past it, a lookup probes an index. */
   static final int LINEAR = 8;
 
   /** The keys, distinct, {@code [0, size)} of it. */
@@ -35,8 +35,8 @@ public final class BuiltObject implements JqObject, Members, Keyed {
   private Index index;
 
   /**
-   * The ownership mark of ADR-0022: every built class carries it from the ticket that creates the class, and it stays
-   * null until spec 3 (spec-1 grilling round 1, item 9).
+   * The ownership mark for updates in place: the activation that made the value and may write it without a copy. Every
+   * built class carries it; nothing sets it, so it is always null and no built value is written in place.
    */
   private final Object owner;
 
@@ -58,7 +58,7 @@ public final class BuiltObject implements JqObject, Members, Keyed {
 
   /**
    * The growable object of {@code pairs}, a key and its value each, every key a string: a repeated key keeps its first
-   * place and its last value, as jq's object insert does (GLOSSARY "Key list").
+   * place and its last value, as jq's object insert does.
    */
   public static BuiltObject ofPairs(Object[] pairs) {
     int n = pairs.length >>> 1;
@@ -92,7 +92,7 @@ public final class BuiltObject implements JqObject, Members, Keyed {
     };
   }
 
-  /** jq's compact text (ADR-0015). */
+  /** jq's compact text. */
   @Override
   public String toJson() {
     return Printer.json(this);
@@ -104,8 +104,8 @@ public final class BuiltObject implements JqObject, Members, Keyed {
   }
 
   /**
-   * The value of {@code key}, or Java {@code null} when the object has no such key (ADR-0026). Past {@link #LINEAR} keys
-   * the first lookup builds the index, which a host's lookup charges to no run.
+   * The value of {@code key}, or Java {@code null} when the object has no such key. Past {@link #LINEAR} keys the first
+   * lookup builds the index, which a host's lookup charges to no run.
    */
   @Override
   public JqValue get(String key) {
@@ -114,10 +114,10 @@ public final class BuiltObject implements JqObject, Members, Keyed {
 
   /**
    * {@link #get(String)} for a filter. Up to {@link #LINEAR} keys, one tick per key compared, up to the one that spells
-   * {@code key}, or every key when none does (ADR-0034); past it, one tick per slot of the index probed. The lookup that
-   * builds the index first charges it to bytes built, before it allocates (ADR-0035), as a container of an entry per
-   * key: its slots take less than an entry's 16 B per key and its two headers less than a container's 64 B, so it
-   * needs no rate of its own. Placing the keys then charges one tick per slot it probes (ADR-0008).
+   * {@code key}, or every key when none does; past it, one tick per slot of the index probed. The lookup that builds
+   * the index first charges it to bytes built, before it allocates, as a container of an entry per key: its slots take
+   * less than an entry's 16 B per key and its two headers less than a container's 64 B, so it needs no rate of its own.
+   * Placing the keys then charges one tick per slot it probes.
    */
   @Override
   public JqValue get(RunState state, String key) {
@@ -196,11 +196,11 @@ public final class BuiltObject implements JqObject, Members, Keyed {
   }
 
   /**
-   * The index of a key list past {@link #LINEAR} keys (ADR-0003): open addressing over the least power of two of slots
-   * at least twice the keys, so fewer than four int slots, 16 B, per key. A key's slot is its decoded text's
-   * {@code String.hashCode()} masked to the table, or the next free one after it; a slot holds the key's index plus
-   * one, and 0 when free. Its final fields publish the slots to any thread that reads the reference, so a lookup on
-   * another thread never sees a table half filled.
+   * The index of a key list past {@link #LINEAR} keys: open addressing over the least power of two of slots at least
+   * twice the keys, so fewer than four int slots, 16 B, per key. A key's slot is its decoded text's {@code
+   * String.hashCode()} masked to the table, or the next free one after it; a slot holds the key's index plus one, and 0
+   * when free. Its final fields publish the slots to any thread that reads the reference, so a lookup on another thread
+   * never sees a table half filled.
    */
   private static final class Index {
     private final int[] slots;

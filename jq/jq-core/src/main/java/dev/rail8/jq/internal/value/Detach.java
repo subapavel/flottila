@@ -11,18 +11,17 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * Copies every view in a value into built values (GLOSSARY "Detach", ADR-0016, ADR-0039), so the copy outlives its
- * document: a document's string becomes a built string of its decoded bytes, a number a literal of its token, and each
- * container, a document's or a built one, a built container of its members' copies, an object its keys' too, in its
- * members' order. The walk keeps an explicit stack, so a deep value takes no Java stack. It runs under the host rule
- * of ADR-0016, after the run, where no budget, deadline or interrupt reaches it: it charges no bytes built and no
- * tick. Each value is copied once and its copy shared wherever the value is held: a built container known by its
- * identity, and a document's container, string, key or number by its document and tape index. A document's object is
- * walked through its key proof (ADR-0044), so a repeated key keeps its first position and takes its last value. So the
- * walk visits each member of each distinct container once, each visit one memo lookup, and its time is the sum of: one
- * step per such member; the bytes of each distinct document string and key, decoded once, and of each distinct
- * document number's token, copied once; and each distinct document object's proof, about linear in its key bytes and
- * at most n log2 n compares of its decoded keys for n key entries.
+ * Copies every view in a value into built values, so the copy outlives its document: a document's string becomes a
+ * built string of its decoded bytes, a number a literal of its token, and each container, a document's or a built one,
+ * a built container of its members' copies, an object its keys' too, in its members' order. The walk keeps an explicit
+ * stack, so a deep value takes no Java stack. It runs as a host's call does, after the run, where no budget, deadline
+ * or interrupt reaches it: it charges no bytes built and no tick. Each value is copied once and its copy shared
+ * wherever the value is held: a built container known by its identity, and a document's container, string, key or
+ * number by its document and tape index. A document's object is walked through its key proof, so a repeated key keeps
+ * its first position and takes its last value. So the walk visits each member of each distinct container once, each
+ * visit one memo lookup, and its time is the sum of: one step per such member; the bytes of each distinct document
+ * string and key, decoded once, and of each distinct document number's token, copied once; and each distinct document
+ * object's proof, about linear in its key bytes and at most n log2 n compares of its decoded keys for n key entries.
  */
 public final class Detach {
   /** The capacity of a container's first array of copies. */
@@ -41,7 +40,7 @@ public final class Detach {
    * @throws dev.rail8.jq.JqTermination with cause {@code STALE_VIEW} when a view in it is stale
    */
   public static JqValue of(JqValue value) {
-    // The walks and key proofs charge a run state no run began: every budget of it is unlimited (ADR-0016).
+    // The walks and key proofs charge a run state no run began: every budget of it is unlimited.
     RunState free = new RunState();
     // A container the value holds at several places is copied once, and the copy is shared: values are immutable.
     Copies copies = new Copies();
@@ -175,8 +174,8 @@ public final class Detach {
 
     /**
      * The frame of {@code container}'s members, each object key once, at its first position with its last value, and
-     * each key copied through {@code copies}: a document's object through its walk (ADR-0044), whose keys are distinct
-     * as a built object's are.
+     * each key copied through {@code copies}: a document's object through its walk, whose keys are distinct as a built
+     * object's are.
      */
     static Frame of(JqValue container, Frame parent, Copies copies, RunState free) {
       Frame frame = new Frame(container, parent);

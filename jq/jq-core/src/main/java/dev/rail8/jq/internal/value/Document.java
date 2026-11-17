@@ -6,11 +6,11 @@ import dev.rail8.jq.value.JqNull;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * One read's document (ADR-0004): the UTF-8 bytes and the tape the reader wrote, the root at tape index 0. A view
- * holds the document and a tape index. Dropping the document makes every view of it stale (ADR-0026).
+ * One read's document: the UTF-8 bytes and the tape the reader wrote, the root at tape index 0. A view holds the
+ * document and a tape index. Dropping the document makes every view of it stale.
  */
 public final class Document {
-  /** ADR-0017's exit code for a failed evaluation, which a stale view carries (ADR-0026). */
+  /** jq's exit code for a failed evaluation, which a stale view carries. */
   private static final int STALE_EXIT_CODE = 5;
 
   /** The bytes the tape's offsets index; null once dropped. */
@@ -41,7 +41,7 @@ public final class Document {
   }
 
   /**
-   * The tape, checked once per accessor call (ADR-0026).
+   * The tape, checked once per accessor call.
    *
    * @throws JqTermination with cause {@code STALE_VIEW} once the document is dropped
    */
@@ -53,7 +53,7 @@ public final class Document {
     return live;
   }
 
-  /** The value at tape index {@code i}: null and the booleans as their enums (ADR-0003), the rest as views. */
+  /** The value at tape index {@code i}: null and the booleans as their enums, the rest as views. */
   JqValue valueAt(long[] live, int i) {
     return switch (Tape.tag(live[i])) {
       case Tape.NULL -> JqNull.NULL;

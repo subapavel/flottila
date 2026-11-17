@@ -3,10 +3,10 @@ package dev.rail8.jq.internal.value;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * Equality's view of a read right side for one object comparison (ADR-0044 as amended by #95, GLOSSARY "Key index"),
- * made by {@link KeyProof#index}: its {@code size} distinct keys, and in {@code values}, for each left member in walk
- * order up to the first one it lacks, the tape index of its last value, then 0. {@code values} is the comparison's own
- * array of tape positions, never values, so a nested pair's proof in the same scratch leaves it whole. It is no walk.
+ * Equality's view of a read right side for one object comparison, made by {@link KeyProof#index}: its {@code size}
+ * distinct keys, and in {@code values}, for each left member in walk order up to the first one it lacks, the tape index
+ * of its last value, then 0. {@code values} is the comparison's own array of tape positions, never values, so a nested
+ * pair's proof in the same scratch leaves it whole. It is no walk.
  */
 record KeyIndex(Document doc, int size, int[] values) {
 

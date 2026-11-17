@@ -49,11 +49,11 @@ import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
 
 /**
- * jq 1.8.2's natives of a value's basics (#72; jq-ref, recorded: diff/natives.rec length-*, type-*, tostring-*,
- * tonumber-*), each an operation on its input: {@code length}, {@code type}, {@code tostring}, {@code tojson} and {@code
- * tonumber}. Each loop whose length depends on the data ticks (ADR-0008): {@code length} once per started KiB of a
- * string or of a non-short literal number's token (#97) and as a view's walk charges (ADR-0034), {@code tonumber} once per started KiB of its string, and {@code
- * tostring} and {@code tojson} as {@link TextFormat} does; the strings they build are charged (ADR-0035).
+ * jq 1.8.2's natives of a value's basics, each an operation on its input: {@code length}, {@code type}, {@code
+ * tostring}, {@code tojson} and {@code tonumber}. Each loop whose length depends on the data ticks: {@code length} once
+ * per started KiB of a string or of a non-short literal number's token and as a view's walk charges, {@code tonumber}
+ * once per started KiB of its string, and {@code tostring} and {@code tojson} as {@link TextFormat} does; the strings
+ * they build are charged to bytes built.
  */
 public final class Basics {
   /** {@code length}. */
@@ -88,7 +88,7 @@ public final class Basics {
   /**
    * {@code length}: null 0; a number its absolute value ({@link Numbers#abs}); a string its code points; an array its
    * elements, a view's counted by its walk; an object its distinct keys, a view's the size its key proof finds, which
-   * charges each key entry (ADR-0044); a boolean jq's "has no length".
+   * charges each key entry; a boolean jq's "has no length".
    */
   private static Object length(RunState state, Object in) {
     JqValue v = (JqValue) in;

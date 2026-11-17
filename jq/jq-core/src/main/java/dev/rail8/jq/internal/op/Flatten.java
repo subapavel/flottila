@@ -44,8 +44,8 @@ import dev.rail8.jq.value.JqValue;
 import java.util.ArrayDeque;
 
 /**
- * {@code flatten} and {@code flatten($x)}, jqj's natives in place of builtin.jq's definitions (F-31, ADR-0006
- * amendment, ADR-0042), which they give the results and errors of (jq-ref 1.8.2, recorded: diff/natives.rec flatten-*):
+ * {@code flatten} and {@code flatten($x)}, this engine's natives in place of builtin.jq's definitions, which they give
+ * the results and errors of, as jq 1.8.2 does:
  *
  * <pre>
  * def _flatten($x): reduce .[] as $i ([]; if $i | type == "array" and $x != 0 then . + ($i | _flatten($x - 1)) else . + [$i] end);
@@ -53,13 +53,12 @@ import java.util.ArrayDeque;
  * def flatten: _flatten(-1);
  * </pre>
  *
- * So the input's {@code .[]}, its error included, gives the members, a document's object's through its key proof
- * (ADR-0044); a member that is an array is spliced, its own
- * members at the depth less one, while the depth is not 0 by jq's {@code !=}; and the depth less one is jq's {@code -},
- * whose error a depth that is no number raises at the first array member. The depth is checked against 0 in jq's value
- * order first. A walk of nested arrays keeps its open arrays on a stack of its own, never in Java frames, so it is as
- * deep as the data. It ticks once per member it visits, at every level (ADR-0008), and charges the array it builds
- * (ADR-0035).
+ * So the input's {@code .[]}, its error included, gives the members, a document's object's through its key proof; a
+ * member that is an array is spliced, its own members at the depth less one, while the depth is not 0 by jq's {@code
+ * !=}; and the depth less one is jq's {@code -}, whose error a depth that is no number raises at the first array
+ * member. The depth is checked against 0 in jq's value order first. A walk of nested arrays keeps its open arrays on a
+ * stack of its own, never in Java frames, so it is as deep as the data. It ticks once per member it visits, at every
+ * level, and charges the array it builds.
  */
 public final class Flatten {
   /** The literals of builtin.jq's {@code 0}, {@code 1} and {@code -1}. */

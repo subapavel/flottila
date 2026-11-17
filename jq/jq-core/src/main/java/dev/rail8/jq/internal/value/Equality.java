@@ -37,18 +37,17 @@ import dev.rail8.jq.value.JqValue;
 import java.lang.foreign.MemorySegment;
 
 /**
- * jq 1.8.2's {@code jv_equal} (ADR-0029, design approval K1 of #65): depth first, then left to right, each pair of
- * values at a depth, the outermost at 0. A pair deeper than {@link #MAX_DEPTH} raises jq's catchable "Equality check
- * too deep" before anything else is compared; then two kinds differ (true and false are two kinds); then one container
- * is itself, which mirrors jq's pointer check (O4): the same built container, or a view of the same document entry,
- * whose document is checked first (ADR-0026). Numbers compare by {@link Numbers#compare}, strings by their UTF-8 bytes,
- * arrays by their lengths, then element by element; an object by each of its keys, in its key order, found in the
- * other object with an equal value, and then by the two key counts. The walk keeps its open containers on a stack of
- * its own, never in Java frames, and charges one tick per member pair it compares, one per key of a built right object
- * it counts, one per started KiB of the shorter of two strings it compares (ADR-0008, ADR-0034 amendment for #65) and
- * what {@link Numbers#compare} charges for two numbers, one per started KiB of each token it reads whole (#97); a
- * view's own walks charge theirs, a view's key proofs included (ADR-0044): its left side's walk, and a read right
- * side's {@link KeyIndex}, which looks each left key up once (ADR-0044 as amended by #95).
+ * jq 1.8.2's {@code jv_equal}: depth first, then left to right, each pair of values at a depth, the outermost at 0. A
+ * pair deeper than {@link #MAX_DEPTH} raises jq's catchable "Equality check too deep" before anything else is compared;
+ * then two kinds differ (true and false are two kinds); then one container is itself, which mirrors jq's pointer check:
+ * the same built container, or a view of the same document entry, whose document is checked first. Numbers compare by
+ * {@link Numbers#compare}, strings by their UTF-8 bytes, arrays by their lengths, then element by element; an object by
+ * each of its keys, in its key order, found in the other object with an equal value, and then by the two key counts.
+ * The walk keeps its open containers on a stack of its own, never in Java frames, and charges one tick per member pair
+ * it compares, one per key of a built right object it counts, one per started KiB of the shorter of two strings it
+ * compares and what {@link Numbers#compare} charges for two numbers, one per started KiB of each token it reads whole;
+ * a view's own walks charge theirs, a view's key proofs included: its left side's walk, and a read right side's {@link
+ * KeyIndex}, which looks each left key up once.
  */
 public final class Equality {
   /** jq's {@code MAX_EQUAL_DEPTH}. */
@@ -131,7 +130,7 @@ public final class Equality {
     }
   }
 
-  /** Whether two strings have the same UTF-8 bytes: one tick per started KiB of the shorter (ADR-0034 amendment). */
+  /** Whether two strings have the same UTF-8 bytes: one tick per started KiB of the shorter. */
   private static boolean same(RunState state, JqString s, JqString t) {
     MemorySegment a = s.utf8();
     MemorySegment b = t.utf8();
@@ -139,7 +138,7 @@ public final class Equality {
     return a.mismatch(b) == -1;
   }
 
-  /** An array's length; a view's walk charges its elements (ADR-0034). */
+  /** An array's length; a view's walk charges its elements. */
   private static int length(RunState state, JqArray array) {
     return switch (array) {
       case ArrayView view -> view.length(state);
@@ -238,10 +237,10 @@ public final class Equality {
   }
 
   /**
-   * jq's {@code jvp_object_equal} against a read right object, through its {@link KeyIndex} (ADR-0044 as amended by
-   * #95): each key of the left object in its key order with its value, the right object's last value of the same key,
-   * which the index found; a key the right object lacks makes them unequal at once. After the last key they are equal
-   * when the right object has no other key, as the index's size tells.
+   * jq's {@code jvp_object_equal} against a read right object, through its {@link KeyIndex}: each key of the left
+   * object in its key order with its value, the right object's last value of the same key, which the index found; a key
+   * the right object lacks makes them unequal at once. After the last key they are equal when the right object has no
+   * other key, as the index's size tells.
    */
   private static final class Indexed extends Walk {
     private final Members left;

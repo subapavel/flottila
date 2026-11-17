@@ -32,8 +32,8 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqValue;
 
 /**
- * jq 1.8.2's arithmetic operators (#65, ADR-0012, ADR-0034 amendment), the family's operations under jq's names, and
- * their error texts. A binary operator's arguments are its left and right operands; {@code -t} takes its input.
+ * jq 1.8.2's arithmetic operators, the family's operations under jq's names, and their error texts. A binary operator's
+ * arguments are its left and right operands; {@code -t} takes its input.
  */
 public final class Arithmetic {
   /** {@code l + r}. */
