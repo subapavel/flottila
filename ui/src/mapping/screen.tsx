@@ -42,7 +42,8 @@ export function mappingTab(api: ApiClient, browserState: BrowserStateStore, id: 
 
 /**
  * The Mappings screen over `api`: the workspace's mappings, each one opening in a tab of its own, and a mapping just
- * created opening in edit mode on its Signature tab. The viewer's preferences are kept in `browserState`. A save in any mapping's tab brings the table up to date.
+ * created opening in edit mode on its Signature tab. The viewer's preferences are kept in `browserState`. A save in
+ * any mapping's tab brings the table up to date.
  */
 export function mappingsScreen(api: ApiClient, browserState: BrowserStateStore): Screen {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

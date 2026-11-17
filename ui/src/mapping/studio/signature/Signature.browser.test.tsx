@@ -79,6 +79,10 @@ describe('the Signature tab', () => {
       await expect.element(row(side, 1).getByRole('combobox', { name: 'Occurrence' })).toHaveValue('1');
       await expect.element(tool(side, 'Insert row')).toBeDisabled();
       await expect.element(row(side, 1).getByRole('button', { name: 'Choose message 1' })).toBeDisabled();
+      await expect.element(row(side, 1).getByRole('button', { name: 'Choose namespace or ID 1' })).toBeDisabled();
+      await expect.element(row(side, 1).getByRole('combobox', { name: 'Message type' })).toBeDisabled();
+      await expect.element(row(side, 1).getByRole('combobox', { name: 'Occurrence' })).toBeDisabled();
+      await expect.element(row(side, 1).getByRole('radio', { name: 'Select row 1' })).toBeDisabled();
     }
     await expect.element(page.getByRole('button', { name: /^Add (source|target) message$/ })).not.toBeInTheDocument();
     await expect.element(page.getByRole('region', { name: 'Signature parameters' })).toBeVisible();
