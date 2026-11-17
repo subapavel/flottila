@@ -84,20 +84,20 @@ import java.util.function.Function;
  * node's blob store (bound once the journal is open, see below), refuses two components
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code dev.rail8.components.mock..} or {@code dev.rail8.testkit..} — and, in a deployed environment, the dir archive
- * store and an S3 endpoint over plain http before it touches Postgres, and loads the body journal's master key (
- * from {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
- * keyless node migrates nothing). It then checks its durability profile ({@code RAIL8_PG_DURABILITY}, D-061
- * amended: {@link PgDurability}) in one read on the intake pool before it migrates, so a refused node leaves its database untouched, migrates the
- * database, opens the body journal in {@code RAIL8_JOURNAL_DIR} (
- * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), opens
+ * store and an S3 endpoint over plain http before it touches Postgres, and loads the body journal's master key
+ * (from {@code RAIL8_JOURNAL_KEY_FILE}, {@code RAIL8_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
+ * keyless node migrates nothing). It then checks its durability profile ({@code RAIL8_PG_DURABILITY},
+ * {@link PgDurability}) in one read on the intake pool before it migrates, so a refused node leaves its database untouched, migrates the
+ * database, opens the body journal in {@code RAIL8_JOURNAL_DIR}
+ * (every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), opens
  * the peer link's listener on {@code RAIL8_PEER_BIND}:{@code RAIL8_PEER_PORT} (other nodes READ this journal's records
  * through it, under the master key's proof), joins the membership as a new incarnation of its node id with the link's address
  * ({@code RAIL8_PEER_HOST} and the port it bound: a
  * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code RAIL8_NODE_LEASE_RENEW}, each renew
  * answering the live peers' addresses; its fence fences every at-least-once worker the deployments build; superseded, the node halts —
- * the process exits with {@value #SUPERSEDED}), builds the blob store on the journal (CORE-4c2: bodies in the journal under the
+ * the process exits with {@value #SUPERSEDED}), builds the blob store on the journal (bodies in the journal under the
  * {@code default} tenant's key, their refs in the work pool, bounded by {@code RAIL8_BLOB_DURABLE_MAX}; no spool; a body in another
- * live node's journal read through the peer link) and states its notices once — the profile's, one journal copy (until CORE-5) and, when no
+ * live node's journal read through the peer link) and states its notices once — the profile's, one journal copy and, when no
  * other member is live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
  * archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (in the Valkey of {@code RAIL8_VALKEY_URI} over one client the
@@ -141,7 +141,7 @@ public final class Node implements AutoCloseable {
     /** The exit status of a superseded node (fail-stop): a peer released its lease, or a newer incarnation joined. */
     public static final int SUPERSEDED = 3;
 
-    /** The single-copy notice: until CORE-5 a body lies in its node's journal only. */
+    /** The single-copy notice: a body lies in its node's journal only. */
     static final String ONE_COPY = "one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))";
 
     /** The notice of a node that found no other member live at its start. */
@@ -388,7 +388,7 @@ public final class Node implements AutoCloseable {
 
     /**
      * The node's Postgres connect options: the server and credentials of {@code pg}, and the prepared-statement cache on
-     * (ARCHITECTURE §4 Writer) for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
+     * for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
      * statement once; pipelining stays at the client's default (a turn's statements are sent together). Every session runs
      * with {@code jit} off, a startup parameter: the node's statements touch a bounded number of rows, yet
      * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan. Every session also
@@ -454,7 +454,7 @@ public final class Node implements AutoCloseable {
     }
 
     /**
-     * D-070: a deployed node stores package archives where every node of the pool restores them from — S3, never its own disk —
+     * A deployed node stores package archives where every node of the pool restores them from — S3, never its own disk —
      * and reaches S3 over https only.
      */
     private static void refuseArchiveStore(NodeConfig config) {
@@ -522,7 +522,7 @@ public final class Node implements AutoCloseable {
         }
     }
 
-    /** The node's body journal (CORE-4c2's store writes through it). */
+    /** The node's body journal, which the blob store writes through. */
     public Journal journal() { return journal; }
 
     /**

@@ -32,7 +32,7 @@ import java.util.Set;
  *       in that batch's transaction, those beyond the scan included — when no row of it is at or after the cutoff and no work row
  *       (held or not) and no DLQ row has its id; the key rows of the deleted rows' {@code keys} go with them. A scanned row whose
  *       message stays is passed by the cursor and counted in {@link Run#kept}.</li>
- *   <li>{@code bodies} and {@code body_refs} (CORE-4c2), scanned as one keyset: a body or a kept ref older than the cutoff goes
+ *   <li>{@code bodies} and {@code body_refs}, scanned as one keyset: a body or a kept ref older than the cutoff goes
  *       when no messages row and no work row has its message's id and no DLQ row's {@code body_key} names it (orphans included);
  *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment). The
  *       batch holds its rows for update and passes a row a park holds ({@code skip locked}), and its delete re-checks those

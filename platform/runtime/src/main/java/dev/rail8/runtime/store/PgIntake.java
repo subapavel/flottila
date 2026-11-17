@@ -44,7 +44,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * The node's {@link Intake} (D-082 restated by D-105): no row naming a body commits before its record is forced.
+ * The node's {@link Intake}: no row naming a body commits before its record is forced.
  * The ingress body is made durable in the node's journal first ({@link TieredBlobStore#forced}: appended, or its spill
  * persisted, and forced) — on the caller's thread, before the save joins a group, so no statement of it is sent while the record
  * is not forced and a force that fails saves nothing. A body durable already (no local copy) adds no record and no kept ref: its
@@ -280,7 +280,7 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The refs of the saves open now: the CORE-4d sweeper keeps their segments. A group whose commit is in doubt is
+     * The refs of the saves open now: the journal's segment sweeper keeps their segments. A group whose commit is in doubt is
      * asked first ({@code pg_xact_status}, blocking — on a virtual thread): committed, each of its members is done as a committed
      * save is (its ref indexed, its local copy gone); aborted or too old to be known, as a rolled-back one (rows it may have pin by
      * themselves); in progress, they stay open. Every in-doubt id is asked in one statement; when it fails, each id is asked on its
@@ -443,9 +443,9 @@ public final class PgIntake implements Intake {
         List<Map.Entry<String, String>> keys = new ArrayList<>();
         for (Member m : g.writing) {
             if (m.partitionKey() != null) keys.add(Map.entry(m.flow(), m.partitionKey()));
-            if (workers != null) workers.reserve(m.flow()).ifPresent(slot -> g.slots.put(m, slot));   // just before its insert (D-121 A1)
+            if (workers != null) workers.reserve(m.flow()).ifPresent(slot -> g.slots.put(m, slot));   // just before its insert
         }
-        replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key (D-121 A3); none without a key
+        replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key; none without a key
         replies.add(messages.insert(tx, g.writing.stream().map(Member::ingress).toList()));
         for (Member m : g.writing) {
             replies.add(enqueue(tx, m, g));

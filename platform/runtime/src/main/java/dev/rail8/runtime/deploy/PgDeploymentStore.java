@@ -16,9 +16,9 @@ import java.util.Optional;
 
 /**
  * The {@link DeploymentStore} over V7's {@code deployments} table: one row per package, shared by the pool's nodes. A save
- * is an upsert that replaces every column, V9's {@code dependencies} (the pins as a JSON array, D-087) included; the listing is sorted here, by {@link String#compareTo}, since the database's
- * collation (en_US ignores a dash) is not the order {@code Deployments} lists its packages in. A delete removes the package's row
- * (an undeploy, D-095).
+ * is an upsert that replaces every column, V9's {@code dependencies} (the pins as a JSON array)
+ * included; the listing is sorted here, by {@link String#compareTo}, since the database's collation (en_US ignores a dash) is not the order {@code Deployments} lists its packages in. A delete removes the package's row
+ * (an undeploy).
  *
  * @since 0.1
  */

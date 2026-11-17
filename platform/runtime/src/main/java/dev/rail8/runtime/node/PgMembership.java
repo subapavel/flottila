@@ -56,7 +56,7 @@ public final class PgMembership implements Membership {
     /**
      * Renews and reports in one statement: the SELECT reads the rows as they were before the UPDATE, so the renewing row is counted
      * by {@code me}; the live others' peer addresses and epochs come as three arrays in the same order (node, address, epoch), the
-     * address-less left out (CORE-5b1 Q1: the epochs bound a holder's repl links).
+     * address-less left out (the epochs bound a holder's repl links).
      */
     private static final String RENEW = """
             with me as (update nodes set lease_until = now() + make_interval(secs => $3)

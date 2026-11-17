@@ -11,8 +11,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * The node's Postgres durability profile, checked once at its start before it migrates (
- * D-061 amended). The node pins every session to {@code synchronous_commit=on} and {@code statement_timeout=0}
+ * The node's Postgres durability profile, checked once at its start before it migrates. The node pins every session to {@code synchronous_commit=on} and {@code statement_timeout=0}
  * ({@link Node#connectOptions}); this check reads what a session of the pool actually runs with and what the server is, in one
  * statement, and refuses a server the profile's promise does not hold on. Settings are read at the start only: a standby lost
  * later makes commits wait in Postgres, bounded for the caller by the save timeout (503); the node never cancels a commit.
@@ -95,7 +94,7 @@ final class PgDurability {
      * empty {@code synchronous_standby_names}, a role that cannot read every statistic, then a role that may not run
      * {@code pg_logical_emit_message} (the duplicate's commit barrier), and a server with no sync or quorum standby
      * streaming. Accepted under {@code local}, the notices state its promise and, with standbys streaming, name them and {@code ha};
-     * accepted under {@code ha}, they name D-115 for each standby a commit does not wait for.
+     * accepted under {@code ha}, they name each standby a commit does not wait for.
      */
     static Verdict verdict(Durability profile, Server server) {
         if (!server.synchronousCommit().equals("on")) {

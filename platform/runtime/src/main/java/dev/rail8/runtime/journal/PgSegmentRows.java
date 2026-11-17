@@ -20,12 +20,12 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * The journal's rows in Postgres (V12, CORE-3 items 5 and 9): {@code journal_nodes} and {@code journal_segments}. Each call
+ * The journal's rows in Postgres: {@code journal_nodes} and {@code journal_segments}. Each call
  * is one autocommit statement on the pool: its future succeeds once the row is committed — but {@link #giveUp} and
- * {@link #sweep}, one transaction each (V13: {@code work.lost_at}, {@code body_refs.lost_at}, {@code journal_losses}). A segment's {@code copies} is
- * the node alone until CORE-5 replicates. The pins are CORE-3 item 10's: a work row's ref not lost, an unarchived kept ref not
+ * {@link #sweep}, one transaction each (they write {@code work.lost_at}, {@code body_refs.lost_at}, {@code journal_losses}).
+ * A segment's {@code copies} is inserted as the node alone. The pins: a work row's ref not lost, an unarchived kept ref not
  * lost (a DLQ row pins through its kept ref, which is one of those). At recovery ({@link #pinsBeyond}) a kept ref pins only while
- * its segment row is registered — the sweep let an expired one go with its segment (FIX-140); a work row always pins.
+ * its segment row is registered — the sweep let an expired one go with its segment; a work row always pins.
  *
  * @since 0.1
  */
@@ -33,7 +33,7 @@ public final class PgSegmentRows implements SegmentRows {
 
     /**
      * $1 the node; $2, $3 the segments held and the end of each one's records. A work row pins unconditionally; a kept ref only
-     * while its segment row is registered (FIX-140): the sweep deleted a swept segment's row under its own pin check, so a ref
+     * while its segment row is registered: the sweep deleted a swept segment's row under its own pin check, so a ref
      * left on it expired, it is not lost. No foreign key keeps a ref off a swept segment; per branch of TieredBlobStore's writes:
      * {@code REFERENCE}'s {@code kept} and {@code src} CTEs and {@code KEEP}'s conflict branch (its {@code seg} CTE) hold the
      * segment row {@code for key share}, so no sweep deletes it under them. {@code KEEP}'s fresh insert and its {@code GONE}
@@ -42,7 +42,7 @@ public final class PgSegmentRows implements SegmentRows {
      * {@code created_at} pins. Except one window, not guarded: a memory body's append returns before {@code opened(a.ref())}
      * puts its save in the open-save set (TieredBlobStore's {@code durably}); if the segment seals and the grace passes in that
      * gap, the sweep can delete the segment row and the ref then lands on a swept segment, which this query no longer reports
-     * at restart — accepted silently, not refused (FIX-150 closes the gap).
+     * at restart — accepted silently, not refused.
      */
     private static final String PINS_BEYOND = """
             with e(segment, ends) as (select * from unnest($2::bigint[], $3::bigint[]))
@@ -56,10 +56,9 @@ public final class PgSegmentRows implements SegmentRows {
                and not exists (select 1 from e where e.segment = r.segment and r.position + r.length <= e.ends)""";
 
     /**
-     * Node $1's pinned segments (CORE-3 items 10, 14), worked out once per statement (FIX-127): a materialized CTE reads
-     * {@code work} and {@code body_refs} in one scan each, so the check costs |work| + |candidates|, never their product (a
-     * correlated {@code exists} ran a scan of {@code work} per candidate). $2 the candidates, $3 the instant a kept ref must be
-     * created after.
+     * Node $1's pinned segments, worked out once per statement: a materialized CTE reads {@code work} and {@code body_refs}
+     * in one scan each, so the check costs |work| + |candidates|, never their product (as a correlated {@code exists} running
+     * a scan of {@code work} per candidate would). $2 the candidates, $3 the instant a kept ref must be created after.
      */
     private static final String PINNED = """
             with pinned(segment) as materialized (

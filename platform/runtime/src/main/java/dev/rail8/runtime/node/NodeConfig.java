@@ -71,19 +71,19 @@ import java.util.regex.Pattern;
  * @param intakeGroup the intake's group commit: {@code RAIL8_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
  *                    {@code RAIL8_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code RAIL8_INTAKE_GROUP_WINDOW} (PT0.001S,
  *                    PT0S..PT0.05S in whole milliseconds), {@code RAIL8_INTAKE_GROUP_CONCURRENCY} (1..64, at most
- *                    max(1, {@code RAIL8_PG_POOL_INTAKE} − 1), the intake pool's bound (D-130 draft amends D-109's bound over
- *                    {@code RAIL8_PG_POOL_SIZE}); unset, min(4, that bound)); draft defaults until CORE-GATE
+ *                    max(1, {@code RAIL8_PG_POOL_INTAKE} − 1), the intake pool's bound); unset,
+ *                    min(4, that bound)); the defaults are provisional
  * @param nodeLease {@code RAIL8_NODE_LEASE}, ISO-8601, above zero and at most PT10M (PT30S): the node's
  *                  lease in the membership; its fence closes half a lease after its last renewed send
  * @param nodeLeaseRenew {@code RAIL8_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
  *                       often the node renews it
- * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}
- *               : {@code RAIL8_RETRIES_COUNT} (3, 0..100) retries {@code RAIL8_RETRIES_INTERVAL}
+ * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}:
+ *                {@code RAIL8_RETRIES_COUNT} (3, 0..100) retries {@code RAIL8_RETRIES_INTERVAL}
  *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
- * @param peer the peer link's keys (draft): {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083,
+ * @param peer the peer link's keys: {@code RAIL8_PEER_BIND} (0.0.0.0), {@code RAIL8_PEER_PORT} (8083,
  *             0..65535, 0 any free port; 8082 is the compose async door), {@code RAIL8_PEER_HOST} (the node id),
  *             {@code RAIL8_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code RAIL8_PEER_READS} (16, 1..64 per peer)
- * @param journalCopies {@code RAIL8_JOURNAL_COPIES} (S11, draft): 1 or 2; unset 1 in dev and ci, 2 in every
+ * @param journalCopies {@code RAIL8_JOURNAL_COPIES}: 1 or 2; unset 1 in dev and ci, 2 in every
  *                      deployed environment. A generated master key ({@code RAIL8_JOURNAL_KEY_GENERATE=true}) is one node's
  *                      alone, which no peer could read with: with more than one copy it is refused
  * @since 0.1
@@ -98,8 +98,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
      * held in memory whole, so the record max is at most the memory tier. The intake pool's share of the Postgres
      * connections is at least 1 and below their total, so each pool keeps a connection. The intake's groups in flight leave the
-     * intake pool a connection: at most max(1, intake pool size − 1) of them. The node lease is renewed at least four times a lease
-     *: a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
+     * intake pool a connection: at most max(1, intake pool size − 1) of them. The node lease is renewed at least four times a
+     * lease: a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
      * wait queue 1 to 65536 callers: an in-process {@link Pg} is held to the ranges the env reader names.
      */
     public NodeConfig {
@@ -504,7 +504,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             return Math.max(1, intakePoolSize - 1);
         }
 
-        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
+        /** The defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
         public static IntakeGroup defaults(int intakePoolSize) {
             return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(intakePoolSize)));
         }
@@ -621,7 +621,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     private static final long MIB = 1024L * 1024;
-    /** The least RAIL8_BLOB_MEMORY_TIER: the least RAIL8_JOURNAL_RECORD_MAX, which is at most the tier (CORE-4c1 r1). */
+    /** The least RAIL8_BLOB_MEMORY_TIER: the least RAIL8_JOURNAL_RECORD_MAX, which is at most the tier. */
     private static final long MEMORY_TIER_MIN = 4096;
     /** RAIL8_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
     private static final long RECORD_MAX_DEFAULT = 256 * 1024;
@@ -657,7 +657,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
     private static final int POOL_QUEUE_MAX = 65536;
     private static final String PEER_BIND = "0.0.0.0";
-    /** The most {@code RAIL8_JOURNAL_COPIES}: the owner's and one holder's (draft). */
+    /** The most {@code RAIL8_JOURNAL_COPIES}: the owner's and one holder's. */
     private static final int COPIES_MAX = 2;
 
     /**

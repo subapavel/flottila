@@ -37,11 +37,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The runtime {@link BlobStore} (ARCHITECTURE §4 "where the bytes live"): a body stays in memory while it is at most
+ * The runtime {@link BlobStore}: a body stays in memory while it is at most
  * {@link Config#memoryTierBytes()} and {@code RAIL8_JOURNAL_RECORD_MAX} and the node-wide {@link MemoryBudget} has room;
  * otherwise it is a spill of the node's body journal ({@link Journal#spill}: a large record of its own under
  * {@code <journal>/spill}, encrypted at rest). A streamed body starts in memory and spills the moment it outgrows either limit —
- * the prefix already seen is replayed into the spill; the hash runs over every byte once (in memory at the end, or by the
+ * the prefix already seen is copied into the spill; the hash runs over every byte once (in memory at the end, or by the
  * spill while it streams). Objects are keyed by message id + step ({@link BlobKey}), never by content. Every limit is finite;
  * sizes are long.
  *
@@ -50,20 +50,20 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>Durable.</b> With Postgres ({@link #TieredBlobStore(Config, Hasher, Journal, int, Pool)}), {@link #persist} makes a
  * local body durable in the journal — a memory body is appended as a record, a spill persisted as its segment — and only once
- * that is forced commits the key's {@code body_refs} row naming it (CORE-3 items 5–7); then the local copy goes. A key's durable
- * bytes never change (D-061 amended by FIX-35): a persist that meets the key's row while it holds a local copy reads the stored
+ * that is forced commits the key's {@code body_refs} row naming it; then the local copy goes. A key's durable
+ * bytes never change: a persist that meets the key's row while it holds a local copy reads the stored
  * record back and compares it byte for byte, 64 KiB at a time — equal is quiet, other bytes fail with an
  * {@link IllegalStateException} and change nothing; a row whose segment row is gone (swept) is replaced in the same statement.
  * A persist of a key held nowhere locally adds no record: one statement holds its source row — the key's {@code body_refs} row,
  * or for an ingress key the work row of its message — and that row's segment row {@code for key share}, inserting the
  * {@code body_refs} row from them; no source is a {@link BlobNotFoundException}, a given-up one ({@code lost_at}) a
  * {@link BodyLostException}. No body byte goes to Postgres; {@code bodies}
- * rows (pre-V12) are only read. The intake makes its body durable with {@link #forced} and commits the rows itself.
+ * rows (an older store's) are only read. The intake makes its body durable with {@link #forced} and commits the rows itself.
  *
  * <p><b>Reads</b>: the local copy; then the in-memory location index of the hot path — filled when an intake's
  * save committed ({@link Durable#committed}) and by a claim of this node's work ({@link #located}), emptied by the completion
  * ({@link #forget}), at most {@link Config#indexEntries()} entries, the oldest segment's first out; then the key's
- * {@code body_refs} row, then (an ingress key) the work row of its message, then its pre-V12 {@code bodies} row, then
+ * {@code body_refs} row, then (an ingress key) the work row of its message, then its {@code bodies} row, then
  * {@link BlobNotFoundException}. A ref whose segment row is gone reads as removed (never written); a ref on another node — it
  * exists there — is read through the {@link RemoteBodies} the store was given (READ from that node, its journal id the
  * one {@code journal_nodes} holds for it), whose failure is a retryable {@link RemoteBodyException} naming that node; a store
@@ -152,7 +152,7 @@ public final class TieredBlobStore implements BlobStore {
     }
 
     static final long DEFAULT_QUEUE_HIGH_WATER = 1L << 20;   // bytes queued for the spill before the source is paused
-    /** FIX-35's read-back compares this many bytes at a time. */
+    /** A persist's read-back of a stored record compares this many bytes at a time. */
     private static final int COMPARE_BLOCK = 64 * 1024;
 
     /**
@@ -165,7 +165,7 @@ public final class TieredBlobStore implements BlobStore {
             + " then not exists (select 1 from seg g where g.node = r.node and g.segment = r.segment)"
             + " else not exists (select 1 from journal_segments s where s.node = r.node and s.segment = r.segment) end)";
     /**
-     * A persist's ref (FIX-35 without bytes in Postgres): inserted; or the key's row met — replaced in place when its segment row
+     * A persist's ref: inserted; or the key's row met — replaced in place when its segment row
      * is gone, else left as it was, that segment row held {@code for key share} (only the conflict branch reads {@code seg}, so
      * only it locks). Answers the row as it is now: this record's ref, or the one it already names.
      */
@@ -181,10 +181,10 @@ public final class TieredBlobStore implements BlobStore {
             + "archived_at = case when " + GONE + " then null else r.archived_at end "
             + "returning node, segment, position, length";
     /**
-     * A persist of a key held nowhere locally (last sentence): its source — the key's ref row, or for an ingress
+     * A persist of a key held nowhere locally: its source — the key's ref row, or for an ingress
      * key ($4) its message's work row — with that row's segment row, both {@code for key share}; a work row's ref is inserted as
-     * the key's. A source an accepted loss gave up ({@code lost_at}) is no source. Answers the sources found (or the key's pre-V12
-     * {@code bodies} row) — none is no body — and whether a given-up source is there (then the body is lost, CORE-4c3 r1).
+     * the key's. A source an accepted loss gave up ({@code lost_at}) is no source. Answers the sources found (or the key's
+     * {@code bodies} row) — none is no body — and whether a given-up source is there (then the body is lost).
      */
     private static final String REFERENCE = """
             with kept as (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
@@ -200,7 +200,7 @@ public final class TieredBlobStore implements BlobStore {
                 or exists (select 1 from work where $4 and id = $1 and lost_at is not null)""";
     /**
      * Where a key's body lies, as Postgres names it: its ref row first, then (an ingress key, $4) its message's work row; whether
-     * its segment row is there, and whether an accepted loss gave it up (V12/V13 {@code lost_at}).
+     * its segment row is there, and whether an accepted loss gave it up ({@code lost_at}).
      */
     private static final String FIND = """
             select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live, r.lost_at is not null as lost,
@@ -225,7 +225,7 @@ public final class TieredBlobStore implements BlobStore {
     private final long memoryTier;   // the memory tier, at most RECORD_MAX: an in-memory body is always one record
     private final Pool pool;          // null: no Postgres, nothing durable
     private final RemoteBodies remote;   // another node's bodies
-    private final PgBodies bodies;    // the pre-V12 rows, read only; null without Postgres
+    private final PgBodies bodies;    // the bodies rows, read only; null without Postgres
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
     private final LocationIndex index;
@@ -372,7 +372,7 @@ public final class TieredBlobStore implements BlobStore {
      * Spills {@code body} under {@code key} on this thread. A tenant key that cannot encrypt (or a name the record format refuses)
      * is the write's {@link IOException}: the spill could not be written. An ingress key's spill is an intake's
      * ({@link Journal.Bound#INTAKE}: refused at its start past {@code RAIL8_JOURNAL_MAX_BYTES − 1/16}), a step body's uses the
-     * reserve; either is refused while it streams once it would pass max ({@code JournalFullException}, CORE-4d r1).
+     * reserve; either is refused while it streams once it would pass max ({@code JournalFullException}).
      */
     private Journal.Spill spilled(BlobKey key, InputStream body, long maxSize) throws IOException {
         try {
@@ -429,13 +429,13 @@ public final class TieredBlobStore implements BlobStore {
 
     /**
      * {@inheritDoc} Reads no bytes: a local copy exists; otherwise Postgres answers — the key's ref (any node's) with its
-     * segment row, then its message's work row (an ingress key), then its pre-V12 {@code bodies} row, asked by primary key —
-     * never the location index, which serves {@link #open} on the hot path only and may outlive the rows (CORE-4c2 r1); without
+     * segment row, then its message's work row (an ingress key), then its {@code bodies} row, asked by primary key —
+     * never the location index, which serves {@link #open} on the hot path only and may outlive the rows; without
      * Postgres nothing else exists.
      */
     @Override
     public Future<Boolean> exists(BlobKey key) {
-        if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);   // a local copy, in flight; never the index (CORE-4c2 r1)
+        if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);   // a local copy, in flight; never the index
         if (pool == null) return Future.succeededFuture(Boolean.FALSE);
         return find(key).compose(found -> found.isEmpty() ? bodies.exists(pool, key)
                 : found.get().lost() ? Future.failedFuture(new BodyLostException(key)) : Future.succeededFuture(found.get().live()));
@@ -443,7 +443,7 @@ public final class TieredBlobStore implements BlobStore {
 
     /**
      * A durable body the index misses, on the stream's virtual thread: by its rows in Postgres; none is a
-     * {@link BlobNotFoundException}. A segment swept between the rows' answer and the read (CORE-4d r1) reads as removed, as its
+     * {@link BlobNotFoundException}. A segment swept between the rows' answer and the read reads as removed, as its
      * row now says, never as an {@link IOException}.
      */
     private InputStream stored(BlobKey key) throws IOException {
@@ -495,8 +495,8 @@ public final class TieredBlobStore implements BlobStore {
      * recorded metadata-only, a park holds); one whose key's row names other bytes fails with an
      * {@link IllegalStateException} naming the key and stays local; once the row names these bytes the local copy goes before the
      * future completes. A key held nowhere locally is done when its source row and that row's segment row are there (or its
-     * pre-V12 row), else refused with a {@link BlobNotFoundException} — with a {@link BodyLostException} when an accepted loss
-     * gave its source up ({@code lost_at}, CORE-4c3).
+     * {@code bodies} row), else refused with a {@link BlobNotFoundException} — with a {@link BodyLostException} when an accepted loss
+     * gave its source up ({@code lost_at}).
      */
     @Override
     public Future<Void> persist(BlobKey key) {

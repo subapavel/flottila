@@ -23,7 +23,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * The checks of a journal's start that come before it changes anything (CORE-3 item 9, review r2; CORE-4c3): the room on its
+ * The checks of a journal's start that come before it changes anything: the room on its
  * file system, its identity, and the committed pins into records it does not hold — and the losses an operator accepted. A
  * loss is refused naming what it gives up (at most {@value #NAMED} items, then their count) and printing
  * {@code <journal id>:<digest>}, the digest a hash over the node, that journal and the sorted given-up items; a refusal
@@ -60,7 +60,7 @@ final class JournalStart {
 
     /**
      * Refuses a file system that cannot hold the journal up to its bound: its usable space, the bytes of the segment files
-     * {@code numbers} and the {@code replicas} bytes (the replica files found, CORE-5b1) together below
+     * {@code numbers} and the {@code replicas} bytes (the replica files found) together below
      * {@code RAIL8_JOURNAL_MAX_BYTES} (no ENOSPC fail-stop crash loop).
      */
     void requireRoom(Path segments, List<Long> numbers, long replicas) throws IOException {

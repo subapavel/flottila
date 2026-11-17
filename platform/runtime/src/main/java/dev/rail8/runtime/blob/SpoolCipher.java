@@ -33,8 +33,8 @@ import java.security.SecureRandom;
  * <p>File layout: {@code salt[16]} then per segment {@code flag[1] (1 = last) · length[4] (ciphertext incl.
  * tag) · ciphertext}. The empty body is one empty last segment, so truncation is always detectable.
  *
- * <p>The key derivation and the per-segment cipher are {@link ChunkedAead}, the construction the journal's records share
- *; the spool keeps its own info label.
+ * <p>The key derivation and the per-segment cipher are {@link ChunkedAead}, the construction the journal's records share;
+ * the spool keeps its own info label.
  */
 final class SpoolCipher {
 
@@ -57,7 +57,7 @@ final class SpoolCipher {
     /** Validates the key and builds the cipher, then creates the file, then writes the salt: a refused key creates no file, a
      *  failure after the file exists closes the stream and deletes the file. */
     OutputStream encrypting(Path file) throws IOException {
-        FileMaterial m = fileMaterial();   // FIX-9: refused before the file exists
+        FileMaterial m = fileMaterial();   // refused before the file exists
         return open(file, Files.newOutputStream(file), m);
     }
 

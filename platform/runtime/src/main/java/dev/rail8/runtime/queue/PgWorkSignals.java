@@ -16,10 +16,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The node's {@link WorkSignals} over Postgres {@code LISTEN/NOTIFY} on channel {@value #CHANNEL} (D-121 (b) B1–B3), the
+ * The node's {@link WorkSignals} over Postgres {@code LISTEN/NOTIFY} on channel {@value #CHANNEL}, the
  * payloads, windows and wakes of {@link WorkEvents}.
  *
- * <p>Receiving (B2): one dedicated {@link PgConnection} to {@code listen} — never the pool's — runs {@code LISTEN} and hands every
+ * <p>Receiving: one dedicated {@link PgConnection} to {@code listen} — never the pool's — runs {@code LISTEN} and hands every
  * notification's payload to {@link WorkEvents#receive}; a payload not of the {@code w1} form is logged at WARNING once per distinct
  * prefix. {@link #start()} completes once its first {@code LISTEN} is acknowledged. A connection lost (closed by the server, the
  * network, a terminated backend) is reopened on the timer after a backoff — {@value #FIRST_BACKOFF_MILLIS} ms, doubled after each
@@ -27,7 +27,7 @@ import java.util.Objects;
  * acknowledged — and after every {@code LISTEN} acknowledged, the first included, every started worker of the node is woken once:
  * an event missed while nobody listened costs one claim.
  *
- * <p>Sending (B3): an announce — made after the commit it tells of is acknowledged — is sent on the pool in autocommit, never in a
+ * <p>Sending: an announce — made after the commit it tells of is acknowledged — is sent on the pool in autocommit, never in a
  * transaction: a leading edge as {@code select pg_notify('rail8_work', $1)}, a window's end as one {@code select
  * pg_notify('rail8_work', p) from unnest($1::text[]) p} (one payload alone as the first form). A send that fails logs one WARNING
  * and is dropped, never sent again: the reconciliation covers it. Nothing is sent after {@link #close()}.
@@ -42,7 +42,7 @@ public final class PgWorkSignals implements WorkSignals {
     public static final String CHANNEL = "rail8_work";
     /** The first reconnect's delay. */
     static final long FIRST_BACKOFF_MILLIS = 100;
-    /** The longest delay between two reconnect tries (B7: a constant). */
+    /** The longest delay between two reconnect tries. */
     static final long MAX_BACKOFF_MILLIS = 5_000;
 
     private static final String NOTIFY = "select pg_notify('" + CHANNEL + "', $1)";
@@ -130,7 +130,7 @@ public final class PgWorkSignals implements WorkSignals {
             return;
         }
         conn.closeHandler(gone -> lost());
-        workers.wakeAll();   // what was announced while nobody listened (D-121 (b) B2)
+        workers.wakeAll();   // what was announced while nobody listened
     }
 
     /** The dedicated connection closed: a reconnect armed, unless this is closed (its own close). */

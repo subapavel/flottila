@@ -22,7 +22,7 @@ public record DeployedFlow(String id, String pkg, String packageVersion, Optiona
                            String hash, State state) {
 
     /**
-     * {@link #RUNNING}: started and serving; {@link #FAILED}: a redeploy could not start it again (D-063, P1-09d2c), or the restore
+     * {@link #RUNNING}: started and serving; {@link #FAILED}: a redeploy could not start it again, or the restore
      * at the node's start could not start it.
      */
     public enum State { RUNNING, FAILED }

@@ -67,7 +67,7 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * The admin read API (GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step (the rows of
+ * The admin read API over the stores: a message's timeline with wall and CPU nanos per step (the rows of
  * every attempt by attempt, then step, each naming its {@code attempt}), the payload after step n (the latest attempt's,
  * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
  * {@code /live} and {@code /ready}.
@@ -102,8 +102,8 @@ import java.util.function.Supplier;
  * naming the flow and the pool's refusal; only when every failed question was the pool's — a real failure of another
  * flow's question is 500). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
- * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
- *, a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
+ * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state},
+ * a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
  * flows, no files, no folders and no artifacts) and its tree: {@code folders:[{path, namespace|null, description|null}]}
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved.
@@ -127,8 +127,8 @@ import java.util.function.Supplier;
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
  * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
- * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown; D-121 (b)
- * B4 (ii)); built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
+ * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown);
+ * built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
  * key behind it. {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
  * {@code RAIL8_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
  * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
@@ -358,9 +358,9 @@ public final class AdminServer {
         public Future<?> start() {
             Router router = Router.router(vertx);
             router.get("/health").handler(offload(AdminServer.this::health));
-            router.get("/live").handler(offload(c -> Json.of(200, new JsonObject().put("status", Health.Status.UP.name()))));   // reads nothing (D-123)
+            router.get("/live").handler(offload(c -> Json.of(200, new JsonObject().put("status", Health.Status.UP.name()))));   // reads nothing
             router.get("/ready").handler(offload(AdminServer.this::ready));
-            router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check (D-069)
+            router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
@@ -594,7 +594,7 @@ public final class AdminServer {
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
         String gone = "the bytes of step " + n + " of message " + id + " are no longer stored (removed by retention)";
         BlobKey key = at.bodyKey().get();
-        // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal;
+        // existence as Postgres names it, never a node's location index: no object is retention's removal;
         // bytes that go after this check are gone too — an open that throws (a store that finds the key synchronously) or a
         // stream that fails before its first chunk (a store that opens lazily) answers the same 404
         boolean stored;

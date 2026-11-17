@@ -36,11 +36,11 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The MessageStore over Postgres (ARCHITECTURE §7, §8). Every snapshot given to {@link #record} goes through the P0-06
- * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message, step and attempt, the first wins,
- * V19 / FIX-175 — the timeline lists them by attempt, then step; the
+ * The MessageStore over Postgres. Every snapshot given to {@link #record} goes through the
+ * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message, step and attempt, the first wins
+ * — the timeline lists them by attempt, then step; the
  * body by reference: hash, hash algorithm, size, BlobStore key) and {@code message_keys} (one row per (name, value,
- * message), numbered by V5's {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
+ * message), numbered by {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
  * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
  * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it. On the node, the at-least-once
  * ingress row bypasses the writer: {@link #insert} writes it with the same statements in the intake's transaction.
@@ -146,7 +146,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     /** Commits what is queued now; completes when it is committed. */
     public Future<Void> flush() { return writer.flush(); }
 
-    /** Snapshots whose write failed (a failed commit, a full backlog, a waiter's maxWait) since the store was opened — what monitoring shows until P1-09 exposes it. */
+    /** Snapshots whose write failed (a failed commit, a full backlog, a waiter's maxWait) since the store was opened. */
     public long failed() { return failed.get(); }
 
     /** Refuses further snapshots and drains what is queued. */
@@ -195,8 +195,8 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     /**
-     * One row per (name, value, message) of the batch, at the lowest step of the batch that carried it, sorted (D-044's
-     * deadlock rule: V5's unique key is locked in one order by every transaction); a row already in the table — an earlier
+     * One row per (name, value, message) of the batch, at the lowest step of the batch that carried it, sorted (so
+     * every transaction locks the unique key in one order and none deadlocks); a row already in the table — an earlier
      * batch's — is a no-op, so the first row written keeps its step and its place.
      */
     private static Tuple keys(List<Snapshot> batch) {
@@ -217,7 +217,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         return Tuple.wrap(new Object[] {names, values, ids, steps});
     }
 
-    /** Props as JSON: JSON-native values as they are, anything else by its string form (props never leave the runtime, ARCHITECTURE §5). */
+    /** Props as JSON: JSON-native values as they are, anything else by its string form (props never leave the runtime). */
     private static JsonObject json(Map<String, Object> props) {
         JsonObject o = new JsonObject();
         for (Map.Entry<String, Object> e : props.entrySet()) {

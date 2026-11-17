@@ -7,7 +7,7 @@ import java.time.Duration;
 /**
  * Who polls an endpoint: a key held by one owner at a time, for a ttl. The node holds the lease of each polling consumer
  * it runs ({@code Component.polls}) and runs that consumer only while it holds it. There is no fencing token: no downstream
- * could check one, and an overlap gives a duplicate, never a loss (the save drops duplicates, P2-02D).
+ * could check one, and an overlap gives a duplicate, never a loss (the save drops duplicates).
  *
  * @since 0.1
  */

@@ -15,7 +15,7 @@ import java.util.function.Function;
 /**
  * A {@link BatchSink} that commits one batch as one Postgres transaction. Each {@link Statement}
  * is fixed-shape SQL over {@code unnest} arrays, so the statement text never changes with the batch
- * size and the client's prepared-statement cache applies (ARCHITECTURE §4 "Writer"); statements
+ * size and the client's prepared-statement cache applies; statements
  * run in order inside the transaction and a failure rolls the whole batch back. {@link #write(SqlClient, List)} runs the same
  * statements inside a transaction the caller holds, all sent before the first reply.
  *
@@ -53,7 +53,7 @@ public final class PgBatchSink<T> implements BatchSink<T> {
 
     /**
      * Sends the statements over {@code batch}, in order, on {@code client} — a transaction's connection the caller commits or
-     * rolls back — each before any reply (pipelined, D-109); answers once every reply came: failed with the first failed
+     * rolls back — each before any reply (pipelined); answers once every reply came: failed with the first failed
      * statement's cause in statement order, so a statement refused after an earlier one failed (the transaction aborted) never
      * names the failure. Every statement's arrays are built before any is sent.
      */

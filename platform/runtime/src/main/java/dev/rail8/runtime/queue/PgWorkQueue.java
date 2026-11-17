@@ -32,44 +32,45 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /**
- * The Postgres {@link WorkQueue} (ported from proto-m1): {@code SELECT … FOR UPDATE SKIP LOCKED}
+ * The Postgres {@link WorkQueue}: {@code SELECT … FOR UPDATE SKIP LOCKED}
  * on the {@code work} table. A row is claimable when it is not held, its lease is free, it is the
  * oldest row of its partition key (held rows included), due ({@code available_at}: a {@linkplain #defer deferred} row waits for it on
  * the database clock) and that key holds no live lease; the next
  * row of a key becomes eligible only after the previous one is completed (deleted) or its lease
  * expired — never while it is held. Leases are measured by the database clock. Every hand-out
  * increments the row's {@code attempts}, the holder's fencing token for {@link #renew}, {@link #hold},
- * {@link #complete} and the fast path ({@code V4__work_attempts}): each is guarded by the one
+ * {@link #complete} and the fast path: each is guarded by the one
  * {@code CURRENT} condition, so a held row is never deleted. The same-key fast path completes and claims
- * the next row of the key in one transaction (ARCHITECTURE §7). {@link #held} pages the held rows on V5's {@code work_held}
+ * the next row of the key in one transaction. {@link #held} pages the held rows on the {@code work_held}
  * index; {@link #release} clears a hold and its lease and keeps the attempts. Each held row, and each lost one {@link #lost}
  * pages, counts the rows of its key behind it ({@code blocks}); {@link #discard} deletes a lost row under its key's lock and audits
  * it in the same statement.
  *
  * <p>Body refs: an item names its input body's record by {@code body_node, body_segment,
- * body_position, body_length} (null: a pre-V12 item, its body in {@code bodies}). A queue of a node claims — by the claim and
- * by the fast path — only the items whose body lies in that node's journal, or pre-V12 ones (until CORE-5 a body is read on
- * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
+ * body_position, body_length} (null: an older item, its body in {@code bodies}). A queue of a node claims — by the claim and
+ * by the fast path — only the items whose body lies in that node's journal, or older ones without a ref; a queue without a
+ * node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
  * (an ingress body durable already, {@code PgIntake}'s) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
  * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} deletes the
  * message's DLQ row and inserts its row from the ingress body's kept ref in one statement, unless a work row of the id is there:
- * then it is refused and nothing is written; its row carries its own bound ({@code max_attempts}, V17). An item whose
- * body an accepted {@code RAIL8_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}, V13) is held for good: never claimed, so never
+ * then it is refused and nothing is written; its row carries its own bound ({@code max_attempts}). An item whose
+ * body an accepted {@code RAIL8_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}) is held for good: never claimed, so never
  * run or parked.
  *
- * <p>Holder liveness (V14): a worker id is its node's id. A row whose lease ran out is claimable by another node only
+ * <p>Holder liveness: a worker id is its node's id. A row whose lease ran out is claimable by another node only
  * when its holder has no live {@code nodes} row — released, or none at all (a holder that never joined counts as gone); its own
  * holder claims it back as before, after its join's {@code available_at} (a restarted node's old items wait for the previous
  * incarnation's {@code lease_until}, {@code PgMembership}). The check is one primary-key probe per candidate that has a holder, so the claim
- * keeps FIX-130's bounded plan. A hand-out of a row whose holder left it unsettled counts a doubt ({@code work.doubts}).
+ * keeps its bounded plan (see {@link #CLAIM}). A hand-out of a row whose holder left it unsettled counts a doubt
+ * ({@code work.doubts}).
  *
  * <p>Local hand-off: an enqueue given a holder and a lease ({@link #enqueueLeased}, the {@code SqlClient}
  * overloads with {@code holder, lease}) writes the row leased to that holder — attempt 1, {@code locked_until} now + lease — when
  * no other row of its key exists, and answers the leased item; otherwise the row is plain and the answer empty. Every keyed
  * insert and every keyed complete first takes its key's transaction advisory lock ({@link #lockKeys}, class {@code 0x0121},
  * {@code hashtext(flow ‖ U+001F ‖ key)}, keys in hash order; the complete takes it inside its own {@code WHERE}), so a same-key
- * save never reads "no other row" past a completion that has not yet handed the key on. V15's {@code work_flow_key_seq}
+ * save never reads "no other row" past a completion that has not yet handed the key on. The index {@code work_flow_key_seq}
  * answers the key probes.
  *
  * <p>Batched completion: a queue built with a timer ({@link #PgWorkQueue(Pool, String, TieredBlobStore, Timer)})
@@ -90,7 +91,7 @@ public final class PgWorkQueue implements WorkQueue {
      * The per-key lock of every keyed insert and keyed complete: a transaction advisory lock of two keys — this
      * class and {@code hashtext(flow U+001F key)} — so a same-key insert waits for the commit of another before its own statement
      * reads the key's rows, and a keyed complete's next-of-key read sees every same-key row committed before it. Taken in hash
-     * order, the subselect's sort evaluated before the lock (EXPLAIN VERBOSE, PG 17): two groups never wait for each other in a
+     * order, the subselect's sort evaluated before the lock (as EXPLAIN VERBOSE shows on Postgres 17): two groups never wait for each other in a
      * cycle, colliding hashes included. The argument needs READ COMMITTED (Postgres' default, every transaction here): a statement
      * after the lock takes a snapshot of its own, so it sees what the lock waited for; under REPEATABLE READ or SERIALIZABLE the
      * transaction's first snapshot would hide it.
@@ -194,7 +195,7 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * The holder's claim is the row's current one: it exists, is not held and was last handed out with
-     * these attempts, at least 1 — a row never handed out has attempts 0 (V4's default) and matches no token.
+     * these attempts, at least 1 — a row never handed out has attempts 0 (the column's default) and matches no token.
      */
     private static final String CURRENT = " where seq = $1 and attempts = $2 and attempts > 0 and held_at is null";
 
@@ -244,16 +245,16 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String DEFER = "update work set available_at = now() + make_interval(secs => $3), locked_by = null, locked_until = null" + CURRENT;
 
     /**
-     * The rows of {@code w}'s key in its flow behind it (the barrier made visible), on the index {@code work_flow_key_seq}
-     * (V15); 0 for a row without a key ({@code =} on null matches nothing).
+     * The rows of {@code w}'s key in its flow behind it (the barrier made visible), on the index {@code work_flow_key_seq};
+     * 0 for a row without a key ({@code =} on null matches nothing).
      */
     private static final String BLOCKS = "(select count(*) from work o where o.flow = w.flow and o.partition_key = w.partition_key and o.seq > w.seq) as blocks";
 
-    /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held} (V5); $2 is the limit plus one. */
+    /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held}; $2 is the limit plus one. */
     private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, max_attempts, held_at, " + BLOCKS + " from work w"
             + " where held_at is not null and seq > $1 order by seq limit $2";
 
-    /** Every flow's lost rows after a seq, in seq order (V13's {@code lost_at}), on the partial index {@code work_lost} (V16); $2 is the limit plus one. */
+    /** Every flow's lost rows after a seq, in seq order, on the partial index {@code work_lost}; $2 is the limit plus one. */
     private static final String LOST = "select seq, id, flow, step, partition_key, attempts, doubts, max_attempts, lost_at, " + BLOCKS + " from work w"
             + " where lost_at is not null and seq > $1 order by seq limit $2";
 
@@ -282,8 +283,8 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * The restart: {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
      * after attempt {@code $4} (prop {@code attempt}) — a concurrent remove of it
-     * (another restart, a {@code PgDlq.remove}) commits first and leaves none, or waits for this statement —; {@code w}, the guard
-     *, reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
+     * (another restart, a {@code PgDlq.remove}) commits first and leaves none, or waits for this statement —; {@code w}, the guard,
+     * reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
      * and flow only when none is, never as a row without a key — of which a park whose settle has not landed leaves one, still
      * leased; {@code src} holds its ingress body's kept ref ({@code <id>/0/body}) and that ref's segment row for key share, as
      * {@code ENQUEUE_FROM} does; {@code gone} deletes the locked row only when {@code w} found none, and {@code ins} inserts the work
@@ -297,8 +298,8 @@ public final class PgWorkQueue implements WorkQueue {
      * waiter that gets the lock either finds no DLQ row ({@code false}) or sees every work row the holder could have written. It
      * relies as well on nothing but a restart writing a work row of an id that has a DLQ row: the other inserts ({@link #ENQUEUE},
      * {@link #ENQUEUE_REF}, {@link #ENQUEUE_FROM}) are an intake's step 1 of an id minted at its ingress, which no run has parked
-     * yet. A later holder of the DLQ row lock that keeps the row and writes a work row would break the probe (the cancel to come
-     * deletes the row).
+     * yet. A later holder of the DLQ row lock that keeps the row and writes a work row would break the probe (a cancel must
+     * delete the row).
      */
     private static final String RESTART = """
             with d as (select id from dlq where id = $1::text and flow = $2::text and step = 1 and props->>'attempt' = $4::int::text for update),
@@ -344,7 +345,7 @@ public final class PgWorkQueue implements WorkQueue {
         this(pool, null, null);
     }
 
-    /** The queue of node {@code node}: it claims the items whose body lies in its journal, and pre-V12 ones. */
+    /** The queue of node {@code node}: it claims the items whose body lies in its journal, and older ones without a ref. */
     public PgWorkQueue(Pool pool, String node) {
         this(pool, Objects.requireNonNull(node, "node"), null);
     }
@@ -358,8 +359,8 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * {@link #PgWorkQueue(Pool, String, TieredBlobStore)} ({@code store} null: no index to tell) completing unkeyed rows in batches
-     *, {@code timer} bounding a member's wait for room.
+     * {@link #PgWorkQueue(Pool, String, TieredBlobStore)} ({@code store} null: no index to tell) completing unkeyed rows in batches,
+     * {@code timer} bounding a member's wait for room.
      */
     public PgWorkQueue(Pool pool, String node, TieredBlobStore store, Timer timer) {
         this.pool = Objects.requireNonNull(pool, "pool");
@@ -686,7 +687,7 @@ public final class PgWorkQueue implements WorkQueue {
         return releaseRow(seq).map(Optional::isPresent);
     }
 
-    /** The released row's flow and body node (none: a pre-V12 row, its body in {@code bodies}). */
+    /** The released row's flow and body node (none: an older row, its body in {@code bodies}). */
     @Override public Future<Optional<Released>> releaseRow(long seq) {
         return pool.preparedQuery(RELEASE).execute(Tuple.of(seq)).map(rows -> rows.rowCount() == 0 ? Optional.<Released>empty()
                 : Optional.of(released(rows.iterator().next())));
@@ -738,7 +739,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     private static Item item(Row r) {
-        Integer bound = r.getInteger("max_attempts");   // null: the flow's bound (V17)
+        Integer bound = r.getInteger("max_attempts");   // null: the flow's bound
         return new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"), r.getInteger("attempts"),
                 r.getInteger("doubts"), bound == null ? 0 : bound);
     }

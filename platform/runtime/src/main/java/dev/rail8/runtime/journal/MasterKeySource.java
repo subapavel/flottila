@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Where the journal's master key comes from (D-106): the key every tenant key is wrapped under ({@link JournalKeys}). One
+ * Where the journal's master key comes from: the key every tenant key is wrapped under ({@link JournalKeys}). One
  * of {@value #FILE} (preferred: a file holding the base64 of the key, a trailing newline allowed, as
  * {@code openssl rand -base64 32 > file} writes it) or {@value #ENV} (the base64 itself), exactly 256 bits; one key per
  * environment, shared by all its nodes. There is no default: neither refuses the start in every environment, unless
@@ -120,7 +120,7 @@ public final class MasterKeySource {
         return key;
     }
 
-    /** Whether the key is generated ({@value #GENERATE}{@code =true}): the admin health names it in its notices (D-106). */
+    /** Whether the key is generated ({@value #GENERATE}{@code =true}): the admin health names it in its notices. */
     public boolean generates() {
         return generate;
     }

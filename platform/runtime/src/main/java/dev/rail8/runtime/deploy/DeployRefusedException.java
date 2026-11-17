@@ -4,9 +4,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Why {@link Deployments#deploy} refused a package, or {@link Deployments#undeploy} an undeploy: its {@link Kind} — the admin API answers each with its own status —
- * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
- * did not start and rolled back ({@link Kind#FAILED}, D-063; {@link Kind#BUSY}, D-133) every flow that did not start, build or start again.
+ * Why {@link Deployments#deploy} refused a package, or {@link Deployments#undeploy} an undeploy: its {@link Kind} — the admin API
+ * answers each with its own status — the error line, and for {@link Kind#INVALID} every problem found, one line each, none with
+ * an absolute path; for a redeploy that did not start and rolled back ({@link Kind#FAILED} or {@link Kind#BUSY}) every flow that
+ * did not start, build or start again.
  *
  * @since 0.1
  */
@@ -26,7 +27,7 @@ public final class DeployRefusedException extends Exception {
         /** The node is closing (503). */
         STOPPING,
         /**
-         * The node's Postgres pool refused a connection (503, D-133), retryable: to the deploy record's write — otherwise as
+         * The node's Postgres pool refused a connection (503), retryable: to the deploy record's write — otherwise as
          * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
          * work-queue question or record delete, or to a deploy's work-queue question about a flow the new version no longer runs
          * at-least-once (after the package's problems: those are its 422), and only when every failed question was the pool's: a
