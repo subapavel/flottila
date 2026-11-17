@@ -196,6 +196,11 @@ export function TestTab({ mappingId, store, session, browserState }: TestTabProp
                 <ToolbarItem variant="separator" />
                 <ToolbarGroup alignItems="center">
                   <ToolbarItem>
+                    <Content component="small" aria-hidden="true">
+                      Trace Level
+                    </Content>
+                  </ToolbarItem>
+                  <ToolbarItem>
                     <FormSelect
                       aria-label="Trace Level"
                       value={trace}
