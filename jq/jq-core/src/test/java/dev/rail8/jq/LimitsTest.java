@@ -33,7 +33,8 @@ class LimitsTest {
     assertThat(embedded.steps()).as("steps").isEqualTo(1_000_000_000L);
     assertThat(embedded.deadline()).as("deadline").isEqualTo(Duration.ofSeconds(10));
     assertThat(embedded.nestingDepth()).as("nestingDepth").isEqualTo(10_000);
-    assertThat(embedded.recursionDepth()).as("recursionDepth").isEqualTo(4_194_304);
+    // The library's default for Rail8: 10 000 live activations, at most a few MB of stack and heap per filter.
+    assertThat(embedded.recursionDepth()).as("recursionDepth").isEqualTo(10_000);
     assertThat(embedded.bytesBuilt()).as("bytesBuilt").isEqualTo(GIB);
     assertThat(embedded.bytesWritten()).as("bytesWritten").isEqualTo(GIB);
     assertThat(embedded.regexMatchTime()).as("regexMatchTime").isEqualTo(Duration.ofSeconds(1));
@@ -47,8 +48,9 @@ class LimitsTest {
     assertThat(cli.deadline()).as("deadline").isEqualTo(LONGEST);
     assertThat(cli.bytesBuilt()).as("bytesBuilt").isEqualTo(LARGEST);
     assertThat(cli.bytesWritten()).as("bytesWritten").isEqualTo(LARGEST);
-    // Kept from embedded(): the parse depth, recursion and regex limits and the stack bytes (ADR-0017).
+    // Kept from embedded(): the parse depth and regex limits and the stack bytes (ADR-0017).
     assertThat(cli.nestingDepth()).as("nestingDepth").isEqualTo(10_000);
+    // The command line keeps jq's own recursion depth, 4 194 304, for parity with jq.
     assertThat(cli.recursionDepth()).as("recursionDepth").isEqualTo(4_194_304);
     assertThat(cli.regexMatchTime()).as("regexMatchTime").isEqualTo(Duration.ofSeconds(1));
     assertThat(cli.stackBytes()).as("stackBytes").isEqualTo(524_288L);

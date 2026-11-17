@@ -60,14 +60,21 @@ public record Limits(
     requireNonNegative(stackBytes, "stackBytes");
   }
 
-  /** The engine's default (ADR-0017). */
+  /** The recursion depth of the command line, jq's own. */
+  private static final int JQ_RECURSION_DEPTH = 4_194_304;
+
+  /**
+   * The engine's default (ADR-0017), the library's as Rail8 embeds it. Its recursion depth is 10 000 live activations,
+   * which bounds what one filter's recursion holds to a few MB of stack and heap; a caller that needs deeper recursion
+   * passes its own {@code Limits}.
+   */
   public static Limits embedded() {
-    return new Limits(1_000_000_000L, Duration.ofSeconds(10), 10_000, 4_194_304, GIB, GIB, Duration.ofSeconds(1), 512 * 1024L);
+    return new Limits(1_000_000_000L, Duration.ofSeconds(10), 10_000, 10_000, GIB, GIB, Duration.ofSeconds(1), 512 * 1024L);
   }
 
   /**
-   * The command line's (ADR-0017): {@link #embedded()}'s parse depth, recursion and regex limits and stack
-   * bytes; the steps, the deadline and both byte budgets are unlimited.
+   * The command line's (ADR-0017): {@link #embedded()}'s parse depth and regex limits and stack bytes, jq's recursion
+   * depth of 4 194 304 live activations; the steps, the deadline and both byte budgets are unlimited.
    */
   public static Limits cli() {
     Limits embedded = embedded();
@@ -75,7 +82,7 @@ public record Limits(
         UNLIMITED,
         UNLIMITED_TIME,
         embedded.nestingDepth(),
-        embedded.recursionDepth(),
+        JQ_RECURSION_DEPTH,
         UNLIMITED,
         UNLIMITED,
         embedded.regexMatchTime(),

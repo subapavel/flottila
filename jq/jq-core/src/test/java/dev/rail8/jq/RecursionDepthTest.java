@@ -66,6 +66,34 @@ class RecursionDepthTest {
   }
 
   /**
+   * The library's default, {@link Limits#embedded()}, holds 10 000 live activations: F on 9 999 holds 10 000 Calls and
+   * runs, F on 10 000 holds one more and ends the run. The limit is set per engine: with 20 000, F on 10 000 runs.
+   */
+  @Test
+  void theDefaultHoldsTenThousandActivations() {
+    onStack(
+        STACK,
+        () -> {
+          JqEngine engine = JqEngine.builder().build();
+          JqFilter f = engine.compile(F);
+          Workspace workspace = engine.newWorkspace();
+          assertThat(texts(f, workspace, "9999")).as("results of F on 9999 by default").containsExactly("9999");
+
+          JqValue tenThousand = read(workspace, "10000".getBytes(US_ASCII)).root();
+          Results none = new Results();
+          assertBudget(() -> f.run(tenThousand, NONE, none, workspace), Budget.RECURSION_DEPTH, "F on 10000 by default");
+          assertThat(none.values).as("results of F on 10000 by default").isEmpty();
+
+          Limits d = Limits.embedded();
+          JqEngine wider =
+              JqEngine.builder()
+                  .limits(new Limits(d.steps(), d.deadline(), d.nestingDepth(), 20_000, d.bytesBuilt(), d.bytesWritten(), d.regexMatchTime(), d.stackBytes()))
+                  .build();
+          assertThat(texts(wider.compile(F), wider.newWorkspace(), "10000")).as("results of F on 10000 with a depth of 20000").containsExactly("10000");
+        });
+  }
+
+  /**
    * A budget of 0 holds no activation: the first Call ends the run, and a filter whose every call is inlined runs
    * (calls/one-call-on-0 gives 0 on jq-ref, calls/inlined-calls-only gives [2,2]).
    */
