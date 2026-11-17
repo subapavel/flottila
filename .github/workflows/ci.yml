@@ -1,6 +1,7 @@
 # The platform's checks on GitHub.
 # On every change (a push to main, a pull request): the sign-off check of every commit, and the build with unit
-# and integration tests on the pinned Postgres, the name guard and the demo package. These block a merge.
+# and integration tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package.
+# These block a merge.
 # Once a night and on demand, as a report that blocks nothing: the whole stack in Docker with the demo deployed,
 # the same tests on the oldest supported Postgres, the coverage floors and the "coverage must not fall"
 # comparison, the benchmark and mutation testing.
@@ -53,6 +54,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # References to tasks or decisions in comments, and colours written by hand instead of PatternFly tokens, on
+      # the lines this change adds or modifies: compared with the pull request's base, with the previous main for
+      # a push, else with the parent commit
+      - name: Change guard on the added and modified lines, and its tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest ci.test_change_guard
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base="${{ github.event.before }}"
+          fi
+          if [ -n "$base" ]; then
+            git fetch -q --no-tags --depth=1 origin "$base"
+          else
+            git fetch -q --no-tags --deepen=1 origin "$GITHUB_SHA"
+            base="HEAD~1"
+          fi
+          python3 ci/change_guard.py --base "$base"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

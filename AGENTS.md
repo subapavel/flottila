@@ -34,7 +34,8 @@ Design first only for hard things: contracts, public API, storage format, securi
 the pull request and the commits.
 
 Blocking on every change: the build with unit and integration tests on one Postgres version, and
-the sign-off check. Coverage, mutation tests, a second Postgres, Windows, performance and the
+the sign-off check. The build also runs Error Prone (its errors fail) and `ci/change_guard.py`,
+which rejects task or decision references in comments and hard-coded colours on the changed lines. Coverage, mutation tests, a second Postgres, Windows, performance and the
 platform started in Docker run nightly as a report.
 
 ## Technical rules

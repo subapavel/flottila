@@ -84,7 +84,7 @@
             <!-- the JMH processor claims only its own annotations; javac warns of every other one -->
             <arg>-Xlint:-processing</arg>
           </compilerArgs>
-          <annotationProcessorPaths>
+          <annotationProcessorPaths combine.children="append">
             <path>
               <groupId>org.openjdk.jmh</groupId>
               <artifactId>jmh-generator-annprocess</artifactId>

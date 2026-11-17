@@ -54,6 +54,7 @@
 
     <!-- plugins -->
     <maven-compiler.version>3.14.1</maven-compiler.version>
+    <errorprone.version>2.52.0</errorprone.version> <!-- Apache-2.0: Error Prone, the static analysis javac runs -->
     <maven-surefire.version>3.6.0</maven-surefire.version>
     <maven-jar.version>3.4.2</maven-jar.version>
     <maven-resources.version>3.3.1</maven-resources.version>
@@ -252,9 +253,22 @@
           <configuration>
             <release>${maven.compiler.release}</release>
             <parameters>true</parameters>
+            <!-- Error Prone runs inside javac on main and test sources. A check of severity ERROR fails the build;
+                 a WARNING is only printed. It needs the javac internals opened in .mvn/jvm.config. -->
             <compilerArgs>
               <arg>-Xlint:all,-processing,-serial</arg>
+              <arg>-XDcompilePolicy=simple</arg>
+              <arg>--should-stop=ifError=FLOW</arg>
+              <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+              <arg>-Xplugin:ErrorProne</arg>
             </compilerArgs>
+            <annotationProcessorPaths>
+              <path>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_core</artifactId>
+                <version>${errorprone.version}</version>
+              </path>
+            </annotationProcessorPaths>
           </configuration>
         </plugin>
         <plugin>

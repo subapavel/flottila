@@ -75,7 +75,7 @@ public final class BlobBenchMain {
         Files.createDirectories(out.toAbsolutePath().getParent());
         Files.writeString(out, json.encodePrettily() + "\n");
         System.out.println(json.encodePrettily());
-        return Boolean.compare(true, ok) * 3;   // 0, or 3 on any hash mismatch
+        return ok ? 0 : 3;   // 3 on any hash mismatch
     }
 
     /** The smallest RECORD_MAX a journal takes: every body above it is a spill. */

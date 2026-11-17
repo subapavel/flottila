@@ -162,7 +162,8 @@ class AdminServerTargetsTest {
         assertTrue(refused1.failed() && refused2.failed(), "fixture: both of A's waiters refused at its maxWait");
         Future<TargetLimit.Permit> waiting = a.acquire();
         assertFalse(waiting.isComplete(), "fixture: A's next waiter waits");
-        assertTrue(b.acquire().succeeded() && b.acquire().succeeded(), "fixture: B grants two of its three calls");
+        assertTrue(b.acquire().succeeded(), "fixture: B grants the first of its three calls");
+        assertTrue(b.acquire().succeeded(), "fixture: B grants the second of its three calls");
 
         Answer listed = get(port, "/admin/targets", AUTH);
 
