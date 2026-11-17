@@ -101,6 +101,12 @@ class ChangeGuardTest(unittest.TestCase):
             "platform/core/A.java:8: a reference in a comment (ADR-0019, #123): say what the code does and why instead",
         ], self.findings(repo, 5))
 
+    def test_a_reference_ending_in_an_upper_case_letter_is_a_finding(self):
+        repo = self.repo()
+        repo.change({"platform/core/A.java": "package a;\n// splits the queue (P2-02D, MAP-7B)\nclass A {}\n"})
+        self.assertEqual(["platform/core/A.java:2: a reference in a comment (P2-02D, MAP-7B): "
+                          "say what the code does and why instead"], self.findings(repo, 1))
+
     def test_only_added_and_modified_lines_are_checked(self):
         old = "package a;\n// old D-1\nclass A {\n  // kept FIX-2\n  int y;\n}\n"
         repo = self.repo({"mapping/engine/A.java": old})
