@@ -13,17 +13,21 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 
 /**
- * The calibration's shapes and its child JVM (ADR-0046 and its #111, #113 and #116 amendments, F-55, F-30, F-93,
- * F-95). A calibration cell is one shape × tier × thread × compile mode; this child runs the cells of one tier, one
- * thread and its modes, and prints a tab-separated row per cell.
+ * The calibration's shapes and its child JVM. A calibration cell is one shape × tier × thread × compile mode; this
+ * child runs the cells of one tier, one thread and its modes, and prints a tab-separated row per cell.
  *
  * <p>The child runs its work on the launcher's main thread, sized by {@code -Xss} (F-93); a virtual cell runs it on a
  * virtual thread, whose carrier takes {@code -Xss} (K8). Before any other work on that thread it proves the thread's
  * size with a plain recursion to {@link StackOverflowError} and prints the count as {@code proof <kind> <bytes>
- * <frames>}: the parent compares it with the count of a 1 MiB thread of the same tier (D2).
+ * <frames>}: the parent compares it with the count of the next platform thread up of the same tier.
  *
  * <p>{@code args}: {@code <action> <platform|virtual> <thread bytes, as given to -Xss> <modes, comma-separated>
  * [<ids, comma-separated> [warm | <id>=<U*>,…]]}. The actions:
@@ -57,7 +61,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * </ul>
  *
  * <p>An end is the results' JSON texts, then {@code ran out}, {@code stopped}, {@code error <value>}, {@code
- * termination <cause>} or what the run threw.
+ * termination <cause>} or what the run threw, or {@code compile threw <throwable>} for the compile. Every cell's filter
+ * is compiled on one helper thread of {@value #HELPER_STACK} bytes, started after the cell's thread on first use and
+ * living as long as the child, and run on the cell's thread, so the cell's stack measures the run and never the
+ * compile. A {@code probe}, {@code linked} or {@code search} child whose compile fails prints {@code compile <mode> <id>
+ * <throwable>} in place of its rows.
  */
 final class CalibrationCell {
   private CalibrationCell() {}
@@ -90,16 +98,33 @@ final class CalibrationCell {
    * PLAIN calls of IrDepthTest's 30 001-level filter does. That filter is a Stub until #114 lifts it (IrDepthTest
    * {@code aFilterOf30001LevelsIsAStub}); a RECURSIVE call weighs its units as a PLAIN one does (#114), so the
    * recursion is its stand-in here. As in #114's filter nothing rises above the call's result but one step, {@code |
-   * $n}. It is the 13th shape (ADR-0046 #113 "Rulings on the red"); #114 adds its PLAIN-call filter as a 14th after it
-   * merges, and re-runs the matrix.
+   * $n}. It is the 13th shape; the PLAIN-call filter itself is the 14th, {@link #PLAIN_DESCENT}.
    */
   static final String COLLECT_DESCENT = "def c: if . == 0 then 0 else . as $n | " + "[".repeat(100) + "$n - 1 | c" + "]".repeat(100) + " | $n end; 300 | c";
 
   /**
-   * The 13 shapes of ADR-0046 #113 (K4 and "Rulings on the red"), F-95's Collect-heavy descent the 13th; #114 adds a
-   * 14th, its PLAIN-call filter of 300 calls under 100 Collects each. Spike A's T, E, M and N on {@link #ONES}; the
-   * wide body W; the closure chain C; the nested drivers ND; F-30's {@code [..]|length} on DEEP; #111's collect,
-   * reduce, first-or and hold; and {@link #COLLECT_DESCENT}.
+   * The PLAIN-call filter, IrDepthTest's {@code nested(30_001)}, built here so a child loads no other test class:
+   * {@code def f1: [[…[.]…]]; def f2: [[…[f1]…]]; … def f300: …; f300}, 100 brackets each, 30 001
+   * levels of PLAIN calls past the IR bound.
+   */
+  static final String PLAIN_DESCENT = plainDescent();
+
+  /**
+   * Reference jq 1.8.2's result for {@link #PLAIN_DESCENT} on null, IrDepthTest's {@code NESTED_30001} (diff/over-cap.rec
+   * {@code over-cap/depth-30001}): 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets.
+   */
+  static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
+
+  private static String plainDescent() {
+    StringBuilder f = new StringBuilder();
+    for (int i = 1; i <= 300; i++) f.append("def f").append(i).append(": ").append("[".repeat(100)).append(i == 1 ? "." : "f" + (i - 1)).append("]".repeat(100)).append("; ");
+    return f.append("f300").toString();
+  }
+
+  /**
+   * The 14 shapes: Spike A's T, E, M and N on {@link #ONES}; the wide body W; the closure chain C; the nested drivers
+   * ND; {@code [..]|length} on DEEP; the collect, reduce, first-or and hold recursions; the Collect-heavy descent
+   * {@link #COLLECT_DESCENT}; and the PLAIN-call descent {@link #PLAIN_DESCENT}.
    */
   static final List<Shape> SHAPES =
       List.of(
@@ -119,7 +144,8 @@ final class CalibrationCell {
           new Shape("reduce", "def r: reduce .[] as $x (0; .+($x|r)+1); r", DeepStackFreshJvmTest.DEEP, "9998"),
           new Shape("first-or", "def l: first(.[]?|l)//7; l", DeepStackFreshJvmTest.DEEP, "7"),
           new Shape("hold", DeepStackFreshJvmTest.HOLD, "null", "0"),
-          new Shape("collect-descent", COLLECT_DESCENT, "null", "300"));
+          new Shape("collect-descent", COLLECT_DESCENT, "null", "300"),
+          new Shape("plain-descent", PLAIN_DESCENT, "null", NESTED_30001));
 
   /** The 10 000-deep native check (D4), each native's first use in its child at the deepest emit. */
   static final List<Shape> NATIVES =
@@ -147,9 +173,81 @@ final class CalibrationCell {
     }
   }
 
+  /** The stack of the compile helper, far above any shape's compile (a C1-compiled Parser overflows 512 KiB). */
+  private static final long HELPER_STACK = 16L << 20;
+
+  /** What compiling threw on the helper thread, so it never reads as a run's end on the cell's thread. */
+  static final class CompileFailed extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    CompileFailed(Throwable cause) {
+      super(cause);
+    }
+  }
+
+  /**
+   * The compile helper: one platform daemon thread, started when this class is first used, which is after the cell's
+   * thread, and living as long as the child. Work is handed over through one slot and an unpark, so the thread that
+   * hands it over takes no lock and never parks.
+   */
+  private static final class Helper {
+    private static final AtomicReference<Runnable> WORK = new AtomicReference<>();
+    private static final Thread THREAD = start();
+
+    private Helper() {}
+
+    private static Thread start() {
+      Thread thread = new Thread(null, Helper::serve, "calibration-compile", HELPER_STACK);
+      thread.setDaemon(true);
+      thread.start();
+      return thread;
+    }
+
+    private static void serve() {
+      while (true) {
+        Runnable work = WORK.getAndSet(null);
+        if (work == null) LockSupport.park();
+        else work.run();
+      }
+    }
+
+    /** Puts {@code work} in the slot once it is free, spinning while another caller's work waits there. */
+    static void submit(Runnable work) {
+      while (!WORK.compareAndSet(null, work)) Thread.onSpinWait();
+      LockSupport.unpark(THREAD);
+    }
+  }
+
+  /**
+   * {@code compile} done on the helper thread: the cell's thread only runs filters, so {@code b} and the reserve
+   * measure the run, not the compile. What it threw is a {@link CompileFailed}. A platform cell parks in {@code
+   * join()}; a virtual cell spins on {@code isDone} with {@code Thread.onSpinWait} and never parks, yields or sleeps,
+   * since a virtual thread that unmounts comes back with only its top frames on the carrier, which would change the
+   * stack it measures.
+   */
+  static <T> T onHelper(Supplier<T> compile) {
+    CompletableFuture<T> compiled = new CompletableFuture<>();
+    Helper.submit(
+        () -> {
+          try {
+            compiled.complete(compile.get());
+          } catch (Throwable t) {
+            compiled.completeExceptionally(t);
+          }
+        });
+    if (Thread.currentThread().isVirtual()) {
+      while (!compiled.isDone()) Thread.onSpinWait();
+    }
+    try {
+      return compiled.join();
+    } catch (CompletionException e) {
+      throw new CompileFailed(e.getCause());
+    }
+  }
+
   /** The facts of the one line of {@code filter}'s explain text that carries {@code callFreeDepth}. */
   static Units units(String filter, CompileMode mode) {
-    String text = engine(Limits.cli().stackBytes(), mode).compile(filter).explain();
+    String text = onHelper(() -> engine(Limits.cli().stackBytes(), mode).compile(filter).explain());
     List<String> closing = Arrays.stream(text.split("\n")).filter(l -> l.contains("callFreeDepth=")).toList();
     if (closing.size() != 1) {
       throw new IllegalStateException(mode + ": not one closing line with callFreeDepth in:\n" + text);
@@ -192,7 +290,7 @@ final class CalibrationCell {
     if (standIn != null) return standIn.end(stackBytes, StackWalker.getInstance().walk(frames -> frames.map(StackWalker.StackFrame::getMethodName).toList()));
     try {
       JqEngine engine = engine(stackBytes, mode);
-      JqFilter compiled = engine.compile(shape.filter());
+      JqFilter compiled = onHelper(() -> engine.compile(shape.filter()));
       Workspace workspace = engine.newWorkspace();
       JqValue root = read(workspace, shape.json().getBytes(US_ASCII)).root();
       Results results = new Results();
@@ -205,6 +303,9 @@ final class CalibrationCell {
         end = "termination " + t.cause();
       }
       return results.values.stream().map(JqValue::toJson).toList() + ", " + end;
+    } catch (CompileFailed e) {
+      // The helper's compile, not the run on this thread.
+      return "compile threw " + e.getCause();
     } catch (RuntimeException | StackOverflowError e) {
       // An outcome the parent asserts against, never a pass: it is printed as the cell's end.
       return "threw " + e;
@@ -273,7 +374,9 @@ final class CalibrationCell {
       case "probe" -> {
         // One run, the first of this child (the cold edge of ADR-0046 #113 "Rulings on the red"); "-" probes U_f(S).
         Shape shape = shapes(SHAPES, ids).getFirst();
-        Units u = units(shape.filter(), mode);
+        Optional<Units> compiled = compiled(shape, mode);
+        if (compiled.isEmpty()) return;
+        Units u = compiled.get();
         long unitLimit = extra.equals("-") ? Math.max(0, u.unitLimitAt(thread)) : Long.parseLong(extra);
         String end = ended(shape, u.stackBytesFor(unitLimit), mode);
         String control = more.equals("control") ? ended(shape, GIB, mode) : "-";
@@ -282,7 +385,9 @@ final class CalibrationCell {
       case "linked" -> {
         // The linked edge: two linking runs that switch after 64 units, then the search in this child.
         for (Shape shape : shapes(SHAPES, ids)) {
-          Units u = units(shape.filter(), mode);
+          Optional<Units> compiled = compiled(shape, mode);
+          if (compiled.isEmpty()) continue;
+          Units u = compiled.get();
           ended(shape, u.stackBytesFor(64), mode);
           ended(shape, u.stackBytesFor(64), mode);
           search(shape, thread, mode, u, extra.isEmpty() ? -1 : Long.parseLong(extra));
@@ -312,7 +417,9 @@ final class CalibrationCell {
       }
       case "search" -> {
         for (Shape shape : shapes(SHAPES, ids)) {
-          Units u = units(shape.filter(), mode);
+          Optional<Units> compiled = compiled(shape, mode);
+          if (compiled.isEmpty()) continue;
+          Units u = compiled.get();
           if (extra.equals("warm")) {
             for (int i = 0; i < WARM_UPS; i++) {
               ended(shape, 0, mode);
@@ -349,6 +456,19 @@ final class CalibrationCell {
         }
       }
       default -> throw new IllegalArgumentException("no action " + action);
+    }
+  }
+
+  /**
+   * The shape's units, compiled on the helper thread, or empty after printing {@code compile <mode> <id> <what it
+   * threw>} when that compile fails; the parent fails such a cell.
+   */
+  private static Optional<Units> compiled(Shape shape, CompileMode mode) {
+    try {
+      return Optional.of(units(shape.filter(), mode));
+    } catch (CompileFailed e) {
+      row("compile", mode, shape.id(), e.getCause());
+      return Optional.empty();
     }
   }
 

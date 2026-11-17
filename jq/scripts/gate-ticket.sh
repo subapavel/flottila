@@ -73,12 +73,11 @@ else
   echo "== require: none (ORACLE_REQUIRE unset)"
 fi
 
-# The column's cells: 2 modes × the 13 shapes of CalibrationCell.SHAPES (ADR-0046 #113).
+# The column's cell count lives in scripts/calibration-cells.sh alone.
 column=jq-core/target/calibration-column.tsv
-column_cells=26
 rm -f "$column"
 step verify 0 ../mvnw -B -Pbench,compile-oracle "${require[@]}" verify
-step column 1 scripts/calibration-cells.sh "$column" check "$column_cells"
+step column 1 scripts/calibration-cells.sh "$column" column
 step lf 0 scripts/check-lf-checkout.sh
 step trailers 0 scripts/check-trailers.sh "$ref..HEAD"
 step word 0 scripts/check-core-neutral.sh

@@ -18,10 +18,10 @@ import java.util.Objects;
  * @param regexMatchTime the time one regex match may take
  * @param stackBytes the stack the evaluation declares, from which each run derives how many stack units of its calls
  *     stay on the Java stack before a call starts the heap-form trampoline: {@code U_f =
- *     floorDiv(stackBytes - reserve, b) - D_f}, with the reserve 280 KiB and {@code b}, the bytes per unit, 192, both
+ *     floorDiv(stackBytes - reserve, b) - D_f}, with the reserve 180 KiB and {@code b}, the bytes per unit, 192, both
  *     calibrated in {@code -Xint} and C1 and proven in the warm JIT, and {@code D_f} the filter's call-free depth;
  *     {@code explain()} shows all three. The reserve covers the trampoline's fixed cost and its first-switch class
- *     loading, plus 32 KiB for natives. On the command line's 512 KiB, {@code U_f} is {@code 1237 - D_f}. It is not a
+ *     loading, plus 32 KiB for natives. On the command line's 512 KiB, {@code U_f} is {@code 1770 - D_f}. It is not a
  *     budget: 0 means zero bytes, never unlimited, and at or below {@code reserve + b * D_f}, 0 included, main and
  *     every body run on the trampoline; the engine still needs the reserve's stack for the trampoline and natives.
  *     The thread must have the declared bytes.

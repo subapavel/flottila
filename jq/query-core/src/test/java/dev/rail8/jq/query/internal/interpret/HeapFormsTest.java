@@ -38,7 +38,7 @@ class HeapFormsTest {
 
   /**
    * The push run's declared stack: these programs' calls hold far fewer units than its unit limit. It is above the
-   * reserve, 280 KiB since #113, or every run, the push run too, would start on the trampoline.
+   * reserve ({@code StackUnits.RESERVE}), or every run, the push run too, would start on the trampoline.
    */
   private static final long PUSH = 512 * 1024;
 
