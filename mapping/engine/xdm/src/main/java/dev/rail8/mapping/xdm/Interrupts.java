@@ -2,7 +2,7 @@ package dev.rail8.mapping.xdm;
 
 import java.util.concurrent.CancellationException;
 
-/** The interruption check of every loop over contexts or slots of the queue algebra (ADR-0021). */
+/** The interruption check of every loop over contexts or slots of the queue algebra. */
 final class Interrupts {
 
   private Interrupts() {}

@@ -14,7 +14,7 @@ public sealed interface CompileResult {
   record Compiled(CompiledMapping mapping) implements CompileResult {}
 
   /**
-   * A mapping refused by loading, by a structure load error or by stage 3 (ADR-0011).
+   * A mapping refused by loading, by a structure load error or by stage 3.
    *
    * @param diagnostics the refusing stage's diagnostics, sorted by {@link Diagnostic#ORDER}
    */

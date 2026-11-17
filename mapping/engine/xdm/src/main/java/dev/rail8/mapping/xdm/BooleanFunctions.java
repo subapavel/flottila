@@ -4,22 +4,22 @@ import java.util.Locale;
 import java.util.concurrent.CancellationException;
 
 /**
- * The queue algebra of the function family boolean (ADR-0025 "Families", #78): {@code
- * ifWithoutElse}, a context function because it makes SUPPRESS (ADR-0006), and the cast to a
- * boolean that the family and {@code createIf} share, PO's {@code Bool.toBoolean} as PO 7.5 and CPI
- * showed it (F-37, F-44). A function never changes its input; a block is immutable.
+ * The queue algebra of the function family boolean: {@code ifWithoutElse}, a context function
+ * because it makes SUPPRESS, and the cast to a boolean that the family and {@code createIf} share,
+ * PO's {@code Bool.toBoolean} as PO 7.5 and CPI showed it. A function never changes its input; a
+ * block is immutable.
  */
 public final class BooleanFunctions {
 
   private BooleanFunctions() {}
 
   /**
-   * {@code value} cast to a boolean as PO's {@code Bool.toBoolean} casts it (ADR-0006, F-37, F-44):
-   * {@code 1} and {@code true} in any case are true, {@code 0} and {@code false} in any case false.
-   * White space is part of a value. Like the export's {@code lower-case}, {@code
-   * toLowerCase(Locale.ROOT)} maps no character but an ASCII capital to a letter of {@code true} or
-   * {@code false}; {@code equalsIgnoreCase} would also take U+017F, the long s, for {@code s},
-   * which {@code lower-case} keeps.
+   * {@code value} cast to a boolean as PO's {@code Bool.toBoolean} casts it: {@code 1} and {@code
+   * true} in any case are true, {@code 0} and {@code false} in any case false. White space is part
+   * of a value. Like the export's {@code lower-case}, {@code toLowerCase(Locale.ROOT)} maps no
+   * character but an ASCII capital to a letter of {@code true} or {@code false}; {@code
+   * equalsIgnoreCase} would also take U+017F, the long s, for {@code s}, which {@code lower-case}
+   * keeps.
    *
    * @throws QueueDataException when {@code value} is none of those, {@code ""} included: {@code
    *     Cannot cast '<value>' to boolean}, PO's text
@@ -36,7 +36,7 @@ public final class BooleanFunctions {
   }
 
   /**
-   * {@code ifWithoutElse(condition, then)}, as PO 7.5 and CPI showed it (obs-boolean, F-44):
+   * {@code ifWithoutElse(condition, then)}, as PO 7.5 and CPI showed it:
    *
    * <ul>
    *   <li>the result has as many contexts as {@code then}; context i pairs context i of both

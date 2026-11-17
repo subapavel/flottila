@@ -27,7 +27,7 @@ public final class CompiledMapping {
     return executable;
   }
 
-  /** The occurrence of each target field mapping's field, by its authoring id (#83). */
+  /** The occurrence of each target field mapping's field, by its authoring id. */
   Map<AuthoringId, Occurrence> occurrences() {
     return occurrences;
   }

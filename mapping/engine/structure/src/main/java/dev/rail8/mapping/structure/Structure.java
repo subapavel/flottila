@@ -11,8 +11,8 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * The tree of fields a message may have, held as a finite graph of types (ADR-0008). Fields resolve
- * lazily by field path, so a recursive type is never expanded.
+ * The tree of fields a message may have, held as a finite graph of types. Fields resolve lazily by
+ * field path, so a recursive type is never expanded.
  *
  * @param root the root field
  * @param types the structure types by id
@@ -63,11 +63,10 @@ public record Structure(Field root, Map<String, StructureType> types) {
   }
 
   /**
-   * SHA-256 over a canonical form of what the compiler reads (ADR-0009): the root and every type in
-   * id order, each field with its step, effective occurrence, value type and child type, in field
-   * order, an array property with its marker (#118), and a refused field with its refusal's reason
-   * (#92). Display data, prefixes and whitespace of the schema do not enter it, nor does a
-   * refusal's position.
+   * SHA-256 over a canonical form of what the compiler reads: the root and every type in id order,
+   * each field with its step, effective occurrence, value type and child type, in field order, an
+   * array property with its marker, and a refused field with its refusal's reason. Display data,
+   * prefixes and whitespace of the schema do not enter it, nor does a refusal's position.
    */
   public String fingerprint() {
     StringBuilder canonical = new StringBuilder("root ").append(canonical(root)).append('\n');
@@ -96,9 +95,9 @@ public record Structure(Field root, Map<String, StructureType> types) {
         + field.valueType().map(ValueType::typeName).orElse("-")
         + " "
         + field.type().orElse("-")
-        // a field without the array marker keeps the line it had before #118 (ADR-0009)
+        // the array marker and the refusal are written only where they apply, which keeps the
+        // fingerprints already stored for fields with neither valid
         + (field.array() ? " array" : "")
-        // a field without a refusal keeps the line it had before #92 (ADR-0009)
         + field.refusal().map(refusal -> " refused:" + refusal.reason().code()).orElse("");
   }
 

@@ -1,11 +1,10 @@
 package dev.rail8.mapping.ir;
 
 /**
- * A node of the IR every front end lowers to (ADR-0006). The IR is pure data. Each node names the
- * authoring element it came from, for tracing and errors. Spec 1 has the nodes of a field link, #50
- * adds the call of a context function with its literal params, #51 the single-value step {@link
- * Lift}, #63 the fixed occurrences {@link TargetRepeat}, and #102 the {@link AttributeConstructor};
- * the other records of ADR-0006 join with the features that need them.
+ * A node of the IR every front end lowers to. The IR is pure data. Each node names the authoring
+ * element it came from, for tracing and errors. The nodes are those of a field link, the call of a
+ * context function with its literal params, the single-value step {@link Lift}, the fixed
+ * occurrences {@link TargetRepeat} and the {@link AttributeConstructor}.
  */
 public sealed interface Expr
     permits SourceQueue,

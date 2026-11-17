@@ -8,41 +8,38 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Re-checks IR after lowering and after every optimiser pass (ADR-0006). A refusal is a compiler
- * bug, not a user error, so it throws. A node's type is derived: a {@link SourceQueue}, a {@link
- * Lift} and an {@link AtomicToQueue} are queues, a {@link Literal} a string, a {@link VarRef} has
- * the type it stores and a {@link FunCall} its {@link FunctionRef}'s result; content gives no
- * value. It checks:
+ * Re-checks IR after lowering and after every optimiser pass. A refusal is a compiler bug, not a
+ * user error, so it throws. A node's type is derived: a {@link SourceQueue}, a {@link Lift} and an
+ * {@link AtomicToQueue} are queues, a {@link Literal} a string, a {@link VarRef} has the type it
+ * stores and a {@link FunCall} its {@link FunctionRef}'s result; content gives no value. It checks:
  *
  * <ul>
  *   <li>every {@link VarRef} reads a variable in scope with the type it is bound with: the root's
  *       slot number ({@code INTEGER}) in the document's content, a {@link TargetSlots}' slot number
- *       ({@code INTEGER}) and value ({@code STRING}) only in its body (#52), and a {@link Lift}'s
- *       slot variables ({@code STRING}) only in its body, which sees nothing else;
+ *       ({@code INTEGER}) and value ({@code STRING}) only in its body, and a {@link Lift}'s slot
+ *       variables ({@code STRING}) only in its body, which sees nothing else;
  *   <li>a {@link SourceQueue}'s context is a proper ancestor of its field, and an attribute's queue
- *       is not a structure field's (#102);
+ *       is not a structure field's;
  *   <li>a {@link TargetSlots}' {@code min} is at most its {@code max}, its queue is a queue and its
  *       parent slot an {@code INTEGER};
  *   <li>a {@link TargetRepeat} has at least one copy and an {@code INTEGER} parent slot, and binds
- *       its slot number ({@code INTEGER}) only in its body (#63); its value, when present, is in
- *       the parent's scope, so it cannot read its own slot number or value variable, and is a
- *       {@code STRING} (#83) or a {@code QUEUE}, a generating block, which alone has a value
- *       variable ({@code STRING}), bound only in its body (#217);
+ *       its slot number ({@code INTEGER}) only in its body; its value, when present, is in the
+ *       parent's scope, so it cannot read its own slot number or value variable, and is a {@code
+ *       STRING} or a {@code QUEUE}, a generating block, which alone has a value variable ({@code
+ *       STRING}), bound only in its body;
  *   <li>a {@link FunCall} has one argument per parameter type of its {@link FunctionRef}, each of
  *       that type; a context function's (one whose result is a queue) atomic argument is a param,
- *       and a param is a {@link Literal} (ADR-0025);
- *   <li>an {@link AtomicToQueue}'s value is a {@code STRING} (#83);
+ *       and a param is a {@link Literal};
+ *   <li>an {@link AtomicToQueue}'s value is a {@code STRING};
  *   <li>a {@link Lift} has at least one input, each a queue, one slot variable per input, all
- *       distinct and none named {@code in}, which the export binds (ADR-0025), and a {@code STRING}
- *       body (ADR-0006 since #51);
+ *       distinct and none named {@code in}, which the export binds, and a {@code STRING} body;
  *   <li>a {@link TextConstructor}'s value is a {@code STRING}, and the document's content, an
- *       {@link ElementConstructor}'s content and the body of a {@link TargetSlots} (#51) and of a
- *       {@link TargetRepeat} (#63) are content;
+ *       {@link ElementConstructor}'s content and the body of a {@link TargetSlots} and of a {@link
+ *       TargetRepeat} are content;
  *   <li>an {@link AttributeConstructor} is the body of an attribute item, a {@link TargetSlots}
  *       with {@code max <= 1} or a 1-copy {@link TargetRepeat}, and stands nowhere else; its value
  *       is a {@code STRING}; in the document's content and in each {@link ElementConstructor}'s,
- *       the attribute items come before all other content, each of a name of its own (ADR-0006
- *       since #102).
+ *       the attribute items come before all other content, each of a name of its own.
  * </ul>
  */
 public final class IrVerifier {
@@ -153,7 +150,7 @@ public final class IrVerifier {
     Expr value = r.value().get();
     Optional<IrType> type = check(value, scope);
     if (type.equals(Optional.of(QUEUE))) {
-      // a generating block (#217): its first slot is bound in the body only
+      // a generating block: its first slot is bound in the body only
       String valueVar =
           r.valueVar()
               .orElseThrow(
@@ -173,7 +170,7 @@ public final class IrVerifier {
 
   /**
    * Checks the document's or an element's {@code content}: its attribute items, each of a name of
-   * its own, and then the rest, in which no attribute item stands (ADR-0006 since #102).
+   * its own, and then the rest, in which no attribute item stands.
    */
   private static void contents(List<Expr> content, Map<String, AtomicType> scope) {
     Set<Name> attributes = new HashSet<>();

@@ -4,14 +4,14 @@ import java.math.BigDecimal;
 import java.util.concurrent.CancellationException;
 
 /**
- * The queue algebra of the function family statistic (ADR-0025 "Families", #75): {@code sum},
- * {@code average} and {@code count} give one value per context (#2 §5), {@code index} numbers every
- * slot of each context or of the whole queue, and {@code counter} the values of the whole queue. A
- * number is an {@code xs:decimal} (ADR-0005), read by {@link XsDecimal#parse} and written in the
+ * The queue algebra of the function family statistic: {@code sum}, {@code average} and {@code
+ * count} give one value per context, as the SAP documentation describes them, {@code index} numbers
+ * every slot of each context or of the whole queue, and {@code counter} the values of the whole
+ * queue. A number is an {@code xs:decimal}, read by {@link XsDecimal#parse} and written in the
  * XPath canonical form. SUPPRESS is no value to {@code sum}, {@code average}, {@code count} and
  * {@code counter}: they do not read, count or number it, and {@code counter} keeps it at its slot
- * (observed for {@code count}, an assumed reading of #75 for the others); {@code index} numbers it
- * as a value (observed, F-45). A function never changes its input; a block is immutable.
+ * (observed for {@code count}, an assumed reading for the others); {@code index} numbers it as a
+ * value (observed). A function never changes its input; a block is immutable.
  */
 public final class StatisticFunctions {
 
@@ -19,8 +19,8 @@ public final class StatisticFunctions {
 
   /**
    * {@code sum}: per context of {@code values}, one context holding the total of its values; a
-   * context without a value gives {@code 0} (an assumed reading of #75, as XPath's {@code
-   * sum(())}). A queue with no context at all gives none.
+   * context without a value gives {@code 0} (an assumed reading, as XPath's {@code sum(())}). A
+   * queue with no context at all gives none.
    *
    * @throws QueueDataException when a value is no decimal
    * @throws CancellationException when the thread is interrupted
@@ -39,11 +39,11 @@ public final class StatisticFunctions {
 
   /**
    * {@code average}: per context of {@code values}, one context holding the total of its values
-   * divided by their count by ADR-0005's rule, as Saxon-HE divides: rounded half-down to the
-   * total's fractional digits, trailing zeros not counted, plus 18. A context without a value, of
-   * SUPPRESS only too, has no count to divide by: the call stops there, as PO 7.5 and CPI stop with
-   * "Division undefined" (observed for an empty context, F-45). A queue with no context at all
-   * gives none.
+   * divided by their count by the rule of {@link XsDecimal#quotient}, as Saxon-HE divides: rounded
+   * half-down to the total's fractional digits, trailing zeros not counted, plus 18. A context
+   * without a value, of SUPPRESS only too, has no count to divide by: the call stops there, as PO
+   * 7.5 and CPI stop with "Division undefined" (observed for an empty context). A queue with no
+   * context at all gives none.
    *
    * @throws QueueDataException when a value is no decimal
    * @throws ArithmeticException at the first context without a value, naming it from 1
@@ -88,9 +88,8 @@ public final class StatisticFunctions {
   /**
    * {@code index}: the k-th slot of each context of {@code values}, counting from 0, becomes {@code
    * initial + k * increment}; when not {@code resetEachContext}, k counts across the whole queue
-   * instead. A SUPPRESS slot is numbered as a value is, so the result holds no SUPPRESS (observed,
-   * F-45). The values are not read. The result shares the context starts of {@code values}
-   * (ADR-0004).
+   * instead. A SUPPRESS slot is numbered as a value is, so the result holds no SUPPRESS (observed).
+   * The values are not read. The result shares the context starts of {@code values}.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -114,8 +113,8 @@ public final class StatisticFunctions {
   /**
    * {@code counter}: the k-th value of the whole of {@code values}, counting from 0, becomes {@code
    * initial + k * increment}. The values are not read, and each SUPPRESS stays at its slot without
-   * a number (decided, F-43: PO and CPI have no counter with an input). The result shares the
-   * context starts and the SUPPRESS bitset of {@code values} (ADR-0004).
+   * a number (decided: PO and CPI have no counter with an input). The result shares the context
+   * starts and the SUPPRESS bitset of {@code values}.
    *
    * @throws CancellationException when the thread is interrupted
    */

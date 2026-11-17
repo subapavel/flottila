@@ -7,11 +7,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The one number rule of the standard functions (#82, ADR-0005): every function that reads a number
- * reads it through {@link #parse}, as the export reads it through {@code po:decimal} in {@code
- * core.xsl}, and writes it through {@link #canonical}. A function that meets no decimal raises its
- * own data error at its box (F-19). A quotient is {@link #quotient}'s, and XPath's {@code round} is
- * {@link #round}.
+ * The one number rule of the standard functions: every function that reads a number reads it
+ * through {@link #parse}, as the export reads it through {@code po:decimal} in {@code core.xsl},
+ * and writes it through {@link #canonical}. A function that meets no decimal raises its own data
+ * error at its box. A quotient is {@link #quotient}'s, and XPath's {@code round} is {@link #round}.
  */
 public final class XsDecimal {
 
@@ -19,7 +18,7 @@ public final class XsDecimal {
   private static final Pattern LEXICAL =
       Pattern.compile("[ \t\r\n]*([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+))[ \t\r\n]*");
 
-  /** The fractional digits of a quotient, at least, and beyond the dividend's own (ADR-0005). */
+  /** The fractional digits of a quotient, at least, and beyond the dividend's own. */
   private static final int DIVISION_SCALE = 18;
 
   private static final BigDecimal HALF = new BigDecimal("0.5");
@@ -47,9 +46,9 @@ public final class XsDecimal {
   }
 
   /**
-   * {@code dividend / divisor} by ADR-0005 as amended by F-20, as Saxon-HE 12.5 divides: every
-   * quotient, one that terminates too, rounded half-down to {@code max(18, scale of dividend -
-   * scale of divisor + 18)} fractional digits, each scale without trailing zeros and never below 0.
+   * {@code dividend / divisor} as Saxon-HE 12.5 divides: every quotient, one that terminates too,
+   * rounded half-down to {@code max(18, scale of dividend - scale of divisor + 18)} fractional
+   * digits, each scale without trailing zeros and never below 0.
    *
    * @throws ArithmeticException when {@code divisor} is zero; a function raises its own data error
    *     before

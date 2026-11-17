@@ -1,9 +1,9 @@
 package dev.rail8.mapping.ir;
 
 /**
- * A single value where a queue belongs (ADR-0006 as amended by #83): at a context or queue
- * function's input, a generating function's value is one context with one value (ADR-0004). It is a
- * queue over a {@code STRING}, it is not traced, and it exports as {@code [(value)]}.
+ * A single value where a queue belongs: at a context or queue function's input, a generating
+ * function's value is one context with one value. It is a queue over a {@code STRING}, it is not
+ * traced, and it exports as {@code [(value)]}.
  *
  * @param value the single value, a {@code STRING}
  * @param origin the box whose value it is

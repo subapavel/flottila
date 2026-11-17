@@ -7,9 +7,9 @@ import java.util.regex.Pattern;
 /**
  * A {@code java.text.DecimalFormat} pattern, a box parameter, compiled to the XPath picture of
  * {@code format-number} that formats every {@code xs:decimal} as DecimalFormat does with the
- * symbols {@code .} and {@code ,} (ADR-0003). {@link FormatNumber} formats with the picture, and
- * the export's {@code format-number} with the one the helper module's {@code po:number-picture}
- * writes, which compiles the same way. A pattern whose output no picture gives is refused.
+ * symbols {@code .} and {@code ,}. {@link FormatNumber} formats with the picture, and the export's
+ * {@code format-number} with the one the helper module's {@code po:number-picture} writes, which
+ * compiles the same way. A pattern whose output no picture gives is refused.
  *
  * <p>DecimalFormat reads a pattern as a positive subpattern and an optional negative one, each a
  * prefix, the number's digits and separators, and a suffix. The picture keeps the prefixes and
@@ -182,7 +182,7 @@ public final class NumberPattern {
     }
     int zeros = (int) integer.chars().filter(d -> d == '0').count();
     if (!number.contains("0") && dot > 0) {
-      // DecimalFormat shows one integer digit, as for #.## (observed, #74)
+      // DecimalFormat shows one integer digit, as for #.## (observed)
       zeros = 1;
     }
     int grouping = integer.contains(",") ? integer.length() - integer.lastIndexOf(',') - 1 : 0;

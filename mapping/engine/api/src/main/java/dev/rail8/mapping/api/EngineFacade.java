@@ -43,12 +43,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /**
- * The engine facade the service calls (ADR-0016). It carries no compatibility promise and is not
- * the embedding API for Rail8.
+ * The engine facade the service calls. It carries no compatibility promise and is not the embedding
+ * API for Rail8.
  */
 public final class EngineFacade {
 
-  /** The runtime error of a test run that exceeds its timeout (ADR-0014, ADR-0015). */
+  /** The runtime error of a test run that exceeds its timeout. */
   private static final String TIMEOUT = "rail8:TIMEOUT";
 
   /** How a test run waits by the wall clock. */
@@ -58,7 +58,7 @@ public final class EngineFacade {
   /** How {@link #testRun} waits for its run: the wall clock, unless a test gives its own. */
   private final Deadline deadline;
 
-  /** Where each run takes its time from; its zone gives the run's time zone (#80). */
+  /** Where each run takes its time from; its zone gives the run's time zone. */
   private final Clock clock;
 
   /**
@@ -70,15 +70,15 @@ public final class EngineFacade {
   }
 
   /**
-   * A facade whose runs take their time from {@code clock} (#80): each run reads it once as it
-   * starts, and the offset of that time in the clock's zone is the run's time zone, in which a date
-   * without an offset is read and every date is written. Its test runs wait by the wall clock.
+   * A facade whose runs take their time from {@code clock}: each run reads it once as it starts,
+   * and the offset of that time in the clock's zone is the run's time zone, in which a date without
+   * an offset is read and every date is written. Its test runs wait by the wall clock.
    */
   public EngineFacade(Clock clock) {
     this(WALL_CLOCK, clock);
   }
 
-  /** A facade whose test runs wait by {@code deadline}: a test's fake clock (CODING_STANDARDS). */
+  /** A facade whose test runs wait by {@code deadline}: a test's fake clock. */
   EngineFacade(Deadline deadline) {
     this(deadline, Clock.systemUTC());
   }
@@ -89,8 +89,8 @@ public final class EngineFacade {
   }
 
   /**
-   * How a test run waits for its run until its timeout (ADR-0014): the wall clock, or a test's
-   * clock that reaches the timeout at a point of the run it picks by the run's tracer.
+   * How a test run waits for its run until its timeout: the wall clock, or a test's clock that
+   * reaches the timeout at a point of the run it picks by the run's tracer.
    */
   @FunctionalInterface
   interface Deadline {
@@ -107,7 +107,7 @@ public final class EngineFacade {
   }
 
   /**
-   * Loads a mapping model through validation stages 1 and 2 (ADR-0011).
+   * Loads a mapping model through validation stages 1 and 2.
    *
    * @param json the document's bytes
    * @return the model, or the diagnostics that refuse it
@@ -117,23 +117,22 @@ public final class EngineFacade {
     return MappingModelFormat.load(json);
   }
 
-  /** The canonical form of {@code model} (ADR-0010). */
+  /** The canonical form of {@code model}. */
   public byte[] save(MappingModel model) {
     return MappingModelFormat.save(model);
   }
 
   /**
-   * The published function catalogue (ADR-0026): the bytes of the packed {@code
-   * function-catalogue.json}, an instance of {@code contract/function-catalogue.schema.json}. Each
-   * call gives a copy of its own.
+   * The published function catalogue: the bytes of the packed {@code function-catalogue.json}, an
+   * instance of {@code contract/function-catalogue.schema.json}. Each call gives a copy of its own.
    */
   public byte[] catalogue() {
     return FunctionCatalogue.bytes();
   }
 
   /**
-   * A new mapping model in {@code formatVersion} 1 (ADR-0010) between two structures, with no
-   * description, no target field mapping and no UDF.
+   * A new mapping model in {@code formatVersion} 1 between two structures, with no description, no
+   * target field mapping and no UDF.
    *
    * @param source the source structure's schema bundle, root and fingerprint
    * @param target the target structure's schema bundle, root and fingerprint
@@ -144,9 +143,8 @@ public final class EngineFacade {
   }
 
   /**
-   * A new mapping model in {@code formatVersion} 1 (ADR-0010) with no target field mapping and no
-   * UDF, and the structures chosen so far: a new mapping may have neither until they are chosen
-   * (ADR-0029).
+   * A new mapping model in {@code formatVersion} 1 with no target field mapping and no UDF, and the
+   * structures chosen so far: a new mapping may have neither until they are chosen.
    *
    * @param description the mapping's description, if any
    * @param source the source structure's schema bundle, root and fingerprint, if chosen
@@ -159,19 +157,18 @@ public final class EngineFacade {
   }
 
   /**
-   * Compiles a mapping model (ADR-0016): load with stages 1 and 2, the source and target
-   * structures, stage 3 and lowering, the optimiser if {@code options} ask for it, then the closure
-   * compile. The first of these that refuses the model gives the result; the structures are both
-   * read before either refusal is reported. A model without its source or target is refused with
-   * {@code missing-structure} before any bundle is read (ADR-0029). Stage 3 checks each side's
-   * stored fingerprint against the structure just read (ADR-0009 as amended on 2026-11-05, #91),
-   * and a mismatch is reported with lowering's diagnostics. The compiled mapping keeps the
-   * occurrence of each target field mapping's field, which a generating function's trace entry
-   * shows (#83). An unchecked exception from {@code resolver} passes through unchanged.
+   * Compiles a mapping model: load with stages 1 and 2, the source and target structures, stage 3
+   * and lowering, the optimiser if {@code options} ask for it, then the closure compile. The first
+   * of these that refuses the model gives the result; the structures are both read before either
+   * refusal is reported. A model without its source or target is refused with {@code
+   * missing-structure} before any bundle is read. Stage 3 checks each side's stored fingerprint
+   * against the structure just read, and a mismatch is reported with lowering's diagnostics. The
+   * compiled mapping keeps the occurrence of each target field mapping's field, which a generating
+   * function's trace entry shows. An unchecked exception from {@code resolver} passes through
+   * unchanged.
    *
    * @param model the mapping model's bytes
-   * @param resolver the host's resolver of the model's schema bundle references (ADR-0014
-   *     "Reference resolver shape")
+   * @param resolver the host's resolver of the model's schema bundle references
    * @return the compiled mapping, or the diagnostics that refuse it
    * @throws MalformedJsonException if the bytes are no JSON document
    */
@@ -183,7 +180,7 @@ public final class EngineFacade {
         CompileResult.Refused::new,
         lowered -> {
           TargetDocument document = lowered.document();
-          // lowering has verified the IR; the optimiser verifies it again (ADR-0006)
+          // lowering has verified the IR; the optimiser verifies it again
           TargetDocument ir = options.optimised() ? IrOptimiser.optimise(document) : document;
           return new CompileResult.Compiled(
               new CompiledMapping(
@@ -193,16 +190,15 @@ public final class EngineFacade {
   }
 
   /**
-   * The diagnostics of a compile of a mapping model (ADR-0015, ADR-0027), without the closure
-   * compile: those of the first of load, structures, and stage 3 with lowering that refuses the
-   * model, as {@link #compile} reports them, and none when it compiles. A model that passes stages
-   * 1 and 2 adds the {@code unreachable-box} warnings (ADR-0011, ADR-0013), whichever later stage
-   * refuses it. The result is sorted by {@link Diagnostic#ORDER}. An unchecked exception from
-   * {@code resolver} passes through unchanged.
+   * The diagnostics of a compile of a mapping model, without the closure compile: those of the
+   * first of load, structures, and stage 3 with lowering that refuses the model, as {@link
+   * #compile} reports them, and none when it compiles. A model that passes stages 1 and 2 adds the
+   * {@code unreachable-box} warnings, whichever later stage refuses it. The result is sorted by
+   * {@link Diagnostic#ORDER}. An unchecked exception from {@code resolver} passes through
+   * unchanged.
    *
    * @param model the mapping model's bytes
-   * @param resolver the host's resolver of the model's schema bundle references (ADR-0014
-   *     "Reference resolver shape")
+   * @param resolver the host's resolver of the model's schema bundle references
    * @return every diagnostic, the warnings among them
    * @throws MalformedJsonException if the bytes are no JSON document
    */
@@ -220,14 +216,13 @@ public final class EngineFacade {
   }
 
   /**
-   * Exports a mapping model to XSLT 3.0 in the portable profile (ADR-0023): load, structures, stage
-   * 3 and lowering as {@link #compile} does them, then the export of the unoptimised IR. A refused
-   * model gives no stylesheet, not even of the target fields that would export. An unchecked
-   * exception from {@code resolver} passes through unchanged.
+   * Exports a mapping model to XSLT 3.0 in the portable profile: load, structures, stage 3 and
+   * lowering as {@link #compile} does them, then the export of the unoptimised IR. A refused model
+   * gives no stylesheet, not even of the target fields that would export. An unchecked exception
+   * from {@code resolver} passes through unchanged.
    *
    * @param model the mapping model's bytes
-   * @param resolver the host's resolver of the model's schema bundle references (ADR-0014
-   *     "Reference resolver shape")
+   * @param resolver the host's resolver of the model's schema bundle references
    * @return the stylesheet and its helper module, or the diagnostics that refuse the model
    * @throws MalformedJsonException if the bytes are no JSON document
    */
@@ -243,21 +238,19 @@ public final class EngineFacade {
   }
 
   /**
-   * Refreshes a mapping model (ADR-0009 as amended on 2026-11-05, ADR-0015): load with stages 1 and
-   * 2, then the source and target structures the model has; a side not chosen yet is not read and
-   * stays absent (ADR-0029). Each side whose bundle loads gets the fingerprint of the structure
-   * just read; a side whose bundle fails to load keeps its stored fingerprint and gives every load
-   * error (#93). When the model has both sides and both load, the refreshed model goes through
-   * stage 3 and lowering, whose diagnostics, the orphaned references among them, are the result's;
-   * it has no {@code fingerprint-mismatch}, as both fingerprints were just derived, and no
-   * occurrence or type warning. Otherwise stage 3 is not run, and the load errors, if any, are the
-   * result's only diagnostics. Nothing else in the model changes, its description and layouts
-   * included, and it comes back in canonical form (ADR-0010); nothing is written. An unchecked
-   * exception from {@code resolver} passes through unchanged.
+   * Refreshes a mapping model: load with stages 1 and 2, then the source and target structures the
+   * model has; a side not chosen yet is not read and stays absent. Each side whose bundle loads
+   * gets the fingerprint of the structure just read; a side whose bundle fails to load keeps its
+   * stored fingerprint and gives every load error. When the model has both sides and both load, the
+   * refreshed model goes through stage 3 and lowering, whose diagnostics, the orphaned references
+   * among them, are the result's; it has no {@code fingerprint-mismatch}, as both fingerprints were
+   * just derived, and no occurrence or type warning. Otherwise stage 3 is not run, and the load
+   * errors, if any, are the result's only diagnostics. Nothing else in the model changes, its
+   * description and layouts included, and it comes back in canonical form; nothing is written. An
+   * unchecked exception from {@code resolver} passes through unchanged.
    *
    * @param model the mapping model's bytes
-   * @param resolver the host's resolver of the model's schema bundle references (ADR-0014
-   *     "Reference resolver shape")
+   * @param resolver the host's resolver of the model's schema bundle references
    * @return the refreshed model and its diagnostics, or the diagnostics of stage 1 or 2 that refuse
    *     the model
    * @throws MalformedJsonException if the bytes are no JSON document
@@ -301,12 +294,12 @@ public final class EngineFacade {
 
   /**
    * The chain compile and export share: load with stages 1 and 2, a check that the model has both
-   * sides (ADR-0029), the source and target structures, then stage 3 and lowering. The first of
-   * these that refuses the model gives {@code refused} its diagnostics, which the result sorts; the
-   * structures are both read before either refusal is reported. Stage 3 is the fingerprint check of
-   * both sides and lowering, whose diagnostics are reported together (#91). A model that lowers
-   * with both fingerprints matching gives {@code lowered} its unoptimised IR, with the model and
-   * the target structure it was lowered from.
+   * sides, the source and target structures, then stage 3 and lowering. The first of these that
+   * refuses the model gives {@code refused} its diagnostics, which the result sorts; the structures
+   * are both read before either refusal is reported. Stage 3 is the fingerprint check of both sides
+   * and lowering, whose diagnostics are reported together. A model that lowers with both
+   * fingerprints matching gives {@code lowered} its unoptimised IR, with the model and the target
+   * structure it was lowered from.
    */
   private static <R> R loadAndLower(
       byte[] model,
@@ -323,7 +316,7 @@ public final class EngineFacade {
   /**
    * {@link #loadAndLower} after a load that passed stages 1 and 2. A model without its source or
    * target is refused with {@code missing-structure} at each side it lacks before any bundle is
-   * read, and no further stage runs (ADR-0029).
+   * read, and no further stage runs.
    */
   private static <R> R lower(
       MappingModel loaded,
@@ -359,7 +352,7 @@ public final class EngineFacade {
 
   /**
    * Adds {@code missing-structure} at {@code pointer} to {@code refusals} when the model has no
-   * {@code side} (ADR-0029).
+   * {@code side}.
    */
   private static void missingStructure(
       Optional<StructureRef> ref, String pointer, String side, List<Diagnostic> refusals) {
@@ -378,8 +371,8 @@ public final class EngineFacade {
 
   /**
    * Adds {@code fingerprint-mismatch} at {@code pointer} to {@code refusals} when {@code ref}
-   * stores another fingerprint than {@code structure}, read from its bundle, gives (ADR-0009). Only
-   * refresh re-derives a stored fingerprint; compile never does.
+   * stores another fingerprint than {@code structure}, read from its bundle, gives. Only refresh
+   * re-derives a stored fingerprint; compile never does.
    */
   private static void fingerprint(
       StructureRef ref, Structure structure, String pointer, List<Diagnostic> refusals) {
@@ -417,10 +410,10 @@ public final class EngineFacade {
    * Runs one input message through a compiled mapping and returns the target message's bytes. A
    * test-run compile's trace is recorded and dropped; {@link #testRun} returns it.
    *
-   * @throws MalformedInputException when the input is not well-formed in the mapping's input format
-   *     (ADR-0008, #98): XML, without a DOCTYPE, or JSON, without a duplicate key
+   * @throws MalformedInputException when the input is not well-formed in the mapping's input
+   *     format: XML, without a DOCTYPE, or JSON, without a duplicate key
    * @throws MappingRunException when the run meets a runtime error in its data, with its code and
-   *     authoring id (ADR-0015 since #52)
+   *     authoring id
    * @throws java.util.concurrent.CancellationException when the thread is interrupted
    */
   public byte[] run(CompiledMapping mapping, byte[] input) throws MalformedInputException {
@@ -443,18 +436,17 @@ public final class EngineFacade {
   }
 
   /**
-   * A test run (ADR-0014, "Running"): {@link #run} on a platform thread of its own, never a virtual
-   * one (ADR-0020), for at most {@code timeout}. A runtime error in the run's data is the result's
-   * runtime error, with its code, message and authoring id (ADR-0015 since #52). Past the timeout
+   * A test run: {@link #run} on a platform thread of its own for at most {@code timeout}, never on
+   * a virtual one, since a spinning virtual thread holds its carrier. A runtime error in the run's
+   * data is the result's runtime error, with its code, message and authoring id. Past the timeout
    * the run is interrupted, never stopped, and the result is the runtime error {@code
    * rail8:TIMEOUT}, with no authoring id; the run itself ends at its next interrupt check, in the
    * parse or a slot loop.
    *
-   * <p>Each result carries the run's trace (ADR-0015 "Trace" since #53), built here from the
-   * tracer's reports, with each entry capped at {@code traceLimit}: the whole trace with the
-   * output, the trace up to the error with a runtime error, and at the timeout a snapshot of the
-   * reports so far, which the run's later reports never reach (ADR-0014 since #53). A compile
-   * without tracing never reports, so its trace is empty.
+   * <p>Each result carries the run's trace, built here from the tracer's reports, with each entry
+   * capped at {@code traceLimit}: the whole trace with the output, the trace up to the error with a
+   * runtime error, and at the timeout a snapshot of the reports so far, which the run's later
+   * reports never reach. A compile without tracing never reports, so its trace is empty.
    *
    * @param mapping a compiled mapping
    * @param input the input message's bytes
@@ -477,7 +469,7 @@ public final class EngineFacade {
     Tracer tracer = new Tracer();
     FutureTask<byte[]> task = new FutureTask<>(() -> run(mapping, input, tracer));
     // a daemon, as a virtual thread is, so that a run which ignores its interrupt never holds
-    // the JVM open (ADR-0020)
+    // the JVM open
     Thread.ofPlatform().name("rail8 test run").daemon(true).start(task);
     try {
       byte[] output = deadline.await(task, timeout, tracer);
@@ -486,7 +478,7 @@ public final class EngineFacade {
     } catch (TimeoutException late) {
       // the run reports on until its next interrupt check: first the snapshot, a copy of the
       // reports so far taken under the tracer's lock, then the interrupt, and last the trace,
-      // built from the copy (ADR-0014 since #53)
+      // built from the copy
       List<Tracer.Report> soFar = tracer.reports();
       task.cancel(true);
       return new TestRunResult.RuntimeError(

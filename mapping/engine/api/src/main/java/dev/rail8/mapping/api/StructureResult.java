@@ -10,8 +10,8 @@ public sealed interface StructureResult {
   record Loaded(Structure structure) implements StructureResult {}
 
   /**
-   * Every load error of the bundle (ADR-0008), each a diagnostic at its position in a schema file
-   * ({@code AtFilePosition}).
+   * Every load error of the bundle, each a diagnostic at its position in a schema file ({@code
+   * AtFilePosition}).
    *
    * @param diagnostics the errors, with codes of {@code StructureImportDiagnostics}: files in
    *     bundle order, each file in document order

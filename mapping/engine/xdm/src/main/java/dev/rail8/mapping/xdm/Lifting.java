@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 /**
  * The single-value step over queue blocks: the semantics of the IR's {@code Lift} and of the
- * export's {@code po:lift} (ADR-0006), where the sharing rules of ADR-0004 hold.
+ * export's {@code po:lift}, where the sharing rules of {@link QueueBlock} hold.
  */
 public final class Lifting {
 
@@ -25,7 +25,7 @@ public final class Lifting {
    *       other inputs are still consumed.
    * </ul>
    *
-   * One input shares its context starts and SUPPRESS bitset with the result (ADR-0006's fast path).
+   * One input shares its context starts and SUPPRESS bitset with the result, a fast path.
    *
    * @param body gets the value of each input at the slot, in input order, in an array the lift
    *     reuses for the next slot; it never sees SUPPRESS and must not give null
@@ -71,7 +71,7 @@ public final class Lifting {
 
   /**
    * {@code body} over {@code slot}, which is never null: only an input's SUPPRESS gives a SUPPRESS
-   * slot, so a null would break the bit invariant of ADR-0004, silently with one input.
+   * slot, so a null would break the block's SUPPRESS bit invariant, silently with one input.
    */
   private static String apply(Function<String[], String> body, String[] slot) {
     String value = body.apply(slot);

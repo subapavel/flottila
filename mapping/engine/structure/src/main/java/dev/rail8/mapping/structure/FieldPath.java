@@ -6,11 +6,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * The identity of a field (ADR-0007): the kind, namespace and local name of every step from the
- * root down to the field. Its text is EQNames joined by {@code /}, with {@code @} for attributes
- * and a bare name when there is no namespace, for example {@code /Q{urn:a}Order/Item/@id}. A JSON
- * path starts with the root {@code $}, and its property names percent-encode {@code % / @ { }}, for
- * example {@code /$/order/a%2Fb}.
+ * The identity of a field: the kind, namespace and local name of every step from the root down to
+ * the field. Its text is EQNames joined by {@code /}, with {@code @} for attributes and a bare name
+ * when there is no namespace, for example {@code /Q{urn:a}Order/Item/@id}. A JSON path starts with
+ * the root {@code $}, and its property names percent-encode {@code % / @ { }}, for example {@code
+ * /$/order/a%2Fb}.
  */
 public record FieldPath(List<Step> steps) {
 

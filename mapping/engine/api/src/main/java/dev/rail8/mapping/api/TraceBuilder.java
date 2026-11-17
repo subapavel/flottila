@@ -14,9 +14,8 @@ import java.util.SequencedMap;
 import java.util.function.LongPredicate;
 
 /**
- * Builds a test run's {@link Trace} from its tracer's reports, off the run's thread (ADR-0006 and
- * ADR-0015 since #53). The slot statuses are derived here from context p and max, and each entry is
- * capped at the trace limit.
+ * Builds a test run's {@link Trace} from its tracer's reports, off the run's thread. The slot
+ * statuses are derived here from context p and max, and each entry is capped at the trace limit.
  */
 final class TraceBuilder {
 
@@ -27,10 +26,10 @@ final class TraceBuilder {
    * in the order of its first report, across every kind. A box's entry is its first queue or single
    * value, as a box feeding several inputs is reported once per evaluation; a target field
    * mapping's entry holds a parent record per report. A repeat whose origin is no target field
-   * mapping is an unmapped field's, whose origin is its field path, and has no entry (ADR-0006).
+   * mapping is an unmapped field's, whose origin is its field path, and has no entry.
    *
    * @param fields the occurrence of each target field mapping's field, by its authoring id: the min
-   *     and max of a generating function's entry, which its repeat reports do not hold (#83)
+   *     and max of a generating function's entry, which its repeat reports do not hold
    * @param limit the trace limit: the most slots, contexts or occurrence records one entry keeps
    */
   static Trace build(List<Tracer.Report> reports, Map<AuthoringId, Occurrence> fields, int limit) {
@@ -56,7 +55,7 @@ final class TraceBuilder {
                 id,
                 switch (report) {
                   case Tracer.Value value -> queue(value.queue(), limit);
-                  // every single value of milestone 1 is an xs:string (ADR-0004)
+                  // every single value is an xs:string
                   case Tracer.Atomic atomic -> new Trace.Atomic(AtomicType.STRING, atomic.value());
                   case Tracer.Occurrences o ->
                       occurrences(o.min(), o.max(), parents.get(id), limit);
@@ -120,9 +119,9 @@ final class TraceBuilder {
 
   /**
    * The slots of {@code report}: of a {@code TargetSlots}, those of context p of its queue, a
-   * context the queue lacks counting as empty (ADR-0006); of a {@code TargetRepeat}, its copies,
-   * numbered {@code (p - 1) * copies + j} (#83), each SUPPRESS when its generating block's first
-   * slot is SUPPRESS or missing, and none otherwise (#217, F-46).
+   * context the queue lacks counting as empty; of a {@code TargetRepeat}, its copies, numbered
+   * {@code (p - 1) * copies + j}, each SUPPRESS when its generating block's first slot is SUPPRESS
+   * or missing, and none otherwise.
    */
   private static Slots slots(Tracer.FieldReport report) {
     return switch (report) {
@@ -148,8 +147,8 @@ final class TraceBuilder {
 
   /**
    * The parent record of {@code slots}: each slot SUPPRESS is suppressed, any other created until
-   * {@code max} are, then truncated (ADR-0006). It keeps at most {@code budget} slot records, and
-   * counts the created ones over all of them.
+   * {@code max} are, then truncated. It keeps at most {@code budget} slot records, and counts the
+   * created ones over all of them.
    */
   private static Trace.ParentSlot parent(Slots slots, long max, int budget) {
     List<Trace.Slot> records = new ArrayList<>();

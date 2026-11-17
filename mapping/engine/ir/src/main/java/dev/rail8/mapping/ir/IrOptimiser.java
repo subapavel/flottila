@@ -1,8 +1,8 @@
 package dev.rail8.mapping.ir;
 
 /**
- * The optimiser (ADR-0006). The IR of spec 1 has nothing to fold, so it runs zero passes and only
- * verifies the document again; a deploy and a test run of a field link run the same IR.
+ * The optimiser. The IR has nothing to fold, so it runs zero passes and only verifies the document
+ * again; a deploy and a test run of a field link run the same IR.
  */
 public final class IrOptimiser {
 

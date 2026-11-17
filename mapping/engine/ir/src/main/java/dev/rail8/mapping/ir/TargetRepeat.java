@@ -3,15 +3,14 @@ package dev.rail8.mapping.ir;
 import java.util.Optional;
 
 /**
- * A fixed number of occurrences of one target field per parent occurrence (ADR-0006 "Target
- * fields"; #63): {@code body} {@code copies} times, the j-th with the slot number {@code (p - 1) *
- * copies + j} bound to {@code slotVar}, where {@code p} is the parent's slot number. Its children
- * read their queues under that slot number, as under a {@link TargetSlots}' slot. It has no min
- * check. Since #63 it creates an unmapped structure field whose effective occurrence is {@code
- * n..n} with {@code n > 0}, {@code n} times, with no value. Since #83 it creates a generating
- * function's field, {@code max(1, minOccurs)} times; on a structure field it holds the function's
- * single value, which each copy evaluates before its body and never writes, and a leaf holds its
- * value in its text instead (ADR-0006 as amended by #83). Since #217 (F-46) its value may be a
+ * A fixed number of occurrences of one target field per parent occurrence: {@code body} {@code
+ * copies} times, the j-th with the slot number {@code (p - 1) * copies + j} bound to {@code
+ * slotVar}, where {@code p} is the parent's slot number. Its children read their queues under that
+ * slot number, as under a {@link TargetSlots}' slot. It has no min check. It creates an unmapped
+ * structure field whose effective occurrence is {@code n..n} with {@code n > 0}, {@code n} times,
+ * with no value. It creates a generating function's field, {@code max(1, minOccurs)} times; on a
+ * structure field it holds the function's single value, which each copy evaluates before its body
+ * and never writes, and a leaf holds its value in its text instead. Its value may also be a
  * generating block, a queue read at most once per run: a copy binds the block's first slot to
  * {@code valueVar} and writes its body when that slot is a value, and writes nothing, keeping its
  * slot number, when it is SUPPRESS or the block has no slot.
@@ -28,7 +27,7 @@ import java.util.Optional;
  * @param body the content created per occurrence
  * @param origin a generating function's target field mapping; no authoring element creates an
  *     unmapped field, so its field path as the mapping model spells it, which no authoring id can
- *     be (ADR-0010 allows no {@code /} in one)
+ *     be (the mapping model allows no {@code /} in one)
  */
 public record TargetRepeat(
     long copies,

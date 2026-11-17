@@ -1,12 +1,11 @@
 package dev.rail8.mapping.ir;
 
 /**
- * The occurrences of one target field (ADR-0006 "Target fields", refined by #52): {@code body} once
- * per created slot of context {@code p} of {@code queue}, where {@code p} is the parent's slot
- * number, with the slot's number bound to {@code slotVar} and its value to {@code valueVar}. A
- * SUPPRESS slot creates nothing; creation stops after {@code max} occurrences; fewer than {@code
- * min} created occurrences raise {@code po:MINOCCURS} at {@code origin}, before any occurrence of
- * context {@code p} is written.
+ * The occurrences of one target field: {@code body} once per created slot of context {@code p} of
+ * {@code queue}, where {@code p} is the parent's slot number, with the slot's number bound to
+ * {@code slotVar} and its value to {@code valueVar}. A SUPPRESS slot creates nothing; creation
+ * stops after {@code max} occurrences; fewer than {@code min} created occurrences raise {@code
+ * po:MINOCCURS} at {@code origin}, before any occurrence of context {@code p} is written.
  *
  * @param queue the target field's queue
  * @param parentSlot the parent's slot number, an {@code INTEGER}

@@ -4,7 +4,7 @@ import java.util.Optional;
 
 /**
  * A WSDL operation with its direction, and the fault's name when the direction is {@link
- * WsdlDirection#FAULT} (ADR-0008).
+ * WsdlDirection#FAULT}.
  *
  * @param interfaceName the portType (WSDL 1.1) or interface (WSDL 2.0), an EQName
  * @param operation the operation's NCName

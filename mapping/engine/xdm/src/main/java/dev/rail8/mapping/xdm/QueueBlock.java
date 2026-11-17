@@ -4,16 +4,16 @@ import java.util.Arrays;
 import java.util.concurrent.CancellationException;
 
 /**
- * The runtime representation of a queue (ADR-0004): {@code n} slots in {@code values}, {@code c +
- * 1} {@code contextStarts}, where {@code [0] = 0}, {@code [c] = n} and no entry decreases, and the
- * SUPPRESS bitset {@code suppress}. Context {@code k} spans the slot indexes {@code start(k)} to
- * {@code end(k)}, the end excluded. A context index and a slot index count from 0: a slot index is
- * the slot number minus 1. A block with no contexts ({@code {0}}) differs from one with one empty
+ * The runtime representation of a queue: {@code n} slots in {@code values}, {@code c + 1} {@code
+ * contextStarts}, where {@code [0] = 0}, {@code [c] = n} and no entry decreases, and the SUPPRESS
+ * bitset {@code suppress}. Context {@code k} spans the slot indexes {@code start(k)} to {@code
+ * end(k)}, the end excluded. A context index and a slot index count from 0: a slot index is the
+ * slot number minus 1. A block with no contexts ({@code {0}}) differs from one with one empty
  * context ({@code {0, 0}}).
  *
  * <p>A SUPPRESS slot has a {@code null} value and its bit set: bit {@code k} of word {@code k / 64}
  * is set exactly when {@code values[k]} is null, and the bitset ends at its last word with a set
- * bit, so a block without SUPPRESS has an empty one (ADR-0004 since #51).
+ * bit, so a block without SUPPRESS has an empty one.
  *
  * <p>A block is immutable. It takes the arrays it is given without copying them, so that context
  * operations can share them; whoever hands them over no longer writes them.
@@ -86,7 +86,7 @@ public final class QueueBlock {
     long[] bits = NO_SUPPRESS;
     int words = 0;
     for (int k = 0; k < values.length; k++) {
-      // every loop over slots checks for interruption (ADR-0021)
+      // every loop over slots checks for interruption
       if (Thread.currentThread().isInterrupted()) {
         throw new CancellationException("the queue block was being read when interrupted");
       }
@@ -115,7 +115,7 @@ public final class QueueBlock {
       throw new IllegalArgumentException("contextStarts[0] is " + contextStarts[0] + ", not 0");
     }
     for (int k = 1; k < contextStarts.length; k++) {
-      // every loop over contexts checks for interruption (ADR-0021)
+      // every loop over contexts checks for interruption
       if (Thread.currentThread().isInterrupted()) {
         throw new CancellationException("the queue block was being checked when interrupted");
       }
@@ -163,8 +163,7 @@ public final class QueueBlock {
 
   /**
    * A block over this block's own values and SUPPRESS bitset, split at {@code example}'s context
-   * starts, which it shares too: an operation that takes another queue's boundaries copies nothing
-   * (ADR-0004).
+   * starts, which it shares too: an operation that takes another queue's boundaries copies nothing.
    *
    * @throws IllegalArgumentException unless {@code example} has as many slots as this block
    */
@@ -174,7 +173,7 @@ public final class QueueBlock {
 
   /**
    * A block over this block's own values and SUPPRESS bitset, split at {@code contextStarts}
-   * instead: a context operation that changes only the boundaries shares both (ADR-0004).
+   * instead: a context operation that changes only the boundaries shares both.
    *
    * @throws IllegalArgumentException as {@link #of(String[], int[])} does for the starts
    */
@@ -185,7 +184,7 @@ public final class QueueBlock {
 
   /**
    * A block over {@code values}, one per slot of this block and a null value a SUPPRESS slot, split
-   * at this block's own context starts: a per-slot function shares them (ADR-0004).
+   * at this block's own context starts: a per-slot function shares them.
    */
   QueueBlock withValues(String[] values) {
     return new QueueBlock(values, contextStarts, bits(values));
@@ -194,7 +193,7 @@ public final class QueueBlock {
   /**
    * A block over {@code values}, one per slot of this block and null exactly where this block's
    * value is, sharing this block's context starts and SUPPRESS bitset: the fast path of a one-input
-   * {@code Lift} (ADR-0006).
+   * {@code Lift}.
    */
   QueueBlock withSameSuppress(String[] values) {
     return new QueueBlock(values, contextStarts, suppress);

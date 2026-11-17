@@ -1,7 +1,7 @@
 package dev.rail8.mapping.ir;
 
 /**
- * A text node of the output (ADR-0006).
+ * A text node of the output.
  *
  * @param value the text, a {@code STRING}
  * @param origin the target field mapping
