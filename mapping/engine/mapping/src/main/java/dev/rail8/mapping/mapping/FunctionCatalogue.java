@@ -18,17 +18,16 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 
 /**
- * The function catalogue (ADR-0025, ADR-0026): {@code function-catalogue.json}, a resource of this
- * package, read once and published as it is packed, through {@link #bytes()}. Only lowering reads
- * its entries, and only what lowering needs: a function's execution kind, whether it is generating
- * (#217), the names of its inputs and its params, in order, with each param's default and the
- * values or the syntax it takes; {@code family}, {@code portable} and {@code fidelity} are read
- * past.
+ * The function catalogue: {@code function-catalogue.json}, a resource of this package, read once
+ * and published as it is packed, through {@link #bytes()}. Only lowering reads its entries, and
+ * only what lowering needs: a function's execution kind, whether it is generating, the names of its
+ * inputs and its params, in order, with each param's default and the values or the syntax it takes;
+ * {@code family}, {@code portable} and {@code fidelity} are read past.
  *
  * <p>A param is a string param or a table param, by its {@code type}, and lowering makes either a
- * {@code Literal} (ADR-0026, #83). A string param with {@code values} takes only those, one with a
- * {@code syntax} only the patterns the formatting core translates (ADR-0026, #74, #80), one with
- * neither any string. A table param takes any table of strings, and its default is a table.
+ * {@code Literal}. A string param with {@code values} takes only those, one with a {@code syntax}
+ * only the patterns the formatting core translates, one with neither any string. A table param
+ * takes any table of strings, and its default is a table.
  */
 public final class FunctionCatalogue {
 
@@ -63,8 +62,8 @@ public final class FunctionCatalogue {
     /**
      * Why the param's syntax refuses the pattern {@code value}, the element the formatting core
      * names, or empty when it takes it or the param has no syntax. The schema's syntaxes are {@code
-     * numberPattern}, a DecimalFormat pattern, and {@code datePattern}, a SimpleDateFormat pattern
-     * (ADR-0003, ADR-0026), each checked by the core's compiler of its syntax.
+     * numberPattern}, a DecimalFormat pattern, and {@code datePattern}, a SimpleDateFormat pattern,
+     * each checked by the core's compiler of its syntax.
      */
     Optional<String> untranslatable(String value) {
       return syntax.flatMap(
@@ -87,7 +86,7 @@ public final class FunctionCatalogue {
    * @param inputs the input names, in order
    * @param params the params, in order
    * @param generating whether its result is a generating block, a queue function's one value that
-   *     every occurrence of a target field takes, as a constant's (ADR-0006, F-46)
+   *     every occurrence of a target field takes, as a constant's
    */
   record Entry(
       ExecutionKind executionKind, List<String> inputs, List<Param> params, boolean generating) {
@@ -104,8 +103,8 @@ public final class FunctionCatalogue {
   }
 
   /**
-   * The formatting core's compiler of each syntax the schema lists (ADR-0026): a pattern to its
-   * XPath picture, or refused with the element it cannot translate.
+   * The formatting core's compiler of each syntax the schema lists: a pattern to its XPath picture,
+   * or refused with the element it cannot translate.
    */
   private static final Map<String, UnaryOperator<String>> PICTURES =
       Map.of("numberPattern", NumberPattern::picture, "datePattern", DatePattern::picture);
@@ -127,8 +126,8 @@ public final class FunctionCatalogue {
   private FunctionCatalogue() {}
 
   /**
-   * The packed catalogue as it is published (ADR-0026): its bytes in canonical form, an instance of
-   * {@code contract/function-catalogue.schema.json}. Each call gives a copy of its own.
+   * The packed catalogue as it is published: its bytes in canonical form, an instance of {@code
+   * contract/function-catalogue.schema.json}. Each call gives a copy of its own.
    */
   public static byte[] bytes() {
     return PACKED.clone();
@@ -157,7 +156,7 @@ public final class FunctionCatalogue {
    * {@code entry}'s execution kind, inputs, params and whether it is generating; a function without
    * inputs, as {@code constant}, or without params leaves the member out, a string param that takes
    * any string leaves {@code values} out, and a function that is not generating leaves {@code
-   * generating} out, which the schema allows only as {@code true} (ADR-0026).
+   * generating} out, which the schema allows only as {@code true}.
    */
   private static Entry entry(IJsonObject entry) {
     ExecutionKind kind =

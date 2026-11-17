@@ -4,8 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A mapping model that a validation stage refused (ADR-0011): on load, stage 1 or 2; on lowering,
- * stage 3.
+ * A mapping model that a validation stage refused: on load, stage 1 or 2; on lowering, stage 3.
  *
  * @param diagnostics the stage's diagnostics, sorted by {@link Diagnostic#ORDER}
  */

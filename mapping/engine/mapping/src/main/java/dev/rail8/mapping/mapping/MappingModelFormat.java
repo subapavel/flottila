@@ -9,9 +9,8 @@ import dev.rail8.mapping.mapping.internal.StrictJsonReader;
 import java.util.List;
 
 /**
- * Loads and saves mapping models in {@code formatVersion} 1 (ADR-0010, ADR-0011). Loading runs
- * validation stages 1 (schema) and 2 (model check); saving writes the canonical form, the only
- * spelling of a model.
+ * Loads and saves mapping models in {@code formatVersion} 1. Loading runs validation stages 1
+ * (schema) and 2 (model check); saving writes the canonical form, the only spelling of a model.
  */
 public final class MappingModelFormat {
 
@@ -24,7 +23,7 @@ public final class MappingModelFormat {
    *
    * @param json the document's bytes
    * @return the model, or the diagnostics of the stage that refused it
-   * @throws MalformedJsonException if the bytes are no JSON document (ADR-0011: a transport error)
+   * @throws MalformedJsonException if the bytes are no JSON document, a transport error
    */
   public static LoadResult load(byte[] json) throws MalformedJsonException {
     IJsonValue document = StrictJsonReader.read(json);

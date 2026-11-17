@@ -3,12 +3,12 @@ package dev.rail8.mapping.mapping;
 import java.util.Comparator;
 
 /**
- * A design-time error or warning with a stable code and one location (ADR-0015). Tests and the
- * editor match on the code; the message is English text for a person.
+ * A design-time error or warning with a stable code and one location. Tests and the editor match on
+ * the code; the message is English text for a person.
  *
  * @param severity error or warning
  * @param code the stable kebab-case code, one of {@link MappingDiagnostics} or another module's
- *     catalogue class (ADR-0018)
+ *     catalogue class
  * @param location where the diagnostic points
  * @param message what is wrong
  */

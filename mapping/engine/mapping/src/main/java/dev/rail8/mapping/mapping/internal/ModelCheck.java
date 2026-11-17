@@ -25,9 +25,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Stage 2 of loading, the model check (ADR-0011): ids unique across the mapping, references that
- * resolve inside their target field mapping, an acyclic graph, contexts that are proper ancestors
- * of their field, and declared UDFs. It needs no structure; it works on the path text.
+ * Stage 2 of loading, the model check: ids unique across the mapping, references that resolve
+ * inside their target field mapping, an acyclic graph, contexts that are proper ancestors of their
+ * field, and declared UDFs. It needs no structure; it works on the path text.
  */
 public final class ModelCheck {
 

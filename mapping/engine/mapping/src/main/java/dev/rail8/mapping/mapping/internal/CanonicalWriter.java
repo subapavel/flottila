@@ -33,10 +33,10 @@ import java.util.TreeMap;
 import java.util.function.BiConsumer;
 
 /**
- * The one writer of the canonical form (ADR-0010). It walks the records into a tree of sorted
- * objects and prints that tree as {@code JSON.stringify(value, null, 2)} does: keys by UTF-16 code
- * unit, LF, a final LF, UTF-8 without a byte order mark. Members equal to their default and empty
- * collections are left out; {@code result: null}, an unconnected input and an empty table stay.
+ * The one writer of the canonical form. It walks the records into a tree of sorted objects and
+ * prints that tree as {@code JSON.stringify(value, null, 2)} does: keys by UTF-16 code unit, LF, a
+ * final LF, UTF-8 without a byte order mark. Members equal to their default and empty collections
+ * are left out; {@code result: null}, an unconnected input and an empty table stay.
  */
 public final class CanonicalWriter {
 
@@ -95,7 +95,7 @@ public final class CanonicalWriter {
             .put("formatVersion", new NumberNode(model.formatVersion()))
             .putUnlessEmpty("targetFieldMappings", mappings)
             .putUnlessEmpty("udfs", udfs);
-    // ADR-0029: no description is left out (the record holds no empty one), and so is a
+    // no description is left out (the record holds no empty one), and so is a
     // structure not chosen yet
     model.description().ifPresent(description -> root.put("description", description));
     model.source().ifPresent(source -> root.put("source", structureRef(source)));
@@ -141,8 +141,8 @@ public final class CanonicalWriter {
   }
 
   /**
-   * A layout (ADR-0029): no {@code boxes} without a box position, and an empty object, left out by
-   * the caller, without any position. The record holds no stale position.
+   * A layout: no {@code boxes} without a box position, and an empty object, left out by the caller,
+   * without any position. The record holds no stale position.
    */
   private static ObjectNode layout(Layout layout) {
     ObjectNode boxes = new ObjectNode();

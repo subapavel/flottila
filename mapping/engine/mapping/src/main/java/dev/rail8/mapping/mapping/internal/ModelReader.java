@@ -39,8 +39,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * Binds the records by hand over json-sKema's tree (F-6). It runs after stage 1, so every member it
- * reads has the shape the schema gives it, and an absent member is one the schema lets go.
+ * Binds the records by hand over json-sKema's tree, since the engine does not use Jackson. It runs
+ * after stage 1, so every member it reads has the shape the schema gives it, and an absent member
+ * is one the schema lets go.
  */
 public final class ModelReader {
 
@@ -90,7 +91,7 @@ public final class ModelReader {
         layout(mapping.get("layout")));
   }
 
-  /** A target field mapping's layout (ADR-0029); an absent one has no position. */
+  /** A target field mapping's layout; an absent one has no position. */
   private static Layout layout(IJsonValue value) {
     if (!(value instanceof IJsonObject layout)) {
       return new Layout(Optional.empty(), Map.of());
