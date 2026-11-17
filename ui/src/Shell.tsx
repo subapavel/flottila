@@ -1,0 +1,109 @@
+import {
+  EmptyState,
+  EmptyStateBody,
+  Masthead,
+  MastheadBrand,
+  MastheadLogo,
+  MastheadMain,
+  MastheadToggle,
+  Nav,
+  NavItem,
+  NavList,
+  Page,
+  PageSection,
+  PageSidebar,
+  PageSidebarBody,
+  PageToggleButton,
+  Tab,
+  Tabs,
+  TabTitleText,
+} from '@patternfly/react-core';
+import { useState } from 'react';
+import type { Screen } from './screens';
+import { closeTab, noTabs, openTab } from './tabs';
+
+export interface ShellProps {
+  /** The screens the navigation lists, in its order. */
+  screens: readonly Screen[];
+  /** The id of the screen open in a tab when the shell starts, if any. */
+  start?: string;
+}
+
+/**
+ * The application's shell: a masthead with the brand and the button that shows or hides the navigation, the
+ * navigation listing every screen, and the tabs of the open screens. Choosing a screen in the navigation opens it in a
+ * new tab, or shows the tab it already has; each tab closes with its close button. With no tab open the main area says
+ * so.
+ */
+export function Shell({ screens, start }: ShellProps) {
+  const [tabs, setTabs] = useState(() => (start === undefined ? noTabs : openTab(noTabs, start)));
+  const byId = new Map(screens.map((screen) => [screen.id, screen]));
+
+  const masthead = (
+    <Masthead>
+      <MastheadMain>
+        <MastheadToggle>
+          <PageToggleButton isHamburgerButton aria-label="Navigation" />
+        </MastheadToggle>
+        <MastheadBrand>
+          <MastheadLogo component="span">Rail8</MastheadLogo>
+        </MastheadBrand>
+      </MastheadMain>
+    </Masthead>
+  );
+
+  const sidebar = (
+    <PageSidebar>
+      <PageSidebarBody>
+        <Nav aria-label="Screens">
+          <NavList>
+            {screens.map((screen) => (
+              <NavItem
+                key={screen.id}
+                itemId={screen.id}
+                component="button"
+                isActive={tabs.active === screen.id}
+                onClick={() => setTabs((current) => openTab(current, screen.id))}
+              >
+                {screen.title}
+              </NavItem>
+            ))}
+          </NavList>
+        </Nav>
+      </PageSidebarBody>
+    </PageSidebar>
+  );
+
+  return (
+    <Page masthead={masthead} sidebar={sidebar} isManagedSidebar>
+      {tabs.active === null ? (
+        <PageSection>
+          <EmptyState titleText="No screen open" headingLevel="h1">
+            <EmptyStateBody>Choose a screen in the navigation to open it in a tab.</EmptyStateBody>
+          </EmptyState>
+        </PageSection>
+      ) : (
+        <PageSection type="tabs">
+          <Tabs
+            aria-label="Open screens"
+            activeKey={tabs.active}
+            onSelect={(_event, key) => setTabs((current) => openTab(current, String(key)))}
+            onClose={(_event, key) => setTabs((current) => closeTab(current, String(key)))}
+            usePageInsets
+            mountOnEnter
+          >
+            {tabs.open.map((id) => {
+              const screen = byId.get(id);
+              const title = screen?.title ?? id;
+              return (
+                <Tab key={id} eventKey={id} title={<TabTitleText>{title}</TabTitleText>} closeButtonAriaLabel={`Close ${title}`}>
+                  {screen?.render()}
+                </Tab>
+              );
+            })}
+          </Tabs>
+        </PageSection>
+      )}
+    </Page>
+  );
+}
