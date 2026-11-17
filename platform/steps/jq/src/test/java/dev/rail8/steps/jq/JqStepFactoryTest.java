@@ -30,7 +30,7 @@ class JqStepFactoryTest {
     static final String COUNT_DOWN = "def f: if . == 0 then 0 else (. - 1 | f) + 1 end; f";
 
     final FakeRuntime rt = FakeRuntime.create();
-    final JqStepFactory factory = new JqStepFactory(JqStepFactory.DEFAULT_MAX_RECURSION_DEPTH);
+    final JqStepFactory factory = new JqStepFactory(10_000);
 
     StepResources resources(long maxBodyBytes) {
         return new StepResources(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), maxBodyBytes, Path.of("."));
@@ -156,7 +156,7 @@ class JqStepFactoryTest {
     void anOutputAboveTheFlowsBodyLimitIsTooLarge() {
         assertEquals("\"12345678\"", apply(factory, step("\"12345678\""), 10, "null").body().whole().toString(), "exactly the limit fits");
         assertThrows(BodyTooLargeException.class, () -> apply(factory, step("\"123456789\""), 10, "null"));
-        assertThrows(BodyTooLargeException.class, () -> apply(factory, step("[range(100000)]"), 1000, "null"),
-                "stopped by the bytes-written budget before the whole output is held");
+        BodyTooLargeException stopped = assertThrows(BodyTooLargeException.class, () -> apply(factory, step("[range(100000)]"), 1000, "null"));
+        assertEquals(1001, stopped.size(), "stopped by the bytes-written budget before the whole output is held, not by the blob store");
     }
 }

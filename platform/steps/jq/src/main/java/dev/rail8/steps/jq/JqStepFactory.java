@@ -49,9 +49,6 @@ import java.util.Arrays;
  */
 public final class JqStepFactory implements StepFactory {
 
-    /** The recursion depth of an installation that sets none: 10 000 live activations. */
-    public static final int DEFAULT_MAX_RECURSION_DEPTH = 10_000;
-
     /** The deepest recursion an installation or a flow may set: jq's own limit, 4 194 304 live activations. */
     public static final int MAX_RECURSION_DEPTH = 4_194_304;
 
