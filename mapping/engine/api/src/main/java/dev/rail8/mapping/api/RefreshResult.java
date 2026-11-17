@@ -4,8 +4,8 @@ import dev.rail8.mapping.mapping.Diagnostic;
 import java.util.List;
 
 /**
- * The result of a refresh (ADR-0009 as amended on 2026-11-05, ADR-0015): the refreshed model with
- * its diagnostics, or the diagnostics of validation stage 1 or 2 that refuse the model.
+ * The result of a refresh: the refreshed model with its diagnostics, or the diagnostics of
+ * validation stage 1 or 2 that refuse the model.
  */
 public sealed interface RefreshResult {
 
@@ -25,7 +25,7 @@ public sealed interface RefreshResult {
   }
 
   /**
-   * A model that validation stage 1 or 2 refuses (ADR-0011).
+   * A model that validation stage 1 or 2 refuses.
    *
    * @param diagnostics the refusing stage's diagnostics, sorted by {@link Diagnostic#ORDER}
    */

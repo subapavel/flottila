@@ -29,65 +29,61 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * The portable XSLT 3.0 export of unoptimised IR (ADR-0023): one stylesheet that imports the helper
- * module from its own directory. Each instruction and literal element starts a line of its own, two
- * spaces deeper than its parent. An element whose content is a single text keeps its {@code
- * xsl:value-of} and end tag on its own line; any other element's end tag starts a line.
+ * The portable XSLT 3.0 export of unoptimised IR: one stylesheet that imports the helper module
+ * from its own directory. Each instruction and literal element starts a line of its own, two spaces
+ * deeper than its parent. An element whose content is a single text keeps its {@code xsl:value-of}
+ * and end tag on its own line; any other element's end tag starts a line.
  *
  * <ul>
  *   <li>Every (prefix, URI) pair is declared once, on {@code xsl:stylesheet}, under {@code
  *       exclude-result-prefixes="#all"}: first the stylesheet's own (XSLT, XML Schema, arrays and
  *       the helper's {@code po}), then the source namespaces as {@code s0}, {@code s1} … in IR walk
- *       order, then the IR's output prefixes (ADR-0022) in the order first met, the root's first. A
- *       pair met again is not declared again.
+ *       order, then the IR's output prefixes in the order first met, the root's first. A pair met
+ *       again is not declared again.
  *   <li>A name without a namespace stays bare. There is never a default namespace and never an
  *       {@code xpath-default-namespace}.
  *   <li>{@code TargetSlots} is an {@code xsl:for-each} over {@code po:slots} of its queue, its
  *       parent's slot number and its {@code max}, {@code ()} when unbounded, inside {@code
  *       po:at-least} with its {@code min} and the id of its target field mapping, its origin, when
- *       the min is above 0 (ADR-0006 since #52). Each item is {@code [slot number, value]}, bound
- *       to its slot-number and value variables.
+ *       the min is above 0. Each item is {@code [slot number, value]}, bound to its slot-number and
+ *       value variables.
  *   <li>{@code TargetRepeat} is an {@code xsl:for-each} over {@code 1 to} its copies, which binds
  *       its slot-number variable to {@code ($p - 1) * copies + .}, where {@code $p} is its parent's
- *       slot number (ADR-0006; #63). A generating structure field's single value follows as {@code
- *       <xsl:value-of select="substring(value, 1, 0)"/>}, a zero-length text that evaluates it
- *       before the body (ADR-0006 as amended by #83). A generating block, a value with a value
- *       variable, follows instead as an {@code xsl:for-each} over {@code po:generated} of its queue
- *       variable, which binds the value variable to its item around the body, so a copy whose
- *       block's first slot is SUPPRESS or missing writes nothing (#217, F-46).
+ *       slot number. A generating structure field's single value follows as {@code <xsl:value-of
+ *       select="substring(value, 1, 0)"/>}, a zero-length text that evaluates it before the body. A
+ *       generating block, a value with a value variable, follows instead as an {@code xsl:for-each}
+ *       over {@code po:generated} of its queue variable, which binds the value variable to its item
+ *       around the body, so a copy whose block's first slot is SUPPRESS or missing writes nothing.
  *   <li>An {@code AttributeConstructor} is {@code <xsl:attribute name="name" select="value"/>}, its
- *       name under the IR's output prefix (ADR-0022), inside its item's {@code xsl:for-each}
- *       (ADR-0006 since #102).
- *   <li>Each back end evaluates a {@code TargetSlots} queue at most once per mapping run (ADR-0006
- *       since #52). A {@code TargetSlots} directly under the root is written outside any {@code
- *       xsl:for-each}, so its {@code po:slots} reads its queue in place. Inside an occurrence,
- *       where the {@code xsl:for-each} runs once per occurrence of the parent, the queue is bound
- *       once instead, as {@code po:queue1}, {@code po:queue2} … in IR walk order at the top of the
- *       template, and {@code po:slots} reads the variable. A generating block is always bound so,
- *       under the root too, as each of its copies reads it (#217).
+ *       name under the IR's output prefix, inside its item's {@code xsl:for-each}.
+ *   <li>Each back end evaluates a {@code TargetSlots} queue at most once per mapping run. A {@code
+ *       TargetSlots} directly under the root is written outside any {@code xsl:for-each}, so its
+ *       {@code po:slots} reads its queue in place. Inside an occurrence, where the {@code
+ *       xsl:for-each} runs once per occurrence of the parent, the queue is bound once instead, as
+ *       {@code po:queue1}, {@code po:queue2} … in IR walk order at the top of the template, and
+ *       {@code po:slots} reads the variable. A generating block is always bound so, under the root
+ *       too, as each of its copies reads it.
  *   <li>A queue is an {@code array(item()*)} with one member per context, each value an {@code
  *       xs:string} or {@code $po:SUPPRESS}. A {@code SourceQueue} reads the source document as
  *       {@code /}, the template's focus wherever a queue is written, and has at least one context
- *       ({@code po:source-queue}, F-17); a leaf field's member holds its {@code string()} per
- *       occurrence, a structure field's {@code ''} (ADR-0008; #63), and an attribute's, whose last
- *       step is {@code @name}, its value's {@code string()} (#102). A {@code FunCall} is {@code
- *       po:<catalogue name>} of the helper module over its args in {@code FunCall} order
- *       (ADR-0025), then the id of its function box, its origin, where the helper's declaration
- *       ends in the param {@code box}: a function that can raise a data error (ADR-0026). A {@code
- *       Literal} is an XPath string literal in apostrophes, a table param's text included
- *       (ADR-0026). An {@code AtomicToQueue} is {@code [(value)]}, one context that holds its value
- *       (ADR-0006 since #83).
- *   <li>The export of a JSON input (ADR-0008 "JSON as a source at run time", #98) also declares
- *       {@code fn}, the namespace of the XML representation of JSON, after {@code po}. It is
- *       started at its initial template with the param {@code po:input}, the URI of the JSON text,
- *       and applies its templates to {@code json-to-xml(unparsed-text($po:input), map{'duplicates':
- *       'reject'})}, so the source document is that representation. Its {@code $} step is the
- *       representation's top item, each further step the item whose {@code @key} is its property
- *       name: a leaf any scalar, any other field an object, and an array property each item of its
- *       {@code fn:array}.
+ *       ({@code po:source-queue}); a leaf field's member holds its {@code string()} per occurrence,
+ *       a structure field's {@code ''}, and an attribute's, whose last step is {@code @name}, its
+ *       value's {@code string()}. A {@code FunCall} is {@code po:<catalogue name>} of the helper
+ *       module over its args in {@code FunCall} order, then the id of its function box, its origin,
+ *       where the helper's declaration ends in the param {@code box}: a function that can raise a
+ *       data error. A {@code Literal} is an XPath string literal in apostrophes, a table param's
+ *       text included. An {@code AtomicToQueue} is {@code [(value)]}, one context that holds its
+ *       value.
+ *   <li>The export of a JSON input also declares {@code fn}, the namespace of the XML
+ *       representation of JSON, after {@code po}. It is started at its initial template with the
+ *       param {@code po:input}, the URI of the JSON text, and applies its templates to {@code
+ *       json-to-xml(unparsed-text($po:input), map{'duplicates': 'reject'})}, so the source document
+ *       is that representation. Its {@code $} step is the representation's top item, each further
+ *       step the item whose {@code @key} is its property name: a leaf any scalar, any other field
+ *       an object, and an array property each item of its {@code fn:array}.
  *   <li>A {@code Lift} is {@code po:lift} over the sequence of its queues and an inline function of
  *       {@code $in as xs:string*}, which binds slot variable k to {@code $in[k]} and returns the
- *       body (ADR-0025 since #51).
+ *       body.
  *   <li>An expression is escaped for the attribute it stands in, so a literal keeps every
  *       character, white space included.
  * </ul>
@@ -100,7 +96,7 @@ import java.util.stream.Collectors;
  */
 public final class XsltExporter {
 
-  /** The file name of the helper module every export imports (ADR-0023). */
+  /** The file name of the helper module every export imports. */
   public static final String HELPER_MODULE = "po-runtime.xsl";
 
   /**
@@ -124,9 +120,9 @@ public final class XsltExporter {
       """;
 
   /**
-   * The entry of a JSON input's export (ADR-0008 "JSON as a source at run time", #98): the param
-   * {@code po:input}, the URI of the JSON text, and the initial template, which applies the
-   * templates to its XML representation; an object with a key twice is the error FOJS0003.
+   * The entry of a JSON input's export: the param {@code po:input}, the URI of the JSON text, and
+   * the initial template, which applies the templates to its XML representation; an object with a
+   * key twice is the error FOJS0003.
    */
   private static final String JSON_ENTRY =
       """
@@ -178,7 +174,7 @@ public final class XsltExporter {
       """
       <xsl:value-of select="%s"/>""";
 
-  /** An {@code AttributeConstructor} (#102): its output name and its value. */
+  /** An {@code AttributeConstructor}: its output name and its value. */
   private static final String ATTRIBUTE =
       """
       <xsl:attribute name="%s" select="%s"/>""";
@@ -197,7 +193,7 @@ public final class XsltExporter {
   /**
    * A {@code SourceQueue}: its context's path from the root, its field's path under it, and what
    * each occurrence gives. {@code po:source-queue} makes it one empty context when the context
-   * never occurs (ADR-0004 as amended, F-17).
+   * never occurs.
    */
   private static final String QUEUE =
       """
@@ -206,7 +202,7 @@ public final class XsltExporter {
   /** What an occurrence of a leaf field gives in its queue: its text. */
   private static final String LEAF_VALUE = "string()";
 
-  /** What an occurrence of a structure field gives in its queue (ADR-0008). */
+  /** What an occurrence of a structure field gives in its queue. */
   private static final String STRUCTURE_VALUE = "''";
 
   /** The occurrences of a {@code TargetRepeat}: its copies. */
@@ -214,7 +210,7 @@ public final class XsltExporter {
 
   /**
    * A generating structure field's value, which each copy of its {@code TargetRepeat} evaluates and
-   * writes as no text (ADR-0006 as amended by #83).
+   * writes as no text.
    */
   private static final String REPEAT_VALUE = "substring(%s, 1, 0)";
 
@@ -225,7 +221,7 @@ public final class XsltExporter {
 
   /**
    * The value a copy of a generating block writes, its queue variable's first slot, or none when
-   * that slot is SUPPRESS or missing, so the copy writes nothing (#217, F-46).
+   * that slot is SUPPRESS or missing, so the copy writes nothing.
    */
   private static final String GENERATED = "po:generated(%s)";
 
@@ -235,14 +231,14 @@ public final class XsltExporter {
       <xsl:variable name="%s" as="xs:string" select="."/>""";
 
   /**
-   * A {@code Lift} (ADR-0025): {@code po:lift} over its queues, and over the inline function that
-   * binds the slot variables and returns the body.
+   * A {@code Lift}: {@code po:lift} over its queues, and over the inline function that binds the
+   * slot variables and returns the body.
    */
   private static final String LIFT =
       """
       po:lift((%s), function($in as xs:string*) as xs:string { let %s return %s })""";
 
-  /** An {@code AtomicToQueue}: one context that holds its value (ADR-0006 since #83). */
+  /** An {@code AtomicToQueue}: one context that holds its value. */
   private static final String ATOMIC_TO_QUEUE = "[(%s)]";
 
   /** The {@code max} of a {@code TargetSlots} that is unbounded. */
@@ -257,7 +253,7 @@ public final class XsltExporter {
   /** The depth of the root's content: stylesheet, template, root. */
   private static final int CONTENT_DEPTH = 3;
 
-  /** The last param of a helper function that can raise a data error: its box's id (ADR-0026). */
+  /** The last param of a helper function that can raise a data error: its box's id. */
   private static final String BOX = "box";
 
   /**
@@ -389,7 +385,7 @@ public final class XsltExporter {
       case TargetSlots s -> {
         String queue = expression(s.queue());
         if (inOccurrence) {
-          // written here, the queue would be evaluated once per parent occurrence (ADR-0006)
+          // written here, the queue would be evaluated once per parent occurrence
           String name = QUEUE_NAME.formatted(++queueCount);
           line(queueVariables, TEMPLATE_DEPTH, QUEUE_VARIABLE.formatted(name, attribute(queue)));
           queue = "$" + name;
@@ -411,7 +407,7 @@ public final class XsltExporter {
             REPEAT_SLOT_VARIABLE.formatted(
                 r.slotVar(), attribute(expression(r.parentSlot())), r.copies()));
         if (r.valueVar().isPresent()) {
-          // a generating block (#217): bound once, under the root too, as every copy reads it
+          // a generating block: bound once, under the root too, as every copy reads it
           String name = QUEUE_NAME.formatted(++queueCount);
           line(
               queueVariables,
@@ -441,7 +437,7 @@ public final class XsltExporter {
         String end = "</" + name + ">";
         if (e.content().size() == 1 && e.content().getFirst() instanceof TextConstructor t) {
           // a single text stays on its element's line; any other content, a text after attribute
-          // items included (#102), starts a line of its own, and so does the end tag after it
+          // items included, starts a line of its own, and so does the end tag after it
           out.append(valueOf(t)).append(end);
         } else {
           for (Expr content : e.content()) {
@@ -501,8 +497,8 @@ public final class XsltExporter {
   }
 
   /**
-   * {@code c} as {@code po:<catalogue name>} over its args in {@code FunCall} order (ADR-0025), and
-   * the id of its function box last where the helper's declaration ends in {@link #BOX} (ADR-0026).
+   * {@code c} as {@code po:<catalogue name>} over its args in {@code FunCall} order, and the id of
+   * its function box last where the helper's declaration ends in {@link #BOX}.
    */
   private String call(FunCall c) {
     String name = "po:" + c.function().name();
@@ -547,7 +543,7 @@ public final class XsltExporter {
    * The relative path of the steps of {@code q} after depth {@code from} up to depth {@code to}.
    *
    * <p>Over XML each is an element step under its source prefix, and the field's last is an
-   * attribute step when {@code q} reads an attribute (#102). Over JSON each is a JSON step.
+   * attribute step when {@code q} reads an attribute. Over JSON each is a JSON step.
    */
   private String path(SourceQueue q, int from, int to, String where) {
     List<String> names = new ArrayList<>();
@@ -565,10 +561,10 @@ public final class XsltExporter {
   }
 
   /**
-   * A JSON step at {@code depth} in the XML representation of JSON (ADR-0008, #98): the root's item
-   * has no key, any other its property name as {@code @key}; a leaf's item is any scalar, any
-   * other's an object, and an array property's are the items of its array. A value of another kind
-   * matches nothing, so it reads as absent, as in the runtime.
+   * A JSON step at {@code depth} in the XML representation of JSON: the root's item has no key, any
+   * other its property name as {@code @key}; a leaf's item is any scalar, any other's an object,
+   * and an array property's are the items of its array. A value of another kind matches nothing, so
+   * it reads as absent, as in the runtime.
    */
   private static String jsonStep(Name step, int depth, boolean leaf, boolean array) {
     String key = depth == 1 ? "" : "[@key=" + literal(step.localName()) + "]";
@@ -591,7 +587,7 @@ public final class XsltExporter {
     return prefix + ":" + step.localName();
   }
 
-  /** The name of an output element under the IR's {@code prefix} (ADR-0022). */
+  /** The name of an output element under the IR's {@code prefix}. */
   private String outputName(String prefix, Name name, String where) {
     if (prefix.isEmpty() != name.namespace().isEmpty()) {
       throw new IllegalArgumentException(

@@ -6,13 +6,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The engine's one number formatting core (ADR-0003): F&amp;O 3.1 {@code format-number} of an
- * {@code xs:decimal} with the default decimal format, over the pictures a number pattern compiles
- * to ({@link NumberPattern}), as Saxon-HE 12.5 formats them (observed, #74). Such a picture is one
- * or two sub-pictures, the second for negative numbers; each is passive text with at most one
- * percent or per mille sign, the digits {@code #} and then {@code 0} with regular grouping
- * separators, optionally the decimal separator with the digits {@code 0} and then {@code #}, and
- * passive text again.
+ * The engine's one number formatting core: F&amp;O 3.1 {@code format-number} of an {@code
+ * xs:decimal} with the default decimal format, over the pictures a number pattern compiles to
+ * ({@link NumberPattern}), as Saxon-HE 12.5 formats them (observed). Such a picture is one or two
+ * sub-pictures, the second for negative numbers; each is passive text with at most one percent or
+ * per mille sign, the digits {@code #} and then {@code 0} with regular grouping separators,
+ * optionally the decimal separator with the digits {@code 0} and then {@code #}, and passive text
+ * again.
  */
 public final class FormatNumber {
 
@@ -53,8 +53,8 @@ public final class FormatNumber {
   }
 
   /**
-   * A picture analysed once (#194), which formats any number of values: a binder analyses a box's
-   * picture when it binds, not per value. It holds no state of a format and may be shared.
+   * A picture analysed once, which formats any number of values: a binder analyses a box's picture
+   * when it binds, not per value. It holds no state of a format and may be shared.
    */
   public static final class Picture {
     private final SubPicture positive;

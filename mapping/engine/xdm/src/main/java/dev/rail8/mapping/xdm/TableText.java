@@ -9,11 +9,10 @@ import java.util.Map;
 import java.util.SequencedMap;
 
 /**
- * The text of a table param (ADR-0026 "Table params", #83): a table travels through the IR as one
- * {@code Literal} of its compact canonical JSON, the keys sorted by UTF-16 code unit and every
- * string quoted as {@code JSON.stringify} quotes it (ADR-0010), with no white space. The runtime
- * reads it back once, when it binds the call; the export's helper reads the same text with {@code
- * parse-json}.
+ * The text of a table param: a table travels through the IR as one {@code Literal} of its compact
+ * canonical JSON, the keys sorted by UTF-16 code unit and every string quoted as {@code
+ * JSON.stringify} quotes it, with no white space. The runtime reads it back once, when it binds the
+ * call; the export's helper reads the same text with {@code parse-json}.
  */
 public final class TableText {
 
@@ -45,7 +44,7 @@ public final class TableText {
   /** {@code table} as its compact canonical JSON: keys by UTF-16 code unit, whatever its order. */
   public static String write(Map<String, String> table) {
     List<String> keys = new ArrayList<>(table.keySet());
-    // String's natural order compares UTF-16 code units, as the canonical form does (ADR-0010)
+    // String's natural order compares UTF-16 code units, as the canonical form does
     Collections.sort(keys);
     StringBuilder text = new StringBuilder("{");
     String separator = "";

@@ -6,11 +6,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * A Java/SAP pattern of a box parameter (ADR-0003), {@code DecimalFormat} or {@code
- * SimpleDateFormat}, split into its runs: text in quotes, which both read as literal text, and the
- * unquoted pattern characters between. Two quotes are one quote, inside quotes and outside. Each
- * formatting function translates the runs into an XPath picture; the helper module's {@code
- * po:pattern-runs} splits a pattern the same way.
+ * A Java/SAP pattern of a box parameter, {@code DecimalFormat} or {@code SimpleDateFormat}, split
+ * into its runs: text in quotes, which both read as literal text, and the unquoted pattern
+ * characters between. Two quotes are one quote, inside quotes and outside. Each formatting function
+ * translates the runs into an XPath picture; the helper module's {@code po:pattern-runs} splits a
+ * pattern the same way.
  */
 public final class JavaPattern {
 

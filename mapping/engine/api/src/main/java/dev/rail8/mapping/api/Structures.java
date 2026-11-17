@@ -9,18 +9,17 @@ import dev.rail8.mapping.structure.importer.ReferenceResolver;
 import dev.rail8.mapping.structure.importer.StructureLoadException;
 import dev.rail8.mapping.structure.importer.StructureReader;
 
-/** The engine facade's entry point for loading a structure from a schema bundle (ADR-0008). */
+/** The engine facade's entry point for loading a structure from a schema bundle. */
 public final class Structures {
 
   private Structures() {}
 
   /**
-   * Loads the structure under {@code root}. Load errors are a result, every one of the bundle's
-   * (ADR-0008), never an exception; an unchecked exception from {@code resolver} passes through
-   * unchanged.
+   * Loads the structure under {@code root}. Load errors are a result, every one of the bundle's,
+   * never an exception; an unchecked exception from {@code resolver} passes through unchanged.
    *
-   * @param resolver the host's resolver of the bundle's references (ADR-0014 "Reference resolver
-   *     shape"), through which every file is read
+   * @param resolver the host's resolver of the bundle's references, through which every file is
+   *     read
    */
   public static StructureResult load(
       ReferenceResolver resolver, SchemaBundle bundle, RootSelector root) {

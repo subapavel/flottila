@@ -4,8 +4,8 @@ import dev.rail8.mapping.ir.AuthoringId;
 import java.util.Optional;
 
 /**
- * The result of a test run (ADR-0014, ADR-0015): the target message, or the runtime error that
- * stopped the run, each with the run's trace (since #53).
+ * The result of a test run: the target message, or the runtime error that stopped the run, each
+ * with the run's trace.
  */
 public sealed interface TestRunResult {
 
@@ -18,15 +18,15 @@ public sealed interface TestRunResult {
   record Output(byte[] output, Trace trace) implements TestRunResult {}
 
   /**
-   * A run that stopped with a runtime error; its buffered output is dropped (ADR-0006).
+   * A run that stopped with a runtime error; its buffered output is dropped.
    *
    * @param code the error's QName, such as {@code po:MINOCCURS} or {@code rail8:TIMEOUT}
    * @param message what stopped the run, in English
-   * @param authoringId where the error was raised (ADR-0015 since #52): the target field mapping
-   *     for {@code po:MINOCCURS}, the function box for a context function's data error; empty for
-   *     {@code rail8:TIMEOUT}
-   * @param trace the trace up to the error, at a timeout the trace so far (ADR-0014 since #53);
-   *     empty for a compile without tracing
+   * @param authoringId where the error was raised: the target field mapping for {@code
+   *     po:MINOCCURS}, the function box for a context function's data error; empty for {@code
+   *     rail8:TIMEOUT}
+   * @param trace the trace up to the error, at a timeout the trace so far; empty for a compile
+   *     without tracing
    */
   record RuntimeError(String code, String message, Optional<AuthoringId> authoringId, Trace trace)
       implements TestRunResult {}

@@ -1,8 +1,8 @@
 package dev.rail8.mapping.structure;
 
 /**
- * An effective occurrence (ADR-0008): a field's minimum and maximum number of occurrences under one
- * occurrence of its parent field, after every enclosing particle is taken into account.
+ * An effective occurrence: a field's minimum and maximum number of occurrences under one occurrence
+ * of its parent field, after every enclosing particle is taken into account.
  */
 public record Occurrence(long min, long max) {
 

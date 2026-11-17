@@ -3,10 +3,10 @@ package dev.rail8.mapping.structure;
 import java.util.Optional;
 
 /**
- * A field of a structure type (ADR-0008). A leaf field has a value type. A structure field names
- * the type that holds its child fields. A refused field loads and shows, but a mapping may not use
- * it or a field below it (ADR-0008 "Refused when a mapping uses the field", #92). An array property
- * is a JSON property whose items are its occurrences, whatever its {@code maxItems} (#118).
+ * A field of a structure type. A leaf field has a value type. A structure field names the type that
+ * holds its child fields. A refused field loads and shows, but a mapping may not use it or a field
+ * below it. An array property is a JSON property whose items are its occurrences, whatever its
+ * {@code maxItems}.
  *
  * @param step the field's kind and name, the last step of its field path
  * @param occurrence the field's effective occurrence

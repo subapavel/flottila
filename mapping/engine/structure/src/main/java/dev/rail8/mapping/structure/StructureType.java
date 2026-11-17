@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * A node of the structure graph: the child fields of every structure field of this type, attributes
- * first, then elements in output order (ADR-0008).
+ * first, then elements in output order.
  *
  * @param id the type's id inside its structure
  * @param fields the child fields

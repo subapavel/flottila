@@ -6,10 +6,10 @@ import java.util.Set;
 
 /**
  * A {@code java.text.SimpleDateFormat} pattern, a box parameter, compiled to the XPath picture of
- * {@code format-dateTime} that writes a date as SimpleDateFormat does in the English locale
- * (ADR-0003). {@link FormatDate} formats and parses with the picture; the helper module's {@code
- * po:date-picture} writes the same picture, and its {@code po:parse-date} parses with it. A pattern
- * whose output no picture gives, or that no strict parse reads back, is refused.
+ * {@code format-dateTime} that writes a date as SimpleDateFormat does in the English locale. {@link
+ * FormatDate} formats and parses with the picture; the helper module's {@code po:date-picture}
+ * writes the same picture, and its {@code po:parse-date} parses with it. A pattern whose output no
+ * picture gives, or that no strict parse reads back, is refused.
  *
  * <p>The pattern letters translated are {@code yyyy}, {@code M}, {@code MM}, {@code d}, {@code dd},
  * {@code H}, {@code HH}, {@code m}, {@code mm}, {@code s}, {@code ss}, {@code SSS}, {@code Z} and

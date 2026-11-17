@@ -1,10 +1,10 @@
-// javac's module lint: the name component rail8 ends in a digit (D-149, D-151)
+// javac's module lint: the name component rail8 ends in a digit
 @SuppressWarnings("module")
 module dev.rail8.mapping.api {
   requires transitive dev.rail8.mapping.mapping;
-  // transitive: EngineFacade.run throws runtime's MalformedInputException (ADR-0016)
+  // transitive: EngineFacade.run throws runtime's MalformedInputException
   requires transitive dev.rail8.mapping.runtime;
-  // transitive: Structures.load, compile and export take its ReferenceResolver (ADR-0014)
+  // transitive: Structures.load, compile and export take its ReferenceResolver
   requires transitive dev.rail8.mapping.structure.importer;
   requires transitive dev.rail8.mapping.structure;
   requires dev.rail8.mapping.xslt.export;

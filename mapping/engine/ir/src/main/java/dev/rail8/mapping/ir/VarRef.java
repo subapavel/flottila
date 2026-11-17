@@ -1,7 +1,7 @@
 package dev.rail8.mapping.ir;
 
 /**
- * A read of a variable in scope (ADR-0006). The only node that stores its type.
+ * A read of a variable in scope. The only node that stores its type.
  *
  * @param name the variable's name
  * @param type the type the variable is bound with

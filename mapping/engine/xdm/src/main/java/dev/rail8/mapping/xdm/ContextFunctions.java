@@ -8,8 +8,8 @@ import java.util.concurrent.CancellationException;
 import java.util.function.IntFunction;
 
 /**
- * The context functions of the runtime library over queue blocks (ADR-0025): the algebra, where the
- * sharing rules of ADR-0004 hold. {@code engine/runtime} binds each by its catalogue name. A
+ * The context functions of the runtime library over queue blocks: the algebra, where the sharing
+ * rules of {@link QueueBlock} hold. {@code engine/runtime} binds each by its catalogue name. A
  * function never changes its input; a block is immutable.
  */
 public final class ContextFunctions {
@@ -18,10 +18,10 @@ public final class ContextFunctions {
 
   /**
    * {@code collapseContexts}: the first slot of each context of {@code queue}, a SUPPRESS kept as
-   * SUPPRESS, and {@code ""} for an empty context, all in one context (#2 §4; observed on PO 7.50
-   * and CPI, F-47). A queue with no slot and at most one context, one empty context or none, gives
-   * one empty context: PO holds such a queue as nothing at all, no value and no context change, and
-   * writes no value for it (fn/collapseContexts/003). It copies references only (ADR-0004).
+   * SUPPRESS, and {@code ""} for an empty context, all in one context (as the SAP documentation
+   * describes it; observed on PO 7.50 and CPI). A queue with no slot and at most one context, one
+   * empty context or none, gives one empty context: PO holds such a queue as nothing at all, no
+   * value and no context change, and writes no value for it. It copies references only.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -38,11 +38,11 @@ public final class ContextFunctions {
 
   /**
    * {@code createIf}: per slot of {@code condition}, its value cast as PO's {@code Bool.toBoolean}
-   * does ({@link BooleanFunctions#truth}, ADR-0006, amended with #133, F-37): {@code ""} where it
-   * is {@code 1} or {@code true} in any case, SUPPRESS where it is {@code 0} or {@code false} in
-   * any case, and SUPPRESS where the slot is SUPPRESS. White space is part of a value, and the case
-   * is folded for ASCII letters only, as the export's {@code lower-case} folds them. The result
-   * keeps the slots and shares the context starts of {@code condition} (ADR-0004).
+   * does ({@link BooleanFunctions#truth}): {@code ""} where it is {@code 1} or {@code true} in any
+   * case, SUPPRESS where it is {@code 0} or {@code false} in any case, and SUPPRESS where the slot
+   * is SUPPRESS. White space is part of a value, and the case is folded for ASCII letters only, as
+   * the export's {@code lower-case} folds them. The result keeps the slots and shares the context
+   * starts of {@code condition}.
    *
    * @throws QueueDataException at the first slot, in order, whose value is none of those, {@code
    *     ""} included: {@code Cannot cast '<value>' to boolean}, PO's text
@@ -52,7 +52,6 @@ public final class ContextFunctions {
     String[] values = new String[condition.slots()];
     for (int i = 0; i < values.length; i++) {
       // its own check per slot, though the block's read of the values after this loop checks too
-      // (ADR-0021)
       Interrupts.check("createIf");
       // a SUPPRESS slot's value is null: it stays SUPPRESS, uncast
       String value = condition.value(i);
@@ -66,7 +65,7 @@ public final class ContextFunctions {
   /**
    * {@code exists}: per context of {@code queue}, one context holding {@code true} for each of its
    * slots, SUPPRESS and {@code ""} included, or {@code false} once if it is empty (observed on PO
-   * 7.50 and CPI, F-48: fn/exists/003, 004). A queue with no context at all gives none.
+   * 7.50 and CPI). A queue with no context at all gives none.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -94,15 +93,15 @@ public final class ContextFunctions {
 
   /**
    * {@code formatByExample(values, example)}: every slot of {@code values}, in order, split at the
-   * context changes of {@code example}, empty contexts included (#2 §4). The contexts of {@code
-   * values} play no part. It shares the values array and the SUPPRESS bitset of {@code values} and
-   * the context starts of {@code example}, so it copies nothing (ADR-0004). A SUPPRESS of {@code
-   * values} stays SUPPRESS at its slot, and a SUPPRESS of {@code example} counts as a value (an
-   * assumed reading since #51).
+   * context changes of {@code example}, empty contexts included, as the SAP documentation describes
+   * it. The contexts of {@code values} play no part. It shares the values array and the SUPPRESS
+   * bitset of {@code values} and the context starts of {@code example}, so it copies nothing. A
+   * SUPPRESS of {@code values} stays SUPPRESS at its slot, and a SUPPRESS of {@code example} counts
+   * as a value (an assumed reading).
    *
    * @throws QueueDataException unless both queues hold as many values: the SAP documentation
    *     requires equal counts, where empty contexts are not counted, and raises an exception
-   *     otherwise (#2 §4)
+   *     otherwise
    * @throws CancellationException when the thread is interrupted while the context starts are
    *     checked
    */
@@ -121,11 +120,10 @@ public final class ContextFunctions {
 
   /**
    * {@code mapWithDefault(queue, defaultValue)}: every empty context of {@code queue} replaced by
-   * one context holding {@code defaultValue}, every other context kept with its slots (#2 §4). A
-   * context of SUPPRESS only is not empty, so it is kept (observed on PO 7.50 and CPI, F-48:
-   * fn/mapWithDefault/002, obs-context-functions ctx-2); {@code ""} is a value. A queue with no
-   * context at all gives none, so only a context that is there is filled. It copies references only
-   * (ADR-0004).
+   * one context holding {@code defaultValue}, every other context kept with its slots, as the SAP
+   * documentation describes it. A context of SUPPRESS only is not empty, so it is kept (observed on
+   * PO 7.50 and CPI); {@code ""} is a value. A queue with no context at all gives none, so only a
+   * context that is there is filled. It copies references only.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -153,7 +151,7 @@ public final class ContextFunctions {
   /**
    * {@code removeContexts}: every slot of {@code queue}, in order, in one context, each SUPPRESS at
    * its own slot. It shares the values array and the SUPPRESS bitset and builds only the context
-   * starts {@code {0, n}} (ADR-0004), so a queue with no context at all gives one empty context.
+   * starts {@code {0, n}}, so a queue with no context at all gives one empty context.
    */
   public static QueueBlock removeContexts(QueueBlock queue) {
     return queue.withContextStarts(new int[] {0, queue.slots()});
@@ -161,38 +159,36 @@ public final class ContextFunctions {
 
   /**
    * {@code replaceValue(queue, replacement)}: {@code replacement} at every slot of {@code queue},
-   * SUPPRESS included, so the result holds no SUPPRESS (observed, PO 7.50 and CPI, F-45). It shares
-   * the context starts (ADR-0004), so an empty context stays empty and a queue with no context at
-   * all gives none.
+   * SUPPRESS included, so the result holds no SUPPRESS (observed, PO 7.50 and CPI). It shares the
+   * context starts, so an empty context stays empty and a queue with no context at all gives none.
    *
    * @throws CancellationException when the thread is interrupted while the result is read
    */
   public static QueueBlock replaceValue(QueueBlock queue, String replacement) {
     String[] values = new String[queue.slots()];
     Arrays.fill(values, replacement);
-    // the block reads the values for their bitset, checking for interruption per slot (ADR-0021)
+    // the block reads the values for their bitset, checking for interruption per slot
     return queue.withValues(values);
   }
 
-  // sort and sortByKey (#59, owner decision Q4 of #48): each context on its own, a stable sort
-  // (#2 §4), so equal keys keep their input order in either direction. The runtime binds the
-  // comparison and the direction once per call site. A SUPPRESS key is the greatest key in every
-  // comparison, so it comes last ascending and first descending (observed on PO 7.50 and CPI for a
-  // case-sensitive sort and an ascending sortByKey, F-47), and a numeric sort does not parse it; a
+  // sort and sortByKey: each context on its own, a stable sort as the SAP documentation describes
+  // it, so equal keys keep their input order in either direction. The runtime binds the comparison
+  // and the direction once per call site. A SUPPRESS key is the greatest key in every comparison,
+  // so it comes last ascending and first descending (observed on PO 7.50 and CPI for a
+  // case-sensitive sort and an ascending sortByKey), and a numeric sort does not parse it; a
   // SUPPRESS value moves with its key and stays SUPPRESS, as the result's bitset is read off its
-  // values (assumed since #51, #61). A numeric sortByKey key must not be SUPPRESS (#2 §3,
-  // documented): ADR-0006 since #51.
+  // values (assumed). A numeric sortByKey key must not be SUPPRESS, as the SAP documentation
+  // states.
 
-  /** How a sort compares two keys (owner decision Q4 of #48). */
+  /** How a sort compares two keys. */
   public enum Comparison {
     /** {@link String#compareTo}: by UTF-16 code unit, so U+1F600 comes before U+FF21. */
     LEXICOGRAPHIC,
     /** {@link String#compareToIgnoreCase}: by code point, each folded to lower of upper case. */
     CASE_INSENSITIVE,
     /**
-     * By decimal value. Every key must be in the {@code xs:decimal} lexical form (ADR-0005), XML
-     * whitespace around it allowed, as the export's cast collapses it; anything else stops the
-     * sort.
+     * By decimal value. Every key must be in the {@code xs:decimal} lexical form, XML whitespace
+     * around it allowed, as the export's cast collapses it; anything else stops the sort.
      */
     NUMERIC
   }
@@ -200,7 +196,7 @@ public final class ContextFunctions {
   /**
    * {@code sort}: the values of each context of {@code queue} in the order of {@code comparison},
    * ascending or {@code descending}. The contexts stay as they are; the result copies references
-   * only and shares the context starts (ADR-0004).
+   * only and shares the context starts.
    *
    * @throws QueueDataException when {@code comparison} is numeric and a value is no decimal
    * @throws CancellationException when the thread is interrupted
@@ -211,13 +207,14 @@ public final class ContextFunctions {
 
   /**
    * {@code sortByKey}: the values of each context of {@code values} in the order of the keys at the
-   * same slots of {@code keys} (#2 §4), by {@code comparison}, ascending or {@code descending}.
-   * Only the keys are compared, so only they are parsed. The result copies references only and
-   * shares the context starts of {@code values} (ADR-0004).
+   * same slots of {@code keys}, by {@code comparison}, ascending or {@code descending}. Only the
+   * keys are compared, so only they are parsed. The result copies references only and shares the
+   * context starts of {@code values}.
    *
    * @throws QueueDataException unless both queues have the same number of contexts and each context
    *     as many keys as values, or when {@code comparison} is numeric and a key is no decimal or is
-   *     SUPPRESS (#2 §3: "numeric keys must not be equal to the constant ResultList.SUPPRESS")
+   *     SUPPRESS (the SAP documentation: "numeric keys must not be equal to the constant
+   *     ResultList.SUPPRESS")
    * @throws CancellationException when the thread is interrupted
    */
   public static QueueBlock sortByKey(
@@ -278,7 +275,7 @@ public final class ContextFunctions {
   /**
    * The order of the slots {@code start} to {@code start + size} of {@code keys}, by their keys. A
    * SUPPRESS key comes after every other key and is not parsed, except that in a numeric comparison
-   * it stops the sort unless {@code suppressKeys} (ADR-0006 since #51, amended for F-47).
+   * it stops the sort unless {@code suppressKeys}.
    */
   private static Comparator<Integer> order(
       String function,
@@ -327,17 +324,16 @@ public final class ContextFunctions {
                         + "\" is not in the xs:decimal lexical form (ADR-0005)"));
   }
 
-  // splitByValue (#55): one function per mode, which the runtime binds once per call site. Each
+  // splitByValue: one function per mode, which the runtime binds once per call site. Each
   // splits every context of its input on its own, so the input's context boundaries stay, and an
   // empty context stays one empty context. A context gives at most one context more than it has
   // slots, which bounds the starts array by slots + contexts + 1, the end sentinel included. A
-  // SUPPRESS slot stays a slot in every mode (observed on PO 7.50 and CPI, fn/splitByValue/019 to
-  // 021, F-47).
+  // SUPPRESS slot stays a slot in every mode (observed on PO 7.50 and CPI).
 
   /**
    * {@code splitByValue} in mode {@code eachValue}: every value, and every SUPPRESS, in a context
    * of its own. It shares the values array and the SUPPRESS bitset and builds only the context
-   * starts (ADR-0004).
+   * starts.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -348,9 +344,8 @@ public final class ContextFunctions {
   /**
    * {@code splitByValue} in mode {@code valueChange}: a new context at every value that is not
    * equal to the value before it in its context, as {@link String#equals} compares. SUPPRESS equals
-   * SUPPRESS and no value, as SAP's SUPPRESS string would compare (observed, fn/splitByValue/020).
-   * It shares the values array and the SUPPRESS bitset and builds only the context starts
-   * (ADR-0004).
+   * SUPPRESS and no value, as SAP's SUPPRESS string would compare (observed). It shares the values
+   * array and the SUPPRESS bitset and builds only the context starts.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -366,7 +361,7 @@ public final class ContextFunctions {
     int[] starts = new int[queue.slots() + queue.contexts() + 1];
     int count = 0;
     for (int c = 0; c < queue.contexts(); c++) {
-      // one check per context: its slots are read below, bounded by their count (ADR-0021)
+      // one check per context: its slots are read below, bounded by their count
       Interrupts.check("splitByValue");
       starts[count++] = queue.start(c);
       for (int i = queue.start(c) + 1; i < queue.end(c); i++) {
@@ -384,9 +379,9 @@ public final class ContextFunctions {
   /**
    * {@code splitByValue} in mode {@code emptyValue}: every {@code ""} ends its context there and
    * starts a new one, and is itself dropped, so a {@code ""} first or last in a context leaves an
-   * empty context there. SUPPRESS is no {@code ""}, so it stays a slot (observed,
-   * fn/splitByValue/021). Dropping values needs a values array of its own, which holds the input's
-   * value objects: no characters are copied (ADR-0004).
+   * empty context there. SUPPRESS is no {@code ""}, so it stays a slot (observed). Dropping values
+   * needs a values array of its own, which holds the input's value objects: no characters are
+   * copied.
    *
    * @throws CancellationException when the thread is interrupted
    */
@@ -396,7 +391,7 @@ public final class ContextFunctions {
     int slots = 0;
     int count = 0;
     for (int c = 0; c < queue.contexts(); c++) {
-      // one check per context: its slots are read below, bounded by their count (ADR-0021)
+      // one check per context: its slots are read below, bounded by their count
       Interrupts.check("splitByValue");
       starts[count++] = slots;
       for (int i = queue.start(c); i < queue.end(c); i++) {
@@ -416,15 +411,14 @@ public final class ContextFunctions {
   /**
    * {@code useOneAsMany(value, occurrences, contexts)}: the one value of context k of {@code value}
    * once per slot of context k of {@code occurrences}, in order, split at the context starts of
-   * {@code contexts}, which it shares (#2 §4). It copies references only (ADR-0004). A SUPPRESS
-   * value is repeated as SUPPRESS and a SUPPRESS slot of {@code occurrences} is an occurrence like
-   * any other (observed on PO 7.50 and CPI, F-48: the probes of obs-useoneasmany); the slots of
-   * {@code contexts} give only their boundaries (assumed since #51).
+   * {@code contexts}, which it shares, as the SAP documentation describes it. It copies references
+   * only. A SUPPRESS value is repeated as SUPPRESS and a SUPPRESS slot of {@code occurrences} is an
+   * occurrence like any other (observed on PO 7.50 and CPI); the slots of {@code contexts} give
+   * only their boundaries (assumed).
    *
    * @throws QueueDataException unless {@code value} has as many contexts as {@code occurrences},
    *     each holding one value, SUPPRESS included, and {@code contexts} as many slots as {@code
-   *     occurrences}, checked in this order (observed on PO 7.50 and CPI, F-48: fn/useOneAsMany/003
-   *     to 009)
+   *     occurrences}, checked in this order (observed on PO 7.50 and CPI)
    * @throws CancellationException when the thread is interrupted
    */
   public static QueueBlock useOneAsMany(

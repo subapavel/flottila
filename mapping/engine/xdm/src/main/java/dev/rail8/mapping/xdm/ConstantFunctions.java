@@ -7,11 +7,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The queue algebra of the function family constant (ADR-0025 "Families", #79): {@code copyValue}
- * gives a generating block, one context holding the slot at a position of the whole queue, counted
- * from 0 with context boundaries ignored; a SUPPRESS slot counts as a position and is copied as
- * SUPPRESS (observed, F-46, #217). A position past the last slot, an empty queue's included, gives
- * one empty context (assumed, ADR-0006). A function never changes its input; a block is immutable.
+ * The queue algebra of the function family constant: {@code copyValue} gives a generating block,
+ * one context holding the slot at a position of the whole queue, counted from 0 with context
+ * boundaries ignored; a SUPPRESS slot counts as a position and is copied as SUPPRESS (observed). A
+ * position past the last slot, an empty queue's included, gives one empty context (assumed). A
+ * function never changes its input; a block is immutable.
  */
 public final class ConstantFunctions {
 

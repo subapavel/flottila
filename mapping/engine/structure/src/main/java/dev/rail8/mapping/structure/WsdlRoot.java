@@ -1,7 +1,7 @@
 package dev.rail8.mapping.structure;
 
 /**
- * The element of a WSDL operation's input, output or fault (ADR-0008).
+ * The element of a WSDL operation's input, output or fault.
  *
  * @param wsdl the operation and its direction
  */

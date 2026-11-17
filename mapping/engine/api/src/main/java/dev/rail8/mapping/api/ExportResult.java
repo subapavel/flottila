@@ -7,7 +7,7 @@ import java.util.List;
 public sealed interface ExportResult {
 
   /**
-   * A mapping that passed every validation stage and exported whole (ADR-0023).
+   * A mapping that passed every validation stage and exported whole.
    *
    * @param stylesheet the exported stylesheet
    * @param helperModule the text of {@code po-runtime.xsl}, which the stylesheet imports from its

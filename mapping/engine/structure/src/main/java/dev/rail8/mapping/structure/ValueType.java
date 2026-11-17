@@ -1,6 +1,6 @@
 package dev.rail8.mapping.structure;
 
-/** The value type of a leaf field: one of ADR-0004's seven atomic types (ADR-0008). */
+/** The value type of a leaf field: one of the seven atomic types. */
 public enum ValueType {
   STRING("xs:string"),
   BOOLEAN("xs:boolean"),

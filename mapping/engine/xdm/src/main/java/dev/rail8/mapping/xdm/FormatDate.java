@@ -14,9 +14,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The engine's one date formatting core (ADR-0003): F&amp;O 3.1 {@code format-dateTime} over the
- * pictures a date pattern compiles to ({@link DatePattern}), as Saxon-HE 12.5 formats them, and the
- * one internal parsing function that mirrors that picture syntax, as F&amp;O has none. The helper
+ * The engine's one date formatting core: F&amp;O 3.1 {@code format-dateTime} over the pictures a
+ * date pattern compiles to ({@link DatePattern}), as Saxon-HE 12.5 formats them, and the one
+ * internal parsing function that mirrors that picture syntax, as F&amp;O has none. The helper
  * module's {@code po:parse-date} parses as {@link #parse} does. Such a picture is literal text,
  * with {@code [[} and {@code ]]} for the square brackets, and the components {@code [Y0001]},
  * {@code [M1]}, {@code [M01]}, {@code [D1]}, {@code [D01]}, {@code [H1]}, {@code [H01]}, {@code
@@ -72,8 +72,8 @@ public final class FormatDate {
   private static final int MAX_OFFSET = 14 * 60;
 
   /**
-   * A picture analysed once (#194), which writes and reads any number of dates: a binder analyses a
-   * box's picture when it binds, not per value. It holds no state of a format or a parse and may be
+   * A picture analysed once, which writes and reads any number of dates: a binder analyses a box's
+   * picture when it binds, not per value. It holds no state of a format or a parse and may be
    * shared.
    */
   public static final class Picture {

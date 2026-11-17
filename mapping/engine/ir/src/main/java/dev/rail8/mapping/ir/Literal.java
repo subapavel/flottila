@@ -1,8 +1,8 @@
 package dev.rail8.mapping.ir;
 
 /**
- * A constant {@code xs:string} (ADR-0006), such as a box parameter's value as an argument of a
- * {@link FunCall}.
+ * A constant {@code xs:string}, such as a box parameter's value as an argument of a {@link
+ * FunCall}.
  *
  * @param value the string; {@code ""} is allowed
  * @param origin the authoring element the value comes from

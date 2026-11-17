@@ -3,8 +3,7 @@ package dev.rail8.mapping.ir;
 import java.util.List;
 
 /**
- * An XML element of the output with its content (ADR-0006), under the prefix lowering assigned
- * (ADR-0022).
+ * An XML element of the output with its content, under the prefix lowering assigned.
  *
  * @param prefix the prefix of {@code name}'s namespace; {@code ""} for a name without one
  * @param name the element's name

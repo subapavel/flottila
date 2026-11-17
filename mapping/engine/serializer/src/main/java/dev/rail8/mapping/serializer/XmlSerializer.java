@@ -6,20 +6,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Writes one XML document as UTF-8 bytes (ADR-0022): the declaration {@code <?xml version="1.0"
+ * Writes one XML document as UTF-8 bytes: the declaration {@code <?xml version="1.0"
  * encoding="UTF-8"?>}, then the elements without indentation and without a trailing newline. A
  * prefix is bound on the first element that needs it, for its own name or an attribute's, where it
  * is not already bound to the same namespace; a default namespace is never declared. In text,
  * {@code &}, {@code <} and {@code >} are escaped and CR is written {@code &#13;}; in an attribute
- * value {@code "} is escaped too, and LF and TAB are written {@code &#10;} and {@code &#9;} (#102).
- * An element without content is self-closing.
+ * value {@code "} is escaped too, and LF and TAB are written {@code &#10;} and {@code &#9;}. An
+ * element without content is self-closing.
  *
  * <p>The serializer writes what it is told and never invents a prefix; the prefixes come from
  * lowering. It holds the state of one document and is not thread-safe.
  *
- * <p>It encodes UTF-8 itself, into one buffer per document, and writes the same bytes as the JDK's
- * {@code OutputStreamWriter} did before #194, which allocated per write: a surrogate pair is one
- * character even when two writes split it, and a lone surrogate is written {@code ?}.
+ * <p>It encodes UTF-8 itself, into one buffer per document, rather than through the JDK's {@code
+ * OutputStreamWriter}, which allocates per write, and writes the same bytes that writer does: a
+ * surrogate pair is one character even when two writes split it, and a lone surrogate is written
+ * {@code ?}.
  */
 public final class XmlSerializer {
 
@@ -52,7 +53,7 @@ public final class XmlSerializer {
 
   /**
    * The prefix bindings the open elements declared, outermost first: per binding its prefix, then
-   * its namespace. An element's own and its attributes' bindings go on the element (#102).
+   * its namespace. An element's own and its attributes' bindings go on the element.
    */
   private final List<String> bindings = new ArrayList<>();
 
@@ -95,9 +96,9 @@ public final class XmlSerializer {
   }
 
   /**
-   * Writes an attribute of the element whose start tag is open (#102), after the declaration of its
-   * prefix when the prefix is not bound to its namespace there. The binding then holds for the
-   * element's content.
+   * Writes an attribute of the element whose start tag is open, after the declaration of its prefix
+   * when the prefix is not bound to its namespace there. The binding then holds for the element's
+   * content.
    *
    * @param prefix the prefix of {@code namespace}; {@code ""} for a name without a namespace
    * @param namespace the attribute's namespace, or {@code ""}

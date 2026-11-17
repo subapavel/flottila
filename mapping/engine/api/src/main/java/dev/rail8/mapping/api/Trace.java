@@ -10,10 +10,9 @@ import java.util.List;
 import java.util.SequencedMap;
 
 /**
- * The trace of a test run (ADR-0015 "Trace" as refined by #53; GLOSSARY "Trace", "Trace limit",
- * "Parent slot"): an entry per evaluated box and per target field mapping that ran, by authoring
- * id, in the order of first report: a queue, a single value or a field's occurrences. A box that
- * was never evaluated has none.
+ * The trace of a test run: an entry per evaluated box and per target field mapping that ran, by
+ * authoring id, in the order of first report: a queue, a single value or a field's occurrences. A
+ * box that was never evaluated has none.
  *
  * @param entries the entries by authoring id, in the order of first report
  */
@@ -27,8 +26,8 @@ public record Trace(SequencedMap<AuthoringId, Entry> entries) {
   public sealed interface Entry permits Queue, Occurrences, Atomic {}
 
   /**
-   * The single value a box gave, at its first report (ADR-0015 {@code {atomic: {type, value}}}):
-   * the value of a single-value call with no queue input, such as a {@code constant} (#83).
+   * The single value a box gave, at its first report (in the service API {@code {atomic: {type,
+   * value}}}): the value of a single-value call with no queue input, such as a {@code constant}.
    *
    * @param type the value's type
    * @param value the value
@@ -36,8 +35,8 @@ public record Trace(SequencedMap<AuthoringId, Entry> entries) {
   public record Atomic(AtomicType type, String value) implements Entry {
 
     /**
-     * The XML Schema name of the value's type (ADR-0004), such as {@code xs:string}: what a caller
-     * that does not reach the IR, as the service, shows (ADR-0024 "Service boundary").
+     * The XML Schema name of the value's type, such as {@code xs:string}: what a caller that does
+     * not reach the IR, as the service, shows.
      */
     public String typeName() {
       ValueType named =
@@ -73,11 +72,11 @@ public record Trace(SequencedMap<AuthoringId, Entry> entries) {
   }
 
   /**
-   * The occurrences a target field mapping created, per parent slot in the order run (ADR-0006): at
-   * most the trace limit's parent records and slot records, always keeping the last parent. The
-   * field's queue is the entry of its {@code result} box; a generating function's field has no
-   * queue, and its occurrences are its copies, all created (ADR-0006 as amended by #83), or all
-   * suppressed when its generating block's first slot is SUPPRESS or missing (#217, F-46).
+   * The occurrences a target field mapping created, per parent slot in the order run: at most the
+   * trace limit's parent records and slot records, always keeping the last parent. The field's
+   * queue is the entry of its {@code result} box; a generating function's field has no queue, and
+   * its occurrences are its copies, all created, or all suppressed when its generating block's
+   * first slot is SUPPRESS or missing.
    *
    * @param min the field's effective minimum occurrence
    * @param max the field's effective maximum occurrence; {@link Long#MAX_VALUE} is unbounded
@@ -95,11 +94,11 @@ public record Trace(SequencedMap<AuthoringId, Entry> entries) {
 
   /**
    * The slots of context {@code parentSlot} of the field's queue, or a generating function's copies
-   * under that parent slot (#83). For a field's queue, {@code created < min} marks the parent slot
-   * that raised {@code po:MINOCCURS}. A generating function's copies have no min check: when its
+   * under that parent slot. For a field's queue, {@code created < min} marks the parent slot that
+   * raised {@code po:MINOCCURS}. A generating function's copies have no min check: when its
    * generating block's first slot is SUPPRESS or missing, every copy is suppressed and {@code
-   * created} is 0, below a {@code minOccurs > 0} too, and no {@code po:MINOCCURS} is raised (#217,
-   * F-46; assumed, ADR-0006).
+   * created} is 0, below a {@code minOccurs > 0} too, and no {@code po:MINOCCURS} is raised
+   * (assumed, not yet observed on PO).
    *
    * @param parentSlot the slot number of the parent occurrence
    * @param created how many occurrences the slots create, at most max
@@ -120,13 +119,13 @@ public record Trace(SequencedMap<AuthoringId, Entry> entries) {
    */
   public record Slot(long slot, SlotStatus status) {}
 
-  /** What a slot created (GLOSSARY "Truncated slot", "SUPPRESS"). */
+  /** What a slot created. */
   public enum SlotStatus {
     /** An occurrence. */
     CREATED,
     /**
      * Nothing: the slot is SUPPRESS, or it is a copy of a generating block whose first slot is
-     * SUPPRESS or missing (#217).
+     * SUPPRESS or missing.
      */
     SUPPRESSED,
     /** Nothing: {@code max} occurrences were created before it in its context. */
