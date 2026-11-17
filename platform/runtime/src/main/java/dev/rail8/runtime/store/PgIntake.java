@@ -471,7 +471,7 @@ public final class PgIntake implements Intake {
         if (durable == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), holder, lease).map(item -> leased(g, m, item));
         if (durable.ref() == null) {
             return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key(), holder, lease).map(copied -> {
-                copied.elsewhere().ifPresent(node -> g.elsewhere.put(m, node));   // announced once committed (B4 (iii))
+                copied.elsewhere().ifPresent(node -> g.elsewhere.put(m, node));   // announced once committed
                 return leased(g, m, copied.leased());
             });
         }
