@@ -9,11 +9,11 @@ import java.util.Deque;
 import java.util.List;
 
 /**
- * The recursive groups of a program (ADR-0045 and its #112 amendment, GLOSSARY "Recursive group"): the strongly
- * connected components of its call graph, an edge from a function to the callee of each Call in its body, the Calls in
- * the closures it writes among them. The main tree is no function and is in no group. Groups are numbered callee-first:
- * every Call in a group's bodies names a function of that group or of a group with a smaller number, so an analysis
- * that takes the groups in their order finds each callee done, and runs the main tree last (ADR-0007 #112).
+ * The recursive groups of a program: the strongly connected components of its call graph, an edge from a function to
+ * the callee of each Call in its body, the Calls in the closures it writes among them. The main tree is no function and
+ * is in no group. Groups are numbered callee-first: every Call in a group's bodies names a function of that group or of
+ * a group with a smaller number, so an analysis that takes the groups in their order finds each callee done, and runs
+ * the main tree last.
  */
 public final class CallGraph {
   /** The group of each function, by its place. */

@@ -1,7 +1,7 @@
 package dev.rail8.jq.query.ir;
 
 /**
- * {@code reduce SRC as P (init; update)} (ADR-0041, GLOSSARY "Loop state", "State slot"): for each result r of
+ * {@code reduce SRC as P (init; update)}: for each result r of
  * {@code init}, on the Reduce's input, the state slot {@code slot} is set to r and {@code each} runs on the same input;
  * then the Reduce emits the slot's value and nulls the slot. Its {@code each} is the pattern's Binds around the one
  * {@link Advance} of the slot. The slot is bound by the Reduce, set by it and by that Advance, and read by no

@@ -4,9 +4,8 @@ import dev.rail8.jq.query.analysis.Cardinality;
 import dev.rail8.jq.query.analysis.Facts;
 
 /**
- * Which of the two forms a node runs by (GLOSSARY "Run form", ADR-0047 #116, ADR-0008): fixed per node from the facts
- * when the tree is built, and read as {@link Executable#form(int, int)}. The tail emitter is a fast path of the push
- * form, not a form of its own (ADR-0043).
+ * Which of the two forms a node runs by: fixed per node from the facts when the tree is built, and read as
+ * {@link Executable#form(int, int)}. The tail emitter is a fast path of the push form, not a form of its own.
  */
 public enum RunForm {
   /** The push form: the node pushes its results into a sink. */

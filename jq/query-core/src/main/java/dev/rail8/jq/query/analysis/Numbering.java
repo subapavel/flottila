@@ -32,12 +32,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The freeze of a program (ADR-0045 and its #112 amendment, GLOSSARY "Freeze id"): each body, the main tree's and each
- * function's, numbers its nodes from 0 in pre-order, a node before its parts in their order, the order of its record's
- * components and each list in its order. So every part of a node has a larger id than the node, and a walk from the
- * largest id down meets each part before its node. The map is by identity, since records compare by value; it is sound
- * because no node object is used twice in a verified program (ADR-0005). A body is {@code -1} for the main tree and a
- * function's place otherwise.
+ * The freeze of a program: each body, the main tree's and each function's, numbers its nodes from 0 in pre-order, a
+ * node before its parts in their order, the order of its record's components and each list in its order. So every part
+ * of a node has a larger id than the node, and a walk from the largest id down meets each part before its node. The map
+ * is by identity, since records compare by value; it is sound because no node object is used twice in a verified
+ * program. A body is {@code -1} for the main tree and a function's place otherwise.
  */
 public final class Numbering {
   /** The freeze id of every node of the program in its body. */

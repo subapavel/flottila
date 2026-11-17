@@ -1,8 +1,8 @@
 package dev.rail8.jq.query.compile;
 
 /**
- * How a tree is compiled (ADR-0018, ADR-0030): engine-internal, for the compile-mode oracle. Both modes build the same
- * tree until spec 2b's analyses.
+ * How a tree is compiled: engine-internal, for the compile-mode oracle. The modes differ only in the facts the tree is
+ * built from, so both must give the same results.
  */
 public enum CompileMode {
   /** The optimised compile, the default: with the facts the analyses prove. */

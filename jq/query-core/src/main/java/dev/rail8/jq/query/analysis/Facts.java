@@ -3,16 +3,15 @@ package dev.rail8.jq.query.analysis;
 import java.util.Arrays;
 
 /**
- * The facts of a compiled program (ADR-0007, ADR-0045 #112): an immutable side table, each fact an array by freeze id
- * per body. A body is {@code -1} for the main tree and a function's place otherwise; a function's own value is its body
- * root's, id 0. The optimised compile analyses the program; the conservative compile keeps every fact at its safe value
- * (ADR-0018).
+ * The facts of a compiled program: an immutable side table, each fact an array by freeze id per body. A body is
+ * {@code -1} for the main tree and a function's place otherwise; a function's own value is its body root's, id 0. The
+ * optimised compile analyses the program; the conservative compile keeps every fact at its safe value.
  */
 public final class Facts {
   /** The cardinality of each node by body, the main tree's first and then each function's by place, and by freeze id. */
   private final Cardinality[][] cardinality;
 
-  /** Whether each node may break out (ADR-0007 #115), by body as {@link #cardinality} and by freeze id. */
+  /** Whether each node may break out, by body as {@link #cardinality} and by freeze id. */
   private final boolean[][] breaks;
 
   private Facts(Cardinality[][] cardinality, boolean[][] breaks) {
@@ -40,7 +39,7 @@ public final class Facts {
 
   /**
    * The cardinality of node {@code id} of the body {@code function}, -1 for the main tree; never NEVER, which a fact
-   * keeps as NONE (ADR-0007 #112).
+   * keeps as NONE.
    */
   public Cardinality cardinality(int function, int id) {
     return cardinality[function + 1][id];
@@ -48,7 +47,7 @@ public final class Facts {
 
   /**
    * Whether node {@code id} of the body {@code body}, -1 for the main tree, may break out: whether a run of it may end by
-   * a Break to a Label activation the run did not start (ADR-0007 #115).
+   * a Break to a Label activation the run did not start.
    */
   public boolean mayBreakOut(int body, int id) {
     return breaks[body + 1][id];
