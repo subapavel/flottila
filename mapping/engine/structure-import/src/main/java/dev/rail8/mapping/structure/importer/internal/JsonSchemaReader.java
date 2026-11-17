@@ -69,17 +69,17 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Reads a JSON Schema 2020-12 bundle into a structure, with json-sKema 0.32.0 (ADR-0008 "JSON
- * Schema and WSDL", #97). The first bundle file is the root schema.
+ * Reads a JSON Schema 2020-12 bundle into a structure, with json-sKema 0.32.0. The first bundle
+ * file is the root schema.
  *
  * <p>Each file is read through the host's resolver and parsed with its positions. A relative {@code
  * $ref} to another file is mapped to a bundle file by text, against the referring file's bundle
  * reference and whatever an {@code $id} says, before that file is read; an absolute one names the
- * bundle file whose root {@code $id} it is (ADR-0008, the closed bundle). Every {@code $ref} is
- * then rewritten to its file's URI and a JSON pointer, and json-sKema loads the files from memory:
- * it reads no file and no URL, only its own copy of the 2020-12 meta-schema. One read reports every
- * load error, files in bundle order and each file in document order (ADR-0008); a keyword refused
- * before the load is dropped for it. The loaded schema is walked into fields:
+ * bundle file whose root {@code $id} it is, since the bundle is closed. Every {@code $ref} is then
+ * rewritten to its file's URI and a JSON pointer, and json-sKema loads the files from memory: it
+ * reads no file and no URL, only its own copy of the 2020-12 meta-schema. One read reports every
+ * load error, files in bundle order and each file in document order; a keyword refused before the
+ * load is dropped for it. The loaded schema is walked into fields:
  *
  * <ul>
  *   <li>an object's properties keep their declared order: its own {@code properties} first, then
@@ -90,14 +90,14 @@ import java.util.stream.Stream;
  *   <li>an object reached by {@code $ref} is a named structure type, whose id is its file and JSON
  *       pointer, so it is shared and a recursive one is never expanded;
  *   <li>an array property is one repeated field with {@code minItems} and {@code maxItems}, marked
- *       as an array property whatever its {@code maxItems} (#118);
+ *       as an array property whatever its {@code maxItems};
  *   <li>the value type comes from {@code type} and {@code format}, and is otherwise {@code
  *       xs:string}; a type list with {@code "null"} marks the field nillable.
  * </ul>
  */
 public final class JsonSchemaReader {
 
-  /** The {@code $schema} of draft 2020-12, the one draft read (ADR-0008). */
+  /** The {@code $schema} of draft 2020-12, the one draft read. */
   private static final String DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 
   /** The largest {@code minItems} or {@code maxItems}: 18 digits, as XSD's occurrence counts. */
@@ -137,7 +137,7 @@ public final class JsonSchemaReader {
 
   /**
    * Each file json-sKema loads, parsed, by the URI it knows it by: a file that is not well-formed,
-   * holds no object or is of another draft stops there (ADR-0008) and is not loaded.
+   * holds no object or is of another draft stops there and is not loaded.
    */
   private final Map<URI, IJsonValue> documents = new LinkedHashMap<>();
 
@@ -184,7 +184,7 @@ public final class JsonSchemaReader {
    * @param contents the bytes of each file the host's resolver read, by its name in {@code files}
    * @param errors the load errors so far, of files the resolver did not read; the read adds its own
    * @throws StructureLoadException with every load error, files in bundle order and each file in
-   *     document order (ADR-0008)
+   *     document order
    */
   public static Structure read(
       List<String> files, Map<String, byte[]> contents, List<StructureLoadException> errors)
@@ -285,7 +285,7 @@ public final class JsonSchemaReader {
     if (object.get("$id") instanceof IJsonString id) {
       String first = rootIds.putIfAbsent(id.getValue(), reference);
       if (first != null) {
-        // an absolute $ref names the one bundle file whose root $id it is (ADR-0008)
+        // an absolute $ref names the one bundle file whose root $id it is
         report(
             StructureImportDiagnostics.SCHEMA_INVALID,
             keyOf(object, "$id").getLocation(),
@@ -351,7 +351,7 @@ public final class JsonSchemaReader {
 
   /**
    * Maps a relative {@code $ref} to the bundle file it names, by text against the referring file's
-   * bundle reference, whatever an {@code $id} says (ADR-0008, the closed bundle). An absolute one
+   * bundle reference, whatever an {@code $id} says, since the bundle is closed. An absolute one
    * names a file by its root {@code $id}, known once every file is read.
    */
   private void ref(String reference, IJsonString key, IJsonString value) {
@@ -614,7 +614,7 @@ public final class JsonSchemaReader {
    * Gathers what a schema says of an instance: its own keywords and those of its {@code $ref} and
    * {@code allOf}; of {@code oneOf} and {@code anyOf}, the properties only, each optional. Every
    * other keyword is ignored, {@code additionalProperties}, {@code patternProperties}, {@code
-   * if}/{@code then}/{@code else} and {@code not} among them (ADR-0008).
+   * if}/{@code then}/{@code else} and {@code not} among them.
    */
   private void gather(Schema schema, Facts facts) {
     if (!facts.seen.add(schema)) {
@@ -778,7 +778,7 @@ public final class JsonSchemaReader {
       Optional<Occurrence> items,
       boolean nillable) {
 
-    /** Whether the schema is an array property's, whatever its {@code maxItems} (#118). */
+    /** Whether the schema is an array property's, whatever its {@code maxItems}. */
     boolean array() {
       return items.isPresent();
     }

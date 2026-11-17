@@ -32,10 +32,10 @@ import org.xml.sax.helpers.DefaultHandler;
 import org.xml.sax.helpers.NamespaceSupport;
 
 /**
- * Reads one file of a WSDL bundle with the JDK's SAX parser (#96, ADR-0008 "JSON Schema and WSDL"),
- * as {@link XsdSubsetCheck} reads an XSD, so that every load error has its position (F-7). A file
- * whose document element is a WSDL 1.1 {@code definitions} or a WSDL 2.0 {@code description} is a
- * WSDL; any other file is an XSD, read whole by {@link XsdSubsetCheck}.
+ * Reads one file of a WSDL bundle with the JDK's SAX parser, as {@link XsdSubsetCheck} reads an
+ * XSD, so that every load error has its position, which XmlSchema does not keep. A file whose
+ * document element is a WSDL 1.1 {@code definitions} or a WSDL 2.0 {@code description} is a WSDL;
+ * any other file is an XSD, read whole by {@link XsdSubsetCheck}.
  *
  * <p>Of a WSDL it reads the imports and includes, every inline {@code xs:schema} of its {@code
  * types}, which {@link XsdSubsetCheck} checks at its place in the file, and the parts that lead
@@ -217,7 +217,7 @@ final class WsdlCheck extends DefaultHandler {
     try {
       SAXParserFactory factory = SAXParserFactory.newInstance();
       factory.setNamespaceAware(true);
-      // no DTD: no entity and no external file is ever read (ADR-0008: loading is offline)
+      // no DTD: no entity and no external file is ever read, since loading is offline
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
       factory.newSAXParser().parse(new InputSource(new ByteArrayInputStream(content)), handler);
       if (handler.wsdl) {
@@ -286,7 +286,7 @@ final class WsdlCheck extends DefaultHandler {
       if (DOCUMENTS.contains(name)) {
         description(uri, attributes);
       } else {
-        // under a WSDL root, a file that is no WSDL is an XSD (#96)
+        // under a WSDL root, a file that is no WSDL is an XSD
         document = new SchemaFile(file);
         delegate(document, uri, localName, qName, attributes);
       }

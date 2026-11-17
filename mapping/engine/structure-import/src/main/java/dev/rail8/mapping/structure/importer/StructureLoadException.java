@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * A schema bundle that cannot be read into a structure. It carries a stable kebab-case code and the
- * position in the schema file that caused it (ADR-0008, ADR-0015). Lines and columns are 1-based:
+ * position in the schema file that caused it. Lines and columns are 1-based:
  *
  * <ul>
  *   <li>{@code schema-not-well-formed}: where the XML parser stops;
@@ -13,20 +13,19 @@ import java.util.List;
  *       no bundle file declares ({@code schema-invalid}) or a reference outside the bundle ({@code
  *       schema-reference-outside-bundle}): just after its start tag, or the end of refused text;
  *   <li>{@code schema-root-not-found}: just after the start tag of the first bundle file's document
- *       element, {@code xs:schema} or, in a WSDL bundle (#96), {@code wsdl:definitions} or {@code
+ *       element, {@code xs:schema} or, in a WSDL bundle, {@code wsdl:definitions} or {@code
  *       wsdl:description};
- *   <li>in a JSON Schema (#97): where the JSON parser stops; a refused or invalid keyword, the
- *       {@code $ref} of {@code schema-reference-outside-bundle} among them, at its key; a refused
- *       schema (the root, the second declaration of a property) at its first character;
+ *   <li>in a JSON Schema: where the JSON parser stops; a refused or invalid keyword, the {@code
+ *       $ref} of {@code schema-reference-outside-bundle} among them, at its key; a refused schema
+ *       (the root, the second declaration of a property) at its first character;
  *   <li>an error about a whole file ({@code schema-unreadable}, {@code
  *       package-reference-unsupported}, an empty bundle, a JSON Schema file that is not UTF-8):
  *       line 1, column 1. {@code root-selector-unsupported} stays in the catalogue for stability
- *       and is no longer produced: since #96 and #97 every root selector kind is read.
+ *       and is not produced: every root selector kind is read.
  * </ul>
  *
- * <p>One load reports every load error (ADR-0008): {@link #errors} holds them, files in bundle
- * order and each file in document order, and the exception's own code and position are the first
- * one's.
+ * <p>One load reports every load error: {@link #errors} holds them, files in bundle order and each
+ * file in document order, and the exception's own code and position are the first one's.
  */
 public final class StructureLoadException extends Exception {
 

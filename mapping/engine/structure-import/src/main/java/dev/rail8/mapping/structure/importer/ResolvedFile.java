@@ -1,7 +1,7 @@
 package dev.rail8.mapping.structure.importer;
 
 /**
- * A file a {@link ReferenceResolver} has read (ADR-0014 "Reference resolver shape").
+ * A file a {@link ReferenceResolver} has read.
  *
  * @param name the file as the schema bundle spells it; the engine's load errors name the reference
  *     it asked for, never this name

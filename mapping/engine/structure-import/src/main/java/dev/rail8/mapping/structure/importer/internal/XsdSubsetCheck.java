@@ -40,31 +40,31 @@ import org.xml.sax.helpers.NamespaceSupport;
  * Reads one XSD file with the JDK's SAX parser before XmlSchema sees it. It refuses every construct
  * outside the XSD the reader reads where it stands, and records what {@link BundleCheck} needs.
  * XmlSchema 2.3.3 keeps no line or column on its objects, so this pass gives every load error its
- * position (ADR-0008), and every refused field the position of the declaration that causes its
- * refusal (#92). A refused construct's content is not read; a file that is not well-formed stops at
- * the parser's error, and every refusal before it stays.
+ * position, and every refused field the position of the declaration that causes its refusal. A
+ * refused construct's content is not read; a file that is not well-formed stops at the parser's
+ * error, and every refusal before it stays.
  *
- * <p>The XSD read (#93) is one {@code xs:schema} ({@code targetNamespace}, {@code
- * elementFormDefault}, {@code attributeFormDefault}) of {@code xs:import}s, {@code xs:include}s,
- * global {@code xs:element}s and {@code xs:attribute}s, and named {@code xs:complexType}s and
- * {@code xs:simpleType}s; and, since #94, named {@code xs:group}s and {@code xs:attributeGroup}s.
+ * <p>The XSD read is one {@code xs:schema} ({@code targetNamespace}, {@code elementFormDefault},
+ * {@code attributeFormDefault}) of {@code xs:import}s, {@code xs:include}s, global {@code
+ * xs:element}s and {@code xs:attribute}s, and named {@code xs:complexType}s and {@code
+ * xs:simpleType}s; and named {@code xs:group}s and {@code xs:attributeGroup}s.
  *
  * <ul>
  *   <li>A complex type, named or anonymous, holds an optional content particle first: an {@code
  *       xs:sequence}, {@code xs:choice} or {@code xs:all}, or an {@code xs:group} reference ({@code
  *       ref}, {@code minOccurs}, {@code maxOccurs}). Then it holds {@code xs:attribute}s ({@code
  *       name}, {@code type}, {@code use}, {@code form}, {@code default}, {@code fixed}), attribute
- *       references ({@code ref}, {@code use}, {@code default}, {@code fixed}; #89 review) and
- *       {@code xs:attributeGroup} references ({@code ref}). An anonymous one below the root holds
- *       at least one of them. A named one may be {@code abstract} (#95). An attribute, local or
- *       global, has a {@code type} or one anonymous {@code xs:simpleType} (#89 review).
+ *       references ({@code ref}, {@code use}, {@code default}, {@code fixed}) and {@code
+ *       xs:attributeGroup} references ({@code ref}). An anonymous one below the root holds at least
+ *       one of them. A named one may be {@code abstract}. An attribute, local or global, has a
+ *       {@code type} or one anonymous {@code xs:simpleType}.
  *   <li>Instead, a complex type may hold only an {@code xs:complexContent} with one {@code
  *       xs:extension} or {@code xs:restriction} of a named complex type ({@code base}), which holds
  *       what a complex type holds; or only an {@code xs:simpleContent} with one {@code
  *       xs:extension} or {@code xs:restriction} of a simple type or of a complex type with simple
  *       content ({@code base}), which holds what an attribute group holds, and a restriction facets
- *       too (#95). An attribute's {@code use} may be {@code prohibited}, and then it needs no
- *       {@code type} and has no {@code default} or {@code fixed}.
+ *       too. An attribute's {@code use} may be {@code prohibited}, and then it needs no {@code
+ *       type} and has no {@code default} or {@code fixed}.
  *   <li>A sequence or a choice ({@code minOccurs}, {@code maxOccurs}) holds local {@code
  *       xs:element}s, element references ({@code ref}, {@code minOccurs}, {@code maxOccurs}),
  *       sequences, choices, group references and {@code xs:any}. An {@code xs:all} ({@code
@@ -72,27 +72,25 @@ import org.xml.sax.helpers.NamespaceSupport;
  *   <li>A named group ({@code name}) holds one sequence, choice or all. A named attribute group
  *       ({@code name}) holds attributes and attribute group references.
  *   <li>A global or local element has a {@code type}, or one anonymous {@code xs:complexType} or
- *       {@code xs:simpleType} (#89 review), or is a global one in a substitution group, which then
- *       has its head's type (#95). A local one is a leaf or structure field ({@code name}, {@code
- *       minOccurs}, {@code maxOccurs}, {@code form}, {@code nillable}, {@code default}, {@code
- *       fixed}). A global one may be {@code abstract} and name the head of its {@code
- *       substitutionGroup} (#95).
- *   <li>A simple type, named or anonymous (#89 review), is an {@code xs:restriction} of a {@code
- *       base}, an {@code xs:list} or an {@code xs:union}.
+ *       {@code xs:simpleType}, or is a global one in a substitution group, which then has its
+ *       head's type. A local one is a leaf or structure field ({@code name}, {@code minOccurs},
+ *       {@code maxOccurs}, {@code form}, {@code nillable}, {@code default}, {@code fixed}). A
+ *       global one may be {@code abstract} and name the head of its {@code substitutionGroup}.
+ *   <li>A simple type, named or anonymous, is an {@code xs:restriction} of a {@code base}, an
+ *       {@code xs:list} or an {@code xs:union}.
  * </ul>
  *
- * <p>Accepted with no effect, their content unread (ADR-0008): {@code xs:annotation} anywhere,
- * {@code xs:any}, {@code xs:anyAttribute}, facets, identity constraints, and the content of a list
- * or union. Accepted with no effect since the #89 review: {@code id} on every element, {@code
- * version}, {@code blockDefault} and {@code finalDefault} on the schema, {@code block} and {@code
- * final} where XSD 1.0 allows them, {@code mixed} on a complex type and on its {@code
- * xs:complexContent}, {@code nillable} on an element of an anonymous complex type, and attributes
- * in other namespaces than XSD's and the versioning one, of which a {@code vc:minVersion} below
- * 1.1.
+ * <p>Accepted with no effect, their content unread: {@code xs:annotation} anywhere, {@code xs:any},
+ * {@code xs:anyAttribute}, facets, identity constraints, and the content of a list or union. Also
+ * accepted with no effect: {@code id} on every element, {@code version}, {@code blockDefault} and
+ * {@code finalDefault} on the schema, {@code block} and {@code final} where XSD 1.0 allows them,
+ * {@code mixed} on a complex type and on its {@code xs:complexContent}, {@code nillable} on an
+ * element of an anonymous complex type, and attributes in other namespaces than XSD's and the
+ * versioning one, of which a {@code vc:minVersion} below 1.1.
  *
- * <p>Refused when a schema loads, wherever they stand (ADR-0008, #95): {@code xs:redefine} and
- * {@code xs:override}, each named as such; {@code vc:minVersion} 1.1 or above on any element, named
- * as XSD 1.1; and the elements only XSD 1.1 has, as elements outside the subset.
+ * <p>Refused when a schema loads, wherever they stand: {@code xs:redefine} and {@code xs:override},
+ * each named as such; {@code vc:minVersion} 1.1 or above on any element, named as XSD 1.1; and the
+ * elements only XSD 1.1 has, as elements outside the subset.
  */
 final class XsdSubsetCheck extends DefaultHandler {
 
@@ -128,8 +126,8 @@ final class XsdSubsetCheck extends DefaultHandler {
           Role.SIMPLE_RESTRICTION);
 
   /**
-   * Why each XSD element ADR-0008 names as refused when a schema loads is refused, by its local
-   * name. An element only XSD 1.1 has is refused as any element outside the subset, which names it.
+   * Why each XSD element that a schema load refuses is refused, by its local name. An element only
+   * XSD 1.1 has is refused as any element outside the subset, which names it.
    */
   private static final Map<String, String> REFUSED_AT_LOAD =
       Map.of(
@@ -147,7 +145,7 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * Where an XSD element may stand, and the attributes it may carry besides {@code id}, which every
-   * one may carry with no effect (#89 review).
+   * one may carry with no effect.
    */
   private enum Role {
     DOCUMENT(Set.of(), Set.of()),
@@ -186,11 +184,11 @@ final class XsdSubsetCheck extends DefaultHandler {
             "block",
             "final"),
         Set.of("name")),
-    // a global attribute has a type or an anonymous simple type (#89 review)
+    // a global attribute has a type or an anonymous simple type
     GLOBAL_ATTRIBUTE(Set.of("name", "type", "default", "fixed"), Set.of("name")),
     NAMED_COMPLEX_TYPE(Set.of("name", "abstract", "mixed", "block", "final"), Set.of("name")),
     COMPLEX_TYPE(Set.of("mixed"), Set.of()),
-    // a complex type's xs:complexContent or xs:simpleContent, and its derivation (#95)
+    // a complex type's xs:complexContent or xs:simpleContent, and its derivation
     COMPLEX_CONTENT(Set.of("mixed"), Set.of()),
     SIMPLE_CONTENT(Set.of(), Set.of()),
     // an xs:extension or xs:restriction of complex content
@@ -198,10 +196,10 @@ final class XsdSubsetCheck extends DefaultHandler {
     // an xs:extension or xs:restriction of simple content
     SIMPLE_EXTENSION(Set.of("base"), Set.of("base")),
     SIMPLE_RESTRICTION(Set.of("base"), Set.of("base")),
-    // an xs:sequence or an xs:choice: each holds the same particles (#94)
+    // an xs:sequence or an xs:choice: each holds the same particles
     SEQUENCE(Set.of("minOccurs", "maxOccurs"), Set.of()),
     ALL(Set.of("minOccurs", "maxOccurs"), Set.of()),
-    // a named group and a reference to one (#94)
+    // a named group and a reference to one
     GROUP(Set.of("name"), Set.of("name")),
     GROUP_REF(Set.of("ref", "minOccurs", "maxOccurs"), Set.of("ref")),
     ATTRIBUTE_GROUP(Set.of("name"), Set.of("name")),
@@ -221,20 +219,20 @@ final class XsdSubsetCheck extends DefaultHandler {
         Set.of("name")),
     ELEMENT_REF(Set.of("ref", "minOccurs", "maxOccurs"), Set.of("ref")),
     // a local element without a type: of an anonymous complex type, or of an anonymous simple
-    // type, which makes it a leaf (#89 review)
+    // type, which makes it a leaf
     STRUCTURE(
         Set.of("name", "minOccurs", "maxOccurs", "form", "nillable", "default", "fixed", "block"),
         Set.of("name")),
     STRUCTURE_TYPE(Set.of("mixed"), Set.of()),
-    // an attribute has a type or an anonymous simple type (#89 review)
+    // an attribute has a type or an anonymous simple type
     ATTRIBUTE(Set.of("name", "type", "use", "form", "default", "fixed"), Set.of("name")),
-    // use="prohibited", which makes no field and needs no type (#95)
+    // use="prohibited", which makes no field and needs no type
     PROHIBITED_ATTRIBUTE(Set.of("name", "type", "use", "form"), Set.of("name")),
-    // a reference to a global attribute, a field named by its QName (#89 review)
+    // a reference to a global attribute, a field named by its QName
     ATTRIBUTE_REF(Set.of("ref", "use", "default", "fixed"), Set.of("ref")),
     NAMED_SIMPLE_TYPE(Set.of("name", "final"), Set.of("name")),
     RESTRICTION(Set.of("base"), Set.of("base")),
-    // an element's or an attribute's own simple type, and its restriction (#89 review)
+    // an element's or an attribute's own simple type, and its restriction
     ANONYMOUS_SIMPLE_TYPE(Set.of(), Set.of()),
     ANONYMOUS_RESTRICTION(Set.of("base"), Set.of("base")),
     // read with no effect: its attributes and content are not read
@@ -276,7 +274,7 @@ final class XsdSubsetCheck extends DefaultHandler {
             };
         case GLOBAL -> name.equals("complexType") ? COMPLEX_TYPE : simpleType(name);
         case GLOBAL_TYPED, LEAF -> identityConstraint(name);
-        // beside a type, the subset check refuses it (#89 review)
+        // beside a type, the subset check refuses it
         case GLOBAL_ATTRIBUTE, ATTRIBUTE ->
             name.equals("simpleType") ? ANONYMOUS_SIMPLE_TYPE : null;
         // a content particle, then what an attribute group holds
@@ -296,7 +294,7 @@ final class XsdSubsetCheck extends DefaultHandler {
             };
         case COMPLEX_DERIVATION -> content(name, attributes);
         case SIMPLE_EXTENSION -> attribute(name, attributes);
-        // its facets are not validated (ADR-0004)
+        // its facets are not validated
         case SIMPLE_RESTRICTION -> FACETS.contains(name) ? NO_EFFECT : attribute(name, attributes);
         case SEQUENCE ->
             switch (name) {
@@ -347,7 +345,7 @@ final class XsdSubsetCheck extends DefaultHandler {
 
     /**
      * The role of a complex type's content, or a complex-content derivation's: a content particle
-     * first, then what an attribute group holds (#94).
+     * first, then what an attribute group holds.
      */
     private static Role content(String name, Attributes attributes) {
       return switch (name) {
@@ -359,9 +357,9 @@ final class XsdSubsetCheck extends DefaultHandler {
     }
 
     /**
-     * The role of what an attribute group holds: an attribute reference (#89 review), else an
-     * attribute, one with {@code use="prohibited"} among them (#95); an attribute group reference
-     * (#94) or an {@code xs:anyAttribute}.
+     * The role of what an attribute group holds: an attribute reference, else an attribute, one
+     * with {@code use="prohibited"} among them; an attribute group reference or an {@code
+     * xs:anyAttribute}.
      */
     private static Role attribute(String name, Attributes attributes) {
       return switch (name) {
@@ -392,31 +390,30 @@ final class XsdSubsetCheck extends DefaultHandler {
     /** Whether it has a {@code type} attribute. */
     boolean typed;
 
-    /** The name of a global element without a type; null elsewhere (#89 review). */
+    /** The name of a global element without a type; null elsewhere. */
     QName global;
 
     /**
-     * The attribute uses of the complex type or attribute group it is or stands in (#89 review);
-     * null outside any.
+     * The attribute uses of the complex type or attribute group it is or stands in; null outside
+     * any.
      */
     AttributeOwner attributeUses;
 
     /**
      * Whether it is a global element in a substitution group, which without a type of its own has
-     * its head's (#95).
+     * its head's.
      */
     boolean substitutes;
 
     /**
-     * Where the particles it holds go (#92, #94): its own list for a global element, a named
-     * complex type, a named group, a local element of an anonymous type and a model group, its
-     * parent's otherwise.
+     * Where the particles it holds go: its own list for a global element, a named complex type, a
+     * named group, a local element of an anonymous type and a model group, its parent's otherwise.
      */
     List<Particle> particles;
 
     /**
-     * The named complex type it is or whose content it derives (#95); null in an anonymous complex
-     * type and elsewhere.
+     * The named complex type it is or whose content it derives; null in an anonymous complex type
+     * and elsewhere.
      */
     QName complexType;
 
@@ -427,9 +424,9 @@ final class XsdSubsetCheck extends DefaultHandler {
     boolean derived;
 
     /**
-     * Where the group or attribute group references it holds go (#94): its own set for a named
-     * group or attribute group, whose definition keeps it, and a fresh one for a local element,
-     * through which a reference is no use of the enclosing group; its parent's otherwise.
+     * Where the group or attribute group references it holds go: its own set for a named group or
+     * attribute group, whose definition keeps it, and a fresh one for a local element, through
+     * which a reference is no use of the enclosing group; its parent's otherwise.
      */
     Set<QName> uses = new HashSet<>();
 
@@ -440,10 +437,10 @@ final class XsdSubsetCheck extends DefaultHandler {
     }
   }
 
-  /** The particle a complex type or a group holds first, once (#94). */
+  /** The particle a complex type or a group holds first, once. */
   private static final Set<Role> CONTENT = EnumSet.of(Role.SEQUENCE, Role.ALL, Role.GROUP_REF);
 
-  /** What holds one content particle, first (#94, #95). */
+  /** What holds one content particle, first. */
   private static final Set<Role> HOLDS_CONTENT =
       EnumSet.of(
           Role.NAMED_COMPLEX_TYPE,
@@ -498,7 +495,7 @@ final class XsdSubsetCheck extends DefaultHandler {
     try {
       SAXParserFactory factory = SAXParserFactory.newInstance();
       factory.setNamespaceAware(true);
-      // no DTD: no entity and no external file is ever read (ADR-0008: loading is offline)
+      // no DTD: no entity and no external file is ever read, since loading is offline
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
       factory.newSAXParser().parse(new InputSource(new ByteArrayInputStream(content)), handler);
     } catch (SAXParseException e) {
@@ -520,9 +517,9 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * A check of one {@code xs:schema} whose events another handler forwards, from the schema's start
-   * tag to its end tag, with the prefixes in scope there declared first (#96: a WSDL's inline
-   * schema, or a whole XSD file in a WSDL bundle). Its load errors are at {@code locator}'s
-   * positions, in the file {@code schema} names.
+   * tag to its end tag, with the prefixes in scope there declared first (a WSDL's inline schema, or
+   * a whole XSD file in a WSDL bundle). Its load errors are at {@code locator}'s positions, in the
+   * file {@code schema} names.
    */
   static XsdSubsetCheck delegate(
       SchemaFile schema, List<StructureLoadException> errors, Locator locator) {
@@ -581,7 +578,7 @@ final class XsdSubsetCheck extends DefaultHandler {
       throws Refusal {
     Position start = position();
     Frame parent = open.element();
-    // XSD 1.1 wherever it is asked for, even on an element whose content is not read (ADR-0008)
+    // XSD 1.1 wherever it is asked for, even on an element whose content is not read
     String minVersion = attributes.getValue(VERSIONING, "minVersion");
     if (minVersion != null
         && DECIMAL.matcher(minVersion).matches()
@@ -600,7 +597,7 @@ final class XsdSubsetCheck extends DefaultHandler {
     parent.children += localName.equals("annotation") ? 0 : 1;
     parent.anonymousType |= localName.equals("complexType") || localName.equals("simpleType");
     if (role == null) {
-      // xs:redefine and xs:override are named as ADR-0008 refuses them, wherever they stand; any
+      // xs:redefine and xs:override are named as such, wherever they stand; any
       // other element, one only XSD 1.1 has among them, as one outside the subset
       String refused = xsd ? REFUSED_AT_LOAD.get(localName) : null;
       throw refusal(
@@ -610,12 +607,12 @@ final class XsdSubsetCheck extends DefaultHandler {
     if (role == Role.NO_EFFECT) {
       return new Frame(role, start, parent.particles);
     }
-    // an attribute has a type or an anonymous simple type, not both (#89 review)
+    // an attribute has a type or an anonymous simple type, not both
     if (role == Role.ANONYMOUS_SIMPLE_TYPE && parent.typed) {
       throw refusal(
           UNSUPPORTED, "<" + qName + "> beside a type is outside the XSD the reader reads");
     }
-    // nothing follows a complex type's xs:complexContent or xs:simpleContent (#95)
+    // nothing follows a complex type's xs:complexContent or xs:simpleContent
     if (parent.derived) {
       throw refusal(
           UNSUPPORTED,
@@ -625,8 +622,8 @@ final class XsdSubsetCheck extends DefaultHandler {
               + " reads");
     }
     // an element has one xs:complexType; a complex type's xs:complexContent or xs:simpleContent
-    // comes once, first, and so does the one derivation of either (#95); a complex type's, a
-    // complex-content derivation's or a group's content particle comes once, first (#94)
+    // comes once, first, and so does the one derivation of either; a complex type's, a
+    // complex-content derivation's or a group's content particle comes once, first
     if (earlier > 0
         && (FIRST.contains(role)
             || CONTENT.contains(role) && HOLDS_CONTENT.contains(parent.role))) {
@@ -676,9 +673,9 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * Whether the reader accepts an attribute in the namespace {@code namespace} on an XSD element,
-   * with no effect (ADR-0008, #89 review): one of any namespace but XSD's and the versioning one,
-   * and of the versioning namespace a decimal {@code vc:minVersion}, which is below 1.1 here: one
-   * of 1.1 or above is refused before as XSD 1.1. Any other versioning attribute stays refused.
+   * with no effect: one of any namespace but XSD's and the versioning one, and of the versioning
+   * namespace a decimal {@code vc:minVersion}, which is below 1.1 here: one of 1.1 or above is
+   * refused before as XSD 1.1. Any other versioning attribute stays refused.
    */
   private static boolean foreign(String namespace, String local, String value) {
     return switch (namespace) {
@@ -690,7 +687,7 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * Records what {@link BundleCheck} needs of an element that stands where it may, and where a
-   * particle is declared for {@link XsdReader} (#92, #94).
+   * particle is declared for {@link XsdReader}.
    */
   private void record(Role role, String localName, Attributes attributes, Frame frame, Frame parent)
       throws Refusal {
@@ -845,7 +842,7 @@ final class XsdSubsetCheck extends DefaultHandler {
         QName base = typeName(attributes.getValue("", "base"), schema.simpleTypeRefs, start);
         schema.simpleTypes.put(simpleType, new SimpleType(base, start));
       }
-      // a global element of an anonymous simple type is no root (#89 review)
+      // a global element of an anonymous simple type is no root
       case ANONYMOUS_SIMPLE_TYPE ->
           schema.elements.computeIfPresent(
               parent.global, (global, element) -> element.withAnonymousSimpleType());
@@ -860,7 +857,7 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * Gives an element without a type the attribute uses its anonymous complex type, if it has one,
-   * declares (#89 review); an anonymous simple type declares none.
+   * declares; an anonymous simple type declares none.
    */
   private void anonymousType(Frame element) {
     element.attributeUses = new AttributeOwner(schema.name);
@@ -876,7 +873,7 @@ final class XsdSubsetCheck extends DefaultHandler {
 
   /**
    * Records that the complex type whose derivation {@code frame} is, an extension or restriction by
-   * {@code localName}, inherits the attribute uses of {@code base} (#89 review).
+   * {@code localName}, inherits the attribute uses of {@code base}.
    */
   private static void inherits(Frame frame, QName base, String localName) {
     frame.attributeUses.base = base;
@@ -928,7 +925,7 @@ final class XsdSubsetCheck extends DefaultHandler {
       return;
     }
     Frame closed = open.pop();
-    // a substitution-group member without a type has its head's (#95)
+    // a substitution-group member without a type has its head's
     if (closed.role == Role.GLOBAL && !closed.anonymousType && !closed.substitutes) {
       refuse(
           refusal(
@@ -937,7 +934,7 @@ final class XsdSubsetCheck extends DefaultHandler {
                   + qName
                   + "> without type, xs:complexType or xs:simpleType is outside the XSD the reader reads"));
     }
-    // a content without its derivation is refused at its own start tag (#95)
+    // a content without its derivation is refused at its own start tag
     if (closed.role == Role.COMPLEX_CONTENT && closed.children == 0) {
       refuse(
           new Refusal(
@@ -967,7 +964,7 @@ final class XsdSubsetCheck extends DefaultHandler {
                   + " reader reads",
               closed.start));
     }
-    // an attribute without either is refused at its own start tag (#89 review)
+    // an attribute without either is refused at its own start tag
     if ((closed.role == Role.GLOBAL_ATTRIBUTE || closed.role == Role.ATTRIBUTE)
         && !closed.typed
         && !closed.anonymousType) {
