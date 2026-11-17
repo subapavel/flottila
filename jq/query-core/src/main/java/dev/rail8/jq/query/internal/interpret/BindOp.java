@@ -44,6 +44,9 @@ public final class BindOp extends Op {
   /**
    * The body's value with the slot set. A push value side of a value-form Bind is many, so the body gives no result:
    * each result of the value side sets the slot and runs it, for its ticks and writes, and the Bind gives none.
+   *
+   * @throws IllegalStateException when the body gives a result there: the facts that made the Bind value form are
+   *     wrong, and returning would lose a result
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
@@ -54,7 +57,9 @@ public final class BindOp extends Op {
           in,
           v -> {
             slots[slot] = v;
-            body.eval(state, slots, in);
+            if (body.eval(state, slots, in) != CallForm.NONE) {
+              throw new IllegalStateException("A value-form Bind's body gave a result after its many value side");
+            }
             return true;
           });
       return CallForm.NONE;

@@ -177,6 +177,18 @@ class UnitWeightsPropertyTest {
    * thread dump of a failing seed holds 68 nested {@code smartFormat} frames).
    */
   record Ended(List<Object> results, Object thrown, long steps, long units, List<Integer> frames) {
+    /**
+     * The index of the probe that saw the most frames, the first of them on a tie. The property holds for every probe
+     * when it holds for this one, and a failure names one probe, so its message is short however many probes ran.
+     */
+    int deepestProbe() {
+      int deepest = 0;
+      for (int i = 1; i < frames.size(); i++) {
+        if (frames.get(i) > frames.get(deepest)) deepest = i;
+      }
+      return deepest;
+    }
+
     /** The run without its frames, which differ between stacks. */
     List<Object> outcome() {
       return List.of(results, String.valueOf(thrown), steps, frames.size());
@@ -293,12 +305,13 @@ class UnitWeightsPropertyTest {
       assertThat(StackUnits.unitLimit(e, stackBytes)).as("%s, %s: U_f of stackBytes %d", name, mode, stackBytes).isEqualTo(limit);
       Ended run = runProbed(e, stackBytes);
       long bound = limit - 1 + callFree;
-      assertThat(run.frames())
-          .as("%s, %s, U_f %d, D_f %d, T %d: frames at each probe against %d", name, mode, limit, callFree, starter, bound)
-          .allSatisfy(frames -> assertThat((long) frames).isLessThan(bound));
       assertThat(run.outcome().equals(reference.outcome()))
           .as("%s, %s, U_f %d: the run, %s, equals the default stack's, %s", name, mode, limit, run.outcome(), reference.outcome())
           .isTrue();
+      int deepest = run.deepestProbe();
+      assertThat((long) run.frames().get(deepest))
+          .as("%s, %s, U_f %d, D_f %d, T %d: frames at the deepest probe, %d of %d, against %d", name, mode, limit, callFree, starter, deepest, run.frames().size(), bound)
+          .isLessThan(bound);
       assertThat(run.units()).as("%s, %s, U_f %d: units after the run", name, mode, limit).isZero();
     }
     assertThat(reference.units()).as("%s, %s: units after the reference run", name, mode).isZero();

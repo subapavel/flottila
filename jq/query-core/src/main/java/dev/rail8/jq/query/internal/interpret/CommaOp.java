@@ -40,10 +40,15 @@ public final class CommaOp extends Op {
   /**
    * A value-form Comma's left side gives no result, or the Comma would be many: it runs, for its ticks and writes,
    * then the step and the right side's value.
+   *
+   * @throws IllegalStateException when the left side gives a result: the facts that made the Comma value form are
+   *     wrong, and returning would lose a result
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
-    left.eval(state, slots, in);
+    if (left.eval(state, slots, in) != CallForm.NONE) {
+      throw new IllegalStateException("A value-form Comma's left side gave a result");
+    }
     state.tick();
     return right.eval(state, slots, in);
   }
