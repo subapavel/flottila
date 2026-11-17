@@ -5,7 +5,7 @@ import type { AuthoringId, BoxReference, FieldPath, MappingModel, TargetFieldMap
 export type FieldRefusal = components['schemas']['RefusalDto'];
 
 /**
- * Why a command was refused at a box or mapping id, by the model check's codes (ADR-0011, ADR-0013);
+ * Why a command was refused at a box or mapping id, by the model check's codes;
  * `not-source-field-box` is the editor's own, as no model check sees a remap.
  */
 export interface BoxRefusal {
@@ -23,7 +23,7 @@ export interface BoxRefusal {
   id: AuthoringId;
 }
 
-/** Why a command was refused at a refused field (ADR-0027): the field and the refusal it carries in its tree. */
+/** Why a command was refused at a refused field: the field and the refusal it carries in its tree. */
 export interface RefusedField {
   code: 'refused-field';
   side: 'source' | 'target';

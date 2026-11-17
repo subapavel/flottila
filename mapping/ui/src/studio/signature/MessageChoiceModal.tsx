@@ -36,9 +36,9 @@ export interface MessageChoiceModalProps {
 }
 
 /**
- * The message choice of the Signature tab, in the prototype's catalog dialog (SignatureCatalog): the bundle, one
- * reference per line relative to the mapping's package, and the root selector, as the old New mapping form chose a
- * side. Apply is enabled once the bundle and the root's names are given; a failure shows above the fields.
+ * The message choice of the Signature tab, in a catalog dialog: the bundle, one reference per line relative to the
+ * mapping's package, and the root selector. Apply is enabled once the bundle and the root's names are given; a failure
+ * shows above the fields.
  */
 export function MessageChoiceModal({ title, description, initial, kind, onApply, onClose }: MessageChoiceModalProps) {
   const [draft, setDraft] = useState(() => draftOf(initial, kind));

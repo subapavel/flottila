@@ -16,7 +16,7 @@ const structure = {
 /** No target field mapping at all: the member is absent, as the canonical writer leaves it out. */
 const unmapped: MappingModel = { formatVersion: 1, source: structure, target: structure };
 
-/** Note is mapped from Note by box n1; Quantity has an unfinished target field mapping (F-2). */
+/** Note is mapped from Note by box n1; Quantity has an unfinished target field mapping, its `result` `null`. */
 const partlyMapped: MappingModel = {
   ...unmapped,
   targetFieldMappings: {

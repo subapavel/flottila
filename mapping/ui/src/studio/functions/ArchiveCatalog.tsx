@@ -5,9 +5,9 @@ import { ARCHIVE_EXAMPLES, type Archive } from '../mock/function-model';
 import { Dialog, Tool } from './ToolbarTools';
 
 /**
- * The picker of an archive or an archive namespace for Archives Used: the tabular search help of the prototype's
- * SignatureCatalog, without its search criteria and hierarchical help, whose root is a software component version we do
- * not have. Go moves to the next row that contains the search text; a click selects a row, a double click applies it.
+ * The picker of an archive or an archive namespace for Archives Used: a tabular search help, without search criteria
+ * and without a hierarchical help, whose root would be a software component version, which the studio does not have. Go
+ * moves to the next row that contains the search text; a click selects a row, a double click applies it.
  */
 export function ArchiveCatalog({ kind, onApply, close }: { kind: 'archive' | 'namespace'; onApply: (entry: Archive) => void; close: () => void }) {
   const namespaces = kind === 'namespace';

@@ -7,7 +7,7 @@ import { messageName } from '../shared/structure-names';
 import './overview.css';
 
 export interface MappingOverviewProps {
-  /** The mapping's id, its workspace path: its folder is the package and its last segment the name (ADR-0029). */
+  /** The mapping's id, its workspace path: its folder is the package and its last segment the name. */
   mappingId: string;
   store: WorkingCopyStore;
 }
@@ -18,8 +18,8 @@ const orDash = (value: string | undefined) => (value ? value : '—');
 const nameOf = (ref: StructureRef | undefined) => orDash(ref && messageName(ref));
 
 /**
- * The Overview tab (the prototype's MappingOverview): the mapping details in our terms, Name, Mapping ID, Package, Source
- * and Target (ADR-0028), and the working copy's description (GLOSSARY: Mapping description), read-only in view mode.
+ * The Overview tab: the mapping details, Name, Mapping ID, Package, Source and Target, and the working copy's
+ * description, read-only in view mode.
  */
 export function MappingOverview({ mappingId, store }: MappingOverviewProps) {
   const editing = useStore(store, (s) => s.editing);

@@ -29,7 +29,7 @@ export interface TestTabProps {
 const viewKey = (pane: 'source' | 'result') => `test.${pane}.view`;
 const isMode = (value: unknown): value is DocumentMode => DOCUMENT_MODES.includes(value as DocumentMode);
 
-/** The preview parameters of the signature (#167) in one direction, as rows of a pane's parameter table. */
+/** The preview parameters of the signature in one direction, as rows of a pane's parameter table. */
 function parameterRows(parameters: readonly PreviewParameter[], direction: PreviewParameter['direction']): ParameterRow[] {
   return parameters.filter((p) => p.direction === direction && p.name.trim()).map((p) => ({ id: `param:${p.id}`, label: p.name, initial: '' }));
 }
@@ -50,11 +50,11 @@ function LogBody({ lines }: { lines: readonly LogLine[] }) {
 }
 
 /**
- * The Test tab (the prototype's TestPanel): the source document and the result of the last run side by side, the Run
+ * The Test tab: the source document and the result of the last run side by side, the Run
  * simulation bar, and the processing log with the last run and the latest compile. Run sends the working copy and the
- * source document to the service (ADR-0013), in read mode too, as in SAP PO (#177): there the source is a throw-away
+ * source document to the service, in read mode too, as in SAP PO: there the source is a throw-away
  * input, and only edit mode loads a file or changes the test instances. The run's trace feeds the display queue. The
- * trace level, the parameters and the test instances are previews (ADR-0028) and never reach the service.
+ * trace level, the parameters and the test instances are previews and never reach the service.
  */
 export function TestTab({ mappingId, store, session, browserState }: TestTabProps) {
   const editing = useStore(store, (s) => s.editing);
@@ -68,7 +68,7 @@ export function TestTab({ mappingId, store, session, browserState }: TestTabProp
   const compileLog = useStore(session, (s) => s.compileLog);
   const preview = testPreview(store, browserState, mappingId);
   const library = testInstances(store, browserState, mappingId);
-  // the signature's parameters as this edit session has them (a draft, ADR-0028)
+  // the signature's parameters as this edit session has them (a draft)
   const signatureParameters = useStore(signatureMock(store, browserState, mappingId), (s) => s.value.parameters);
   const trace = useStore(preview, (s) => s.traceLevel);
   const values = useStore(preview, (s) => s.values);

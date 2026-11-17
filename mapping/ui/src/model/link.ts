@@ -2,7 +2,7 @@ import type { AuthoringId, FieldPath, MappingModel } from '../generated/mapping-
 import { refusedField, type CommandResult, type FieldRefusal } from './command';
 import { insertBox } from './insert-box';
 
-/** Drop a source field on a target field (ADR-0012, "Field links"). */
+/** Drop a source field on a target field. */
 export interface LinkCommand {
   sourceField: FieldPath;
   targetField: FieldPath;
@@ -10,9 +10,9 @@ export interface LinkCommand {
   boxId: AuthoringId;
   /** The id of the new target field mapping; used only when the target field has none. */
   mappingId: AuthoringId;
-  /** The refusal the source field carries in the source tree, when it is a refused field (ADR-0027). */
+  /** The refusal the source field carries in the source tree, when it is a refused field. */
   sourceRefusal?: FieldRefusal;
-  /** The refusal the target field carries in the target tree, when it is a refused field (ADR-0027). */
+  /** The refusal the target field carries in the target tree, when it is a refused field. */
   targetRefusal?: FieldRefusal;
 }
 

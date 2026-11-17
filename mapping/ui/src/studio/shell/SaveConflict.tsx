@@ -5,7 +5,7 @@ import { describeError } from '../../api/client';
 import type { WorkingCopyStore } from '../store/working-copy';
 
 /**
- * The save conflict (ADR-0027): the file changed on disk since it was opened. Reload drops the working copy and its
+ * The save conflict: the file changed on disk since it was opened. Reload drops the working copy and its
  * undo history and loads the file; Keep editing keeps the working copy, and the next Save meets the conflict again.
  */
 export function SaveConflict({ store }: { store: WorkingCopyStore }) {

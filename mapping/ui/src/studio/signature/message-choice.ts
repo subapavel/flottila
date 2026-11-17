@@ -36,7 +36,7 @@ export function draftOf(choice: MessageChoice | undefined, kind?: RootKind): Cho
   };
 }
 
-/** The root selector of a draft (GLOSSARY: Root selector), or none while a name it needs is empty. */
+/** The root selector of a draft, or none while a name it needs is empty. */
 function rootOf(draft: ChoiceDraft): RootSelector | undefined {
   const element = draft.element.trim();
   const wsdlInterface = draft.wsdlInterface.trim();
@@ -49,7 +49,7 @@ function rootOf(draft: ChoiceDraft): RootSelector | undefined {
       return { json: '$' };
     case 'wsdl':
       if (wsdlInterface === '' || operation === '' || (draft.direction === 'fault' && fault === '')) return undefined;
-      // a fault is sent exactly when the direction is fault (ADR-0008)
+      // a fault is sent exactly when the direction is fault
       return { wsdl: { interface: wsdlInterface, operation, direction: draft.direction, ...(draft.direction === 'fault' ? { fault } : {}) } };
   }
 }

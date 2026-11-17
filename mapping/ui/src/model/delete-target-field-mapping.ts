@@ -2,13 +2,13 @@ import { produce } from 'immer';
 import type { FieldPath, MappingModel } from '../generated/mapping-model';
 import { applied, type CommandResult } from './command';
 
-/** Removes the target field mapping of a target field, such as an orphaned target field mapping (GLOSSARY). */
+/** Removes the target field mapping of a target field, such as an orphaned target field mapping. */
 export interface DeleteTargetFieldMappingCommand {
   targetField: FieldPath;
 }
 
 /**
- * Removes the target field mapping with all its boxes; no other mapping can read them (ADR-0013). `targetFieldMappings`
+ * Removes the target field mapping with all its boxes; no other mapping can read them. `targetFieldMappings`
  * goes with the last one, as the canonical writer leaves an empty member out. A target field without a mapping leaves
  * the model as it is.
  */

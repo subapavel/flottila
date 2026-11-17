@@ -2,7 +2,7 @@ import { ExpandIcon, WindowMinimizeIcon, WindowRestoreIcon } from '@patternfly/r
 import type { SplitView } from './SplitLayout';
 import { Tool } from './Tool';
 
-/** The prototype's PaneSizeTools: Minimize and Maximize one area of the split, or Restore split view from either. */
+/** Minimize and Maximize one area of the split, or Restore split view from either. */
 export function PaneSizeTools({ pane, label, upper = false, view, onChange }: { pane: string; label: string; upper?: boolean; view: SplitView; onChange: (view: SplitView) => void }) {
   const sizeButton = (verb: string, next: SplitView, icon: typeof ExpandIcon) => {
     const restore = view === next;

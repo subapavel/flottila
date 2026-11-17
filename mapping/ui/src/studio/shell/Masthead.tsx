@@ -6,8 +6,8 @@ import './shell.css';
 const ABOUT = 'About Mapping studio';
 
 /**
- * The studio's masthead, "Rail8 | Mapping studio" (ADR-0028): the brand links to the start page at `homeHref`; on the
- * right, the help button opens About Mapping studio, the prototype's help adapted to our product.
+ * The studio's masthead, "Rail8 | Mapping studio": the brand links to the start page at `homeHref`; on the right, the
+ * help button opens About Mapping studio.
  */
 export function Masthead({ homeHref }: { homeHref: string }) {
   const [about, setAbout] = useState(false);

@@ -43,7 +43,7 @@ export interface MappingListProps {
 }
 
 /**
- * The start page (ADR-0028): under the masthead, a table of the workspace's mappings with a toolbar of a search and
+ * The start page: under the masthead, a table of the workspace's mappings with a toolbar of a search and
  * New mapping, which opens the New mapping modal. Each row links to the mapping in the studio.
  */
 export function MappingList({ api, studioHref, listHref, onCreated }: MappingListProps) {

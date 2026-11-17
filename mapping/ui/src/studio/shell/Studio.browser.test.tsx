@@ -83,7 +83,7 @@ beforeEach(() => {
 afterEach(() => {
   unmount();
   history.replaceState(null, '', window.location.pathname);
-  // every test fails on console.error (ADR-0013)
+  // every test fails on console.error
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });

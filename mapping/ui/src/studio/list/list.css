@@ -1,6 +1,6 @@
 /*
- * The start page (ADR-0028): the prototype has none, so it takes the studio's frame (shell.css) and PatternFly's
- * table and toolbar. Its title sits in the tab line's place, at the studio title's size.
+ * The start page: it takes the studio's frame (shell.css) and PatternFly's table and toolbar. Its title sits in the tab
+ * line's place, at the studio title's size.
  */
 /* the toolbar starts at the panel's top edge: give it the space it keeps below */
 .list-toolbar {

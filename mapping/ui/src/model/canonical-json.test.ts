@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import type { MappingModel } from '../generated/mapping-model';
 import { canonicalJson } from './canonical-json';
 
-/** A corpus mapping file's bytes: the service's canonical writer wrote them (ADR-0010). */
+/** A corpus mapping file's bytes: the service's canonical writer wrote them. */
 const corpusBytes = (name: string) => readFileSync(new URL(`../../../corpus/mappings/${name}`, import.meta.url));
 
 const structure = { bundle: ['order.xsd'] as [string], fingerprint: 'sha256:00', root: { element: 'Q{urn:a}Order' } };

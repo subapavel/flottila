@@ -34,7 +34,7 @@ function movedTo(key: string, index: number, count: number): number | undefined 
 }
 
 /**
- * Arrow keys, Home and End move the focus to another tab and choose it (the prototype's EditorHeader): only the active
+ * Arrow keys, Home and End move the focus to another tab and choose it: only the active
  * tab is in the tab order.
  */
 function navigateTabs(event: KeyboardEvent<HTMLElement>) {
@@ -66,7 +66,7 @@ export interface EditorHeaderProps {
 }
 
 /**
- * The tab line of the studio (the prototype's EditorHeader): the tabs Overview to Functions, then the mapping's title
+ * The tab line of the studio: the tabs Overview to Functions, then the mapping's title
  * and, in view mode, Edit; in edit mode, Cancel, Check and Save, the last two enabled while the working copy has
  * unsaved changes and Check is not under way, or Save not sent.
  */

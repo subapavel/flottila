@@ -71,7 +71,7 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   history.replaceState(null, '', path);
-  // every test fails on console.error (ADR-0013)
+  // every test fails on console.error
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });

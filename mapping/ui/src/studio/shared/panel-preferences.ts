@@ -1,7 +1,7 @@
 import type { BrowserStateStore } from '../browser-state/browser-state';
 
 /**
- * The Definition tab's viewer preferences (the prototype's panelPreferences.js) through `BrowserStateStore` (ADR-0028):
+ * The Definition tab's viewer preferences through `BrowserStateStore`:
  * panel sizes and view modes, kept per user and so the same for every mapping.
  */
 export const panelKey = (key: string) => `user:studio:${key}`;

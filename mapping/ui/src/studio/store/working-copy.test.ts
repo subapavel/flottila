@@ -329,7 +329,7 @@ describe('save', () => {
   });
 
   test('the canonical response is the baseline even where it differs from what was sent', async () => {
-    // the service drops a context equal to the field's parent (ADR-0010 canonical form)
+    // the service's canonical form drops a context equal to the field's parent
     const withContext: MappingModel = {
       ...baseline,
       targetFieldMappings: {

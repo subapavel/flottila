@@ -28,16 +28,16 @@ import { setPositions } from '../../model/set-positions';
 import { setStructure } from '../../model/set-structure';
 import { setResult, unwire, wire } from '../../model/wire';
 
-/** How many edits undo keeps (spec #104, story 51: at least 100); an older one is dropped. */
+/** How many edits undo keeps (at least 100); an older one is dropped. */
 export const UNDO_DEPTH = 100;
 
-/** How long after the last edit the working copy is compiled (ADR-0013). */
+/** How long after the last edit the working copy is compiled. */
 export const COMPILE_DELAY_MS = 500;
 
-/** The code of a field path the structure no longer has (GLOSSARY: Orphaned reference). */
+/** The code of a field path the structure no longer has. */
 const ORPHANED_REFERENCE = 'orphaned-reference';
 
-/** The Mapping studio's tabs, in their order on the tab bar (ADR-0028); the active one is the URL hash. */
+/** The Mapping studio's tabs, in their order on the tab bar; the active one is the URL hash. */
 export const STUDIO_TABS = ['overview', 'definition', 'test', 'signature', 'functions'] as const;
 export type StudioTab = (typeof STUDIO_TABS)[number];
 
@@ -48,11 +48,11 @@ export type CanvasDialog = { kind: 'parameters' | 'remap' | 'queue'; node: strin
 export interface WorkingCopyPorts {
   /** Draws a fresh authoring id. */
   newId: () => AuthoringId;
-  /** Saves a model on condition of the ETag and resolves to what the service wrote (ADR-0013, ADR-0027). */
+  /** Saves a model on condition of the ETag and resolves to what the service wrote. */
   save: (model: MappingModel, etag: string) => Promise<StoredMapping>;
   /** Reads the mapping file from disk. */
   load: () => Promise<StoredMapping>;
-  /** Compiles a model and resolves to its diagnostics (ADR-0015, ADR-0027); `signal` aborts the call. */
+  /** Compiles a model and resolves to its diagnostics; `signal` aborts the call. */
   compile: (model: MappingModel, signal: AbortSignal) => Promise<Diagnostic[]>;
 }
 
@@ -68,17 +68,17 @@ export interface WorkingCopyState {
   /** The working copies undo stepped back from, the next redo first. */
   future: readonly MappingModel[];
   /**
-   * What the canvas has selected (ADR-0028, UI slice), by id, the last selected last: its boxes, preview nodes, target
+   * What the canvas has selected (UI slice), by id, the last selected last: its boxes, preview nodes, target
    * and wires; several boxes are selected together for copy. Selecting is no undo step.
    */
   selected: readonly AuthoringId[];
-  /** The dialog the canvas has open (ADR-0028, UI slice), or none. */
+  /** The dialog the canvas has open (UI slice), or none. */
   canvasDialog: CanvasDialog | null;
   /** The boxes copy took, by the ids they had then, and the target field whose mapping they came from. */
   clipboard: Clipboard | null;
   /** Why the last command was refused; `null` once a command applies. */
   refusal: Refusal | null;
-  /** A save answered that the file changed on disk: the author chooses Reload or Keep editing (ADR-0027). */
+  /** A save answered that the file changed on disk: the author chooses Reload or Keep editing. */
   conflict: boolean;
   /**
    * The latest diagnostics of the working copy: the last compile's, or a refresh's, a refused save's or a test run's
@@ -93,14 +93,14 @@ export interface WorkingCopyState {
   lastRun: TestResult | null;
   /** The working copy the last test run ran; its trace is a stale trace once the working copy differs from it. */
   lastRunModel: MappingModel | null;
-  /** The studio's active tab (ADR-0028, UI slice). */
+  /** The studio's active tab (UI slice). */
   tab: StudioTab;
-  /** Whether the studio is in edit mode; a mapping opens in view mode (GLOSSARY: View mode). */
+  /** Whether the studio is in edit mode; a mapping opens in view mode. */
   editing: boolean;
   /** The target field whose mapping the studio shows, or none. */
   selectedTarget: FieldPath | null;
   /**
-   * The preview features (ADR-0028, `studio/mock`) that hold a draft of this edit session, by a name each picks. A draft
+   * The preview features (in `studio/mock`) that hold a draft of this edit session, by a name each picks. A draft
    * is unsaved like a change of the working copy, but never part of it: its owner keeps it in the browser.
    */
   previewDrafts: readonly string[];
@@ -124,16 +124,16 @@ export interface WorkingCopyState {
   discard: () => void;
   /**
    * Links a source field to a target field (the link command in `model/`); `refusals` are the refusals the two fields
-   * carry in their trees, which refuse the link (ADR-0027).
+   * carry in their trees, which refuse the link.
    */
   link: (sourceField: FieldPath, targetField: FieldPath, refusals?: { source?: FieldRefusal; target?: FieldRefusal }) => void;
   /**
    * Inserts a box of standard function `fn` into the target field's mapping, with fresh ids. Given a position `at`, the
-   * box is placed there and the positions `shown` are written with it (ADR-0029), so that boxes the studio laid out in
+   * box is placed there and the positions `shown` are written with it, so that boxes the studio laid out in
    * memory stay where they are; all of it one undo step.
    */
   insertBox: (targetField: FieldPath, fn: string, at?: BoxPosition, shown?: Layout) => void;
-  /** Writes positions into the target field mapping's layout, rounded (ADR-0029): a drag or Lay Out Mapping. */
+  /** Writes positions into the target field mapping's layout, rounded: a drag or Lay Out Mapping. */
   setPositions: (targetField: FieldPath, layout: Layout) => void;
   /** Moves the end `from` of the wire from box `source` to `to` (the rewire command in `model/`). */
   rewire: (targetField: FieldPath, source: AuthoringId, from: WireEnd, to: WireEnd) => void;
@@ -158,18 +158,18 @@ export interface WorkingCopyState {
   /** Wires input slot `slot` of box `target` from box `source`, or leaves it unconnected with `null`. */
   setInput: (targetField: FieldPath, target: AuthoringId, slot: number, source: AuthoringId | null) => void;
   /**
-   * Points source-field box `box` at the source field `field`, keeping its id and wires (GLOSSARY: Remap);
-   * `sourceRefusal`, the refusal `field` carries in the source tree, refuses the remap (ADR-0027).
+   * Points source-field box `box` at the source field `field`, keeping its id and wires;
+   * `sourceRefusal`, the refusal `field` carries in the source tree, refuses the remap.
    */
   remap: (targetField: FieldPath, box: AuthoringId, field: FieldPath, sourceRefusal?: FieldRefusal) => void;
   /** Removes the target field mapping of `targetField` with all its boxes, such as an orphaned one. */
   deleteTargetFieldMapping: (targetField: FieldPath) => void;
-  /** Sets the mapping description (GLOSSARY); an empty one removes it (ADR-0029). */
+  /** Sets the mapping description; an empty one removes it. */
   setDescription: (description: string) => void;
-  /** Sets the structure of one side of the signature (GLOSSARY: Signature), such as a new mapping's first message. */
+  /** Sets the structure of one side of the signature, such as a new mapping's first message. */
   setStructure: (side: 'source' | 'target', structure: StructureRef) => void;
   /**
-   * Takes the answer of a refresh of the working copy `sent` (ADR-0027); its diagnostics become the set. When one of
+   * Takes the answer of a refresh of the working copy `sent`; its diagnostics become the set. When one of
    * its fingerprints differs from the working copy's, its model replaces the working copy as one undo step, or, when
    * the working copy changed since `sent`, only its source and target references replace the working copy's, so that
    * the edit stays. Returns the number of `orphaned-reference` diagnostics then, and `null` when no fingerprint changed.
@@ -189,8 +189,8 @@ export interface WorkingCopyState {
   /**
    * Pastes the clipboard into the target field's mapping with fresh ids (the paste command in `model/`) and selects the
    * pasted boxes; an empty clipboard, or one copied from another target field, pastes nothing. Copied positions are
-   * written 24 px further right and down, a further 24 px each time a copy would land on a position `shown` holds (the
-   * prototype's duplicate), together with `shown`, as one undo step.
+   * written 24 px further right and down, a further 24 px each time a copy would land on a position `shown` holds,
+   * together with `shown`, as one undo step.
    */
   paste: (targetField: FieldPath, shown?: Layout) => void;
   /**
@@ -227,7 +227,7 @@ export interface Clipboard {
   positions?: Readonly<Record<AuthoringId, BoxPosition>>;
 }
 
-/** How far a pasted copy moves from its original, right and down, each time (the prototype's `duplicateBranch`). */
+/** How far a pasted copy moves from its original, right and down, each time. */
 const PASTE_OFFSET = 24;
 
 export type WorkingCopyStore = ReturnType<typeof createWorkingCopyStore>;
@@ -235,15 +235,15 @@ export type WorkingCopyStore = ReturnType<typeof createWorkingCopyStore>;
 /** Whether the edit session has unsaved changes: the working copy has changes the baseline lacks, or a preview a draft. */
 export const selectUnsaved = (state: WorkingCopyState): boolean => state.previewDrafts.length > 0 || !sameModel(state.workingCopy, state.baseline);
 
-/** The trace of the last test run by authoring id; none before a run or when compile refused it (ADR-0015). */
+/** The trace of the last test run by authoring id; none before a run or when compile refused it. */
 export const selectTrace = (state: WorkingCopyState): Record<string, TraceEntry> | undefined =>
   state.lastRun === null || state.lastRun.kind === 'refused' ? undefined : state.lastRun.trace;
 
-/** Whether the last run's trace is a stale trace: there is one, and the working copy has changed since that run (GLOSSARY). */
+/** Whether the last run's trace is a stale trace: there is one, and the working copy has changed since that run. */
 export const selectTraceStale = (state: WorkingCopyState): boolean =>
   selectTrace(state) !== undefined && !sameModel(state.workingCopy, state.lastRunModel!);
 
-/** One store per open mapping (ADR-0013). Its actions only call the pure commands of `model/`. */
+/** One store per open mapping. Its actions only call the pure commands of `model/`. */
 export function createWorkingCopyStore(opened: StoredMapping, ports: WorkingCopyPorts) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: AbortController | undefined;
@@ -385,7 +385,7 @@ export function createWorkingCopyStore(opened: StoredMapping, ports: WorkingCopy
         const current = get().workingCopy;
         set({ diagnostics: answer.diagnostics });
         const { source, target } = answer.model;
-        // a side not chosen yet is absent on both (ADR-0029): absent equals absent
+        // a side not chosen yet is absent on both: absent equals absent
         if (source?.fingerprint === current.source?.fingerprint && target?.fingerprint === current.target?.fingerprint) return null;
         apply(applied(current === sent ? answer.model : { ...current, source, target }));
         return answer.diagnostics.filter((d) => d.code === ORPHANED_REFERENCE).length;

@@ -1,4 +1,4 @@
-/** The port for the viewer's own layout and view state, kept in the browser (ADR-0013, "Browser state"). */
+/** The port for the viewer's own layout and view state, kept in the browser. */
 export interface BrowserStateStore {
   /** The value written under `key`, or `undefined` when there is none or it cannot be read. */
   read(key: string): unknown;
@@ -8,18 +8,18 @@ export interface BrowserStateStore {
 
 const PREFIX = 'rail8-mapping:v1:';
 
-/** The key of a target field mapping's canvas, its box positions and zoom, by its authoring id (ADR-0013). */
+/** The key of a target field mapping's canvas, its box positions and zoom, by its authoring id. */
 export function canvasKey(mappingId: string, targetFieldMappingId: string): string {
   return `mapping:${mappingId}:canvas:${targetFieldMappingId}`;
 }
 
-/** The key of a mapping's selected target field, selected again on the next open (spec #145, F-32). */
+/** The key of a mapping's selected target field, selected again on the next open. */
 export function targetFieldKey(mappingId: string): string {
   return `mapping:${mappingId}:target-field`;
 }
 
 /**
- * The key of a mapping's test source document, kept per mapping like the prototype's simulation: the Test tab's session
+ * The key of a mapping's test source document, kept per mapping: the Test tab's session
  * writes it, and the Definition tab's queue test input reads it.
  */
 export const testSourceKey = (mappingId: string) => `mapping:${mappingId}:test-source`;
@@ -39,7 +39,7 @@ export function storageBrowserState(storage: Pick<Storage, 'getItem' | 'setItem'
       try {
         storage.setItem(PREFIX + key, JSON.stringify(value));
       } catch {
-        // full or blocked storage: the state is lost, the editor still works (ADR-0013)
+        // full or blocked storage: the state is lost, the editor still works
       }
     },
   };

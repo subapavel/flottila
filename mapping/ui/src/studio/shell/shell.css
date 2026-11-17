@@ -1,8 +1,7 @@
 /*
  * The studio shell's styles: the masthead, the page frame, the tab line with the mapping's title and actions, the
- * feedback line and the tab panel. Ported from the prototype's studio.css (branch prototype/mapping-studio,
- * ui/prototype/mapping-studio/src/studio.css) with its values unchanged; only the rules of the shell are here, each tab
- * module ports its own. Added: `a.brand` keeps the masthead's look when the brand is the link to the start page.
+ * feedback line and the tab panel. Only the rules of the shell are here, each tab module has its own. `a.brand` keeps
+ * the masthead's look when the brand is the link to the start page.
  */
 * {
   box-sizing: border-box;
@@ -311,7 +310,7 @@ p {
     padding-inline: 8px;
   }
 }
-/* after the 560px rule, as in the prototype's file order */
+/* after the 560px rule, in that order */
 @media (max-width: 750px) {
   .tab-line .pf-v6-c-tabs__link {
     padding-inline: 9px;

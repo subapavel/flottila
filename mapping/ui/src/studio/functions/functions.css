@@ -1,7 +1,6 @@
 /*
- * The Functions tab's styles, ported from the prototype (branch prototype/mapping-studio, ui/prototype/mapping-studio/src)
- * with their values unchanged: first the rules of studio.css and signature.css the tab and its dialogs use, in their
- * files' order, then functions.css. Added: `.udf-metadata .preview-badge` centres the Preview badge in the metadata panel.
+ * The Functions tab's styles: first the rules of studio.css and signature.css the tab and its dialogs use, in their
+ * files' order, then functions.css. `.udf-metadata .preview-badge` centres the Preview badge in the metadata panel.
  */
 
 /* studio.css */

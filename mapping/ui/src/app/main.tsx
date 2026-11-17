@@ -6,7 +6,7 @@ import { httpApiClient } from '../api/http-api';
 import { storageBrowserState } from '../studio/browser-state/browser-state';
 import { Page } from './Page';
 
-// The page (ADR-0028): the start page, or the Mapping studio of ?mapping=<id>; ?api=fake runs on the fake ApiClient.
+// The page: the start page, or the Mapping studio of ?mapping=<id>; ?api=fake runs on the fake ApiClient.
 const params = new URLSearchParams(window.location.search);
 const api: Promise<ApiClient> =
   params.get('api') === 'fake'

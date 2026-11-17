@@ -29,7 +29,7 @@ const indexOf = (state: unknown): number | undefined => {
 };
 
 /**
- * The page (ADR-0028), router-free: the start page, or the studio of `?mapping=<id>`. Open in studio and the brand are
+ * The page, router-free: the start page, or the studio of `?mapping=<id>`. Open in studio and the brand are
  * plain links to another query, another document, so leaving a studio with unsaved changes by them meets its
  * `beforeunload` question. Create opens the new mapping in the same document, in edit mode on Signature, with a history
  * entry; Back from it returns to the start page, but with unsaved changes it first returns to the studio's entry and

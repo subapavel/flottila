@@ -14,7 +14,7 @@ const structureQuery = (api: ApiClient, request: StructureRequest) => queryOptio
 
 /**
  * The structure of one side as the service loads it; the trees and the rest of the studio share its query. A side not
- * chosen yet (ADR-0029) loads nothing, and its query keeps no data.
+ * chosen yet loads nothing, and its query keeps no data.
  */
 export function useStructure(mappingId: string, api: ApiClient, ref: StructureRef | undefined) {
   const request = ref && structureRequest(mappingId, ref);
@@ -30,7 +30,7 @@ export function useLoadStructure(mappingId: string, api: ApiClient) {
   return (choice: Pick<StructureRef, 'bundle' | 'root'>) => queryClient.fetchQuery({ ...structureQuery(api, structureRequest(mappingId, choice)), staleTime: 0 });
 }
 
-/** A refresh of the working copy as it is now (ADR-0027): what was sent, and the answer, for `applyRefresh`. */
+/** A refresh of the working copy as it is now: what was sent, and the answer, for `applyRefresh`. */
 export const refreshMutation = (api: ApiClient, mappingId: string, store: WorkingCopyStore) =>
   mutationOptions({
     mutationFn: async (): Promise<{ sent: MappingModel; answer: RefreshResponse }> => {

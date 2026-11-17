@@ -13,7 +13,7 @@ export interface SetParamCommand {
 
 /**
  * Sets a box parameter of a standard function box. A value equal to the catalogue's default is left out, and so is
- * `params` once it holds none (ADR-0010); a table equals another with the same rows in any order. The command refuses,
+ * `params` once it holds none; a table equals another with the same rows in any order. The command refuses,
  * at the box:
  * - `cross-target-field-reference` or `unknown-box-reference` when the box is not in the target field's mapping;
  * - `unknown-parameter` when the box is not a standard function box whose catalogue entry has the param: a

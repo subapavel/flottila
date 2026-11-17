@@ -42,11 +42,11 @@ export interface FunctionsTabProps {
 }
 
 /**
- * The Functions tab, a preview (ADR-0028, ADR-0030, #169; the prototype's FunctionsTab): the class and package of the
- * mapping's functions, Export and Import Source Text, the list of Java areas and user-defined functions with their
- * editor, and the import instructions and archives. The functions live in the browser only (`mock/functions-store`),
- * never in the mapping file; Save keeps an edit and Discard drops it. They are edited in edit mode once the mapping has
- * both messages; otherwise they are read-only, and only Export Source Text works.
+ * The Functions tab, a preview, as user-defined functions need the platform's message data model, which does not exist
+ * yet: the class and package of the mapping's functions, Export and Import Source Text, the list of Java areas and
+ * user-defined functions with their editor, and the import instructions and archives. The functions live in the browser
+ * only (`mock/functions-store`), never in the mapping file; Save keeps an edit and Discard drops it. They are edited in
+ * edit mode once the mapping has both messages; otherwise they are read-only, and only Export Source Text works.
  */
 export function FunctionsTab({ mappingId, store, functions, api }: FunctionsTabProps) {
   const state = useStore(functions, (s) => s.functions);

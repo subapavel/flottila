@@ -1,10 +1,10 @@
 /**
- * A step of a field path's text (ADR-0007): an EQName's `Q{namespace}` may hold a `/`; a JSON property's name has no
+ * A step of a field path's text: an EQName's `Q{namespace}` may hold a `/`; a JSON property's name has no
  * raw `/` or brace, as it percent-encodes `% / @ { }`.
  */
 const STEP = /(?:\{[^}]*\}|[^/{])+/g;
 
-/** The escapes of a JSON property's name: `%` and the upper-case hex code of one of `% / @ { }` (ADR-0007). */
+/** The escapes of a JSON property's name: `%` and the upper-case hex code of one of `% / @ { }`. */
 const ESCAPE = /%(25|2F|40|7B|7D)/g;
 
 /** The steps of a field path, root first, each as the structure spells it, so a JSON step stays escaped. */

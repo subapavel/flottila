@@ -1,11 +1,11 @@
 import type { MappingModel } from '../generated/mapping-model';
 
 /**
- * The text of a model in canonical form (ADR-0010), as the service's canonical writer prints it: keys sorted by UTF-16
+ * The text of a model in canonical form, as the service's canonical writer prints it: keys sorted by UTF-16
  * code unit at every level, indented as `JSON.stringify(value, null, 2)` does, strings quoted as it quotes them, and a
  * final LF. A member held as `undefined` is left out, as `JSON.stringify` leaves it out of a request body. The model's
  * commands already leave out what the writer leaves out (defaults, empty collections), so for a working copy this is
- * the text Save writes. It is for display: the service stays the one writer (ADR-0013).
+ * the text Save writes. It is for display: the service stays the one writer.
  */
 export function canonicalJson(model: MappingModel): string {
   return `${print(model, '')}\n`;

@@ -11,7 +11,7 @@ export interface DiscardDialogProps {
   onKeepEditing: () => void;
 }
 
-/** "Discard changes?" (the prototype's discard dialog): Discard changes, or Keep editing, which has the focus. */
+/** "Discard changes?": Discard changes, or Keep editing, which has the focus. */
 export function DiscardDialog({ isOpen, name, then, onDiscard, onKeepEditing }: DiscardDialogProps) {
   const titleId = useId();
   const keepEditingId = useId();

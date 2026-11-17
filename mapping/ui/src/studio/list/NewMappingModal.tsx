@@ -18,11 +18,11 @@ import { useMutation } from '@tanstack/react-query';
 import { useId, useState, type FormEvent } from 'react';
 import { describeError, type ApiClient, type CreateMappingRequest } from '../../api/client';
 
-// A workspace path segment as the service accepts it (ADR-0024): the service checks again and refuses reserved names.
+// A workspace path segment as the service accepts it: the service checks again and refuses reserved names.
 const SEGMENT = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}$/;
-/** An id has at most 16 segments (ADR-0024): the name and at most 15 folders. */
+/** An id has at most 16 segments: the name and at most 15 folders. */
 const MAX_FOLDERS = 15;
-/** ADR-0029: a description of at most 4,000 code points. */
+/** A description of at most 4,000 code points. */
 const MAX_DESCRIPTION = 4000;
 
 const count = (n: number) => n.toLocaleString('en-US');
@@ -51,8 +51,8 @@ export interface NewMappingModalProps {
 }
 
 /**
- * The New mapping modal of the start page (ADR-0028): Name, Package and Description, and no message choice; the
- * messages are chosen on the Signature tab (ADR-0029). The id is the package's folders and the name. Each field says
+ * The New mapping modal of the start page: Name, Package and Description, and no message choice; the messages are
+ * chosen on the Signature tab. The id is the package's folders and the name. Each field says
  * what it allows; the service checks again, and its refusal (400, 409 `mapping-exists`) shows above the fields.
  */
 export function NewMappingModal({ api, onClose, onCreated }: NewMappingModalProps) {

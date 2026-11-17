@@ -1,7 +1,6 @@
 /*
- * The Test tab's styles. Ported from the prototype (branch prototype/mapping-studio,
- * ui/prototype/mapping-studio/src/studio.css): the rules of the local test bench, the document cards, the instance tree
- * and the processing log, with their values unchanged. Rules other tabs already carry (the panel, the splitters, the
+ * The Test tab's styles: the rules of the local test bench, the document cards, the instance tree and the processing
+ * log. Rules other tabs already carry (the panel, the splitters, the
  * tool buttons, the view switch, the copy surface, the document tabs) are not repeated; the Display Queue's are in
  * definition/expression/queue.css and the test instance tools' own in mock/mock.css.
  * Added: `.stale-mark` marks a result whose trace is stale; `.parameters-preview` holds the Parameters section's

@@ -2,8 +2,7 @@ import { ESLint } from 'eslint';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-// The import boundaries of ADR-0013 ("Modules of ui/src"), with the studio of ADR-0028 in place of the editor, checked
-// against the real eslint.config.js.
+// The import boundaries of the modules of ui/src, checked against the real eslint.config.js.
 const eslint = new ESLint({ cwd: fileURLToPath(new URL('..', import.meta.url)) });
 
 async function restricted(file: string, specifier: string): Promise<boolean> {
@@ -42,7 +41,7 @@ describe('import boundaries (ADR-0013, ADR-0028)', () => {
     ['src/app/main.tsx', '../studio/browser-state/browser-state'],
     ['src/app/main.tsx', '../api/fake/fake-api'],
     ['src/app/Page.tsx', '../studio/shell/Studio'],
-    // tabs meet through the store; shared code is in shared/ and mock/ (ADR-0013, ADR-0028)
+    // tabs meet through the store; shared code is in shared/ and mock/
     ['src/studio/test/TestTab.tsx', '../shared/SplitLayout'],
     ['src/studio/test/TestTab.tsx', '../mock/test-instances'],
     ['src/studio/test/TestTab.tsx', '../browser-state/browser-state'],
@@ -100,7 +99,7 @@ describe('import boundaries (ADR-0013, ADR-0028)', () => {
     ['src/app/main.tsx', '@xyflow/react'],
     ['src/app/main.tsx', '@dagrejs/dagre'],
     ['src/app/main.tsx', '@tanstack/react-virtual'],
-    // a tab imports no other tab, nor the shell that holds them (ADR-0013: subfolders meet through the store)
+    // a tab imports no other tab, nor the shell that holds them: subfolders meet through the store
     ['src/studio/test/TestTab.tsx', '../definition/SplitLayout'],
     ['src/studio/test/TestTab.tsx', '../definition/expression/expression-graph'],
     ['src/studio/test/TestDocument.tsx', '../functions/download'],
