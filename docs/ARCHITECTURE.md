@@ -232,7 +232,7 @@ steps:
 ```
 
 Built-in step types: `to`, `route`, `filter`, `extractKey`, `validate`, `split`. Shipped step
-modules: `xslt` (Saxon-HE), `xsd` and `jq`. Conditions are XPath by default.
+modules: `xslt` (Saxon-HE), `xsd`, `jq` and `mapping`. Conditions are XPath by default.
 
 An endpoint names its scheme, direction and options, with an optional overlay per environment
 (`environments.<env>.config`), so one flow file is the same in every environment. An option whose
@@ -346,20 +346,14 @@ Its semantics follow SAP PO message mappings (queues and contexts, the standard 
 service (Quarkus) and a studio UI work over a workspace of mappings; a corpus of 250 mappings with
 expected outputs, including runs observed on PO and CPI, tests it.
 
-The platform does not use the engine yet: no step runs a mapping.
+The `mapping` step runs a mapping in a flow, through the engine's embedding API.
 
-**Planned**
-- A step that runs a mapping in a flow. Its contract is agreed and follows this list.
-- A bytecode tier for speed, later.
-- A point where an importer of SAP PO and CPI message mappings plugs in, with a contract of its own
-  that is designed first. It runs at design time, before compile, and writes a canonical
-  `*.mapping.json` and its schema files into a package. The step and the embedding API do not change
-  for it, and nothing is imported at deploy time: the reviewed file in git is what runs.
+### The embedding API
 
-The contract of the mapping step, engine side. A module `mapping/engine/embed`
-(`dev.rail8.mapping:rail8-mapping-embed`, JPMS `dev.rail8.mapping.embed`) is the engine's embedding
-API: the one engine package with a compatibility promise. It requires `dev.rail8.mapping.api`
-without `transitive`, exports only its own package, and its signatures use JDK types and its own.
+The module `mapping/engine/embed` (`dev.rail8.mapping:rail8-mapping-embed`, JPMS
+`dev.rail8.mapping.embed`) is the engine's embedding API: the one engine package with a compatibility
+promise. It requires `dev.rail8.mapping.api` without `transitive`, exports only its own package, and
+its signatures use JDK types and its own.
 
 ```java
 public final class Mapping {                  // immutable; any number of concurrent runs
@@ -398,12 +392,14 @@ public final class RunFailure extends Exception {
   missing structure, a schema load error (an `IOException` from `files` is `schema-unreadable` at
   that reference), `fingerprint-mismatch`, the checks against both structures, and every UDF box
   the mapping reaches (`unsupported-box-kind`). An unchecked exception from `files` passes through
-  unchanged, so the host's own refusal keeps its words.
+  unchanged, so the host's own refusal keeps its words. A problem's `at` is a JSON pointer into the
+  mapping file (`""` is the file itself), an authoring id, or a schema file's `file:line:column`.
 - `run` reads all of `input` (XML without a DOCTYPE, or JSON, as the source structure says) before
   it writes, and returns the whole output or throws, never part of it. `now` is the time every date
   function sees, and its offset is the run's time zone; a run reads no clock and no file. Output
   above `maxOutputBytes` (at least 1) stops the run with `OUTPUT_TOO_LARGE`. An interrupt ends it
-  with `InterruptedException`. Anything else it throws is an engine bug.
+  with `InterruptedException`, the thread's interrupt status cleared. Anything else it throws is an
+  engine bug.
 - Memory: the host holds the input, the output is at most `maxOutputBytes`, and the engine's working
   memory grows with the input and the mapping, with no limit of its own until one is measured.
 - A new `Reason` breaks hosts on purpose: a host maps reasons with a `switch` expression that has no
@@ -413,12 +409,14 @@ public final class RunFailure extends Exception {
   `Mapping.compile` passes the same tests. There is no mock: the engine is code in the process, not a
   way out of it.
 
-The contract of the mapping step, platform side. A step module `platform/steps/mapping`
-(`dev.rail8:rail8-step-mapping`) registers the step type `mapping`. It depends on `rail8-api` and
-`rail8-mapping-embed`, and it is the only platform module that depends on the mapping, and only on
-`dev.rail8.mapping.embed`; an architecture test checks both. The node and the command line ship it.
-Every CI job and documented command that builds the platform first installs the engine's `embed`
-module from the same commit (`./mvnw -f mapping/pom.xml -pl engine/embed -am install -DskipTests`).
+### The mapping step
+
+The step module `platform/steps/mapping` (`dev.rail8:rail8-step-mapping`) registers the step type
+`mapping`. It depends on `rail8-api` and `rail8-mapping-embed`, and it is the only platform module
+that depends on the mapping, and only on `dev.rail8.mapping.embed`; an architecture test checks both.
+The node and the command line ship it. Every CI job and documented command that builds the platform
+first installs the engine's `embed` module from the same commit with `bin/install-mapping`
+(`./mvnw -f mapping/pom.xml -pl engine/embed -am install -DskipTests`).
 
 ```yaml
 steps:
@@ -432,17 +430,27 @@ steps:
   studio's layout is the convention: `mappings/<name>.mapping.json`, its schemas in `structures/`.
 - The mapping file keeps the engine's spelling of its references. A `Relative` reference's `path`
   resolves against the mapping file through `StepResources.resolve`, inside the package or
-  dependency that holds the mapping. A `Packaged` reference is a build error naming the step and the reference,
-  until its version can be compared and the studio can refresh such a mapping.
+  dependency that holds the mapping. A `Packaged` reference is a build error naming the step and
+  the reference.
 - The flow's hash covers the mapping file and every schema file it read, since both are read
   through `StepResources`. The engine's version is not in it, as Saxon's is not. A refusal, a
   fingerprint mismatch and a file outside the package are build errors naming the step, at deploy,
   in `rail8 validate` and in `rail8 test` alike.
+- A run sees the node's injected clock: its time, and its zone as the run's time zone.
 - A run writes its output to the blob store under the flow's body limit, with `content-type` from
   `mediaType()`. Its faults: `MALFORMED_INPUT` is MALFORMED; `OUTPUT_TOO_LARGE` is INVALID, as a body
   over the limit is; `DATA_ERROR` is INTERNAL and retried, because a data error need not come from the
   input (a box with a bad constant fails every message); an interrupt is rethrown with the flag
   restored, so the worker leaves the item to its lease.
+
+**Planned**
+- A bytecode tier for speed, later.
+- A point where an importer of SAP PO and CPI message mappings plugs in, with a contract of its own
+  that is designed first. It runs at design time, before compile, and writes a canonical
+  `*.mapping.json` and its schema files into a package. The step and the embedding API do not change
+  for it, and nothing is imported at deploy time: the reviewed file in git is what runs.
+- `Packaged` references in the step, once their version can be compared and the studio can refresh
+  such a mapping.
 - UDFs, and what a mapping may later read besides the body (headers, properties, mapping
   parameters), wait for the platform's data model. They come as additions, such as a `run` that
   takes a context.

@@ -1,0 +1,22 @@
+# Each order line's quantity, formatted by the mapping, goes to the partner; the sender's answer is the partner's reply.
+schemaVersion: 1
+kind: flow
+id: orders
+version: 0.1.0
+description: Map orders into the partner's list and send it.
+from:
+  endpoint: in-orders
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+steps:
+  - type: mapping
+    name: toList
+    mapping: mappings/orders-to-list.mapping.json
+  - type: to
+    name: partner
+    endpoint: partner

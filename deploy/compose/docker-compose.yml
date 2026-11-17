@@ -1,7 +1,7 @@
 # The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3) and an SFTP server beside one Rail8 node,
 # the demo's partner echo and a one-shot that deploys examples/demo; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack, not production: the node runs RAIL8_ENV=dev
 # so the manual deploy and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on (O-1), off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
-# Build the host jars first: bin/install-jq && mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
+# Build the host jars first: bin/install-jq && bin/install-mapping && mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
 # Then:  RAIL8_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
 services:
   postgres:

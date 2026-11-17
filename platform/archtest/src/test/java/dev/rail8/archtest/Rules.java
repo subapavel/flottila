@@ -7,6 +7,7 @@ import com.tngtech.archunit.lang.ArchRule;
 import java.util.Set;
 
 import static com.tngtech.archunit.base.DescribedPredicate.describe;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
@@ -30,6 +31,11 @@ final class Rules {
     static final String TESTKIT = "dev.rail8.testkit..";
     static final String CLI = "dev.rail8.cli..";
     static final String SIM = "dev.rail8.sim..";
+    /** The mapping engine under {@code mapping/}, every package of it. */
+    static final String MAPPING_ENGINE = "dev.rail8.mapping..";
+    /** The engine's embedding API: the one package of the engine a platform module may use. */
+    static final String MAPPING_EMBED = "dev.rail8.mapping.embed";
+    static final String MAPPING_STEP = "dev.rail8.steps.mapping..";
 
     /**
      * The whole Vert.x surface api and core may touch (D-020): the four types CLAUDE.md names
@@ -108,6 +114,15 @@ final class Rules {
             .and().resideOutsideOfPackage(SIM)
             .should().dependOnClassesThat().resideInAPackage(SIM)
             .because("rail8-sim is test infrastructure at the top beside cli: never shipped, nothing depends on it (F-36, D-143)");
+
+    static final ArchRule ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE = noClasses().that().resideInAPackage("dev.rail8..")
+            .and().resideOutsideOfPackages(MAPPING_ENGINE, MAPPING_STEP)
+            .should().dependOnClassesThat().resideInAPackage(MAPPING_ENGINE)
+            .because("the mapping step is the only platform module that depends on the mapping engine");
+
+    static final ArchRule THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API = noClasses().that().resideInAPackage(MAPPING_STEP)
+            .should().dependOnClassesThat(resideInAPackage(MAPPING_ENGINE).and(DescribedPredicate.not(resideInAPackage(MAPPING_EMBED))))
+            .because("the mapping step reaches the engine through its embedding API, " + MAPPING_EMBED + ", and nothing else of it");
 
     static final ArchRule ONLY_RUNTIME_TOUCHES_STORE_CLIENTS = noClasses().that().resideInAPackage("dev.rail8..")
             .and().resideOutsideOfPackage(RUNTIME)

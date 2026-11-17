@@ -43,6 +43,15 @@ class ModuleBoundaryTest {
             assertTrue(tree.contain(harness), "the production tree holds " + harness + " (rail8-sim is a test dependency of the archtest)");
         }
     }
+    @Test void onlyTheMappingStepDependsOnTheMappingEngine() { Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(tree); }
+    @Test void theMappingStepUsesOnlyTheEmbeddingApi() { Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API.check(tree); }
+
+    /** The two mapping rules check the step and the engine, not an empty set: both are on the archtest classpath. */
+    @Test void theMappingStepAndTheEngineAreOnTheArchtestClasspath() {
+        for (String c : List.of("dev.rail8.steps.mapping.MappingStepFactory", "dev.rail8.mapping.embed.Mapping", "dev.rail8.mapping.api.EngineFacade")) {
+            assertTrue(tree.contain(c), "the production tree holds " + c);
+        }
+    }
     @Test void onlyRuntimeTouchesStoreClients() { Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS.check(tree); }
     @Test void rail8PackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
     @Test void onlyMainWiresComponentsAndStepsInRuntime() { Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS.check(tree); }
@@ -51,9 +60,9 @@ class ModuleBoundaryTest {
 
     /**
      * The exemption of {@link Rules#ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS} is used, not idle: the production Main exists and
-     * wires the shipped http component, the xslt steps with the xpath language, the xsd step and the jq step.
+     * wires the shipped http component, the xslt steps with the xpath language, the xsd step, the jq step and the mapping step.
      */
-    @Test void mainIsTheWiringPointOfHttpXsltXsdAndJq() {
+    @Test void mainIsTheWiringPointOfHttpXsltXsdJqAndMapping() {
         assertTrue(tree.contain(Rules.MAIN), "runtime has its wiring point " + Rules.MAIN);
         Set<String> wired = new TreeSet<>();
         for (JavaClass c : tree) {
@@ -63,7 +72,8 @@ class ModuleBoundaryTest {
                 if (target.startsWith("dev.rail8.components.") || target.startsWith("dev.rail8.steps.")) wired.add(target);
             }
         }
-        assertTrue(wired.containsAll(Set.of("dev.rail8.components.http", "dev.rail8.steps.xslt", "dev.rail8.steps.validate", "dev.rail8.steps.jq")),
-                "Main wires http, xslt/xpath, xsd and jq; it names: " + wired);
+        assertTrue(wired.containsAll(Set.of("dev.rail8.components.http", "dev.rail8.steps.xslt", "dev.rail8.steps.validate", "dev.rail8.steps.jq",
+                        "dev.rail8.steps.mapping")),
+                "Main wires http, xslt/xpath, xsd, jq and mapping; it names: " + wired);
     }
 }

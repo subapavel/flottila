@@ -58,6 +58,11 @@
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>
+      <artifactId>rail8-step-mapping</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
       <scope>test</scope>
     </dependency>

@@ -7,6 +7,7 @@ A demo stack for GATE checks 1-2 (D-085), not production: the node runs `RAIL8_E
 
 ```sh
 bin/install-jq                                                                              # the jq engine the jq step depends on
+bin/install-mapping                                                                         # the mapping engine the mapping step depends on
 mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am   # the jars the node image and `deploy` use
 cd deploy/compose
 export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)    # required: compose refuses to start without it

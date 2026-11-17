@@ -1,0 +1,8 @@
+# `rail8 test` on a sync flow with a mapping step (TestCommandTest): the mapping formats each order line's quantity into the
+# partner's list.
+schemaVersion: 1
+kind: package
+name: mapping
+version: 0.1.0
+description: A sync flow with a mapping step, sending its output to the partner.
+dependencies: []

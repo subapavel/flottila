@@ -61,6 +61,7 @@ docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id
 bin/rail8 validate examples/demo        # exit 0
 bin/rail8 test examples/demo            # 6 cases: 6 passed, in-process, also run by CI
 bin/install-jq                             # the jq engine the jq step depends on, once and after a change under jq/
+bin/install-mapping                        # the mapping engine the mapping step depends on, once and after a change under mapping/engine/
 mvn -B -ntp -f platform/pom.xml verify -Pit   # unit + Testcontainers ITs, ArchUnit, JaCoCo floors (Docker needed)
 python3 ci/coverage_check.py               # the no-decrease check against ci/coverage-baseline.json
 bench/run.sh                               # the bench harness (native Postgres); numbers go to bench/RESULTS.md
