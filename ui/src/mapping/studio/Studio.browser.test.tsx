@@ -477,9 +477,14 @@ describe('the tabs', () => {
     await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
     unmount();
 
-    browserState.write(lastTabKey('mappings/order-id-copy'), 'nope');
-    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
-    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    // a studio tab this studio does not show yet, and a value that is no tab at all
+    for (const kept of ['definition', 'nope']) {
+      browserState.write(lastTabKey('mappings/order-id-copy'), kept);
+      renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+      await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+      await expect.element(page.getByRole('region', { name: 'Overview' })).toBeVisible();
+      unmount();
+    }
   });
 
   test('arrow keys, Home and End move between the tabs and choose them, only the active tab is focusable; another key does nothing', async () => {

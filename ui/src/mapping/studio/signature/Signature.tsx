@@ -224,7 +224,7 @@ export function Signature({ mappingId, api, store, browserState }: SignatureProp
       {notice !== null && (
         <StackItem>
           <Alert
-            variant="info"
+            variant="warning"
             isInline
             role="status"
             title={notice}
