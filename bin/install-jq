@@ -4,4 +4,4 @@
 # a change under jq/. Usage: bin/install-jq
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-exec mvn -B -ntp -q -f "$root/jq/pom.xml" -pl jq-core -am install -DskipTests
+exec "$root/mvnw" -B -ntp -q -f "$root/jq/pom.xml" -pl jq-core -am install -DskipTests
