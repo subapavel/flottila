@@ -11,9 +11,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * The oracle's copy of a jqj value, with what {@link JvEqual} compares and nothing more (ADR-0020). It is a copy
- * because a result is valid only during its sink call (ADR-0016), and the oracle's own because the oracle module
- * does not read jq-core's.
+ * The oracle's copy of a value of this engine's, with what {@link JvEqual} compares and nothing more. It is a copy
+ * because a result is valid only during its sink call, and the oracle's own because the oracle module does not read
+ * jq-core's.
  */
 public sealed interface JvValue {
 
@@ -37,7 +37,7 @@ public sealed interface JvValue {
    *
    * @param value the double jq compares a computed number by
    * @param decimal the exact value of a literal, null for NaN and the infinities
-   * @param literal whether it is a literal number (GLOSSARY)
+   * @param literal whether it is a literal number, which keeps its exact decimal value
    */
   record Num(double value, BigDecimal decimal, boolean literal) implements JvValue {
     @Override

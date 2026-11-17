@@ -10,8 +10,8 @@ import java.lang.foreign.MemorySegment;
 import java.util.List;
 
 /**
- * The tick-loop diagnostic of ADR-0019 for the G2, G3 and G4 scenarios: the ticks one operation of {@link Gates}
- * charges (reader, run and writer, ADR-0030), found as the smallest step budget under which the operation completes.
+ * The tick-loop diagnostic for the G2, G3 and G4 scenarios: the ticks one operation of {@link Gates}
+ * charges (reader, run and writer), found as the smallest step budget under which the operation completes.
  * The step budget is exact (refuel comes at the budget when that is nearer than 4096 ticks), so a bisection over
  * {@link Limits#steps()} gives the count through the public API alone. Divided into the scenario's JMH time per
  * operation it gives the mean time per tick and the steps per second.

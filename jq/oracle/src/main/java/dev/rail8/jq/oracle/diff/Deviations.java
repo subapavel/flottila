@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The deviation slugs that {@code DEVIATIONS.md} names (ADR-0020). A table row names its deviation case in its first
+ * The deviation slugs that {@code DEVIATIONS.md} names. A table row names its deviation case in its first
  * cell, {@code case}, with the case's {@code deviation <slug>} line in backticks: {@code `json/n_x` (`deviation nul`)}.
  * A slug quoted anywhere else, in prose or in another cell, names no row.
  */

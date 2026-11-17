@@ -10,20 +10,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A differential case (ADR-0020): a command line, its stdin, files and environment, never its expected output, which
+ * A differential case: a command line, its stdin, files and environment, never its expected output, which
  * only {@code scripts/oracle-record.sh} writes into the recording.
  *
  * <p>Keys: {@code arg} and {@code filter} are the command-line arguments in the order they appear (a case may put
  * options before or after the filter); {@code stdin} once; {@code file <name> <bytes>} and {@code env K=V}, each
- * repeatable; {@code deviation <slug>} once marks a case that pins a {@code DEVIATIONS.md} row (ADR-0020), and only
- * such a case may carry jqj's column of that row: {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}, each at
- * most once. {@code limit recursion-depth <n>} once runs jqj under a recursion-depth budget of {@code n}, a positive
- * integer of at most {@link Integer#MAX_VALUE}, in every run of the case, the differential run and each compile mode's (ADR-0047 #118); reference jq
- * ignores it. Without {@code stdin} the input is empty.
+ * repeatable; {@code deviation <slug>} once marks a case that pins a {@code DEVIATIONS.md} row, and only such a case
+ * may carry this engine's column of that row: {@code jqj-rc}, {@code jqj-stdout} and {@code jqj-stderr}, each at most
+ * once. {@code limit recursion-depth <n>} once runs this engine under a recursion-depth budget of {@code n}, a
+ * positive integer of at most {@link Integer#MAX_VALUE}, in every run of the case, the differential run and each
+ * compile mode's; the reference jq ignores it. Without {@code stdin} the input is empty.
  *
  * @param files file name to content, written into the working directory of each run
  * @param deviation the slug of the deviation the case pins, or null
- * @param jqj jqj's column: every part null unless the case gives its {@code jqj-*} key
+ * @param jqj this engine's column: every part null unless the case gives its {@code jqj-*} key
  * @param recursionDepth the recursion-depth budget of {@code limit recursion-depth}, or null when the case has no such
  *     key
  */
@@ -38,7 +38,7 @@ public record DiffCase(
     String def,
     Long recursionDepth) {
 
-  /** The key that sets a jqj limit for every run of the case (ADR-0047 #118). */
+  /** The key that sets a limit of this engine's for every run of the case. */
   private static final String LIMIT = "limit";
 
   /** The one limit the {@code limit} key names. */
@@ -51,8 +51,8 @@ public record DiffCase(
   }
 
   /**
-   * jqj's column of a deviation case: what jqj gives where it differs from jq-ref on purpose. Each part is null when
-   * the case has no key for it.
+   * This engine's column of a deviation case: what it gives where it differs from jq-ref on purpose. Each part is
+   * null when the case has no key for it.
    *
    * @param rc {@code jqj-rc}
    * @param stdout {@code jqj-stdout}, unescaped
@@ -64,7 +64,7 @@ public record DiffCase(
     public static final JqjColumn NONE = new JqjColumn(null, null, null);
 
     /**
-     * Whether every part this column gives equals that part of jq-ref's recording, so the deviation is gone (ADR-0020).
+     * Whether every part this column gives equals that part of jq-ref's recording, so the deviation is gone.
      * A column that gives no part matches.
      */
     public boolean matches(Outcome recorded) {
@@ -73,7 +73,7 @@ public record DiffCase(
           && (stderr == null || Arrays.equals(stderr, recorded.stderr()));
     }
 
-    /** What jqj must give: each part of this column, and jq-ref's recorded part where this column has none. */
+    /** What this engine must give: each part of this column, and jq-ref's recorded part where this column has none. */
     public Outcome over(Outcome recorded) {
       return new Outcome(
           rc == null ? recorded.rc() : rc, stdout == null ? recorded.stdout() : stdout, stderr == null ? recorded.stderr() : stderr);
@@ -185,7 +185,7 @@ public record DiffCase(
     return n;
   }
 
-  /** The environment of a run: exactly {@code HOME=<home> TZ=UTC LC_ALL=C} plus the case's {@code env} (ADR-0020). */
+  /** The environment of a run: exactly {@code HOME=<home> TZ=UTC LC_ALL=C} plus the case's {@code env}. */
   public Map<String, String> environment(Path home) {
     Map<String, String> all = new LinkedHashMap<>();
     all.put("HOME", home.toString());

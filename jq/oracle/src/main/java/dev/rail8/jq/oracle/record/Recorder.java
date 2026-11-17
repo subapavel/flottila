@@ -24,7 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongFunction;
 
 /**
- * The record command of the differential oracle (ADR-0020), started by {@code scripts/oracle-record.sh}:
+ * The record command of the differential oracle, which runs the reference jq, started by
+ * {@code scripts/oracle-record.sh}:
  *
  * <pre>
  *   Recorder &lt;family.cases&gt;...          writes &lt;family&gt;.rec beside each case file
@@ -36,7 +37,7 @@ import java.util.function.LongFunction;
  * Each case runs twice in a fresh directory with its files and an environment of exactly {@code HOME TZ LC_ALL} plus
  * its {@code env}, under a 10 s timeout; two runs that differ reject the case, and so does a timeout. A generated
  * Seed whose run gives rc 3 or times out is instead a Dropped seed: a {@code # dropped <seed> rc3|timeout} line in
- * the case file's header (ADR-0025). Exit codes: 0 ok, 1 a rejected case, a refused file or a difference, 2 usage.
+ * the case file's header. Exit codes: 0 ok, 1 a rejected case, a refused file or a difference, 2 usage.
  */
 public final class Recorder {
 

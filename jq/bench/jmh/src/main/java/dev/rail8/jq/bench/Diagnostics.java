@@ -32,15 +32,16 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The recursion, {@code limit}, {@code ..} and cap diagnostics of spec 2b and the analyses gain (#119; ADR-0019 and its
- * #119 amendment, ADR-0006, ADR-0011, GLOSSARY "Analyses gain"), with Gates' ADR-0019 settings. Its operation is
+ * The recursion, {@code limit}, {@code ..} and specialiser-cap diagnostics and the analyses gain (a filter's
+ * conservative-compile time over its optimised-compile time, measured in the same session), with Gates' JMH
+ * settings. Its operation is
  * {@link Gates#once} under {@link Limits#embedded()}, in compact output except G6's pretty cell; a cap cell compiles
  * its filter in each operation too. A termination ends an operation without failing it: it is the cell's outcome,
  * which {@link #setUp} prints on a line {@code # outcome <id>: …}.
  *
- * <p>A cell is {@link #mode} and {@link #cell}. Its ADR-0024 id puts the mode before the size, in lower case:
+ * <p>A cell is {@link #mode} and {@link #cell}. Its bench id puts the mode before the size, in lower case:
  * {@code recur-T.1e6} under CONSERVATIVE is {@code recur-T.conservative.1e6}. The mode reaches the engine by the
- * reflective hook of ADR-0020's #119 amendment ({@link #engine}), on the class path only. {@link #main} writes the
+ * reflective hook {@link #engine}, which works on the class path only. {@link #main} writes the
  * documents and filters {@code bench/jq-ref.sh} times.
  */
 @BenchmarkMode(Mode.AverageTime)
@@ -60,7 +61,8 @@ public class Diagnostics {
 
   /**
    * The cell without its mode: Table A's recursion, {@code limit} and {@code ..} cells, Table B's cap cells, then
-   * Gates' cells but G7 for Table C. G4 runs at 10⁴ only (ADR-0022).
+   * Gates' cells but G7 for Table C. G4 runs at 10⁴ only: at 10⁶ the conservative compile would make 5×10¹¹ slot
+   * copies.
    */
   @Param({
     "recur-T.1e6", "recur-E.1e6", "recur-Eu.1e6", "recur-M.1e6", "recur-N.1e6",
@@ -106,8 +108,8 @@ public class Diagnostics {
   }
 
   /**
-   * ADR-0019's operation, after the compile in a cap cell. Returns the bytes written so far, or after a termination
-   * its exit code, which JMH consumes.
+   * The operation of {@link Gates#once}, after the compile in a cap cell. Returns the bytes written so far, or after a
+   * termination its exit code, which JMH consumes.
    */
   @Benchmark
   public long operation() {
@@ -127,7 +129,7 @@ public class Diagnostics {
     return out.written + " bytes written";
   }
 
-  /** The ADR-0024 id of {@code cell} under {@code mode}: the mode in lower case before the size. */
+  /** The bench id of {@code cell} under {@code mode}: the mode in lower case before the size. */
   static String id(String cell, CompileMode mode) {
     int size = cell.lastIndexOf('.');
     return cell.substring(0, size) + "." + mode.name().toLowerCase(Locale.ROOT) + cell.substring(size);
@@ -226,35 +228,35 @@ public class Diagnostics {
   }
 
   /**
-   * The prefix of every recursion shape (owner's ruling on #119, 2026-11-16): the input's elements as a built array
-   * {@code $a}, its length as {@code $L}. Spike A bound the input itself, but {@code $a[i]} on a document array costs i
-   * ticks (ADR-0034, F-111), which made every shape quadratic and ended each 1e5 and 1e6 cell on the step budget.
+   * The prefix of every recursion shape: the input's elements as a built array {@code $a}, its length as {@code $L}.
+   * The input itself is not bound: {@code $a[i]} on a document array costs i ticks, which would make every shape
+   * quadratic and end each 1e5 and 1e6 cell on the step budget.
    */
   static final String PREFIX = "[.[]] as $a | ($a|length) as $L | ";
 
-  /** T, Spike A's self tail call: state {@code [i, acc]}, the call the last thing the function does. */
+  /** T, a self tail call: state {@code [i, acc]}, the call the last thing the function does. */
   static final String T =
       PREFIX + "def s: if .[0] == $L then .[1] else [.[0] + 1, .[1] + $a[.[0]]] | s end; [0, 0] | s";
 
   /** The run E and Eu share: the sum of {@code $a} over the results of {@code r}. */
   private static final String SUM_OF_R = "reduce (0 | r(if . < $L - 1 then . + 1 else empty end)) as $i (0; . + $a[$i])";
 
-  /** E, Spike A's self call once per result of {@code f}, jq's own {@code recurse/1} shape. */
+  /** E, a self call once per result of {@code f}, jq's own {@code recurse/1} shape. */
   static final String E = PREFIX + "def r(f): def rr: ., (f | rr); rr; " + SUM_OF_R;
 
   /**
-   * Eu, E with permuted parameters: no parameter is invariant, so the optimised compile makes no copy (ADR-0006) and
+   * Eu, E with permuted parameters: no parameter is invariant, so the optimised compile makes no copy and
    * the call stays RECURSIVE.
    */
   static final String EU = PREFIX + "def r(f): def rr(g; h): ., (g | rr(h; g)); rr(f; f); " + SUM_OF_R;
 
-  /** M, Spike A's two functions calling each other, both in tail position. */
+  /** M, two functions calling each other, both in tail position. */
   static final String M =
       PREFIX
           + "def ev: def od: if .[0] == $L then .[1] else [.[0] + 1, .[1] + $a[.[0]]] | ev end;"
           + " if .[0] == $L then .[1] else [.[0] + 1, .[1] + $a[.[0]]] | od end; [0, 0] | ev";
 
-  /** N, Spike A's non-tail recursion: the addition waits for the recursive result. */
+  /** N, a non-tail recursion: the addition waits for the recursive result. */
   static final String N = PREFIX + "def s: if . == $L then 0 else $a[.] + (. + 1 | s) end; 0 | s";
 
   /** {@code limit} over an iteration. */
@@ -267,13 +269,13 @@ public class Diagnostics {
   static final String DOTDOT = "[..] | length";
 
   /**
-   * The largest k whose {@link #inlineChain} {@code explain()} shows fully inlined, with no function, measured on
-   * 9052c29: k + 1 lifts every {@code f<i>}.
+   * The largest k whose {@link #inlineChain} {@code explain()} shows fully inlined, with no function, as measured:
+   * k + 1 lifts every {@code f<i>}.
    */
   static final int INLINE_K = 15;
 
   /**
-   * The largest m whose {@link #specialiseTree} {@code explain()} shows with {@code refused=0}, measured on 9052c29:
+   * The largest m whose {@link #specialiseTree} {@code explain()} shows with {@code refused=0}, as measured:
    * each {@code until} copy holds 10 nodes, so the m closures of the tree and the long {@code until} hold 16 380 of the
    * cap's 16 384, and at m + 1 the long {@code until}, the last key, is refused and calls the original. jq-ref rejects
    * the tree from 2047 closures (rc 3), so m + 1 stays at most 2046.

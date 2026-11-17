@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/** A fresh directory holding a case's files; {@link #close} deletes it with everything in it (ADR-0020). */
+/** A fresh directory holding a case's files; {@link #close} deletes it with everything in it. */
 public final class CaseDirectory implements AutoCloseable {
 
   private final Path path;

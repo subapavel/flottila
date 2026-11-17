@@ -14,15 +14,15 @@ import java.util.function.LongFunction;
 import java.util.function.ToIntFunction;
 
 /**
- * Runs a differential case through the command line's in-process entry and judges it against its recording (ADR-0020,
- * ADR-0024). The expected outcome is the recording's; for a deviation case, each part its {@code jqj-*} keys give
- * replaces the recording's part (ADR-0020). The rules, in order:
+ * Runs a differential case through this engine's in-process command line and judges it against the reference jq's
+ * recording. The expected outcome is the recording's; for a deviation case, each part its {@code jqj-*} keys give
+ * replaces the recording's part. The rules, in order:
  *
  * <ol>
- *   <li>a deviation case whose slug names no row of {@code DEVIATIONS.md} is an error, before jqj runs, and so is a case
- *       with {@code limit recursion-depth} for a runner without a limited entry;
+ *   <li>a deviation case whose slug names no row of {@code DEVIATIONS.md} is an error, before the engine runs, and so
+ *       is a case with {@code limit recursion-depth} for a runner without a limited entry;
  *   <li>an exception out of the entry is FAIL if its message carries the Stub prefix, otherwise CRASH;
- *   <li>jqj's stderr carrying the Stub prefix is FAIL;
+ *   <li>the engine's stderr carrying the Stub prefix is FAIL;
  *   <li>a case without a recording, or whose def differs from the recording's, is STALE;
  *   <li>a deviation case whose recording equals every part its {@code jqj-*} keys give is FAIL, "deviation gone";
  *   <li>otherwise the exit code, stdout and stderr must equal the expected outcome byte for byte, except that stderr
@@ -54,8 +54,8 @@ public final class DiffRunner {
 
   /**
    * @param entry the in-process entry, {@code Main::run}
-   * @param limited the entry of a case with {@code limit recursion-depth n}, given {@code n}: jqj under that budget
-   *     (ADR-0047 #118); null for a runner of no such case
+   * @param limited the entry of a case with {@code limit recursion-depth n}, given {@code n}: the engine under that
+   *     budget; null for a runner of no such case
    * @param scratch where each run's working directory is made and deleted again
    * @param deviations the slugs that {@code DEVIATIONS.md} names, {@link Deviations#slugs}
    */
@@ -143,7 +143,8 @@ public final class DiffRunner {
   }
 
   /**
-   * The readable comparison: each part either "same" or the expected and jqj's bytes, escaped as in the case format.
+   * The readable comparison: each part either "same" or the expected and the engine's bytes, escaped as in the case
+   * format.
    *
    * @param name what the expected outcome is called: {@code jq-ref}, or {@code expect} for a deviation case
    */

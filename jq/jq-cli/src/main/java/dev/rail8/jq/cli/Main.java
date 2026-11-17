@@ -33,25 +33,25 @@ import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
- * The command line (ADR-0013). Not exported API: the oracle reaches {@link #run} on the class path, and the launcher
+ * The command line. Not exported API: the oracle reaches {@link #run} on the class path, and the launcher
  * {@code target/jqj} starts {@link #main} on the module path of {@code target/lib}.
  *
- * <p>Built so far (#33, #34, #37, #38): the filter ({@code .} when there is none) and at most one file, read instead
+ * <p>What it handles: the filter ({@code .} when there is none) and at most one file, read instead
  * of stdin; {@code -c} and {@code -M}, alone, combined or as {@code --compact-output} and {@code --monochrome-output},
  * before or after either; {@code --}, after which every argument is the filter or a file. A missing file and an
  * option jq does not know end with jq's text and exit code 2; any other jq option is a Stub with exit code 2. A filter
  * error ends the run with jq's line {@code jq: error (at <name>:N): <text>}, or {@code jq: error (at <name>:N) (not a
- * string): <value>} for a value that is no string (#68), and exit code 5; a termination with {@code jq: error:
- * <message>} and exit code 5 (#197). Without {@code -c} the output is pretty, jq's
- * default indent 2 (#37). {@code --explain}, a jqj-only flag (#108, ADR-0016), prints the compiled filter's
- * {@code explain()} text instead of running it, reads no input and exits 0.
+ * string): <value>} for a value that is no string, and exit code 5; a termination with {@code jq: error:
+ * <message>} and exit code 5. Without {@code -c} the output is pretty, jq's default indent 2. {@code --explain}, a
+ * flag of this engine's that jq does not have, prints the compiled filter's {@code explain()} text instead of running
+ * it, reads no input and exits 0.
  */
 public final class Main {
 
-  /** ADR-0024, GLOSSARY "Stub": the mark every Stub message starts with. */
+  /** The mark every Stub message starts with: a Stub is a part of the language not built yet, which ends the run. */
   private static final String STUB = "jqj stub: ";
 
-  /** The lines jq prints after "jq: Unknown option X" (jq-ref 1.8.2, diff/cli.rec {@code cli/unknown-long}). */
+  /** The lines jq 1.8.2 prints after "jq: Unknown option X". */
   private static final String HELP =
       "Use jq --help for help with command-line options,\nor see the jq manpage, or online docs at https://jqlang.org";
 
@@ -82,7 +82,7 @@ public final class Main {
   private Main() {}
 
   /**
-   * The process entry the launcher starts (ADR-0013): runs the command line on the process's streams, environment
+   * The process entry the launcher starts: runs the command line on the process's streams, environment
    * and working directory, then exits with its code.
    *
    * @throws IOException when stdout cannot be flushed at the end
@@ -95,7 +95,7 @@ public final class Main {
   }
 
   /**
-   * The in-process entry (ADR-0020): runs one invocation and returns its exit code. Reads the arguments in order,
+   * The in-process entry: runs one invocation and returns its exit code. Reads the arguments in order,
    * then compiles the filter, makes the sink, reads all of the file or stdin, and runs the filter once on the one
    * document there. An input stream that holds no document runs nothing: exit code 0 and no output.
    *
@@ -111,9 +111,9 @@ public final class Main {
   }
 
   /**
-   * As {@link #run(Invocation)}, with the engine built from what {@code engine} makes of the command line's builder
-   * (ADR-0020 amendment for #60): the compile-mode oracle sets its limits and compile mode there. Unlike
-   * {@link #run(Invocation)} it ends no run on a termination: the oracle reads its cause (F-87).
+   * As {@link #run(Invocation)}, with the engine built from what {@code engine} makes of the command line's builder:
+   * the compile-mode oracle sets its limits and compile mode there. Unlike {@link #run(Invocation)} it ends no run on
+   * a termination: the oracle reads its cause.
    *
    * @throws JqTermination when the run ends with one
    * @throws UncheckedIOException when stdin, stdout or stderr fails
@@ -123,8 +123,8 @@ public final class Main {
   }
 
   /**
-   * The run of both entries. With {@code endsTerminations} a termination ends the run as jq's resource end does
-   * (#197, F-87, ADR-0017 "Exit codes"): the results so far are flushed, {@code jq: error: <message>} goes to stderr,
+   * The run of both entries. With {@code endsTerminations} a termination ends the run as jq's resource end does: the
+   * results so far are flushed, {@code jq: error: <message>} goes to stderr,
    * and the exit code is the termination's, 5; without it the termination is thrown.
    */
   private static int run(Invocation invocation, UnaryOperator<JqEngine.Builder> engine, boolean endsTerminations) {
@@ -174,7 +174,7 @@ public final class Main {
       return report(invocation, COMPILE, e.getMessage());
     }
     if (explain) {
-      // ADR-0016: a jqj-only flag (DEVIATIONS "--explain"); the input is never read.
+      // A flag of this engine's that jq does not have; the input is never read.
       try {
         invocation.out().write(compiled.explain().getBytes(UTF_8));
         invocation.out().flush();
@@ -207,7 +207,7 @@ public final class Main {
           String name = file == null ? "<stdin>" : file;
           return report(invocation, FAILED, "jq: error (at " + name + ":" + ErrorLine.of(input) + ")" + message(e.value()));
         } catch (JqTermination t) {
-          // No run ends with HALT yet: halt and its output are spec 7's (T11).
+          // No run ends with HALT: halt is not built.
           if (!endsTerminations) {
             throw t;
           }
@@ -227,9 +227,8 @@ public final class Main {
   }
 
   /**
-   * What jq prints of an error value after its position (ADR-0039; jq-ref 1.8.2, recorded: diff/control.rec): a
-   * string's text, cut at its first NUL as jq's {@code %s} prints it (control/error-nul-string), after {@code ": "};
-   * any other value's compact text after {@code " (not a string): "} (control/error-null-uncaught, error-array).
+   * What jq 1.8.2 prints of an error value after its position: a string's text, cut at its first NUL as jq's
+   * {@code %s} prints it, after {@code ": "}; any other value's compact text after {@code " (not a string): "}.
    */
   private static String message(JqValue value) {
     if (value instanceof JqString s) {
@@ -254,7 +253,7 @@ public final class Main {
 
   /**
    * Ends the run at an option that is not built: a Stub when {@code stub}, otherwise jq's usage text for an option it
-   * does not know (jq-ref 1.8.2, diff/cli.rec {@code cli/unknown-*}). Both exit with code 2. {@code stub} holds for an
+   * does not know, as jq 1.8.2 prints it. Both exit with code 2. {@code stub} holds for an
    * option jq knows, and for a character outside ASCII in a cluster, which jq names by its first byte alone, no text.
    */
   private static int refuse(Invocation invocation, String option, boolean stub) {

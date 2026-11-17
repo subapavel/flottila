@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * The reference jq's outcome for one case, from a {@code <family>.rec} file that only {@code scripts/oracle-record.sh}
- * writes (ADR-0020). Its first line is {@code # jq-<version> sha256 <hex of the binary>}; each block holds {@code def},
+ * writes. Its first line is {@code # jq-<version> sha256 <hex of the binary>}; each block holds {@code def},
  * {@code rc}, {@code stdout} and {@code stderr}, once each.
  *
  * @param def the def of the case block it was recorded from

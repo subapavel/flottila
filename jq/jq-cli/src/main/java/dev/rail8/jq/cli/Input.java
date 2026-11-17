@@ -1,12 +1,11 @@
 package dev.rail8.jq.cli;
 
 /**
- * The input stream (GLOSSARY) of one run, as spec 1 reads it: all of stdin, or all of the one file argument, holding
- * no document or one (#22, "Command line"; several documents and files are spec 5's).
+ * The input stream of one run: all of stdin, or all of the one file argument, holding no document or one.
  */
 final class Input {
 
-  /** The UTF-8 BOM, which jq strips at the start of the input stream (ADR-0015). */
+  /** The UTF-8 BOM, which jq strips at the start of the input stream. */
   private static final byte[] BOM = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
 
   private Input() {}
@@ -14,8 +13,7 @@ final class Input {
   /**
    * Whether {@code stream} holds no document; jq then runs nothing and exits 0. That is nothing or only jq's whitespace,
    * after an optional leading UTF-8 BOM (EF BB BF), or a partial BOM cut by the end of the stream: EF or EF BB alone
-   * (ADR-0015; jq-ref 1.8.2, diff/string.rec {@code bom-*}). A partial BOM followed by anything else holds a document,
-   * whose read fails.
+   * (as jq 1.8.2 does). A partial BOM followed by anything else holds a document, whose read fails.
    */
   static boolean holdsNoDocument(byte[] stream) {
     // The leading bytes of the stream that are the BOM's.
@@ -36,7 +34,7 @@ final class Input {
     return true;
   }
 
-  /** jq's whitespace between documents and tokens (ADR-0015): SP, TAB, CR and LF. */
+  /** jq's whitespace between documents and tokens: SP, TAB, CR and LF. */
   static boolean isSpace(byte b) {
     return b == ' ' || b == '\t' || b == '\r' || b == '\n';
   }

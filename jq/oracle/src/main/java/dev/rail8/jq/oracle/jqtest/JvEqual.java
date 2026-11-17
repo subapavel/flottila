@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * jq's {@code jv_equal} as jq 1.8.2 with decNumber has it (ADR-0020), independent of jqj's {@code ==}:
+ * The reference jq's {@code jv_equal} as jq 1.8.2 with decNumber has it, independent of this engine's {@code ==}:
  *
  * <ul>
  *   <li>kinds must match, and null, false and true are three kinds;

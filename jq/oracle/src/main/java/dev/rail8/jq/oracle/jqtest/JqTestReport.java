@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * The jqtest oracle report {@code oracle/target/oracle-reports/jqtest-<backend>.tsv} as {@code scripts/ratchet.java}
- * reads it (ADR-0020). Columns: {@code id}, verdict, detail. The required ids come from
+ * reads it. Columns: {@code id}, verdict, detail. The required ids come from
  * {@link dev.rail8.jq.oracle.diff.DiffReport#required}, whose format is the same.
  */
 public final class JqTestReport {

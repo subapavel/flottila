@@ -3,7 +3,7 @@ package dev.rail8.jq.oracle.jqtest;
 import java.util.List;
 
 /**
- * One case of a jq test file (ADR-0020).
+ * One case of a jq test file.
  *
  * @param id {@code <file>#<12 hex digits>}, with {@code ~2}, {@code ~3} for identical cases in file order
  * @param line the 1-based line the case starts at: its marker, or its program

@@ -13,7 +13,7 @@ import java.util.stream.Stream;
 
 /**
  * Every differential case below a directory, with its recording if it has one. The directory is walked recursively,
- * and a file's family is its path below it (ADR-0025): {@code gen/values-v1.cases} holds {@code gen/values-v1/<seed>}.
+ * and a file's family is its path below it: {@code gen/values-v1.cases} holds {@code gen/values-v1/<seed>}.
  */
 public final class DiffCorpus {
 

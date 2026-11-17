@@ -10,14 +10,14 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Judges one case's optimised run against its run under another mode (ADR-0020 amendment for #60, ADR-0018): the
- * conservative compile, or the trampoline run, the conservative compile with {@code stackBytes} 0 (F-58). Each verdict
+ * Judges one case's optimised run against its run under another mode: the conservative compile, or the trampoline
+ * run, the conservative compile with {@code stackBytes} 0, which runs deep recursion on the heap. Each verdict
  * names the other run by its mode. The rules, in order:
  *
  * <ol>
  *   <li>an exception out of either run is CRASH, unless its message carries the Stub prefix;
  *   <li>either run reaching a Stub, by such an exception or in its stderr, is FAIL {@code stub:};
- *   <li>for a case with {@code limit recursion-depth} (ADR-0047 #118), the other run, which stores no tail kind, passes
+ *   <li>for a case with {@code limit recursion-depth}, the other run, which stores no tail kind, passes
  *       only as {@code Terminated("BUDGET RECURSION_DEPTH")} while the optimised run ended: PASS; an optimised run that
  *       ended as a termination is FAIL {@code left out:}, and any other end of the other run FAIL {@code no depth end:};
  *   <li>either run ending as a termination is FAIL {@code left out:}, so the case is never ratcheted;
@@ -27,15 +27,15 @@ import java.util.List;
  */
 public final class CompileModeRunner {
 
-  /** The detail prefix of a Disagreement, which {@code regen} refuses (F-29). */
+  /** The detail prefix of a Disagreement, which {@code regen} refuses. */
   public static final String DISAGREE = "disagree: ";
 
   private static final String OPTIMISED = "optimised";
 
-  /** The mode that is a compile of its own; every other mode is a run setting (F-58). */
+  /** The mode that is a compile of its own; every other mode is a run setting. */
   private static final String CONSERVATIVE = "conservative";
 
-  /** The one end of a run that stores no tail kind under {@code limit recursion-depth} (ADR-0047 #118). */
+  /** The one end of a run that stores no tail kind under {@code limit recursion-depth}. */
   private static final String DEPTH = "BUDGET RECURSION_DEPTH";
 
   /** Bytes shown of a differing stream, starting a little before the first difference. */
@@ -52,15 +52,15 @@ public final class CompileModeRunner {
 
   /**
    * The verdict of case {@code id} from its run under the optimised compile and {@code other}, its run under
-   * {@code mode}: {@code conservative} or {@code trampoline} (F-58), for a case without {@code limit recursion-depth}.
+   * {@code mode}: {@code conservative} or {@code trampoline}, for a case without {@code limit recursion-depth}.
    */
   public static Verdict judge(String id, Run optimised, String mode, Run other) {
     return judge(id, optimised, mode, other, false);
   }
 
   /**
-   * {@link #judge(String, Run, String, Run)} for a case with {@code limit recursion-depth} when {@code limited}
-   * (ADR-0047 #118): the other run passes only as a termination over the recursion-depth budget.
+   * {@link #judge(String, Run, String, Run)} for a case with {@code limit recursion-depth} when {@code limited}: the
+   * other run passes only as a termination over the recursion-depth budget.
    */
   public static Verdict judge(String id, Run optimised, String mode, Run other, boolean limited) {
     String[] modes = {OPTIMISED, mode};

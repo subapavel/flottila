@@ -14,12 +14,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The {@code values-v1} Generator (ADR-0020, ADR-0025): a function from a Seed to one differential case, {@code
+ * The {@code values-v1} Generator: a function from a Seed to one differential case, {@code
  * gen/values-v1/<seed>}, whose stdin is one random document inside jq's accept set. It uses only the JDK and its own
  * {@link SplitMix64}, with the seed as the state, and integer draws only. It is frozen at the first merge of {@code
  * diff/gen/values-v1.rec}: a change to any output byte makes it {@code values-v2}.
  *
- * <p>The parameters, approved on #28 (architect, 2026-11-11):
+ * <p>The parameters:
  *
  * <table>
  *   <caption>values-v1</caption>
@@ -63,14 +63,12 @@ import java.util.Set;
  *       whitespace only, a second value; {@code NaN1}-like spellings</td></tr>
  * </table>
  *
- * <p>Trial run (#28 answer (c), jq-ref 1.8.2, 2026-11-11, under all seven forms): {@code -Infinity}, {@code -inf},
- * {@code 1e2147483648} and the 11-digit exponents {@code 1e10000000000}, {@code 1e-10000000000},
- * {@code 1e99999999999} and {@code 1E+12345678901} all gave rc 0, so every one of them stays in the table and none
- * was removed.
+ * <p>Under the reference jq 1.8.2 and all seven forms, {@code -Infinity}, {@code -inf}, {@code 1e2147483648} and the
+ * 11-digit exponents {@code 1e10000000000}, {@code 1e-10000000000}, {@code 1e99999999999} and
+ * {@code 1E+12345678901} all give rc 0, so every one of them stays in the table.
  *
- * <p>A seed that later hits a deviation keeps its block and gains {@code deviation} and {@code jqj-*} lines (#28
- * answer (d)); the freeze check ignores them. {@code DiffCase} does not read {@code jqj-*} keys yet: it gains them
- * with the first deviation seed.
+ * <p>A seed that hits a deviation keeps its block and gains {@code deviation} and {@code jqj-*} lines; the freeze
+ * check ignores them.
  */
 public final class ValuesV1 {
 

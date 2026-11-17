@@ -1,7 +1,7 @@
 package dev.rail8.jq.oracle.gen;
 
 /**
- * The PRNG of every generator (ADR-0025): SplitMix64 (Steele, Lea and Flood, 2014) with the seed as its state, written
+ * The PRNG of every generator: SplitMix64 (Steele, Lea and Flood, 2014) with the seed as its state, written
  * here so that no JDK release can change a case. Every bounded draw is integer arithmetic on its 64-bit output.
  */
 public final class SplitMix64 {
