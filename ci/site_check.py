@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks the static website for rail8.dev (BRAND-6) before it is deployed.
+"""Checks the static website for rail8.dev before it is deployed.
 
 Usage:
   python3 ci/site_check.py <dir>

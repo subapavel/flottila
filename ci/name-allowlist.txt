@@ -53,7 +53,6 @@ deploy/postgres/V*.sql | * | applied migrations: a changed byte fails Flyway's c
 docs/OPERATIONS-BRIEF.md | flottila-mapping | the mapping engine's repository as it was called when the owner wrote the brief (D-147)
 
 # The prototype's names, where a live file names the prototype.
-ci/coverage_check.py | flottila-m1 | a comment names the prototype module P0-09 removed
 docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-m1 | the document describes the prototype module by its name
 docs/PROTOTYPE-VS-ARCHITECTURE.md | flottila-proto | the document describes the prototype by its pom name
 platform/archtest/src/test/java/dev/rail8/archtest/BuildHygieneTest.java | flottila-m1 | the test asserts the prototype module stays gone

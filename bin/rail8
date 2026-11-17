@@ -1,5 +1,5 @@
 #!/bin/sh
-# rail8: the command line (D-079): runs the packaged cli jar, platform/cli/target/rail8-cli-<version>.jar, whose manifest
+# rail8: the command line: runs the packaged cli jar, platform/cli/target/rail8-cli-<version>.jar, whose manifest
 # names dev.rail8.cli.Cli and its class path in platform/cli/target/lib. Build it first: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-cli -am
 # Usage: bin/rail8 help
 set -eu

@@ -1,4 +1,4 @@
-"""Tests for ci/coverage_check.py — the JaCoCo no-decrease gate (CLAUDE.md: "No decrease on any push").
+"""Tests for ci/coverage_check.py — the JaCoCo no-decrease gate.
 
 Run: python3 -m unittest ci.test_coverage_check  (from the repository root; also run by the CI build job)
 """
@@ -93,7 +93,7 @@ class CoverageCheckTest(unittest.TestCase):
         self.assertEqual(frozenset(), cc.IGNORED, "nothing is exempt from the coverage report since P0-09")
 
     def test_a_module_under_mapping_is_neither_measured_nor_a_stale_baseline(self):
-        # the mapping engine has its own gates (BRAND-3): its reports and its report-less classes are not this guard's
+        # the mapping engine has its own gates: its reports and its report-less classes are not this guard's
         module(self.root, "platform/core", report=(0, 10, 0, 2))
         module(self.root, "mapping/engine/xdm", report=(50, 50, 5, 5))
         module(self.root, "mapping/engine/ir")  # classes, no report
@@ -144,7 +144,7 @@ class CoverageCheckTest(unittest.TestCase):
         self.assertEqual({"rail8-api": {"line": 66.7, "branch": 33.3}}, cc.measure(self.root))
 
     def test_a_drop_inside_the_noise_band_is_not_a_decrease(self):
-        # timing-dependent branches (testkit detector) move by one branch ≈ 1.2 pp between runs; D-029 band = 2.0 pp
+        # timing-dependent branches (testkit detector) move by one branch ≈ 1.2 pp between runs; the band is 2.0 pp
         module(self.root, "rail8-api", report=(2, 98, 11, 89))      # line 98.0, branch 89.0
         baseline = {"rail8-api": {"line": 99.9, "branch": 90.5}}
         self.assertEqual([], cc.compare(cc.measure(self.root), baseline, self.root))
@@ -182,7 +182,7 @@ class CoverageCheckTest(unittest.TestCase):
         self.assertEqual(["rail8-api: line 90.0 % is below the committed baseline 95.0 % by more than 2.0 — coverage dropped; run --write and say why"], problems)
 
     def test_write_writes_the_measured_value_inside_the_band(self):
-        # D-050: --write records the measurement, never a remembered higher value; the band is a tolerance of the check, not of the file
+        # --write records the measurement, never a remembered higher value; the band is a tolerance of the check, not of the file
         module(self.root, "rail8-api", report=(1, 99, 3, 197))      # 99.0 / 98.5 measured, each inside the 2.0 band below 100.0
         path = self.root / "ci" / "coverage-baseline.json"
         path.parent.mkdir()

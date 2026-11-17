@@ -1,4 +1,4 @@
-"""Tests for ci/name_guard.py — the old product name does not come back (BRAND-4, D-148, D-149).
+"""Tests for ci/name_guard.py — the old product name does not come back.
 
 Run: python3 -m unittest ci.test_name_guard  (from the repository root; also run by the CI build job)
 
@@ -361,7 +361,7 @@ class NameGuardTest(unittest.TestCase):
         self.assertEqual(0, done.returncode, out[-4000:])
 
     # 11 ------------------------------------------------------------------------------------------
-    # BRAND-5 (D-154): the old namespace, `io.rail8` / `io/rail8` and its regex-escaped spellings, is refused
+    # the old namespace, `io.rail8` / `io/rail8` and its regex-escaped spellings, is refused
     # exactly as the old name is. A letter, digit or `_` directly before `io` makes it another word
     # (`studio.rail8`); any other character before it, `.` included, leaves it the old namespace.
 

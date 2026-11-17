@@ -34,7 +34,10 @@ import sys
 JAVA_ROOTS = ("platform/", "mapping/")
 # Folders whose comments have been cleaned of references: every comment in every file under them is checked, not
 # only the lines a change touches. A cleanup adds its folders to this list.
-CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtime/src/main/")
+CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtime/src/main/", "platform/testkit/src/main/",
+           "platform/sim/src/main/", "platform/cli/src/main/", "platform/schemas/src/main/",
+           "platform/components/http/src/main/", "platform/components/mock/src/main/",
+           "platform/components/sftp/src/main/", "platform/steps/validate/src/main/", "platform/steps/xslt/src/main/")
 UI_ROOT = "mapping/ui/"
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")

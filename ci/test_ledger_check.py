@@ -1,4 +1,4 @@
-"""Tests for ci/ledger_check.py — the table-shape guard on docs/archive/agent/BACKLOG.md and docs/DECISIONS.md (FIX-139).
+"""Tests for ci/ledger_check.py — the table-shape guard on docs/archive/agent/BACKLOG.md and docs/DECISIONS.md.
 
 Run: python3 -m unittest ci.test_ledger_check  (from the repository root; also run by the CI build job)
 
@@ -244,7 +244,7 @@ class LedgerCheckTest(unittest.TestCase):
             self.assertFalse(self.messages_for(output, "BACKLOG.md", line_no),
                              f"well-formed row on line {line_no} reported: {output!r}")
 
-    # ---- duplicate ids (FIX-209)
+    # ---- duplicate ids
     #
     # Two parallel sessions each read the same highest id and each allocate the next one; the merge is the
     # first moment one file holds both rows, so the merge is where a machine can see it. Within one ledger
