@@ -7,7 +7,7 @@ every line, whether the change touches it or not.
 
 1. References in comments. A comment or Javadoc in a Java file under platform/ or mapping/, or a comment in a
    TypeScript, JavaScript or CSS file under mapping/ui/, must explain; it must not point at a task or a decision.
-   A reference is an upper-case tag, a hyphen and a number, such as D-164, FIX-268, MAP-12b, P0-10 or ADR-0019,
+   A reference is an upper-case tag, a hyphen and a number, such as D-164, FIX-268, MAP-12b, P2-02D, P0-10 or ADR-0019,
    or a `#` followed by a number, such as #123. Names of standards (UTF-8, SHA-256, ISO-8601 and the like) are not
    references.
 2. Hard-coded colours. In CSS, SCSS, TypeScript and JavaScript files (TSX and JSX included) a colour is written
@@ -43,7 +43,7 @@ SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")
 COLOUR_SKIPPED = re.compile(r"^site/|(^|/)e2e/|(^|/)generated/|\.(test|spec)\.[a-z]+$")
 
-REFERENCE = re.compile(r"(?<![\w-])([A-Z][A-Z0-9]*-\d{1,4}[a-z]?)(?![\w-])|(?<![\w&#])(#\d+)(?!\w)")
+REFERENCE = re.compile(r"(?<![\w-])([A-Z][A-Z0-9]*-\d{1,4}[a-zA-Z]?)(?![\w-])|(?<![\w&#])(#\d+)(?!\w)")
 # names of standards and formats that are written like a reference but explain themselves
 STANDARDS = {"AES", "CESU", "CRC", "ECMA", "IEC", "IEEE", "ISO", "JSR", "MD", "PKCS", "RFC", "SHA", "TLS", "UTF", "X"}
 
