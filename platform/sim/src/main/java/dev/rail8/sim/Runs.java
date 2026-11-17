@@ -14,7 +14,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
- * The message threads of a run and where each stands (D-143): a run is RUNNING from its unit's start until it is HELD by the
+ * The message threads of a run and where each stands: a run is RUNNING from its unit's start until it is HELD by the
  * partner, PARKED on a Retry backoff, or ended — its end seen by a join on a helper virtual thread, never by polling thread
  * state. A START run is registered by the driver with its thread before it starts; a worker run is expected by message id when
  * the queue hands its item out (a claim on the driver, a fast path on the finishing thread) and binds its thread at its first

@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The outcome of one run (D-143).
+ * The outcome of one run.
  *
  * @param seed the run's seed
  * @param config its configuration

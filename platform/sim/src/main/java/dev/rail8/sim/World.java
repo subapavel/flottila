@@ -14,7 +14,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * The system a run simulates, as seams over what the simulation builds (D-143): the correct world takes each as it is; a broken
+ * The system a run simulates, as seams over what the simulation builds: the correct world takes each as it is; a broken
  * variant (src/test) replaces one through its public type only. The observers see what the driver does, never change it.
  */
 public interface World {
@@ -64,7 +64,7 @@ public interface World {
      */
     record Unit(long tick, Kind kind, Optional<String> messageId) {
 
-        /** The driver's units (D-143). */
+        /** The driver's units. */
         public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE }
     }
 

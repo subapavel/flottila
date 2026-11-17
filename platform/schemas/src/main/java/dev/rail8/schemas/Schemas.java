@@ -18,8 +18,8 @@ import java.util.Objects;
 
 /**
  * The six published JSON Schemas (draft 2020-12) of the v1 file model — flow, package, endpoint, test,
- * {@code folder.yaml} (D-078) and {@code package.lock} (D-087) — loaded from {@code schemas/<kind>.schema.json} on the classpath, each stamped
- * {@code schemaVersion: 1} and {@code draft — review at hand-over} (ARCHITECTURE amendment 4, P0-12).
+ * {@code folder.yaml} and {@code package.lock} — loaded from {@code schemas/<kind>.schema.json} on the classpath, each stamped
+ * {@code schemaVersion: 1} and {@code draft — review at hand-over}.
  * Validation is pure: no I/O, no Vert.x instance.
  *
  * @since 0.1

@@ -6,7 +6,7 @@ import dev.rail8.core.record.Snapshot;
 import io.vertx.core.Future;
 
 /**
- * The at-least-once flow's intake as the simulation builds it (D-143): the sequential intake over the store and the queue, with
+ * The at-least-once flow's intake as the simulation builds it: the sequential intake over the store and the queue, with
  * STORE_REFUSE drawn per save — call 0 refuses the ingress record (nothing saved), call 1 the enqueue (the body and the record
  * saved, the save abandoned before its enqueue: nothing queued). Either is a failed save, a retryable Nack.
  */

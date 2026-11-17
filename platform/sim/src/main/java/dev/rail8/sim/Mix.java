@@ -1,6 +1,6 @@
 package dev.rail8.sim;
 
-/** The run's arithmetic of chance (D-143): SplitMix64 and the counter-based folds built on it. */
+/** The run's arithmetic of chance: SplitMix64 and the counter-based folds built on it. */
 final class Mix {
 
     private Mix() {}

@@ -3,7 +3,7 @@ package dev.rail8.sim;
 import java.util.function.LongSupplier;
 
 /**
- * The run's per-call faults (D-143): a call's decision is {@code mix(of(FAULTS), kind.code, messageId, attempt, callOrdinal) < rate}
+ * The run's per-call faults: a call's decision is {@code mix(of(FAULTS), kind.code, messageId, attempt, callOrdinal) < rate}
  * — counter-based, so a call decides the same whatever ran before it, and a workload change moves no other call's fault. Off
  * after the last tick (the drain): no call is drawn for then.
  */

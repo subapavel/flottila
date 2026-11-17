@@ -29,16 +29,16 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 /**
- * A package directory as the schemas see it (D-078): {@code package.yaml} at the root, a {@code folder.yaml} in any folder below
+ * A package directory as the schemas see it: {@code package.yaml} at the root, a {@code folder.yaml} in any folder below
  * it, and every other {@code *.yaml} / {@code *.yml} — in any folder, whatever its name — an endpoint, a flow or a test by its
  * {@code kind}; a YAML without a known kind is a plain file when a flow or a test names it as one, else a problem. Folder names
  * are slugs of at most 64 characters, at most four folders deep. {@link #crossCheck()} is what no single-file schema can say: a
  * flow's endpoints exist, its stylesheets exist, a test's flow exists, the fixtures a test names exist — every file reference a
  * path from the package root that stays inside it. {@link #problems()} is everything a deploy refuses the package for before any
- * component is asked (D-059). {@link #manifest()}, {@link #endpoints()} and {@link #flows()} hand out copies of the documents as
+ * component is asked. {@link #manifest()}, {@link #endpoints()} and {@link #flows()} hand out copies of the documents as
  * loaded, by id; {@link #folders()} and {@link #artifacts()} are the package's tree.
  *
- * <p>Dependencies (D-087): {@code package.yaml} declares each at an exact version, {@code package.lock} at the root (read when it
+ * <p>Dependencies: {@code package.yaml} declares each at an exact version, {@code package.lock} at the root (read when it
  * exists; no document of the walk) pins each with its {@link #content(Path) content digest}, and a step's {@code stylesheet} or
  * {@code schema} names a dependency's file as {@code <dep>:<path from its root>} — a package name before the first {@code /};
  * anything else is a path from the package root, so a root file whose name has a colon is named {@code ./<name>}. Only a declared
@@ -48,17 +48,17 @@ import java.util.stream.Stream;
  */
 public final class Package {
 
-    /** The deepest a folder may lie below the package root, the root's own children being 1 deep (D-078). */
+    /** The deepest a folder may lie below the package root, the root's own children being 1 deep. */
     private static final int MAX_DEPTH = 4;
-    /** A folder name: a slug of at most 64 characters (D-078); matched whole. */
+    /** A folder name: a slug of at most 64 characters; matched whole. */
     private static final Pattern SLUG = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final String MANIFEST = "package.yaml";
     private static final String FOLDER = "folder.yaml";
     private static final String LOCK = "package.lock";
-    /** A dependency reference's prefix (D-087): a package name, then a colon, before the first {@code /}. */
+    /** A dependency reference's prefix: a package name, then a colon, before the first {@code /}. */
     private static final Pattern DEPENDENCY = Pattern.compile("([a-z][a-z0-9-]{0,63}):");
     private static final Set<Schemas> ARTIFACTS = Set.of(Schemas.ENDPOINT, Schemas.FLOW, Schemas.TEST);
-    /** A mock behaviour's keys that feed a consumer (D-080): its fixtures, polled at the consumer's start. */
+    /** A mock behaviour's keys that feed a consumer: its fixtures, polled at the consumer's start. */
     private static final List<String> FEEDS = List.of("files", "messages");
     /** The {@code expect} keys that read the answer to a send, each as its problem line names it. */
     private static final Map<String, String> NEEDS_ANSWER = Map.of("status", "a status", "error", "an error");
@@ -128,7 +128,7 @@ public final class Package {
     public record Artifact(String path, String kind, Optional<String> id) {}
 
     /**
-     * One dependency as {@code package.lock} pins it (D-087).
+     * One dependency as {@code package.lock} pins it.
      *
      * @param name    the dependency's package name
      * @param version its exact version
@@ -426,7 +426,7 @@ public final class Package {
 
     /**
      * The file the flow {@code id} was read from, wherever it lies and whatever it is called; the steps' file references resolve
-     * against the package root, not its folder (D-078).
+     * against the package root, not its folder.
      *
      * @throws IllegalArgumentException no flow of this package has the id
      */
@@ -465,7 +465,7 @@ public final class Package {
     }
 
     /**
-     * {@code package.yaml}'s dependencies against {@code package.lock} (D-087), once both passed their schemas: a name declared
+     * {@code package.yaml}'s dependencies against {@code package.lock}, once both passed their schemas: a name declared
      * twice, the package declaring itself (the shortest cycle), declared dependencies without a lock, a lock entry package.yaml
      * does not declare or declares at another version, a name the lock pins twice (once per name; each entry is compared),
      * and a declared dependency the lock does not pin.
@@ -499,7 +499,7 @@ public final class Package {
     }
 
     /**
-     * The package a step's file reference names (D-087): {@code <name>} of {@code <name>:<path>}, a package name before the first
+     * The package a step's file reference names: {@code <name>} of {@code <name>:<path>}, a package name before the first
      * {@code /}; empty for a path from the package root.
      */
     public static Optional<String> dependencyOf(String reference) {
@@ -508,7 +508,7 @@ public final class Package {
     }
 
     /**
-     * The content digest of the package in {@code dir} (D-087), what {@code package.lock} pins: {@code sha256:} and the lower-case hex
+     * The content digest of the package in {@code dir}, what {@code package.lock} pins: {@code sha256:} and the lower-case hex
      * SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and {@code file <path> <sha256>} for every regular file below
      * {@code dir}, sorted by its {@code /}-separated path, each line ended by {@code \n}. The files decide — not the archive they
      * came in, their modification times or empty folders.
@@ -590,7 +590,7 @@ public final class Package {
     /**
      * A test's flow exists, its mocks' endpoints and files ({@link #requireMocksExist}) and its cases' sends exist; a case sends,
      * or its flow's from endpoint is fed — {@code files} or {@code messages} in its effective entry, the case's own replacing the
-     * document's whole (D-080) — and a case without a send expects nothing of an answer ({@link #NEEDS_ANSWER}). Nothing about
+     * document's whole — and a case without a send expects nothing of an answer ({@link #NEEDS_ANSWER}). Nothing about
      * sending is said of a case whose flow is not there or names no from endpoint: the flow's own problem says it.
      */
     private void crossCheckTest(List<String> problems, Path file, JsonObject test) {
@@ -656,7 +656,7 @@ public final class Package {
     }
 
     /**
-     * A step's stylesheet or schema: {@code <dep>:<path>} names a package package.yaml declares (D-087) and stays inside it — its
+     * A step's stylesheet or schema: {@code <dep>:<path>} names a package package.yaml declares and stays inside it — its
      * file is the node's to find — and any other reference is a path from the package root ({@link #requireFile}).
      */
     private void requireStepFile(List<String> problems, Path namingFile, String what, String reference) {
@@ -674,7 +674,7 @@ public final class Package {
     }
 
     /**
-     * A stylesheet, schema or fixture reference is a path from the package root (D-078, amending D-040), whichever file names it;
+     * A stylesheet, schema or fixture reference is a path from the package root, whichever file names it;
      * one that normalises outside the package leaves it, whether or not a file is there.
      */
     private void requireFile(List<String> problems, Path namingFile, String what, String reference) {

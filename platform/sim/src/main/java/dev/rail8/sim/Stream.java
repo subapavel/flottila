@@ -1,7 +1,7 @@
 package dev.rail8.sim;
 
 /**
- * The independent random streams of a run (D-143): each comes from the run seed and its own explicit {@link #salt()}, never
+ * The independent random streams of a run: each comes from the run seed and its own explicit {@link #salt()}, never
  * from its declaration order. Append-only: a new stream takes a new salt, an existing salt never moves (every pinned seed
  * moves with it).
  */

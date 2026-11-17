@@ -43,7 +43,7 @@ import java.util.SplittableRandom;
 import java.util.function.Function;
 
 /**
- * One run of one seed (D-143), on the driver thread: the real core — {@link FlowBuilder}, {@link dev.rail8.core.flow.Delivery},
+ * One run of one seed, on the driver thread: the real core — {@link FlowBuilder}, {@link dev.rail8.core.flow.Delivery},
  * {@link FlowWorker}, admission, Retry, the recorder and the DLQ — over in-memory stores, the fake clock and the run's doubles.
  * Two flows: {@code sync} (transform, then the partner) and {@code alo}, at-least-once by key (extractKey, transform, the
  * partner), run by workers A and B over one queue. Each tick draws its actions from the WORKLOAD stream, adds the RELEASE of
@@ -61,7 +61,7 @@ final class SimRun {
     static final List<String> WORKERS = List.of("A", "B");
     private static final String PARTNER = "partner";
     private static final Path BASE = Path.of("");
-    /** The at-least-once flow's delivery.retries (D-135): none, so a run whose in-thread retries are spent parks at once. */
+    /** The at-least-once flow's delivery.retries: none, so a run whose in-thread retries are spent parks at once. */
     private static final RetryPolicy NO_RETRIES = new RetryPolicy(0, FlowDefinition.MIN_RETRY_INTERVAL, FlowDefinition.MIN_RETRY_INTERVAL, 1.0);
 
     /** One unit of the driver. */
