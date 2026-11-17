@@ -61,55 +61,63 @@ import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
- * Builds a {@link Pipeline} from a {@link FlowDefinition} (ARCHITECTURE §6): one {@link Stage} per configured
- * step — a built-in ({@code to}, {@code route}, {@code filter}, {@code extractKey}, {@code validate}, {@code split}) or the
- * registered {@link StepFactory} of its type; every stage is wrapped so the envelope it hands on carries the
- * step's number (ingress is 0, the n-th step is n — a stage that only changed headers, props or keys is
- * {@linkplain Envelope#advance() advanced}, one that wrote a body is already there); a {@code retryable} step
- * is wrapped in the flow's {@link RetryPolicy} by {@link Retry}. With a {@link MessageStore} given through
- * {@link #recording(MessageStore, Meter)}, every step is also wrapped by a {@link Recorder} under the flow's
- * {@link RecordingPolicy} (a step's own {@code recording} overrides it) and the pipeline starts with the ingress snapshot.
- * With {@link #stepEvents stepEvents(true)} every step, whatever else wraps it, is marked outermost by a {@link StepEvent} (D-094);
- * the start stage is not. Without it no step is marked.
- * An at-least-once flow parks a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} (ARCHITECTURE §4
- * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build.
+ * Builds a {@link Pipeline} from a {@link FlowDefinition}: one {@link Stage} per configured step, either a built-in
+ * ({@code to}, {@code route}, {@code filter}, {@code extractKey}, {@code validate}, {@code split}) or the registered
+ * {@link StepFactory} of its type.
  *
- * <p>{@link #delivery} gives the flow's consumer handler per delivery mode, under the flow's {@link Admission} — at-least-once
- * saves durably through the {@link Intake} given through {@link #intake(Intake)}, by default into the store and the
- * {@link WorkQueue} given through {@link #queue(WorkQueue)} — and {@link #worker} the
- * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049, D-055). The steps
- * see every header; a producer receives only the headers the flow's {@code forwardHeaders} name (case-insensitive) plus
- * {@code content-type}, the body's media type, whatever set them — the {@code to} step filters at the producer boundary
- * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e). Each {@code to} sends under the limit of the target
- * its endpoint's component names ({@link Component#target}), from the {@link Targets} given through {@link #targets(Targets)} —
- * an unshared limit with the defaults when the component names none (D-099); the limit wraps only the producer's send, inside
- * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time). A permit not granted within the earlier of the limit's maxWait and the time left until the message's
- * deadline fails the send with a retryable {@link dev.rail8.api.NackException}; a send where no {@link MessageContext} is bound
- * waits maxWait. Under the permit the producer is handed the time the send has left as a live {@link Deadline} — until the
- * message's deadline; no time left fails the send with a retryable {@link dev.rail8.api.NackException} "deadline passed" and
- * the producer is not called (D-113 draft); a send where no {@link MessageContext} is bound is the producer's plain
- * {@code send(e)}. A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
- * under the permit just before the producer's send: closed, it fails with a {@link FencedException}, which no {@link Retry}
- * retries and no {@link Parking} parks (D-101 (2)). A {@link Fence} also bounds the worker's sends: the deadline is the earlier
- * of the message's and the fence's, a timer at the fence's end re-reads it and fails the run's wait with a
- * {@link FencedException} once it is closed (the item left unsettled; the abandoned send keeps its permit until its own future
- * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a worker's failed run
- * is deferred or parked only while the same fence is open — closed, its item is left unsettled, no defer and no DLQ row
- * ({@link FlowWorker}); a sync or at-most-once run is never fenced (no other node takes it over).
+ * <p>Every stage is wrapped so that the envelope it hands on carries the step's number: ingress is 0 and the n-th step
+ * is n. A stage that only changed headers, props or keys is {@linkplain Envelope#advance() advanced}; one that wrote a
+ * body is already at its number. A {@code retryable} step is wrapped in the flow's {@link RetryPolicy} by
+ * {@link Retry}. With a {@link MessageStore} given through {@link #recording(MessageStore, Meter)}, every step is also
+ * wrapped by a {@link Recorder} under the flow's {@link RecordingPolicy} (a step's own {@code recording} overrides it),
+ * and the pipeline starts with the ingress snapshot. With {@link #stepEvents stepEvents(true)} every step is marked
+ * outermost by a {@link StepEvent}, whatever else wraps it; the start stage is not marked. An at-least-once flow parks
+ * a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} and does not build without one; a sync flow
+ * answers its caller and an at-most-once flow drops the message.
  *
- * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s — starts with one
- * stage that binds the message's {@link MessageContext} for the rest of the run (D-100): its deadline is the run's start on the
- * Runtime's clock, taken when the stage runs, plus the flow's {@code delivery.timeout} — fresh per run: each sync call, each
- * at-least-once claim.
+ * <p>{@link #delivery} gives the flow's consumer handler for its delivery mode, under the flow's {@link Admission}. An
+ * at-least-once delivery saves each message durably through the {@link Intake} given through {@link #intake(Intake)},
+ * by default into the store and the {@link WorkQueue} given through {@link #queue(WorkQueue)}; {@link #worker} gives
+ * the {@link FlowWorker} that runs what such a delivery accepted.
  *
- * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
- * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
- * used here and nowhere else (CLAUDE.md): factories get a {@link StepResources}, the {@code to} step gets its
- * {@link Producer}s, resolved once at build time from the endpoint's URI scheme. An unknown step type, endpoint,
- * scheme, language or expression is a build error naming the step; nothing is deferred to the first message. So is a
- * step that needs the whole body ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit
- * without a {@code split} before it (ARCHITECTURE §5). A build that fails closes the producers it created before the failure
- * leaves; those of a {@link Delivery} or {@link FlowWorker} built are theirs to close ({@code close()}, FIX-30).
+ * <p>The steps see every header. A producer receives only the headers named by the flow's {@code forwardHeaders}
+ * (case-insensitive) plus {@code content-type}, whatever set them: the {@code to} step filters them at the producer
+ * boundary, so nothing reaches a partner unless the flow says so.
+ *
+ * <p>Each {@code to} sends under the limit of the target its endpoint's component names ({@link Component#target}),
+ * taken from the {@link Targets} given through {@link #targets(Targets)}; a component that names no target gets an
+ * unshared limit with the defaults. The limit wraps only the producer's send, inside {@link Retry} (so no permit is
+ * held across a backoff) and inside the {@link Recorder} (so the wait counts in the step's time). A permit not granted
+ * within the earlier of the limit's maxWait and the time left until the message's deadline fails the send with a
+ * retryable {@link dev.rail8.api.NackException}; a send with no {@link MessageContext} bound waits maxWait. Under the
+ * permit the producer is handed the time the send has left as a live {@link Deadline}, until the message's deadline; when
+ * no time is left the send fails with a retryable {@link dev.rail8.api.NackException} and the producer is not called. A
+ * send with no {@link MessageContext} bound is the producer's plain {@code send(e)}.
+ *
+ * <p>A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
+ * under the permit just before the producer is called; when it is closed the send fails with a {@link FencedException},
+ * which no {@link Retry} retries and no {@link Parking} parks. This keeps a node that lost its lease from sending
+ * messages another node now owns. A {@link Fence} also bounds the worker's sends in time: the deadline is the earlier of
+ * the message's and the fence's, and a timer at the fence's end re-reads it and fails the run's wait with a
+ * {@link FencedException} once it is closed. The item is then left unsettled, and the abandoned send keeps its permit
+ * until its own future settles. A producer failure that lands while the fence is closed becomes a
+ * {@link FencedException} carrying it. A worker's failed run is deferred or parked only while the same fence is open;
+ * when it is closed, the item is left unsettled, with no defer and no DLQ row ({@link FlowWorker}). A sync or
+ * at-most-once run is never fenced, because no other node takes it over.
+ *
+ * <p>Every pipeline built (by {@link #build}, a sync or at-most-once {@link #delivery}, or a {@link #worker}) starts with
+ * a stage that binds the message's {@link MessageContext} for the rest of the run. Its deadline is the run's start on the
+ * Runtime's clock, taken when the stage runs, plus the flow's {@code delivery.timeout}, fresh for each run: each sync
+ * call and each at-least-once claim.
+ *
+ * <p>The built-ins take their conditions and values from a registered {@link Expressions} language ({@code language}
+ * per step, default {@code xpath}), so core never parses a body. This class is the only user of the {@link Runtime}:
+ * factories get a {@link StepResources}, and the {@code to} step gets its {@link Producer}s, resolved once at build time
+ * from the endpoint's URI scheme. An unknown step type, endpoint, scheme, language or expression is a build error naming
+ * the step; nothing is left to fail on the first message. So is a step that needs the whole body
+ * ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit with no {@code split} before it. A build
+ * that fails closes the producers it created before the exception leaves; the producers of a built {@link Delivery} or
+ * {@link FlowWorker} belong to it and are closed by its {@code close()}.
  *
  * @since 0.1
  */
@@ -121,7 +129,7 @@ public final class FlowBuilder {
     /** The fence of an unfenced run: always open. */
     private static final BooleanSupplier OPEN = () -> true;
 
-    /** The node's default schedule of retries when none is given (O1, D-135 draft): 3 retries 5 minutes apart, no growth. */
+    /** The node's default schedule of retries when none is configured: 3 retries 5 minutes apart, no growth. */
     public static final RetryPolicy DEFAULT_RETRIES = new RetryPolicy(3, Duration.ofMinutes(5), Duration.ofMinutes(5), 1.0);
 
     private final Runtime runtime;
@@ -136,7 +144,7 @@ public final class FlowBuilder {
     private Map<String, String> extraVersions = Map.of();
     private Consumer<Path> reads = path -> { };
     private Map<String, Path> dependencies = Map.of();
-    private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
+    private boolean stepEvents;   // false: no step is marked
     private Targets targets;
     private BooleanSupplier fence = OPEN;
     private Workers workers = new Workers();
@@ -155,7 +163,7 @@ public final class FlowBuilder {
         this.targets = new Targets(Targets.DEFAULTS, Map.of(), runtime.timer());
     }
 
-    /** Records a snapshot per step into {@code store} (ARCHITECTURE §6); without this call nothing is recorded. */
+    /** Records a snapshot per step into {@code store}, metered by {@code meter}; without this call nothing is recorded. */
     public FlowBuilder recording(MessageStore store, Meter meter) {
         this.store = Objects.requireNonNull(store, "store");
         this.meter = Objects.requireNonNull(meter, "meter");
@@ -163,8 +171,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * Limits the sends of every {@code to} built from now on by the target its component names, through {@code targets} — the
-     * node's, shared by every flow it builds (D-099). Without this call the builder has a {@link Targets} of its own with the
+     * Limits the sends of every {@code to} built from now on by the target its component names, through {@code targets}: the
+     * node's, shared by every flow it builds. Without this call the builder has a {@link Targets} of its own with the
      * {@linkplain Targets#DEFAULTS defaults} on the Runtime's timer.
      */
     public FlowBuilder targets(Targets targets) {
@@ -172,20 +180,20 @@ public final class FlowBuilder {
         return this;
     }
 
-    /** Parks the failed messages of at-least-once flows in {@code dlq} (ARCHITECTURE §6); such a flow does not build without it. */
+    /** Parks the failed messages of at-least-once flows in {@code dlq}; such a flow does not build without it. */
     public FlowBuilder dlq(Dlq dlq) {
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         return this;
     }
 
-    /** Queues the accepted messages of at-least-once flows in {@code queue} (ARCHITECTURE §4, §7); their delivery and worker need it. */
+    /** Queues the accepted messages of at-least-once flows in {@code queue}; their delivery and worker need it. */
     public FlowBuilder queue(WorkQueue queue) {
         this.queue = Objects.requireNonNull(queue, "queue");
         return this;
     }
 
     /**
-     * Saves the messages of at-least-once flows through {@code intake} (D-082): their delivery's durable save — body, ingress
+     * Saves the messages of at-least-once flows through {@code intake}: their delivery's durable save of body, ingress
      * record and work item. Without this call it is a {@link SequentialIntake} over the {@link #recording} store and the
      * {@link #queue}; the node's is the Postgres intake, all three in one transaction.
      */
@@ -196,8 +204,10 @@ public final class FlowBuilder {
 
     /**
      * Configuration versions every message of the flows built from now on carries beside the flow's own, on its snapshots and
-     * DLQ rows — a deploy's {@code package=<name>@<version>} and {@code revision} (D-059); they replace those of an earlier call.
-     * The {@code flow} key is the builder's to write: an {@link IllegalArgumentException}.
+     * DLQ rows, such as a deploy's {@code package=<name>@<version>} and {@code revision}; they replace those of an earlier
+     * call.
+     *
+     * @throws IllegalArgumentException when {@code extra} sets the {@code flow} key, which the builder writes itself
      */
     public FlowBuilder versions(Map<String, String> extra) {
         Map<String, String> copy = Map.copyOf(extra);
@@ -208,8 +218,8 @@ public final class FlowBuilder {
 
     /**
      * Tells {@code sink} every path the steps of the flows built from now on read through their {@link StepResources} ({@code file},
-     * {@code resolve}) while they are built — by {@link #delivery} (sync, at-most-once; at-least-once: its partition key's
-     * expression), {@link #worker} and {@link #build} — for a flow's effective hash (D-063); it replaces the sink
+     * {@code resolve}) while they are built by {@link #delivery} (for at-least-once, only its partition key's expression),
+     * {@link #worker} and {@link #build}, so that a flow's effective hash covers the files it reads; it replaces the sink
      * of an earlier call. Without a call nobody is told.
      */
     public FlowBuilder reads(Consumer<Path> sink) {
@@ -219,7 +229,7 @@ public final class FlowBuilder {
 
     /**
      * Gives the steps of the flows built from now on the package's dependencies, each name to the directory its resolved version
-     * is unpacked in, as {@link StepResources#dependencies()} (D-087); it replaces the map of an earlier call. Without a call a
+     * is unpacked in, as {@link StepResources#dependencies()}; it replaces the map of an earlier call. Without a call a
      * flow has none.
      */
     public FlowBuilder dependencies(Map<String, Path> dependencies) {
@@ -228,8 +238,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * Marks every step of the flows built from now on outermost with a {@link StepEvent} when {@code on} (D-094: the node asks for
-     * it when it samples CPU time); it replaces the choice of an earlier call. Without a call, or with {@code false}, no step is
+     * Marks every step of the flows built from now on outermost with a {@link StepEvent} when {@code on}; the node asks for
+     * this when it samples CPU time per step. It replaces the choice of an earlier call. Without a call, or with {@code false}, no step is
      * marked: the stages are the steps and their wrappers alone.
      */
     public FlowBuilder stepEvents(boolean on) {
@@ -238,10 +248,9 @@ public final class FlowBuilder {
     }
 
     /**
-     * Fences the workers built from now on by {@code fence}, the node's ({@link dev.rail8.core.node.NodeLease}, D-101 (2)):
-     * they claim, their {@code to} steps send, and they defer a failed run, park a message, complete, take the next item of a key
-     * and hold, only while it answers true. A {@link Fence} also bounds their sends by time
-     * (D-113 draft): the producer's deadline is the earlier of the message's and the fence's, and a run stops waiting for a send
+     * Fences the workers built from now on by {@code fence}, the node's {@link dev.rail8.core.node.NodeLease}: they claim,
+     * their {@code to} steps send, and they defer a failed run, park a message, complete, take the next item of a key and
+     * hold, only while it answers true. A {@link Fence} also bounds their sends in time: the producer's deadline is the earlier of the message's and the fence's, and a run stops waiting for a send
      * still open when the fence closes. It replaces the fence of an earlier call. Without a call the fence is always open.
      */
     public FlowBuilder fence(BooleanSupplier fence) {
@@ -250,8 +259,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * Registers the workers built from now on, while started, in {@code workers} — the node's, the one its intake reserves its
-     * hand-off slots in (D-121 (a)); it replaces the registry of an earlier call. Without a call the builder has a registry of its
+     * Registers the workers built from now on, while started, in {@code workers}: the node's registry, in which its intake
+     * reserves its hand-off slots. It replaces the registry of an earlier call. Without a call the builder has a registry of its
      * own, which no intake asks.
      */
     public FlowBuilder workers(Workers workers) {
@@ -260,8 +269,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * The node's work events (D-121 (b)) for the workers built from now on: a keyed completion whose key's next row lies on another
-     * node announces it to that node (B4 (i)). It replaces the signals of an earlier call. Without a call nothing is announced.
+     * The node's work events for the workers built from now on: a keyed completion whose key's next row lies on another
+     * node announces it to that node. It replaces the signals of an earlier call. Without a call nothing is announced.
      */
     public FlowBuilder signals(WorkSignals signals) {
         this.signals = Objects.requireNonNull(signals, "signals");
@@ -269,44 +278,49 @@ public final class FlowBuilder {
     }
 
     /**
-     * The node's default schedule of retries (CORE-14a P1, D-135 draft: {@code RAIL8_RETRIES_COUNT} and
-     * {@code RAIL8_RETRIES_INTERVAL}) for the workers built from now on of the flows that name no {@code delivery.retries}; it
-     * replaces the default of an earlier call. Without a call it is {@link #DEFAULT_RETRIES}. One outside the D-135 bounds
-     * ({@link FlowDefinition#MAX_RETRIES} retries, an interval of 1s..24h, a cap of at most 24h) is refused.
+     * The node's default schedule of retries (set by {@code RAIL8_RETRIES_COUNT} and {@code RAIL8_RETRIES_INTERVAL}) for
+     * the workers built from now on of the flows that name no {@code delivery.retries}; it replaces the default of an
+     * earlier call. Without a call it is {@link #DEFAULT_RETRIES}.
+     *
+     * @throws IllegalArgumentException when the schedule is outside the bounds: at most {@link FlowDefinition#MAX_RETRIES}
+     *     retries, an interval of 1s..24h, a cap of at most 24h
      */
     public FlowBuilder retries(RetryPolicy nodeDefault) {
         this.retries = FlowDefinition.withinRetryBounds(Objects.requireNonNull(nodeDefault, "nodeDefault"), "the node's retries");
         return this;
     }
 
-    /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
+    /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return built(flow, baseDir, OPEN, true).pipeline(true);
     }
 
     /**
      * The flow's consumer handler for its delivery mode (see {@link Delivery}), with one {@link Admission} of its own built from
-     * {@code limits.maxInFlight} / {@code limits.maxInFlightBytes} (defaults: twice the available processors, and that many
-     * bodies of {@code maxBodyBytes} — a product that overflows a {@code long} is an {@link IllegalArgumentException}; never
-     * unlimited). An at-least-once flow needs the store ({@link #recording}), the {@link #queue} and the {@link #dlq}: without
-     * one of them this is an {@link IllegalStateException} naming it. Its handler only saves, so only its recorder is built
-     * here — no step, no producer; the {@link #worker} builds the pipeline. With {@code partitionBy: <key>} it also compiles the
-     * expression of the one {@code extractKey} step that sets that key, in the step's language, and enqueues each message under
-     * its value (D-075); the flow does not build — an {@link IllegalArgumentException} naming the key — when no such step or two
-     * of them exist, when a {@code split} or {@code to} step comes before it (the key is read from the body as it arrived), or
-     * when its language needs the whole body and the flow's {@code maxBodyBytes} exceeds the store's tree limit. On a sync or
-     * at-most-once flow {@code partitionBy} has no effect. No dedupe key: {@link #delivery(FlowDefinition, Path, Optional)} with
-     * none.
+     * {@code limits.maxInFlight} and {@code limits.maxInFlightBytes}. Their defaults are twice the available processors and
+     * that many bodies of {@code maxBodyBytes}; the admission is never unlimited. An at-least-once flow's handler only saves,
+     * so only its recorder is built here, with no step and no producer; the {@link #worker} builds the pipeline. With
+     * {@code partitionBy: <key>} it also compiles the expression of the one {@code extractKey} step that sets that key, in
+     * the step's language, and enqueues each message under its value, so that the messages of one key run in order. On a
+     * sync or at-most-once flow {@code partitionBy} has no effect. The save uses no dedupe key; see
+     * {@link #delivery(FlowDefinition, Path, Optional)}.
+     *
+     * @throws IllegalStateException when an at-least-once flow lacks the store ({@link #recording}), the {@link #queue} or
+     *     the {@link #dlq}; the message names the one missing
+     * @throws IllegalArgumentException when the default byte budget overflows a {@code long}, or when {@code partitionBy}
+     *     names a key that no {@code extractKey} step or two of them set, that a {@code split} or {@code to} step precedes
+     *     (the key is read from the body as it arrived), or whose language needs the whole body while the flow's
+     *     {@code maxBodyBytes} exceeds the store's tree limit
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir) {
         return delivery(flow, baseDir, Optional.empty());
     }
 
     /**
-     * {@link #delivery(FlowDefinition, Path)} whose at-least-once save dedupes by the prop {@code dedupeBy} names (D-084), the one
-     * the flow's in endpoint's component names ({@link Component#dedupeBy}): its value on each envelope as it
-     * arrived is the intake's dedupe key, scoped by the flow's id — no value or {@code ""} is none. Empty: no key. A sync or
-     * at-most-once flow saves nothing, so ignores it.
+     * {@link #delivery(FlowDefinition, Path)} whose at-least-once save dedupes by the prop {@code dedupeBy} names, the one
+     * the flow's in endpoint's component names ({@link Component#dedupeBy}). Its value on each envelope as it arrived is the
+     * intake's dedupe key, scoped by the flow's id; a missing value or {@code ""} means no key, and so does an empty
+     * {@code dedupeBy}. A sync or at-most-once flow saves nothing, so it ignores the key.
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir, Optional<Key<String>> dedupeBy) {
         Objects.requireNonNull(flow, "flow");
@@ -335,9 +349,10 @@ public final class FlowBuilder {
     }
 
     /**
-     * The value an at-least-once flow's work items are ordered by (D-075): none without {@code partitionBy}; else the expression
-     * of the one extractKey step that sets its key, compiled in the step's language — an {@link IllegalArgumentException} when
-     * the flow does not build so (see {@link #delivery}).
+     * The value an at-least-once flow's work items are ordered by: none without {@code partitionBy}, else the expression
+     * of the one extractKey step that sets its key, compiled in the step's language.
+     *
+     * @throws IllegalArgumentException when the key cannot be read so; {@link #delivery} lists the cases
      */
     private Function<Envelope, Optional<String>> partitionKey(FlowDefinition flow, Path baseDir) {
         if (flow.partitionBy().isEmpty()) return e -> Optional.empty();   // unordered
@@ -368,11 +383,13 @@ public final class FlowBuilder {
 
     /**
      * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}) under {@code policy}: runs at most the flow's
-     * in-flight request limit of items at once and the pipeline without stage 0 — its steps not wrapped by {@link Parking}: a failed
-     * run is the worker's to retry or park (CORE-14a P6) —, leases, polls and schedules its retries on the runtime's clock and timer
-     * under the flow's {@code delivery.retries}, else the node's default ({@link #retries}), parks a message at the flow's first step
-     * once its retries are spent or its failure is final and, while started, is registered in the {@link #workers} registry. Needs the
-     * store, the {@link #queue} and the {@link #dlq}.
+     * in-flight request limit of items at once. It runs the pipeline without the ingress snapshot, and its steps are not
+     * wrapped by {@link Parking}, because a failed run is the worker's to retry or park. It leases, polls and schedules its
+     * retries on the runtime's clock and timer under the flow's {@code delivery.retries}, else the node's default
+     * ({@link #retries}); it parks a message at the flow's first step once its retries are spent or its failure is final,
+     * and while started it is registered in the {@link #workers} registry.
+     *
+     * @throws IllegalStateException when the store, the {@link #queue} or the {@link #dlq} is missing
      */
     public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId, WorkerPolicy policy) {
         Objects.requireNonNull(flow, "flow");
@@ -418,7 +435,7 @@ public final class FlowBuilder {
         }
     }
 
-    /** {@code limits.maxInFlight}, or twice the available processors (ARCHITECTURE §4 threading); never unlimited. */
+    /** {@code limits.maxInFlight}, or twice the available processors; never unlimited. */
     private static long inFlightRequests(FlowDefinition flow) {
         return flow.maxInFlight().orElseGet(() -> 2L * java.lang.Runtime.getRuntime().availableProcessors());
     }
@@ -452,9 +469,9 @@ public final class FlowBuilder {
     }
 
     /**
-     * The flow built, its {@code to} steps sending under {@code fence}; an at-least-once flow's steps wrapped by {@link Parking} when
-     * {@code parking} (a {@link #build}'s; a worker's are not, CORE-14a P6). A build that throws closes every producer it
-     * created before the failure leaves (FIX-30), unchecked ones included.
+     * The flow built, its {@code to} steps sending under {@code fence}; an at-least-once flow's steps are wrapped by
+     * {@link Parking} when {@code parking} is true (for {@link #build}, not for a worker). A build that throws, with any
+     * exception, closes every producer it created before the exception leaves.
      */
     private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence, boolean parking) {
         Objects.requireNonNull(flow, "flow");
@@ -497,7 +514,7 @@ public final class FlowBuilder {
                 stage = numbered(stage, step);
                 if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
                 if (parker != null) stage = parker.wrap(stage, step);
-                stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU includes its wrappers (D-094)
+                stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU time includes its wrappers
             }
             done = true;
         } finally {
@@ -507,8 +524,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * The head of every pipeline built: binds the context of the message it runs for the rest of the run, its deadline the run's
-     * start on {@code clock} plus {@code timeout} (D-100).
+     * The head of every pipeline built: binds the context of the message for the rest of the run, with a deadline of the
+     * run's start on {@code clock} plus {@code timeout}.
      */
     private static Stage context(Duration timeout, Clock clock) {
         return (e, rest) -> MessageContext.of(e, clock.instant().plus(timeout)).apply(rest, e);
@@ -615,14 +632,14 @@ public final class FlowBuilder {
         Producer producer = component.producer(cfg);
         opened.add(producer);
         return new Send(endpoint, producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock(), runtime.timer(), fence,
-                fence instanceof Fence f ? f : null);   // only a Fence bounds a send by time and abandons it at the fence (D-113)
+                fence instanceof Fence f ? f : null);   // only a Fence bounds a send in time and abandons it when the fence closes
     }
 
     /**
      * A {@code to}'s send: the producer's, under the limit of its target, waiting no longer than the time left on {@code clock}
      * until the deadline of the message bound, maxWait when none is; under the permit, a closed {@code fence} fails it with a
      * {@link FencedException} before the producer is called. With a message bound the producer gets
-     * {@code send(e, d)} (D-113 draft): {@code d} is the time left until the message's deadline — the earlier of that and what
+     * {@code send(e, d)}: {@code d} is the time left until the message's deadline — the earlier of that and what
      * the fence has left when {@code fence} is a {@link Fence} — re-read at each {@code remaining()}; no time left fails the send
      * with a retryable {@link NackException} and the producer is not called. Without a message bound it gets {@code send(e)}.
      * With a {@link Fence} the run stops waiting once the fence closes ({@link FencedWait}) and a producer failure landing while
@@ -671,12 +688,12 @@ public final class FlowBuilder {
     }
 
     /**
-     * The wait of one send bounded by the node's {@link Fence} (D-113 draft): {@link #arm} — under the permit, just before the
-     * producer is called — schedules a re-read on the timer at what the fence has left; there a fence still open (renewed) is
-     * re-armed, a closed one fails the wait with a {@link FencedException}: the run stops waiting for a send that may outlive
-     * the fence, the producer's own future goes on (and keeps the target's permit) until it settles. A producer answer that
-     * settles first ends the wait with it — a failure landing while the fence is closed as a {@link FencedException} carrying it
-     * — and cancels the re-read.
+     * The wait of one send bounded by the node's {@link Fence}. {@link #arm}, called under the permit just before the
+     * producer is called, schedules a re-read on the timer when the fence's open time runs out. At the re-read a fence still
+     * open (renewed meanwhile) is re-armed, and a closed one fails the wait with a {@link FencedException}: the run stops
+     * waiting for a send that may outlive the fence, while the producer's own future goes on, keeping the target's permit,
+     * until it settles. A producer answer that settles first ends the wait with it and cancels the re-read; a failure that
+     * lands while the fence is closed becomes a {@link FencedException} carrying it.
      */
     private static final class FencedWait {
         private final Fence fence;
