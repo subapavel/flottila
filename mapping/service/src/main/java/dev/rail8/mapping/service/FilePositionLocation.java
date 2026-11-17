@@ -3,7 +3,7 @@ package dev.rail8.mapping.service;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A position in a schema file, as a structure load error reports it (ADR-0015).
+ * A position in a schema file, as a structure load error reports it.
  *
  * @param kind {@value #KIND}
  * @param file the file as the schema bundle refers to it

@@ -5,7 +5,7 @@ import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A refreshed working copy (ADR-0015, ADR-0009 as amended on 2026-11-05).
+ * A refreshed working copy.
  *
  * @param model the working copy in canonical form with each side's fingerprint re-derived, except
  *     that of a side whose bundle fails to load; nothing else changes and nothing is saved

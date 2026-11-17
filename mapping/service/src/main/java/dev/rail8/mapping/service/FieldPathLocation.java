@@ -3,8 +3,8 @@ package dev.rail8.mapping.service;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A field of the source or the target structure, by its field path (ADR-0015, ADR-0007). No engine
- * diagnostic is located here yet (#105).
+ * A field of the source or the target structure, by its field path. No engine diagnostic is located
+ * here yet.
  *
  * @param kind {@value #KIND}
  * @param side {@code source} or {@code target}

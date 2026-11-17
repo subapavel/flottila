@@ -4,7 +4,7 @@ import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A structure load error, at its position in a schema file (ADR-0024: a result, never a 4xx).
+ * A structure load error, at its position in a schema file (a result, never a 4xx).
  *
  * @param kind {@value #KIND}
  * @param diagnostics the load error

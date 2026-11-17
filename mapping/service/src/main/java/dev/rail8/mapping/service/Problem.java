@@ -4,10 +4,9 @@ import java.net.URI;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The RFC 9457 body of a transport error (glossary "Problem"), sent as {@code
- * application/problem+json}.
+ * The RFC 9457 body of a transport error, sent as {@code application/problem+json}.
  *
- * @param type {@code urn:rail8:mapping:problem:<slug>} (ADR-0024)
+ * @param type {@code urn:rail8:mapping:problem:<slug>}
  * @param title the slug's fixed summary
  * @param status the HTTP status, fixed by the slug
  * @param detail what was wrong with this request

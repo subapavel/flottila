@@ -10,8 +10,8 @@ import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A mapping of the workspace (ADR-0014, ADR-0029). A member the stored model does not have, or
- * every one of them when the stored file is refused, is absent.
+ * A mapping of the workspace. A member the stored model does not have, or every one of them when
+ * the stored file is refused, is absent.
  *
  * @param id the path of its file in the workspace without {@code .mapping.json}
  * @param name the last segment of the id

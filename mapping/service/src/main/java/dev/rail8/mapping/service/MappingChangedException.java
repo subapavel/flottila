@@ -4,7 +4,7 @@ import java.io.Serial;
 
 /**
  * A save whose {@code If-Match} differs from the stored file's canonical ETag: the file changed
- * since the editor read it (ADR-0027). Nothing is written.
+ * since the editor read it. Nothing is written.
  */
 final class MappingChangedException extends Exception {
 

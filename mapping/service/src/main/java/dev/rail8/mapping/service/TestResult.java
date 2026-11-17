@@ -4,9 +4,9 @@ import org.eclipse.microprofile.openapi.annotations.media.DiscriminatorMapping;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The result of a test run (ADR-0015, ADR-0024): output, the diagnostics that refuse the working
- * copy, or the runtime error that stopped the run. Output and error carry the run's trace; a
- * refused working copy never ran, so it has none (#53).
+ * The result of a test run: output, the diagnostics that refuse the working copy, or the runtime
+ * error that stopped the run. Output and error carry the run's trace; a refused working copy never
+ * ran, so it has none.
  */
 @Schema(
     oneOf = {TestOutput.class, TestRefused.class, TestError.class},

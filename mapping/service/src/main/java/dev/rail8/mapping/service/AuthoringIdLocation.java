@@ -3,7 +3,7 @@ package dev.rail8.mapping.service;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * An authoring element, as stage 2 and stage 3 report it (ADR-0011).
+ * An authoring element, as stage 2 and stage 3 report it.
  *
  * @param kind {@value #KIND}
  * @param authoringId the element's authoring id

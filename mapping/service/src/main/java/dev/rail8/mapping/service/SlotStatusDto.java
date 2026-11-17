@@ -5,8 +5,7 @@ import java.util.Locale;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * One slot of a parent slot's context in a test run's trace (ADR-0015 "Trace" since #53), on the
- * wire.
+ * One slot of a parent slot's context in a test run's trace, on the wire.
  *
  * @param slot its slot number, counted across all contexts of the queue
  * @param status {@code created}, {@code suppressed} or {@code truncated} (cut by {@code maxOccurs})

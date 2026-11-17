@@ -4,13 +4,12 @@ import dev.rail8.mapping.structure.Refusal;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * Why a mapping may not use a refused field, on the wire (ADR-0027 "Refused fields on the wire",
- * #116): the structure's refusal (ADR-0008, #92).
+ * Why a mapping may not use a refused field, on the wire: the structure's refusal.
  *
  * @param code the reason's code, the diagnostic code a mapping that uses the field is refused with,
  *     for example {@code ambiguous-field-path}
- * @param side {@code target} when the reason holds in a target only and a source reads the field
- *     (#94, #95), else {@code both}
+ * @param side {@code target} when the reason holds in a target only and a source reads the field,
+ *     else {@code both}
  * @param file the schema file of the declaration that causes it, as the bundle names it
  * @param line the line of that declaration, where its start tag ends
  * @param column the column of that declaration, where its start tag ends

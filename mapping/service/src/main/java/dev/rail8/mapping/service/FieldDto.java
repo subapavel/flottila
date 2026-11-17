@@ -9,9 +9,9 @@ import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A field of a structure type (ADR-0007, ADR-0008), on the wire.
+ * A field of a structure type, on the wire.
  *
- * @param kind {@code element}, {@code attribute} or {@code json-property} (#97)
+ * @param kind {@code element}, {@code attribute} or {@code json-property}
  * @param step the last step of the field's path, for example {@code @id}, {@code Q{urn:a}Order} or,
  *     percent-encoded, {@code a%2Fb}
  * @param namespace the namespace, {@code ""} when the name has none
@@ -21,9 +21,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * @param valueType the XPath name of a leaf field's value type, for example {@code xs:date}
  * @param nillable whether the field may carry {@code xsi:nil}
  * @param type the id of the structure type with a structure field's child fields
- * @param refusal the field's own refusal, for a refused field (ADR-0027, #116); a type's fields are
- *     shared by every field of that type, so a field below a refused field does not carry its
- *     ancestor's here: the editor's tree derives the refusal nearest the root
+ * @param refusal the field's own refusal, for a refused field; a type's fields are shared by every
+ *     field of that type, so a field below a refused field does not carry its ancestor's here: the
+ *     editor's tree derives the refusal nearest the root
  */
 public record FieldDto(
     @Schema(

@@ -7,8 +7,8 @@ import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A new mapping (ADR-0015, ADR-0029): only its id is required; the author picks the structures
- * later, on the Signature tab. An optional member may be missing; {@code null} is read as missing.
+ * A new mapping: only its id is required; the author picks the structures later, on the Signature
+ * tab. An optional member may be missing; {@code null} is read as missing.
  *
  * @param id the new mapping's id; its directory must exist
  * @param description the mapping's description, at most 4,000 characters
