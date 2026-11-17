@@ -139,7 +139,7 @@ function LookupParameters({ fn, draft, change, openPicker }: { fn: PreviewFuncti
     <>
       <label>
         Communication Channel
-        {/* the mapping parameters (#167) have no Adapter category yet: no channel to offer */}
+        {/* the mapping parameters have no Adapter category yet: no channel to offer */}
         <select aria-label="Communication Channel" value="" disabled>
           <option value="">No suitable parameter found; define new parameter of type &apos;Channel&apos; first</option>
         </select>

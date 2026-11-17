@@ -4,7 +4,7 @@ import type { FunctionCatalogue } from '../../../api/client';
 export const GROUPS = ['Arithmetic', 'Boolean', 'Text', 'Conversions', 'Date', 'Constants', 'Node Functions', 'Statistic'] as const;
 export type Group = (typeof GROUPS)[number];
 
-/** The follow-up issues of the functions the catalogue lacks (spec #152's preview table). */
+/** The follow-up issues of the functions the catalogue lacks. */
 const LOOKUPS = 165;
 const VALUE_MAPPING = 166;
 const MISSING_FUNCTIONS = 172;
@@ -93,7 +93,7 @@ export interface DrilldownGroup {
 }
 
 /**
- * The functions drilldown (spec #152): every catalogue function under its prototype group in the prototype's order, a
+ * The functions drilldown: every catalogue function under its prototype group in the prototype's order, a
  * catalogue function the prototype does not list at the end of its family's group (a family without a group goes to
  * Node Functions), and the prototype's functions the catalogue lacks with their follow-up issue: Value mapping and the
  * lookups as previews, the others disabled.

@@ -168,7 +168,7 @@ describe('the test instance library, a preview feature (#170)', () => {
     await expect.element(studioButton('Save')).toBeDisabled();
   });
 
-  // the owner's rule of #177 replaces the prototype's disabled select: in read mode an instance can be chosen for a run
+  // unlike the prototype's disabled select: in read mode an instance can be chosen for a run
   test('in read mode Load, Add, Save and Delete stay disabled; the select loads the latest instance, or the one chosen, and changes nothing', async () => {
     const library = [kept('a', 'First', INPUT, 1), kept('b', 'Second', OTHER, 2)];
     const browserState = memoryBrowserState({ [KEY]: library });

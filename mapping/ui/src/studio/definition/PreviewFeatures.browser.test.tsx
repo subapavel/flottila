@@ -243,7 +243,7 @@ describe('value mapping and lookups, preview functions (#166, #165)', () => {
     await expect.element(node(/^Node function Value mapping/)).toBeVisible();
     await node(/^Node function Value mapping/).getByRole('button', { name: 'Parameters for Value mapping' }).click();
     const dialog = page.getByRole('dialog', { name: 'Value Mapping Properties' });
-    // no SAP namespace by default (ADR-0028, Terms)
+    // no SAP namespace by default
     await expect.element(dialog.getByRole('textbox', { name: 'Value-Mapping Context' })).toHaveValue('');
     await dialog.getByRole('radio', { name: 'Use Default Value' }).click();
     await dialog.getByRole('textbox', { name: 'Default Value' }).fill('unknown');

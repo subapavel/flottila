@@ -13,7 +13,7 @@ export interface RemapDialogProps {
 }
 
 /**
- * The remap of an orphaned source-field box (GLOSSARY: Remap): a field of the source structure, chosen from all of them
+ * The remap of an orphaned source-field box: a field of the source structure, chosen from all of them
  * in tree order; the box keeps its authoring id and its wires.
  */
 export function RemapDialog({ field, choices, remap, close }: RemapDialogProps) {

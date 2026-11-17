@@ -68,7 +68,7 @@ function structureOf(base: string, bundle: string[]): StructureResponse {
   );
 }
 
-// A mapping id as the service's workspace accepts it (ADR-0024): 1 to 16 segments, the last one not reserved.
+// A mapping id as the service's workspace accepts it: 1 to 16 segments, the last one not reserved.
 const SEGMENT = '[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}';
 const WORKSPACE_ID = new RegExp(`^${SEGMENT}(/${SEGMENT}){0,15}$`);
 const RESERVED = new Set(['test', 'compile', 'refresh', 'udfs']);
@@ -92,14 +92,13 @@ export interface FakeScenario {
 }
 
 /**
- * An in-memory `ApiClient` over synthetic fixtures from `corpus/` and the catalogue of `contract/` (ADR-0013,
- * ADR-0027), for component tests, the e2e suite
- * and `?api=fake`. It runs no engine: a test run answers the scenario's fixture, else only a corpus case, and refuses
- * an unconnected result as the engine does; a compile answers the scenario's fixture whatever the working copy, and so
- * does a refresh for its diagnostics. `seed` replaces the corpus mappings.
+ * An in-memory `ApiClient` over synthetic fixtures from `corpus/` and the catalogue of `contract/`, for component
+ * tests, the e2e suite and `?api=fake`. It runs no engine: a test run answers the scenario's fixture, else only a
+ * corpus case, and refuses an unconnected result as the engine does; a compile answers the scenario's fixture whatever
+ * the working copy, and so does a refresh for its diagnostics. `seed` replaces the corpus mappings.
  */
 export function fakeApiClient(seed: Record<string, MappingModel> = corpusMappings(), scenario: FakeScenario = {}): ApiClient {
-  // Each write gets a tag of its own, as a changed file gets a new sha256 (ADR-0024); never the same tag twice.
+  // Each write gets a tag of its own, as a changed file gets a new sha256; never the same tag twice.
   let writes = 0;
   const written = (model: MappingModel): StoredMapping => ({ model: structuredClone(model), etag: `"fake:${++writes}"` });
   const mappings = new Map(Object.entries(seed).map(([id, model]) => [id, written(model)]));
@@ -126,7 +125,7 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
       if (mappings.has(id)) {
         throw new ApiProblem({ type: `${PROBLEM}mapping-exists`, title: 'Mapping exists', status: 409, detail: 'a mapping with this id exists' });
       }
-      // as the service creates (ADR-0029): each side the request names, none it does not; an empty description is none
+      // as the service creates: each side the request names, none it does not; an empty description is none
       const base = directoryOf(id);
       const model: MappingModel = { formatVersion: 1, ...(description ? { description } : {}) };
       const diagnostics: Diagnostic[] = [];
@@ -171,7 +170,7 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
       const fixture = scenario.test?.[id];
       if (fixture) return structuredClone(fixture);
       const known = cases.find((c) => c.input === input && c.links === links(model));
-      // a test run's output carries its trace (ADR-0015, #53); the fake records none
+      // a test run's output carries its trace; the fake records none
       if (known) return { kind: 'output', output: known.output, diagnostics: [], trace: {} };
       const unconnected = Object.values(model.targetFieldMappings ?? {}).filter((m) => m.result === null);
       if (unconnected.length > 0) {
@@ -193,7 +192,7 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
       });
     },
 
-    // The committed packed catalogue (ADR-0027): the bytes GET /api/catalogue serves.
+    // The committed packed catalogue: the bytes GET /api/catalogue serves.
     getCatalogue: async () => JSON.parse(catalogueText) as FunctionCatalogue,
 
     compile: async (id) => {
@@ -201,8 +200,8 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
       return { diagnostics: structuredClone(scenario.compile?.[id] ?? []) };
     },
 
-    // as the engine refreshes (#99): the fingerprints are the fake's structures', only the stage-3 diagnostics a fixture;
-    // a side the model does not name stays absent (ADR-0029)
+    // as the engine refreshes: the fingerprints are the fake's structures', only the stage-3 diagnostics a fixture;
+    // a side the model does not name stays absent
     refresh: async (id, model) => {
       stored(id);
       const base = directoryOf(id);
@@ -223,7 +222,7 @@ export function fakeApiClient(seed: Record<string, MappingModel> = corpusMapping
   };
 }
 
-/** A mapping's summary as the service lists it (ADR-0029): an absent description or side is left out. */
+/** A mapping's summary as the service lists it: an absent description or side is left out. */
 function summaryOf(id: string, model: MappingModel): MappingSummary {
   const slash = id.lastIndexOf('/');
   return {
@@ -268,7 +267,7 @@ function resolve(base: string, bundle: string): string {
   return parts.join('/');
 }
 
-/** Sorts object keys at every level by UTF-16 code unit, as the canonical writer does (ADR-0010). */
+/** Sorts object keys at every level by UTF-16 code unit, as the canonical writer does. */
 function sortedKeys<T>(value: T): T {
   if (Array.isArray(value)) return value.map(sortedKeys) as T;
   if (typeof value !== 'object' || value === null) return value;

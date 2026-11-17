@@ -25,11 +25,11 @@ export type MappingNodeData = {
   editParameters?: () => void;
   /** The parameters a function card shows below its name, as text. */
   settings?: string;
-  /** The deviation note of a standard function box (GLOSSARY: Fidelity), shown in its hint only; absent for any other node. */
+  /** The deviation note of a standard function box, shown in its hint only; absent for any other node. */
   note?: string;
-  /** A source-field box that reads a field the source structure lacks (GLOSSARY: Orphaned reference). */
+  /** A source-field box that reads a field the source structure lacks. */
   orphaned?: boolean;
-  /** Points an orphaned box at a source field dropped on it (GLOSSARY: Remap); absent for any other box and in view mode. */
+  /** Points an orphaned box at a source field dropped on it; absent for any other box and in view mode. */
   remap?: (field: FieldPath) => void;
 };
 

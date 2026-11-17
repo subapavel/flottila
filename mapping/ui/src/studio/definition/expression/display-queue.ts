@@ -1,6 +1,6 @@
 import type { TraceEntry } from '../../../api/client';
 
-/** One slot of a context: a value, the empty value `""`, or SUPPRESS (`null` on the wire, ADR-0015). */
+/** One slot of a context: a value, the empty value `""`, or SUPPRESS (`null` on the wire). */
 export type ShownValue = { kind: 'value'; text: string } | { kind: 'empty' } | { kind: 'suppress' };
 
 type Occurrences = Extract<TraceEntry, { kind: 'occurrences' }>;
@@ -15,7 +15,7 @@ export type OccurrenceRow =
   | { kind: 'parent'; parentSlot: number; created: number; minOccurs: boolean; slots: SlotRecord[] }
   | { kind: 'left-out'; from: number; to: number };
 
-/** What the display queue shows of one trace entry (GLOSSARY: Display queue); `capped` says what a capped entry cut. */
+/** What the display queue shows of one trace entry; `capped` says what a capped entry cut. */
 export type DisplayEntry =
   | { kind: 'queue'; contexts: ShownValue[][]; capped: string | undefined }
   | { kind: 'atomic'; type: string; value: ShownValue }
@@ -68,8 +68,8 @@ function occurrenceRows({ parents, min }: Occurrences): OccurrenceRow[] {
 }
 
 /**
- * What a capped occurrences entry shows: parent slots are numbered from 1 in run order and the last one is always kept
- * (ADR-0015, #53), so the last one's number is their total.
+ * What a capped occurrences entry shows: parent slots are numbered from 1 in run order and the last one is always kept,
+ * so the last one's number is their total.
  */
 function cappedOccurrences({ capped, parents }: Occurrences): string | undefined {
   if (!capped) return undefined;

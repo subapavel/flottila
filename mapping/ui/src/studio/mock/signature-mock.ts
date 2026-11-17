@@ -3,9 +3,9 @@ import type { WorkingCopyStore } from '../store/working-copy';
 import type { MessageChoice } from '../shared/structure-names';
 import { previewDraft, type PreviewDraftStore } from './preview-draft';
 
-/** The follow-up issue of several source or target messages (spec #152, preview features). */
+/** The follow-up issue of several source or target messages, a preview feature. */
 export const SEVERAL_MESSAGES_ISSUE = 168;
-/** The follow-up issue of mapping parameters (spec #152, preview features). */
+/** The follow-up issue of mapping parameters, a preview feature. */
 export const PARAMETERS_ISSUE = 167;
 
 export type Side = 'source' | 'target';
@@ -14,7 +14,7 @@ export type Side = 'source' | 'target';
 export const OCCURRENCES = ['1', '0..1', '0..unbounded'] as const;
 export type Occurrence = (typeof OCCURRENCES)[number];
 
-/** A source or target message after the first: a preview feature (#168), kept in the browser and never in the file. */
+/** A source or target message after the first: a preview feature, kept in the browser and never in the file. */
 export interface PreviewMessage {
   id: string;
   /** The message chosen for the row; none until one is chosen. */
@@ -22,7 +22,7 @@ export interface PreviewMessage {
   occurrence: Occurrence;
 }
 
-/** A mapping parameter: a preview feature (#167), kept in the browser and never in the file. */
+/** A mapping parameter: a preview feature, kept in the browser and never in the file. */
 export interface PreviewParameter {
   id: string;
   name: string;
@@ -39,7 +39,7 @@ export interface SignatureMockData {
 
 export type SignatureMockStore = PreviewDraftStore<SignatureMockData>;
 
-/** The key of a mapping's preview signature in the browser state (ADR-0028: mock state per mapping id). */
+/** The key of a mapping's preview signature in the browser state. */
 export const signatureMockKey = (mappingId: string) => `mapping:${mappingId}:preview:signature`;
 
 /** The name of the preview signature's draft among the working copy's preview drafts. */
@@ -61,7 +61,7 @@ function isData(value: unknown): value is SignatureMockData {
 }
 
 /**
- * The preview signature of the open mapping (ADR-0028): the messages after the first of each side and the parameters, a
+ * The preview signature of the open mapping: the messages after the first of each side and the parameters, a
  * draft of the edit session (`previewDraft`) whose saved state the browser keeps under the mapping's id. It never
  * reaches the working copy or the `ApiClient`.
  */

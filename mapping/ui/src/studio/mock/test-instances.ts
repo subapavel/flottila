@@ -4,7 +4,7 @@ import type { BrowserStateStore } from '../browser-state/browser-state';
 import type { WorkingCopyStore } from '../store/working-copy';
 import { perWorkingCopy, previewDraft, type PreviewDraftStore } from './preview-draft';
 
-/** The follow-up issue of the test instance library (spec #152, preview features). */
+/** The follow-up issue of the test instance library, a preview feature. */
 export const TEST_INSTANCES_ISSUE = 170;
 
 /** A test document's format, by the root of the source message's structure. */
@@ -30,7 +30,7 @@ export interface InstanceResource {
   values: Record<string, string>;
 }
 
-/** The key of a mapping's test instances in the browser state (ADR-0028: mock state per mapping id). */
+/** The key of a mapping's test instances in the browser state. */
 export const testInstancesKey = (mappingId: string) => `mapping:${mappingId}:preview:test-instances`;
 
 /** The name of the library's draft among the working copy's preview drafts. */
@@ -94,7 +94,7 @@ export function removeInstance(list: readonly TestInstance[], format: InstanceFo
 export type TestInstancesStore = PreviewDraftStore<TestInstance[]>;
 
 /**
- * The test instance library of the open mapping (#170, the prototype's useTestInstances): a draft of the edit session
+ * The test instance library of the open mapping (the prototype's useTestInstances): a draft of the edit session
  * whose saved state the browser keeps under the mapping's id. It never reaches the working copy or the `ApiClient`.
  */
 export function testInstances(workingCopy: WorkingCopyStore, browserState: BrowserStateStore, mappingId: string): TestInstancesStore {
@@ -125,7 +125,7 @@ export interface InstanceChoiceState {
 const choices = new WeakMap<TestInstancesStore, StoreApi<InstanceChoiceState>>();
 
 /**
- * The instance chosen in read mode (#177), one per library: the test session loads it into the source for a run, and the
+ * The instance chosen in read mode, one per library: the test session loads it into the source for a run, and the
  * library, its current instance and the browser state stay as they are. Edit mode selects in the library instead.
  */
 export function instanceChoice(library: TestInstancesStore): StoreApi<InstanceChoiceState> {

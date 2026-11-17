@@ -12,10 +12,10 @@ const unavailable = (fn: DrilldownFunction) =>
   fn.preview === undefined ? `Not available yet (#${fn.issue})` : `Preview: kept in this browser only, never in the mapping file (#${fn.issue})`;
 
 /**
- * The functions drilldown (the prototype's FunctionCatalogue) over the catalogue (spec #152): its groups open one by one,
+ * The functions drilldown (the prototype's FunctionCatalogue) over the catalogue: its groups open one by one,
  * or all that match while a search is typed; a function is added by a click or dragged onto the canvas. A catalogue
- * function with a deviation (GLOSSARY: Fidelity) has its note as its tooltip and description, and no mark. A function the
- * catalogue lacks is a preview function (ADR-0028), added by a click through `addPreview` when given, or else is shown
+ * function with a deviation has its note as its tooltip and description, and no mark. A function the
+ * catalogue lacks is a preview function, added by a click through `addPreview` when given, or else is shown
  * disabled with "Not available yet" and its follow-up issue.
  */
 export function FunctionCatalogue({

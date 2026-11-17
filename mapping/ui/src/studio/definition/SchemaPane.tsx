@@ -77,9 +77,9 @@ export interface SchemaPaneProps {
   onAssign: () => void;
   /** Opens a field's context menu, by a right click or the context menu key on its row. */
   onFieldMenu: (event: ReactMouseEvent | KeyboardEvent, path: FieldPath) => void;
-  /** The target tree's mapping variables (#163, a preview): each shows first under its open parent. */
+  /** The target tree's mapping variables (a preview): each shows first under its open parent. */
   variables?: readonly FieldPath[];
-  /** Shown below the loaded structure's rows in every view: the target pane's orphaned target field mappings (#174). */
+  /** Shown below the loaded structure's rows in every view: the target pane's orphaned target field mappings. */
   footer?: ReactNode;
 }
 
@@ -97,7 +97,7 @@ const variableRow = (path: FieldPath, depth: number): TreeRow => ({
 
 /**
  * One message pane of the Definition tab (the prototype's SchemaPane): the message's name, file and format, its Tree,
- * Table and Text views and their tools. The tree and the table are virtualised (ADR-0012, GATE 7); the text is the XSD
+ * Table and Text views and their tools. The tree and the table are virtualised; the text is the XSD
  * generated from the loaded structure, also virtualised. A search shows the fields whose name matches and their
  * ancestors; the filter the connected, unconnected, directly or indirectly mapped or selected fields and their ancestors;
  * both show every branch open. A click on a row picks its field; in edit mode a source row drags onto a target row, and a
@@ -396,7 +396,7 @@ interface FieldRowsProps {
 function FieldRows({ side, rows, table, toggleable, onToggle, format, connected, orphaned, selected, mapping, selection, variables, fieldActions, rowActions }: FieldRowsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const height = useSyncExternalStore(subscribeWide, rowHeight);
-  // Same-step siblings share a field path (ADR-0008): the second and later rows of a path get `#n` as their key.
+  // Same-step siblings share a field path: the second and later rows of a path get `#n` as their key.
   const keys = useMemo(() => {
     const seen = new Map<string, number>();
     return rows.map(({ path }) => {

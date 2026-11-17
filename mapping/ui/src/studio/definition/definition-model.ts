@@ -17,7 +17,7 @@ export const FILTERS = [
 /**
  * The rows of every field `keep` holds for, by its path, and of each of its ancestors, in tree order, each ancestor shown
  * expanded (the prototype's filter and search). Below a field whose type is already on its path the walk stops, so that a
- * recursive type ends (ADR-0008), as `expandAllPaths` stops.
+ * recursive type ends, as `expandAllPaths` stops.
  */
 export function keptRows(structure: StructureLoaded, keep: (path: FieldPath, field: FieldDto) => boolean): TreeRow[] {
   const rows: TreeRow[] = [];
@@ -119,7 +119,7 @@ export function mappedHow(mapping: TargetFieldMapping | undefined): 'direct' | '
   return reachedSourceFields(mapping).length > 0 ? 'indirect' : undefined;
 }
 
-/** The orphaned references on the source side (GLOSSARY: Orphaned reference), as `orphans` finds them. */
+/** The orphaned references on the source side, as `orphans` finds them. */
 export interface Orphans {
   /** The source-field boxes, in any target field mapping, that read a field the source structure lacks. */
   boxes: ReadonlySet<AuthoringId>;
@@ -128,9 +128,9 @@ export interface Orphans {
 }
 
 /**
- * The orphaned source-field references of the working copy against the loaded source structure (GLOSSARY: Orphaned
- * reference, Field status): derived from the working copy, so a remap clears them at once. None while `source` is not
- * loaded.
+ * The orphaned source-field references of the working copy against the loaded source structure, with the target fields
+ * whose field status they make orphaned: derived from the working copy, so a remap clears them at once. None while
+ * `source` is not loaded.
  */
 export function orphans(model: MappingModel, source: StructureLoaded | undefined): Orphans {
   const boxes = new Set<AuthoringId>();
@@ -147,7 +147,7 @@ export function orphans(model: MappingModel, source: StructureLoaded | undefined
 }
 
 /**
- * The orphaned target field mappings (GLOSSARY): the field paths of the working copy's target field mappings that the
+ * The orphaned target field mappings: the field paths of the working copy's target field mappings that the
  * loaded target structure lacks, in the model's order. They have no row in the target tree. None while `target` is not
  * loaded.
  */

@@ -22,8 +22,8 @@ const leaf = (step: string, min: number, refusal?: FieldDto['refusal']): FieldDt
 
 /**
  * The reply of `POST /api/structures` for `corpus/structures/refused/same-step.xsd`, root `Doc`, from `mappings/`, as
- * the real service gave it on 2026-11-06 (#116): the same-step siblings `Note` and `Ref` each carry
- * `ambiguous-field-path` at the step's second declaration (ADR-0008, ADR-0027).
+ * the real service gave it on 2026-11-06: the same-step siblings `Note` and `Ref` each carry
+ * `ambiguous-field-path` at the step's second declaration.
  */
 export const sameStepStructure: StructureLoaded = {
   kind: 'loaded',

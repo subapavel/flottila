@@ -26,17 +26,17 @@ export interface QueueDialogProps {
   node: ExpressionNode;
   /** The last test run's trace by authoring id; none before a run. */
   trace: Readonly<Record<string, TraceEntry>> | undefined;
-  /** Whether the trace is a stale trace (GLOSSARY): it still shows, marked. */
+  /** Whether the trace is stale, from before the last edit: it still shows, marked. */
   stale: boolean;
   /** The target field mapping's authoring id, under which the trace keeps the target field's occurrences. */
   mappingId: string | undefined;
   browserState: BrowserStateStore;
-  /** What a dialog without a trace runs (#177). */
+  /** What a dialog without a trace runs. */
   test: QueueTest;
   onClose: () => void;
 }
 
-/** The test run of a Display Queue without a trace (#177): the open mapping's test session and what it runs on. */
+/** The test run of a Display Queue without a trace: the open mapping's test session and what it runs on. */
 export interface QueueTest {
   session: TestSession;
   /** The test instances: the latest of the source's format is the data of an empty source. */
@@ -50,7 +50,7 @@ export interface QueueTest {
 }
 
 /**
- * The body of a dialog without a trace (#177): while a run is under way, that it runs; else, without a source document,
+ * The body of a dialog without a trace: while a run is under way, that it runs; else, without a source document,
  * a test file to load in edit mode or, in read mode, where one is loaded; else nothing (`RunFailure` shows a failed run).
  */
 function NoTrace({ test: { session, format, level, editing } }: { test: QueueTest }) {
@@ -89,7 +89,7 @@ function NoTrace({ test: { session, format, level, editing } }: { test: QueueTes
   );
 }
 
-/** The diagnostics of the last run when it failed, was refused or did not start (#177): its lines between Start and End. */
+/** The diagnostics of the last run when it failed, was refused or did not start: its lines between Start and End. */
 function RunFailure({ session }: { session: TestSession }) {
   // a failed run always has its log section; a run under way is not failed yet
   const failure = useStore(session, (s) => (s.runFailed && !s.running ? s.runLog : null));
@@ -108,7 +108,7 @@ function RunFailure({ session }: { session: TestSession }) {
 }
 
 /**
- * Runs the test once when the dialog opens without a trace and with test data (#177): the source document, else the
+ * Runs the test once when the dialog opens without a trace and with test data: the source document, else the
  * latest test instance, loaded into the source first. In read mode too: a test runs there, as in SAP PO.
  */
 function useRunWithoutTrace(traced: boolean, { session, library, format, level }: QueueTest) {
@@ -144,10 +144,10 @@ function Cell({ cell }: { cell: QueueCell }) {
 }
 
 /**
- * The Display Queue of a node (the prototype's Queue dialog, GLOSSARY: Display queue): the queues the last test run traced
+ * The Display Queue of a node (the prototype's Queue dialog): the queues the last test run traced
  * for its inputs and output, read by authoring id, a row per value and per context's end; the target field adds its
  * occurrences per parent slot. After an edit the trace is a stale trace: it still shows, marked, until the next run.
- * Without a trace it runs the test on the test data, or asks for a test file in edit mode (#177, as SAP Integration
+ * Without a trace it runs the test on the test data, or asks for a test file in edit mode (as SAP Integration
  * Suite does); a failed run shows its diagnostics here as in the processing log.
  */
 export function QueueDialog({ graph, node, trace, stale, mappingId, browserState, test, onClose }: QueueDialogProps) {

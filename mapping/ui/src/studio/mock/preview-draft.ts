@@ -6,7 +6,7 @@ import type { WorkingCopyStore } from '../store/working-copy';
 export interface PreviewDraftOptions<T> {
   /** The feature's name among the working copy's preview drafts. */
   name: string;
-  /** The key of its saved state in the browser state, per mapping id (ADR-0028). */
+  /** The key of its saved state in the browser state, per mapping id. */
   key: string;
   /** The saved state from what the browser keeps under the key; anything it does not accept reads as the empty state. */
   read: (kept: unknown) => T;
@@ -24,7 +24,7 @@ export interface PreviewDraftState<T> {
 export type PreviewDraftStore<T> = StoreApi<PreviewDraftState<T>>;
 
 /**
- * The state of one preview feature of one mapping (ADR-0028), a draft of the edit session: an edit makes the studio
+ * The state of one preview feature of one mapping, a draft of the edit session: an edit makes the studio
  * unsaved, a successful save keeps the draft in the browser as the saved state (when it changed since), a discard or a
  * reload goes back to the saved state, and a refused save or a save conflict keeps the draft. Nothing here is written to
  * the mapping model or sent to the `ApiClient`.

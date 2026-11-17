@@ -8,7 +8,7 @@ type Side = 'source' | 'target';
 
 /** One visible row of a structure tree. */
 export interface TreeRow {
-  /** The field path (ADR-0007): the root's step, then each child's step, each after a `/`. */
+  /** The field path: the root's step, then each child's step, each after a `/`. */
   path: string;
   depth: number;
   field: FieldDto;
@@ -21,7 +21,7 @@ export interface TreeRow {
 
 /**
  * A field's own refusal, when it refuses the field on `side`: a refusal whose side is `target` holds in a target only,
- * and a source reads the field (ADR-0008, #94, #95).
+ * and a source reads the field.
  */
 const refusing = (field: FieldDto, side: Side): FieldRefusal | undefined =>
   side === 'target' || field.refusal?.side !== 'target' ? field.refusal : undefined;
@@ -34,9 +34,9 @@ export const rowRefusal = (field: FieldDto, side: Side, above: FieldRefusal | un
   above ?? refusing(field, side);
 
 /**
- * The refusal that refuses the field at `path` on `side`, as compile reports it (ADR-0008 Shape, ADR-0027): the
+ * The refusal that refuses the field at `path` on `side`, as compile reports it: the
  * refusal of the refused field nearest the root on the path, counting one that holds in a target only on the target
- * side only. The wire gives each field its own refusal, since a type's fields are shared (ADR-0015). `undefined` when
+ * side only. The wire gives each field its own refusal, since a type's fields are shared. `undefined` when
  * no field on the path refuses it, or the structure has no field at `path`. A step is matched against its first
  * same-step sibling: same-step siblings all carry one `ambiguous-field-path`, so the walk ends there anyway.
  */
@@ -62,9 +62,9 @@ export function fieldAt(structure: StructureLoaded, path: FieldPath): FieldDto |
 }
 
 /**
- * Flattens the structure graph (ADR-0015) into the visible rows of the `side` tree: the root, then the child fields of
+ * Flattens the structure graph into the visible rows of the `side` tree: the root, then the child fields of
  * every expanded row. A recursive type is expanded only as deep as its paths are, so the rows are always finite
- * (ADR-0008). Each row carries the refusal `refusalAt` gives its path.
+ * Each row carries the refusal `refusalAt` gives its path.
  */
 export function treeRows(structure: StructureLoaded, expanded: ReadonlySet<string>, side: Side): TreeRow[] {
   const rows: TreeRow[] = [];
@@ -81,8 +81,8 @@ export function treeRows(structure: StructureLoaded, expanded: ReadonlySet<strin
 
 /**
  * The rows of every field `keep` holds for, and of each of its ancestors, in tree order, whatever is expanded. Below a
- * field whose type is already on its path the walk stops, so that a recursive type (ADR-0008) ends there. A row with
- * rows below it is shown expanded, any other collapsed. Each row carries the refusal `treeRows` gives it (ADR-0027).
+ * field whose type is already on its path the walk stops, so that a recursive type ends there. A row with
+ * rows below it is shown expanded, any other collapsed. Each row carries the refusal `treeRows` gives it.
  */
 function keptRows(structure: StructureLoaded, side: Side, keep: (field: FieldDto) => boolean): TreeRow[] {
   const rows: TreeRow[] = [];
@@ -102,7 +102,7 @@ function keptRows(structure: StructureLoaded, side: Side, keep: (field: FieldDto
 }
 
 /**
- * The field paths Expand all opens (spec #135): every structure field that has child fields, down to a field whose type
+ * The field paths Expand all opens: every structure field that has child fields, down to a field whose type
  * is already on its path, which stays collapsed so that a recursive type ends.
  */
 export function expandAllPaths(structure: StructureLoaded): string[] {
@@ -111,7 +111,7 @@ export function expandAllPaths(structure: StructureLoaded): string[] {
     .map((row) => row.path);
 }
 
-/** A tree's field count (spec #135): the rows Expand all shows, so a recursive type counts as deep as it opens. */
+/** A tree's field count: the rows Expand all shows, so a recursive type counts as deep as it opens. */
 export function fieldCount(structure: StructureLoaded): number {
   return keptRows(structure, 'source', () => true).length;
 }
@@ -122,7 +122,7 @@ export function nameMatches(field: FieldDto, query: string): boolean {
 }
 
 /**
- * The rows of a search (spec #135): every field whose local name matches `query` (`nameMatches`), and each of its
+ * The rows of a search: every field whose local name matches `query` (`nameMatches`), and each of its
  * ancestors, as far down as Expand all opens. An ancestor is shown expanded; a match with no match below it collapsed.
  */
 export function searchRows(structure: StructureLoaded, query: string, side: Side): TreeRow[] {
@@ -135,7 +135,7 @@ export function occurrenceText(field: FieldDto): string {
 }
 
 /**
- * The source fields read by the source-field boxes that a target field mapping's `result` reaches (ADR-0013), each
+ * The source fields read by the source-field boxes that a target field mapping's `result` reaches, each
  * once, in the order `reachedBoxes` meets those boxes. An unreachable box adds none, so a mapping whose `result` is
  * null has none.
  */

@@ -30,7 +30,7 @@ export interface DefinitionTabProps {
   mappingId: string;
   api: ApiClient;
   store: WorkingCopyStore;
-  /** The open mapping's test session, which the Display Queue runs when there is no trace yet (#177). */
+  /** The open mapping's test session, which the Display Queue runs when there is no trace yet. */
   session: TestSession;
   browserState: BrowserStateStore;
   /** Where the messages are chosen: the Signature tab. */
@@ -44,12 +44,12 @@ const loaded = (data: unknown) => data as StructureLoaded;
 const VARIABLE_STEP = /\/\$[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * The Definition tab (ADR-0028): the source and target message panes above the mapping expression of the selected target
- * field (#157), the height between them resizable and kept per user, as are each pane's view mode and their widths. A
+ * The Definition tab: the source and target message panes above the mapping expression of the selected target
+ * field, the height between them resizable and kept per user, as are each pane's view mode and their widths. A
  * target row selects its target field mapping (the store's selected target); a source row is selected in its pane only.
  * In edit mode a source row dropped on a target row, or double-clicked while a target field is selected, adds a
- * source-field box to that target field mapping (the link command), which the fields' refusals refuse (ADR-0027). The
- * target pane lists the orphaned target field mappings in a group of their own, to open or, in edit mode, delete (#174).
+ * source-field box to that target field mapping (the link command), which the fields' refusals refuse. The
+ * target pane lists the orphaned target field mappings in a group of their own, to open or, in edit mode, delete.
  */
 export function DefinitionTab({ mappingId, api, store, session, browserState, onChooseMessages }: DefinitionTabProps) {
   const model = useStore(store, (s) => s.workingCopy);
@@ -145,7 +145,7 @@ export function DefinitionTab({ mappingId, api, store, session, browserState, on
   const view = dataFlow ? layout.view : 'split';
   const selectedDependencies = selectedTarget !== null && mappings[selectedTarget] !== undefined ? [selectedTarget] : [];
   const usesOf = (path: FieldPath) => Object.keys(mappings).filter((target) => reachedSourceFields(mappings[target]).includes(path));
-  /** The target field menu's previews (the prototype's): grouping, variables and reading one (#164, #163). */
+  /** The target field menu's previews (the prototype's): grouping, variables and reading one. */
   function targetActions(path: FieldPath): MenuItem[] {
     const addVariableItem = action('Add Variable', () => setVariableParent(path), { disabled: !editing || fieldTypes.target.get(path) !== 'structure' });
     if (variables.includes(path)) {
@@ -261,7 +261,7 @@ export function DefinitionTab({ mappingId, api, store, session, browserState, on
                   findField={(side, path) => (side === 'source' ? setSelectedSource(path) : store.getState().selectTarget(path))}
                   orphaned={orphaned.boxes}
                   sourceFields={sourceFields}
-                  // a box is orphaned only against a loaded source structure, and a refused source field refuses the remap as it refuses a link (ADR-0027)
+                  // a box is orphaned only against a loaded source structure, and a refused source field refuses the remap as it refuses a link
                   remap={(box, field) => store.getState().remap(selectedTarget, box, field, refusalAt(loaded(sourceQuery.data), field, 'source'))}
                 />
               )}
