@@ -1,8 +1,8 @@
 package dev.rail8.runtime.blob;
 
 /**
- * The node-wide byte budget for bodies held in memory (ARCHITECTURE §4: "a node-wide byte budget is the
- * second spill trigger"). Finite, positive; reservations are all-or-nothing.
+ * The node-wide byte budget for bodies held in memory: a body that finds no room in it spills, as one over the memory tier's
+ * size does. Finite, positive; reservations are all-or-nothing.
  *
  * @since 0.1
  */

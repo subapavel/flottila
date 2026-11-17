@@ -23,7 +23,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The retention job (D-088, F-20): deletes what is older than the max age, in keyset batches, in the background. A run fixes its
+ * The retention job: deletes what is older than the max age, in keyset batches, in the background. A run fixes its
  * cutoff once — the injected clock minus the max age, never the server's {@code now()} — and runs three phases, each in batches of
  * at most {@link Config#batch} scanned rows, one transaction per batch whose first statement tries the advisory lock
  * {@link #LOCK_KEY} without waiting:
@@ -32,10 +32,10 @@ import java.util.Set;
  *       in that batch's transaction, those beyond the scan included — when no row of it is at or after the cutoff and no work row
  *       (held or not) and no DLQ row has its id; the key rows of the deleted rows' {@code keys} go with them. A scanned row whose
  *       message stays is passed by the cursor and counted in {@link Run#kept}.</li>
- *   <li>{@code bodies} and {@code body_refs} (CORE-4c2), scanned as one keyset: a body or a kept ref older than the cutoff goes
+ *   <li>{@code bodies} and {@code body_refs}, scanned as one keyset: a body or a kept ref older than the cutoff goes
  *       when no messages row and no work row has its message's id and no DLQ row's {@code body_key} names it (orphans included);
- *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment, CORE-4d). The
- *       batch holds its rows for update and passes a row a park holds ({@code skip locked}, D-096), and its delete re-checks those
+ *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment). The
+ *       batch holds its rows for update and passes a row a park holds ({@code skip locked}), and its delete re-checks those
  *       three under a snapshot taken after the select.</li>
  *   <li>{@code processed_ids}: a row older than the cutoff goes when no messages row has its message's id.</li>
  * </ol>
@@ -54,13 +54,13 @@ public final class Retention {
 
     private static final System.Logger LOG = System.getLogger(Retention.class.getName());
 
-    /** The advisory lock every batch tries first: the ASCII bytes of "rail8" in the high five bytes, zero below (D-088). */
+    /** The advisory lock every batch tries first: the ASCII bytes of "rail8" in the high five bytes, zero below. */
     static final long LOCK_KEY = 0x7261696C38000000L;
 
     private static final String LOCK = "select pg_try_advisory_xact_lock($1)";
 
     /**
-     * The bodies batch's delete (D-096): of the rows the batch select holds — {@code bodies} keys {@code $1..$3}, {@code body_refs}
+     * The bodies batch's delete: of the rows the batch select holds — {@code bodies} keys {@code $1..$3}, {@code body_refs}
      * keys {@code $4..$6}, as arrays — those with no messages row and no work row for their message and no DLQ row whose
      * {@code body_key} names them, re-checked under this statement's snapshot — a DLQ row committed since the select is seen;
      * answers the bodies deleted and their bytes.
@@ -82,7 +82,7 @@ public final class Retention {
                  returning 1)
             select count(*), coalesce(sum(size), 0), (select count(*) from refs) from gone""";
 
-    /** The most rows a batch scans (D-088): a batch is one transaction holding its row locks. */
+    /** The most rows a batch scans: a batch is one transaction holding its row locks. */
     static final int MAX_BATCH = 10_000;
 
     /**
@@ -173,8 +173,8 @@ public final class Retention {
                        (select created_at, id, step from scan order by created_at desc, id desc, step desc limit 1) last on true""",
                 "", Integer.MIN_VALUE),
         /**
-         * Two statements (D-096): this one selects the batch from {@code bodies} and {@code body_refs} in one keyset order — the
-         * first {@code batch} of both together — and holds only those rows for update (CORE-4d: never {@code batch} of each
+         * Two statements: this one selects the batch from {@code bodies} and {@code body_refs} in one keyset order — the
+         * first {@code batch} of both together — and holds only those rows for update (never {@code batch} of each
          * table), passing a row a park holds for key share ({@code skip locked}) — answering created_at, then the key, the
          * cursor's order, then whether the row is a ref; {@link #DELETE_BODIES} then deletes the selected rows that still have
          * no messages row, work row or DLQ row naming them, under its own, later snapshot. A key in both tables with one
@@ -281,7 +281,7 @@ public final class Retention {
         }
     }
 
-    /** The lock found taken: the batch's transaction is failed with it so that it rolls back (D-088). */
+    /** The lock found taken: the batch's transaction is failed with it so that it rolls back. */
     private static final class Taken extends RuntimeException {
         private Taken() {
             super("the retention lock is taken", null, false, false);

@@ -12,10 +12,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The pre-V12 Postgres tier of {@link TieredBlobStore} (D-058, D-061; read only since D-105): the {@code bodies} table
- * ({@code V6__bodies.sql}), keyed by message id, step and part. No body goes in any more — the node's journal holds them
- * (CORE-4c2); a key no ref names is still read from its row here until CORE-11 removes the table. It never deletes: only the
- * retention job does ({@code store.Retention}, P2-07). Its bound is finite: at least one byte, at most 64 MiB.
+ * The read-only Postgres tier of {@link TieredBlobStore}: the {@code bodies} table, keyed by message id, step and part. No body
+ * is written here: the node's journal holds them; a key no ref names is still read from its row here. It never deletes: only
+ * the retention job does ({@code store.Retention}). Its bound is finite: at least one byte, at most 64 MiB.
  *
  * @since 0.1
  */
