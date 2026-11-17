@@ -1,19 +1,25 @@
-import { Stack, StackItem } from '@patternfly/react-core';
+import { Content, Stack, StackItem } from '@patternfly/react-core';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import type { ApiClient, StructureLoaded } from '../../api/client';
 import type { FieldPath } from '../../generated/mapping-model';
 import { localPath, stepName } from '../../model/field-path';
 import type { BrowserStateStore } from '../browser-state/browser-state';
-import { addVariable, definitionPreview } from '../mock/definition-preview';
+import { addNode, addVariable, canvasOf, definitionPreview, newPreviewId, variableTargets, type PreviewNode } from '../mock/definition-preview';
+import { testInput, testInstances } from '../mock/test-instances';
+import { testPreview } from '../mock/test-preview';
+import { useActionMenu, type ActionMenuGroup, type ActionMenuItem } from '../shared/ActionMenu';
+import { formatOf } from '../shared/documents';
 import { readPanelPreference, savePanelPreference } from '../shared/panel-preferences';
 import { useSplitLayout, VerticalSplitLayout } from '../shared/SplitLayout';
 import { useStructure } from '../shared/structure-query';
+import type { TestSession } from '../shared/test-session';
 import type { WorkingCopyStore } from '../store/working-copy';
 import { AddVariable } from './AddVariable';
-import { ClearMapping, DefinitionBar, ExpressionHeader, FieldMapping, TextPreview, useDependencies } from './DefinitionBar';
+import { ClearMapping, DefinitionBar, ExpressionHeader, TextPreview, useDependencies } from './DefinitionBar';
 import { connectedFields, keptRows, orphanedMappings, orphans, typeKind, type Side } from './definition-model';
-import { FieldMenu, useFieldMenu, type FieldMenuGroup } from './FieldMenu';
+import { Canvas } from './expression/Canvas';
 import { MessageOverview } from './MessageOverview';
 import { OrphanedMappings } from './OrphanedMappings';
 import { reachedSourceFields, refusalAt } from './rows';
@@ -24,6 +30,8 @@ export interface DefinitionTabProps {
   mappingId: string;
   api: ApiClient;
   store: WorkingCopyStore;
+  /** The open mapping's test session, which the Display Queue runs when there is no trace yet. */
+  session: TestSession;
   browserState: BrowserStateStore;
   /** Where the messages are chosen: the Signature tab. */
   onChooseMessages: () => void;
@@ -47,11 +55,12 @@ const SPLIT_HEIGHT = '42rem';
  * their own, to open or, in edit mode, delete. A field's menu finds where a source field is used, adds a variable under a
  * target structure field (a preview) and shows the field connections.
  */
-export function DefinitionTab({ mappingId, api, store, browserState, onChooseMessages }: DefinitionTabProps) {
+export function DefinitionTab({ mappingId, api, store, session, browserState, onChooseMessages }: DefinitionTabProps) {
   const model = useStore(store, (s) => s.workingCopy);
   const editing = useStore(store, (s) => s.editing);
   const previewStore = definitionPreview(store, browserState, mappingId);
-  const { variables } = useStore(previewStore, (s) => s.value);
+  const preview = useStore(previewStore, (s) => s.value);
+  const { variables } = preview;
   const picked = useStore(store, (s) => s.selectedTarget);
   const [variableParent, setVariableParent] = useState<FieldPath | null>(null);
   const [selectedSource, setSelectedSource] = useState<FieldPath | null>(null);
@@ -73,11 +82,15 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
   const [dataFlow, setDataFlow] = useState(true);
   const [clearing, setClearing] = useState(false);
   const dependencies = useDependencies(browserState, mappingId);
-  const { menu, showMenu, closeMenu } = useFieldMenu();
-  const targetTypes = useMemo(
-    () => new Map(targetQuery.data?.kind === 'loaded' ? keptRows(targetQuery.data, () => true).map((row) => [row.path, typeKind(row.field)] as const) : []),
-    [targetQuery.data],
-  );
+  const catalogue = useQuery({ queryKey: ['catalogue'], queryFn: () => api.getCatalogue() });
+  const { menu, showMenu, element: menuElement } = useActionMenu();
+  const fieldTypes = useMemo(() => {
+    const types = (data: unknown) =>
+      new Map(data && loaded(data).kind === 'loaded' ? keptRows(loaded(data), () => true).map((row) => [row.path, typeKind(row.field)] as const) : []);
+    return { source: types(sourceQuery.data), target: types(targetQuery.data) };
+  }, [sourceQuery.data, targetQuery.data]);
+  const targetTypes = fieldTypes.target;
+  const sourceFields = useMemo(() => [...fieldTypes.source.keys()], [fieldTypes]);
   // a variable a discard took away leaves nothing selected; a JSON property may be named like a variable
   const selectedTarget = picked !== null && VARIABLE_STEP.test(picked) && !variables.includes(picked) && !targetTypes.has(picked) ? null : picked;
 
@@ -85,9 +98,14 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
     setViews((previous) => ({ ...previous, [side]: mode }));
     savePanelPreference(browserState, viewKey(side), mode);
   };
+  /** Puts a preview node on the expression of `target` and shows that expression. */
+  const addPreviewNode = (target: FieldPath, node: Omit<PreviewNode, 'id'>) => {
+    previewStore.getState().edit((d) => addNode(d, target, { id: newPreviewId(), ...node }));
+    store.getState().selectTarget(target);
+  };
   const link = (source: FieldPath, target: FieldPath) => {
-    // a variable is a preview kept in the browser: the mapping has no expression for it to link into
-    if (variables.includes(target)) return;
+    // a variable's expression is a preview kept in the browser: its source fields too
+    if (variables.includes(target)) return addPreviewNode(target, { kind: 'source', ref: source });
     store.getState().link(source, target, {
       source: refusalAt(loaded(sourceQuery.data), source, 'source'),
       target: refusalAt(loaded(targetQuery.data), target, 'target'),
@@ -100,10 +118,34 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
     if (store.getState().selectedTarget === path) store.getState().selectTarget(null);
   };
   const usesOf = (path: FieldPath) => Object.keys(mappings).filter((target) => reachedSourceFields(mappings[target]).includes(path));
-  /** A field's menu: Where Used for a source field, Add Variable for a target field, and Dependencies. */
+  /**
+   * A target field's previews: a variable goes onto the selected target's expression, or onto one chosen, another
+   * target field onto the selected target's expression (grouping), and a variable is added under a structure field.
+   */
+  const targetActions = (path: FieldPath): ActionMenuItem[] => {
+    const addVariableItem = { label: 'Add Variable', run: () => setVariableParent(path), disabled: !editing || targetTypes.get(path) !== 'structure' };
+    if (variables.includes(path)) {
+      const destinations = variableTargets(variables, [...targetTypes.keys()], path);
+      const add = (target: FieldPath) => addPreviewNode(target, { kind: 'variable', ref: path });
+      // on the selected target's expression at once, else on the one chosen
+      const here = selectedTarget !== null && destinations.includes(selectedTarget);
+      const addToExpression: ActionMenuItem = here
+        ? { label: 'Add variable to expression', run: () => add(selectedTarget), disabled: !editing }
+        : {
+            label: 'Add variable to expression',
+            disabled: !editing || destinations.length === 0,
+            children: destinations.map((target) => ({ label: `/${localPath(target)}`, key: target, run: () => add(target) })),
+          };
+      return [addToExpression, addVariableItem];
+    }
+    const grouped = selectedTarget === null || selectedTarget === path || canvasOf(preview, selectedTarget).nodes.some((n) => n.kind === 'target' && n.ref === path);
+    const addTarget = { label: 'Add target to expression', run: () => addPreviewNode(selectedTarget!, { kind: 'target', ref: path }), disabled: !editing || grouped };
+    return [addTarget, addVariableItem];
+  };
+  /** A field's menu: Where Used for a source field, the previews for a target field, and Dependencies. */
   const fieldMenu = (side: Side, anchor: HTMLElement, path: FieldPath) => {
     const matches = side === 'source' ? usesOf(path) : [path];
-    const groups: FieldMenuGroup[] =
+    const groups: ActionMenuGroup[] =
       side === 'source'
         ? [
             {
@@ -113,7 +155,7 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
                 : [{ label: 'No target field reads it', disabled: true }],
             },
           ]
-        : [{ items: [{ label: 'Add Variable', run: () => setVariableParent(path), disabled: !editing || targetTypes.get(path) !== 'structure' }] }];
+        : [{ items: targetActions(path) }];
     showMenu({ label: `Field actions for ${stepName(path)}`, anchor, groups: [...groups, { label: 'Dependencies', items: dependencies.items(matches) }] });
   };
 
@@ -193,10 +235,46 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
             initialShare={layout.share}
             onCommit={layout.setShare}
             view={view}
-            toolbar={dataFlow && <ExpressionHeader targetField={selectedTarget} view={view} onView={layout.setView} />}
+            toolbar={
+              dataFlow && (
+                <ExpressionHeader
+                  targetField={selectedTarget}
+                  view={view}
+                  onView={layout.setView}
+                  instances={{
+                    library: testInstances(store, browserState, mappingId),
+                    format: formatOf(sourceRef),
+                    resource: () => ({ text: session.getState().source, values: testPreview(store, browserState, mappingId).getState().values }),
+                    onLoad: (text) => testInput(store).getState().load(text),
+                    editing,
+                    disabled: false,
+                  }}
+                />
+              )
+            }
           >
             {dataFlow ? (
-              <FieldMapping model={model} targetField={selectedTarget} />
+              selectedTarget === null || !catalogue.data ? (
+                <section aria-label="Field mapping canvas" style={{ padding: 'var(--pf-t--global--spacer--md)' }}>
+                  <Content component="p">{selectedTarget === null ? 'Select a target field to see its mapping expression.' : 'Loading the function catalogue…'}</Content>
+                </section>
+              ) : (
+                <Canvas
+                  key={selectedTarget}
+                  mappingId={mappingId}
+                  store={store}
+                  session={session}
+                  targetField={selectedTarget}
+                  catalogue={catalogue.data}
+                  browserState={browserState}
+                  fieldTypes={fieldTypes}
+                  findField={(side, path) => (side === 'source' ? setSelectedSource(path) : store.getState().selectTarget(path))}
+                  orphaned={orphaned.boxes}
+                  sourceFields={sourceFields}
+                  // a box is orphaned only against a loaded source structure, and a refused source field refuses the remap as it refuses a link
+                  remap={(box, field) => store.getState().remap(selectedTarget, box, field, refusalAt(loaded(sourceQuery.data), field, 'source'))}
+                />
+              )
             ) : (
               <TextPreview
                 model={model}
@@ -229,7 +307,7 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
           }}
         />
       )}
-      {menu && <FieldMenu menu={menu} onClose={closeMenu} />}
+      {menuElement}
     </>
   );
 }
