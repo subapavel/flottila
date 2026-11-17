@@ -14,21 +14,19 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * A flow file (schema v1, D-040) as core sees it: a plain map in (the YAML as {@code rail8-schemas}
- * parsed and validated it), a typed definition out. Core does not depend on the schema module, so the
- * parts it needs are checked again here with the same paths in the messages ({@code steps[2]}); a file
- * that passed the schema never fails here (except a zero {@code saveTimeout} or {@code timeout}, which the schema admits —
- * FIX-119, and {@code onFailure: block}, which the schema admits until FIX-141). {@code recording} is the flow's policy (default: all, keep); a step's own
- * {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds an at-least-once
- * flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); {@code timeout} is the time each run of
- * a message has, in any delivery mode — its deadline is the run's start plus it ({@code delivery.timeout}, default
- * {@link #DEFAULT_TIMEOUT}, D-100); a body limit above the
- * in-flight byte limit is refused, since such a body could never be admitted (D-049 f). {@code onFailure} is what a keyed
- * flow does with an item that failed for good (F-32, D-125): a {@code partitionBy} flow must state it and nothing else may;
- * {@code park} parks the item and lets its key's next item run, {@code block} is refused until FIX-141's durable barrier.
- * {@code retries} is an at-least-once flow's own schedule of retries ({@code delivery.retries}, CORE-14a, D-135 draft: refused on
- * any other mode); empty, its worker runs under the node's default ({@link FlowBuilder#retries}). {@code retry} is the in-thread
- * retry of the steps marked {@code retryable}, a key of its own.
+ * A flow file as core sees it: a plain map in (the YAML as {@code rail8-schemas} parsed and validated it), a typed definition
+ * out. Core does not depend on the schema module, so the parts it needs are checked again here with the same paths in the
+ * messages ({@code steps[2]}); a file that passed the schema never fails here, except for a zero {@code saveTimeout} or
+ * {@code timeout} and for {@code onFailure: block}, which the schema admits. {@code recording} is the flow's policy (default:
+ * all, keep); a step's own {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds
+ * an at-least-once flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); {@code timeout} is
+ * the time each run of a message has, in any delivery mode: its deadline is the run's start plus it ({@code delivery.timeout},
+ * default {@link #DEFAULT_TIMEOUT}). A body limit above the in-flight byte limit is refused, since such a body could never be
+ * admitted. {@code onFailure} is what a keyed flow does with an item that failed for good: a {@code partitionBy} flow must
+ * state it and nothing else may; {@code park} parks the item and lets its key's next item run, {@code block} is refused because
+ * it needs a barrier that survives a restart, which does not exist yet. {@code retries} is an at-least-once flow's own schedule
+ * of retries ({@code delivery.retries}, refused for any other mode); empty, its worker runs under the node's default
+ * ({@link FlowBuilder#retries}). {@code retry} is the in-thread retry of the steps marked {@code retryable}, a key of its own.
  *
  * @since 0.1
  */
@@ -40,19 +38,19 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     /** Keys of a step entry that are the step's shape, not its configuration. */
     private static final Set<String> STRUCTURAL = Set.of("type", "name", "retryable");
 
-    /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing (ARCHITECTURE §4). */
+    /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing. */
     public static final Duration DEFAULT_SAVE_TIMEOUT = Duration.ofSeconds(5);
 
-    /** The time each run of a message has when the flow names none (D-100). */
+    /** The time each run of a message has when the flow names none. */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
-    /** {@code onFailure: park}: an item parked past its attempts lets its key's next item run (F-32). */
+    /** {@code onFailure: park}: an item parked past its attempts lets its key's next item run. */
     public static final String PARK = "park";
 
-    /** {@code onFailure: block}: the key waits for its parked item; refused until FIX-141. */
+    /** {@code onFailure: block}: the key waits for its parked item; refused for now, as it needs a barrier that survives a restart. */
     public static final String BLOCK = "block";
 
-    /** The most retries {@code delivery.retries.count} may schedule (D-135 draft). */
+    /** The most retries {@code delivery.retries.count} may schedule. */
     public static final int MAX_RETRIES = 100;
 
     /** The shortest {@code delivery.retries.interval}. */
@@ -114,8 +112,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     }
 
     /**
-     * F-32 (D-125): a keyed flow states what a failed item does to its key, and only a keyed flow does. {@code park} is the one
-     * value that loads; {@code block} waits for a barrier that survives a restart (FIX-141) and is never taken for park.
+     * Checks that a keyed flow states what a failed item does to its key, and that only a keyed flow does. {@code park} is the
+     * one value that loads; {@code block} is refused, never taken for park, as it needs a barrier that survives a restart.
      */
     private static void onFailure(Optional<String> partitionBy, Optional<String> onFailure) {
         if (onFailure.isEmpty()) {
@@ -158,7 +156,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     }
 
     /**
-     * {@code delivery.retries} (CORE-14a P1, D-135 draft): empty when absent (the node's default applies); else {@code count}
+     * {@code delivery.retries}: empty when absent (the node's default applies); else {@code count}
      * 0..{@value #MAX_RETRIES} and {@code interval} 1s..24h, both required, {@code multiplier} a number of at least 1 (default 1),
      * {@code maxInterval} from the interval to 24h (default the interval) — as a {@link RetryPolicy} whose attempts are the count,
      * initial the interval and max the maxInterval. A value out of its bounds is refused naming its key.
@@ -178,9 +176,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     }
 
     /**
-     * {@code policy} when it is within the D-135 bounds — at most {@value #MAX_RETRIES} retries (so a worker's bound, count + 1,
-     * never overflows), an interval from {@link #MIN_RETRY_INTERVAL} to {@link #MAX_RETRY_INTERVAL} and a cap no longer than
-     * that; else refused naming {@code what}. A schedule read from a flow file is held to them key by key before it gets here.
+     * {@code policy} when it is within the bounds of a schedule of retries: at most {@value #MAX_RETRIES} retries (so a
+     * worker's bound, count + 1, never overflows), an interval from {@link #MIN_RETRY_INTERVAL} to {@link #MAX_RETRY_INTERVAL}
+     * and a cap no longer than that; else refused naming {@code what}. A schedule read from a flow file is held to them key by key before it gets here.
      */
     static RetryPolicy withinRetryBounds(RetryPolicy policy, String what) {
         if (policy.attempts() > MAX_RETRIES) {

@@ -10,15 +10,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The {@link Intake} of stores that share no transaction (D-058, D-082): the ingress body's persist in its own store
+ * The {@link Intake} of stores that share no transaction: the ingress body's persist in its own store
  * ({@link dev.rail8.api.BlobStore#persist}) and the ingress snapshot's record in the {@link MessageStore} are asked side by
  * side; once both succeeded, {@code abandoned} is asked and, not complete, enqueues the item in the {@link WorkQueue}. The first failure
  * decides at once, without waiting for the other save, and nothing is queued; a store that throws instead of failing its
- * future is the same failed save. The in-memory stores and a future non-Postgres queue save so. They dedupe nothing (D-084):
- * a save with a dedupe key fails at once, nothing persisted, recorded or queued — every node saves through the Postgres intake.
+ * future is the same failed save. The in-memory stores, and any queue other than Postgres, save this way. It dedupes nothing:
+ * a save with a dedupe key fails at once, nothing persisted, recorded or queued, because deduplication needs the Postgres intake.
  * It keeps no body references: {@code keepInput} changes nothing.
  *
- * <p>Given the node's {@link Workers} and id, it hands off (D-121 (a)): just before the enqueue it reserves a slot of the flow's
+ * <p>Given the node's {@link Workers} and id, it hands off: just before the enqueue it reserves a slot of the flow's
  * worker; with one the item is enqueued {@linkplain WorkQueue#enqueueLeased leased} to the node and, written leased, run in that
  * slot before the save answers — no claim (a run or give-back that throws is logged at WARNING and the save still answers: its
  * item is queued, one written leased claimed at its lease end; after a failed enqueue it fails with the enqueue's failure); not written leased or the enqueue failed, the slot is given back: a keyed item's key is

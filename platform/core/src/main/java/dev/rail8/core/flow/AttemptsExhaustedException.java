@@ -1,10 +1,10 @@
 package dev.rail8.core.flow;
 
 /**
- * The failure a message is parked with when its work item was handed out more often than its schedule of retries allows — its
- * count plus its first run (CORE-14a P1, D-135 draft; superseding D-055's maxAttempts): the last run the bound allowed did not
- * settle it — it crashed, hung past its lease, was fenced or failed where nothing could park it — so it is parked at step 1
- * from its ingress envelope instead of running again.
+ * The failure a message is parked with when its work item was handed out more often than its schedule of retries allows (the
+ * number of retries plus the first run). The last run the bound allowed did not settle the message: it crashed, hung past its
+ * lease, was fenced, or failed where nothing could park it. So it is parked at step 1 from its ingress envelope instead of
+ * running again.
  *
  * @since 0.1
  */

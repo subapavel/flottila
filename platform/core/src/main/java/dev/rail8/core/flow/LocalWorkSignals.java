@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The {@link WorkSignals} of nodes in one JVM (D-121 (b) B1, tests and single-JVM multi-node): every node joins one {@link Bus};
+ * The {@link WorkSignals} of nodes in one JVM (tests, several nodes in one process): every node joins one {@link Bus};
  * a send is one {@link Bus#publish} — what a {@code NOTIFY} is to every {@code LISTEN}ing node, the sender's own included — and
  * each joined node wakes its own {@link Workers} as {@link WorkEvents} says. Announces are paced by {@link WorkEvents}' windows on
  * the timer given. A payload not of the {@code w1} form is logged once per distinct prefix at WARNING.

@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
- * Message filter (ARCHITECTURE §4): a message the predicate accepts goes on; any other ends here, handed back
+ * Message filter: a message the predicate accepts goes on; any other ends here, handed back
  * as it was without the rest of the pipeline running — the runtime records it as filtered, not failed.
  *
  * @param keep the condition to go on

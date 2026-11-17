@@ -11,23 +11,23 @@ import java.util.concurrent.Callable;
 
 /**
  * What every step and every child of a message's {@link RequestScope} may ask for without it being
- * threaded through signatures (ARCHITECTURE §4): message id, flow, tenant, trace id and the absolute
+ * threaded through signatures: message id, flow, tenant, trace id and the absolute
  * deadline. Bound as a {@link ScopedValue} for the duration of {@link #call(Callable)} / {@link #run(Runnable)};
  * {@link RequestScope#fork(Callable)} rebinds the forking thread's context in each child, so the binding
  * follows the message, never a thread. Every pipeline the flow builder builds binds the context of the message it runs in its
- * first stage, through {@link #apply(Pipeline, Envelope)} (D-100).
+ * first stage, through {@link #apply(Pipeline, Envelope)}.
  *
  * @param messageId the message id (Envelope.id)
  * @param flow the flow name
  * @param tenant the tenant the message belongs to
  * @param traceId the trace id propagated to monitoring and outbound calls
  * @param deadline the absolute instant the message's run should be done by: a send that waits for its target waits no longer
- *                 (D-100); nothing cancels the run at it yet
+ *                 than that; nothing cancels the run at it yet
  * @since 0.1
  */
 public record MessageContext(String messageId, String flow, String tenant, String traceId, Instant deadline) {
 
-    /** The tenant of every message until a package carries one (ARCHITECTURE §9, D-100). */
+    /** The tenant of every message until a package carries one. */
     public static final String DEFAULT_TENANT = "default";
 
     private static final ScopedValue<MessageContext> CURRENT = ScopedValue.newInstance();

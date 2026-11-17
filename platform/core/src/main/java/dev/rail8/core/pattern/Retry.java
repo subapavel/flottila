@@ -13,17 +13,17 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Retry per step (ARCHITECTURE §4): a step marked {@code retryable} is tried again after a failure, with the
+ * Retry per step: a step marked {@code retryable} is tried again after a failure, with the
  * flow's {@link RetryPolicy} backoff, driven by the injected {@link Timer} — the message's virtual thread parks
  * between attempts, never sleeps, and a fake clock drives it in tests. After the last attempt the last exception
  * is thrown with the earlier ones suppressed; the message fails (DLQ is the runtime's job). An interrupt while
  * waiting (a cancelled scope) stops retrying at once, keeps the interrupt and throws the last exception.
  *
- * <p>Any {@link Exception} is retried, a checked one too — {@code Future.await()} rethrows a failed future's checked cause
- * as is, a refused connection's {@link java.net.ConnectException} among them (FIX-107) — except an
+ * <p>Any {@link Exception} is retried, a checked one too ({@code Future.await()} rethrows a failed future's checked cause
+ * as is, a refused connection's {@link java.net.ConnectException} among them), except an
  * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored and, on an attempt after
- * the first, the earlier attempts' failures suppressed on it in attempt order (D-098), and a {@link FencedException}: the
- * node's fence is closed (D-101 (2)), so no attempt may send, and it is thrown at once with the earlier failures suppressed. An
+ * the first, the earlier attempts' failures suppressed on it in attempt order; and a {@link FencedException}: the
+ * node's fence is closed, so no attempt may send, and it is thrown at once with the earlier failures suppressed. An
  * {@link Error} is not a transient failure and is never caught.
  *
  * @since 0.1
