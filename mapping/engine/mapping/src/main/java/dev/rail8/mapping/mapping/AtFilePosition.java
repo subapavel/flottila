@@ -1,8 +1,7 @@
 package dev.rail8.mapping.mapping;
 
 /**
- * A position in a schema file, as a structure load error reports it (ADR-0015 location {@code
- * {file, line, column}}).
+ * A position in a schema file, as a structure load error reports it: {@code {file, line, column}}.
  *
  * @param file the file as the schema bundle refers to it
  * @param line the line, from 1

@@ -4,10 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A mapping's entry in {@code udfs} (ADR-0010, ADR-0020). Compiling checks it against the method.
+ * A mapping's entry in {@code udfs}. Compiling checks it against the method.
  *
  * @param executionKind what one call of the UDF sees
- * @param inputs the input names in order; empty for a UDF without inputs (F-6)
+ * @param inputs the input names in order; empty for a UDF without inputs
  * @param params the box parameters and their types
  * @param source the Java method, {@code <file reference>#<method>}
  */

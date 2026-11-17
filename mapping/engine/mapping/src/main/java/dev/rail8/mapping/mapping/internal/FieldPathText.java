@@ -4,9 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Field paths as the mapping model spells them (ADR-0007): steps joined by {@code /}, where an
- * EQName's {@code Q{namespace}} may itself hold a {@code /}. ADR-0011 checks contexts on this text;
- * nothing here knows the structure.
+ * Field paths as the mapping model spells them: steps joined by {@code /}, where an EQName's {@code
+ * Q{namespace}} may itself hold a {@code /}. The model check checks contexts on this text; nothing
+ * here knows the structure.
  */
 public final class FieldPathText {
 

@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * A call of a standard function of the function catalogue ({@code kind: function}), by its name and
- * its params; a function's name stands only in its family's files (ADR-0025 "Families").
+ * its params; a function's name stands only in its family's files.
  *
  * @param fn the catalogue's function name
  * @param inputs the input slots in the catalogue's input order; empty for an unconnected input

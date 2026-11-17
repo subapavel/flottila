@@ -4,7 +4,7 @@ import dev.rail8.mapping.structure.RootSelector;
 import dev.rail8.mapping.structure.SchemaBundle;
 
 /**
- * The structure a mapping reads from or writes to, by reference (ADR-0009, ADR-0010).
+ * The structure a mapping reads from or writes to, by reference.
  *
  * @param bundle the schema files; the writer writes them sorted
  * @param root the root selector

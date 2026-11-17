@@ -29,9 +29,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Stage 1 of loading (ADR-0011): json-sKema validates the document against the contract's
- * mapping-model schema, packed into this module's jar. Each failure becomes a diagnostic at the
- * JSON pointer of the instance, its code by the failing keyword ("Stage 1 and 2 codes").
+ * Stage 1 of loading: json-sKema validates the document against the contract's mapping-model
+ * schema, packed into this module's jar. Each failure becomes a diagnostic at the JSON pointer of
+ * the instance, its code by the failing keyword.
  */
 public final class SchemaStage {
 
@@ -63,7 +63,7 @@ public final class SchemaStage {
               "formatVersion is newer than " + FORMAT_VERSION + ", the newest this engine reads"));
     }
     // json-sKema 0.32.0 keeps only the first member's result of a patternProperties map (it takes
-    // firstOrNull of the members' results, observed), so a later member's failure is lost (F-8).
+    // firstOrNull of the members' results, observed), so a later member's failure is lost.
     // The schemas see every map value as true, and each member is validated on its own, once.
     Findings found = new Findings();
     found.add(SCHEMAS.document(), document);
@@ -192,7 +192,6 @@ public final class SchemaStage {
             case REQUIRED -> MappingDiagnostics.MISSING_MEMBER;
             case TYPE -> MappingDiagnostics.WRONG_TYPE;
             case PATTERN -> MappingDiagnostics.PATTERN_MISMATCH;
-            // ADR-0029 adds minimum, maximum and maxLength
             case ENUM,
                 CONST,
                 MIN_ITEMS,
