@@ -1,7 +1,8 @@
 package dev.rail8.api;
 
 /**
- * Typed property key — no magic strings. {@code Key<Integer> SPLIT_INDEX = new Key<>("splitIndex")}
+ * The typed name of a prop, so a prop is read with the type it was written with, for example
+ * {@code Key<Integer> SPLIT_INDEX = new Key<>("splitIndex")}.
  *
  * @since 0.1
  */

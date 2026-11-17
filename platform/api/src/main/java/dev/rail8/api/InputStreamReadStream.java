@@ -13,8 +13,8 @@ import java.util.concurrent.Callable;
  * {@link ReadStream}: a virtual thread pumps 64 KiB chunks to the handlers and parks while the consumer is
  * paused. The stream is opened lazily on the first demand, so creating it never blocks and a failure to open
  * reaches the exception handler like any other; the input stream is closed once it ended or failed. A
- * component hands it to {@link BlobStore#write(BlobKey, ReadStream, long)} (components may not import the
- * runtime, D-076).
+ * component hands it to {@link BlobStore#write(BlobKey, ReadStream, long)}, since components may not use the
+ * runtime's own streams.
  *
  * @since 0.1
  */

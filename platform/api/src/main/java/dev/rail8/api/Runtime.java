@@ -7,8 +7,7 @@ import java.util.Objects;
 /**
  * What a flow is built from: clock, timer, id generation, blob store, hasher and the components by
  * scheme. Used inside the flow builder and nowhere else — a stage holds only what it was given at
- * build time and never captures the record (CLAUDE.md). Draft — review at hand-over; stores,
- * caches, wallet and the services registry are added by the tasks that introduce them.
+ * build time and never captures the record.
  *
  * @since 0.1
  */

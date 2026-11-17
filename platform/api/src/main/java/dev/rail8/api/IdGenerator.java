@@ -1,7 +1,7 @@
 package dev.rail8.api;
 
 /**
- * Message id generation, injected through {@link Runtime} (no static singletons).
+ * Makes message ids. Handed to code through {@link Runtime}, so tests can supply predictable ids.
  *
  * @since 0.1
  */

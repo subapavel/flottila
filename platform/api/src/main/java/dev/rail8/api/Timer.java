@@ -3,8 +3,8 @@ package dev.rail8.api;
 import java.time.Duration;
 
 /**
- * One-shot scheduling, injected through {@link Runtime} like the clock and the id generator (no
- * static singletons, no timer threads owned by core). The runtime backs it with Vert.x timers;
+ * One-shot scheduling, handed to code through {@link Runtime} like the clock and the id generator, so that no code
+ * owns a timer thread and tests control time. The runtime backs it with Vert.x timers;
  * the testkit's fake fires when the fake clock reaches the due time.
  *
  * @since 0.1

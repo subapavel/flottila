@@ -5,14 +5,13 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
 
 /**
- * Where the bytes of a {@link Body} live. Implementations tier memory, encrypted local spool and
- * S3 behind this interface (runtime, P1-01); tests use an in-memory one (testkit). Every write
- * carries the flow's finite maximum body size and fails with {@link BodyTooLargeException} above
- * it; a store hashes while it writes so the {@link Body} it returns is complete. Deletion belongs to the retention job, by
- * age (D-088, F-20), never on the hot path, and is not part of this contract; a removed key reads as never written: for a key with
- * nothing stored, {@link #read}, {@link #open} and {@link #persist} on a store with a durable tier fail with a
- * {@link BlobNotFoundException} naming it (without a durable tier {@code persist} fails with an
- * {@link IllegalStateException} first), and {@link #exists} answers false (D-096).
+ * Where the bytes of a {@link Body} live. The runtime's store keeps them in memory, in an encrypted local spool and in
+ * S3; tests use an in-memory store. Every write carries the flow's finite maximum body size and fails with
+ * {@link BodyTooLargeException} above it; a store hashes while it writes, so the {@link Body} it returns is complete.
+ * Deleting is not part of this contract: the retention job removes bodies by age, never on the hot path, and a removed
+ * key reads as never written. For a key with nothing stored, {@link #read}, {@link #open} and {@link #persist} on a store
+ * with a durable tier fail with a {@link BlobNotFoundException} naming it (without a durable tier {@code persist} fails
+ * with an {@link IllegalStateException} first), and {@link #exists} answers false.
  *
  * @since 0.1
  */
@@ -45,10 +44,10 @@ public interface BlobStore {
     Future<Buffer> read(BlobKey key);
 
     /**
-     * Whether anything is stored under {@code key} (D-096): true, or false — an answer, not a failure — for a key with nothing
+     * Whether anything is stored under {@code key}: true, or false — an answer, not a failure — for a key with nothing
      * stored, never written or removed by retention; any other failure fails the future. This default reads the whole object,
-     * unbounded by {@link #treeLimit()} — an accepted limit, so a store should override it with an answer that does not
-     * fetch the bytes; every shipped store does (D-096).
+     * unbounded by {@link #treeLimit()}, so a store should override it with an answer that does not fetch the bytes; every
+     * shipped store does.
      */
     default Future<Boolean> exists(BlobKey key) {
         return read(key).transform(read -> {
@@ -59,9 +58,8 @@ public interface BlobStore {
     }
 
     /**
-     * Makes the stored body durable (D-058, D-061): the future completes once the bytes outlive the process and every node
-     * can read them by {@code key} — for a database tier, once the insert has committed. A key's durable bytes never change
-     * (D-061 amended by FIX-35): persisting a key that is already durable with the same bytes completes again, quietly; with
+     * Makes the stored body durable: the future completes once the bytes outlive the process and every node can read them
+     * by {@code key} — for a database tier, once the insert has committed. A key's durable bytes never change: persisting a key that is already durable with the same bytes completes again, quietly; with
      * other bytes — a key written again since — it fails with an {@link IllegalStateException} naming the key, nothing is
      * persisted and the body stays as written. Never deletes anything. Every failure is a failed future:
      * {@link BodyTooLargeException} above the store's durable bound (nothing is written, the body stays where it was),

@@ -5,8 +5,7 @@ import java.util.Objects;
 /**
  * A pipeline element that controls cardinality: it may call {@code rest} zero times (filter),
  * once (step), or N times (split) and returns the envelope the caller sees as the result of the
- * pipeline from here on. Plain code on the message's virtual thread, no reactive contract
- * (ARCHITECTURE §6).
+ * pipeline from here on. Plain code on the message's virtual thread, with no reactive contract.
  *
  * @since 0.1
  */

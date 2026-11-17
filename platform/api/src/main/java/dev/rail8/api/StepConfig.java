@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * One entry of a flow's {@code steps} as a {@link StepFactory} sees it.
  *
- * @param index the step's number in the flow: ingress is 0, the n-th configured step is n (ARCHITECTURE §5)
+ * @param index the step's number in the flow: ingress is 0, the n-th configured step is n
  * @param type step type, resolved to a {@link StepFactory} or a built-in of the builder
  * @param name step name, unique in the flow; the label of the timeline
  * @param retryable whether the flow's retry policy applies to this step

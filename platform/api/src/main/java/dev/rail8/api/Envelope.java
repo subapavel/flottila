@@ -8,7 +8,7 @@ import java.util.function.Function;
 
 /**
  * The message as it travels through a flow: an immutable record, every step returns a new one.
- * Headers, props, keys and attachments stay separate fields (ARCHITECTURE §5); {@link #body()}
+ * Headers, props, keys and attachments stay separate fields; {@link #body()}
  * and {@link #views()} are shared by reference across every {@code with*}, and replaced together
  * by {@link #next(Body)}.
  *
@@ -30,15 +30,15 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
     public static final String H_CONTENT_TYPE = "content-type";
 
     /**
-     * Header name of the message id a producer sends to its partner (D-101 (3), D-113 draft): one value per send,
-     * {@link #outboundId()}, set by {@link #withOutboundId()} — the partner dedupes a rerun on it.
+     * Header name of the message id a producer sends to its partner: one value per send, {@link #outboundId()}, set by
+     * {@link #withOutboundId()}. The partner uses it to drop a send it already got.
      */
     public static final String H_MESSAGE_ID = "x-message-id";
 
     /**
      * Prop carrying the attempt of the run this envelope belongs to: set from a message's second run on (the worker's second
      * claim of its item onwards), absent on a first run. It scopes the keys of {@link #nextKey(String)}
-     * to the run (D-066).
+     * to the run.
      */
     public static final Key<Integer> ATTEMPT = new Key<>("attempt");
 
@@ -70,8 +70,8 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
 
     /**
      * The same message one step further: step + 1 with the body and its views shared by reference.
-     * This is how a step that only changed headers, props or keys is numbered (ARCHITECTURE §5:
-     * step index = position in the flow's steps, ingress is 0).
+     * This is how a step that only changed headers, props or keys is numbered: the step index is the
+     * position in the flow's steps, ingress is 0.
      */
     public Envelope advance() {
         return new Envelope(id, flow, step + 1, headers, props, keys, body, attachments, views);
@@ -85,7 +85,7 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
     /**
      * The key a step writes {@code part} of the body it hands on under: (id, step + 1, part) on a first run, the part suffixed
      * {@code ~<attempt>} on a run whose {@link #ATTEMPT} is 2 or more — so each key is written by one run only and a rerun
-     * never writes over the bytes an earlier run left (D-066). An attempt that is absent, 1, 0 or negative adds no suffix.
+     * never writes over the bytes an earlier run left. An attempt that is absent, 1, 0 or negative adds no suffix.
      *
      * @throws NullPointerException if {@code part} is null
      * @throws IllegalArgumentException if {@code part} contains {@code ~}, the attempt separator, whatever the attempt

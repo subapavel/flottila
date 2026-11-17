@@ -11,16 +11,17 @@ import java.util.regex.Pattern;
 /**
  * What a {@link StepFactory} or {@link Expressions} may hold on to at build time: the injected clock, timer,
  * ids, blob store and hasher, the flow's body limit, the directory its relative file references resolve
- * against (the package's: a reference is a path from the package root, D-078) and the sink told each file read through {@link #file} and {@link #resolve}. Not the {@link Runtime}: that is used inside the flow builder and nowhere else
- * (CLAUDE.md); components are reached only through the builder's {@code to} step.
+ * against (the package's: a reference is a path from the package root) and the sink told each file read through
+ * {@link #file} and {@link #resolve}. Not the {@link Runtime}: that is used inside the flow builder and nowhere else;
+ * components are reached only through the builder's {@code to} step.
  *
  * @param baseDir where a step's relative file reference (a stylesheet, a schema) resolves, and the directory every
- *                file the step reads at build time lies inside ({@link #file}, {@link #resolve}): the package directory (D-078);
+ *                file the step reads at build time lies inside ({@link #file}, {@link #resolve}): the package directory;
  *                "the flow's directory" below and in the refusals means this directory
  * @param reads   gets every path {@link #file} and {@link #resolve} return, once per call, as returned, and never one they
- *                refuse: the files a flow's build read, for its effective hash (D-063)
- * @param dependencies the package's declared dependencies, each name to the directory its resolved version is unpacked in
- *                (D-087): {@code file("<name>:<path>")} reads {@code <path>} from that directory and stays inside it; empty
+ *                refuse: the files a flow's build read, which go into the flow's effective hash
+ * @param dependencies the package's declared dependencies, each name to the directory its resolved version is unpacked in:
+ *                {@code file("<name>:<path>")} reads {@code <path>} from that directory and stays inside it; empty
  *                for a package without dependencies
  * @since 0.1
  */
@@ -28,7 +29,7 @@ public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore
                             java.util.function.Consumer<Path> reads, Map<String, Path> dependencies) {
 
     /**
-     * A dependency reference: a package name before the first {@code /} (D-087). Anything else is a path from the package root;
+     * A dependency reference: a package name before the first {@code /}. Anything else is a path from the package root;
      * a root file whose name has a colon is named {@code ./<name>}.
      */
     private static final Pattern DEPENDENCY = Pattern.compile("([a-z][a-z0-9-]{0,63}):");
@@ -58,12 +59,12 @@ public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore
 
     /**
      * {@code relative} against {@link #baseDir()}, absolute and normalised; a file a step reads at build time lies
-     * inside the flow's directory (D-052), so a path that leaves it after normalisation — {@code ..}, an absolute path
+     * inside the flow's directory, so a path that leaves it after normalisation — {@code ..}, an absolute path
      * elsewhere — is refused. Symbolic links are compared as paths, not followed. The path returned is reported to {@link #reads}.
      * {@code <name>:<path>} (a name matching {@code [a-z][a-z0-9-]{0,63}} before the first {@code /}) is {@code <path>} in the
      * directory of the dependency {@code <name>} and is confined to that directory; a name not in {@link #dependencies} is refused.
      * A relative path is confined to the flow's directory; an absolute one to whichever directory holds it, the package's or a
-     * dependency's (D-087).
+     * dependency's.
      *
      * @throws IllegalArgumentException naming {@code relative} (and the directory, when the path leaves it) when the path leaves
      *                                  its directory or names a package that is not a dependency
@@ -84,11 +85,11 @@ public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore
     /**
      * A file that a file the step reads includes or imports: {@code reference} resolved against {@code baseUri} (the
      * {@code file:} URI of the including file; {@code null} or blank: the flow's directory), held to the same rule as
-     * {@link #file} (D-052) — the result is a file inside the flow's directory, compared as paths with symbolic links
+     * {@link #file} — the result is a file inside the flow's directory, compared as paths with symbolic links
      * not followed. A reference that resolves to anything but a {@code file:} URI (a URL over the network, a jar
      * entry) is refused as not a file. The path returned is reported to {@link #reads}. The directory is the one that holds
-     * the including file: an include in a dependency's file stays in that dependency, one in the package stays in the package
-     * (D-087); {@code <name>:} inside XML is a URI of another scheme, refused as not a file.
+     * the including file: an include in a dependency's file stays in that dependency, one in the package stays in the package.
+     * {@code <name>:} inside XML is a URI of another scheme and is refused as not a file.
      *
      * @throws IllegalArgumentException naming {@code reference} and the directory when it is not a file or leaves it
      */
