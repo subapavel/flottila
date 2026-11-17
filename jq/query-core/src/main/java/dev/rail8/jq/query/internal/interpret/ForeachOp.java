@@ -44,6 +44,9 @@ public final class ForeachOp extends Op {
   /**
    * The value of {@code each} with the slot set. A push init of a value-form Foreach is many, so {@code each} gives no
    * result: each result of the init sets the slot and runs it, for its ticks and writes, and the Foreach gives none.
+   *
+   * @throws IllegalStateException when {@code each} gives a result there: the facts that made the Foreach value form
+   *     are wrong, and returning would lose a result
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
@@ -54,7 +57,9 @@ public final class ForeachOp extends Op {
           in,
           r -> {
             slots[slot] = r;
-            each.eval(state, slots, in);
+            if (each.eval(state, slots, in) != CallForm.NONE) {
+              throw new IllegalStateException("A value-form Foreach's each gave a result after its many init");
+            }
             return true;
           });
       return CallForm.NONE;

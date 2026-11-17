@@ -88,6 +88,9 @@ public final class BindsOp extends Op {
    * The value form of the values from {@code first} on, then the body's value. A push value of a value-form Binds is
    * many, so what comes after it gives no result: each of its results sets its slot and runs the rest, for its ticks
    * and writes, and the Binds gives none.
+   *
+   * @throws IllegalStateException when the rest gives a result there: the facts that made the Binds value form are
+   *     wrong, and returning would lose a result
    */
   private Object evalFrom(int first, RunState state, Object[] slots, Object in) {
     for (int k = first; k < values.length; k++) {
@@ -100,7 +103,9 @@ public final class BindsOp extends Op {
             in,
             v -> {
               slots[slot] = v;
-              evalFrom(next, state, slots, in);
+              if (evalFrom(next, state, slots, in) != CallForm.NONE) {
+                throw new IllegalStateException("A value-form Binds' rest gave a result after its many value");
+              }
               return true;
             });
         return CallForm.NONE;

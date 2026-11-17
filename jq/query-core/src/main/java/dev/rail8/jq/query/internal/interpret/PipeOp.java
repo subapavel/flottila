@@ -35,6 +35,9 @@ public final class PipeOp extends Op {
   /**
    * The right side's value on the left side's. A push left side of a value-form Pipe is many, so the right side gives
    * no result: each result of the left runs it, for its ticks and writes, and the Pipe gives none.
+   *
+   * @throws IllegalStateException when the right side gives a result there: the facts that made the Pipe value form are
+   *     wrong, and returning would lose a result
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
@@ -44,7 +47,9 @@ public final class PipeOp extends Op {
           slots,
           in,
           v -> {
-            right.eval(state, slots, v);
+            if (right.eval(state, slots, v) != CallForm.NONE) {
+              throw new IllegalStateException("A value-form Pipe's right side gave a result after its many left side");
+            }
             return true;
           });
       return CallForm.NONE;

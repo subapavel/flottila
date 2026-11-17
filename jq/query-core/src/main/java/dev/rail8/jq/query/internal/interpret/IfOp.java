@@ -75,6 +75,9 @@ public final class IfOp extends Op {
   /**
    * The branch's value. A push condition of a value-form If is many, so neither branch gives a result:
    * each result of the condition runs its branch, for its ticks and writes, and the If gives none.
+   *
+   * @throws IllegalStateException when a branch gives a result there: the facts that made the If value form are wrong,
+   *     and returning would lose a result
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
@@ -84,7 +87,9 @@ public final class IfOp extends Op {
           slots,
           in,
           c -> {
-            branch(c).eval(state, slots, in);
+            if (branch(c).eval(state, slots, in) != CallForm.NONE) {
+              throw new IllegalStateException("A value-form If's branch gave a result after its many condition");
+            }
             return true;
           });
       return CallForm.NONE;

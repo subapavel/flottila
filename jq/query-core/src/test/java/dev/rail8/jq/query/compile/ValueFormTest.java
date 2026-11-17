@@ -7,11 +7,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.rail8.jq.query.compile.RandomParts.Form;
 import dev.rail8.jq.query.internal.interpret.AltBindOp;
 import dev.rail8.jq.query.internal.interpret.Argument;
+import dev.rail8.jq.query.internal.interpret.BindOp;
+import dev.rail8.jq.query.internal.interpret.BindsOp;
 import dev.rail8.jq.query.internal.interpret.BreakOp;
+import dev.rail8.jq.query.internal.interpret.CommaOp;
+import dev.rail8.jq.query.internal.interpret.ForeachOp;
 import dev.rail8.jq.query.internal.interpret.IdentityOp;
+import dev.rail8.jq.query.internal.interpret.IfOp;
 import dev.rail8.jq.query.internal.interpret.IntrinsicManyOp;
 import dev.rail8.jq.query.internal.interpret.Op;
 import dev.rail8.jq.query.internal.interpret.ParamCallOp;
+import dev.rail8.jq.query.internal.interpret.PipeOp;
 import dev.rail8.jq.query.compile.RandomParts.Outcome;
 import dev.rail8.jq.query.compile.RandomParts.Part;
 import dev.rail8.jq.query.ir.Advance;
@@ -954,5 +960,64 @@ class ValueFormTest {
     state.begin(UNLIMITED, UNLIMITED, UNLIMITED);
     assertThatThrownBy(() -> op.eval(state, new Object[1], "in")).as("eval of %s", op.getClass().getSimpleName()).isInstanceOf(IllegalStateException.class).hasMessage(message);
     assertThat(state.steps()).as("steps of the refused eval").isZero();
+  }
+
+  /** A Many of two results, its input twice: the many push part of a value-form op built on a wrong fact. */
+  private static final Many TWICE =
+      new Many() {
+        @Override
+        public long first(RunState state, Object in, Object[] args) {
+          return 0;
+        }
+
+        @Override
+        public long next(RunState state, Object in, Object[] args, long cursor) {
+          return cursor == 0 ? 1 : Many.END;
+        }
+
+        @Override
+        public Object value(RunState state, Object in, Object[] args, long cursor) {
+          return in;
+        }
+      };
+
+  /**
+   * Value-form ops built as if a wrong cardinality fact had made them eligible: a push part gives two results, or a
+   * Comma's left side gives one, and what the facts promise gives no result gives one.
+   */
+  static Stream<Arguments> wrongFacts() {
+    return Stream.of(
+        Arguments.argumentSet(
+            "a Pipe", new PipeOp(true, twice(), new IdentityOp(true)), "A value-form Pipe's right side gave a result after its many left side"),
+        Arguments.argumentSet(
+            "a Bind", new BindOp(true, twice(), 0, new IdentityOp(true)), "A value-form Bind's body gave a result after its many value side"),
+        Arguments.argumentSet(
+            "an If",
+            new IfOp(true, twice(), false, new IdentityOp(true), new IdentityOp(true), v -> true),
+            "A value-form If's branch gave a result after its many condition"),
+        Arguments.argumentSet(
+            "a Foreach", new ForeachOp(true, twice(), 0, new IdentityOp(true)), "A value-form Foreach's each gave a result after its many init"),
+        Arguments.argumentSet(
+            "a Binds",
+            new BindsOp(true, new Op[] {twice()}, new boolean[] {false}, new int[] {0}, new IdentityOp(true)),
+            "A value-form Binds' rest gave a result after its many value"),
+        Arguments.argumentSet(
+            "a Comma", new CommaOp(true, new IdentityOp(true), new IdentityOp(true)), "A value-form Comma's left side gave a result"));
+  }
+
+  private static Op twice() {
+    return new IntrinsicManyOp(TWICE, new Argument[0]);
+  }
+
+  /**
+   * A value form never drops a result: where a wrong fact made an op value form over a part that gives more than it
+   * returns, its eval throws IllegalStateException instead of returning one result and losing the rest.
+   */
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("wrongFacts")
+  void aValueFormOverAWrongFactFailsLoudly(Op op, String message) {
+    RunState state = new RunState();
+    state.begin(UNLIMITED, UNLIMITED, UNLIMITED);
+    assertThatThrownBy(() -> op.eval(state, new Object[1], "in")).as("eval of %s", op.getClass().getSimpleName()).isInstanceOf(IllegalStateException.class).hasMessage(message);
   }
 }
