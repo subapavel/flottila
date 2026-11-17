@@ -11,7 +11,7 @@ import java.util.Objects;
 
 /**
  * {@link PollerLeases} in this process's memory, on the injected clock: a lease covers [call, call + ttl), a renew replaces its
- * expiry, and a lapsed one is free — never "always held". A node without Valkey holds its leases here (D-083): enough for a single
+ * expiry, and a lapsed one is free — never "always held". A node without Valkey holds its leases here: enough for a single
  * node; two such nodes on one endpoint both poll (duplicates, never a loss).
  *
  * @since 0.1

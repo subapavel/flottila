@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * Listen addresses as {@code Component.listensOn} answers them — unresolved, the host as configured — compared without a bind or a
- * name lookup (D-072: one listener per host:port on a node).
+ * name lookup (a node has one listener per host:port).
  */
 final class Listeners {
 

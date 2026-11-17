@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The record of a package deployed (D-070): one per package, shared by every node of the pool, written once the deploy's flows
+ * The record of a package deployed: one per package, shared by every node of the pool, written once the deploy's flows
  * started — its commit point — and replaced whole by the next deploy of the package. It holds no bytes: the archive is in the
  * {@link ArchiveStore} under {@code archiveSha256}.
  *
@@ -16,7 +16,7 @@ import java.util.Optional;
  * @param revision the deploy's revision, empty without one
  * @param archiveSha256 the archive's SHA-256, lower-case hex: its key in the archive store
  * @param deployedAt the {@link DeployedPackage#deployedAt()} of the deploy, truncated to the microsecond (what Postgres keeps)
- * @param dependencies the closure of the package's dependencies as its deploy resolved them (D-087), in the order resolved: the
+ * @param dependencies the closure of the package's dependencies as its deploy resolved them, in the order resolved: the
  *                     archives this deploy runs with, never pruned while the record pins them; empty without dependencies
  * @since 0.1
  */
@@ -32,7 +32,7 @@ public record DeploymentRecord(String name, String version, Optional<String> rev
     }
 
     /**
-     * One package version a deploy resolved a dependency to (D-087).
+     * One package version a deploy resolved a dependency to.
      *
      * @param name the dependency's package name
      * @param version its version

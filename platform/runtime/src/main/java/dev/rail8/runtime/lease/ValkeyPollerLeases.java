@@ -8,7 +8,7 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * {@link PollerLeases} in Valkey (D-083): a lease is the key {@code rail8:poller:<key>} holding its owner, with a millisecond
+ * {@link PollerLeases} in Valkey: a lease is the key {@code rail8:poller:<key>} holding its owner, with a millisecond
  * ttl. A hold is one {@code EVAL}: no key, {@code SET .. PX ttl} (taken); the owner's, {@code PEXPIRE ttl} (renewed); another
  * owner's, nothing (refused). A release is one {@code EVAL} that deletes the key only while it holds the owner. Each script runs
  * atomically on the server: of many owners racing for one free key, one wins.

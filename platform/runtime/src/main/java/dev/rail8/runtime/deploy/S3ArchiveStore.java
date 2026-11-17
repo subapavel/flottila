@@ -17,7 +17,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 /**
- * The {@link ArchiveStore} of a deployed node (D-070): the archive of a key is the object {@code <prefix>/archives/<sha256>.zip}
+ * The {@link ArchiveStore} of a deployed node: the archive of a key is the object {@code <prefix>/archives/<sha256>.zip}
  * in {@code bucket} — no package name in the key. A put is a plain PUT of the file every time (no HEAD first); a fetch is a GET
  * copied to the target, as {@code TieredBlobStore} reads its S3 tier. A missing object is a {@link NoSuchFileException} naming
  * the key; every other SDK failure — an endpoint nothing listens on, a bucket that does not exist — is an {@link IOException}

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * What {@link Deployments#deploy} did (D-063): the package as deployed now and, by qualified flow id, sorted, the flows it
+ * What {@link Deployments#deploy} did: the package as deployed now and, by qualified flow id, sorted, the flows it
  * started for the first time ({@code added}), those it stopped and started again on the new version ({@code swapped}) and those it
  * stopped because the new version no longer has them ({@code removed}). A flow in none of the three runs on as it was: its
  * effective hash did not change. A first deploy adds every flow.

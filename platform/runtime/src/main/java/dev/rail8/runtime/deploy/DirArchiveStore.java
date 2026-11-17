@@ -7,7 +7,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 
 /**
- * The {@link ArchiveStore} of a node in dev or ci (D-070; a deployed node refuses it): the archive of a key is the file
+ * The {@link ArchiveStore} of a node in dev or ci (a deployed node refuses it): the archive of a key is the file
  * {@code <dir>/<sha256>.zip}. A put copies into a temporary file in {@code dir}, created with it when absent, and moves that over
  * the archive's file atomically: a reader never sees half an archive, and a failed put leaves no temporary file.
  *
