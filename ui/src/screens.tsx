@@ -2,6 +2,7 @@ import { Content, PageSection, Title } from '@patternfly/react-core';
 import type { ReactNode } from 'react';
 import { httpApiClient } from './mapping/api/http-api';
 import { mappingsScreen } from './mapping/screen';
+import { storageBrowserState } from './mapping/studio/browser-state/browser-state';
 import { httpAdminApi } from './messages/admin';
 import { messagesScreen } from './messages/screen';
 
@@ -33,5 +34,5 @@ function Home() {
 export const screens: readonly Screen[] = [
   { id: 'home', title: 'Home', render: () => <Home /> },
   messagesScreen(httpAdminApi()),
-  mappingsScreen(httpApiClient()),
+  mappingsScreen(httpApiClient(), storageBrowserState(window.localStorage)),
 ];
