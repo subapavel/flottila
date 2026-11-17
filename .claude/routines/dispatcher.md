@@ -40,14 +40,10 @@ For a stalled or failed worker: `archive_session`; on the issue, a comment sayin
 stopped and why (one or two sentences, with its session id), remove `in-progress`, and add
 `failed-once`, or `blocked` when the issue already has `failed-once`.
 
-## 4. Daily cap
-
-Count the workers whose `created_at` falls on today's date. At 8 or more, start nothing today.
-
-## 5. Pick and start
+## 4. Pick and start
 
 Streams, each with its label: `jádro`, `ui`, `mapování`, `jq`. For each stream that is not busy,
-while the cap and the limit from step 1 allow:
+while the limit from step 1 allows:
 
 1. Pick one ready issue: open, has the stream's label, and has none of `in-progress`,
    `owner-question`, `later`, `blocked`. Order: `priority` first, then `krok-1`, then the lowest
@@ -71,7 +67,7 @@ while the cap and the limit from step 1 allow:
 
    If `create_session` fails, remove `in-progress` again and leave the issue as it was.
 
-## 6. End
+## 5. End
 
 Reply with at most five lines: limit status, workers running, workers started (issue, stream),
 workers stopped, and why nothing was started where a stream stayed idle.
