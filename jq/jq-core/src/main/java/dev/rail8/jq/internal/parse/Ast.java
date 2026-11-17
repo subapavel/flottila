@@ -4,10 +4,10 @@ import dev.rail8.jq.query.ir.Source;
 import java.util.List;
 
 /**
- * The parser's output (GLOSSARY "AST", ADR-0032): one record per construct of jq 1.8.2's grammar ({@code parser.y}),
- * sugar kept, each with its Source in UTF-8 bytes of the filter (ADR-0031). A postfix node spans its own bytes, from
- * the start of its suffix ({@code .name}, {@code .[}, {@code [}, {@code ?}) to its end, a {@code ?} after it included;
- * a node with operands spans them all. Only the {@link Resolver} reads it. A name is kept without its {@code $} or
+ * The parser's output: one record per construct of jq 1.8.2's grammar ({@code parser.y}), sugar kept, each with its
+ * Source in UTF-8 bytes of the filter. A postfix node spans its own bytes, from the start of its suffix
+ * ({@code .name}, {@code .[}, {@code [}, {@code ?}) to its end, a {@code ?} after it included; a node with operands
+ * spans them all. Only the {@link Resolver} reads it. A name is kept without its {@code $} or
  * {@code @}.
  */
 public sealed interface Ast {
@@ -92,7 +92,10 @@ public sealed interface Ast {
   /** {@code $name}. */
   record Var(Source source, String name) implements Ast {}
 
-  /** {@code $$$$name}: the variable's last read (GLOSSARY "Last read"), as builtin.jq's {@code _modify} writes it. */
+  /**
+   * {@code $$$$name}: the variable's last read, after which its value may be moved instead of copied, as builtin.jq's
+   * {@code _modify} writes it.
+   */
   record LastRead(Source source, String name) implements Ast {}
 
   /** {@code $__loc__}. */

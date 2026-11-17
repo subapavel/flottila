@@ -18,40 +18,39 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * ADR-0040's Binder, pass 1 of the resolution: it binds every reference of a filter once per lexical occurrence, a call
- * by its name and arity, a {@code $name} and a {@code break $name} by name, and collects jq's binding errors in jq's
- * compile levels, which it throws before any lowering (GLOSSARY "Compile level", "Live definition"). The {@link
- * Resolver} lowers from what it bound.
+ * The Binder, pass 1 of the resolution: it binds every reference of a filter once per lexical occurrence, a call by its
+ * name and arity, a {@code $name} and a {@code break $name} by name, and collects jq's binding errors in jq's compile
+ * levels, which it throws before any lowering. A compile level is the main filter, a live definition's body (one the
+ * main filter reaches through calls, closure arguments included) or a closure argument of a jq-defined function. The
+ * {@link Resolver} lowers from what it bound.
  *
- * <p>A call binds innermost first (ADR-0042 "Lookup order"): a parse constant ({@code true}, {@code false} and {@code
- * null} with no arguments), then the definitions and parameters in scope, the innermost first, a definition's body
- * seeing its nested definitions, then its parameters, a later one of a name first, then the definition itself, then the
- * outer scopes; then the {@link NativeTable}, a {@link Native} when it is built and an {@link Unbuilt} otherwise; then
- * the {@link Prelude}. {@code ..} is a call of {@code recurse/0} (jq's parser.y). A prelude body sees no user
- * definition, variable or label: only its own scopes, the native table and the prelude definitions before it, which
- * are the whole prelude's it calls, since builtin.jq calls no definition before it is written (PreludeBindTest). The
- * argument of a C native stays in the caller's compile level; every other argument of a call that binds is a closure
- * of a jq-defined function, a definition's or a bytecoded native's, so it is an inner compile level (ADR-0040 "Errors").
+ * <p>A call binds innermost first: a parse constant ({@code true}, {@code false} and {@code null} with no arguments),
+ * then the definitions and parameters in scope, the innermost first, a definition's body seeing its nested definitions,
+ * then its parameters, a later one of a name first, then the definition itself, then the outer scopes; then the
+ * {@link NativeTable}, a {@link Native} when it is built and an {@link Unbuilt} otherwise; then the {@link Prelude}.
+ * {@code ..} is a call of {@code recurse/0} (jq's parser.y). A prelude body sees no user definition, variable or label:
+ * only its own scopes, the native table and the prelude definitions before it, which are the whole prelude's it calls,
+ * since builtin.jq calls no definition before it is written. The argument of a C native stays in the caller's compile
+ * level; every other argument of a call that binds is a closure of a jq-defined function, a definition's or a bytecoded
+ * native's, so it is an inner compile level, as in jq.
  *
  * <p>A prelude definition is bound only when the main filter reaches it, once per compile: after the main filter's
  * walk, and only if it reported no error, the bodies of the live prelude definitions are walked until no new one is
- * live (GLOSSARY "Live definition"). A prelude body has no binding error (PreludeBindTest), so its level reports
- * nothing.
+ * live. A prelude body has no binding error, so its level reports nothing.
  *
- * <p>The walk meets the references in the order the Resolver lowers them, which is jq's (ADR-0036, ADR-0038,
- * ADR-0039, ADR-0041), and a level reports them in that order. Its inner levels follow the same order, except that the
- * operands of a C function, an arithmetic or comparison operator or a string's interpolations, which jq places right
- * first, put theirs right first too (jq-ref 1.8.2, recorded: defs/operator-operands-inner-levels-right-first,
- * defs/interpolation-inner-levels-last-first). A level reports its inner levels only when it has no error itself, and
- * the level of a definition the main filter never reaches reports nothing.
+ * <p>The walk meets the references in the order the Resolver lowers them, which is jq's, and a level reports them in
+ * that order. Its inner levels follow the same order, except that the operands of a C function, an arithmetic or
+ * comparison operator or a string's interpolations, which jq places right first, put theirs right first too, as in jq
+ * 1.8.2. A level reports its inner levels only when it has no error itself, and the level of a definition the main
+ * filter never reaches reports nothing.
  */
 final class Binder {
   /** The IDENTs that are constants (jq's parser), when called without arguments. */
   private static final Map<String, JqValue> CONSTANTS = Map.of("true", JqBool.TRUE, "false", JqBool.FALSE, "null", JqNull.NULL);
 
   /**
-   * The variables jq defines without an {@code as} (jq-ref 1.8.2, observed 2026-11-13: {@code $ENV}, {@code $ARGS} and
-   * {@code $JQ_BUILD_CONFIGURATION} run, rc 0), none built yet (spec 7): unbound, each binds to a {@link Predefined},
+   * The variables jq defines without an {@code as} (in jq 1.8.2 {@code $ENV}, {@code $ARGS} and
+   * {@code $JQ_BUILD_CONFIGURATION} run, rc 0), none of them built here: unbound, each binds to a {@link Predefined},
    * which the Resolver stubs, not to jq's compile error.
    */
   private static final Set<String> PREDEFINED = Set.of("ENV", "ARGS", "JQ_BUILD_CONFIGURATION");
@@ -74,19 +73,19 @@ final class Binder {
   /** A parameter of a definition, a filter one or the filter of a value one ({@code a} of {@code $a}). */
   record Parameter(Ast.Param param) implements Callee {}
 
-  /** An entry of the native table that no ticket has built yet: the Resolver stubs it (GLOSSARY "Unbuilt native"). */
+  /** An entry of the native table that is not built: the Resolver stubs it. */
   record Unbuilt(String signature) implements Callee {}
 
-  /** A top-level definition of the prelude (ADR-0042). */
+  /** A top-level definition of the prelude. */
   record Library(Ast.FuncDef def) implements Callee {}
 
-  /** What a variable jq defines itself binds to: it is not built yet, so the Resolver stubs it. */
+  /** What a variable jq defines itself binds to: it is not built, so the Resolver stubs it. */
   record Predefined(String name) {}
 
   /**
-   * A capture of a definition (GLOSSARY "Capture", ADR-0045 #107): a declaration outside it that its text or its callees
-   * reach, passed as a value (a variable, a value parameter read as {@code $name}, a label's token), as a closure (a
-   * filter parameter, or a value parameter called by its name), or as both.
+   * A capture of a definition: a declaration outside it that its text or its callees reach, passed as a value (a
+   * variable, a value parameter read as {@code $name}, a label's token), as a closure (a filter parameter, or a value
+   * parameter called by its name), or as both.
    */
   record Capture(Object declaration, boolean value, boolean closure) {}
 
@@ -113,9 +112,8 @@ final class Binder {
   }
 
   /**
-   * The built entries of the {@link NativeTable}: ADR-0040's, ADR-0041's {@code range/2}, #72's language natives and
-   * #73's sort and its kin, one constant a line. Each declares {@code keepsArgs} (ADR-0005 amendment, ADR-0022), which spec 3's {@code
-   * keepsArgsIsSound} checks: whether its result may share a container or string with an argument or its input.
+   * The built entries of the {@link NativeTable}, one constant a line. Each declares {@code keepsArgs}, which in-place
+   * updates rely on: whether its result may share a container or string with an argument or its input.
    */
   enum Native implements Callee {
     EMPTY("empty", 0, false),
@@ -237,10 +235,10 @@ final class Binder {
   /** The id of the definition whose own text the walk is in, or {@link #MAIN}. */
   private int owner = MAIN;
 
-  /** Whether each id is in a cyclic strongly connected component of the call graph (ADR-0040 "Recursion"). */
+  /** Whether each id is in a cyclic strongly connected component of the call graph. */
   private boolean[] recursive;
 
-  /** Whether the main filter reaches each id (GLOSSARY "Live definition"), once every live prelude body is walked. */
+  /** Whether the main filter reaches each id, once every live prelude body is walked. */
   private boolean[] live;
 
   /** The live definitions, each after every definition it calls outside its own recursive group ({@link #cycles}). */
@@ -312,8 +310,8 @@ final class Binder {
 
   /**
    * The body of the prelude definition {@code def}, of id {@code id}, walked as {@link #define} walks a definition's,
-   * in a scope of its own: no definition, parameter, variable or label of the filter (ADR-0042 "Lookup order"). Its
-   * level is its own; a binding error in it is not jq's error but the {@link #notDefined} IllegalStateException.
+   * in a scope of its own: no definition, parameter, variable or label of the filter. Its level is its own; a binding
+   * error in it is not jq's error but the {@link #notDefined} IllegalStateException.
    */
   private void walkPrelude(int id, Ast.FuncDef def) {
     // After the main filter's walk no label is in scope, and the walk is in no definition: only the host variables and
@@ -326,7 +324,7 @@ final class Binder {
     level = new Level(id);
     owner = id;
     prelude = def.name() + "/" + def.params().size();
-    // The definition itself, which its body may call: a recursive group, which the Resolver lifts (#110).
+    // The definition itself, which its body may call: a recursive group, which the Resolver lifts.
     push(prelude, new Library(def));
     for (Ast.Param p : def.params()) {
       push(p.name() + "/0", new Parameter(p));
@@ -366,7 +364,7 @@ final class Binder {
   /**
    * The live definitions, callees first: each comes after every definition its own text calls, closure arguments
    * included, unless both are in one recursive group (Tarjan's order of the strongly connected components). The
-   * expansion measure is computed in this order (ADR-0040 "Amendment (ticket #114)").
+   * expansion measure is computed in this order.
    */
   List<Ast.FuncDef> calleeFirst() {
     return calleeFirst;
@@ -378,10 +376,10 @@ final class Binder {
   }
 
   /**
-   * The captures of {@code def} (GLOSSARY "Capture", ADR-0045 #107), in Binder order: the declarations outside it that
-   * its own text reads, in the order the walk met them, then those its callees capture that are outside it too, each
-   * callee in the order of its calls. A fixpoint over the call graph, computed once for every definition at the first
-   * call, since a recursive group's members reach each other's.
+   * The captures of {@code def}, in Binder order: the declarations outside it that its own text reads, in the order the
+   * walk met them, then those its callees capture that are outside it too, each callee in the order of its calls. A
+   * fixpoint over the call graph, computed once for every definition at the first call, since a recursive group's
+   * members reach each other's.
    */
   List<Capture> captures(Ast.FuncDef def) {
     if (captured == null) {
@@ -540,8 +538,8 @@ final class Binder {
   }
 
   /**
-   * A chain of postfix steps, by a loop (F-42): each step's keys and bounds from the outermost step in, then the term
-   * the chain starts from, as the Resolver lowers them.
+   * A chain of postfix steps, by a loop, so that a long chain cannot overflow the stack: each step's keys and bounds
+   * from the outermost step in, then the term the chain starts from, as the Resolver lowers them.
    */
   private void chain(Ast ast) {
     Ast node = ast;
@@ -576,10 +574,9 @@ final class Binder {
   /**
    * {@code l op r}. An arithmetic or comparison operator is jq's call of a C function: its operands are in this level,
    * left first, but jq places their code right first, so their inner levels come right first. {@code and}, {@code or}
-   * and {@code //} are jq's own code, in source order. {@code =} and {@code |=} are calls of builtin.jq's {@code
-   * _assign} and {@code _modify}, whose operands are closures, inner levels; the other update operators run their
-   * value in this level, then pass the paths to {@code _modify} (jq's {@code gen_update}; jq-ref 1.8.2, recorded:
-   * defs/update-operands-are-inner-levels, defs/arithmetic-update-value-is-in-the-level).
+   * and {@code //} are jq's own code, in source order. {@code =} and {@code |=} are calls of builtin.jq's
+   * {@code _assign} and {@code _modify}, whose operands are closures, inner levels; the other update operators run
+   * their value in this level, then pass the paths to {@code _modify} (jq's {@code gen_update}), as in jq 1.8.2.
    */
   private void binary(Ast.Binary b) {
     BinOp op = b.op();
@@ -609,13 +606,13 @@ final class Binder {
 
   /**
    * The operands of {@code chain}, an operator of {@link #inLevel}, by a loop down the left operands that are such
-   * operators too (#86): the parser builds a left-associative chain in a loop, as long as the filter. The term the chain
-   * starts from is walked first, then each operator's right operand from the innermost operator out. All of them start
-   * at the same place among the level's inner levels, so before a {@link #rightFirst} operator's right operand the
-   * inner levels of its left one are cut and put back after it, as walking each operator on its own would. A {@code //}
-   * nests to the right and is always its chain's outermost operator, its left operand never being one unparenthesised,
-   * so its right operand is walked last: when that is an operator too, this loop walks it as the next chain, as walking
-   * it would (#94).
+   * operators too, not by recursion: the parser builds a left-associative chain in a loop, as long as the filter. The
+   * term the chain starts from is walked first, then each operator's right operand from the innermost operator out. All
+   * of them start at the same place among the level's inner levels, so before a {@link #rightFirst} operator's right
+   * operand the inner levels of its left one are cut and put back after it, as walking each operator on its own would.
+   * A {@code //} nests to the right and is always its chain's outermost operator, its left operand never being one
+   * unparenthesised, so its right operand is walked last: when that is an operator too, this loop walks it as the next
+   * chain, as walking it would.
    */
   private void operands(Ast.Binary chain) {
     for (Ast.Binary next = chain; next != null; ) {
@@ -673,7 +670,7 @@ final class Binder {
   private void object(Ast.ObjectCons o) {
     for (Ast.Pair pair : o.pairs()) {
       if (pair.key() instanceof Ast.VarKey k && pair.value() != null) {
-        // jq's error for an unbound $x of {$x: v} spans the whole pair (jq-ref 1.8.2, observed 2026-11-13).
+        // jq's error for an unbound $x of {$x: v} spans the whole pair, as in jq 1.8.2.
         variable(k, k.name(), pair.source());
       } else {
         key(pair.key());
@@ -726,8 +723,8 @@ final class Binder {
   }
 
   /**
-   * {@code break $name}: the innermost label of the name. A name no label holds is jq's compile error {@code
-   * $*label-name is not defined} over the whole term (jq-ref 1.8.2, recorded: control/break-unknown).
+   * {@code break $name}: the innermost label of the name. A name no label holds is jq's compile error
+   * {@code $*label-name is not defined} over the whole term, as in jq 1.8.2.
    */
   private void breakTo(Ast.Break b) {
     for (Scope s = labels; s != null; s = s.outer()) {
@@ -781,8 +778,7 @@ final class Binder {
 
   /**
    * Whether {@code callee} is a C function of the native table, built or unbuilt, whose arguments stay in the caller's
-   * compile level (the #71 hand-over: jq-ref 1.8.2, recorded: natives/has-argument-in-level); a bytecoded or replacing
-   * native, a definition and a parameter are not.
+   * compile level, as in jq 1.8.2; a bytecoded or replacing native, a definition and a parameter are not.
    */
   private static boolean cFunction(Callee callee) {
     String signature = callee instanceof Native n ? n.signature : callee instanceof Unbuilt u ? u.signature() : null;
@@ -827,7 +823,7 @@ final class Binder {
     reads.get(owner).add(declaration, kind);
   }
 
-  /** {@code arg} walked as an inner compile level of the current one, the next of its inner levels (ADR-0040). */
+  /** {@code arg} walked as an inner compile level of the current one, the next of its inner levels. */
   private void inner(Ast arg) {
     Level outer = level;
     level = new Level(MAIN);
@@ -892,11 +888,10 @@ final class Binder {
   }
 
   /**
-   * {@code patterns}' names in scope for {@code body} (ADR-0038). One pattern: its key expressions see only the scope
-   * outside it, and the body sees each name at its first store (jq-ref, recorded: bind/repeat-array,
-   * bind/key-sees-outer-variable). A {@code ?//} chain: in each alternative every name of the chain is {@link
-   * #UNSTORED} until the alternative stores it, each store in scope at once; the body sees each name at a group
-   * declaration of its own.
+   * {@code patterns}' names in scope for {@code body}. One pattern: its key expressions see only the scope outside it,
+   * and the body sees each name at its first store, as in jq. A {@code ?//} chain: in each alternative every name of
+   * the chain is {@link #UNSTORED} until the alternative stores it, each store in scope at once; the body sees each
+   * name at a group declaration of its own.
    */
   private void bound(List<Ast.Pattern> patterns, Runnable body) {
     Scope outer = variables;
@@ -1004,7 +999,7 @@ final class Binder {
     level.errors.add(new Located(text.block(shown + " is not defined", error.start(), error.end()), text.line(error.start()), text.column(error.start())));
   }
 
-  /** Which ids the main filter reaches through calls, closure arguments included (GLOSSARY "Live definition"). */
+  /** Which ids the main filter reaches through calls, closure arguments included. */
   private boolean[] live() {
     boolean[] live = new boolean[defs.size()];
     ArrayDeque<Integer> work = new ArrayDeque<>();

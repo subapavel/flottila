@@ -39,7 +39,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /**
- * Parses a filter into its {@link ParsedFilter} (ADR-0032): recursive descent over jq 1.8.2's grammar ({@code parser.y}),
+ * Parses a filter into its {@link ParsedFilter}: recursive descent over jq 1.8.2's grammar ({@code parser.y}),
  * precedence climbing over {@link BinOp} for its {@code Expr}. The levels, loosest first:
  *
  * <pre>
@@ -52,27 +52,27 @@ import java.util.function.Supplier;
  * </pre>
  *
  * <p>The whole text is lexed first, as the lexer's modes need no parser. Errors are collected as jq's Bison parser
- * reports them (ADR-0031, ADR-0032) and thrown together after the parse, before any resolution: a bad escape run's
- * lexical block when the parser reads its token (jq's {@code yylex}); a syntax error at the first token the grammar
- * rejects, {@code syntax error, unexpected <jq's token name>} (DEVIATIONS "Syntax-error text"), at the lexer's last
- * match for the end of the text. After a syntax error the parse goes on only at the two recovery productions jq-ref
- * shows on recorded inputs, each with jq's recovery message: an unusual name after a leading dot ({@code '.' error}
- * and {@code '.' IDENT error}) and an object key expression ({@code error ':' DictExpr}). Every other error ends the
- * parse there, also where jq has a silent recovery production or one jqj does not build ({@code (}, {@code [}, a
- * term's {@code [}, a closing brace in an object's error state, {@code if ... then}, {@code catch}, {@code break} and
- * an object pattern), as no recorded input needs it; jqj's blocks are then a prefix of jq's. A parser-action error
- * is added when jq's action runs, and the parse goes on (ADR-0036): a constant object key that is no string
- * ({@link ConstantKey}), checked once its pair is parsed, so {@code {(1): 2 3}} reports the key before the syntax
- * error, and the computed key of an object pattern by the same rule, once its entry's pattern is parsed (#64's
- * hand-over to #67).
+ * reports them and thrown together after the parse, before any resolution: a bad escape run's lexical block when the
+ * parser reads its token (jq's {@code yylex}); a syntax error at the first token the grammar rejects,
+ * {@code syntax error, unexpected <jq's token name>} without jq's list of expected tokens, which comes from Bison's
+ * tables, at the lexer's last match for the end of the text. After a syntax error the parse goes on only at the two
+ * recovery productions that jq 1.8.2 shows on real inputs, each with jq's recovery message: an unusual name after a
+ * leading dot ({@code '.' error} and {@code '.' IDENT error}) and an object key expression
+ * ({@code error ':' DictExpr}). Every other error ends the parse there, also where jq has a silent recovery production
+ * or one this engine does not build ({@code (}, {@code [}, a term's {@code [}, a closing brace in an object's error
+ * state, {@code if ... then}, {@code catch}, {@code break} and an object pattern), as no known input needs it; this
+ * engine's blocks are then a prefix of jq's. A parser-action error is added when jq's action runs, and the parse goes
+ * on: a constant object key that is no string ({@link ConstantKey}), checked once its pair is parsed, so
+ * {@code {(1): 2 3}} reports the key before the syntax error, and the computed key of an object pattern by the same
+ * rule, once its entry's pattern is parsed.
  *
- * <p>A filter nested deeper than {@link #MAX_DEPTH} levels ends the parse with jq's {@code memory exhausted} block
- * (DEVIATIONS "Parse depth"), so a recursion of the parse never overflows the stack.
+ * <p>A filter nested deeper than {@link #MAX_DEPTH} levels ends the parse with jq's {@code memory exhausted} block, so
+ * a recursion of the parse never overflows the stack.
  *
  * <p>The recovery is written from the Bison manual's description of error recovery: the {@code error} token, the pop
  * to the innermost state that shifts it, the discard of the tokens it cannot take, and no new error message until
  * three tokens have been shifted. The details the manual leaves open (a token after one or two shifts is neither
- * reported nor discarded; a discarded end of text ends the parse) follow jq-ref's recordings in ParserEdgesTest.
+ * reported nor discarded; a discarded end of text ends the parse) follow what jq 1.8.2 does.
  * Nothing is ported from jq's generated {@code src/parser.c} or from Bison's skeleton.
  */
 public final class Parser {
@@ -97,17 +97,17 @@ public final class Parser {
   private static final Set<String> KEYWORDS_AFTER_A_TERM = Set.of("as", "then", "elif", "else", "end", "and", "or", "catch");
 
   /**
-   * The most nesting levels open at once (#81, DEVIATIONS "Parse depth"). A level is one active query, expression,
-   * term, object value, pattern, {@code if}, definition body or error state ({@link #inErrorState}: parentheses,
-   * brackets, an index, an object or object pattern, a leading dot, the part after {@code then}, {@code catch} or
-   * {@code break}); every recursion of the parse passes through one. jq-ref's bound is its Bison stack instead (YYMAXDEPTH, 10 000 states, 9994
-   * parentheses), which recursive descent cannot reach inside a thread's stack, and the engine starts no thread
-   * (ADR-0017). 512 levels, 127 parentheses, fit a 512 KiB stack (ADR-0017's {@code stackBytes}) with about a third to
-   * spare, measured over the parse, the resolver and the compiler (#81).
+   * The most nesting levels open at once. A level is one active query, expression, term, object value, pattern,
+   * {@code if}, definition body or error state ({@link #inErrorState}: parentheses, brackets, an index, an object or
+   * object pattern, a leading dot, the part after {@code then}, {@code catch} or {@code break}); every recursion of the
+   * parse passes through one. jq's bound is its Bison stack instead (YYMAXDEPTH, 10 000 states, 9994 parentheses),
+   * which recursive descent cannot reach inside a thread's stack, and the engine starts no thread of its own. 512
+   * levels, 127 parentheses, fit a 512 KiB stack (the engine's {@code stackBytes}) with about a third to spare,
+   * measured over the parse, the resolver and the compiler.
    */
   static final int MAX_DEPTH = 512;
 
-  /** jq's message when its Bison stack is full (YYMAXDEPTH), which jqj gives past {@link #MAX_DEPTH}. */
+  /** jq's message when its Bison stack is full (YYMAXDEPTH), which this parser gives past {@link #MAX_DEPTH}. */
   private static final String MEMORY_EXHAUSTED = "memory exhausted";
 
   private final FilterText text;
@@ -143,7 +143,7 @@ public final class Parser {
   /** The nesting levels open now, at most {@link #MAX_DEPTH}. */
   private int depth;
 
-  /** The compile's fold budget, which the key checks share and the program carries on to the resolver (ADR-0035). */
+  /** The compile's fold budget, which the key checks share and the program carries on to the resolver. */
   private final ConstantKey folds;
 
   private Parser(String filter) {
@@ -315,8 +315,8 @@ public final class Parser {
   /**
    * jq's Expr from the operators of level {@code min} up: each operator takes a right operand of the next level up, its
    * own level when it is right-associative, and a second operator of a non-associative level is a syntax error. A run
-   * of a right-associative operator ({@code //}, the only one) is read by a loop and nested to the right after it
-   * (#94), so the run takes no nesting level per operand.
+   * of a right-associative operator ({@code //}, the only one) is read by a loop and nested to the right after it, so
+   * the run takes no nesting level per operand.
    */
   private Ast expr(int min) {
     nest();
@@ -696,7 +696,7 @@ public final class Parser {
   /**
    * jq's {@code error ':' DictExpr} after an error over {@code [start, end)}: its message once the value is parsed. The
    * parse ends at the end of the text, as Bison's does, and at a closing brace when the error went to the brace's
-   * state, where jq's silent {@code '{' error '}'} would take it (not built, ADR-0032).
+   * state, where jq's silent {@code '{' error '}'} would take it (not built).
    */
   private Ast.Pair keyExpression(int start, int end, boolean atBrace) {
     int errorEnd = end;
@@ -715,7 +715,7 @@ public final class Parser {
 
   /**
    * {@code key: value} or a key alone: a name or keyword, {@code $name}, {@code $__loc__} alone, a string, or
-   * {@code (query)}. Once a computed key's pair is parsed, jq's action checks the key (ADR-0036): a constant that is no
+   * {@code (query)}. Once a computed key's pair is parsed, jq's action checks the key: a constant that is no
    * string is its error over the query, and the parse goes on.
    */
   private Ast.Pair pair() {
@@ -830,9 +830,8 @@ public final class Parser {
   }
 
   /**
-   * {@code $name}, or a key then {@code : pattern}: {@code $name}, a name or keyword, a string, or {@code (query)}. Once
-   * a computed key's entry is parsed, jq's action checks the key as {@link #pair} does (ADR-0036, jq-ref:
-   * bind/key-constant-number).
+   * {@code $name}, or a key then {@code : pattern}: {@code $name}, a name or keyword, a string, or {@code (query)}.
+   * Once a computed key's entry is parsed, jq's action checks the key as {@link #pair} does.
    */
   private Ast.ObjPat objPat() {
     Token first = token;
@@ -975,7 +974,7 @@ public final class Parser {
   /**
    * Opens one more nesting level, which its caller closes in a {@code finally}. Past {@link #MAX_DEPTH} the parse ends
    * there, as jq's does when its Bison stack is full: jq's {@code memory exhausted} block at the current token, after
-   * the blocks so far (jq-ref 1.8.2, observed: a bad escape run or a recovery before 9995 parentheses keeps its blocks).
+   * the blocks so far (as in jq 1.8.2, where a bad escape run or a recovery before 9995 parentheses keeps its blocks).
    */
   private void nest() {
     if (++depth > MAX_DEPTH) {

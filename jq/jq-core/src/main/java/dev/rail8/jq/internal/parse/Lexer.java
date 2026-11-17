@@ -35,17 +35,17 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Splits a filter's UTF-8 bytes into tokens as jq 1.8.2's lexer does ({@code src/lexer.l}; #61 design), each the
- * longest match at its byte. Outside a string literal it skips SP, TAB, CR and LF, jq's whitespace (#33), and comments:
- * a {@code #} runs to the next LF, and a backslash before the LF, or before a CR and the LF, continues it unless the
- * backslash is itself escaped by one before it; a CR alone ends nothing.
+ * Splits a filter's UTF-8 bytes into tokens as jq 1.8.2's lexer does ({@code src/lexer.l}), each the longest match at
+ * its byte. Outside a string literal it skips SP, TAB, CR and LF, jq's whitespace, and comments: a {@code #} runs to
+ * the next LF, and a backslash before the LF, or before a CR and the LF, continues it unless the backslash is itself
+ * escaped by one before it; a CR alone ends nothing.
  *
  * <p>Modes, as jq's start conditions: an opening parenthesis, bracket or brace opens one, and so does an
  * interpolation's {@code \(}; a closer that matches the innermost closes it, any other closer is an INVALID_CHARACTER
- * and closes nothing. Inside a string literal the tokens are runs of plain bytes (TEXT), escape runs, an interpolation's start
- * and the closing quote. An escape run is checked as one JSON string, as jq does: wrapped in quotes, its bad UTF-8
- * replaced, then {@code found_string}'s checks (ADR-0031). A bad run's error block is kept for the parser, which adds it
- * when it reads the run, as jq's {@code yylex} does (ADR-0032).
+ * and closes nothing. Inside a string literal the tokens are runs of plain bytes (TEXT), escape runs, an
+ * interpolation's start and the closing quote. An escape run is checked as one JSON string, as jq does: wrapped in
+ * quotes, its bad UTF-8 replaced, then {@code found_string}'s checks. A bad run's error block is kept for the parser,
+ * which adds it when it reads the run, as jq's {@code yylex} does.
  *
  * <p>The lexer keeps its last match, as jq's {@code YY_USER_ACTION} keeps it in the location the parser reports the
  * end of the text at: a token, a whole whitespace run, or one piece of a comment (its {@code #}, a byte, a backslash
@@ -94,7 +94,7 @@ final class Lexer {
     return text;
   }
 
-  /** The error block of each INVALID_ESCAPES token lexed so far, in order (ADR-0031). */
+  /** The error block of each INVALID_ESCAPES token lexed so far, in order. */
   List<String> errorBlocks() {
     return blocks;
   }
@@ -345,7 +345,7 @@ final class Lexer {
   /**
    * Checks the escape run {@code [start, end)} as jq's lexer does: {@code jv_parse} of the run in quotes, as a string
    * with its bad UTF-8 replaced. A bad run's error block is kept, with jq's message and the position of that
-   * string's last byte, its closing quote unless a cut sequence took it, then the string itself (ADR-0031).
+   * string's last byte, its closing quote unless a cut sequence took it, then the string itself.
    */
   private Token.Kind check(int start, int end) {
     byte[] quoted = new byte[end - start + 2];
@@ -354,7 +354,7 @@ final class Lexer {
     quoted[quoted.length - 1] = '"';
     byte[] parsed = JsonStrings.replaceBad(quoted, 0, quoted.length);
     // A lead byte of three or four that ends the run is cut by the closing quote, which goes into its U+FFFD; then
-    // jv_parse meets the end inside the string (jq-ref 1.8.2, 2026-11-12: "\€" gives "Unfinished string at EOF").
+    // jv_parse meets the end inside the string (jq 1.8.2: "\€" gives "Unfinished string at EOF").
     String error =
         parsed[parsed.length - 1] != '"' ? "Unfinished string at EOF" : JsonStrings.escapeError(parsed, 1, parsed.length - 1);
     if (error == null) {
@@ -427,7 +427,7 @@ final class Lexer {
     return i < b.length ? b[i] & 0xFF : -1;
   }
 
-  /** jq's whitespace in a filter: SP, TAB, CR and LF (#33). */
+  /** jq's whitespace in a filter: SP, TAB, CR and LF. */
   private static boolean isSpace(int c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
   }

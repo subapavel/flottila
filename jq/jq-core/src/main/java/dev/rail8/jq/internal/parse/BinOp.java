@@ -32,9 +32,9 @@ import java.util.Map;
 /**
  * The binary operators of jq's {@code Expr} with jq 1.8.2's precedence and associativity ({@code parser.y}'s
  * {@code %right}, {@code %nonassoc} and {@code %left} lines), lowest first. A higher level binds tighter. Two operators
- * of one non-associative level in a row are a syntax error at the second (jq-ref 1.8.2, recorded:
- * syntax/compare-nonassoc). The query level's {@code |} (right) and {@code ,} (left) bind looser than every one of
- * them, and {@code def}, {@code as} and {@code label} looser still (ADR-0032).
+ * of one non-associative level in a row are a syntax error at the second, as in jq 1.8.2. The query level's
+ * {@code |} (right) and {@code ,} (left) bind looser than every one of them, and {@code def}, {@code as} and
+ * {@code label} looser still.
  */
 public enum BinOp {
   ALTERNATIVE(Token.Kind.DEFINEDOR, 1, Assoc.RIGHT),

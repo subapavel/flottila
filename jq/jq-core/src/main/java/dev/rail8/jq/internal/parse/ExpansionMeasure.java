@@ -8,11 +8,11 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The expansion measure (GLOSSARY "Expansion measure", ADR-0040 "Amendment (ticket #114)"): for each live definition
- * body and each closure argument of a call of a definition, the nodes its lowering would spend of the inline cap and
- * the levels it would reach, closures and nested expansions included. Nodes are a linear form and levels a max-plus
- * form over the filter parameters in scope: {@code nodes + Σ uses(p)·nodes(p)} and {@code max(reach, max(above(p) +
- * reach(p)))}, where {@code p} is a parameter whose closure the lowering runs.
+ * The expansion measure: for each live definition body and each closure argument of a call of a definition, the nodes
+ * its lowering would spend of the inline cap and the levels it would reach, closures and nested expansions included.
+ * Nodes are a linear form and levels a max-plus form over the filter parameters in scope:
+ * {@code nodes + Σ uses(p)·nodes(p)} and {@code max(reach, max(above(p) + reach(p)))}, where {@code p} is a parameter
+ * whose closure the lowering runs.
  *
  * <p>It is computed once per compile, callee-first, by a loop over {@link Binder#calleeFirst()}, and each text is
  * walked by a loop with a stack of its own, never by recursion. At each call site of a definition outside a recursive

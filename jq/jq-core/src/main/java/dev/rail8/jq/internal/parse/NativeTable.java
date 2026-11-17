@@ -31,21 +31,24 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * ADR-0042's native table (GLOSSARY "Native table"): every builtin signature jq 1.8.2 writes in C or bytecode, plus
- * F-31's and ADR-0044's replacing natives, by {@code name/arity}, the input not counted. The {@link Binder} looks it up after the
- * user's definitions and before the prelude; an entry the {@link Binder.Native} enum does not build yet binds as an
- * unbuilt native, whose lowering is a Stub (GLOSSARY "Unbuilt native"). Translated from jq 1.8.2's {@code
- * function_list} (src/builtin.c), its BINOPS (src/builtin.h) and the functions of src/libm.h it includes, {@code
- * bind_bytecoded_builtins} and {@code gen_builtin_list} (src/builtin.c); jq-ref 1.8.2's {@code builtins[]} lists the
- * same signatures but those whose name starts with {@code _} (NativeTableTest).
+ * The native table: every builtin signature jq 1.8.2 writes in C or bytecode, plus the natives this engine puts in
+ * place of builtin.jq's {@code flatten/0}, {@code flatten/1}, {@code inputs/0} and {@code to_entries/0}, by
+ * {@code name/arity}, the input not counted. The {@link Binder} looks it up after the user's definitions and before the
+ * prelude; an entry the {@link Binder.Native} enum does not build binds as an unbuilt native, whose lowering is a
+ * Stub. Translated from jq 1.8.2's {@code function_list} (src/builtin.c), its BINOPS (src/builtin.h) and the functions
+ * of src/libm.h it includes, {@code bind_bytecoded_builtins} and {@code gen_builtin_list} (src/builtin.c); jq-ref
+ * 1.8.2's {@code builtins[]} lists the same signatures but those whose name starts with {@code _}.
  */
 final class NativeTable {
-  /** How a native's arguments are compile levels (ADR-0040 "Errors", amended at #71). */
+  /**
+   * How a native's arguments are compile levels. A level reports its binding errors, and its inner levels' only when it
+   * had none itself, as jq does.
+   */
   enum Kind {
     /** A C function: its arguments stay in the caller's level. */
     C,
     /**
-     * A bytecoded builtin, or a native that replaces a jq definition (F-31): its arguments are inner levels, as a
+     * A bytecoded builtin, or a native that replaces a jq definition: its arguments are inner levels, as a
      * jq-defined function's are.
      */
     CLOSURES
@@ -76,8 +79,8 @@ final class NativeTable {
           "y1/0", "yn/2");
 
   /**
-   * bind_bytecoded_builtins, gen_builtin_list's {@code builtins/0}, F-31's natives that replace builtin.jq's {@code
-   * flatten/0}, {@code flatten/1} and {@code inputs/0}, and ADR-0044's that replaces its {@code to_entries/0}.
+   * bind_bytecoded_builtins, gen_builtin_list's {@code builtins/0}, and the natives that replace builtin.jq's
+   * {@code flatten/0}, {@code flatten/1}, {@code inputs/0} and {@code to_entries/0}.
    */
   private static final List<String> CLOSURE_LIST =
       List.of(
