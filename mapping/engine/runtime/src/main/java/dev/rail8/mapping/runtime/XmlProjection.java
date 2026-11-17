@@ -14,13 +14,12 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * The projection of an XML input, in one StAX pass (ADR-0004): only the element steps the queues
- * name are followed, every other subtree is skipped, and no tree is built. A context opens at each
- * start of its context field, and a value is appended at each occurrence of its field: the text of
- * a leaf element, with references and CDATA resolved, {@code ""} for a structure field (ADR-0008),
- * or an attribute's value, which its element's start tag holds or lacks (ADR-0006 since #102). The
- * input is still parsed whole, so it must be well-formed throughout. A DOCTYPE is refused, and no
- * DTD or external entity is ever read.
+ * The projection of an XML input, in one StAX pass: only the element steps the queues name are
+ * followed, every other subtree is skipped, and no tree is built. A context opens at each start of
+ * its context field, and a value is appended at each occurrence of its field: the text of a leaf
+ * element, with references and CDATA resolved, {@code ""} for a structure field, or an attribute's
+ * value, which its element's start tag holds or lacks. The input is still parsed whole, so it must
+ * be well-formed throughout. A DOCTYPE is refused, and no DTD or external entity is ever read.
  *
  * <p>The step trie is built once at compile and only read by a run.
  */
@@ -193,7 +192,7 @@ final class XmlProjection implements Projection {
 
   /**
    * Appends to {@code queue} the value of the start tag's attribute that {@code attribute} names,
-   * if the tag holds it; a tag that lacks it appends nothing (#102).
+   * if the tag holds it; a tag that lacks it appends nothing.
    */
   private static void attribute(
       XMLStreamReader reader, AttributeQueue attribute, QueueBlock.Builder queue) {

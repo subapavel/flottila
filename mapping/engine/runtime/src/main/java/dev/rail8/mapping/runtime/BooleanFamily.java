@@ -7,14 +7,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The function family {@code boolean} (ADR-0025 "Families", F-15): the single-value functions that
- * make or use a truth value (#77), and {@code ifWithoutElse}, a context function over the algebra
- * in {@link BooleanFunctions} (#78). Each value is cast as PO's {@code Bool.toBoolean} casts it
- * ({@link BooleanFunctions#truth}, observed on PO 7.5 and CPI, F-44): {@code 1} and {@code true} in
- * any case are true, {@code 0} and {@code false} in any case false, and any other value, the empty
- * string included, raises {@code err:FORG0001} at the box, as the export does. A result is written
- * {@code true} or {@code false}. The binders are methods, not lambdas of the map, so that PIT
- * mutates them.
+ * The function family {@code boolean}: the single-value functions that make or use a truth value,
+ * and {@code ifWithoutElse}, a context function over the algebra in {@link BooleanFunctions}. Each
+ * value is cast as PO's {@code Bool.toBoolean} casts it ({@link BooleanFunctions#truth}, observed
+ * on PO 7.5 and CPI): {@code 1} and {@code true} in any case are true, {@code 0} and {@code false}
+ * in any case false, and any other value, the empty string included, raises {@code err:FORG0001} at
+ * the box, as the export does. A result is written {@code true} or {@code false}. The binders are
+ * methods, not lambdas of the map, so that PIT mutates them.
  */
 final class BooleanFamily {
 
@@ -37,8 +36,7 @@ final class BooleanFamily {
 
   /**
    * {@code and(a, b)}: true when both are true. Both are evaluated first, as every input of a
-   * single-value call is (F-22, ADR-0006), and then both are cast, {@code a} first: {@code &}, not
-   * {@code &&}.
+   * single-value call is, and then both are cast, {@code a} first: {@code &}, not {@code &&}.
    */
   static Node.OfString and(AuthoringId box, List<Node.OfString> args) {
     Node.OfString a = args.get(0);
@@ -63,8 +61,8 @@ final class BooleanFamily {
 
   /**
    * {@code if(condition, then, else)}: {@code then} when the cast condition is true, else {@code
-   * else}. All three are evaluated first, as every input of a single-value call is (F-22,
-   * ADR-0006), so a data error in the untaken branch is raised at its box.
+   * else}. All three are evaluated first, as every input of a single-value call is, so a data error
+   * in the untaken branch is raised at its box.
    */
   static Node.OfString ifValue(AuthoringId box, List<Node.OfString> args) {
     Node.OfString condition = args.get(0);
@@ -80,7 +78,7 @@ final class BooleanFamily {
 
   /**
    * {@code ifWithoutElse(condition, then; keepSuppressValues)}: the algebra's, its cast error at
-   * {@code box}. The parameter changes nothing PO 7.5 or CPI showed (F-44), so it is only checked.
+   * {@code box}. The parameter changes nothing PO 7.5 or CPI showed, so it is only checked.
    */
   static Node.OfQueue ifWithoutElse(
       AuthoringId box, List<Node.OfQueue> inputs, List<String> params) {
@@ -100,7 +98,7 @@ final class BooleanFamily {
 
   /**
    * {@code isNil(value)}: true for the empty string. The runtime reads {@code xsi:nil} as the empty
-   * string (ADR-0008), so it cannot tell a nil field from an empty one.
+   * string, so it cannot tell a nil field from an empty one.
    */
   static Node.OfString isNil(AuthoringId box, List<Node.OfString> args) {
     Node.OfString value = args.getFirst();
@@ -124,8 +122,7 @@ final class BooleanFamily {
 
   /**
    * {@code or(a, b)}: true when one of them is true. Both are evaluated first, as every input of a
-   * single-value call is (F-22, ADR-0006), and then both are cast, {@code a} first: {@code |}, not
-   * {@code ||}.
+   * single-value call is, and then both are cast, {@code a} first: {@code |}, not {@code ||}.
    */
   static Node.OfString or(AuthoringId box, List<Node.OfString> args) {
     Node.OfString a = args.get(0);

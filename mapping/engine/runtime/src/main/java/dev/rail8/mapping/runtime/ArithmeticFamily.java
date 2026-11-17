@@ -13,13 +13,12 @@ import java.util.function.IntPredicate;
 import java.util.function.UnaryOperator;
 
 /**
- * The function family {@code arithmetic} (ADR-0025 "Families", F-15), the basic functions of #72
- * ({@code add} to {@code min}), the math functions of #73 ({@code sqr} to {@code round}) and {@code
- * formatNum} of #74 over the formatting core (ADR-0003). All are single-value functions over {@code
- * xs:decimal} strings (ADR-0005): a number is read by {@link XsDecimal#parse}, the {@code
- * xs:decimal} lexical form with XML whitespace around it ignored, anything else is {@code
- * err:FORG0001} at the function box; the result is written in the XPath canonical form. The binders
- * are methods, not lambdas of the maps, so that PIT mutates them.
+ * The function family {@code arithmetic}: the basic functions ({@code add} to {@code min}), the
+ * math functions ({@code sqr} to {@code round}) and {@code formatNum} over the formatting core. All
+ * are single-value functions over {@code xs:decimal} strings: a number is read by {@link
+ * XsDecimal#parse}, the {@code xs:decimal} lexical form with XML whitespace around it ignored,
+ * anything else is {@code err:FORG0001} at the function box; the result is written in the XPath
+ * canonical form. The binders are methods, not lambdas of the maps, so that PIT mutates them.
  */
 final class ArithmeticFamily {
 
@@ -129,7 +128,7 @@ final class ArithmeticFamily {
     return unary("sqr", box, args, x -> x.multiply(x));
   }
 
-  /** {@code sqrt(value)}, computed in xs:double and cast back (ADR-0005). */
+  /** {@code sqrt(value)}, computed in xs:double and cast back, as the export's math:sqrt. */
   static Node.OfString sqrt(AuthoringId box, List<Node.OfString> args) {
     Node.OfString value = args.getFirst();
     return frame ->
@@ -138,7 +137,8 @@ final class ArithmeticFamily {
 
   /**
    * {@code power(base, exponent)}: exact for a whole exponent from 0 to {@value
-   * #MAX_EXACT_EXPONENT}, otherwise computed in xs:double and cast back (ADR-0005).
+   * #MAX_EXACT_EXPONENT}, otherwise computed in xs:double and cast back, as the export's {@code
+   * math:pow}.
    */
   static Node.OfString power(AuthoringId box, List<Node.OfString> args) {
     Node.OfString base = args.get(0);
@@ -157,10 +157,9 @@ final class ArithmeticFamily {
 
   /**
    * {@code formatNum(value, pattern)}: the number formatted as the DecimalFormat {@code pattern}
-   * formats it, through the XPath picture the pattern compiles to (ADR-0003). The pattern is the
-   * box's own string, which lowering has checked (ADR-0026, #74) and gives as a {@code Literal}:
-   * that is compiled and analysed once, here (#194). A pattern node that is no literal is compiled
-   * per value.
+   * formats it, through the XPath picture the pattern compiles to. The pattern is the box's own
+   * string, which lowering has checked and gives as a {@code Literal}: that is compiled and
+   * analysed once, here. A pattern node that is no literal is compiled per value.
    *
    * @throws IllegalArgumentException when the pattern is a literal that compiles to no picture,
    *     which lowering refuses: a compiler bug
@@ -216,9 +215,9 @@ final class ArithmeticFamily {
   }
 
   /**
-   * ADR-0005 as amended by F-20, as Saxon-HE 12.5 divides: every quotient, one that terminates too,
-   * rounded half-down to {@code max(18, scale of dividend - scale of divisor + 18)} fractional
-   * digits, the scales without trailing zeros, so 1 / 2^30 is rounded (case fn/divide/004).
+   * The quotient as Saxon-HE 12.5 divides: every quotient, one that terminates too, rounded
+   * half-down to {@code max(18, scale of dividend - scale of divisor + 18)} fractional digits, the
+   * scales without trailing zeros, so 1 / 2^30 is rounded (case fn/divide/004).
    *
    * @throws MappingRunException {@code err:FOAR0001} at {@code box} when {@code divisor} is zero
    */

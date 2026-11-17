@@ -6,8 +6,8 @@ import java.io.IOException;
 import java.util.concurrent.CancellationException;
 
 /**
- * An executable node, built once from one IR node by the closure compiler (ADR-0021). Its kind
- * follows the IR node's type: a queue, an {@code INTEGER}, a {@code STRING}, or content it writes.
+ * An executable node, built once from one IR node by the closure compiler. Its kind follows the IR
+ * node's type: a queue, an {@code INTEGER}, a {@code STRING}, or content it writes.
  */
 interface Node {
 
@@ -33,7 +33,7 @@ interface Node {
 
   /**
    * A {@code Literal}: its string, which a binder may read once, when it binds a call over it, as
-   * {@code fixValues} decodes its table (ADR-0026 "Table params", #83).
+   * {@code fixValues} decodes its table.
    *
    * @param value the literal's string
    */
@@ -46,13 +46,13 @@ interface Node {
   }
 
   /**
-   * {@code TargetSlots} (ADR-0006 "Target fields", refined by #52): the body once per created slot
-   * of context {@code p} of the queue, where {@code p} is the parent's slot number, with the slot's
-   * number and value in their frame slots. A slot number is the slot's index across all contexts of
-   * the queue plus 1, so a SUPPRESS slot and a truncated slot keep theirs. A context the queue
-   * lacks counts as empty. Before anything of context {@code p} is written, fewer than {@code min}
-   * slots that are not SUPPRESS raise {@code po:MINOCCURS} at the target field mapping; then each
-   * slot that is not SUPPRESS is created until {@code max} are.
+   * {@code TargetSlots}: the body once per created slot of context {@code p} of the queue, where
+   * {@code p} is the parent's slot number, with the slot's number and value in their frame slots. A
+   * slot number is the slot's index across all contexts of the queue plus 1, so a SUPPRESS slot and
+   * a truncated slot keep theirs. A context the queue lacks counts as empty. Before anything of
+   * context {@code p} is written, fewer than {@code min} slots that are not SUPPRESS raise {@code
+   * po:MINOCCURS} at the target field mapping; then each slot that is not SUPPRESS is created until
+   * {@code max} are.
    *
    * <p>The queue is evaluated at most once per run, on first read, and kept in the frame. It reads
    * no variable of the target, as the IR verifier allows a context function only {@code Literal}
@@ -104,9 +104,9 @@ interface Node {
     }
 
     /**
-     * This node in a traced compile (ADR-0006 since #53): under each parent slot it reports its
-     * field, the parent slot, its queue, min and max to the run's tracer before its min check, so a
-     * shortfall is traced. The untraced node itself holds no hook.
+     * This node in a traced compile: under each parent slot it reports its field, the parent slot,
+     * its queue, min and max to the run's tracer before its min check, so a shortfall is traced.
+     * The untraced node itself holds no hook.
      */
     OfContent traced() {
       return frame -> {
@@ -182,14 +182,14 @@ interface Node {
   }
 
   /**
-   * {@code TargetRepeat} (ADR-0006 "Target fields"; #63): the body {@code copies} times per parent
-   * occurrence, the j-th with the slot number {@code (p - 1) * copies + j} in its frame slot, where
-   * {@code p} is the parent's slot number.
+   * {@code TargetRepeat}: the body {@code copies} times per parent occurrence, the j-th with the
+   * slot number {@code (p - 1) * copies + j} in its frame slot, where {@code p} is the parent's
+   * slot number.
    *
-   * <p>With a generating block (#217, F-46) the copies are gated by the block's first slot. The
-   * block is evaluated at most once per run, on the first parent occurrence's read, and kept in the
-   * frame, as a {@link Slots}' queue is, so a run without a parent occurrence never reads it. When
-   * the first slot is a value, it goes into its frame slot and every copy is written; when it is
+   * <p>With a generating block the copies are gated by the block's first slot. The block is
+   * evaluated at most once per run, on the first parent occurrence's read, and kept in the frame,
+   * as a {@link Slots}' queue is, so a run without a parent occurrence never reads it. When the
+   * first slot is a value, it goes into its frame slot and every copy is written; when it is
    * SUPPRESS or the block has no slot, no copy is, and the copies keep their slot numbers.
    */
   final class Repeat implements OfContent {
@@ -222,7 +222,7 @@ interface Node {
     }
 
     /**
-     * A generating block's repeat (#217).
+     * A generating block's repeat.
      *
      * @param slotNumberIndex the index of the {@code INTEGER} frame slot that holds the slot number
      * @param queueIndex where the frame keeps the block once it is evaluated
@@ -257,9 +257,9 @@ interface Node {
     }
 
     /**
-     * This node in a traced compile (#83): under each parent slot it reports its origin, the parent
-     * slot, its copies and whether they write nothing (#217) to the run's tracer before it writes
-     * them. The untraced node itself holds no hook.
+     * This node in a traced compile: under each parent slot it reports its origin, the parent slot,
+     * its copies and whether they write nothing to the run's tracer before it writes them. The
+     * untraced node itself holds no hook.
      */
     OfContent traced() {
       return frame -> {
@@ -331,8 +331,8 @@ interface Node {
   }
 
   /**
-   * {@code AttributeConstructor} (ADR-0006 since #102): the attribute, with its value, on the
-   * element whose start tag is open, as the IR verifier places it first in its element's content.
+   * {@code AttributeConstructor}: the attribute, with its value, on the element whose start tag is
+   * open, as the IR verifier places it first in its element's content.
    */
   final class Attribute implements OfContent {
 

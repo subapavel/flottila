@@ -8,14 +8,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Records what a traced compile did in one mapping run (ADR-0006, ADR-0021): one report per
- * evaluation of a box and, since #53, one per parent slot of a target field, in one list in the
- * order made, so a box evaluated twice shows twice. An untraced compile never reports. One tracer
- * serves one run.
+ * Records what a traced compile did in one mapping run: one report per evaluation of a box and one
+ * per parent slot of a target field, in one list in the order made, so a box evaluated twice shows
+ * twice. An untraced compile never reports. One tracer serves one run.
  *
- * <p>The run's thread reports while another thread may read (ADR-0014 since #53: the facade
- * snapshots the tracer at timeout). Every report and every read holds the tracer's lock, so a read
- * is a copy of the reports made so far, in order, which later reports never reach.
+ * <p>The run's thread reports while another thread may read (the facade snapshots the tracer at
+ * timeout). Every report and every read holds the tracer's lock, so a read is a copy of the reports
+ * made so far, in order, which later reports never reach.
  */
 public final class Tracer {
 
@@ -44,7 +43,7 @@ public final class Tracer {
   public record Value(AuthoringId box, QueueBlock queue) implements Report {}
 
   /**
-   * A box's evaluation that gave a single value (ADR-0015 {@code {atomic}}, #83), such as a {@code
+   * A box's evaluation that gave a single value, an {@code {atomic}} trace entry, such as a {@code
    * constant}'s.
    *
    * @param box the box's authoring id
@@ -53,8 +52,8 @@ public final class Tracer {
   public record Atomic(AuthoringId box, String value) implements Report {}
 
   /**
-   * A traced {@code TargetSlots} under one parent slot (ADR-0006 since #53), reported before its
-   * min check: the slots of context {@code parentSlot} of {@code queue} are its occurrences.
+   * A traced {@code TargetSlots} under one parent slot, reported before its min check: the slots of
+   * context {@code parentSlot} of {@code queue} are its occurrences.
    *
    * @param field the target field mapping
    * @param parentSlot the parent slot whose context it reads
@@ -67,10 +66,10 @@ public final class Tracer {
       implements FieldReport {}
 
   /**
-   * A traced {@code TargetRepeat} under one parent slot (#83), reported before it writes: its
-   * {@code copies} occurrences, numbered {@code (parentSlot - 1) * copies + j}, are all created,
-   * unless its generating block's first slot is SUPPRESS or missing, when none is (#217, F-46). An
-   * unmapped field's repeat reports its field path as its origin (ADR-0006).
+   * A traced {@code TargetRepeat} under one parent slot, reported before it writes: its {@code
+   * copies} occurrences, numbered {@code (parentSlot - 1) * copies + j}, are all created, unless
+   * its generating block's first slot is SUPPRESS or missing, when none is. An unmapped field's
+   * repeat reports its field path as its origin.
    *
    * @param field the target field mapping of a generating function, or the unmapped field's path
    * @param parentSlot the parent slot it repeats under

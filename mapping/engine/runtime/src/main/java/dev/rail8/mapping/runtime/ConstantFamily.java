@@ -7,11 +7,11 @@ import java.util.Map;
 import java.util.OptionalInt;
 
 /**
- * The function family {@code constant} (ADR-0025 "Families", F-15), #79 and #83: each catalogue
- * name to its binder. {@code copyValue} binds over the algebra in {@link ConstantFunctions}; its
- * position is parsed once, and one that is no {@code xs:nonNegativeInteger} stops the run with
- * {@code err:FORG0001} at the function box (ADR-0025, F-19), as the export does. {@code constant}
- * is its value. The binders are methods, not lambdas of the maps, so that PIT mutates them.
+ * The function family {@code constant}: each catalogue name to its binder. {@code copyValue} binds
+ * over the algebra in {@link ConstantFunctions}; its position is parsed once, and one that is no
+ * {@code xs:nonNegativeInteger} stops the run with {@code err:FORG0001} at the function box, as the
+ * export does. {@code constant} is its value. The binders are methods, not lambdas of the maps, so
+ * that PIT mutates them.
  */
 final class ConstantFamily {
 
@@ -43,7 +43,7 @@ final class ConstantFamily {
     return frame -> ConstantFunctions.copyValue(values.eval(frame), at);
   }
 
-  /** {@code constant(; value)}: its value, a generating function (ADR-0006 since #83). */
+  /** {@code constant(; value)}: its value, a generating function. */
   static Node.OfString constant(AuthoringId box, List<Node.OfString> args) {
     return args.getFirst();
   }

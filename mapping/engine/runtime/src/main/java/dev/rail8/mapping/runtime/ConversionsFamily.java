@@ -6,11 +6,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The function family {@code conversions} (ADR-0025 "Families", F-15), #83: each catalogue name to
- * its binder. {@code fixValues} decodes its table once, when it binds (ADR-0026 "Table params"),
- * and a key the table lacks gives, by {@code missing}, the key itself, {@code defaultValue}, or the
- * runtime error {@code po:FIXVALUES} at the function box. The binders are methods, not lambdas of
- * the maps, so that PIT mutates them.
+ * The function family {@code conversions}: each catalogue name to its binder. {@code fixValues}
+ * decodes its table once, when it binds, and a key the table lacks gives, by {@code missing}, the
+ * key itself, {@code defaultValue}, or the runtime error {@code po:FIXVALUES} at the function box.
+ * The binders are methods, not lambdas of the maps, so that PIT mutates them.
  */
 final class ConversionsFamily {
 
@@ -26,7 +25,7 @@ final class ConversionsFamily {
   /**
    * {@code fixValues(key; table, missing, defaultValue)}: the table's value of the key, matched
    * exactly. Lowering gives every param as a {@code Literal}, so the table and {@code missing} are
-   * read here, once (ADR-0026 "Table params").
+   * read here, once.
    *
    * @throws IllegalArgumentException when the table or {@code missing} is no {@code Literal}, or
    *     {@code missing} is none of the catalogue's values: a compiler bug

@@ -11,16 +11,16 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 
 /**
- * The function family {@code date} (ADR-0025 "Families", F-15) of #80, over the formatting core
- * (ADR-0003). All are single-value functions whose date patterns are SimpleDateFormat patterns, box
- * params that lowering has checked (ADR-0026) and gives as {@code Literal}s, each compiled to an
- * XPath picture and analysed once, when its call binds (#194); a pattern node that is no literal is
- * compiled per value, and a literal that compiles to no picture, which lowering refuses, is refused
- * when the call binds. A date is read strictly in its pattern ({@link FormatDate#parse}), in the
- * run's offset when the pattern has none; a date the pattern does not read is {@code err:FORG0001}
- * at the function box. A date is written in the run's offset, as a SimpleDateFormat writes in its
- * zone, and dates are compared as instants. {@code currentDate} writes the run's time, fixed once
- * per mapping run. The binders are methods, not lambdas of the maps, so that PIT mutates them.
+ * The function family {@code date}, over the formatting core. All are single-value functions whose
+ * date patterns are SimpleDateFormat patterns, box params that lowering has checked and gives as
+ * {@code Literal}s, each compiled to an XPath picture and analysed once, when its call binds; a
+ * pattern node that is no literal is compiled per value, and a literal that compiles to no picture,
+ * which lowering refuses, is refused when the call binds. A date is read strictly in its pattern
+ * ({@link FormatDate#parse}), in the run's offset when the pattern has none; a date the pattern
+ * does not read is {@code err:FORG0001} at the function box. A date is written in the run's offset,
+ * as a SimpleDateFormat writes in its zone, and dates are compared as instants. {@code currentDate}
+ * writes the run's time, fixed once per mapping run. The binders are methods, not lambdas of the
+ * maps, so that PIT mutates them.
  */
 final class DateFamily {
 
@@ -40,8 +40,8 @@ final class DateFamily {
 
   /**
    * {@code currentDate(; targetFormat)}: the run's time, {@link Frame#now}, written in {@code
-   * targetFormat} in its own offset, the run's. It has no input, so it is a generating function
-   * (ADR-0006 since #83, F-21), and its value is the same wherever the run reads it.
+   * targetFormat} in its own offset, the run's. It has no input, so it is a generating function,
+   * and its value is the same wherever the run reads it.
    */
   static Node.OfString currentDate(AuthoringId box, List<Node.OfString> args) {
     Node.OfString target = args.getFirst();

@@ -7,8 +7,8 @@ import java.io.OutputStream;
 import java.time.OffsetDateTime;
 
 /**
- * A compiled mapping: the projection plan and the tree of executable nodes (ADR-0021). It is
- * immutable, and each run has a frame of its own.
+ * A compiled mapping: the projection plan and the tree of executable nodes. It is immutable, and
+ * each run has a frame of its own.
  */
 public final class ExecutableMapping {
 
@@ -36,16 +36,16 @@ public final class ExecutableMapping {
 
   /**
    * One mapping run: reads the source queues from {@code in} in one pass, then writes the target
-   * message to {@code out}, its root created once with slot number 1 (ADR-0006). Nothing is written
-   * before the whole input has been read. An error after output was written leaves {@code out}
-   * undefined; a caller that needs all or nothing buffers it.
+   * message to {@code out}, its root created once with slot number 1. Nothing is written before the
+   * whole input has been read. An error after output was written leaves {@code out} undefined; a
+   * caller that needs all or nothing buffers it.
    *
    * @param tracer receives the reports of a traced compile; an untraced compile never calls it
    * @param now the time the run starts at, fixed for the whole run: its offset is the run's time
-   *     zone, in which a date without an offset is read and every date is written (#80)
+   *     zone, in which a date without an offset is read and every date is written
    * @throws MalformedInputException when the input is not well-formed in the mapping's input format
    * @throws IOException when {@code out} cannot be written
-   * @throws MappingRunException when the run meets a runtime error in its data (ADR-0015)
+   * @throws MappingRunException when the run meets a runtime error in its data
    * @throws java.util.concurrent.CancellationException when the thread is interrupted
    */
   public void run(InputStream in, OutputStream out, Tracer tracer, OffsetDateTime now)

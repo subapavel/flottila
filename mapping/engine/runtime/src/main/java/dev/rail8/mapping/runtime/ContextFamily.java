@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The function family {@code context} (ADR-0025 "Families", F-15), spec 2's eleven functions: each
- * catalogue name to its binder. A queue function binds to its algebra in {@link ContextFunctions},
- * its params parsed here, into the node; a data error of its algebra stops the run with the
- * function's one code at its box (ADR-0025 since #52). The binders are methods, not lambdas of the
- * maps, so that PIT mutates them: it leaves out what only a static initializer runs.
+ * The function family {@code context}, its eleven functions: each catalogue name to its binder. A
+ * queue function binds to its algebra in {@link ContextFunctions}, its params parsed here, into the
+ * node; a data error of its algebra stops the run with the function's one code at its box. The
+ * binders are methods, not lambdas of the maps, so that PIT mutates them: it leaves out what only a
+ * static initializer runs.
  */
 final class ContextFamily {
 
@@ -30,9 +30,7 @@ final class ContextFamily {
           Map.entry("splitByValue", ContextFamily::splitByValue),
           Map.entry("useOneAsMany", ContextFamily::useOneAsMany));
 
-  /**
-   * The family's single-value functions: none since #216, as replaceValue reads SUPPRESS (F-45).
-   */
+  /** The family's single-value functions: none, as replaceValue reads SUPPRESS. */
   static final Map<String, SingleValueLibrary.Binder> VALUE = Map.of();
 
   private ContextFamily() {}
@@ -128,7 +126,7 @@ final class ContextFamily {
 
   /**
    * {@code replaceValue(value, replacement)}: the replacement at every slot of its input, SUPPRESS
-   * included (F-45). The input is evaluated first, so a data error in it is raised at its box.
+   * included. The input is evaluated first, so a data error in it is raised at its box.
    */
   static Node.OfQueue replaceValue(
       AuthoringId box, List<Node.OfQueue> inputs, List<String> params) {
