@@ -9,7 +9,7 @@ import io.vertx.sqlclient.SqlConnection;
 import java.util.function.Function;
 
 /**
- * A transaction on a pooled connection, and the pool's refusal told apart from everything after it (D-133). The acquire is
+ * A transaction on a pooled connection, and the pool's refusal told apart from everything after it. The acquire is
  * {@code pool.getConnection()}; whatever fails it — before any statement ran — fails the result with a
  * {@link PoolRefusedException}, its cause kept, by where it failed, never by its type or message.
  *
@@ -41,7 +41,7 @@ public final class PgTx {
     }
 
     /**
-     * The node's Postgres pool refused the caller a connection (D-132, D-133), retryable: a transaction's acquire refused
+     * The node's Postgres pool refused the caller a connection, retryable: a transaction's acquire refused
      * ({@link PoolRefusedException}), its wait queue full ({@link ConnectionPoolTooBusyException}), or a statement on the pool
      * failed with exactly a {@link VertxException} — the pool's wait for a connection elapsed, or the pool is closed because the
      * node stops (by the client's type, never by its message). A subclass of {@link VertxException} (a closed connection, a

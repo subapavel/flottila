@@ -39,11 +39,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * The MessageStore over Postgres (ARCHITECTURE §7, §8). Every snapshot given to {@link #record} goes through the P0-06
  * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message, step and attempt, the first wins,
  * V19 / FIX-175 — the timeline lists them by attempt, then step; the
- * body by reference: hash, hash algorithm, size, BlobStore key, D-097) and {@code message_keys} (one row per (name, value,
+ * body by reference: hash, hash algorithm, size, BlobStore key) and {@code message_keys} (one row per (name, value,
  * message), numbered by V5's {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
  * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
  * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it. On the node, the at-least-once
- * ingress row bypasses the writer: {@link #insert} writes it with the same statements in the intake's transaction (D-082).
+ * ingress row bypasses the writer: {@link #insert} writes it with the same statements in the intake's transaction.
  *
  * @since 0.1
  */
@@ -89,7 +89,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     /**
-     * Writes {@code snapshots} on {@code client} — the intake's transaction (D-082), one group's records (D-109) — with the writer's
+     * Writes {@code snapshots} on {@code client} — the intake's transaction, one group's records — with the writer's
      * statements, never through the writer: the caller's commit makes them durable. A failure fails the future only; it is not
      * counted in {@link #failed()}, since the saves they belong to fail with it and no acknowledged row is missing.
      */
@@ -99,7 +99,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     /**
      * The UTF-8 bytes {@code s}'s rows bind, at least: its id, flow and step name, and its headers, props and keys as the JSON they
-     * are written as (a group's byte limit weighs a member by them, D-109).
+     * are written as (a group's byte limit weighs a member by them).
      */
     static long weight(Snapshot s) {
         return utf8(s.messageId()) + utf8(s.flow()) + utf8(s.stepName()) + utf8(new JsonObject(new HashMap<>(s.headers().asMap())).encode())
@@ -158,7 +158,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     // --- rows → arrays (one transaction per batch, PgBatchSink)
 
-    /** Rows go in one order in every transaction (messages by id, step and attempt, D-044): concurrent batches never deadlock on a messages row. */
+    /** Rows go in one order in every transaction (messages by id, step and attempt): concurrent batches never deadlock on a messages row. */
     private static Tuple messages(List<Snapshot> unordered) {
         List<Snapshot> batch = new ArrayList<>(unordered);
         batch.sort(Comparator.comparing(Snapshot::messageId).thenComparingInt(Snapshot::step).thenComparingInt(Snapshot::attempt));
@@ -231,7 +231,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     private static Snapshot snapshot(Row r) {
         Long cpu = r.getLong("cpu_ns");
-        // the attempt is the row's column, never its props' (a stored props attempt need not be an int, FIX-175 R3)
+        // the attempt is the row's column, never its props' (a stored props attempt need not be an int)
         return new Snapshot(r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getInteger("attempt"), r.getString("step_name"),
                 Snapshot.Outcome.valueOf(r.getString("outcome").toUpperCase(Locale.ROOT)), Optional.ofNullable(r.getString("error")),
                 r.getOffsetDateTime("started_at").toInstant(), r.getLong("wall_ns"), cpu == null ? Snapshot.CPU_UNKNOWN : cpu,
@@ -250,7 +250,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         return Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(hash.value()).array());
     }
 
-    /** {@code <message id>/<step>/<part>}; message ids are safe path segments (D-041), parts never contain a slash. */
+    /** {@code <message id>/<step>/<part>}; message ids are safe path segments, parts never contain a slash. */
     static String text(BlobKey key) {
         return key.messageId() + "/" + key.step() + "/" + key.part();
     }

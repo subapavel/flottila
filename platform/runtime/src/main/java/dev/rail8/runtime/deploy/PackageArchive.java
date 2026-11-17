@@ -13,7 +13,7 @@ import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
 /**
- * Unpacks a package archive, a zip with {@code package.yaml} at its root, into a directory (D-059). The whole archive is checked
+ * Unpacks a package archive, a zip with {@code package.yaml} at its root, into a directory. The whole archive is checked
  * before anything is written; a refusal — the deploy's 400 — is an {@link IllegalArgumentException}: a file that is no zip (a
  * {@link ZipException} at open), more than {@value #MAX_ENTRIES} entries, an entry that is absolute, resolves outside the target
  * after normalisation, is a file that resolves to the target itself ({@code .}, {@code a/..}), resolves where an earlier entry

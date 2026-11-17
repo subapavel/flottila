@@ -11,7 +11,7 @@ import java.util.Objects;
 
 /**
  * The node's blob store as its components see it (CORE-4c2): the components are built, and a mock binding refused, before the
- * node touches Postgres (D-057), but the store writes to the body journal, which opens only after the migration (D-105). So the
+ * node touches Postgres, but the store writes to the body journal, which opens only after the migration. So the
  * components get this store, and {@link #bind} hands it the node's store once the journal is open — before any flow starts, so
  * every body a component writes goes to the node's store and names it ({@link Body#store}). Until then every call but
  * {@link #treeLimit} throws {@link IllegalStateException}: only a component that writes from its own construction meets it.

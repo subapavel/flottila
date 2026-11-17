@@ -7,7 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The journal's settings (CORE-3 items 1, 3 and 4); every limit is finite and range-checked, a refusal names its key.
+ * The journal's settings; every limit is finite and range-checked, a refusal names its key.
  *
  * @param dir            {@code RAIL8_JOURNAL_DIR}: {@code LOCK}, {@code NODE}, {@code segments/} and {@code spill/} live here
  * @param segmentBytes   {@code RAIL8_JOURNAL_SEGMENT_BYTES} (64 MiB): a segment rolls before the record that would take
@@ -23,17 +23,17 @@ import java.util.Optional;
  *                       still fits a Java array): the largest body a segment record takes
  * @param node           {@code RAIL8_NODE_ID}: written into every segment header and the identity file
  * @param maxBytes       {@code RAIL8_JOURNAL_MAX_BYTES} (16 GiB, positive): the journal's bound; a start refuses when its
- *                       file system's usable space and the journal's bytes together are less (CORE-3 item 11, review r2)
+ *                       file system's usable space and the journal's bytes together are less
  * @param readChannels   {@code RAIL8_JOURNAL_READ_CHANNELS} (64, 1..1024): the read channels kept open at once, one file
- *                       descriptor each; the least recently used is closed first (CORE-3 item 8)
+ *                       descriptor each; the least recently used is closed first
  * @param acceptLoss     {@code RAIL8_JOURNAL_ACCEPT_LOSS} (none): the {@code <journal id>:<digest>} a start refused with,
- *                       which gives exactly that loss up (CORE-3 item 9); taken as given, never trimmed
+ *                       which gives exactly that loss up; taken as given, never trimmed
  * @since 0.1
  */
 public record JournalConfig(Path dir, long segmentBytes, int segmentRecords, Duration segmentAge, long pendingBytes,
                             Duration appendWait, long recordMax, String node, long maxBytes, int readChannels, Optional<String> acceptLoss) {
 
-    /** {@code RAIL8_JOURNAL_MAX_BYTES} by default (CORE-3 item 11). */
+    /** {@code RAIL8_JOURNAL_MAX_BYTES} by default. */
     public static final long MAX_BYTES = 16L << 30;
     /** {@code RAIL8_JOURNAL_READ_CHANNELS} by default, and its range. */
     public static final int READ_CHANNELS = 64;

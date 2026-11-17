@@ -23,24 +23,23 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * A flow's effective hash (D-063, D-060 c, D-078): {@code sha256:} and the lower-case hex SHA-256 of these UTF-8 lines, each
+ * A flow's effective hash: {@code sha256:} and the lower-case hex SHA-256 of these UTF-8 lines, each
  * ended by {@code \n}, paths package-relative with {@code /} (a path outside the package is refused, never hashed):
  * <ol>
  *   <li>{@code rail8-flow-hash 2};</li>
  *   <li>{@code yaml <sha256>} over the flow file's bytes, without its path: a flow file moved alone to another folder is no
  *       change (its references are paths from the package root, D-078);</li>
  *   <li>for every distinct path its build read (the {@code StepResources} reads sink), sorted by path — a path in a
- *       dependency's directory spelled {@code <dep>:<path from its root>} (D-087), never the directory of the version it is
+ *       dependency's directory spelled {@code <dep>:<path from its root>}, never the directory of the version it is
  *       unpacked in, so the line changes exactly when the bytes read change: {@code file <path> <sha256>} for a file, {@code dir <path> <entry names as a JSON array, sorted>} for a directory (a
  *       listed collection), {@code absent <path>} for anything else (a probe of a file that does not exist);</li>
  *   <li>{@code endpoint <id> <scheme> <options as JSON, keys sorted at every level>}: first the {@code from} endpoint as its
  *       consumer gets it ({@code flow} and {@code maxBodyBytes} included), then every endpoint the flow sends to, by id — each
- *       with this environment's overlay laid over its config, each {@code secret://} reference as written, never its value
- *       (D-081).</li>
+ *       with this environment's overlay laid over its config, each {@code secret://} reference as written, never its value.</li>
  * </ol>
  * Nothing else: package.yaml, the package's version, the deploy's revision, the archive, its directory, other environments'
  * overlays and files no build read are not part of it, so the same content hashes the same on any node; a stylesheet or schema
- * served from its step factory's compile cache reports the files its compile read, as a compile would (FIX-17). Known gap: what a
+ * served from its step factory's compile cache reports the files its compile read, as a compile would. Known gap: what a
  * stylesheet reads at run time ({@code doc()}, {@code unparsed-text()}: F-9, FIX-40).
  */
 final class FlowHash {
@@ -49,7 +48,7 @@ final class FlowHash {
 
     /**
      * @param dir the package's directory, every path below lies inside it or inside one of {@code dependencies}
-     * @param dependencies the build's dependencies, each name to the directory its version is unpacked in (D-087)
+     * @param dependencies the build's dependencies, each name to the directory its version is unpacked in
      * @param yaml the flow's file, wherever it lies in the package
      * @param reads every path the flow's build reported, in any order, a path reported twice counted once
      * @param from the {@code from} endpoint as its consumer gets it

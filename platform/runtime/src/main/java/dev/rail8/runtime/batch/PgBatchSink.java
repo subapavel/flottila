@@ -17,7 +17,7 @@ import java.util.function.Function;
  * is fixed-shape SQL over {@code unnest} arrays, so the statement text never changes with the batch
  * size and the client's prepared-statement cache applies (ARCHITECTURE §4 "Writer"); statements
  * run in order inside the transaction and a failure rolls the whole batch back. {@link #write(SqlClient, List)} runs the same
- * statements inside a transaction the caller holds (D-082), all sent before the first reply (D-109).
+ * statements inside a transaction the caller holds, all sent before the first reply.
  *
  * @param <T> the item type
  * @since 0.1

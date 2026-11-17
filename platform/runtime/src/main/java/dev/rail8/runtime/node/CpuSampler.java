@@ -39,13 +39,13 @@ import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 /**
- * The node's CPU sampler (F-21, D-094, F-22): one on-disk JFR {@link Recording} of {@code jdk.CPUTimeSample} (throttle the period,
+ * The node's CPU sampler: one on-disk JFR {@link Recording} of {@code jdk.CPUTimeSample} (throttle the period,
  * no stack trace), {@code jdk.CPUTimeSamplesLost}, the {@link StepEvent}s and its own cut marker, read in completed form and fed into
  * a {@link StepCpu}: each sample with its thread, whether that is virtual, its time and its own {@code samplingPeriod}; each step
  * event with its thread, start, end, flow, step and name; each lost count; and after each window the window's end
  * ({@link StepCpu#advance}).
  *
- * <p>Why completed recordings (F-22): a live stream hands some virtual-thread events without their thread, while the same chunk
+ * <p>Why completed recordings: a live stream hands some virtual-thread events without their thread, while the same chunk
  * read whole resolves every one. So a read cycle runs every {@code readEvery} (5 s on a node), on the injected {@link Timer}, whose
  * task only signals: the read itself runs on the sampler's virtual thread, {@code rail8-cpu-sampler}, one cycle at a time. Cut 0
  * is committed at the start; cycle k dumps the recording to the sampler's one dump file (overwritten each cycle), iterates it with
@@ -83,7 +83,7 @@ public final class CpuSampler implements AutoCloseable {
     static final String CPU_TIME_SAMPLE = "jdk.CPUTimeSample";
     static final String SAMPLES_LOST = "jdk.CPUTimeSamplesLost";
     static final String DRAIN = "dev.rail8.CpuSamplerDrain";
-    /** A node's read cycle (F-22). */
+    /** A node's read cycle. */
     static final Duration READ_EVERY = Duration.ofSeconds(5);
     /** The most the recording keeps on disk between two reads. */
     static final long MAX_SIZE = 64L * 1024 * 1024;
@@ -143,7 +143,7 @@ public final class CpuSampler implements AutoCloseable {
 
     /**
      * Starts a sampler of {@code period} into {@code into}, a read cycle every {@code readEvery} on {@code timer}; {@link #since()} is
-     * {@code clock}'s instant now; the node passes its own timer (no timer of the sampler's own, F-22). Returns once its recording
+     * {@code clock}'s instant now; the node passes its own timer (no timer of the sampler's own). Returns once its recording
      * runs: what is committed from then on is fed, one to two cycles later. A recording or a thread that does not start is closed
      * again and its failure thrown.
      *

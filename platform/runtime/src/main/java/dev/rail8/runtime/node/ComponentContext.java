@@ -9,7 +9,7 @@ import java.time.Clock;
 import java.util.Objects;
 
 /**
- * What a node gives the factory of its components (D-057 amended): the caller's Vert.x and the node's own blob store, ids,
+ * What a node gives the factory of its components: the caller's Vert.x and the node's own blob store, ids,
  * timer and clock — the node builds its components once, from this, before it touches Postgres.
  *
  * @param vertx the Vert.x the node runs on (its caller's)

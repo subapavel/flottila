@@ -75,7 +75,7 @@ import java.util.stream.Stream;
 
 /**
  * The packages deployed on this node and their running flows (D-059, D-060 a/b, D-063). The listing lives in memory; each deploy
- * writes its package's {@link DeploymentRecord} and stores its archive (D-070), and {@link #restore} installs what those name at
+ * writes its package's {@link DeploymentRecord} and stores its archive, and {@link #restore} installs what those name at
  * the node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed;
  * a deploy of a package listed {@link DeployedPackage.State#FAILED} (the restore could not install it) is a first deploy.
  *
@@ -91,7 +91,7 @@ import java.util.stream.Stream;
  * manifest's name, its dependencies ({@link #dependencies}, D-087), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
  * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
- * {@code kafka}, the optional add-on not in this build (O-1, D-075), no at-least-once flow above {@code RAIL8_BLOB_DURABLE_MAX} (D-058), no
+ * {@code kafka}, the optional add-on not in this build, no at-least-once flow above {@code RAIL8_BLOB_DURABLE_MAX}, no
  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
  * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
@@ -106,23 +106,23 @@ import java.util.stream.Stream;
  * (the package lists it, the new version has no such flow; a FAILED one has nothing to stop); a consumer is built for each added
  * and changed flow. Every problem is one line of one {@link Kind#INVALID}, and nothing running stops and nothing starts before
  * every check passed (a file the hash cannot read is the node's {@link IOException}). Then the archive is put in the
- * {@link ArchiveStore} under its SHA-256 (D-070), before anything stops: a put that fails ({@link IOException}) is
+ * {@link ArchiveStore} under its SHA-256, before anything stops: a put that fails ({@link IOException}) is
  * {@link Kind#FAILED} "archive sha256:&lt;hex&gt; not stored: &lt;cause&gt;", the cleanup below runs and the version running
  * runs on. Nothing deletes an archive (Phase 1): the object of a deploy refused after its put stays.
  *
  * <p>Then the swap (D-063, F-5 amended). Phase A stops every changed and removed flow at once ({@link #stop(Flow, Duration)}: its
  * worker first, then its delivery within the node's stop deadline and its consumer together, that consumer's stop bounded by the
  * stop deadline once the delivery stopped: ≤ 2× the stop deadline), then closes its delivery's producers and asks its worker
- * to close its own, never awaited (FIX-30); a stop that fails or does not complete is logged at WARNING and the swap goes on. Phase B starts every
+ * to close its own, never awaited; a stop that fails or does not complete is logged at WARNING and the swap goes on. Phase B starts every
  * added and changed flow at once — its consumer, whose start is bounded by the node's stop deadline on the node's timer, then,
  * once that start succeeded, its worker, as worker {@code nodeId} — only once
  * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. A removed
  * at-least-once flow, or one the new version runs otherwise, is asked for queue items again once its old worker drained: items
  * left are a WARNING naming it, never a delay of the answer. Then the deploy saves its {@link DeploymentRecord} (name, version,
- * revision, archive SHA-256, the package's {@code deployedAt} and the pins of its dependencies, D-087) and waits for it: the commit point (D-070). A save that fails
+ * revision, archive SHA-256, the package's {@code deployedAt} and the pins of its dependencies, D-087) and waits for it: the commit point. A save that fails
  * refuses a first deploy ({@link Kind#FAILED} "the deploy record was not written: &lt;cause&gt;", the cleanup below) and rolls a
  * redeploy back as a failed start does (below), with that line as its first problem; when the node's Postgres pool refused the
- * save a connection ({@link PgTx#refusedByThePool}) the refusal is {@link Kind#BUSY} instead, retryable (D-133). Only once the record is written is the
+ * save a connection ({@link PgTx#refusedByThePool}) the refusal is {@link Kind#BUSY} instead, retryable. Only once the record is written is the
  * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other archive the package ran: a deploy of the running archive
  * keeps it), every one a running flow was built from — the directories this node keeps — and every one a record pins (D-087: a
  * package's record, FAILED ones included, or during a restore any row read); one that cannot be deleted is a WARNING.
@@ -133,7 +133,7 @@ import java.util.stream.Stream;
  * with nothing of it running).
  *
  * <p>A flow that does not start — its consumer's start fails, throws, or has not completed at the deadline (then it is stopped
- * once that start completes), or its worker's start throws (FIX-44) — is {@link Kind#FAILED}. On a first deploy that is the
+ * once that start completes), or its worker's start throws — is {@link Kind#FAILED}. On a first deploy that is the
  * refusal "flow '&lt;id&gt;' did not start: ..." and the cleanup below. On a redeploy the deploy rolls back ({@link #rollBack}): every flow of the new version stops — one that started
  * within the stop deadline, the others at once — and closes (one whose start was still pending at the deadline stops only once
  * that start completes, maybe after the old flow started again: FIX-43); then every changed and removed flow is built again from
@@ -146,20 +146,20 @@ import java.util.stream.Stream;
  *
  * <p>Whatever refuses the deploy after the unpack began stops every flow it built and did not close yet (zero deadline), then
  * closes their deliveries' producers and asks their workers to close theirs, a worker's once the items it still runs finished
- * (FIX-30) — a flow that failed half way does the same for what it built of itself at once — and deletes the directories it
+ * — a flow that failed half way does the same for what it built of itself at once — and deletes the directories it
  * wrote, {@code packages/<name>/} too when nothing else is in it: nothing of it is started again, is listed or stays on disk, and
  * no producer stays open past the last item that sends. Every flow is stopped whatever another's stop does; a cleanup step that
- * fails does not replace the refusal: its failure is added to it as suppressed (FIX-32), and the steps after it run all the same.
+ * fails does not replace the refusal: its failure is added to it as suppressed, and the steps after it run all the same.
  *
  * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's archive
  * is fetched into {@code .incoming} and installed in restore mode — the record's SHA-256, revision and {@code deployedAt}; no
  * put, no record, no deployed-environment refusal; a flow that does not start is FAILED and the others run; a pin of the record
  * whose directory is absent is fetched from the archive store by its SHA-256 and unpacked under its package's name first, one
- * that cannot be fetched refusing the package (D-087) — and a package refused
+ * that cannot be fetched refusing the package — and a package refused
  * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does, D-072,
  * included). {@link #health} is DOWN while anything is listed FAILED.
  *
- * <p>{@link #undeploy} (D-095) blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
+ * <p>{@link #undeploy} blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
  * ({@link Kind#FORBIDDEN}: manual undeploy is non-production only); the node's lock held by a deploy, an undeploy or a restore
  * ({@link Kind#CONFLICT}, or {@link Kind#STOPPING} while closing); a closing node ({@link Kind#STOPPING}); a package the node does
  * not list ({@link Kind#NOT_FOUND}); a package another listed package's record pins, a FAILED one included
@@ -174,7 +174,7 @@ import java.util.stream.Stream;
  * reads (a failure is a WARNING, the undeploy stands). Its archives stay in the
  * {@link ArchiveStore}: deploying it again is the rollback. A restore after it does not install it: its record is gone.
  *
- * <p>A flow runs as {@code <package>/<flow>} (D-060 a): its snapshots, DLQ rows and queue items carry that id, and so does
+ * <p>A flow runs as {@code <package>/<flow>}: its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
  * versions {@code package=<name>@<version>} and, when the deploy names one, {@code revision}.
  *
@@ -190,11 +190,11 @@ import java.util.stream.Stream;
  * flow that runs at once: its worker first, then its delivery (within the node's stop deadline) and its consumer (bounded by the
  * stop deadline once the delivery stopped: ≤ 2× the stop deadline) together; once all have stopped it
  * closes every delivery's producers (FIX-30; a failed close is logged), then waits for every worker's items still running to
- * settle in the work queue and its producers to close — within the stop deadline counted from the start of the close (FIX-142):
+ * settle in the work queue and its producers to close — within the stop deadline counted from the start of the close:
  * a flow whose worker has not closed by then is a WARNING naming its count of unsettled items, whose work rows stay claimed
  * and run again once their lease ran out — then returns and rethrows the first stop failure, in flow order.
  * The node lease and each item's lease are renewed while the close waits: the node closes its lease and stores after it.
- * A redeploy or an undeploy never waits for a worker (D-063, FIX-30): its items run to their end through the worker's open
+ * A redeploy or an undeploy never waits for a worker: its items run to their end through the worker's open
  * producers, renewing their lease, and the worker closes its producers once the last of them finished.
  *
  * <p>The {@link Runtime} only goes into each deploy's {@code new FlowBuilder}: nothing here reads it, and no flow or lambda
@@ -208,7 +208,7 @@ public final class Deployments {
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final Pattern REVISION = Pattern.compile("[0-9A-Za-z._-]{1,64}");
     private static final String AT_LEAST_ONCE = "at-least-once";
-    /** The consumer options the deploy sets on every in endpoint (D-059): a package that sets one itself is refused. */
+    /** The consumer options the deploy sets on every in endpoint: a package that sets one itself is refused. */
     private static final List<String> RESERVED = List.of("flow", "maxBodyBytes");
 
     private final NodeConfig config;
@@ -240,7 +240,7 @@ public final class Deployments {
      */
     private final Map<String, Deployed> deployed = new ConcurrentSkipListMap<>();
     private volatile boolean closing;
-    /** The rows a {@link #restore} installs, while it runs (under {@link #deploying}): what they pin is never pruned (D-087). */
+    /** The rows a {@link #restore} installs, while it runs (under {@link #deploying}): what they pin is never pruned. */
     private List<DeploymentRecord> restoringRows = List.of();
 
     /**
@@ -256,7 +256,7 @@ public final class Deployments {
     /**
      * Deployments whose at-least-once flows save through a {@link SequentialIntake} over {@code messages} and {@code queue}, handing
      * each item off to the flow's started worker, leased to the node {@code config.nodeId()} (D-121 (a)): tests and tools; the node
-     * passes its Postgres intake (D-082).
+     * passes its Postgres intake.
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
@@ -272,7 +272,7 @@ public final class Deployments {
                 new Targets(config.targets().defaults(), config.targets().overrides(), timer), () -> true, workers);
     }
 
-    /** Deployments whose poller leases are held in this process's memory, on {@code clock}: one node alone (D-083). */
+    /** Deployments whose poller leases are held in this process's memory, on {@code clock}: one node alone. */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
                        ArchiveStore archives, Intake intake) {
@@ -282,7 +282,7 @@ public final class Deployments {
 
     /**
      * Deployments whose flows send under limits of their own, built from {@code config}'s {@link NodeConfig#targets()} on
-     * {@code timer}: tests and tools; the node passes the one {@link Targets} it built (D-099).
+     * {@code timer}: tests and tools; the node passes the one {@link Targets} it built.
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
@@ -307,12 +307,12 @@ public final class Deployments {
      * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
      * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline, and
      *              ticks every leased consumer
-     * @param records where a deploy writes its package's record, the deploy's commit point (D-070)
-     * @param archives where a deploy stores its archive before anything stops (D-070)
-     * @param intake the durable save of every at-least-once flow's delivery (D-082): body, ingress record and item, over the
+     * @param records where a deploy writes its package's record, the deploy's commit point
+     * @param archives where a deploy stores its archive before anything stops
+     * @param intake the durable save of every at-least-once flow's delivery: body, ingress record and item, over the
      *               same stores as {@code messages} and {@code queue}
-     * @param leases where the consumer of a polling endpoint holds its lease (D-083)
-     * @param targets the node's limits per target system (D-099): every flow built here — deployed, swapped in by a redeploy,
+     * @param leases where the consumer of a polling endpoint holds its lease
+     * @param targets the node's limits per target system: every flow built here — deployed, swapped in by a redeploy,
      *                rebuilt by a rollback, restored — sends under them, so flows naming one target share its limit across packages
      *                and versions; {@link #targets()} lists their gauges
      * @param fence the node's fence (D-101 (2), {@code NodeLease}): every at-least-once flow's worker built here sends, completes,
@@ -367,7 +367,7 @@ public final class Deployments {
 
     /**
      * One flow as the deploy built it: {@code archive} names the directory it was built from ({@code packages/<name>/<archive>}) and
-     * {@code recipe} what its build took, so a failed redeploy can build it again (D-063); {@code from} is its in endpoint as its
+     * {@code recipe} what its build took, so a failed redeploy can build it again; {@code from} is its in endpoint as its
      * consumer gets it; {@code worker} is null unless the flow is at-least-once, and {@code consumer} is null until one is built for
      * it ({@link #with}). A {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker or consumer.
      */
@@ -396,7 +396,7 @@ public final class Deployments {
         /**
          * Asks its stopped worker to close its producers, never awaited here — that close waits for the items still in flight;
          * only the node's shutdown waits for them ({@link Deployments#drain}, FIX-142) — and closes its delivery's producers once
-         * the delivery stopped; completes with the delivery's close, never fails (FIX-30).
+         * the delivery stopped; completes with the delivery's close, never fails.
          */
         Future<Void> close() {
             if (worker != null) worker.close();
@@ -406,27 +406,27 @@ public final class Deployments {
 
     /**
      * What a flow's build took besides the builder's stamps: its definition, its yaml, the package's endpoints as built — their
-     * {@code secret://} references resolved (D-081) — and as {@code written}, references kept (what its effective hash covers),
+     * {@code secret://} references resolved — and as {@code written}, references kept (what its effective hash covers),
      * and where its consumer listens as its check asked the component ({@link #listeners}; empty when it accepts no connections):
-     * the address it holds against another package's deploy while it runs (D-072).
+     * the address it holds against another package's deploy while it runs.
      */
     private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints, Map<String, EndpointConfig> written,
                           Optional<InetSocketAddress> listensOn, Visible dependencies) {}
 
     /**
-     * The package's direct dependencies as its steps read them (D-087): each name to the directory of the version its lock
+     * The package's direct dependencies as its steps read them: each name to the directory of the version its lock
      * resolved to, and to that version.
      */
     private record Visible(Map<String, Path> dirs, Map<String, String> versions) {}
 
     /**
-     * The dependencies a check resolved (D-087): the direct ones {@code visible} to the steps, the closure as the record {@code pins}
+     * The dependencies a check resolved: the direct ones {@code visible} to the steps, the closure as the record {@code pins}
      * it, in the order resolved, and as the package lists it ({@code listed}, each marked direct or not).
      */
     private record Resolved(Visible visible, List<DeploymentRecord.Pin> pins, List<DeployedPackage.Dependency> listed) {}
 
     /**
-     * A package deployed: its record, its flows, the directories this node keeps for it (D-063) — current, previous and in use —
+     * A package deployed: its record, its flows, the directories this node keeps for it — current, previous and in use —
      * by name, each with the files unpacked into it (path and SHA-256, as {@link DeployedPackage#files()}), and {@code previous},
      * the directory of the last other archive the package ran (null when there was none).
      */
@@ -445,7 +445,7 @@ public final class Deployments {
     private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, JsonObject> resolved,
                            Map<String, FlowDefinition> flows, Set<String> leaving, Map<String, InetSocketAddress> listening, Resolved dependencies) {}
 
-    /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens (D-072). */
+    /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens. */
     private record Listener(String holder, InetSocketAddress at) {}
 
     /** A cleanup or housekeeping step that may fail. */
@@ -464,7 +464,7 @@ public final class Deployments {
         return config.dataDir().resolve(".incoming");
     }
 
-    /** The gauge of every target the flows built here named so far (D-099), sorted by target; never an unshared limit. */
+    /** The gauge of every target the flows built here named so far, sorted by target; never an unshared limit. */
     public List<TargetLimit.Gauge> targets() {
         return targets.gauges();
     }
@@ -515,7 +515,7 @@ public final class Deployments {
     }
 
     /**
-     * Undeploys the package {@code name} (D-095); see the class comment for the order. Blocking: on a virtual thread.
+     * Undeploys the package {@code name}; see the class comment for the order. Blocking: on a virtual thread.
      *
      * @return the package undeployed, the version it was listed with and its flows, by qualified id
      * @throws DeployRefusedException what the admin API answers with its own status
@@ -535,12 +535,12 @@ public final class Deployments {
             if (!dependents.isEmpty()) throw refused(Kind.CONFLICT, name + "@" + version + " is in use by " + String.join(", ", dependents));
             List<Flow> running = listed.flows().stream().filter(Flow::runs).toList();
             Set<String> leaving = queued(running);
-            // the commit point (D-095): the record is deleted before anything stops; a delete that fails changes nothing else
+            // the commit point: the record is deleted before anything stops; a delete that fails changes nothing else
             Future<Void> deleted = Future.future(done -> records.delete(name).onComplete(done));
             deleted.otherwiseEmpty().await();
             if (deleted.failed()) {
                 String undeleted = "the deploy record of package '" + name + "' was not deleted: " + reason(deleted.cause());
-                if (PgTx.refusedByThePool(deleted.cause())) throw refused(Kind.BUSY, undeleted);   // retryable, nothing changed (D-133)
+                if (PgTx.refusedByThePool(deleted.cause())) throw refused(Kind.BUSY, undeleted);   // retryable, nothing changed
                 throw new IOException(undeleted, deleted.cause());
             }
             try {
@@ -561,7 +561,7 @@ public final class Deployments {
     }
 
     /**
-     * The dry run of a deploy of the package directory {@code dir} as {@code name} (D-079): the document checks
+     * The dry run of a deploy of the package directory {@code dir} as {@code name}: the document checks
      * ({@code Package.problems()} and the package-level ones), each endpoint's config in this node's environment against its
      * component's schema, and the dry build of every flow with this node's steps — against the flows the node runs — then stop
      * and close whatever was built. Nothing is unpacked, locked, stored, recorded, enqueued or started, no consumer is built, and the
@@ -581,7 +581,7 @@ public final class Deployments {
     }
 
     /**
-     * Off-node validation (D-089): {@link #validate(String, Path)} of {@code dir} as {@code name} with the package's dependency
+     * Off-node validation: {@link #validate(String, Path)} of {@code dir} as {@code name} with the package's dependency
      * closure handed over as package folders, {@code held}. For this call only, each held folder counts as a version this node has —
      * its name and version from its {@code package.yaml}, its content {@code Package.content} of the folder — in the resolution
      * ({@link #dependencies}: the missing version, the content, the cycle, the {@code <dep>:<path>} file checks run as for a deployed
@@ -605,7 +605,7 @@ public final class Deployments {
         return validate(name, dir, versions);
     }
 
-    /** {@link #validate(String, Path)} with {@code held} versions available besides the node's own (D-089), each pin to its folder. */
+    /** {@link #validate(String, Path)} with {@code held} versions available besides the node's own, each pin to its folder. */
     private List<String> validate(String name, Path dir, Map<DeploymentRecord.Pin, Path> held) throws IOException {
         Deployed listed = deployed.get(name);
         List<Flow> before = listed == null ? List.of() : listed.flows();   // a package listed FAILED lists no flows (restore)
@@ -615,7 +615,7 @@ public final class Deployments {
             Checked checked = check(name, pkg, dir, before, null, held);
             return build(name, Optional.empty(), pkg.manifest().getString("version"), "validate", pkg, dir, checked, built);
         } catch (DeployRefusedException refused) {
-            if (refused.kind() == Kind.BUSY) throw new IOException(refused.error(), refused);   // a pool refusal lists no problem: the node's failure (D-133)
+            if (refused.kind() == Kind.BUSY) throw new IOException(refused.error(), refused);   // a pool refusal lists no problem: the node's failure
             return refused.problems();
         } finally {
             Future.join(built.stream().map(Deployments::dropBuilt).toList()).await();   // each never fails
@@ -657,7 +657,7 @@ public final class Deployments {
     }
 
     /**
-     * Installs, at the node's start, every package the pool's records name (D-070), one at a time in name order, under the deploy
+     * Installs, at the node's start, every package the pool's records name, one at a time in name order, under the deploy
      * lock — a deploy meanwhile is {@link Kind#CONFLICT} — and returns once each one is installed or listed FAILED. Each record's
      * archive is fetched from the {@link ArchiveStore} into a temporary file in {@link #incomingDir()}, deleted whatever comes of
      * it, and installed in restore mode ({@link #install}): its SHA-256 must be the record's; no deployed-environment refusal, no
@@ -688,7 +688,7 @@ public final class Deployments {
     }
 
     /**
-     * The {@code deployments} check of the node's {@code /health} (D-070): DOWN while a package or a flow is listed FAILED, its
+     * The {@code deployments} check of the node's {@code /health}: DOWN while a package or a flow is listed FAILED, its
      * detail naming each (the wire shows the status only, D-057 a); UP otherwise.
      */
     public Health health() {
@@ -736,7 +736,7 @@ public final class Deployments {
     }
 
     /**
-     * A pin of the record a restore installs (D-087), unpacked under {@code packages/<name>/<sha256>/} unless its directory is there:
+     * A pin of the record a restore installs, unpacked under {@code packages/<name>/<sha256>/} unless its directory is there:
      * fetched from the archive store by its SHA-256 into a temporary file of {@code incoming}, deleted whatever comes of it, then
      * unpacked and moved there; a fetch that fails, or bytes whose SHA-256 is not the pin's, refuse the package naming the pin. The unpack's directory goes on
      * {@code written} (a refusal deletes it); the pin's directory does not: a record pins it.
@@ -866,12 +866,12 @@ public final class Deployments {
                 unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
             }
             if (restoring == null) {   // a restore writes no record: it installs the one it read
-                // the commit point (D-070): the package's record, written once every flow started; the listing and the pruning follow it
+                // the commit point: the package's record, written once every flow started; the listing and the pruning follow it
                 Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedAt, pins)).onComplete(done));
                 saved.otherwiseEmpty().await();
                 if (saved.failed()) {
                     String unrecorded = "the deploy record was not written: " + reason(saved.cause());
-                    Kind unwritten = PgTx.refusedByThePool(saved.cause()) ? Kind.BUSY : Kind.FAILED;   // a pool refusal is retryable (D-133)
+                    Kind unwritten = PgTx.refusedByThePool(saved.cause()) ? Kind.BUSY : Kind.FAILED;   // a pool refusal is retryable
                     if (running == null) throw refused(unwritten, unrecorded);   // a first deploy: the cleanup stops the flows that started
                     throw rollBack(unwritten, version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
                 }
@@ -919,7 +919,7 @@ public final class Deployments {
     }
 
     /**
-     * Rolls back a redeploy whose phase B did not start every flow (D-063), or whose record was not written once it did (D-070),
+     * Rolls back a redeploy whose phase B did not start every flow, or whose record was not written once it did,
      * and returns the refusal to throw; it writes no listing and no record:
      * {@code deployed} lists {@code running} throughout, and {@link #install} writes what the refusal leaves. First every flow of
      * the new version ({@code phaseB}) stops — one that started within the node's stop deadline, the others at once — and closes
@@ -954,7 +954,7 @@ public final class Deployments {
         List<Throwable> unstopped = new ArrayList<>();
         try {
             // the failed version's phase A: each of its flows settles before the old one starts again, but for a consumer whose
-            // start was still pending at the deadline: that one stops only once its start completes, maybe after (FIX-43)
+            // start was still pending at the deadline: that one stops only once its start completes, maybe after
             unstopped.add(discard(started, unstarted));
             built.clear();
             for (Flow f : retired) {
@@ -1066,7 +1066,7 @@ public final class Deployments {
      * when every question that failed was one the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) is it
      * {@link Kind#BUSY} with the last such line instead (D-133, FIX-173: a real failure outranks a refusal in any flow order) —
      * unless there are problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate;
-     * {@code held} the versions an off-node validate holds (D-089), each pin to its folder, empty otherwise.
+     * {@code held} the versions an off-node validate holds, each pin to its folder, empty otherwise.
      */
     private Checked check(String name, Package pkg, Path dir, List<Flow> running, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) throws DeployRefusedException, IOException {
         List<String> problems = new ArrayList<>(pkg.problems());
@@ -1075,9 +1075,9 @@ public final class Deployments {
         Resolved dependencies = dependencies(name, pkg, dir, restoring, held, problems);
         Map<String, String> schemes = new LinkedHashMap<>();
         Map<String, JsonObject> configs = new LinkedHashMap<>();
-        Map<String, JsonObject> resolved = new LinkedHashMap<>();   // as the components get them: every secret:// reference resolved (D-081)
+        Map<String, JsonObject> resolved = new LinkedHashMap<>();   // as the components get them: every secret:// reference resolved
         Set<String> outs = new HashSet<>();
-        Set<String> ins = new HashSet<>();   // the in endpoints whose component takes their config: the ones asked where they listen (D-072)
+        Set<String> ins = new HashSet<>();   // the in endpoints whose component takes their config: the ones asked where they listen
         pkg.endpoints().forEach((id, endpoint) -> {
             if (!Schemas.ENDPOINT.validate(endpoint).valid()) return;   // what its schema says is listed already; nothing here relies on its shape
             String scheme = endpoint.getString("scheme");
@@ -1123,7 +1123,7 @@ public final class Deployments {
             if (outs.contains(def.fromEndpoint())) {
                 problems.add("flow '" + id + "' consumes from endpoint '" + def.fromEndpoint() + "', whose direction is out: a flow's from is an in endpoint");
             }
-            String queued = flow.getJsonObject("delivery").getString("queue");   // absent or postgres: the node's work queue (D-075)
+            String queued = flow.getJsonObject("delivery").getString("queue");   // absent or postgres: the node's work queue
             if (queued != null && !AT_LEAST_ONCE.equals(def.deliveryMode())) {
                 problems.add("flow '" + id + "' is " + def.deliveryMode() + " and sets delivery.queue " + queued + ": only an at-least-once flow has a work queue");
             } else if ("kafka".equals(queued)) {
@@ -1148,7 +1148,7 @@ public final class Deployments {
         unread.removeAll(flows.keySet());
         Set<String> leaving = new HashSet<>();
         IOException unanswered = null;   // a question the queue failed for real: the node's failure, unless the package is refused anyway
-        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a real failure or a problem outranks it (FIX-173)
+        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a real failure or a problem outranks it
         for (Flow f : running) {
             if (!AT_LEAST_ONCE.equals(f.flow().delivery()) || stayQueued.contains(f.id()) || unread.contains(local(f.flow()))) continue;
             leaving.add(f.id());
@@ -1164,17 +1164,17 @@ public final class Deployments {
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
         if (unanswered != null) throw unanswered;
-        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's: retryable, nothing changed (D-133)
+        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's: retryable, nothing changed
         return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), dependencies);
     }
 
     /**
-     * The package's dependencies resolved against what this node holds (D-087), every problem one line added to {@code problems}
+     * The package's dependencies resolved against what this node holds, every problem one line added to {@code problems}
      * (a line {@code pkg}'s own problems hold already is not added again). Each entry of its {@code package.lock} must be a version
      * {@link #available} with the content the lock pins ({@code Package.content} of its directory), and so must each entry of that
      * version's own lock, to the closure; a name met again on the way is a cycle ({@code dependency cycle: a -> b -> a}). Then each
      * step's {@code stylesheet} or {@code schema} naming a resolved direct dependency, {@code <dep>:<path>}, must be a file of it.
-     * The versions {@code held} (D-089) are available besides the node's own, each read from its folder ({@link #dirOf}).
+     * The versions {@code held} are available besides the node's own, each read from its folder ({@link #dirOf}).
      *
      * @throws IOException a directory of the node cannot be read
      */
@@ -1262,10 +1262,10 @@ public final class Deployments {
     }
 
     /**
-     * The package versions this node holds for a deploy's dependencies (D-087), as pins: each RUNNING package's current version and
+     * The package versions this node holds for a deploy's dependencies, as pins: each RUNNING package's current version and
      * every version its record pins, and the pins of the record {@code restoring} installs (fetched before its check). A package
      * listed FAILED holds none: its version may not be on disk, nor what its record pins. Then the versions an off-node validate
-     * holds (D-089).
+     * holds.
      */
     private List<DeploymentRecord.Pin> available(DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) {
         List<DeploymentRecord.Pin> available = new ArrayList<>();
@@ -1279,7 +1279,7 @@ public final class Deployments {
         return available;
     }
 
-    /** The archive SHA-256s of {@code name} that a record pins (D-087) — the listing's, FAILED packages included, and a restore's rows'. */
+    /** The archive SHA-256s of {@code name} that a record pins — the listing's, FAILED packages included, and a restore's rows'. */
     private Set<String> pinned(String name) {
         Set<String> pinned = new HashSet<>();
         Stream.concat(deployed.values().stream().flatMap(d -> d.pins().stream()), restoringRows.stream().flatMap(r -> r.dependencies().stream()))
@@ -1288,7 +1288,7 @@ public final class Deployments {
     }
 
     /**
-     * The archive SHA-256s of {@code name} whose directories a listed flow's recipe reads as a dependency (D-087): a flow kept by
+     * The archive SHA-256s of {@code name} whose directories a listed flow's recipe reads as a dependency: a flow kept by
      * hash across a lock bump reads the directory it was built from, and a rollback builds it from there again.
      */
     private Set<String> read(String name) {
@@ -1302,7 +1302,7 @@ public final class Deployments {
         return read;
     }
 
-    /** Where the version of {@code pin} is read: its held folder (D-089), else {@link #pinDir}. */
+    /** Where the version of {@code pin} is read: its held folder, else {@link #pinDir}. */
     private Path dirOf(DeploymentRecord.Pin pin, Map<DeploymentRecord.Pin, Path> held) {
         return held.getOrDefault(pin, pinDir(pin));
     }
@@ -1313,7 +1313,7 @@ public final class Deployments {
     }
 
     /**
-     * One listener per host:port on a node (D-072). Asks the component of each of {@code asked} — an in endpoint whose config its
+     * One listener per host:port on a node. Asks the component of each of {@code asked} — an in endpoint whose config its
      * schema takes, this node's environment laid over it and every {@code secret://} reference resolved (D-081; one that does
      * not resolve is not asked), by the local id of the flow it feeds — where its consumer would listen,
      * and adds a line to {@code problems} for every address that overlaps ({@link Listeners#overlap}) the address of a flow before
@@ -1364,7 +1364,7 @@ public final class Deployments {
     /**
      * The options of each step whose type a step factory on the node builds — {@link StepConfig#config()} without {@code recording},
      * i.e. the step without {@code type}, {@code name}, {@code retryable} and {@code recording}, read from {@code entries}, the flow's
-     * {@code steps} as written — judged by that factory's {@code configSchema()} (D-057): a line per problem, {@code flow '<flow>' step
+     * {@code steps} as written — judged by that factory's {@code configSchema()}: a line per problem, {@code flow '<flow>' step
      * <n> '<name>' (type '<type>') option at '<path>': <message>}, and one line for the step when the schema cannot be used (not JSON,
      * no object, not a schema).
      * A type no factory builds is not judged: a built-in one is typed by the flow schema, an unknown one does not build.
@@ -1441,7 +1441,7 @@ public final class Deployments {
     private List<String> build(String name, Optional<String> revision, String version, String archive, Package pkg, Path dir, Checked checked,
                                List<Flow> flows) throws IOException {
         Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();   // as the components get them, references resolved
-        Map<String, EndpointConfig> written = new LinkedHashMap<>();     // as the package writes them: what the hash covers (D-081)
+        Map<String, EndpointConfig> written = new LinkedHashMap<>();     // as the package writes them: what the hash covers
         checked.configs().forEach((id, cfg) -> {
             endpoints.put(id, endpoint(id, checked.schemes().get(id), checked.resolved().get(id)));
             written.put(id, endpoint(id, checked.schemes().get(id), cfg));
@@ -1464,7 +1464,7 @@ public final class Deployments {
     /**
      * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
      * it marks the steps with StepEvents only when the node samples CPU time (D-094, owner decision 2026-11-03), and its {@code to}
-     * steps send under the node's {@link Targets} (D-099); its at-least-once workers retry under the node's default schedule
+     * steps send under the node's {@link Targets}; its at-least-once workers retry under the node's default schedule
      * ({@code RAIL8_RETRIES_*}, CORE-14a P1) when a flow names no {@code delivery.retries}.
      */
     private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
@@ -1481,7 +1481,7 @@ public final class Deployments {
      * (at-least-once), its effective hash ({@link FlowHash}: the
      * files those builds read, its endpoints as its consumer and its producers get them); its consumer comes later
      * ({@link #consumers}). A flow that fails after
-     * its delivery was built stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included —
+     * its delivery was built stops and closes what it built of itself before the failure leaves, unchecked ones included —
      * its worker has run nothing yet, so its close runs at once; a worker that does not build has closed its own producers.
      *
      * @throws IOException a file the build read cannot be hashed: the node's failure
@@ -1491,15 +1491,15 @@ public final class Deployments {
         Map<String, EndpointConfig> endpoints = recipe.endpoints();
         Set<Path> reads = ConcurrentHashMap.newKeySet();   // the stages keep the sink: thread-safe, each path once
         builder.reads(reads::add).dependencies(recipe.dependencies().dirs());
-        Path baseDir = dir;   // a step's file reference is a path from the package root, wherever the flow file lies (D-078)
+        Path baseDir = dir;   // a step's file reference is a path from the package root, wherever the flow file lies
         EndpointConfig consumed = consumed(endpoints.get(def.fromEndpoint()), def);
-        // the save dedupes by the prop the in endpoint's component names (D-084), asked as the consumer gets the endpoint
+        // the save dedupes by the prop the in endpoint's component names, asked as the consumer gets the endpoint
         Delivery delivery = builder.delivery(def, baseDir, components.get(consumed.scheme()).dedupeBy(consumed));
         FlowWorker worker = null;
         boolean built = false;
         try {
             worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
-            Map<String, EndpointConfig> written = recipe.written();   // the hash covers the references, never a value (D-081)
+            Map<String, EndpointConfig> written = recipe.written();   // the hash covers the references, never a value
             String hash = FlowHash.of(dir, recipe.dependencies().dirs(), recipe.flowFile(), reads, consumed(written.get(def.fromEndpoint()), def),
                     def.referencedEndpoints().stream().map(written::get).toList());
             built = true;
@@ -1517,7 +1517,7 @@ public final class Deployments {
         }
     }
 
-    /** The in endpoint {@code from} as the consumer of {@code def} gets it: with the flow's qualified id and its maxBodyBytes (D-059). */
+    /** The in endpoint {@code from} as the consumer of {@code def} gets it: with the flow's qualified id and its maxBodyBytes. */
     private static EndpointConfig consumed(EndpointConfig from, FlowDefinition def) {
         Map<String, Object> options = new HashMap<>(from.options());
         options.put("flow", def.id());
@@ -1558,7 +1558,7 @@ public final class Deployments {
     }
 
     /**
-     * Phase A of the swap (D-063), and the stop of an undeploy (D-095): every flow of {@code retiring} at once — stopped with the node's stop deadline, then closed
+     * Phase A of the swap, and the stop of an undeploy: every flow of {@code retiring} at once — stopped with the node's stop deadline, then closed
      * ({@link #stopAndClose}); a stop that fails, throws or does not complete in time is logged ({@code why} it stopped) and counts as settled, and keeps
      * no other flow from its stop. Those whose id is in
      * {@code leaving} are asked for queue items once their worker drained ({@link #recheck}). Returns once every one has settled:
@@ -1606,7 +1606,7 @@ public final class Deployments {
         for (Flow f : flows) {
             Future<Void> call = Future.future(done -> f.consumer().start().onComplete(done));
             calls.add(call);
-            // the worker starts inside the flow's start future: a throw fails it, the flow's failed start (FIX-44), where a
+            // the worker starts inside the flow's start future: a throw fails it, the flow's failed start, where a
             // listener's throw would be lost
             started.add(bounded(call, "its consumer's start").compose(v -> {
                 if (f.worker() != null) f.worker().start();
@@ -1656,7 +1656,7 @@ public final class Deployments {
     }
 
     /**
-     * Closes the producers of {@code flows} (FIX-30): each delivery's once it stopped, awaited; each worker's asked, not awaited
+     * Closes the producers of {@code flows}: each delivery's once it stopped, awaited; each worker's asked, not awaited
      * ({@link Flow#close}; the node's shutdown waits for it in {@link #drain}). Never fails, a failed producer close is logged.
      */
     private static Future<Void> close(List<Flow> flows) {
@@ -1664,7 +1664,7 @@ public final class Deployments {
     }
 
     /**
-     * The node's shutdown wait for the workers of {@code flows} (FIX-142): once {@code stopped} settled, each worker's close —
+     * The node's shutdown wait for the workers of {@code flows}: once {@code stopped} settled, each worker's close —
      * complete once its items settled in the work queue and its producers closed ({@link FlowWorker#close}) — bounded by the
      * node's stop deadline from now ({@link #bounded}), every flow on a bound of its own. Completes once every one closed or
      * passed its bound: one WARNING per flow whose worker had not closed by then, naming its count of unsettled items — their
@@ -1687,7 +1687,7 @@ public final class Deployments {
      * Stops flows built and not to run on — {@code started} ones within the node's stop deadline, {@code others} at once (a zero
      * deadline, cancelling what is in flight) — and closes each once it stopped ({@link #stopAndClose}); every flow is stopped
      * whatever another's stop does, and one that does not stop cleanly is a WARNING naming it. Returns once every one has settled:
-     * the first failure, in that order, or null — a refusal adds it as suppressed (FIX-32). Never throws.
+     * the first failure, in that order, or null — a refusal adds it as suppressed. Never throws.
      */
     private Throwable discard(List<Flow> started, List<Flow> others) {
         List<Future<Void>> settled = new ArrayList<>(started.size() + others.size());
@@ -1729,7 +1729,7 @@ public final class Deployments {
 
     /**
      * Runs the cleanup step {@code step} of a refused deploy; whatever it throws, an {@link Error} included, is added to
-     * {@code failure} as suppressed (FIX-32): the refusal stays what is thrown, and the steps after it run all the same.
+     * {@code failure} as suppressed: the refusal stays what is thrown, and the steps after it run all the same.
      */
     private static void cleanUp(Throwable failure, Cleanup step) {
         try {
@@ -1786,7 +1786,7 @@ public final class Deployments {
     }
 
     /**
-     * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any (D-095):
+     * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any:
      * items of one refuse the undeploy ({@link Kind#CONFLICT}, a line per such flow by its local id, sorted as the flows are), since they would
      * never run; a question the queue fails is the node's {@link IOException} at once, naming the flow and the cause, whether or not
      * the pool refused an earlier one. A question the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) does
@@ -1797,7 +1797,7 @@ public final class Deployments {
     private Set<String> queued(List<Flow> running) throws DeployRefusedException, IOException {
         Set<String> queued = new HashSet<>();
         List<String> held = new ArrayList<>();
-        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a question fails for real or a flow holds items (FIX-173)
+        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a question fails for real or a flow holds items
         for (Flow f : running) {
             if (!AT_LEAST_ONCE.equals(f.flow().delivery())) continue;
             queued.add(f.id());
@@ -1808,15 +1808,15 @@ public final class Deployments {
             } else if (items.failed()) {
                 String unanswered = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
                 if (!PgTx.refusedByThePool(items.cause())) throw new IOException(unanswered, items.cause());
-                pooled = unanswered;   // the later flows are still asked: a real failure of one outranks it (FIX-173)
+                pooled = unanswered;   // the later flows are still asked: a real failure of one outranks it
             }
         }
-        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));   // known items outrank a refusal (FIX-173)
-        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's, no flow holds items: retryable (D-133)
+        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));   // known items outrank a refusal
+        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's, no flow holds items: retryable
         return queued;
     }
 
-    /** The packages whose record pins a version of {@code name} (D-087), FAILED ones included, sorted by name, each once. */
+    /** The packages whose record pins a version of {@code name}, FAILED ones included, sorted by name, each once. */
     private List<String> dependents(String name) {
         return deployed.values().stream().filter(d -> d.pins().stream().anyMatch(p -> p.name().equals(name))).map(d -> d.pkg().name()).toList();
     }
@@ -1841,9 +1841,9 @@ public final class Deployments {
 
     /**
      * {@code message} with every path below the package directory {@code dir} named from the package root, and {@code dir} itself
-     * as {@code .}: a step's failure may name a package file, or the directory a reference leaves (D-052, D-078), by its absolute
+     * as {@code .}: a step's failure may name a package file, or the directory a reference leaves, by its absolute
      * path — absolute and normalised, as StepResources prints it, whatever form the data directory was given in; no problem line does.
-     * A path below a dependency's directory is named {@code <dep>:<path>}, the directory itself {@code <dep>@<version>} (D-087).
+     * A path below a dependency's directory is named {@code <dep>:<path>}, the directory itself {@code <dep>@<version>}.
      */
     private static String fromRoot(String message, Path dir, Visible dependencies) {
         String root = dir.toAbsolutePath().normalize().toString();

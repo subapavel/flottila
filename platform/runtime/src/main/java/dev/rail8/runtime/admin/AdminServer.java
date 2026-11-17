@@ -67,10 +67,10 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step (the rows of
- * every attempt by attempt, then step, each naming its {@code attempt}, FIX-175), the payload after step n (the latest attempt's,
+ * The admin read API (GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step (the rows of
+ * every attempt by attempt, then step, each naming its {@code attempt}), the payload after step n (the latest attempt's,
  * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
- * {@code /live} and {@code /ready} (D-123).
+ * {@code /live} and {@code /ready}.
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
@@ -83,53 +83,53 @@ import java.util.function.Supplier;
  * parameter that does not parse or a limit or cursor a page store refuses, 401 without the token, 404 for what is not
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
- * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
+ * pool closed by a stopping node: retryable), whether a statement on the pool was refused or a transaction's
  * acquire ({@link dev.rail8.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the same-id DLQ
  * {@code /retry}'s read and restart with a fixed text as {@code error}, a deploy's work-queue question or record write and an
  * undeploy's work-queue question or record delete with the refusal's own line (below); 500 for anything else: a store that
  * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
  * response is reset).
  *
- * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
+ * <p>With a {@link Deployments} it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
  * {@code 100 Continue} and the body is streamed with back-pressure into a
  * temp file in {@code incomingDir()} and counted, 413 at byte max+1; the deploy runs on the route's virtual thread and the temp
  * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
- * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
+ * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed), or a refusal
  * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
- * whose start failed and rolled back: {@code {error, problems}}, D-063), 503 (the node stops; or the node's Postgres pool refused
- * the deploy record's write, D-133: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
- * naming the flow and the pool's refusal, FIX-172c; only when every failed question was the pool's — a real failure of another
- * flow's question is 500, FIX-173). An answer given before
+ * whose start failed and rolled back: {@code {error, problems}}), 503 (the node stops; or the node's Postgres pool refused
+ * the deploy record's write: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
+ * naming the flow and the pool's refusal; only when every failed question was the pool's — a real failure of another
+ * flow's question is 500). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
- * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
- * flows, no files, no folders and no artifacts) and its tree (D-078): {@code folders:[{path, namespace|null, description|null}]}
+ *, a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
+ * flows, no files, no folders and no artifacts) and its tree: {@code folders:[{path, namespace|null, description|null}]}
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
- * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087).
- * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
+ * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved.
+ * {@code DELETE /admin/packages/{name}} undeploys on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
  * the node, or another package's record pins it, or the work queue holds items of a flow of it), 503 (the node stops; or the
- * node's Postgres pool refused the work queue's question or the record delete, D-133: nothing changed, retryable; a refused
- * question only when no other question failed otherwise and no flow holds items — those are 500 and 409, FIX-173) — and 404 for a package the node does not list; a record
- * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
+ * node's Postgres pool refused the work queue's question or the record delete: nothing changed, retryable; a refused
+ * question only when no other question failed otherwise and no flow holds items — those are 500 and 409) — and 404 for a package the node does not list; a record
+ * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system, sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. Without one these routes do not exist (404).
  *
- * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step (D-094): {@code GET /admin/flows/{flow}/cpu} — the flow's
+ * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step: {@code GET /admin/flows/{flow}/cpu} — the flow's
  * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
  * period, since, items:[{step, name, executions, samples, cpuNanos}], totals:{samples, attributed, pending, unattributed, platform,
  * lost, dropped}}}: the node's CPU-sampling aggregate since the sampler started, the items by CPU descending, the totals node-wide
  * ({@link StepCpu}); never a per-message figure. Once the sampler's stream has failed, {@code sampling:"failed"} with the rest as the
  * stream last fed it. Without one, 200 {@code {flow, sampling:"off", items:[]}}. A flow not deployed here is 404.
  *
- * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
+ * <p>With a {@link WorkQueue} it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
  * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
  * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown; D-121 (b)
  * B4 (ii)); built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
- * key behind it (D-126). {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
+ * key behind it. {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
  * {@code RAIL8_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
  * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
  * answering 200 {@code {seq, auditId}}, 404 for a seq unknown or not lost, 400 for a seq that is not a long or an
@@ -137,15 +137,15 @@ import java.util.function.Supplier;
  * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
  * queue these routes do not exist (404).
  *
- * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft; FIX-138a), {@code POST /admin/dlq/{id}/retry} runs a
- * message its flow's worker parked once more under its own id (D-156: a message keeps one id): the DLQ row out and the work
+ * <p>With a {@link Deployments} and a queue, {@code POST /admin/dlq/{id}/retry} runs a
+ * message its flow's worker parked once more under its own id (a message keeps one id): the DLQ row out and the work
  * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
- * not deployed here, a work row of the message not settled yet (F-57), its ingress body no longer kept), 422 saying why (a flow
+ * not deployed here, a work row of the message not settled yet, its ingress body no longer kept), 422 saying why (a flow
  * that is not at-least-once, a row its worker did not park, or a keyed flow's row parked before its key was kept). There is no
  * {@code /restart} route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
- * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
+ * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
  *
  * @since 0.1
  */
@@ -156,7 +156,7 @@ public final class AdminServer {
 
     private static final System.Logger LOG = System.getLogger(AdminServer.class.getName());
 
-    /** The header an admin request declares its actor in, for the audit row (D-126 L4); and its length at most. */
+    /** The header an admin request declares its actor in, for the audit row; and its length at most. */
     static final String ACTOR = "X-Rail8-Actor";
     static final int ACTOR_MAX = 128;
     private static final String JSON = "application/json";
@@ -199,7 +199,7 @@ public final class AdminServer {
 
     /**
      * What {@code /health} reports: each check by name (a check that fails is DOWN), the snapshot writes that failed, and —
-     * only when there is one — the node's {@code notices}: facts an operator should act on that fail nothing (D-106: a
+     * only when there is one — the node's {@code notices}: facts an operator should act on that fail nothing (a
      * generated master key), never a key or a check's detail.
      *
      * @param checks the checks, by name
@@ -227,7 +227,7 @@ public final class AdminServer {
     }
 
     /**
-     * What {@code /ready} reports (D-123): four in-memory inputs, true is UP, each read on every request and never awaited — so
+     * What {@code /ready} reports: four in-memory inputs, true is UP, each read on every request and never awaited — so
      * {@code /ready} needs no deadline.
      *
      * @param lifecycle the node finished its start and its close has not begun
@@ -248,7 +248,7 @@ public final class AdminServer {
     }
 
     /**
-     * What {@code GET /admin/flows/{flow}/cpu} shows when the node runs a CPU sampler (D-094).
+     * What {@code GET /admin/flows/{flow}/cpu} shows when the node runs a CPU sampler.
      *
      * @param period the sampling period
      * @param since when the sampler started: the aggregate is cumulative since then
@@ -294,7 +294,7 @@ public final class AdminServer {
 
     /**
      * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work},
-     * a release waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)).
+     * a release waking its flow in {@code workers} and announcing it through {@code signals}.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Workers workers, WorkSignals signals) {
@@ -303,7 +303,7 @@ public final class AdminServer {
 
     /**
      * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes, the same-id DLQ retry
-     * and the flows' CPU, sampled when {@code sampling} is there (D-094).
+     * and the flows' CPU, sampled when {@code sampling} is there.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Optional<Sampling> sampling) {
@@ -312,7 +312,7 @@ public final class AdminServer {
 
     /**
      * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, Optional)}, a release waking its
-     * flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)): the node's.
+     * flow in {@code workers} and announcing it through {@code signals}: the node's.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
@@ -513,7 +513,7 @@ public final class AdminServer {
     }
 
     /**
-     * Lets the request on unless a browser sent it (D-069): an {@code Origin} header, whatever its value, or a {@code Sec-Fetch-Site}
+     * Lets the request on unless a browser sent it: an {@code Origin} header, whatever its value, or a {@code Sec-Fetch-Site}
      * other than {@code none} (a typed URL) is 403 {@code {error}}. The CLI and curl send neither.
      */
     private static void browserGuard(RoutingContext ctx) {
@@ -582,7 +582,7 @@ public final class AdminServer {
         String id = ctx.pathParam("id");
         int n = refusable(() -> Integer.parseInt(ctx.pathParam("n")));
         OptionalInt attempt = attempt(ctx);
-        // the timeline is in attempt order: the last row of step n is its latest attempt's (FIX-175 P4)
+        // the timeline is in attempt order: the last row of step n is its latest attempt's
         Snapshot at = messages.timeline(id).await().stream().filter(s -> s.step() == n && (attempt.isEmpty() || s.attempt() == attempt.getAsInt()))
                 .reduce((earlier, later) -> later).orElse(null);
         if (at == null) {
@@ -594,13 +594,13 @@ public final class AdminServer {
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
         String gone = "the bytes of step " + n + " of message " + id + " are no longer stored (removed by retention)";
         BlobKey key = at.bodyKey().get();
-        // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal (D-096);
+        // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal;
         // bytes that go after this check are gone too — an open that throws (a store that finds the key synchronously) or a
         // stream that fails before its first chunk (a store that opens lazily) answers the same 404
         boolean stored;
         try {
             stored = blobs.exists(key).await();
-        } catch (BodyLostException lost) {   // given up by an accepted loss: stored once, never readable again (D-105)
+        } catch (BodyLostException lost) {   // given up by an accepted loss: stored once, never readable again
             return Json.of(410, error("the bytes of step " + n + " of message " + id + " are gone for good: " + lost.getMessage()));
         }
         if (!stored) return Json.of(404, error(gone));
@@ -658,7 +658,7 @@ public final class AdminServer {
     }
 
     /**
-     * 200 {@code {seq, auditId}} for a lost row, discarded and audited (D-126): its flow woken here and, when its key has a next row
+     * 200 {@code {seq, auditId}} for a lost row, discarded and audited: its flow woken here and, when its key has a next row
      * whose node is known, that node announced, after the commit; 404 for any other seq (nothing deleted, nothing audited); a seq
      * that is not a long or an actor over {@link #ACTOR_MAX} characters is 400 before the queue is asked.
      */
@@ -674,7 +674,7 @@ public final class AdminServer {
     }
 
     /**
-     * The audit actor (D-126 L4): the request's {@value #ACTOR} header, stripped — self-declared under the shared token, never
+     * The audit actor: the request's {@value #ACTOR} header, stripped — self-declared under the shared token, never
      * authenticated — {@code unknown} when absent or blank; over {@link #ACTOR_MAX} characters a 400.
      */
     private static String actor(HttpServerRequest req) {
@@ -684,13 +684,13 @@ public final class AdminServer {
     }
 
     /**
-     * {@code POST /admin/dlq/{id}/retry} (CORE-14b P8, D-135 draft; FIX-138a): the parked message runs once more under its own id,
+     * {@code POST /admin/dlq/{id}/retry}: the parked message runs once more under its own id,
      * from step 1, as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its
      * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, one
      * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
      * before V17, O7); nothing written for any of them; each 422 says why and names no other route. Then {@link WorkQueue#restart}: the DLQ row
      * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, a work row of the
-     * message still there ({@link UnsettledException}: its park has not settled, F-57) 409 naming that work item, an ingress body no
+     * message still there ({@link UnsettledException}: its park has not settled) 409 naming that work item, an ingress body no
      * longer kept 409, nothing changed, nothing woken or announced. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken
      * here and announced to every node (the row's body node claims it).
      */
@@ -785,7 +785,7 @@ public final class AdminServer {
                 .put("items", items).put("totals", totals));
     }
 
-    /** {@code GET /admin/targets}: the gauge of every target the deployed flows named, sorted by target (D-099). */
+    /** {@code GET /admin/targets}: the gauge of every target the deployed flows named, sorted by target. */
     private static Reply targets(Deployments deployments) {
         JsonArray items = new JsonArray();
         for (TargetLimit.Gauge g : deployments.targets()) {
@@ -800,12 +800,12 @@ public final class AdminServer {
         for (DeployedPackage p : deployments.packages()) {
             JsonArray files = new JsonArray();
             for (DeployedPackage.PackageFile f : p.files()) files.add(new JsonObject().put("path", f.path()).put("sha256", f.sha256()));
-            JsonArray folders = new JsonArray();   // D-078: every folder below the root, null where its folder.yaml sets nothing
+            JsonArray folders = new JsonArray();   // every folder below the root, null where its folder.yaml sets nothing
             p.folders().forEach(f -> folders.add(new JsonObject().put("path", f.path()).put("namespace", f.namespace().orElse(null))
                     .put("description", f.description().orElse(null))));
-            JsonArray artifacts = new JsonArray();   // D-078: a test's id is null
+            JsonArray artifacts = new JsonArray();   // a test's id is null
             p.artifacts().forEach(a -> artifacts.add(new JsonObject().put("path", a.path()).put("kind", a.kind()).put("id", a.id().orElse(null))));
-            JsonArray dependencies = new JsonArray();   // D-087: the closure, each marked direct or not
+            JsonArray dependencies = new JsonArray();   // the closure, each marked direct or not
             p.dependencies().forEach(d -> dependencies.add(new JsonObject().put("name", d.name()).put("version", d.version()).put("content", d.content())
                     .put("archive", "sha256:" + d.archiveSha256()).put("direct", d.direct())));
             items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
@@ -849,7 +849,7 @@ public final class AdminServer {
         return Json.of(status, body);
     }
 
-    /** 503 for a request the node's Postgres pool refused a connection (D-132, D-133): a fixed text, the client's message not shown. */
+    /** 503 for a request the node's Postgres pool refused a connection: a fixed text, the client's message not shown. */
     private static Reply busy() {
         return Json.of(503, error("the database pool is busy; retry"));
     }

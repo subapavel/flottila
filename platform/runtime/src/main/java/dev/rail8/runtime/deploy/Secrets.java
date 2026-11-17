@@ -9,12 +9,12 @@ import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /**
- * Resolves a secret reference (D-081): an endpoint option whose whole string value is {@code secret://<name>}, the name
+ * Resolves a secret reference: an endpoint option whose whole string value is {@code secret://<name>}, the name
  * {@code [a-z0-9][a-z0-9._-]*}. On a node ({@link #fromEnv}) the value is the environment variable {@code RAIL8_SECRET_<NAME>}
  * — the name upper-cased, {@code .} and {@code -} as {@code _} — of the env map the node was started with; a variable set to the
  * empty string counts as not set. Off the node ({@link #placeholder}: {@code rail8 validate}, {@code rail8 test}) every
  * well-formed reference is {@code https://secret.invalid/}, so a url option validates and no secret is needed. Both refuse a malformed
- * reference. No text of this class carries a value. The wallet (ARCHITECTURE §9) replaces the env backing behind the same syntax.
+ * reference. No text of this class carries a value. The wallet replaces the env backing behind the same syntax.
  *
  * @since 0.1
  */

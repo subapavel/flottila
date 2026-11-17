@@ -39,40 +39,40 @@ import java.util.function.Function;
  * row of a key becomes eligible only after the previous one is completed (deleted) or its lease
  * expired — never while it is held. Leases are measured by the database clock. Every hand-out
  * increments the row's {@code attempts}, the holder's fencing token for {@link #renew}, {@link #hold},
- * {@link #complete} and the fast path (D-055, {@code V4__work_attempts}; Q-1, D-074): each is guarded by the one
+ * {@link #complete} and the fast path ({@code V4__work_attempts}): each is guarded by the one
  * {@code CURRENT} condition, so a held row is never deleted. The same-key fast path completes and claims
  * the next row of the key in one transaction (ARCHITECTURE §7). {@link #held} pages the held rows on V5's {@code work_held}
- * index; {@link #release} clears a hold and its lease and keeps the attempts (D-067). Each held row, and each lost one {@link #lost}
+ * index; {@link #release} clears a hold and its lease and keeps the attempts. Each held row, and each lost one {@link #lost}
  * pages, counts the rows of its key behind it ({@code blocks}); {@link #discard} deletes a lost row under its key's lock and audits
- * it in the same statement (D-126).
+ * it in the same statement.
  *
- * <p>Body refs (D-105, CORE-3 items 5, 8, 10): an item names its input body's record by {@code body_node, body_segment,
+ * <p>Body refs: an item names its input body's record by {@code body_node, body_segment,
  * body_position, body_length} (null: a pre-V12 item, its body in {@code bodies}). A queue of a node claims — by the claim and
  * by the fast path — only the items whose body lies in that node's journal, or pre-V12 ones (until CORE-5 a body is read on
  * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
  * (an ingress body durable already, {@code PgIntake}'s) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
- * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} (CORE-14b P8) deletes the
+ * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} deletes the
  * message's DLQ row and inserts its row from the ingress body's kept ref in one statement, unless a work row of the id is there:
- * then it is refused and nothing is written (F-57); its row carries its own bound ({@code max_attempts}, V17). An item whose
+ * then it is refused and nothing is written; its row carries its own bound ({@code max_attempts}, V17). An item whose
  * body an accepted {@code RAIL8_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}, V13) is held for good: never claimed, so never
  * run or parked.
  *
- * <p>Holder liveness (D-101 (1), V14): a worker id is its node's id. A row whose lease ran out is claimable by another node only
+ * <p>Holder liveness (V14): a worker id is its node's id. A row whose lease ran out is claimable by another node only
  * when its holder has no live {@code nodes} row — released, or none at all (a holder that never joined counts as gone); its own
  * holder claims it back as before, after its join's {@code available_at} (a restarted node's old items wait for the previous
  * incarnation's {@code lease_until}, {@code PgMembership}). The check is one primary-key probe per candidate that has a holder, so the claim
  * keeps FIX-130's bounded plan. A hand-out of a row whose holder left it unsettled counts a doubt ({@code work.doubts}).
  *
- * <p>Local hand-off (D-121 (a), P2-16a): an enqueue given a holder and a lease ({@link #enqueueLeased}, the {@code SqlClient}
+ * <p>Local hand-off: an enqueue given a holder and a lease ({@link #enqueueLeased}, the {@code SqlClient}
  * overloads with {@code holder, lease}) writes the row leased to that holder — attempt 1, {@code locked_until} now + lease — when
  * no other row of its key exists, and answers the leased item; otherwise the row is plain and the answer empty. Every keyed
  * insert and every keyed complete first takes its key's transaction advisory lock ({@link #lockKeys}, class {@code 0x0121},
  * {@code hashtext(flow ‖ U+001F ‖ key)}, keys in hash order; the complete takes it inside its own {@code WHERE}), so a same-key
- * save never reads "no other row" past a completion that has not yet handed the key on (F-30). V15's {@code work_flow_key_seq}
+ * save never reads "no other row" past a completion that has not yet handed the key on. V15's {@code work_flow_key_seq}
  * answers the key probes.
  *
- * <p>Batched completion (D-122, CORE-7): a queue built with a timer ({@link #PgWorkQueue(Pool, String, TieredBlobStore, Timer)})
+ * <p>Batched completion: a queue built with a timer ({@link #PgWorkQueue(Pool, String, TieredBlobStore, Timer)})
  * completes unkeyed rows ({@link #completeUnkeyed}) through one {@link BatchingWriter}: one autocommit {@link #COMPLETE_BATCH} for
  * up to {@value #BATCH_MEMBERS} members, sent at once when no batch is in flight, else gathered behind it (window zero, no timer),
  * {@value #BATCH_IN_FLIGHT} in flight, {@value #BATCH_BACKLOG} waiting; a member that finds no room waits {@link #BATCH_MAX_WAIT} at
@@ -87,7 +87,7 @@ import java.util.function.Function;
 public final class PgWorkQueue implements WorkQueue {
 
     /**
-     * The per-key lock of every keyed insert and keyed complete (D-121 A3, F-30): a transaction advisory lock of two keys — this
+     * The per-key lock of every keyed insert and keyed complete: a transaction advisory lock of two keys — this
      * class and {@code hashtext(flow U+001F key)} — so a same-key insert waits for the commit of another before its own statement
      * reads the key's rows, and a keyed complete's next-of-key read sees every same-key row committed before it. Taken in hash
      * order, the subselect's sort evaluated before the lock (EXPLAIN VERBOSE, PG 17): two groups never wait for each other in a
@@ -100,7 +100,7 @@ public final class PgWorkQueue implements WorkQueue {
     static final String KEY_LOCK = "select pg_advisory_xact_lock(" + KEY_LOCK_CLASS + ", h)"
             + " from (select distinct hashtext(k) as h from unnest($1::text[]) as u(k) order by h) s";
     /**
-     * The hand-off condition of an insert (D-121 A2) over the holder {@code $h}, the key {@code $4} of flow {@code $2}: a holder,
+     * The hand-off condition of an insert over the holder {@code $h}, the key {@code $4} of flow {@code $2}: a holder,
      * and no other row of the key, held or not (a row without a key always heads it).
      */
     private static String heads(String holder) {
@@ -119,8 +119,8 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String ENQUEUE = "insert into work(id, flow, step, partition_key, locked_by, locked_until, attempts) "
             + "select $1, $2, $3, $4, " + lease("l", "$5::text", "$6") + " from (select " + heads("$5") + " as l) h returning seq, attempts";
     /**
-     * An item naming its body's record (the intake's, CORE-3 item 6), leased to {@code $9} for {@code $10} seconds when it heads its
-     * key, answering its seq, attempts and transaction's id (CORE-4d: an in-doubt commit's).
+     * An item naming its body's record (the intake's), leased to {@code $9} for {@code $10} seconds when it heads its
+     * key, answering its seq, attempts and transaction's id (an in-doubt commit's).
      */
     private static final String ENQUEUE_REF = "insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, "
             + "locked_by, locked_until, attempts) select $1, $2, $3, $4, $5, $6, $7, $8, " + lease("l", "$9::text", "$10")
@@ -128,7 +128,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them —
      * leased to {@code $8} for {@code $9} seconds when it heads its key and the ref lies in the holder's journal (a node claims only
-     * its own bodies, D-105); answering, fifth, the ref's node when it is not the queue's node {@code $10} (D-121 (b) B4 (iii)).
+     * its own bodies); answering, fifth, the ref's node when it is not the queue's node {@code $10}.
      */
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
@@ -160,7 +160,7 @@ public final class PgWorkQueue implements WorkQueue {
                                   and w3.partition_key = w1.partition_key and w3.seq < w1.seq)))
             """;
 
-    /** A hand-out of a row an earlier holder left unsettled ({@code locked_by} still set) counts a doubt (D-101); RELEASE clears the holder. */
+    /** A hand-out of a row an earlier holder left unsettled ({@code locked_by} still set) counts a doubt; RELEASE clears the holder. */
     private static final String TAKE = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4), attempts = w.attempts + 1,"
             + " doubts = w.doubts + (w.locked_by is not null)::int";
 
@@ -171,13 +171,13 @@ public final class PgWorkQueue implements WorkQueue {
      * Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. The UPDATE takes
      * the rows the locking subselect chose by {@code seq = any(array(..))}, an init plan whose array is the primary key's index
      * condition in the generic plan and the custom one alike; {@code seq in (..)} let the generic plan of the cached statement
-     * join the subselect to a Seq Scan of {@code work}, O(queue depth) per claim (FIX-130, F-27 addendum).
+     * join the subselect to a Seq Scan of {@code work}, O(queue depth) per claim.
      */
     private static final String CLAIM = "with taken as (" + TAKE + " where w.seq = any(array(" + ELIGIBLE
             + " order by w1.seq limit $3 for update skip locked))" + ITEM + ") select * from taken order by seq";
 
     /**
-     * The node of the key's next row for the fast path that took nothing (D-121 (b) B4 (i)): the oldest row of key {@code $3} of flow
+     * The node of the key's next row for the fast path that took nothing: the oldest row of key {@code $3} of flow
      * {@code $2}, when it is neither held nor lost and its body lies in another journal than the queue's node {@code $5}'s (null for
      * a queue of any node, which takes every body). The statement's snapshot is the one the take read: the completed row is gone.
      */
@@ -193,14 +193,14 @@ public final class PgWorkQueue implements WorkQueue {
             + " select t.*, " + NEXT_NODE + " as next_node from (select 1) one left join taken t on true";
 
     /**
-     * The holder's claim is the row's current one (D-055, Q-1 / D-074): it exists, is not held and was last handed out with
+     * The holder's claim is the row's current one: it exists, is not held and was last handed out with
      * these attempts, at least 1 — a row never handed out has attempts 0 (V4's default) and matches no token.
      */
     private static final String CURRENT = " where seq = $1 and attempts = $2 and attempts > 0 and held_at is null";
 
     /**
      * Only the current holder's row; the flow and key for the fast path's next-of-key claim. A keyed row is deleted under its key's
-     * lock (D-121 A3, F-30), taken in the statement itself: a same-key insert in flight commits first (and the next-of-key read or
+     * lock, taken in the statement itself: a same-key insert in flight commits first (and the next-of-key read or
      * claim after this statement sees its row), or waits for this statement's transaction and then finds the key free. Under READ
      * COMMITTED only (see {@link #KEY_LOCK_CLASS}): the next-of-key read is a later statement, with a snapshot taken after the lock.
      */
@@ -209,13 +209,13 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * {@link #NEXT_NODE} for a plain keyed complete, a statement of its own after the delete committed (a snapshot taken after the
-     * key's lock was released, so a same-key row committed before it is seen, D-121 A3): $1 the flow, $2 the key, $3 the queue's
+     * key's lock was released, so a same-key row committed before it is seen): $1 the flow, $2 the key, $3 the queue's
      * node; always one row, null when no row of the key lies elsewhere claimable.
      */
     private static final String NEXT_NODE_AFTER = "select (select case when o.held_at is null and o.lost_at is null and o.body_node <> $3::text"
             + " then o.body_node end from work o where o.flow = $1 and o.partition_key = $2 order by o.seq limit 1)";
 
-    /** Members of one {@link #COMPLETE_BATCH} at most (D-122 C3). */
+    /** Members of one {@link #COMPLETE_BATCH} at most. */
     static final int BATCH_MEMBERS = 256;
     /** Batch statements in flight at most. */
     static final int BATCH_IN_FLIGHT = 2;
@@ -225,7 +225,7 @@ public final class PgWorkQueue implements WorkQueue {
     static final Duration BATCH_MAX_WAIT = Duration.ofSeconds(5);
 
     /**
-     * The batched completion of unkeyed rows (D-122 C2), autocommit: each pair ({@code $1[i]}, {@code $2[i]}) deletes its row only
+     * The batched completion of unkeyed rows, autocommit: each pair ({@code $1[i]}, {@code $2[i]}) deletes its row only
      * while it is the current holder's ({@link #CURRENT}'s condition) and the row has no key; the rows deleted are answered.
      */
     private static final String COMPLETE_BATCH = "delete from work w using unnest($1::bigint[], $2::int[]) c(seq, attempts)"
@@ -237,14 +237,14 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
 
     /**
-     * A scheduled retry (CORE-14a P3, D-135 draft): due {@code $3} seconds after the database's {@code now()}, the holder and its
+     * A scheduled retry: due {@code $3} seconds after the database's {@code now()}, the holder and its
      * lease cleared — the next hand-out counts no doubt — for the current holder only; seq, id, attempts, doubts and the body ref
      * ({@code body_*}, which pins its journal segment) kept.
      */
     private static final String DEFER = "update work set available_at = now() + make_interval(secs => $3), locked_by = null, locked_until = null" + CURRENT;
 
     /**
-     * The rows of {@code w}'s key in its flow behind it (D-126, the barrier made visible), on the index {@code work_flow_key_seq}
+     * The rows of {@code w}'s key in its flow behind it (the barrier made visible), on the index {@code work_flow_key_seq}
      * (V15); 0 for a row without a key ({@code =} on null matches nothing).
      */
     private static final String BLOCKS = "(select count(*) from work o where o.flow = w.flow and o.partition_key = w.partition_key and o.seq > w.seq) as blocks";
@@ -258,7 +258,7 @@ public final class PgWorkQueue implements WorkQueue {
             + " where lost_at is not null and seq > $1 order by seq limit $2";
 
     /**
-     * Only a lost row (D-126 L3), a keyed one under its key's lock taken in the statement, as {@link #COMPLETE} takes it (D-121 A3),
+     * Only a lost row, a keyed one under its key's lock taken in the statement, as {@link #COMPLETE} takes it,
      * deleted and audited in one statement — the audit row cannot outlive the delete nor the delete go unaudited: $1 seq, $2 actor,
      * $3 remote. The flow and key the next-of-key read needs are answered from the audit row's detail.
      */
@@ -280,10 +280,10 @@ public final class PgWorkQueue implements WorkQueue {
             + " returning flow, body_node";
 
     /**
-     * The restart (CORE-14b P8, D-135): {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
+     * The restart: {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
      * after attempt {@code $4} (prop {@code attempt}) — a concurrent remove of it
      * (another restart, a {@code PgDlq.remove}) commits first and leaves none, or waits for this statement —; {@code w}, the guard
-     * (F-57, D-162 (5)), reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
+     *, reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
      * and flow only when none is, never as a row without a key — of which a park whose settle has not landed leaves one, still
      * leased; {@code src} holds its ingress body's kept ref ({@code <id>/0/body}) and that ref's segment row for key share, as
      * {@code ENQUEUE_FROM} does; {@code gone} deletes the locked row only when {@code w} found none, and {@code ins} inserts the work
@@ -332,7 +332,7 @@ public final class PgWorkQueue implements WorkQueue {
     private record Member(long seq, int attempts, Promise<Completion> answer) {}
 
     /**
-     * What the batched completion did since the queue was built (D-122): batch statements sent, members sent in them, members
+     * What the batched completion did since the queue was built: batch statements sent, members sent in them, members
      * answered STALE (keyed and unknown rows included), members refused after waiting {@link #BATCH_MAX_WAIT} for room.
      *
      * @since 0.1
@@ -359,7 +359,7 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * {@link #PgWorkQueue(Pool, String, TieredBlobStore)} ({@code store} null: no index to tell) completing unkeyed rows in batches
-     * (D-122), {@code timer} bounding a member's wait for room.
+     *, {@code timer} bounding a member's wait for room.
      */
     public PgWorkQueue(Pool pool, String node, TieredBlobStore store, Timer timer) {
         this.pool = Objects.requireNonNull(pool, "pool");
@@ -370,7 +370,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * What an insert of an item answered (D-121 A2): the id of the transaction it ran in ({@code pg_current_xact_id()}, as text) and
+     * What an insert of an item answered: the id of the transaction it ran in ({@code pg_current_xact_id()}, as text) and
      * the item as handed out when it was written leased, else empty.
      *
      * @since 0.1
@@ -398,7 +398,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * Takes the key lock (D-121 A3) of each ({@code flow}, {@code key}) of {@code flowKeys} on {@code tx}, once each and in one order
+     * Takes the key lock of each ({@code flow}, {@code key}) of {@code flowKeys} on {@code tx}, once each and in one order
      * whatever the order given, until {@code tx} ends: sent before a keyed insert of the transaction, so the insert reads its key's
      * rows only once every other same-key insert or keyed complete in flight committed. Nothing is sent for none.
      */
@@ -409,7 +409,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * {@link #enqueueLeased} on {@code client}, inside the caller's transaction, visible once it commits (D-082): a keyed row under its
+     * {@link #enqueueLeased} on {@code client}, inside the caller's transaction, visible once it commits: a keyed row under its
      * key's lock, which the caller took on {@code client} before ({@link #lockKeys}). {@code holder} null: a plain row.
      */
     public Future<Optional<Item>> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String holder, Duration lease) {
@@ -418,10 +418,10 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's, D-105), written
-     * leased to {@code holder} for {@code lease} when it heads its key (D-121 A2; {@code holder} null: a plain row), under the key's
+     * The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's), written
+     * leased to {@code holder} for {@code lease} when it heads its key ({@code holder} null: a plain row), under the key's
      * lock the caller took ({@link #lockKeys}). Answers the id of the transaction it ran in ({@code pg_current_xact_id()}, as text: a
-     * commit whose reply is lost asks {@code pg_xact_status} of it, CORE-3 item 6) and the item when it was written leased.
+     * commit whose reply is lost asks {@code pg_xact_status} of it) and the item when it was written leased.
      */
     public Future<Enqueued> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String bodyNode, JournalRef body,
                                     String holder, Duration lease) {
@@ -443,7 +443,7 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * {@link #enqueue(SqlClient, String, String, int, String, BlobKey)} written leased to {@code holder} for {@code lease} when it heads
-     * its key and the ref lies in the holder's journal (D-121 A2; {@code holder} null: a plain row), under the key's lock the caller
+     * its key and the ref lies in the holder's journal ({@code holder} null: a plain row), under the key's lock the caller
      * took ({@link #lockKeys}). Answers the item when it was written leased, and the ref's node when it is not this queue's.
      */
     public Future<Copied> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body, String holder,
@@ -462,7 +462,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * What an insert taking its source's ref answered (D-121 A2, D-121 (b) B4 (iii)): the item as handed out when it was written
+     * What an insert taking its source's ref answered: the item as handed out when it was written
      * leased, else empty; and the node whose journal holds the ref when it is not this queue's node — the node that may claim the
      * plain row once its transaction committed.
      *
@@ -485,7 +485,7 @@ public final class PgWorkQueue implements WorkQueue {
         return r.getInteger("attempts") == 1 ? Optional.of(new Item(r.getLong("seq"), messageId, flow, step, partitionKey, 1)) : Optional.empty();
     }
 
-    /** The node this queue claims for, its hand-offs leased to (D-121 A2); empty for a queue of any node. */
+    /** The node this queue claims for, its hand-offs leased to; empty for a queue of any node. */
     public Optional<String> node() {
         return Optional.ofNullable(node);
     }

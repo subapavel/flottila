@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The node's {@link WorkSignals} over Postgres {@code LISTEN/NOTIFY} on channel {@value #CHANNEL} (D-121 (b) B1–B3, P2-16b), the
+ * The node's {@link WorkSignals} over Postgres {@code LISTEN/NOTIFY} on channel {@value #CHANNEL} (D-121 (b) B1–B3), the
  * payloads, windows and wakes of {@link WorkEvents}.
  *
  * <p>Receiving (B2): one dedicated {@link PgConnection} to {@code listen} — never the pool's — runs {@code LISTEN} and hands every
@@ -25,7 +25,7 @@ import java.util.Objects;
  * network, a terminated backend) is reopened on the timer after a backoff — {@value #FIRST_BACKOFF_MILLIS} ms, doubled after each
  * failed try up to {@value #MAX_BACKOFF_MILLIS} ms, tried until {@link #close()}, back to the first once a {@code LISTEN} is
  * acknowledged — and after every {@code LISTEN} acknowledged, the first included, every started worker of the node is woken once:
- * an event missed while nobody listened costs one claim (D-121).
+ * an event missed while nobody listened costs one claim.
  *
  * <p>Sending (B3): an announce — made after the commit it tells of is acknowledged — is sent on the pool in autocommit, never in a
  * transaction: a leading edge as {@code select pg_notify('rail8_work', $1)}, a window's end as one {@code select

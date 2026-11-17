@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Why {@link Deployments#deploy} refused a package (D-059), or {@link Deployments#undeploy} an undeploy (D-095): its {@link Kind} — the admin API answers each with its own status —
+ * Why {@link Deployments#deploy} refused a package, or {@link Deployments#undeploy} an undeploy: its {@link Kind} — the admin API answers each with its own status —
  * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
  * did not start and rolled back ({@link Kind#FAILED}, D-063; {@link Kind#BUSY}, D-133) every flow that did not start, build or start again.
  *
@@ -30,13 +30,13 @@ public final class DeployRefusedException extends Exception {
          * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
          * work-queue question or record delete, or to a deploy's work-queue question about a flow the new version no longer runs
          * at-least-once (after the package's problems: those are its 422), and only when every failed question was the pool's: a
-         * real failure of another flow's question is the node's IOException and, on an undeploy, a flow holding items its CONFLICT
-         * (FIX-173); either refusal then changed nothing (FIX-172c).
+         * real failure of another flow's question is the node's IOException and, on an undeploy, a flow holding items its CONFLICT;
+         * either refusal then changed nothing.
          */
         BUSY,
         /**
          * A flow did not start (500): every flow the deploy built was stopped again; on a redeploy the flows it replaced or removed
-         * run again from the directories they ran from, or are listed FAILED (D-063).
+         * run again from the directories they ran from, or are listed FAILED.
          */
         FAILED,
         /** A deployed environment: manual deploy and undeploy are non-production only (403). */
@@ -49,7 +49,7 @@ public final class DeployRefusedException extends Exception {
     private final String error;
     private final List<String> problems;
 
-    /** No stack trace is kept; suppression is on: a cleanup that fails after the refusal is added to it, never in its place (FIX-32). */
+    /** No stack trace is kept; suppression is on: a cleanup that fails after the refusal is added to it, never in its place. */
     public DeployRefusedException(Kind kind, String error, List<String> problems) {
         super(kind + ": " + error + (problems.isEmpty() ? "" : " " + problems), null, true, false);
         this.kind = Objects.requireNonNull(kind, "kind");

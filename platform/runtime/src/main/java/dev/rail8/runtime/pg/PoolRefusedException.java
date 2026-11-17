@@ -1,7 +1,7 @@
 package dev.rail8.runtime.pg;
 
 /**
- * The node's Postgres pool did not hand a connection to a transaction (D-133): its wait elapsed, its wait queue was full, or it is
+ * The node's Postgres pool did not hand a connection to a transaction: its wait elapsed, its wait queue was full, or it is
  * closed — whatever the pool failed with is the cause. Nothing of the transaction ran, so the caller may retry. Unchecked.
  *
  * @since 0.1

@@ -34,7 +34,7 @@ import java.security.SecureRandom;
  * tag) · ciphertext}. The empty body is one empty last segment, so truncation is always detectable.
  *
  * <p>The key derivation and the per-segment cipher are {@link ChunkedAead}, the construction the journal's records share
- * (CORE-3 item 2); the spool keeps its own info label.
+ *; the spool keeps its own info label.
  */
 final class SpoolCipher {
 

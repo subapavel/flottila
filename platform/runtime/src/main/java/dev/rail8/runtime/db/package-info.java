@@ -1,5 +1,5 @@
 /**
- * Database schema lifecycle: Flyway migrations from deploy/postgres (D-034).
+ * Database schema lifecycle: Flyway migrations from deploy/postgres.
  *
  * @since 0.1
  */

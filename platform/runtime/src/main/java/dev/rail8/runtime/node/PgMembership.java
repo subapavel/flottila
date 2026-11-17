@@ -20,18 +20,18 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * The Postgres {@link Membership} (D-101 (1), F-28) on V14's {@code nodes} table, over one dedicated connection that is not the
+ * The Postgres {@link Membership} on V14's {@code nodes} table, over one dedicated connection that is not the
  * pool's: a renew never waits behind the node's own statements for a pooled connection, and the pool's load never delays it. The
  * leases are measured by the database clock. A renew is one statement — the renew and what it found together — and releases
  * nothing; a release asks for expired rows only, so a renew and a release racing on two connections are serialised by the row
  * lock and exactly one of them wins. A join is one transaction: the old row locked, the node's own unheld work items moved to
  * no earlier than the previous incarnation's lease end ({@code old lease_until}: its fence closed by then whatever lease it ran
- * under, D-112), the row's epoch bumped and its lease started.
+ * under), the row's epoch bumped and its lease started.
  *
  * <p>{@link #PgMembership(SqlConnection)} works on the connection it is given, its caller's to close; {@link #connecting} opens
  * its own on the first call and again on the call after it closed (Postgres restarted, the connection reset), so a node whose
  * renews failed for a while renews again once the database is back; {@link #reconnect} — asked by the node lease of a renew
- * unanswered half a lease after its send (F-28) — closes it at once, failing the calls on it, so a renew hung on a black-holed
+ * unanswered half a lease after its send — closes it at once, failing the calls on it, so a renew hung on a black-holed
  * connection is not waited for: the next call opens another. A given connection is never reconnected (its caller's). {@link
  * #close} closes it and fails every later call.
  *

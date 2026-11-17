@@ -3,8 +3,8 @@ package dev.rail8.runtime.blob;
 import dev.rail8.api.BlobKey;
 
 /**
- * A body that exists, in another node's journal (D-105, CORE-3 item 7), and cannot be read here now: its owner is not live, its
- * peer link is refused, closed or lost, or it answers that it does not hold the record (CORE-5a). Retryable, never "not found"
+ * A body that exists, in another node's journal, and cannot be read here now: its owner is not live, its
+ * peer link is refused, closed or lost, or it answers that it does not hold the record. Retryable, never "not found"
  * and never other bytes: the read is tried again, on this node or on the owner, which claims the body's work.
  *
  * @since 0.1

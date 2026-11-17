@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * What {@link Deployments#undeploy} did (D-095): the package undeployed, the version it was listed with, and the flows it no
+ * What {@link Deployments#undeploy} did: the package undeployed, the version it was listed with, and the flows it no
  * longer lists, by qualified id ({@code <package>/<flow>}, as {@link Deployments#flows()} lists them), sorted; none for a package
  * listed {@link DeployedPackage.State#FAILED}.
  *

@@ -44,15 +44,15 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * The node's {@link Intake} (D-082 restated by D-105, CORE-3 item 6): no row naming a body commits before its record is forced.
+ * The node's {@link Intake} (D-082 restated by D-105): no row naming a body commits before its record is forced.
  * The ingress body is made durable in the node's journal first ({@link TieredBlobStore#forced}: appended, or its spill
  * persisted, and forced) — on the caller's thread, before the save joins a group, so no statement of it is sent while the record
  * is not forced and a force that fails saves nothing. A body durable already (no local copy) adds no record and no kept ref: its
  * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, dev.rail8.api.BlobKey)});
  * a ref of another node's journal makes a plain row that node claims, announced to it once the commit is acknowledged
- * ({@link WorkSignals}, D-121 (b) B4 (iii)). A body of another store is persisted there first, its item naming no ref.
+ * ({@link WorkSignals}). A body of another store is persisted there first, its item naming no ref.
  *
- * <p><b>Groups</b> (CORE-6b, D-109). The save then joins a group through a {@link BatchingWriter}: saves waiting while groups are in
+ * <p><b>Groups</b>. The save then joins a group through a {@link BatchingWriter}: saves waiting while groups are in
  * flight go together, at most {@link NodeConfig.IntakeGroup#max} of them and {@link NodeConfig.IntakeGroup#bytes} bytes (a
  * member weighs the UTF-8 bytes it binds: ids, flow, keys, its record's headers, props and keys as JSON), a partial group waiting
  * at most the window, at most {@link NodeConfig.IntakeGroup#concurrency} groups in flight; a backlog of {@code max × concurrency
@@ -60,7 +60,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * single save is a group of one ({@link NodeConfig.IntakeGroup#SINGLE}). One Postgres transaction on one connection holds a
  * group: each member's ingress record ({@link PgMessageStore}, outside its batching writer), its work item naming the record's
  * ref ({@link PgWorkQueue}) and — only when its flow keeps its input ({@code keepInput}) — its body's kept ref ({@code body_refs}).
- * Its statements go in turns (D-109), a turn's statements sent together and the next turn sent only once every reply of this one
+ * Its statements go in turns, a turn's statements sent together and the next turn sent only once every reply of this one
  * came: BEGIN alone; the claim turn when a member has a dedupe key; the rows — the records as one insert into messages and one
  * into message_keys, then each member's item and kept ref in call order (so one partition's items keep the call order); then,
  * after the {@code abandoned} check, COMMIT alone. A failed statement of a turn fails the turn with its own cause (the first
@@ -84,7 +84,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * acknowledged, or its force failed. Any failure — of the force, a statement, the commit or the body's own store — fails the
  * save; nothing here throws.
  *
- * <p>A member with a dedupe key (D-084) is claimed in a turn of its own after BEGIN, two statements over every keyed member of the
+ * <p>A member with a dedupe key is claimed in a turn of its own after BEGIN, two statements over every keyed member of the
  * group sorted by (flow, key) — one lock order, so two groups racing for the same keys never deadlock: the keys' rows in {@code
  * processed_ids} — scope {@code flow}, the SHA-256 of the key's UTF-8 bytes, the id of the first member in call order with that
  * key, the ingress snapshot's start — {@code on conflict do nothing}; then the ids the keys' rows name. A row inserted is that
@@ -97,7 +97,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * durable) and its save succeeds with the id the key's row names. A taken key whose row is gone when read (the retention job)
  * fails its save. A group without a key runs no claim turn.
  *
- * <p>Under the {@code ha} profile ({@link NodeConfig.Pg.Durability#HA}, D-128) a group with no row to write sends, after the
+ * <p>Under the {@code ha} profile ({@link NodeConfig.Pg.Durability#HA}) a group with no row to write sends, after the
  * rows' turn would have been, {@link #BARRIER} alone and then COMMIT. It takes a transaction id and writes one transactional
  * logical message (a WAL record, no row): Postgres makes a commit wait for its synchronous standby only when its transaction holds
  * an id and wrote WAL before the commit record (an id alone commits without waiting), and that wait covers every earlier record,
@@ -113,7 +113,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public final class PgIntake implements Intake {
 
-    /** The keys' rows for their first members, unless a scope holds the key already: a member's id returned is its key claimed (D-084). */
+    /** The keys' rows for their first members, unless a scope holds the key already: a member's id returned is its key claimed. */
     static final String CLAIM_KEY = "insert into processed_ids(scope, key_hash, message_id, created_at) select s, sha256(convert_to(k, 'UTF8')), m, c "
             + "from unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[]) as c(s, k, m, c) on conflict do nothing returning message_id";
     /** The message each key names. */
@@ -121,7 +121,7 @@ public final class PgIntake implements Intake {
             + "on p.scope = c.s and p.key_hash = sha256(convert_to(c.k, 'UTF8'))";
     /** Each transaction id's status: committed, aborted, in progress, or null for one too old to be known. */
     static final String XACT_STATUS = "select x, pg_xact_status(x::xid8) from unnest($1::text[]) x";
-    /** Under ha, the statement of a group with no row to write: an id taken and a WAL record written, so its commit waits (D-128). */
+    /** Under ha, the statement of a group with no row to write: an id taken and a WAL record written, so its commit waits. */
     static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'rail8', '')";
 
     private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
@@ -130,7 +130,7 @@ public final class PgIntake implements Intake {
     private static final Timer NO_WINDOW = (delay, task) -> { throw new IllegalStateException("a group of one has no window"); };
 
     /**
-     * The intake's groups since it was built, for the tests and the bench (CORE-6b): groups taken (a group of one counts), their
+     * The intake's groups since it was built, for the tests and the bench: groups taken (a group of one counts), their
      * members and the bytes they weighed, and the members run again alone after their group failed.
      *
      * @since 0.1
@@ -201,7 +201,7 @@ public final class PgIntake implements Intake {
     private final PgWorkQueue queue;
     private final Workers workers;   // null: no hand-off
     private final WorkSignals signals;
-    /** Under ha a group with no row to write commits behind {@link #BARRIER} (D-128); under local it rolls back. */
+    /** Under ha a group with no row to write commits behind {@link #BARRIER}; under local it rolls back. */
     private final boolean barrier;
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
@@ -219,14 +219,14 @@ public final class PgIntake implements Intake {
         this(pool, blobs, messages, queue, null, NO_WINDOW, NodeConfig.IntakeGroup.SINGLE);
     }
 
-    /** An intake whose every save is a group of one, handing its items off to the started workers of {@code workers} (D-121 (a)). */
+    /** An intake whose every save is a group of one, handing its items off to the started workers of {@code workers}. */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers) {
         this(pool, blobs, messages, queue, workers, WorkSignals.NONE);
     }
 
     /**
      * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers)} announcing through {@code signals} each item
-     * that copied a ref of another node's journal, once its commit is acknowledged (D-121 (b) B4 (iii)).
+     * that copied a ref of another node's journal, once its commit is acknowledged.
      */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, WorkSignals signals) {
         this(pool, blobs, messages, queue, Objects.requireNonNull(workers, "workers"), NO_WINDOW, NodeConfig.IntakeGroup.SINGLE, signals);
@@ -248,7 +248,7 @@ public final class PgIntake implements Intake {
     /**
      * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup)} announcing through
      * {@code signals} each item written plain that copied a ref of another node's journal — to that node, for its flow — once its
-     * group's commit is acknowledged (D-121 (b) B4 (iii)).
+     * group's commit is acknowledged.
      */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
                     WorkSignals signals) {
@@ -257,7 +257,7 @@ public final class PgIntake implements Intake {
 
     /**
      * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup, WorkSignals)} under
-     * the Postgres profile {@code durability} (D-128): under {@link NodeConfig.Pg.Durability#HA} a group with no row to write runs
+     * the Postgres profile {@code durability}: under {@link NodeConfig.Pg.Durability#HA} a group with no row to write runs
      * {@link #BARRIER} (a transaction id and one WAL record), so its commit waits for the synchronous standby before its members are
      * answered; under {@link NodeConfig.Pg.Durability#LOCAL} it rolls back. Every other constructor is {@code LOCAL}.
      */
@@ -280,11 +280,11 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The refs of the saves open now (CORE-3 item 6): the CORE-4d sweeper keeps their segments. A group whose commit is in doubt is
+     * The refs of the saves open now: the CORE-4d sweeper keeps their segments. A group whose commit is in doubt is
      * asked first ({@code pg_xact_status}, blocking — on a virtual thread): committed, each of its members is done as a committed
      * save is (its ref indexed, its local copy gone); aborted or too old to be known, as a rolled-back one (rows it may have pin by
      * themselves); in progress, they stay open. Every in-doubt id is asked in one statement; when it fails, each id is asked on its
-     * own (FIX-145) and an id whose own lookup fails stays in doubt — never taken as an abort or a commit — with one WARNING the
+     * own and an id whose own lookup fails stays in doubt — never taken as an abort or a commit — with one WARNING the
      * first time (its id and the failure), none again until it settled. A lookup failing never fails this call: the saves still
      * open are answered, every in-doubt one among them when no lookup could run.
      */
@@ -337,7 +337,7 @@ public final class PgIntake implements Intake {
 
     /**
      * {@code saves} in doubt under {@code xid}, as a commit whose reply was lost leaves the members writing rows ({@link #notCommitted});
-     * for the tests, which cannot make Postgres assign an id it refuses to answer for (FIX-145).
+     * for the tests, which cannot make Postgres assign an id it refuses to answer for.
      */
     void inDoubt(String xid, List<TieredBlobStore.Durable> saves) {
         inDoubt.put(xid, saves);
@@ -488,7 +488,7 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * Once {@code g} committed and its members answered (D-121 A4): each member's reserved slot runs its item written leased, or is
+     * Once {@code g} committed and its members answered: each member's reserved slot runs its item written leased, or is
      * given back (its key busy: the key's holder hands it on) — each call {@link #isolated}; each flow with a member saved without
      * a slot has its worker woken, once; each member whose item copied a ref of another node's journal is announced to that node, each call {@link
      * #announce}.
