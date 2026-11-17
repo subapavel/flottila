@@ -56,14 +56,14 @@ import org.eclipse.microprofile.openapi.annotations.parameters.RequestBody;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
- * {@code /api/mappings} (ADR-0014, ADR-0015, ADR-0024): list, create, open and save the mappings of
- * the workspace, and test-run or refresh a working copy. A saved model's bytes never pass through
- * Jackson: {@code save} reads the body as bytes, so the engine's strict reader sees them as sent,
- * and every answer is the engine's canonical form. {@code refresh} reads its body as bytes too; its
- * answer's {@code model} member is the canonical bytes read into a tree, whose member order Jackson
- * keeps. A test run's working copy is a member of a JSON request body: Jackson parses it into a
- * tree, and {@code test} writes that tree back to bytes with {@code writeValueAsBytes}, so the
- * engine reads Jackson's serialisation, not the bytes as sent.
+ * {@code /api/mappings}: list, create, open and save the mappings of the workspace, and test-run or
+ * refresh a working copy. A saved model's bytes never pass through Jackson: {@code save} reads the
+ * body as bytes, so the engine's strict reader sees them as sent, and every answer is the engine's
+ * canonical form. {@code refresh} reads its body as bytes too; its answer's {@code model} member is
+ * the canonical bytes read into a tree, whose member order Jackson keeps. A test run's working copy
+ * is a member of a JSON request body: Jackson parses it into a tree, and {@code test} writes that
+ * tree back to bytes with {@code writeValueAsBytes}, so the engine reads Jackson's serialisation,
+ * not the bytes as sent.
  */
 @jakarta.ws.rs.Path("/api/mappings")
 public class MappingsResource {
@@ -77,19 +77,19 @@ public class MappingsResource {
 
   private static final String ETAG = "\"sha256:<hex>\" of the canonical bytes (ADR-0024)";
 
-  /** Held from a conditional save's tag comparison to its write (ADR-0027). */
+  /** Held from a conditional save's tag comparison to its write. */
   private static final Object SAVES = new Object();
 
   private final Workspace workspace;
   private final ObjectMapper json;
 
-  /** The engine, whose runs take their time in {@code rail8.mapping.time-zone} (#80). */
+  /** The engine, whose runs take their time in {@code rail8.mapping.time-zone}. */
   private final EngineFacade facade;
 
-  /** {@code rail8.mapping.test-timeout}: how long a test run may take (ADR-0014). */
+  /** {@code rail8.mapping.test-timeout}: how long a test run may take. */
   private final Duration timeout;
 
-  /** {@code rail8.mapping.trace-limit}: the most one trace entry keeps (ADR-0015, "Trace"). */
+  /** {@code rail8.mapping.trace-limit}: the most one trace entry keeps. */
   private final int traceLimit;
 
   @Inject
@@ -102,9 +102,9 @@ public class MappingsResource {
   }
 
   /**
-   * The workspace's mappings, sorted by id, each with what its stored model names (ADR-0029). A
-   * stored file that cannot be read, is no JSON document or is refused by stage 1 or 2 is listed
-   * with its id, name and package alone. Every listed id passes the path checks.
+   * The workspace's mappings, sorted by id, each with what its stored model names. A stored file
+   * that cannot be read, is no JSON document or is refused by stage 1 or 2 is listed with its id,
+   * name and package alone. Every listed id passes the path checks.
    */
   @GET
   @Produces(APPLICATION_JSON)
@@ -129,8 +129,8 @@ public class MappingsResource {
 
   /**
    * A new mapping with its description and the structures it names, each with its fingerprint, and
-   * no target field mapping (ADR-0029): a side it does not name is absent until it is chosen. Its
-   * directory must exist; an existing id is 409.
+   * no target field mapping: a side it does not name is absent until it is chosen. Its directory
+   * must exist; an existing id is 409.
    */
   @POST
   @Consumes(APPLICATION_JSON)
@@ -188,7 +188,7 @@ public class MappingsResource {
           ModelRefusedException,
           NoSuchAlgorithmException {
     InvalidRequestException.present(request);
-    // a bundle reference that escapes is refused inside the resolver (#90)
+    // a bundle reference that escapes is refused inside the resolver
     ReferenceResolver resolver = workspace.resolver(workspace.mappingDirectory(request.id()));
     List<Diagnostic> refusals = new ArrayList<>();
     Optional<StructureRef> source = structure(resolver, request.source(), refusals);
@@ -246,13 +246,13 @@ public class MappingsResource {
   }
 
   /**
-   * Save (ADR-0015): stages 1 and 2 only, so a stage 3 error still saves. The id and its mapping
-   * model file are checked before the body is read. With {@code If-Match} (ADR-0027) the save is
-   * conditional: the tag must equal the stored file's canonical ETag, compared as a string, so a
-   * weak tag or a list never matches; otherwise 409 {@code mapping-changed} and nothing is written.
-   * The tag is compared before the body is parsed (RFC 9110, 13.2.1), and the comparison and the
-   * write hold one lock, so two saves with the same tag cannot both pass. Without the header the
-   * save is unconditional.
+   * Save: stages 1 and 2 only, so a stage 3 error still saves. The id and its mapping model file
+   * are checked before the body is read. With {@code If-Match} the save is conditional: the tag
+   * must equal the stored file's canonical ETag, compared as a string, so a weak tag or a list
+   * never matches; otherwise 409 {@code mapping-changed} and nothing is written. The tag is
+   * compared before the body is parsed (RFC 9110, 13.2.1), and the comparison and the write hold
+   * one lock, so two saves with the same tag cannot both pass. Without the header the save is
+   * unconditional.
    */
   @PUT
   @jakarta.ws.rs.Path(ID)
@@ -335,8 +335,8 @@ public class MappingsResource {
   }
 
   /**
-   * A test run of the working copy in the body, never the stored file (ADR-0015). The id only
-   * locates the directory its bundle references are relative to.
+   * A test run of the working copy in the body, never the stored file. The id only locates the
+   * directory its bundle references are relative to.
    */
   @POST
   @jakarta.ws.rs.Path(ID + "/test")
@@ -382,10 +382,10 @@ public class MappingsResource {
   }
 
   /**
-   * Compile (ADR-0015, ADR-0027): the working copy in the body, never the stored file, answers its
-   * diagnostics, the {@code unreachable-box} warnings among them (ADR-0011, ADR-0013). A model that
-   * stage 1, 2 or 3 refuses is a 200 too; only a transport error is a problem. Nothing is saved.
-   * The id only locates the directory the bundle references are relative to.
+   * Compile: the working copy in the body, never the stored file, answers its diagnostics, the
+   * {@code unreachable-box} warnings among them. A model that stage 1, 2 or 3 refuses is a 200 too;
+   * only a transport error is a problem. Nothing is saved. The id only locates the directory the
+   * bundle references are relative to.
    */
   @POST
   @jakarta.ws.rs.Path(ID + "/compile")
@@ -424,12 +424,11 @@ public class MappingsResource {
   }
 
   /**
-   * Refresh (ADR-0015, ADR-0009 as amended on 2026-11-05): the working copy in the body, never the
-   * stored file, comes back in canonical form with the fingerprint of each side it names
-   * re-derived, with its orphaned references and every other stage-3 diagnostic once it names both
-   * sides (ADR-0029). A side whose bundle fails to load keeps its fingerprint and gives its load
-   * diagnostics in the 200. Nothing is saved. The id only locates the directory the bundle
-   * references are relative to.
+   * Refresh: the working copy in the body, never the stored file, comes back in canonical form with
+   * the fingerprint of each side it names re-derived, with its orphaned references and every other
+   * stage-3 diagnostic once it names both sides. A side whose bundle fails to load keeps its
+   * fingerprint and gives its load diagnostics in the 200. Nothing is saved. The id only locates
+   * the directory the bundle references are relative to.
    */
   @POST
   @jakarta.ws.rs.Path(ID + "/refresh")
@@ -482,8 +481,8 @@ public class MappingsResource {
 
   /**
    * Compiles the working copy, reading its bundle files through {@code resolver}, which refuses a
-   * reference that escapes (#90), and runs it for at most the test-run timeout, with the engine's
-   * trace capped at the trace limit.
+   * reference that escapes, and runs it for at most the test-run timeout, with the engine's trace
+   * capped at the trace limit.
    */
   private TestResult run(ReferenceResolver resolver, byte[] model, String input)
       throws MalformedJsonException, MalformedInputException {
@@ -530,7 +529,7 @@ public class MappingsResource {
     };
   }
 
-  /** The canonical form of a model that passes stages 1 and 2 (ADR-0010, ADR-0011). */
+  /** The canonical form of a model that passes stages 1 and 2. */
   private byte[] canonical(byte[] model) throws MalformedJsonException, ModelRefusedException {
     return switch (facade.load(model)) {
       case Loaded(MappingModel loaded) -> facade.save(loaded);
@@ -541,7 +540,7 @@ public class MappingsResource {
     };
   }
 
-  /** A model answer: the canonical bytes and their ETag (ADR-0024). */
+  /** A model answer: the canonical bytes and their ETag. */
   private static Response model(Response.ResponseBuilder response, byte[] canonical)
       throws NoSuchAlgorithmException {
     return response
@@ -551,7 +550,7 @@ public class MappingsResource {
         .build();
   }
 
-  /** {@code "sha256:<hex>"} of the canonical bytes, quoted: a strong tag (ADR-0024). */
+  /** {@code "sha256:<hex>"} of the canonical bytes, quoted: a strong tag. */
   private static String etag(byte[] canonical) throws NoSuchAlgorithmException {
     String sha256 =
         HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));

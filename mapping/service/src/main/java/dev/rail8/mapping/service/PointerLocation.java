@@ -3,7 +3,7 @@ package dev.rail8.mapping.service;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A place in the mapping model's document, as stage 1 reports it (ADR-0011).
+ * A place in the mapping model's document, as stage 1 reports it.
  *
  * @param kind {@value #KIND}
  * @param pointer the RFC 6901 JSON pointer; {@code ""} is the document itself

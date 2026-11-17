@@ -12,9 +12,8 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
- * {@code GET /api/catalogue} (ADR-0026, ADR-0015): the function catalogue as the engine packs it.
- * Its bytes never pass through Jackson, and it has no ETag: the catalogue changes only with the
- * build.
+ * {@code GET /api/catalogue}: the function catalogue as the engine packs it. Its bytes never pass
+ * through Jackson, and it has no ETag: the catalogue changes only with the build.
  */
 @jakarta.ws.rs.Path("/api/catalogue")
 public class CatalogueResource {

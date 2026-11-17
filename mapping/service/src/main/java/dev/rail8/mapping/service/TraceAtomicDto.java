@@ -4,11 +4,10 @@ import dev.rail8.mapping.api.Trace;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The single value a box gave in a test run (ADR-0015 {@code {atomic: {type, value}}} since #83),
- * on the wire.
+ * The single value a box gave in a test run, on the wire.
  *
  * @param kind {@value #KIND}
- * @param type the value's atomic type by its XML Schema name (ADR-0004), such as {@code xs:string}
+ * @param type the value's atomic type by its XML Schema name, such as {@code xs:string}
  * @param value the value
  */
 public record TraceAtomicDto(

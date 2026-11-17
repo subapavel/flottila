@@ -5,8 +5,7 @@ import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The {@code model-refused} problem (ADR-0024): a {@link Problem} with the diagnostics that refuse
- * the model.
+ * The {@code model-refused} problem: a {@link Problem} with the diagnostics that refuse the model.
  *
  * @param type {@code urn:rail8:mapping:problem:model-refused}
  * @param title the slug's fixed summary

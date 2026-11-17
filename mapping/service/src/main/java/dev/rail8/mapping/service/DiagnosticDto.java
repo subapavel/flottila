@@ -6,7 +6,7 @@ import java.util.Locale;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A design-time error or warning (ADR-0015), on the wire.
+ * A design-time error or warning, on the wire.
  *
  * @param severity {@code error} or {@code warning}
  * @param code the stable kebab-case code of an engine catalogue

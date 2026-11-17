@@ -22,18 +22,18 @@ import org.eclipse.microprofile.config.Config;
 import org.jboss.logging.Logger;
 
 /**
- * The service's configuration that {@code application.properties} cannot express (ADR-0014,
- * ADR-0015, ADR-0024): the startup warning for a host beyond loopback, the startup checks of the
- * trace limit and the time zone, a strict JSON reader, and the one engine facade of the service,
- * over the run clock in the configured time zone (CODING_STANDARDS: the clock is injected).
+ * The service's configuration that {@code application.properties} cannot express: the startup
+ * warning for a host beyond loopback, the startup checks of the trace limit and the time zone, a
+ * strict JSON reader, and the one engine facade of the service, over the run clock in the
+ * configured time zone, which is injected rather than read where it is used.
  */
 @Singleton
 public class ServiceConfig implements ObjectMapperCustomizer {
 
-  /** The most one trace entry of a test run keeps (ADR-0015, "Trace"). */
+  /** The most one trace entry of a test run keeps. */
   static final String TRACE_LIMIT = "rail8.mapping.trace-limit";
 
-  /** The time zone of the service's runs (#80). */
+  /** The time zone of the service's runs. */
   static final String TIME_ZONE = "rail8.mapping.time-zone";
 
   private static final Logger LOG = Logger.getLogger(ServiceConfig.class);
@@ -43,8 +43,8 @@ public class ServiceConfig implements ObjectMapperCustomizer {
   }
 
   /**
-   * A trace limit below 1 (#53) or a time zone that is none (#80) is a configuration error, so the
-   * service does not start.
+   * A trace limit below 1 or a time zone that is none is a configuration error, so the service does
+   * not start.
    */
   void checkAtStartup(@Observes StartupEvent event, Config config) {
     traceLimit(config);
@@ -52,10 +52,10 @@ public class ServiceConfig implements ObjectMapperCustomizer {
   }
 
   /**
-   * {@value #TIME_ZONE}: the time zone of the service's runs (#80), a {@code ZoneId}, UTC by
-   * default. A run's time is taken in it, and the offset of that time is the zone a date without an
-   * offset is read in and every date is written in; an export's caller sets it as the processor's
-   * implicit time zone.
+   * {@value #TIME_ZONE}: the time zone of the service's runs, a {@code ZoneId}, UTC by default. A
+   * run's time is taken in it, and the offset of that time is the zone a date without an offset is
+   * read in and every date is written in; an export's caller sets it as the processor's implicit
+   * time zone.
    *
    * @throws IllegalArgumentException when it names no time zone
    */
@@ -69,14 +69,14 @@ public class ServiceConfig implements ObjectMapperCustomizer {
     }
   }
 
-  /** The run clock: the system's, in {@value #TIME_ZONE} (#80). */
+  /** The run clock: the system's, in {@value #TIME_ZONE}. */
   @Produces
   @Singleton
   Clock clock(Config config) {
     return Clock.system(timeZone(config));
   }
 
-  /** The engine every resource calls, whose runs take their time from {@code clock} (#80). */
+  /** The engine every resource calls, whose runs take their time from {@code clock}. */
   @Produces
   @Singleton
   EngineFacade engine(Clock clock) {
@@ -85,7 +85,7 @@ public class ServiceConfig implements ObjectMapperCustomizer {
 
   /**
    * {@value #TRACE_LIMIT}: the most slots, contexts or occurrence records one trace entry of a test
-   * run keeps (ADR-0015, "Trace").
+   * run keeps.
    *
    * @throws IllegalArgumentException when it is less than 1
    */
@@ -100,14 +100,14 @@ public class ServiceConfig implements ObjectMapperCustomizer {
 
   /**
    * A key twice in one object fails every request body, so a test run's working copy reaches the
-   * engine as the client wrote it (ADR-0011). A request record binds only as its contract says
-   * (ADR-0024): a missing required member, a null member or a null bundle entry fails, and a number
-   * or a boolean is no string. A required member is a component marked
-   * {@code @JsonProperty(required = true)}, whose rule comes first and names it missing; the null
-   * rule alone would refuse it as a null one. An {@code Optional} member marked
-   * {@code @JsonSetter(nulls = Nulls.AS_EMPTY)} may be missing or null (ADR-0029): both are empty.
-   * The failures are {@code MismatchedInputException}s, so {@code invalid-request}. A null inside a
-   * test run's model is the model's: the tree reader binds no record.
+   * engine as the client wrote it. A request record binds only as its contract says: a missing
+   * required member, a null member or a null bundle entry fails, and a number or a boolean is no
+   * string. A required member is a component marked {@code @JsonProperty(required = true)}, whose
+   * rule comes first and names it missing; the null rule alone would refuse it as a null one. An
+   * {@code Optional} member marked {@code @JsonSetter(nulls = Nulls.AS_EMPTY)} may be missing or
+   * null: both are empty. The failures are {@code MismatchedInputException}s, so {@code
+   * invalid-request}. A null inside a test run's model is the model's: the tree reader binds no
+   * record.
    */
   @Override
   public void customize(ObjectMapper objectMapper) {

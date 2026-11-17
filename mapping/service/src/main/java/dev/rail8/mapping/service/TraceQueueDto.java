@@ -6,7 +6,7 @@ import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The queue a box gave in a test run (ADR-0015 "Trace" since #53), on the wire.
+ * The queue a box gave in a test run, on the wire.
  *
  * @param kind {@value #KIND}
  * @param contexts the contexts kept, each an array of its values, {@code null} for SUPPRESS
@@ -27,7 +27,7 @@ public record TraceQueueDto(
 
   /**
    * The schema of a context: an array of values. smallrye-openapi gives an array's items no
-   * nullable of their own, so the schema names a type for them (#53 O2); none is ever made.
+   * nullable of their own, so the schema names a type for them; none is ever made.
    */
   @Schema(name = "TraceContext", type = SchemaType.ARRAY, implementation = Value.class)
   static final class Context {

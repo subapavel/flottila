@@ -30,9 +30,9 @@ import java.util.regex.Pattern;
 import org.eclipse.microprofile.config.Config;
 
 /**
- * The workspace: the only class that resolves paths (ADR-0024). Ids, base directories and bundle
- * references pass the pattern, the normalised prefix and the real-path prefix, in that order. The
- * engine reads bundle files through its {@link #resolver} (ADR-0014).
+ * The workspace: the only class that resolves paths. Ids, base directories and bundle references
+ * pass the pattern, the normalised prefix and the real-path prefix, in that order. The engine reads
+ * bundle files through its {@link #resolver}.
  */
 @ApplicationScoped
 @Startup
@@ -40,7 +40,7 @@ public class Workspace {
 
   private static final String SEGMENT = "[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}";
 
-  /** A mapping id (ADR-0024); its last segment must not be reserved as well. */
+  /** A mapping id; its last segment must not be reserved as well. */
   private static final Pattern ID = Pattern.compile(SEGMENT + "(/" + SEGMENT + "){0,15}");
 
   /** A base directory: an id, or {@code ""} for the root. */
@@ -50,7 +50,7 @@ public class Workspace {
       Pattern.compile(
           "(\\.\\./){0,16}[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*");
 
-  /** A package reference, {@code name@version:/path} (ADR-0024 since the spec-4 grilling). */
+  /** A package reference, {@code name@version:/path}. */
   private static final Pattern PACKAGE =
       Pattern.compile(
           "[A-Za-z0-9_-][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.+-]*:/[A-Za-z0-9_-][A-Za-z0-9._-]*"
@@ -198,8 +198,8 @@ public class Workspace {
   }
 
   /**
-   * The reference resolver of the bundle references relative to {@code directory} (ADR-0014
-   * "Reference resolver shape", ADR-0024). It decides each reference on its own, in this order:
+   * The reference resolver of the bundle references relative to {@code directory}. It decides each
+   * reference on its own, in this order:
    *
    * <ol>
    *   <li>a package reference is refused as {@code PACKAGE_REFERENCE_UNSUPPORTED} from its text
@@ -238,8 +238,7 @@ public class Workspace {
    * ancestor's: a directory, whose read fails, so the engine reports the file and no name that was
    * missing at the check is ever opened. That ancestor must lie inside the workspace by its real
    * path. An ancestor whose real path does not resolve, a dangling link or a link loop, is refused
-   * as well: the check fails closed, because the link's target might appear outside later
-   * (ADR-0024).
+   * as well: the check fails closed, because the link's target might appear outside later.
    */
   private Path bundleFile(Path directory, String reference) throws WorkspacePathException {
     Path existing = inside(directory, matching(reference, BUNDLE));
@@ -297,8 +296,8 @@ public class Workspace {
   }
 
   /**
-   * {@code path} relative to the root, its name elements joined with {@code /} on every OS
-   * (ADR-0024 workspace path); {@code ""} for the root itself.
+   * {@code path} relative to the root, its name elements joined with {@code /} on every OS; {@code
+   * ""} for the root itself.
    */
   private String relative(Path path) {
     StringJoiner joined = new StringJoiner("/");

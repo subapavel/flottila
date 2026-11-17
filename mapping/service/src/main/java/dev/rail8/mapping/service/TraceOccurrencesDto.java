@@ -7,8 +7,8 @@ import java.util.Optional;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * The occurrences a target field mapping created in a test run, per parent slot (ADR-0015 "Trace"
- * since #53), on the wire. Its queue is the entry of its {@code result} box.
+ * The occurrences a target field mapping created in a test run, per parent slot, on the wire. Its
+ * queue is the entry of its {@code result} box.
  *
  * @param kind {@value #KIND}
  * @param min the field's effective minimum occurrence

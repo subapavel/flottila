@@ -6,10 +6,7 @@ import java.util.Map;
 import org.eclipse.microprofile.openapi.annotations.media.DiscriminatorMapping;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
-/**
- * One entry of a test run's trace (ADR-0015 "Trace" since #53, an atomic value since #83), on the
- * wire: a union on {@code kind} (ADR-0024).
- */
+/** One entry of a test run's trace, on the wire: a union on {@code kind}. */
 @Schema(
     oneOf = {TraceQueueDto.class, TraceOccurrencesDto.class, TraceAtomicDto.class},
     discriminatorProperty = "kind",

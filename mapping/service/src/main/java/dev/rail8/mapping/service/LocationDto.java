@@ -8,8 +8,8 @@ import org.eclipse.microprofile.openapi.annotations.media.DiscriminatorMapping;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * Where a diagnostic points (ADR-0015), on the wire: a union on {@code kind} (ADR-0024). The engine
- * locates no diagnostic at a {@link FieldPathLocation} yet, so {@link #of} never gives one.
+ * Where a diagnostic points, on the wire: a union on {@code kind}. The engine locates no diagnostic
+ * at a {@link FieldPathLocation} yet, so {@link #of} never gives one.
  */
 @Schema(
     oneOf = {

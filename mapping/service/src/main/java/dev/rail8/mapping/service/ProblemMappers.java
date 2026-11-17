@@ -15,8 +15,8 @@ import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 import org.jboss.resteasy.reactive.server.UnwrapException;
 
 /**
- * The transport errors as {@code application/problem+json} (RFC 9457; ADR-0024, "Problems"). Each
- * slug has a fixed status and title.
+ * The transport errors as {@code application/problem+json} (RFC 9457). Each slug has a fixed status
+ * and title.
  *
  * <p>quarkus-rest-jackson wraps a body that is no JSON in a {@link WebApplicationException}, and
  * Jackson wraps a parse error inside a member's value, a duplicate key for one, in a plain {@link
@@ -30,7 +30,7 @@ public class ProblemMappers {
   static final String PROBLEM_JSON = "application/problem+json";
   private static final String TYPE = "urn:rail8:mapping:problem:";
 
-  /** A refused path, or a bundle reference the workspace's reference resolver refused (#90). */
+  /** A refused path, or a bundle reference the workspace's reference resolver refused. */
   @ServerExceptionMapper({WorkspacePathException.class, InvalidWorkspacePathException.class})
   public Response invalidWorkspacePath(Exception e) {
     return problem(400, "invalid-workspace-path", "Not a workspace path", e.getMessage());
@@ -62,7 +62,7 @@ public class ProblemMappers {
     return problem(409, "mapping-exists", "Mapping exists", "a mapping with this id exists");
   }
 
-  /** Not ADR-0024's {@code mapping-exists}, which answers a create (ADR-0027). */
+  /** A save whose {@code If-Match} differs; not {@code mapping-exists}, which answers a create. */
   @ServerExceptionMapper
   public Response mappingChanged(MappingChangedException e) {
     return problem(409, "mapping-changed", "Mapping changed", e.getMessage());

@@ -10,7 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * @param kind {@value #KIND}
  * @param output the target message
  * @param diagnostics the warnings of the compile
- * @param trace the run's trace, its entries by authoring id (ADR-0015 "Trace" since #53)
+ * @param trace the run's trace, its entries by authoring id
  */
 public record TestOutput(
     @Schema(required = true, constValue = TestOutput.KIND) String kind,

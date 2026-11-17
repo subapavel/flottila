@@ -6,7 +6,7 @@ import java.util.List;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A structure to load (ADR-0015).
+ * A structure to load.
  *
  * @param base the directory the bundle is relative to; {@code ""} is the workspace root
  * @param bundle the schema files

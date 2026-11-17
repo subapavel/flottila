@@ -20,8 +20,8 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
- * {@code POST /api/structures} (ADR-0015, ADR-0024): a structure's graph and fingerprint, or its
- * load error as a 200 {@code refused}.
+ * {@code POST /api/structures}: a structure's graph and fingerprint, or its load error as a 200
+ * {@code refused}.
  */
 @jakarta.ws.rs.Path("/api/structures")
 public class StructuresResource {
@@ -63,7 +63,7 @@ public class StructuresResource {
     InvalidRequestException.present(request);
     Path base = workspace.directory(request.base());
     SchemaBundle bundle = new SchemaBundle(request.bundle());
-    // a bundle reference that escapes is refused inside the resolver (#90)
+    // a bundle reference that escapes is refused inside the resolver
     return switch (Structures.load(
         workspace.resolver(base), bundle, RootSelectorJson.read(request.root()))) {
       case StructureResult.Loaded(Structure structure) -> StructureLoaded.of(structure);

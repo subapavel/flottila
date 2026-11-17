@@ -4,7 +4,7 @@ import java.io.Serial;
 
 /**
  * A request body that is not of its endpoint's shape where Jackson cannot tell: no body at all, or
- * a root selector of none of the model schema's shapes (ADR-0024).
+ * a root selector of none of the model schema's shapes.
  */
 final class InvalidRequestException extends Exception {
 

@@ -7,11 +7,11 @@ import java.util.TreeMap;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 /**
- * A structure as a graph (ADR-0008, ADR-0015): the root field and each type's fields. The editor
- * expands the tree itself.
+ * A structure as a graph: the root field and each type's fields. The editor expands the tree
+ * itself.
  *
  * @param kind {@value #KIND}
- * @param fingerprint {@code sha256:<hex>} of the structure (ADR-0009)
+ * @param fingerprint {@code sha256:<hex>} of the structure
  * @param root the root field
  * @param types the child fields of each structure type, by type id
  */
