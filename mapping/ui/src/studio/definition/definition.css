@@ -1,8 +1,7 @@
 /*
- * The Definition tab's message panes, their tools and the split around them, with the values of the prototype's
- * studio.css; the rules of the mapping expression and of the other tabs are not here. Beyond the prototype: the spacer
- * rows of the virtualised tree and table take no padding, and a pane's tool menus take the prototype's def-menu font
- * size.
+ * The Definition tab's message panes, their tools and the split around them; the rules of the mapping expression and of
+ * the other tabs are not here. The spacer rows of the virtualised tree and table take no padding, and a pane's tool
+ * menus take a 13 px font.
  */
 .switches {
   display: inline-flex;

@@ -5,7 +5,7 @@ import { NODE_WIDTH, nodeHeight, TARGET, type ExpressionGraph } from './expressi
 /** The top-left corner of each node, by node id, the target's under `TARGET`. */
 export type Positions = Record<string, BoxPosition>;
 
-/** The gap between two nodes of a column, and between two columns beside the node width (the prototype's layout). */
+/** The gap between two nodes of a column, and between two columns beside the node width. */
 const GAP = 24;
 const COLUMN = NODE_WIDTH + 64;
 

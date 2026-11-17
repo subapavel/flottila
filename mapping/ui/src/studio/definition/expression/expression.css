@@ -1,7 +1,6 @@
 /*
- * The mapping expression, with the values of the prototype's functionCatalogue.css and of the Definition and canvas parts
- * of its studio.css. Beyond the prototype: `.expression-panel` holds the header toolbar above the canvas, and
- * `.catalogue-function[aria-disabled]` dims a function the catalogue lacks.
+ * The mapping expression: the definition bar, the canvas and the functions drilldown. `.expression-panel` holds the
+ * header toolbar above the canvas, and `.catalogue-function[aria-disabled]` dims a function the catalogue lacks.
  */
 
 /* the definition bar */
@@ -413,7 +412,7 @@
   }
 }
 
-/* functionCatalogue.css */
+/* the expression workspace, the node states and the functions drilldown */
 .expression-workspace {
   display: flex;
   position: relative;

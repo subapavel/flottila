@@ -6,7 +6,7 @@ import type { ParamValue, Params } from '../../../generated/mapping-model';
 import { Tool } from '../../shared/Tool';
 import { DateFormatHelp } from './DateParameterControls';
 
-/** The prototype's label of each catalogue parameter it has, by `<function>.<parameter>`; another one is named from its name. */
+/** The label of each catalogue parameter that has one, by `<function>.<parameter>`; another one is named from its name. */
 const LABELS: Record<string, string> = {
   'counter.initial': 'Initial Value',
   'counter.increment': 'Increment',
@@ -40,7 +40,7 @@ const LABELS: Record<string, string> = {
   'mapWithDefault.default': 'Default Value to Be Mapped',
 };
 
-/** The prototype's words for the values a choice offers. */
+/** The words for the values a choice offers. */
 const VALUE_LABELS: Record<string, string> = {
   eachValue: 'Each Value',
   emptyValue: 'Empty Value',
@@ -55,13 +55,13 @@ const VALUE_LABELS: Record<string, string> = {
   numeric: 'float number',
 };
 
-/** The parameters the prototype edits as integers. */
+/** The parameters edited as integers. */
 const INTEGERS = new Set(['counter.initial', 'counter.increment', 'substring.start', 'substring.length', 'copyValue.position', 'index.initial', 'index.increment']);
 
-/** The choices the prototype offers in a select rather than as radio buttons. */
+/** The choices offered in a select rather than as radio buttons. */
 const SELECTS = new Set(['splitByValue.mode']);
 
-/** A parameter's label: the prototype's, else its name in words (`defaultValue` is "Default value"). */
+/** A parameter's label: its entry in `LABELS`, else its name in words (`defaultValue` is "Default value"). */
 export const paramLabel = (fn: string, name: string) =>
   LABELS[`${fn}.${name}`] ?? name.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).replace(/ (\w)/g, (_, c: string) => ` ${c.toLowerCase()}`);
 
@@ -191,7 +191,7 @@ export interface FunctionParametersProps {
 }
 
 /**
- * The prototype's parameter dialog of a standard function box: one field per catalogue parameter, a choice as radio
+ * The parameter dialog of a standard function box: one field per catalogue parameter, a choice as radio
  * buttons (or a select, or a switch for true and false), a date pattern with "Choose format…", a table as key and value
  * pairs. Apply checks the integers and the table's keys and saves all at once; in view mode it only shows them.
  */

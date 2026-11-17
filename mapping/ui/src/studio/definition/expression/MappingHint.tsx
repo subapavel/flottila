@@ -6,7 +6,7 @@ const find = (target: EventTarget | null): Element | null =>
   target instanceof Element ? (target.closest('[data-mapping-hint]') ?? (target.matches('.react-flow__node') ? target.querySelector('.map-node') : null)) : null;
 
 /**
- * The canvas's one tooltip (the prototype's MappingHint): it shows the `data-mapping-hint` of what the pointer is over or
+ * The canvas's one tooltip: it shows the `data-mapping-hint` of what the pointer is over or
  * the focus is on, ports and parameters taking precedence over their node; a pointer down, a context menu or Escape hides
  * it.
  */

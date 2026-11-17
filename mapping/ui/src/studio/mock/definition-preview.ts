@@ -12,7 +12,7 @@ export const VALUE_MAPPING_ISSUE = 166;
 /** A parameter value of a preview node: text, a switch or a list of field names, or a catalogue function's table. */
 export type PreviewParam = string | boolean | string[] | ParamValue;
 
-/** What a preview node is (the prototype's node kinds): a variable read, a source field, a function, another target field. */
+/** What a preview node is: a variable read, a source field, a function, another target field. */
 export type PreviewNodeKind = 'variable' | 'source' | 'function' | 'target';
 
 /**
@@ -57,7 +57,7 @@ export const isPreviewId = (id: string) => id.startsWith(PREVIEW_PREFIX);
 export const newPreviewId = () => `${PREVIEW_PREFIX}${crypto.randomUUID()}`;
 
 /**
- * A variable's path is its parent's and the step `$<name>` (the prototype's reserved `$`); a JSON property may start with
+ * A variable's path is its parent's and the step `$<name>`; a JSON property may start with
  * `$` too, so a path is a variable's only when the previews list it, never by its spelling.
  */
 const parentOf = (path: FieldPath) => path.slice(0, path.lastIndexOf('/'));
@@ -69,7 +69,7 @@ export const variableName = (path: FieldPath) => path.slice(path.lastIndexOf('/'
 const inScope = (variable: FieldPath, target: FieldPath) => target.startsWith(`${parentOf(variable)}/`);
 
 /**
- * The variables a target field or variable may read (the prototype's availableVariables): those in scope; a variable
+ * The variables a target field or variable may read: those in scope; a variable
  * reads only those before it, as a parent's variables come first among its children in the tree.
  */
 export function availableVariables(variables: readonly FieldPath[], target: FieldPath): FieldPath[] {
@@ -77,7 +77,7 @@ export function availableVariables(variables: readonly FieldPath[], target: Fiel
   return (at < 0 ? variables : variables.slice(0, at)).filter((v) => inScope(v, target));
 }
 
-/** Where a variable may be read (the prototype's variableTargets): the variables after it and the target fields in its scope. */
+/** Where a variable may be read: the variables after it and the target fields in its scope. */
 export function variableTargets(variables: readonly FieldPath[], fields: readonly FieldPath[], variable: FieldPath): FieldPath[] {
   return [...variables.slice(variables.indexOf(variable) + 1), ...fields].filter((target) => inScope(variable, target));
 }

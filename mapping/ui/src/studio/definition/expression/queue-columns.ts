@@ -2,7 +2,7 @@ import type { TraceEntry } from '../../../api/client';
 import { displayEntry, queueSize, type ShownValue } from './display-queue';
 import type { ExpressionGraph, ExpressionNode } from './expression-graph';
 
-/** A cell of the Display Queue (the prototype's queue cells): a value, or where a context ends, before the next or at the end. */
+/** A cell of the Display Queue: a value, or where a context ends, before the next or at the end. */
 export type QueueCell = { kind: 'value'; value: ShownValue } | { kind: 'boundary' | 'end' };
 
 /** A column of the Display Queue: an input or the output of a node, and its traced queue, or none when it was not traced. */
@@ -28,7 +28,7 @@ function column(label: string, entry: TraceEntry | undefined): QueueColumn {
 }
 
 /**
- * The Display Queue of `node` of `graph` (the prototype's previewQueue, over the trace of the last test run by authoring id): a
+ * The Display Queue of `node` of `graph` (over the trace of the last test run by authoring id): a
  * column per input, the queue of the box wired into it, then the node's own output; the target field has its result's.
  */
 export function queueColumns(graph: ExpressionGraph, node: ExpressionNode, trace: Readonly<Record<string, TraceEntry>>): { name: string; columns: QueueColumn[] } {

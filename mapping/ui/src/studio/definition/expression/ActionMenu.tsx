@@ -2,7 +2,7 @@ import { AngleRightIcon, CheckIcon, ToggleOffIcon, ToggleOnIcon, TrashIcon } fro
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 
-/** One item of a menu (the prototype's `action`): it runs, opens `children`, or is a radio (`checked`) or a toggle. */
+/** One item of a menu): it runs, opens `children`, or is a radio (`checked`) or a toggle. */
 export interface MenuItem {
   label: string;
   run?: (() => void) | null;
@@ -159,7 +159,7 @@ function MenuLevel({ items, anchor, label, level = 0, close, back }: MenuLevelPr
 }
 
 /**
- * The prototype's context menu, in a portal: arrow keys move, Right and Left open and close a submenu, Escape closes; a
+ * The context menu, in a portal: arrow keys move, Right and Left open and close a submenu, Escape closes; a
  * pointer down outside it or a resize closes it, and closing by a choice or Escape gives the focus back to its anchor.
  */
 export function ActionMenu({ menu, onClose }: { menu: OpenMenu | null; onClose: (focus: boolean) => void }) {

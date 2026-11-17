@@ -12,10 +12,10 @@ const GAP = 24;
 /** The Preview mark of a variable's nodes. */
 export const VARIABLES = { feature: 'Variables', issue: VARIABLES_ISSUE };
 
-/** What a node that reads or defines a mapping variable is, in words (the prototype's nodeRole). */
+/** What a node that reads or defines a mapping variable is, in words. */
 export const VARIABLE_ROLE = 'Mapping variable';
 
-/** A preview node as a canvas node (the prototype's node kinds), with its feature's Preview mark. */
+/** A preview node as a canvas node, with its feature's Preview mark. */
 function canvasNode(node: PreviewNode, catalogue: FunctionCatalogue): ExpressionNode {
   const { id, kind, ref } = node;
   const params = node.params as Params | undefined;

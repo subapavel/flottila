@@ -10,7 +10,7 @@ export const TEST_INSTANCES_ISSUE = 170;
 /** A test document's format, by the root of the source message's structure. */
 export type InstanceFormat = 'XML' | 'JSON';
 
-/** A named test input of a mapping (the prototype's test instance): its source document and parameter values. */
+/** A named test input of a mapping: its source document and parameter values. */
 export interface TestInstance {
   id: string;
   name: string;
@@ -94,7 +94,7 @@ export function removeInstance(list: readonly TestInstance[], format: InstanceFo
 export type TestInstancesStore = PreviewDraftStore<TestInstance[]>;
 
 /**
- * The test instance library of the open mapping (the prototype's useTestInstances): a draft of the edit session
+ * The test instance library of the open mapping: a draft of the edit session
  * whose saved state the browser keeps under the mapping's id. It never reaches the working copy or the `ApiClient`.
  */
 export function testInstances(workingCopy: WorkingCopyStore, browserState: BrowserStateStore, mappingId: string): TestInstancesStore {
@@ -148,18 +148,18 @@ export function testInput(workingCopy: WorkingCopyStore) {
   );
 }
 
-/** The largest instance an archive may hold (the prototype's readInstance). */
+/** The largest instance an archive may hold. */
 const LARGEST = 16 * 1024 * 1024;
 
 const BYTE_ORDER_MARK = new RegExp('^\\uFEFF');
 
 const entryName = (format: InstanceFormat) => `instance.${format.toLowerCase()}`;
 
-/** A document as the prototype's Save Document Source exports it: `instance.<format>` in a zip, stored. */
+/** A document as Save Document Source exports it: `instance.<format>` in a zip, stored. */
 export const zipInstance = (text: string, format: InstanceFormat) => zipSync({ [entryName(format)]: strToU8(text) }, { level: 0 });
 
 /**
- * The text of a test instance file (the prototype's readInstance): a zip's `instance.<format>`, without a byte order
+ * The text of a test instance file: a zip's `instance.<format>`, without a byte order
  * mark, else the file as text. Throws for a zip without that entry, or with one of 16 MB or more.
  */
 export async function readInstance(file: Blob, format: InstanceFormat): Promise<string> {

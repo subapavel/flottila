@@ -13,8 +13,7 @@ export interface AddVariableProps {
 }
 
 /**
- * The Add Variable dialog (the prototype's): a name of a letter or `_` and then letters, digits or `_`, one the parent
- * does not use yet.
+ * The Add Variable dialog: a name of a letter or `_` and then letters, digits or `_`, one the parent does not use yet.
  */
 export function AddVariable({ parent, taken, create, close }: AddVariableProps) {
   const [name, setName] = useState('');

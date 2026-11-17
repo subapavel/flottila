@@ -8,7 +8,7 @@ import { Tool } from '../../shared/Tool';
 
 type Values = Record<string, PreviewParam>;
 
-/** The prototype's choices of Behaviour if lookup fails. */
+/** The choices of Behaviour if lookup fails. */
 const STRATEGIES = [
   ['2', 'Use Key'],
   ['1', 'Use Default Value'],
@@ -17,7 +17,7 @@ const STRATEGIES = [
 
 const TITLES: Record<PreviewFunction['key'], string> = { valuemap: 'Value Mapping Properties', tableLookup: 'JDBC Lookup', rfclookup: 'RFC Lookup' };
 
-/** A field of the Value Mapping Properties (the prototype's Field): a text, an agency with its default offered, or the strategy. */
+/** A field of the Value Mapping Properties: a text, an agency with its default offered, or the strategy. */
 function Field({ param, value, change }: { param: PreviewFunctionParameter; value: string; change: (value: string) => void }) {
   const { key, label, type } = param;
   if (type === 'vmstrategy') {
@@ -47,7 +47,7 @@ function Field({ param, value, change }: { param: PreviewFunctionParameter; valu
   );
 }
 
-/** A list of a lookup's fields (the prototype's FieldList): reorder or remove the selected field. */
+/** A list of a lookup's fields: reorder or remove the selected field. */
 function FieldList({ title, fields, change }: { title: string; fields: string[]; change: (fields: string[]) => void }) {
   const [selected, setSelected] = useState('');
   const index = fields.indexOf(selected);
@@ -68,7 +68,7 @@ function FieldList({ title, fields, change }: { title: string; fields: string[];
   );
 }
 
-/** The prototype's LookupPicker: the lookup catalogue, the one RFC module it offers, no database table. */
+/** The lookup picker: the lookup catalogue, the one RFC module it offers, no database table. */
 function LookupPicker({ rfc, current, apply, close }: { rfc: boolean; current: string; apply: (ref: string) => void; close: () => void }) {
   const [selected, setSelected] = useState('');
   const [query, setQuery] = useState('');
@@ -127,7 +127,7 @@ function LookupPicker({ rfc, current, apply, close }: { rfc: boolean; current: s
   );
 }
 
-/** The prototype's LookupParameters: the channel, the table or module, its field lists and its switch. */
+/** A lookup's parameters: the channel, the table or module, its field lists and its switch. */
 function LookupParameters({ fn, draft, change, openPicker }: { fn: PreviewFunction; draft: Values; change: (key: string, value: PreviewParam) => void; openPicker: () => void }) {
   const rfc = fn.key === 'rfclookup';
   const flag = rfc ? 'useExc' : 'split';
@@ -177,8 +177,7 @@ export interface PreviewParametersProps {
 }
 
 /**
- * The parameter dialog of a preview function (the prototype's FunctionParameters for Value mapping and the lookups):
- * the Value Mapping Properties, or a lookup's channel, table or module and fields. Apply saves them to the preview; in
+ * The parameter dialog of a preview function (Value mapping and the lookups): the Value Mapping Properties, or a lookup's channel, table or module and fields. Apply saves them to the preview; in
  * view mode it only shows them.
  */
 export function PreviewParameters({ fn, values, readOnly, save, close }: PreviewParametersProps) {

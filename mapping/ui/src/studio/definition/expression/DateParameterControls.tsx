@@ -16,7 +16,7 @@ interface Parts {
 export const joinPattern = (pattern: string, separator: string) => (pattern.match(/y+|M+|d+|H+|m+|s+/g) ?? []).join(separator);
 
 /**
- * The prototype's SimpleDateFormat helper behind "Choose format…": a date and a time pattern with their separators,
+ * The SimpleDateFormat helper behind "Choose format…": a date and a time pattern with their separators,
  * the result previewed, applied to the parameter it was opened for.
  */
 export function DateFormatHelp({ apply, close }: { apply: (format: string) => void; close: () => void }) {

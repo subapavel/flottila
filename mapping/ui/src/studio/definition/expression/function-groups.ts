@@ -1,6 +1,6 @@
 import type { FunctionCatalogue } from '../../../api/client';
 
-/** The drilldown's groups, in the prototype's order (its SAP PO StandardFunctions library). */
+/** The drilldown's groups, in the order of the SAP PO StandardFunctions library. */
 export const GROUPS = ['Arithmetic', 'Boolean', 'Text', 'Conversions', 'Date', 'Constants', 'Node Functions', 'Statistic'] as const;
 export type Group = (typeof GROUPS)[number];
 
@@ -10,8 +10,8 @@ const VALUE_MAPPING = 166;
 const MISSING_FUNCTIONS = 172;
 
 /**
- * The prototype's drilldown in its order: each entry's group and our catalogue name, or for an entry the catalogue lacks,
- * the prototype's name, its input count and its follow-up issue. The 9 renamed functions (`1/x`, `FixValues`,
+ * The drilldown's entries in their order: each entry's group and our catalogue name, or for an entry the catalogue lacks,
+ * its shown name, its input count and its follow-up issue. The 9 renamed functions (`1/x`, `FixValues`,
  * `FormatNum`, `DateTrans`, `DateBefore`, `DateAfter`, `CompareDates`, `CopyValue`, `SplitByValue`) carry our name.
  */
 const PROTOTYPE: readonly (readonly [Group, string] | readonly [Group, string, number, number])[] = [
@@ -52,7 +52,7 @@ const PROTOTYPE: readonly (readonly [Group, string] | readonly [Group, string, n
   ['Boolean', 'isNil'],
 ];
 
-/** The group of a catalogue function the prototype does not list, by its function family. */
+/** The group of a catalogue function the entries do not list, by its function family. */
 const FAMILY_GROUPS: Record<string, Group> = {
   arithmetic: 'Arithmetic',
   boolean: 'Boolean',
@@ -64,7 +64,7 @@ const FAMILY_GROUPS: Record<string, Group> = {
   statistic: 'Statistic',
 };
 
-/** The names the prototype lists with an overload, which show their input count. */
+/** The listed names with an overload, which show their input count. */
 const OVERLOADED = new Set(['indexOf', 'lastIndexOf', 'startsWith']);
 
 /** One function of the drilldown. */
@@ -84,7 +84,7 @@ export interface DrilldownFunction {
   preview?: string;
 }
 
-/** The prototype's names of the functions offered as previews, and their keys. */
+/** The listed names of the functions offered as previews, and their keys. */
 const PREVIEWS: Record<string, string> = { 'Value mapping': 'valuemap', 'JDBC Lookup': 'tableLookup', 'RFC Lookup': 'rfclookup' };
 
 export interface DrilldownGroup {
@@ -93,9 +93,9 @@ export interface DrilldownGroup {
 }
 
 /**
- * The functions drilldown: every catalogue function under its prototype group in the prototype's order, a
- * catalogue function the prototype does not list at the end of its family's group (a family without a group goes to
- * Node Functions), and the prototype's functions the catalogue lacks with their follow-up issue: Value mapping and the
+ * The functions drilldown: every listed catalogue function under its group in the listed order, a catalogue function
+ * the entries do not list at the end of its family's group (a family without a group goes to Node Functions), and the
+ * listed functions the catalogue lacks with their follow-up issue: Value mapping and the
  * lookups as previews, the others disabled.
  */
 export function drilldown(catalogue: FunctionCatalogue): DrilldownGroup[] {

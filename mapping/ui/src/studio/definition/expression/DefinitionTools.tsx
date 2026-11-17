@@ -59,7 +59,7 @@ export interface DefinitionBarProps {
   showMenu: ShowMenu;
 }
 
-/** The Definition tab's tool bar (the prototype's definition bar). */
+/** The Definition tab's tool bar. */
 export function DefinitionBar({ editing, dataFlow, onDataFlow, view, onView, onChooseMessages, onClearMapping, onDependencies, dependencyItems, showMenu }: DefinitionBarProps) {
   return (
     <div className="definition-bar panel" role="toolbar" aria-label="Definition actions">
@@ -86,8 +86,7 @@ export function DefinitionBar({ editing, dataFlow, onDataFlow, view, onView, onC
 }
 
 /**
- * The Mapping expression header: its title and target field, the queue test input (the prototype's QueueInputTools: the
- * test instance tools, a preview, without Generate; a file must parse), its pane size tools.
+ * The Mapping expression header: its title and target field, the queue test input (the test instance tools, a preview, without Generate; a file must parse), its pane size tools.
  */
 export function ExpressionHeader({ targetField, view, onView, instances }: { targetField: FieldPath | null; view: SplitView; onView: (view: SplitView) => void; instances: Omit<InstanceToolsProps, 'validateFile' | 'selectLabel'> }) {
   const path = targetField === null ? '' : `/${localPath(targetField)}`;

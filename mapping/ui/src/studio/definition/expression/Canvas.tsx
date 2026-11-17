@@ -89,7 +89,7 @@ function connection(model: MappingModel, targetField: FieldPath, source: string,
   return to === 'target' ? setResult(model, { targetField, box: source }) : wire(model, { targetField, source, target: to.box, slot: to.slot });
 }
 
-/** The prototype's ViewFit: the first view fits the nodes at zoom 1, an added node off screen is centred, a resize keeps the centre. */
+/** The first view fits the nodes at zoom 1, an added node off screen is centred, a resize keeps the centre. */
 function ViewFit({ nodeIds, host }: { nodeIds: string; host: RefObject<HTMLElement | null> }) {
   const flow = useReactFlow();
   const initialized = useNodesInitialized();
@@ -666,7 +666,7 @@ function Drawing({ mappingId, store, session, targetField, catalogue, browserSta
   );
 }
 
-/** The mapping expression canvas of one target field mapping (the prototype's Canvas), with its functions drilldown and tools. */
+/** The mapping expression canvas of one target field mapping, with its functions drilldown and tools. */
 export function Canvas(props: CanvasProps) {
   return (
     <ReactFlowProvider>

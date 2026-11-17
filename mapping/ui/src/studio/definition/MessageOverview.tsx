@@ -5,7 +5,7 @@ import { stepName } from '../../model/field-path';
 import type { DependencyView } from './expression/DefinitionTools';
 import { SideBySide } from '../shared/SplitLayout';
 
-/** A source field a target field mapping reads, and the functions on the way (the prototype's `sourceLinks`). */
+/** A source field a target field mapping reads, and the functions on the way */
 interface FieldLink {
   source: FieldPath;
   target: FieldPath;
@@ -51,8 +51,8 @@ interface FieldConnectionsProps {
 }
 
 /**
- * The prototype's field connections: a curve from each source field row to each target field row whose mapping reads it,
- * both in view, with a function mark when functions lie between; a curve selects its target field.
+ * The field connections: a curve from each source field row to each target field row whose mapping reads it, both in
+ * view, with a function mark when functions lie between; a curve selects its target field.
  */
 function FieldConnections({ model, targets, selectedTarget, onSelect }: FieldConnectionsProps) {
   const gutter = useRef<HTMLDivElement>(null);
@@ -145,8 +145,8 @@ export interface MessageOverviewProps {
 }
 
 /**
- * The source and target message panes side by side (the prototype's MessageOverview), the width between them resizable
- * and kept per user; while the Dependencies tool shows them, the field connections stand between the panes instead.
+ * The source and target message panes side by side, the width between them resizable and kept per user; while the
+ * Dependencies tool shows them, the field connections stand between the panes instead.
  */
 export function MessageOverview({ browserState, model, dependencies, selectedTarget, onSelect, children }: MessageOverviewProps) {
   return (

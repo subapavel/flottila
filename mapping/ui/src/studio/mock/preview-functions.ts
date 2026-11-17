@@ -1,6 +1,6 @@
 import { LOOKUPS_ISSUE, VALUE_MAPPING_ISSUE, type PreviewParam } from './definition-preview';
 
-/** A parameter of a preview function, as the prototype's standard-functions.json declares it. */
+/** A parameter of a preview function. */
 export interface PreviewFunctionParameter {
   key: string;
   label: string;
@@ -8,7 +8,7 @@ export interface PreviewFunctionParameter {
   initial: PreviewParam;
 }
 
-/** A function the catalogue lacks that the drilldown offers as a preview: the prototype's entry. */
+/** A function the catalogue lacks that the drilldown offers as a preview. */
 export interface PreviewFunction {
   key: 'valuemap' | 'tableLookup' | 'rfclookup';
   name: string;
@@ -19,7 +19,7 @@ export interface PreviewFunction {
   issue: number;
 }
 
-/** The prototype's Value mapping, JDBC Lookup and RFC Lookup (standard-functions.json), in its order. */
+/** The preview functions: Value mapping, JDBC Lookup and RFC Lookup. */
 export const PREVIEW_FUNCTIONS: readonly PreviewFunction[] = [
   {
     key: 'valuemap',
@@ -28,7 +28,7 @@ export const PREVIEW_FUNCTIONS: readonly PreviewFunction[] = [
     output: true,
     issue: VALUE_MAPPING_ISSUE,
     parameters: [
-      // the prototype's http://sap.com/xi/XI goes: the studio has no namespace
+      // no namespace parameter (http://sap.com/xi/XI): the studio has no namespace
       { key: 'context', label: 'Value-Mapping Context', type: 'String', initial: '' },
       { key: 'agency1', label: 'Source Agency', type: 'vmsagency', initial: 'SenderParty' },
       { key: 'schema1', label: 'Source Schema', type: 'String', initial: '' },
@@ -70,9 +70,9 @@ export const PREVIEW_FUNCTIONS: readonly PreviewFunction[] = [
 
 export const previewFunction = (key: string): PreviewFunction | undefined => PREVIEW_FUNCTIONS.find((f) => f.key === key);
 
-/** A preview function's parameters with their initial values (the prototype's standardNodeData). */
+/** A preview function's parameters with their initial values. */
 export const initialParams = (fn: PreviewFunction): Record<string, PreviewParam> => Object.fromEntries(fn.parameters.map((p) => [p.key, p.initial]));
 
-/** The prototype's lookup catalogue: the one RFC module it offers; no database table. */
+/** The lookup catalogue: the one RFC module it offers; no database table. */
 export const RFC_MODULE = 'SXIDEMO_AIRL_FLIGHT_CHECKAVAIL';
 export const RFC_NAMESPACE = 'urn:sap-com:document:sap:rfc:functions';
