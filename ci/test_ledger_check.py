@@ -1,4 +1,4 @@
-"""Tests for ci/ledger_check.py — the table-shape guard on agent/BACKLOG.md and docs/DECISIONS.md (FIX-139).
+"""Tests for ci/ledger_check.py — the table-shape guard on docs/archive/agent/BACKLOG.md and docs/DECISIONS.md (FIX-139).
 
 Run: python3 -m unittest ci.test_ledger_check  (from the repository root; also run by the CI build job)
 
@@ -57,14 +57,14 @@ class LedgerCheckTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        (self.root / "agent").mkdir()
-        (self.root / "docs").mkdir()
+        (self.root / "docs" / "archive" / "agent").mkdir(parents=True)
+        (self.root / "docs").mkdir(exist_ok=True)
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def write(self, backlog_lines=None, decisions_lines=None):
-        (self.root / "agent" / "BACKLOG.md").write_text(
+        (self.root / "docs" / "archive" / "agent" / "BACKLOG.md").write_text(
             "\n".join(backlog_lines if backlog_lines is not None else backlog(GOOD_BACKLOG_ROWS)) + "\n")
         (self.root / "docs" / "DECISIONS.md").write_text(
             "\n".join(decisions_lines if decisions_lines is not None else decisions(GOOD_DECISIONS_ROWS)) + "\n")
@@ -226,7 +226,7 @@ class LedgerCheckTest(unittest.TestCase):
 
     def test_a_missing_ledger_file_fails_rather_than_passing_quietly(self):
         # A guard that exits 0 when its input is renamed, moved or deleted asserts something false.
-        for missing in ("docs/DECISIONS.md", "agent/BACKLOG.md"):
+        for missing in ("docs/DECISIONS.md", "docs/archive/agent/BACKLOG.md"):
             with self.subTest(missing=missing):
                 self.write()
                 (self.root / missing).unlink()
@@ -253,7 +253,7 @@ class LedgerCheckTest(unittest.TestCase):
     # Depends-on cell, in a title or in prose is not an allocation.
     #
     # Padding: neither real ledger contains a pair of ids differing only by padding (checked by hand over
-    # docs/DECISIONS.md and agent/BACKLOG.md on 2026-11-15), but an id cell is the cell's text stripped, so
+    # docs/DECISIONS.md and docs/archive/agent/BACKLOG.md on 2026-11-15), but an id cell is the cell's text stripped, so
     # two rows that pad the same id differently are the same id; one case below pins that.
 
     @staticmethod
@@ -320,7 +320,7 @@ class LedgerCheckTest(unittest.TestCase):
         self.assertEqual("ledgers: well-formed", output.strip(), f"unexpected extra output: {output!r}")
 
     def test_the_repeated_id_header_of_several_tables_in_one_file_is_not_a_duplicate_id(self):
-        # agent/BACKLOG.md really holds six tables, each headed `| Id | ... |` over the same separator; header
+        # docs/archive/agent/BACKLOG.md really holds six tables, each headed `| Id | ... |` over the same separator; header
         # and separator rows are not rows that allocate an id. Three tables, so the word `Id` heads three rows:
         # with only two, a check that lets a table stay open across the prose between tables (and so reads the
         # next header as a data row allocating the id `Id`) sees that id once, finds no duplicate and passes.
@@ -350,7 +350,7 @@ class LedgerCheckTest(unittest.TestCase):
         code, output = self.run_check()
         self.assertNotEqual(0, code, output)
         expected_shape = [
-            f"LEDGER SHAPE: agent/BACKLOG.md:{b_lines.index(shape_b) + 1}: expected 6 cells, found 7 "
+            f"LEDGER SHAPE: docs/archive/agent/BACKLOG.md:{b_lines.index(shape_b) + 1}: expected 6 cells, found 7 "
             f"(wrong cell count)",
             f"LEDGER SHAPE: docs/DECISIONS.md:{d_lines.index(shape_d) + 1}: expected at most 4 cells, found 5 "
             f"(wrong cell count)",
@@ -389,7 +389,7 @@ class LedgerCheckTest(unittest.TestCase):
                          f"a run whose only problems are duplicate ids must not be summarised as clean: {output!r}")
 
     def test_the_same_id_in_two_different_tables_of_one_file_is_a_duplicate(self):
-        # The rule is "within one ledger file", not "within one table": agent/BACKLOG.md holds six tables, and
+        # The rule is "within one ledger file", not "within one table": docs/archive/agent/BACKLOG.md holds six tables, and
         # two sessions that each append to a different table (a phase table and a fix table) are exactly the
         # collision this guard exists for. A check that keys its occurrences per table never sees this pair.
         first = "| P0-09 | Admission bytes | P0-05 | ready | bytes counted | — |"

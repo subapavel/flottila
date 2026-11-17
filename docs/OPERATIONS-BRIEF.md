@@ -168,7 +168,7 @@
 - **R8 also acts by itself, configurable** — e.g. N failed logins, then a block — for technical
   users too: the owner counts the user name as sensitive, and a lockout is a signal that it leaked.
 
-## 7. Parked by the owner (rows in `agent/BACKLOG.md`)
+## 7. Parked by the owner (rows in `docs/archive/agent/BACKLOG.md`)
 
 - Custom code as a whole (CONSIDER-19): Java code inside the platform with database, cache and
   third-party libraries, as an EJB on SAP NetWeaver Java; its work outside a message; the link

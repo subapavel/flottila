@@ -75,6 +75,6 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 
 ## 5. Phase 0 order
 
-As rows `P0-01` … `P0-GATE` in `agent/BACKLOG.md`: root pom and modules (old tree becomes
+As rows `P0-01` … `P0-GATE` in `docs/archive/agent/BACKLOG.md`: root pom and modules (old tree becomes
 `flottila-m1`), CI, ArchUnit, `api` import, batcher port, WorkQueue import, migrations, removal of
 `flottila-m1`, native bench baseline, the two spikes, the JSON Schemas.

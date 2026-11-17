@@ -2,7 +2,7 @@
 
 Agreed 2026-10-17. Autonomous execution (Part B) stops at `GATE_MET` when every check below holds,
 each verified by the command given and recorded in `HANDOVER.md`. The gate sits after Phase 1 and
-covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
+covers the Phase 2 pieces the two demo flows need; see `docs/archive/agent/BACKLOG.md`.
 
 ## Checks
 

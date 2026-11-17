@@ -1,7 +1,7 @@
 # Core rework — the owner's brief
 
 > **Status:** approved by the owner on 2026-11-03 (CORE-0, D-103), written by the architect from
-> the owner's brainstorm the same day. **Priority 1**: until row CORE-GATE in `agent/BACKLOG.md`
+> the owner's brainstorm the same day. **Priority 1**: until row CORE-GATE in `docs/archive/agent/BACKLOG.md`
 > is `done`, no other row is taken except "fix main" (WORKFLOW §3). Where this brief and `docs/ARCHITECTURE.md` differ,
 > this brief is the owner's intent; ARCHITECTURE is rewritten to it in CORE-12, with a changelog
 > entry per section. The owner may change any architecture decision when performance is not met;
@@ -72,7 +72,7 @@ The causes the owner accepts as design holes:
 - **Copies lost**: a survivor re-replicates the segments it shared with the lost node to restore
   the configured count.
 
-## 4. Order of work (rows in `agent/BACKLOG.md` §Core rework)
+## 4. Order of work (rows in `docs/archive/agent/BACKLOG.md` §Core rework)
 
 1. CORE-0 — the owner closes the brainstorm: §5 answered, this brief approved.
 2. CORE-1 — the targets and the reference machine (§5 Q-1, Q-2).
