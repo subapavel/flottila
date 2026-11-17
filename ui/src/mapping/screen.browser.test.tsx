@@ -6,22 +6,16 @@ import { Shell } from '../Shell';
 import type { ApiClient } from './api/client';
 import { fakeApiClient } from './api/fake/fake-api';
 import { mappingsScreen } from './screen';
-import type { BrowserStateStore } from './studio/browser-state/browser-state';
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 let consoleError: ReturnType<typeof vi.spyOn>;
 
-function memoryBrowserState(): BrowserStateStore {
-  const values = new Map<string, unknown>();
-  return { read: (key) => values.get(key), write: (key, value) => void values.set(key, value) };
-}
-
 function render(api: ApiClient) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  root.render(<Shell screens={[mappingsScreen(api, memoryBrowserState())]} start="mappings" />);
+  root.render(<Shell screens={[mappingsScreen(api)]} start="mappings" />);
 }
 
 // the shell's tabs; the studio's own tabs are named Overview and the like

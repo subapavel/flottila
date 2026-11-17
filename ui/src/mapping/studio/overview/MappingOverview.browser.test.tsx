@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import type { ApiClient } from '../../api/client';
 import { fakeApiClient } from '../../api/fake/fake-api';
-import type { BrowserStateStore } from '../browser-state/browser-state';
 import type { MappingModel } from '../../generated/mapping-model';
 import { Studio } from '../Studio';
 
@@ -12,16 +11,11 @@ let root: Root | undefined;
 let host: HTMLElement | undefined;
 let consoleError: ReturnType<typeof vi.spyOn>;
 
-function memoryBrowserState(): BrowserStateStore {
-  const values = new Map<string, unknown>();
-  return { read: (key) => values.get(key), write: (key, value) => void values.set(key, value) };
-}
-
 function renderStudio(api: ApiClient, mappingId: string) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  root.render(<Studio mappingId={mappingId} api={api} browserState={memoryBrowserState()} />);
+  root.render(<Studio mappingId={mappingId} api={api} />);
 }
 
 const details = () => page.getByRole('region', { name: 'Overview' });
