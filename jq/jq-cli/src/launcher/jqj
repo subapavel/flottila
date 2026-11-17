@@ -1,0 +1,6 @@
+#!/bin/sh
+# The jqj launcher (ADR-0013), copied to target/jqj by package: runs the command line on the module path lib/ beside
+# it, which package fills with jq-cli, jq-core and their runtime dependencies. Linux only in milestone 1. When
+# JAVA_HOME is set, its bin/java runs jqj; otherwise the java on PATH.
+lib=$(dirname "$0")/lib
+exec "${JAVA_HOME:+$JAVA_HOME/bin/}java" -p "$lib" -m io.github.subapavel.jqj.cli/io.github.subapavel.jqj.cli.Main "$@"

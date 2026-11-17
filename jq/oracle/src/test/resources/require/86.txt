@@ -1,0 +1,20 @@
+# The required cases of #86 "Binder and Resolver lower left-associative operator chains without recursion" (F-44,
+# ADR-0020): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# differential: every case of chains.cases.
+chains/in-level-errors-in-source-order
+chains/inner-levels-right-first-along-a-sum
+chains/inner-levels-of-a-sum-under-and
+chains/inner-levels-of-and-over-a-sum
+chains/inner-levels-of-or-over-a-sum-under-alternative
+chains/inner-levels-of-a-product-in-a-difference
+chains/assignment-under-alternative-is-inner-levels
+chains/folded-prefix-then-a-term
+chains/folded-prefix-then-terms
+chains/comparisons-in-and-or
+chains/difference-is-left-associative
+chains/quotient-is-left-associative
+chains/difference-of-generators-in-jq-order
+chains/and-or-of-generators-in-jq-order
+chains/folded-prefix-then-generators-in-jq-order

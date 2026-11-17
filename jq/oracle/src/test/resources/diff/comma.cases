@@ -1,0 +1,41 @@
+# Differential cases (ADR-0020) of #63: the comma; format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# DiffCase.java. Expected outputs live in comma.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every
+# case uses -c.
+
+# P5: the left results, then the right ones; an error on either side ends the run where it is raised.
+
+case comma/fields
+arg -c
+filter .a, .b
+stdin {"a":1,"b":2}\n
+end
+
+case comma/three
+arg -c
+filter .a, .b, .a
+stdin {"a":1,"b":2}\n
+end
+
+case comma/nulls
+arg -c
+filter .x, .y
+stdin {}\n
+end
+
+case comma/pipe-order
+arg -c
+filter (.a, .b) | (., .)
+stdin {"a":1,"b":2}\n
+end
+
+case comma/error-in-second
+arg -c
+filter .[0], .a
+stdin [5]\n
+end
+
+case comma/error-in-first
+arg -c
+filter .a, 1
+stdin [1]\n
+end

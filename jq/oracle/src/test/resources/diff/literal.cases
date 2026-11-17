@@ -1,0 +1,354 @@
+# Differential cases (ADR-0020) of #61 "S2a.11 Literals and the full lexer": number, string, true, false and null
+# literals, the lexical errors with their error blocks (ADR-0031), bare @text, ."string" and comments. No case holds
+# an interpolation: every "...\(f)..." is a Stub here and belongs to #67 (F-35). Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java; a backslash of the filter is \\ here, a raw
+# TAB \t, a raw LF \n and a raw CR \x0d. Expected outputs live in literal.rec, written by scripts/oracle-record.sh
+# only. Ids are immutable. Every case uses -c: the input is irrelevant to a literal, so it is null unless stated.
+
+# keywords that are literals
+
+case literal/true
+arg -c
+filter true
+stdin null\n
+end
+
+case literal/false
+arg -c
+filter false
+stdin null\n
+end
+
+case literal/null
+arg -c
+filter null
+stdin 1\n
+end
+
+# numbers: the lexer's lenient forms, then the canonical form at and past the exponent limits (ADR-0012).
+
+case literal/number-integer
+arg -c
+filter 42
+stdin null\n
+end
+
+case literal/number-leading-dot
+arg -c
+filter .5
+stdin null\n
+end
+
+case literal/number-trailing-dot
+arg -c
+filter 1.
+stdin null\n
+end
+
+case literal/number-leading-zeros
+arg -c
+filter 007
+stdin null\n
+end
+
+case literal/number-zeros-around-point
+arg -c
+filter 00.50
+stdin null\n
+end
+
+case literal/number-trailing-zero
+arg -c
+filter 1.10
+stdin null\n
+end
+
+case literal/number-exponent
+arg -c
+filter 1e2
+stdin null\n
+end
+
+case literal/number-trailing-dot-exponent
+arg -c
+filter 1.e2
+stdin null\n
+end
+
+case literal/number-leading-dot-zero-exponent
+arg -c
+filter .0e1
+stdin null\n
+end
+
+case literal/number-zero-exponent
+arg -c
+filter 0e5
+stdin null\n
+end
+
+case literal/number-small
+arg -c
+filter 0.0000001
+stdin null\n
+end
+
+case literal/number-21-digits
+arg -c
+filter 100000000000000000001
+stdin null\n
+end
+
+case literal/number-exponent-1000
+arg -c
+filter 1e1000
+stdin null\n
+end
+
+case literal/number-infinity-literal
+arg -c
+filter 1e1000000000
+stdin null\n
+end
+
+case literal/number-below-lower-limit
+arg -c
+filter 5e-1147483647
+stdin null\n
+end
+
+# strings: every JSON escape in one escape run, a lone low surrogate, raw TAB and LF inside a literal.
+
+case literal/string-escapes
+arg -c
+filter "\\"\\\\\\/\\b\\f\\n\\r\\té😀\\u0000"
+stdin null\n
+end
+
+case literal/string-empty
+arg -c
+filter ""
+stdin null\n
+end
+
+case literal/string-surrogate-pair
+arg -c
+filter "\\ud83d\\ude00"
+stdin null\n
+end
+
+case literal/string-lone-low-surrogate
+arg -c
+filter "a\\udc00"
+stdin null\n
+end
+
+case literal/string-raw-tab
+arg -c
+filter "a\tb"
+stdin null\n
+end
+
+case literal/string-raw-lf
+arg -c
+filter "a\nb"
+stdin null\n
+end
+
+# lexical errors, rc 3: one error block per bad escape run, then jq's count line (ADR-0031).
+
+case literal/error-escape-mid
+arg -c
+filter "u\\vw"
+stdin null\n
+end
+
+case literal/error-u-short
+arg -c
+filter "\\u12"
+stdin null\n
+end
+
+case literal/error-u-not-hex
+arg -c
+filter "\\uZZZZ"
+stdin null\n
+end
+
+case literal/error-high-surrogate-alone
+arg -c
+filter "\\ud800"
+stdin null\n
+end
+
+case literal/error-high-surrogate-then-escape
+arg -c
+filter "\\ud83d\\n"
+stdin null\n
+end
+
+case literal/error-two-blocks
+arg -c
+filter "\\va\\q"
+stdin null\n
+end
+
+case literal/error-byte-column
+arg -c
+filter "é\\v"
+stdin null\n
+end
+
+case literal/error-line-3
+arg -c
+filter .\n|\n"a\\v"
+stdin null\n
+end
+
+case literal/error-backslash-lf
+arg -c
+filter "\\\n"
+stdin null\n
+end
+
+case literal/error-backslash-tab
+arg -c
+filter "\\\t"
+stdin null\n
+end
+
+case literal/error-backslash-crlf
+arg -c
+filter "\\\x0d\n"
+stdin null\n
+end
+
+# The escape run takes the backslash and the first byte of é; jq-ref prints U+FFFD for that byte in the "while
+# parsing" part and the raw bytes in the source line (ADR-0031).
+case literal/error-backslash-e-acute
+arg -c
+filter "\\é"
+stdin null\n
+end
+
+# bare @text, which formats its input as tostring does.
+
+case literal/format-text-string
+arg -c
+filter @text
+stdin "é"\n
+end
+
+case literal/format-text-number
+arg -c
+filter @text
+stdin 1.10\n
+end
+
+case literal/format-text-21-digits
+arg -c
+filter @text
+stdin 100000000000000000001\n
+end
+
+case literal/format-text-array
+arg -c
+filter @text
+stdin [1,"b",null]\n
+end
+
+case literal/format-text-object
+arg -c
+filter @text
+stdin {"a":{"b":true}}\n
+end
+
+case literal/format-text-null
+arg -c
+filter @text
+stdin null\n
+end
+
+# ."string" and a string term: the key is a string literal.
+
+case literal/access-string-missing
+arg -c
+filter ."b"
+stdin {"a":1}\n
+end
+
+case literal/access-dot-space-string
+arg -c
+filter . "a"
+stdin {"a":1}\n
+end
+
+case literal/access-escaped-key
+arg -c
+filter ."a\\"b"
+stdin {"a\\"b":2}\n
+end
+
+# 15 times é, 30 bytes: the name in the message is cut to a UTF-8 boundary.
+case literal/access-long-name-error
+arg -c
+filter ."ééééééééééééééé"
+stdin "x"\n
+end
+
+case literal/access-string-term-field
+arg -c
+filter "abc".x
+stdin null\n
+end
+
+case literal/access-field-e0
+arg -c
+filter .e0
+stdin {"e0":1,"e":2}\n
+end
+
+case literal/access-dot-digit-is-number
+arg -c
+filter .5
+stdin {"5":1}\n
+end
+
+# comments: # runs to the LF; an odd run of backslashes before the LF, or before CR LF, continues it; CR alone does
+# not end it.
+
+case literal/comment-lf
+arg -c
+filter .a # c\n.b
+stdin {"a":{"b":1}}\n
+end
+
+case literal/comment-continued
+arg -c
+filter .a # c\\\n.b
+stdin {"a":{"b":1}}\n
+end
+
+case literal/comment-escaped-backslash
+arg -c
+filter .a # c\\\\\n.b
+stdin {"a":{"b":1}}\n
+end
+
+case literal/comment-continued-crlf
+arg -c
+filter .a # c\\\x0d\n.b
+stdin {"a":{"b":1}}\n
+end
+
+case literal/comment-cr-is-no-line-end
+arg -c
+filter .a # c\x0d.b
+stdin {"a":{"b":1}}\n
+end
+
+case literal/comment-at-end
+arg -c
+filter .a # c
+stdin {"a":{"b":1}}\n
+end

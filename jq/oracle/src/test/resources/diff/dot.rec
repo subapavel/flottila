@@ -1,0 +1,106 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case dot/null
+def 3cc0a92c7553
+rc 0
+stdout null\n
+stderr
+end
+
+case dot/true
+def 610c1020d00d
+rc 0
+stdout true\n
+stderr
+end
+
+case dot/false
+def 256721eeb214
+rc 0
+stdout false\n
+stderr
+end
+
+case dot/number
+def 2367e1f74c67
+rc 0
+stdout [-0,100000000000000000000,-1.5]\n
+stderr
+end
+
+case dot/string
+def 4b37e990cc38
+rc 0
+stdout "a b/c é€𝄞 x"\n
+stderr
+end
+
+case dot/array
+def 68310399790a
+rc 0
+stdout [1,"two",[null],{},[true,false]]\n
+stderr
+end
+
+case dot/object
+def 8356fca80f2e
+rc 0
+stdout {"a":1,"b":[true,false],"c":{"d":null,"e":"f"}}\n
+stderr
+end
+
+case dot/empty-stdin
+def 2df9774d29dc
+rc 0
+stdout
+stderr
+end
+
+case dot/whitespace-stdin
+def 5963fbbb788e
+rc 0
+stdout
+stderr
+end
+
+case dot/crlf-around
+def 34a7d1f56b09
+rc 0
+stdout {"a":[1,2]}\n
+stderr
+end
+
+case dot/no-filter
+def 1a55c41e7b9e
+rc 0
+stdout [1,{"b":null}]\n
+stderr
+end
+
+case dot/nested-empty
+def 0ee931118ee6
+rc 0
+stdout [[],{},[[]],{"a":{}},[{}],{"b":[[],{}]},[[[[]]]]]\n
+stderr
+end
+
+case dot/duplicate-keys
+def 875e6ab23081
+rc 0
+stdout {"x":9,"a":3,"b":2,"n":{"k":[2]},"o":[{"k":{"j":3}}]}\n
+stderr
+end
+
+case dot/raw-utf8
+def 64aa95d0d90a
+rc 0
+stdout {"ключ":["é","€","𝄞","􏿿"," ","￿",""],"π":"퟿"}\n
+stderr
+end
+
+case dot/filter-whitespace
+def dbe79368be91
+rc 0
+stdout {"a":1}\n
+stderr
+end

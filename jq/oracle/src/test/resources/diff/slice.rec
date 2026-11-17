@@ -1,0 +1,1618 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case slice/one-two-null
+def 67b9bf2ce9c0
+rc 0
+stdout null\n
+stderr
+end
+
+case slice/one-two-true
+def b21bf635306a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with object ({"start":1,"end":2})\n
+end
+
+case slice/one-two-number
+def c2582a116b2a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with object ({"start":1,"end":2})\n
+end
+
+case slice/one-two-string
+def 5adb7eeb6267
+rc 0
+stdout "b"\n
+stderr
+end
+
+case slice/one-two-array
+def 5befa3f1214f
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/one-two-object
+def 6e95c7fe2a23
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"start":1,"end":2})\n
+end
+
+case slice/to-two-null
+def b1dd6e854597
+rc 0
+stdout null\n
+stderr
+end
+
+case slice/to-two-true
+def 7254f8665fb5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with object ({"start":null,"end":2})\n
+end
+
+case slice/to-two-number
+def d54a9f6be12f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with object ({"start":null,"end":2})\n
+end
+
+case slice/to-two-string
+def 5925a168a0db
+rc 0
+stdout "ab"\n
+stderr
+end
+
+case slice/to-two-array
+def 010404dd6ba8
+rc 0
+stdout [1]\n
+stderr
+end
+
+case slice/to-two-object
+def 974d4b1e90bc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"start":null,"end":2})\n
+end
+
+case slice/string-from-null
+def 55ebbe9579b3
+rc 0
+stdout null\n
+stderr
+end
+
+case slice/string-from-true
+def 3691f1c8a6e5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with object ({"start":"x","end":null})\n
+end
+
+case slice/string-from-number
+def ab1d5dd32f46
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with object ({"start":"x","end":null})\n
+end
+
+case slice/string-from-string
+def 2a64833e30cf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/string-from-array
+def fb7d5d328979
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/string-from-object
+def e44f6bfc9af0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"start":"x","end":null})\n
+end
+
+case slice/one-from-quiet-null
+def 3ca26f9a53d7
+rc 0
+stdout null\n
+stderr
+end
+
+case slice/one-from-quiet-true
+def a3ddf2f328cf
+rc 0
+stdout
+stderr
+end
+
+case slice/one-from-quiet-number
+def b3582915a833
+rc 0
+stdout
+stderr
+end
+
+case slice/one-from-quiet-string
+def c92ca028fd1e
+rc 0
+stdout "bc"\n
+stderr
+end
+
+case slice/one-from-quiet-array
+def 5fe4574b0cb0
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/one-from-quiet-object
+def f2d27d98cdc3
+rc 0
+stdout
+stderr
+end
+
+case slice/array-null-null
+def 88148a05181b
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-null-1.2
+def 65efad4dd6aa
+rc 0
+stdout [0,1]\n
+stderr
+end
+
+case slice/array-null-3.5
+def 731245ba6bb9
+rc 0
+stdout [0,1,2,3]\n
+stderr
+end
+
+case slice/array-null-m2
+def ad7fb2fa8121
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case slice/array-null-m10
+def 6e6e15bf3111
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-null-10
+def 9b42e8f0f4ff
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-null-1e300
+def 030e3132a0b0
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-null-m1e300
+def a80916b32b7f
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-null-nan
+def 1d6496ffcd6f
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-1.2-null
+def c33eeddefa85
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case slice/array-1.2-1.2
+def 5ee9e8c67609
+rc 0
+stdout [1]\n
+stderr
+end
+
+case slice/array-1.2-3.5
+def d90bc4109b2d
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case slice/array-1.2-m2
+def 4cc1e975f155
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case slice/array-1.2-m10
+def 14948672ca84
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1.2-10
+def 93463f1f213d
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case slice/array-1.2-1e300
+def 34b21ea0c9e0
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case slice/array-1.2-m1e300
+def de9071b7fda6
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1.2-nan
+def 1c8a5451b520
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case slice/array-3.5-null
+def fd6aebbe2ba0
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-3.5-1.2
+def 0eda4d748bc0
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-3.5-3.5
+def fa2fea51fa43
+rc 0
+stdout [3]\n
+stderr
+end
+
+case slice/array-3.5-m2
+def bb9b9b5b96df
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-3.5-m10
+def 5f0d90cd03b4
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-3.5-10
+def 9c9bc655e104
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-3.5-1e300
+def 77f7efc652e5
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-3.5-m1e300
+def 95b0c12eac33
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-3.5-nan
+def 026f0a4c1f01
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-m2-null
+def a11b2f65b53f
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-m2-1.2
+def 99d21f034aee
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m2-3.5
+def 48471653fbea
+rc 0
+stdout [3]\n
+stderr
+end
+
+case slice/array-m2-m2
+def a452e60d19d5
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m2-m10
+def d7d3a86cf64c
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m2-10
+def 33ca18879ce3
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-m2-1e300
+def 4795eea0e3a4
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-m2-m1e300
+def f70d48af9905
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m2-nan
+def 75d7135f674c
+rc 0
+stdout [3,4]\n
+stderr
+end
+
+case slice/array-m10-null
+def f71af7f08177
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m10-1.2
+def 0ab97e57c751
+rc 0
+stdout [0,1]\n
+stderr
+end
+
+case slice/array-m10-3.5
+def 9637e74bbe5a
+rc 0
+stdout [0,1,2,3]\n
+stderr
+end
+
+case slice/array-m10-m2
+def a4cf155c50fd
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case slice/array-m10-m10
+def 2863c698dcee
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m10-10
+def cb197096367b
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m10-1e300
+def f7bda14b7600
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m10-m1e300
+def 9aec6922810d
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m10-nan
+def 4c2f8a2ad98e
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-10-null
+def 45e59c7bcb6e
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-1.2
+def e0e4fb7a10e7
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-3.5
+def 55682b0fdfe9
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-m2
+def 1edf360e41c9
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-m10
+def ce330066b52b
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-10
+def d0b701c25cb6
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-1e300
+def 89eed72d0803
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-m1e300
+def 81dc7bb241b4
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-10-nan
+def 3027a0e44d79
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-null
+def e7d0c21ed819
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-1.2
+def c44e25cc08c7
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-3.5
+def 6e43e4bf09eb
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-m2
+def 8c7a1148ade0
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-m10
+def 4d0fce2168c9
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-10
+def c1cb62c286b3
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-1e300
+def 65e47c72800a
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-m1e300
+def a5f96dfc61af
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-1e300-nan
+def ee1c3134cd4d
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m1e300-null
+def 427aabbeec64
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m1e300-1.2
+def bcce9ee252ee
+rc 0
+stdout [0,1]\n
+stderr
+end
+
+case slice/array-m1e300-3.5
+def 03ca0618bcfc
+rc 0
+stdout [0,1,2,3]\n
+stderr
+end
+
+case slice/array-m1e300-m2
+def 784b6dbd2ba4
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case slice/array-m1e300-m10
+def 666fef28b4fe
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m1e300-10
+def 8591fb957599
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m1e300-1e300
+def ad82595238ba
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-m1e300-m1e300
+def c47df10a0098
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-m1e300-nan
+def c82508a6ce74
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-nan-null
+def 228fa3a837c5
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-nan-1.2
+def 0e89d8b9130c
+rc 0
+stdout [0,1]\n
+stderr
+end
+
+case slice/array-nan-3.5
+def 62bc8930f6df
+rc 0
+stdout [0,1,2,3]\n
+stderr
+end
+
+case slice/array-nan-m2
+def 78c9a88ef277
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case slice/array-nan-m10
+def 4b9284501a86
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-nan-10
+def b074802fa57d
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-nan-1e300
+def 1c3864c4ba83
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/array-nan-m1e300
+def 2ec36f71a14c
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/array-nan-nan
+def f20ddac14bfe
+rc 0
+stdout [0,1,2,3,4]\n
+stderr
+end
+
+case slice/string-null-null
+def e3778bca3c35
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-null-1.2
+def 25723e46401c
+rc 0
+stdout "é𝄞"\n
+stderr
+end
+
+case slice/string-null-3.5
+def fc076b9cf556
+rc 0
+stdout "é𝄞é𝄞"\n
+stderr
+end
+
+case slice/string-null-m2
+def 26bea4d11d54
+rc 0
+stdout "é𝄞é"\n
+stderr
+end
+
+case slice/string-null-m10
+def 66cc9f645375
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-null-10
+def ac46102c705a
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-null-1e300
+def 39da98c173fe
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-null-m1e300
+def 5e507b455c98
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-null-nan
+def 90b71ea82717
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-1.2-null
+def f84693c25ced
+rc 0
+stdout "𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-1.2-1.2
+def 797cb6fc2b9c
+rc 0
+stdout "𝄞"\n
+stderr
+end
+
+case slice/string-1.2-3.5
+def 230786c2ab4f
+rc 0
+stdout "𝄞é𝄞"\n
+stderr
+end
+
+case slice/string-1.2-m2
+def 72169cffd850
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-1.2-m10
+def 6b53f9cbbc14
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1.2-10
+def ccebf214d148
+rc 0
+stdout "𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-1.2-1e300
+def 4212c7b4a4a2
+rc 0
+stdout "𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-1.2-m1e300
+def d4c9a66ac3c8
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1.2-nan
+def 697b616bc82d
+rc 0
+stdout "𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-3.5-null
+def e030edbddc2f
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-3.5-1.2
+def a1b3084f5af5
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-3.5-3.5
+def 1bc4b089d98f
+rc 0
+stdout "𝄞"\n
+stderr
+end
+
+case slice/string-3.5-m2
+def 2f8e1245fcd2
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-3.5-m10
+def b69bb85b6061
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-3.5-10
+def ca4119b9408a
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-3.5-1e300
+def 22d90c3c2ecd
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-3.5-m1e300
+def 06bdb27f9234
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-3.5-nan
+def 2fbdd2ae1987
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-m2-null
+def e278821c6c8e
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-m2-1.2
+def ad58e5208572
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m2-3.5
+def 441db423cd3a
+rc 0
+stdout "𝄞"\n
+stderr
+end
+
+case slice/string-m2-m2
+def 1d8893011424
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m2-m10
+def b032c8dd3ca5
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m2-10
+def 82e2f50e92d3
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-m2-1e300
+def 371929430271
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-m2-m1e300
+def 1634662d083f
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m2-nan
+def dccd7ed40e8a
+rc 0
+stdout "𝄞é"\n
+stderr
+end
+
+case slice/string-m10-null
+def 42fe6c0b4500
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m10-1.2
+def 256e99397063
+rc 0
+stdout "é𝄞"\n
+stderr
+end
+
+case slice/string-m10-3.5
+def d89323ef849a
+rc 0
+stdout "é𝄞é𝄞"\n
+stderr
+end
+
+case slice/string-m10-m2
+def 8defff6d83c2
+rc 0
+stdout "é𝄞é"\n
+stderr
+end
+
+case slice/string-m10-m10
+def 93f180c6f733
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m10-10
+def 1c00dd792776
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m10-1e300
+def b6c32aa1112d
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m10-m1e300
+def fa62c5b9ac70
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m10-nan
+def 47db1ca17e0a
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-10-null
+def a18ce88c928f
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-1.2
+def cb502efe3cea
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-3.5
+def 80686e1cdbdc
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-m2
+def 988141665dbd
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-m10
+def 9758b2af1889
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-10
+def de2734655435
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-1e300
+def 868e54731725
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-m1e300
+def 6d6d1d749225
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-10-nan
+def c69ab5b10041
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-null
+def 18bfb6006ffc
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-1.2
+def 0b0670b46c46
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-3.5
+def 6938f60ef097
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-m2
+def 858558140713
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-m10
+def 6b421d948687
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-10
+def 1ccb6e2e6f5b
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-1e300
+def c243ea0d8802
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-m1e300
+def fa7d7a1ccc65
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-1e300-nan
+def a1902ffbf06f
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m1e300-null
+def 5e47072e26e0
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m1e300-1.2
+def 779afabd28e1
+rc 0
+stdout "é𝄞"\n
+stderr
+end
+
+case slice/string-m1e300-3.5
+def 7814866e79ae
+rc 0
+stdout "é𝄞é𝄞"\n
+stderr
+end
+
+case slice/string-m1e300-m2
+def bbffaf0a045a
+rc 0
+stdout "é𝄞é"\n
+stderr
+end
+
+case slice/string-m1e300-m10
+def 8c46d84febc5
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m1e300-10
+def 90696696d4d9
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m1e300-1e300
+def 655f89acfa6e
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-m1e300-m1e300
+def 031efe21a05c
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-m1e300-nan
+def 11954146a404
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-nan-null
+def c7d4c4c0379b
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-nan-1.2
+def e6e5760ec063
+rc 0
+stdout "é𝄞"\n
+stderr
+end
+
+case slice/string-nan-3.5
+def 5ace34e83356
+rc 0
+stdout "é𝄞é𝄞"\n
+stderr
+end
+
+case slice/string-nan-m2
+def 7ec776a5e311
+rc 0
+stdout "é𝄞é"\n
+stderr
+end
+
+case slice/string-nan-m10
+def 4e95e37ba08a
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-nan-10
+def 8b0f408c53dd
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-nan-1e300
+def 1d4afeef8642
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/string-nan-m1e300
+def 91d27ae39a36
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/string-nan-nan
+def 08554e47f132
+rc 0
+stdout "é𝄞é𝄞é"\n
+stderr
+end
+
+case slice/array-start-after-end
+def daec814eb34d
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/string-start-after-end
+def e855d3c2eaf1
+rc 0
+stdout ""\n
+stderr
+end
+
+case slice/key-start-end-on-array
+def 7c4798523f8d
+rc 0
+stdout [1]\n
+stderr
+end
+
+case slice/key-start-end-on-string
+def e8d1c3c2096f
+rc 0
+stdout "b"\n
+stderr
+end
+
+case slice/key-start-only-on-array
+def 8be2656b8875
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-start-only-on-string
+def 6610b84eb904
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-empty-object-on-array
+def e0a9c9d7b257
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-empty-object-on-string
+def c9fd07210c02
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-bad-start-on-array
+def e3bc5a5a872f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-bad-start-on-string
+def f9c18b86da76
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/key-array-one-on-array
+def 7f739d81435a
+rc 0
+stdout [1,3]\n
+stderr
+end
+
+case slice/key-array-one-on-string
+def 55c509accec7
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with array ([1])\n
+end
+
+case slice/key-array-empty-on-array
+def 4a598f84eaf7
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/key-array-empty-on-string
+def 79fb28a31dd5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with array ([])\n
+end
+
+case slice/big-bounds-on-object
+def 83b9001cb104
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"start":100000000000,"en...})\n
+end
+
+case slice/order-bounds
+def 002b66bf2659
+rc 0
+stdout [0,1]\n[0,1,2]\n[1]\n[1,2]\n
+stderr
+end
+
+case slice/scope-bound-error-first
+def 6cd69d029954
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case slice/built-index
+def 8585d523603d
+rc 0
+stdout 1\n
+stderr
+end
+
+case slice/built-index-negative
+def 7e08213deba7
+rc 0
+stdout 3\n
+stderr
+end
+
+case slice/built-index-past-end
+def 89f19fdba474
+rc 0
+stdout null\n
+stderr
+end
+
+case slice/built-slice
+def d9e1c9b67690
+rc 0
+stdout [2]\n
+stderr
+end
+
+case slice/built-slice-negative
+def bb942080757b
+rc 0
+stdout [2,3]\n
+stderr
+end
+
+case slice/built-iterate
+def 85223b0cb4a7
+rc 0
+stdout [1]\n{"a":2}\n"x"\n
+stderr
+end
+
+case slice/built-iterate-postfix
+def 1c0ad9c8e697
+rc 0
+stdout [1]\n{"a":2}\n"x"\n
+stderr
+end
+
+case slice/built-iterate-empty
+def 9bc704396b9c
+rc 0
+stdout
+stderr
+end
+
+case slice/built-element-slice
+def 67cfdee13c5a
+rc 0
+stdout "bc"\n
+stderr
+end
+
+case slice/built-pretty
+def 8e7b0474eb82
+rc 0
+stdout [\n  [\n    1,\n    2\n  ],\n  {\n    "a": []\n  },\n  "x"\n]\n
+stderr
+end
+
+case slice/built-pretty-empty
+def ab4ab05f867c
+rc 0
+stdout []\n
+stderr
+end
+
+case slice/built-field-error
+def bad83800a069
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case slice/bad-start-on-array
+def b6e0f2b04b9b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/bad-end-on-array
+def 62f12e79e0ab
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/quiet-bad-start-on-array
+def a2145e29ddb9
+rc 0
+stdout
+stderr
+end
+
+case slice/quiet-bad-end-on-array
+def 664e29f320c3
+rc 0
+stdout
+stderr
+end
+
+case slice/quiet-bad-start-on-string
+def 5bf704a2e906
+rc 0
+stdout
+stderr
+end
+
+case slice/quiet-bad-then-more
+def 2a832ffcb159
+rc 0
+stdout 1\n
+stderr
+end
+
+case slice/quiet-bad-bound-from-input
+def 30adf99d1fc8
+rc 0
+stdout
+stderr
+end
+
+case slice/quiet-key-bad-start-on-array
+def 9e76e510260e
+rc 0
+stdout
+stderr
+end
+
+case slice/bound-true-on-array
+def 7c6a012eb0e5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/bound-array-on-array
+def b059a66ff118
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/bound-object-on-array
+def a5c651f1438a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/bound-true-on-string
+def 2d7f987485fa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Array/string slice indices must be integers\n
+end
+
+case slice/nan-bounds-on-array
+def 46ea9bd7a238
+rc 0
+stdout [0,1,2]\n[0,1,2]\n[0,1,2]\n[0]\n[1,2]\n
+stderr
+end
+
+case slice/nan-bounds-on-built-array
+def 7c115c65b242
+rc 0
+stdout [0,1,2]\n[0]\n
+stderr
+end
+
+case slice/nan-bounds-on-string
+def 36dbf0358459
+rc 0
+stdout "abc"\n"abc"\n"abc"\n"ab"\n"bc"\n
+stderr
+end
+
+case slice/nan-bounds-on-null
+def 383ff0ed50da
+rc 0
+stdout null\nnull\n
+stderr
+end

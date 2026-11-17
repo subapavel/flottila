@@ -1,0 +1,162 @@
+# Differential cases (ADR-0020) of #67 "S2a.17 Variables and destructuring": string interpolation (ADR-0038,
+# Intrinsic(Interpolate, parts), the last part outermost), each part printed as tostring prints it (a string's text
+# as is, anything else as its JSON text), the #61 hand-over's cases, a shorthand key and a field name that
+# interpolate, and @text over an interpolation. @base64 is not built yet, so no other format is here over an
+# interpolation; a format string without one is its text whatever the format, known or not (#67's standards review).
+# jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# interpolation.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# the #61 hand-over: "a\(.)b" on several inputs
+
+case interpolation/null
+arg -c
+filter "a\\(.)b"
+stdin null\n
+end
+
+case interpolation/number-text
+arg -c
+filter "a\\(.)b"
+stdin 1.10\n
+end
+
+case interpolation/number-large
+arg -c
+filter "a\\(.)b"
+stdin 100000000000000000001\n
+end
+
+case interpolation/string-non-ascii
+arg -c
+filter "a\\(.)b"
+stdin "\xc3\xa9"\n
+end
+
+case interpolation/object
+arg -c
+filter "a\\(.)b"
+stdin {"b":[1,"\xc3\xa9"]}\n
+end
+
+case interpolation/string-escapes
+arg -c
+filter "<\\(.)>"
+stdin "q\\"\\\\\\n\\u0001"\n
+end
+
+case interpolation/nested
+arg -c
+filter "a\\("b\\(.)c")d"
+stdin 1\n
+end
+
+case interpolation/text-format
+arg -c
+filter @text "x\\(.)"
+stdin [1]\n
+end
+
+case interpolation/sorted-keys
+arg -c
+arg -S
+filter "a\\(.)b"
+stdin {"b":1,"a":2}\n
+end
+
+case interpolation/ascii-output
+arg -c
+arg -a
+filter "a\\(.)b"
+stdin "\xc3\xa9"\n
+end
+
+# the order of results: the last part is the outer loop
+
+case interpolation/two-generators-in-array
+arg -c
+filter ["\\(1,2)\\(3,4)"]
+stdin null\n
+end
+
+case interpolation/two-generators-spaced
+arg -c
+filter "\\(1,2) \\(3,4)"
+stdin null\n
+end
+
+case interpolation/no-text-around
+arg -c
+filter "\\(.)"
+stdin [1,2]\n
+end
+
+case interpolation/error-in-part
+arg -c
+filter "a\\(.x)"
+stdin 1\n
+end
+
+# interpolation as a key and a field name
+
+case interpolation/shorthand-key
+arg -c
+filter {"\\(1,2)"}
+stdin {"1":"a","2":"b"}\n
+end
+
+case interpolation/field-name
+arg -c
+filter ."s\\(.q)"
+stdin {"q":1,"s1":2}\n
+end
+
+case interpolation/computed-key
+arg -c
+filter {"k\\(.)": .}
+stdin 1\n
+end
+
+# a format string without an interpolation: its text, the format applied to nothing
+
+case interpolation/plain-format-base64
+arg -c
+filter @base64 "k"
+stdin null\n
+end
+
+case interpolation/plain-format-text
+arg -c
+filter @text "a"
+stdin null\n
+end
+
+case interpolation/plain-format-json
+arg -c
+filter @json "<"
+stdin null\n
+end
+
+case interpolation/plain-format-html
+arg -c
+filter @html "<&>"
+stdin null\n
+end
+
+case interpolation/plain-format-unknown
+arg -c
+filter @foo "k"
+stdin null\n
+end
+
+case interpolation/plain-format-key
+arg -c
+filter {@base64 "k": 1}
+stdin null\n
+end
+
+case interpolation/plain-format-field
+arg -c
+filter .@json "a"
+stdin {"a":1}\n
+end

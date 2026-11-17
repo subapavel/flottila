@@ -1,0 +1,197 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case logic/not-truthiness
+def f19ffd13a109
+rc 0
+stdout [false,true,true,false,false,false,false,false]\n
+stderr
+end
+
+case logic/and-truthiness
+def 27f9de807f88
+rc 0
+stdout [true,true,true,true,true,true,false,false]\n
+stderr
+end
+
+case logic/or-truthiness
+def 7042f8096638
+rc 0
+stdout [true,true,true,true,true,true,false,false]\n
+stderr
+end
+
+case logic/not-of-the-document
+def 35b07f76e613
+rc 0
+stdout [false,true,true,false,false]\n
+stderr
+end
+
+case logic/results-are-booleans
+def 7153f5aee11c
+rc 0
+stdout [true,true,true,true]\n
+stderr
+end
+
+case logic/and-generators
+def d97029b0311b
+rc 0
+stdout [true,false,false]\n
+stderr
+end
+
+case logic/or-generators
+def a6fea1e12623
+rc 0
+stdout [true,true,false]\n
+stderr
+end
+
+case logic/and-left-outer
+def 7167dc32da72
+rc 0
+stdout [false,true,false]\n
+stderr
+end
+
+case logic/or-left-outer
+def 46cc6d0dcee2
+rc 0
+stdout [false,true,true]\n
+stderr
+end
+
+case logic/and-left-outer-error
+def 37b30ab550ab
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with number (0)\n
+end
+
+case logic/or-left-outer-error
+def 42fb8f726ec4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with number (0)\n
+end
+
+case logic/not-generator
+def 920e52037cc2
+rc 0
+stdout [false,true,true,false]\n
+stderr
+end
+
+case logic/and-false-skips-the-right
+def 2a3f73264162
+rc 0
+stdout [false]\n
+stderr
+end
+
+case logic/and-null-skips-the-right
+def a903ad825f7c
+rc 0
+stdout [false]\n
+stderr
+end
+
+case logic/and-true-runs-the-right
+def c5228ab61664
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case logic/or-true-skips-the-right
+def f29973dfdef4
+rc 0
+stdout [true]\n
+stderr
+end
+
+case logic/or-number-skips-the-right
+def a33c653ac2f6
+rc 0
+stdout [true]\n
+stderr
+end
+
+case logic/or-false-runs-the-right
+def 63c0613b69e8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case logic/and-left-error
+def e2b5e320524a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case logic/or-left-error
+def 8ff411309e3f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case logic/and-no-left-result
+def f2d15f475542
+rc 0
+stdout []\n
+stderr
+end
+
+case logic/and-no-right-result
+def 7898dffa308a
+rc 0
+stdout []\n
+stderr
+end
+
+case logic/or-no-right-result
+def 75b735197dfc
+rc 0
+stdout []\n
+stderr
+end
+
+case logic/or-no-right-result-skipped
+def 74f5761c5429
+rc 0
+stdout [true]\n
+stderr
+end
+
+case logic/and-false-skips-error-builtin
+def be666c55fb7a
+rc 0
+stdout [false]\n
+stderr
+end
+
+case logic/or-true-skips-error-builtin
+def eafdc982f9c6
+rc 0
+stdout [true]\n
+stderr
+end
+
+case logic/and-true-runs-error-builtin
+def 2303f24852cf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case logic/and-left-error-builtin
+def 97ed78824c37
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end

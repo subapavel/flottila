@@ -1,0 +1,104 @@
+# Differential cases (ADR-0020) of #86 "Binder and Resolver lower left-associative operator chains without recursion"
+# (F-44): the parser builds a chain of +, -, *, /, %, comparisons, and and or in a loop, and the Binder and the
+# Resolver walk it by a loop too. These cases pin that the loop keeps jq's order along a chain of mixed operators:
+# jq's binding errors by compile level (stderr compared byte for byte), an arithmetic operator's operands placing
+# their inner levels right first, an assignment's operands being inner levels under a //, and a folded prefix of
+# constants with the rest of the chain. Every case is required at #86 (oracle/src/test/resources/require/86.txt). The
+# long chains are pinned by jq-core OperatorChainTest. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/
+# diff/DiffCase.java. Expected outputs live in chains.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# binding errors along a chain
+
+case chains/in-level-errors-in-source-order
+arg -c
+filter zz1 + zz2 and zz3 or zz4
+stdin null\n
+end
+
+case chains/inner-levels-right-first-along-a-sum
+arg -c
+filter def f(g): g; f(zz1) + f(zz2) + f(zz3)
+stdin null\n
+end
+
+case chains/inner-levels-of-a-sum-under-and
+arg -c
+filter def f(g): g; f(zz1) + f(zz2) and f(zz3)
+stdin null\n
+end
+
+case chains/inner-levels-of-and-over-a-sum
+arg -c
+filter def f(g): g; f(zz1) and f(zz2) + f(zz3)
+stdin null\n
+end
+
+case chains/inner-levels-of-or-over-a-sum-under-alternative
+arg -c
+filter def f(g): g; f(zz1) or f(zz2) + f(zz3) // f(zz4)
+stdin null\n
+end
+
+case chains/inner-levels-of-a-product-in-a-difference
+arg -c
+filter def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)
+stdin null\n
+end
+
+case chains/assignment-under-alternative-is-inner-levels
+arg -c
+filter zz1 = 1 // zz2
+stdin null\n
+end
+
+# results of mixed chains
+
+case chains/folded-prefix-then-a-term
+arg -c
+filter 1+1+1-.a
+stdin {"a":1}\n
+end
+
+case chains/folded-prefix-then-terms
+arg -c
+filter 2*3+1-.a+.a*2
+stdin {"a":1}\n
+end
+
+case chains/comparisons-in-and-or
+arg -c
+filter .a == .a and .a != 2 or .a < 0
+stdin {"a":1}\n
+end
+
+case chains/difference-is-left-associative
+arg -c
+filter .a - 2 - 3 - .a
+stdin {"a":10}\n
+end
+
+case chains/quotient-is-left-associative
+arg -c
+filter .a / 2 / 5 % 3
+stdin {"a":100}\n
+end
+
+# generators along a chain: the order of the outputs is the nesting of each operator's operands
+
+case chains/difference-of-generators-in-jq-order
+arg -c
+filter (.a, .b) - (.c, .d) - (.e, .f)
+stdin {"a":1,"b":2,"c":10,"d":20,"e":100,"f":200}\n
+end
+
+case chains/and-or-of-generators-in-jq-order
+arg -c
+filter (.t, .f) and (.f, .t) or (.t, .f)
+stdin {"t":true,"f":false}\n
+end
+
+case chains/folded-prefix-then-generators-in-jq-order
+arg -c
+filter 1 - 2 - (.a, .b) * (.c, .d)
+stdin {"a":1,"b":2,"c":10,"d":20}\n
+end

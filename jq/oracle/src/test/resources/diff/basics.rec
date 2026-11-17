@@ -1,0 +1,50 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case basics/compact-object
+def 99d450161998
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case basics/field-of-array
+def 2809090efd75
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case basics/syntax-error-eof
+def 7a1939e8b8cf
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 4:\n    .a |\n       ^\njq: 1 compile error\n
+end
+
+case basics/index-of-array
+def c0c5e781ca9d
+rc 0
+stdout 1\n
+stderr
+end
+
+case basics/file-argument
+def 6c7392b8e989
+rc 0
+stdout {"b":2}\n
+stderr
+end
+
+case basics/recurse-of-array
+def f8749251fad7
+rc 0
+stdout [1]\n1\n
+stderr
+end
+
+case basics/env-type
+def aca68b728f6b
+rc 0
+stdout "object"\n
+stderr
+end

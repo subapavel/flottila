@@ -1,0 +1,353 @@
+# Differential cases (ADR-0020) of #70 "S2a.20 Definitions and closures" (ADR-0040, ADR-0006 as amended by F-41):
+# closure parameters run once per use on the callee's input, $name parameters bind per result, shadowing by name and
+# arity, nested definitions and their hygiene, jq's binding errors by compile level (stderr compared byte for byte),
+# and recursive definitions that compile because no call expands them. Every case is required at #70
+# (oracle/src/test/resources/require/70.txt). A case marked "needs #6x" also uses a construct of that ticket: #65
+# arithmetic, #67 variables, #68 control flow (error, label, break). Format: oracle/src/main/java/io/github/subapavel/
+# jqj/oracle/diff/DiffCase.java. Expected outputs live in defs.rec, written by scripts/oracle-record.sh only. Ids are
+# immutable.
+
+# closure parameters
+
+case defs/closure-runs-once-per-use
+arg -c
+filter [def f(g): [g,g]; f(1,2)]
+stdin null\n
+end
+
+# needs #68 (error/1)
+case defs/closure-unused-never-runs
+arg -c
+filter def f(g): 0; f(error("x"))
+stdin null\n
+end
+
+# needs #65 (+)
+case defs/closure-runs-on-callee-input
+arg -c
+filter 5|def f(g): 1|g; f(.+1)
+stdin null\n
+end
+
+case defs/closure-many-and-empty
+arg -c
+filter def f(g): [g]; f(1,2), f(empty)
+stdin null\n
+end
+
+# value parameters
+
+# needs #67 ($a)
+case defs/value-param-binds-per-result
+arg -c
+filter [def f($a): [$a,$a]; f(1,2)]
+stdin null\n
+end
+
+case defs/value-param-of-empty-runs-nothing
+arg -c
+filter [def f($a): 0; f(empty)]
+stdin null\n
+end
+
+# needs #67 ($a, $b)
+case defs/value-params-first-outermost
+arg -c
+filter [def f($a;g;$b): [$a,g,$b]; f(1,2;0;3,4)]
+stdin null\n
+end
+
+case defs/value-param-name-is-a-filter
+arg -c
+filter [def f($a): [a]; f(1,2)]
+stdin null\n
+end
+
+case defs/value-param-filter-alone
+arg -c
+filter def f($a): a; f(1)
+stdin null\n
+end
+
+case defs/later-param-of-a-name-wins
+arg -c
+filter def f(a;$a): a; f(1;2)
+stdin null\n
+end
+
+# shadowing by name and arity
+
+case defs/redefinition-shadows
+arg -c
+filter def f: 1; def f: 2; f
+stdin null\n
+end
+
+case defs/call-binds-at-its-definition
+arg -c
+filter def f: 1; def g: f; def f: 2; g
+stdin null\n
+end
+
+case defs/arity-is-part-of-the-name
+arg -c
+filter def f: 1; def f(x): 2; [f,f(.)]
+stdin null\n
+end
+
+case defs/three-arities
+arg -c
+filter def f: 1; def f(a): 2; def f(a;b): 3; [f, f(.), f(.;.)]
+stdin null\n
+end
+
+case defs/nested-def-shadows-param
+arg -c
+filter def f(g): def g: 3; g; f(2)
+stdin null\n
+end
+
+case defs/def-shadows-native-empty
+arg -c
+filter def empty: 1; [empty]
+stdin null\n
+end
+
+case defs/true-stays-a-constant
+arg -c
+filter def true: 1; true
+stdin null\n
+end
+
+# nesting and hygiene
+
+case defs/nested-def-captures-param
+arg -c
+filter def f(x): def g: x; g; f(5)
+stdin null\n
+end
+
+# needs #65 (+) and #67 ($a)
+case defs/nested-def-captures-value-param
+arg -c
+filter def f($a): def g: $a+1; g; f(1)
+stdin null\n
+end
+
+# needs #67 (as, $x)
+case defs/closure-sees-caller-variable
+arg -c
+filter [1 as $x|def f(g): 2 as $x|[g,$x]; f($x)]
+stdin null\n
+end
+
+# needs #67 (as, $x)
+case defs/captured-variable-is-lexical
+arg -c
+filter 1 as $x|def f: $x; 2 as $x|f
+stdin null\n
+end
+
+# needs #68 (label, break)
+case defs/break-in-closure-targets-caller-label
+arg -c
+filter [label $l|def f(g): label $l|(g,5); f(break $l),6]
+stdin null\n
+end
+
+# needs #68 (label, break)
+case defs/break-in-def-targets-defining-label
+arg -c
+filter [label $l | def f: break $l; 1, f, 2]
+stdin null\n
+end
+
+# needs #68 (label, break)
+case defs/label-is-not-dynamic
+arg -c
+filter def f: break $l; label $l | f
+stdin null\n
+end
+
+# binding errors (ADR-0040 "Errors"; ADR-0031 blocks)
+
+case defs/undefined-arity
+arg -c
+filter def f: 1; f(2)
+stdin null\n
+end
+
+case defs/param-called-with-arguments
+arg -c
+filter def f(g): g(1); f(.)
+stdin null\n
+end
+
+case defs/forward-reference
+arg -c
+filter def a: b; def b: 1; a
+stdin null\n
+end
+
+case defs/dead-def-is-not-checked
+arg -c
+filter def f: zz; 1
+stdin null\n
+end
+
+case defs/self-reference-keeps-no-def-alive
+arg -c
+filter def f: f|zz; 1
+stdin null\n
+end
+
+case defs/closure-argument-is-checked
+arg -c
+filter def f(g): 1; f(zz)
+stdin null\n
+end
+
+case defs/main-error-hides-def-body
+arg -c
+filter zz1, (def f: zz2; f)
+stdin null\n
+end
+
+case defs/main-error-hides-later-def-body
+arg -c
+filter def f: zz2; def g: zz3; zz1, f, g
+stdin null\n
+end
+
+# needs #67 ($nope)
+case defs/closure-variable-unbound
+arg -c
+filter def f(g): 1; f($nope)
+stdin null\n
+end
+
+case defs/main-error-hides-closure-argument
+arg -c
+filter def f(g): g; f(zz2), zz1
+stdin null\n
+end
+
+# needs #67 ($nope)
+case defs/main-error-hides-closure-variable
+arg -c
+filter def f(g): 1; f($nope), zz
+stdin null\n
+end
+
+# needs #68 (error/1)
+case defs/main-error-hides-error-argument
+arg -c
+filter zz1, error(zz2)
+stdin null\n
+end
+
+case defs/def-error-hides-nested-def
+arg -c
+filter def f: def g: zz2; zz1, g; f
+stdin null\n
+end
+
+case defs/def-levels-in-source-order
+arg -c
+filter def f: zz1; def g: zz2; g, f
+stdin null\n
+end
+
+case defs/nested-def-and-closure-levels
+arg -c
+filter def f(g): def h: zz2; g, h; f(zz1)
+stdin null\n
+end
+
+case defs/one-error-per-reference-not-per-copy
+arg -c
+filter def f: zz; f, f
+stdin null\n
+end
+
+case defs/two-errors-in-one-body
+arg -c
+filter def f: zz1 | zz1; f
+stdin null\n
+end
+
+# needs #67 ($b)
+case defs/value-param-body-unbound-variable
+arg -c
+filter def f($a): $b; f(1)
+stdin null\n
+end
+
+# recursion that compiles: no call expands a recursive definition
+
+case defs/recursive-def-never-expanded
+arg -c
+filter def k(g): 1; def r: r; k(r)
+stdin null\n
+end
+
+case defs/recursive-def-dead
+arg -c
+filter def f: f; 1
+stdin null\n
+end
+
+case defs/closure-of-the-same-def-is-not-recursion
+arg -c
+filter def f(g): g; f(f(.))
+stdin null\n
+end
+
+# added by #70's implementer: the hand-overs of #69 and of the approval, and the Binder's level order
+
+# needs #66 (not)
+case defs/def-shadows-native-not
+arg -c
+filter [(def not: 5; not), (true | not)]
+stdin null\n
+end
+
+# needs #69 (range/2)
+case defs/def-shadows-native-range
+arg -c
+filter [(def range(a;b): 7; range(1;2)), range(1;3)]
+stdin null\n
+end
+
+# needs #67 ($a) and #68 (error/1)
+case defs/main-variable-error-hides-error-argument
+arg -c
+filter $a, error($b)
+stdin null\n
+end
+
+# needs #65 (+)
+case defs/operator-operands-inner-levels-right-first
+arg -c
+filter def f(g): g; f(zz1) + f(zz2)
+stdin null\n
+end
+
+# needs #67 (interpolation)
+case defs/interpolation-inner-levels-last-first
+arg -c
+filter def f(g): g; "\\(f(zz1))\\(f(zz2))"
+stdin null\n
+end
+
+case defs/update-operands-are-inner-levels
+arg -c
+filter zz1, (zz2 |= zz3)
+stdin null\n
+end
+
+case defs/arithmetic-update-value-is-in-the-level
+arg -c
+filter zz1, (zz3 += zz2)
+stdin null\n
+end

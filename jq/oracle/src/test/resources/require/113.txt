@@ -1,0 +1,18 @@
+# The required cases of #113 "Stack calibration" (ADR-0020, ADR-0046 and its #113 amendment, K4, D4, F-30, F-95): give
+# this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per
+# line; # and blank lines skipped. #111's deep cases stay required by require/111.txt.
+
+# differential: the calibration shapes #111 did not record, on the runner thread of F-88.
+deep/shape-t
+deep/shape-e
+deep/shape-m
+deep/shape-n
+deep/shape-w
+deep/shape-c
+deep/shape-recurse
+deep/shape-collect-descent
+
+# differential: the 10 000-deep native check (D4).
+deep/native-tojson
+deep/native-sort
+deep/native-sort-at-depth

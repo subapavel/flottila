@@ -1,0 +1,118 @@
+# Differential cases (ADR-0020) of #83: lookups and .[] on built objects on both sides of the 8-key boundary, past
+# which a lookup goes through an index of the keys (ADR-0003). Shape sites and growable objects, with and without a
+# repeated computed key, keys that share a slot of the index (a, A and ! all hash to slot 1 of 32), and a computed
+# key escaped in its document. jq's -n is not built in jqj's command line yet, so a filter that ignores its input
+# runs on stdin null. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected
+# outputs live in wide.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# shape sites
+
+case wide/shape-eight-lookups
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8} | .a, .h, .z
+stdin null\n
+end
+
+case wide/shape-nine-lookups
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .a, .i, .z
+stdin null\n
+end
+
+case wide/shape-ten-lookups
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9,j:10} | .j, .a, .b, .c, .z
+stdin null\n
+end
+
+case wide/shape-colliding-keys
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,A:9} | .A, .a, .h, ."!", .z
+stdin null\n
+end
+
+case wide/shape-eight-iterate
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8} | .[]
+stdin null\n
+end
+
+case wide/shape-nine-iterate
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .[]
+stdin null\n
+end
+
+case wide/shape-nine-lookup-then-iterate
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .e, .[], .
+stdin null\n
+end
+
+case wide/shape-nine-each
+arg -c
+filter {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .["a","b","c","d","e","f","g","h","i","j"]
+stdin null\n
+end
+
+# growable objects
+
+case wide/computed-nine-lookups
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .a, .i, .k, .z
+stdin {"k":"a"}\n
+end
+
+case wide/computed-nine-iterate
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | .[]
+stdin {"k":"a"}\n
+end
+
+case wide/computed-repeated-nine
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9,(.k):10} | ., .a, .b, .i, .z
+stdin {"k":"a"}\n
+end
+
+case wide/computed-repeated-nine-iterate
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9,(.k):10} | .[]
+stdin {"k":"a"}\n
+end
+
+case wide/computed-two-repeated
+arg -c
+filter {(.k):1,(.l):2,c:3,d:4,e:5,f:6,g:7,h:8,(.k):9,(.l):10,i:11} | ., .[], .a, .b, .i
+stdin {"k":"a","l":"b"}\n
+end
+
+case wide/computed-repeated-eight-distinct
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,(.k):8,h:9} | ., .[], .a, .h, .z
+stdin {"k":"a"}\n
+end
+
+case wide/computed-repeated-nine-distinct
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,(.k):8,h:9,i:10} | ., .[], .a, .i, .z
+stdin {"k":"a"}\n
+end
+
+case wide/computed-all-keys
+arg -c
+filter {(.[0]):1,(.[1]):2,(.[2]):3,(.[3]):4,(.[4]):5,(.[5]):6,(.[6]):7,(.[7]):8,(.[8]):9,(.[0]):10} | ., .x0, .x8, .x9
+stdin ["x0","x1","x2","x3","x4","x5","x6","x7","x8"]\n
+end
+
+case wide/computed-colliding-keys
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,(.l):9} | .A, .a, ."!"
+stdin {"k":"a","l":"A"}\n
+end
+
+case wide/computed-escaped-key
+arg -c
+filter {(.k):1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9} | ., .["aé"], .a
+stdin {"k":"\\u0061\\u00e9"}\n
+end

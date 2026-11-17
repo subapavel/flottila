@@ -1,0 +1,25 @@
+# The required cases of #116 "S2b.11 Value form in the optimised compile" (ADR-0020, ADR-0047 and its #116 amendment,
+# F-56): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>.
+# One id per line; # and blank lines skipped.
+
+# differential: F-56's three reference jq probes (diff/cardinality.cases, recorded on jq-ref 1.8.2). A value form that
+# took any of them for "at most one" would drop what runs after the result.
+cardinality/limit-stops-before-the-error
+cardinality/first-stops-before-the-endless-rest
+cardinality/recursion-after-a-comma-keeps-the-pending-errors
+
+# differential: X1 and X2 of the #115 design (diff/calls.cases), and the guard: a node that may break out stays in
+# push form.
+calls/break-through-a-mutual-recursion
+calls/break-through-another-group
+calls/break-out-of-a-recursion
+
+# differential: the value-form cases of the #116 design (diff/value-form.cases, recorded on jq-ref 1.8.2).
+value-form/a-value-with-no-result-binds-nothing
+value-form/try-catches-the-error-of-its-value-body
+value-form/an-inner-try-lets-a-downstream-error-through
+value-form/a-label-catches-its-own-break-as-no-value
+value-form/a-reduce-of-an-empty-init-binds-nothing
+value-form/a-value-before-a-break-is-emitted
+value-form/a-value-form-recursion-3000-deep
+value-form/x2-dot-calls-into-another-group-by-eval

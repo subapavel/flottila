@@ -1,0 +1,10 @@
+# The required cases of #39 "S1.17 Bench recording G1, G6, G7" (ADR-0019, ADR-0024): give this file to the ticket gate
+# as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The 1 KB differential cases of the bench scenarios, in the family diff/bench.cases. ADR-0024 names four ids: G6 has two
+# modes (compact and pretty), so there is no bench/G6.1k.
+
+# differential: the family diff/bench.cases.
+bench/G1.1k
+bench/G6.compact.1k
+bench/G6.pretty.1k
+bench/G7.1k

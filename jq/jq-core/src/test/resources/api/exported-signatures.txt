@@ -1,0 +1,153 @@
+# The exported surface of jq-core (module io.github.subapavel.jqj), written by hand from the approved
+# API slice of ticket #24 (ADR-0016, ADR-0017, ADR-0024). ExportedApiTest renders the compiled module
+# and diffs it against this file; never regenerate it from the code.
+#
+# One line per module directive ("module | <directive>"), per public type of an exported package
+# ("<binary name> | <Class.toGenericString()> [extends <generic superclass>] [implements|extends
+# <generic interfaces>] [permits <exported permitted subclasses, sorted>]") and per public or protected,
+# non-synthetic declared constructor, method or field ("<binary name> | <toGenericString()>").
+# Blank lines and lines starting with # are ignored; order does not matter.
+
+module | exports io.github.subapavel.jqj
+module | exports io.github.subapavel.jqj.host
+module | exports io.github.subapavel.jqj.value
+module | module io.github.subapavel.jqj
+module | requires io.github.subapavel.jqj.query
+module | requires mandated java.base
+
+io.github.subapavel.jqj.Bindings | public final class io.github.subapavel.jqj.Bindings
+io.github.subapavel.jqj.Bindings | public static io.github.subapavel.jqj.Bindings$Builder io.github.subapavel.jqj.Bindings.builder()
+io.github.subapavel.jqj.Bindings$Builder | public io.github.subapavel.jqj.Bindings io.github.subapavel.jqj.Bindings$Builder.build()
+io.github.subapavel.jqj.Bindings$Builder | public io.github.subapavel.jqj.Bindings$Builder io.github.subapavel.jqj.Bindings$Builder.put(java.lang.String,io.github.subapavel.jqj.value.JqValue)
+io.github.subapavel.jqj.Bindings$Builder | public static final class io.github.subapavel.jqj.Bindings$Builder
+
+io.github.subapavel.jqj.JqCompileException | public final class io.github.subapavel.jqj.JqCompileException extends io.github.subapavel.jqj.JqException
+io.github.subapavel.jqj.JqCompileException | public int io.github.subapavel.jqj.JqCompileException.column()
+io.github.subapavel.jqj.JqCompileException | public int io.github.subapavel.jqj.JqCompileException.line()
+io.github.subapavel.jqj.JqCompileException | public io.github.subapavel.jqj.JqCompileException(java.lang.String,int,int)
+io.github.subapavel.jqj.JqCompileException | public io.github.subapavel.jqj.JqCompileException(java.util.List<java.lang.String>,int,int)
+io.github.subapavel.jqj.JqCompileException | public java.util.List<java.lang.String> io.github.subapavel.jqj.JqCompileException.blocks()
+
+io.github.subapavel.jqj.JqEngine | public final class io.github.subapavel.jqj.JqEngine
+io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.JqFilter io.github.subapavel.jqj.JqEngine.compile(java.lang.String)
+io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.JqFilter io.github.subapavel.jqj.JqEngine.compile(java.lang.String,java.util.Set<java.lang.String>)
+io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.Workspace io.github.subapavel.jqj.JqEngine.newWorkspace()
+io.github.subapavel.jqj.JqEngine | public static io.github.subapavel.jqj.JqEngine$Builder io.github.subapavel.jqj.JqEngine.builder()
+io.github.subapavel.jqj.JqEngine$Builder | public io.github.subapavel.jqj.JqEngine io.github.subapavel.jqj.JqEngine$Builder.build()
+io.github.subapavel.jqj.JqEngine$Builder | public io.github.subapavel.jqj.JqEngine$Builder io.github.subapavel.jqj.JqEngine$Builder.host(io.github.subapavel.jqj.host.Host)
+io.github.subapavel.jqj.JqEngine$Builder | public io.github.subapavel.jqj.JqEngine$Builder io.github.subapavel.jqj.JqEngine$Builder.limits(io.github.subapavel.jqj.Limits)
+io.github.subapavel.jqj.JqEngine$Builder | public static final class io.github.subapavel.jqj.JqEngine$Builder
+
+io.github.subapavel.jqj.JqException | public abstract sealed class io.github.subapavel.jqj.JqException extends java.lang.RuntimeException permits io.github.subapavel.jqj.JqCompileException, io.github.subapavel.jqj.JqFilterException, io.github.subapavel.jqj.JqSyntaxException, io.github.subapavel.jqj.JqTermination
+
+io.github.subapavel.jqj.JqFilter | public java.lang.String io.github.subapavel.jqj.JqFilter.explain()
+io.github.subapavel.jqj.JqFilter | public boolean io.github.subapavel.jqj.JqFilter.run(io.github.subapavel.jqj.value.JqValue,io.github.subapavel.jqj.Bindings,io.github.subapavel.jqj.JqSink,io.github.subapavel.jqj.Workspace)
+io.github.subapavel.jqj.JqFilter | public final class io.github.subapavel.jqj.JqFilter
+
+io.github.subapavel.jqj.JqFilterException | public final class io.github.subapavel.jqj.JqFilterException extends io.github.subapavel.jqj.JqException
+io.github.subapavel.jqj.JqFilterException | public io.github.subapavel.jqj.JqFilterException(io.github.subapavel.jqj.value.JqValue)
+io.github.subapavel.jqj.JqFilterException | public io.github.subapavel.jqj.value.JqValue io.github.subapavel.jqj.JqFilterException.value()
+
+io.github.subapavel.jqj.JqSink | public abstract boolean io.github.subapavel.jqj.JqSink.emit(io.github.subapavel.jqj.value.JqValue)
+io.github.subapavel.jqj.JqSink | public abstract interface io.github.subapavel.jqj.JqSink
+
+io.github.subapavel.jqj.JqSyntaxException | public final class io.github.subapavel.jqj.JqSyntaxException extends io.github.subapavel.jqj.JqException
+io.github.subapavel.jqj.JqSyntaxException | public int io.github.subapavel.jqj.JqSyntaxException.column()
+io.github.subapavel.jqj.JqSyntaxException | public int io.github.subapavel.jqj.JqSyntaxException.line()
+io.github.subapavel.jqj.JqSyntaxException | public io.github.subapavel.jqj.JqSyntaxException(java.lang.String,long,int,int)
+io.github.subapavel.jqj.JqSyntaxException | public long io.github.subapavel.jqj.JqSyntaxException.offset()
+
+io.github.subapavel.jqj.JqTermination | public final class io.github.subapavel.jqj.JqTermination extends io.github.subapavel.jqj.JqException
+io.github.subapavel.jqj.JqTermination | public int io.github.subapavel.jqj.JqTermination.exitCode()
+io.github.subapavel.jqj.JqTermination | public io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination.budget()
+io.github.subapavel.jqj.JqTermination | public io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination.cause()
+io.github.subapavel.jqj.JqTermination | public io.github.subapavel.jqj.JqTermination(io.github.subapavel.jqj.JqTermination$Cause,int,io.github.subapavel.jqj.value.JqValue,io.github.subapavel.jqj.JqTermination$Budget)
+io.github.subapavel.jqj.JqTermination | public io.github.subapavel.jqj.value.JqValue io.github.subapavel.jqj.JqTermination.value()
+io.github.subapavel.jqj.JqTermination$Budget | public static final enum io.github.subapavel.jqj.JqTermination$Budget extends java.lang.Enum<io.github.subapavel.jqj.JqTermination$Budget>
+io.github.subapavel.jqj.JqTermination$Budget | public static final io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.BYTES_BUILT
+io.github.subapavel.jqj.JqTermination$Budget | public static final io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.BYTES_WRITTEN
+io.github.subapavel.jqj.JqTermination$Budget | public static final io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.DEADLINE
+io.github.subapavel.jqj.JqTermination$Budget | public static final io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.RECURSION_DEPTH
+io.github.subapavel.jqj.JqTermination$Budget | public static final io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.STEPS
+io.github.subapavel.jqj.JqTermination$Budget | public static io.github.subapavel.jqj.JqTermination$Budget io.github.subapavel.jqj.JqTermination$Budget.valueOf(java.lang.String)
+io.github.subapavel.jqj.JqTermination$Budget | public static io.github.subapavel.jqj.JqTermination$Budget[] io.github.subapavel.jqj.JqTermination$Budget.values()
+io.github.subapavel.jqj.JqTermination$Cause | public static final enum io.github.subapavel.jqj.JqTermination$Cause extends java.lang.Enum<io.github.subapavel.jqj.JqTermination$Cause>
+io.github.subapavel.jqj.JqTermination$Cause | public static final io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.BUDGET
+io.github.subapavel.jqj.JqTermination$Cause | public static final io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.CANCELLED
+io.github.subapavel.jqj.JqTermination$Cause | public static final io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.HALT
+io.github.subapavel.jqj.JqTermination$Cause | public static final io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.STACK
+io.github.subapavel.jqj.JqTermination$Cause | public static final io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.STALE_VIEW
+io.github.subapavel.jqj.JqTermination$Cause | public static io.github.subapavel.jqj.JqTermination$Cause io.github.subapavel.jqj.JqTermination$Cause.valueOf(java.lang.String)
+io.github.subapavel.jqj.JqTermination$Cause | public static io.github.subapavel.jqj.JqTermination$Cause[] io.github.subapavel.jqj.JqTermination$Cause.values()
+
+io.github.subapavel.jqj.JsonDoc | public final class io.github.subapavel.jqj.JsonDoc implements java.lang.AutoCloseable
+io.github.subapavel.jqj.JsonDoc | public io.github.subapavel.jqj.value.JqValue io.github.subapavel.jqj.JsonDoc.root()
+io.github.subapavel.jqj.JsonDoc | public void io.github.subapavel.jqj.JsonDoc.close()
+
+io.github.subapavel.jqj.JsonWriter | public final class io.github.subapavel.jqj.JsonWriter
+io.github.subapavel.jqj.JsonWriter | public static io.github.subapavel.jqj.JqSink io.github.subapavel.jqj.JsonWriter.sink(io.github.subapavel.jqj.Workspace,java.io.OutputStream,io.github.subapavel.jqj.OutputOptions)
+io.github.subapavel.jqj.JsonWriter | public static io.github.subapavel.jqj.JqSink io.github.subapavel.jqj.JsonWriter.sink(io.github.subapavel.jqj.Workspace,java.nio.channels.WritableByteChannel,io.github.subapavel.jqj.OutputOptions)
+
+io.github.subapavel.jqj.Limits | public final boolean io.github.subapavel.jqj.Limits.equals(java.lang.Object)
+io.github.subapavel.jqj.Limits | public final int io.github.subapavel.jqj.Limits.hashCode()
+io.github.subapavel.jqj.Limits | public final java.lang.String io.github.subapavel.jqj.Limits.toString()
+io.github.subapavel.jqj.Limits | public final record io.github.subapavel.jqj.Limits extends java.lang.Record
+io.github.subapavel.jqj.Limits | public int io.github.subapavel.jqj.Limits.nestingDepth()
+io.github.subapavel.jqj.Limits | public int io.github.subapavel.jqj.Limits.recursionDepth()
+io.github.subapavel.jqj.Limits | public io.github.subapavel.jqj.Limits(long,java.time.Duration,int,int,long,long,java.time.Duration,long)
+io.github.subapavel.jqj.Limits | public java.time.Duration io.github.subapavel.jqj.Limits.deadline()
+io.github.subapavel.jqj.Limits | public java.time.Duration io.github.subapavel.jqj.Limits.regexMatchTime()
+io.github.subapavel.jqj.Limits | public long io.github.subapavel.jqj.Limits.bytesBuilt()
+io.github.subapavel.jqj.Limits | public long io.github.subapavel.jqj.Limits.bytesWritten()
+io.github.subapavel.jqj.Limits | public long io.github.subapavel.jqj.Limits.stackBytes()
+io.github.subapavel.jqj.Limits | public long io.github.subapavel.jqj.Limits.steps()
+io.github.subapavel.jqj.Limits | public static final java.time.Duration io.github.subapavel.jqj.Limits.UNLIMITED_TIME
+io.github.subapavel.jqj.Limits | public static final long io.github.subapavel.jqj.Limits.UNLIMITED
+io.github.subapavel.jqj.Limits | public static io.github.subapavel.jqj.Limits io.github.subapavel.jqj.Limits.cli()
+io.github.subapavel.jqj.Limits | public static io.github.subapavel.jqj.Limits io.github.subapavel.jqj.Limits.embedded()
+
+io.github.subapavel.jqj.OutputOptions | public final class io.github.subapavel.jqj.OutputOptions
+io.github.subapavel.jqj.OutputOptions | public static io.github.subapavel.jqj.OutputOptions io.github.subapavel.jqj.OutputOptions.compact()
+io.github.subapavel.jqj.OutputOptions | public static io.github.subapavel.jqj.OutputOptions io.github.subapavel.jqj.OutputOptions.pretty()
+
+io.github.subapavel.jqj.Workspace | public final class io.github.subapavel.jqj.Workspace
+io.github.subapavel.jqj.Workspace | public io.github.subapavel.jqj.JsonDoc io.github.subapavel.jqj.Workspace.read(java.lang.foreign.MemorySegment)
+
+io.github.subapavel.jqj.host.Host | public final class io.github.subapavel.jqj.host.Host
+io.github.subapavel.jqj.host.Host | public static io.github.subapavel.jqj.host.Host io.github.subapavel.jqj.host.Host.sandboxed()
+
+io.github.subapavel.jqj.value.JqArray | public abstract int io.github.subapavel.jqj.value.JqArray.length()
+io.github.subapavel.jqj.value.JqArray | public abstract io.github.subapavel.jqj.value.JqValue io.github.subapavel.jqj.value.JqArray.get(int)
+io.github.subapavel.jqj.value.JqArray | public abstract sealed interface io.github.subapavel.jqj.value.JqArray extends io.github.subapavel.jqj.value.JqValue
+
+io.github.subapavel.jqj.value.JqBool | public boolean io.github.subapavel.jqj.value.JqBool.value()
+io.github.subapavel.jqj.value.JqBool | public final enum io.github.subapavel.jqj.value.JqBool extends java.lang.Enum<io.github.subapavel.jqj.value.JqBool> implements io.github.subapavel.jqj.value.JqValue
+io.github.subapavel.jqj.value.JqBool | public java.lang.String io.github.subapavel.jqj.value.JqBool.toJson()
+io.github.subapavel.jqj.value.JqBool | public static final io.github.subapavel.jqj.value.JqBool io.github.subapavel.jqj.value.JqBool.FALSE
+io.github.subapavel.jqj.value.JqBool | public static final io.github.subapavel.jqj.value.JqBool io.github.subapavel.jqj.value.JqBool.TRUE
+io.github.subapavel.jqj.value.JqBool | public static io.github.subapavel.jqj.value.JqBool io.github.subapavel.jqj.value.JqBool.valueOf(java.lang.String)
+io.github.subapavel.jqj.value.JqBool | public static io.github.subapavel.jqj.value.JqBool[] io.github.subapavel.jqj.value.JqBool.values()
+
+io.github.subapavel.jqj.value.JqNull | public final enum io.github.subapavel.jqj.value.JqNull extends java.lang.Enum<io.github.subapavel.jqj.value.JqNull> implements io.github.subapavel.jqj.value.JqValue
+io.github.subapavel.jqj.value.JqNull | public java.lang.String io.github.subapavel.jqj.value.JqNull.toJson()
+io.github.subapavel.jqj.value.JqNull | public static final io.github.subapavel.jqj.value.JqNull io.github.subapavel.jqj.value.JqNull.NULL
+io.github.subapavel.jqj.value.JqNull | public static io.github.subapavel.jqj.value.JqNull io.github.subapavel.jqj.value.JqNull.valueOf(java.lang.String)
+io.github.subapavel.jqj.value.JqNull | public static io.github.subapavel.jqj.value.JqNull[] io.github.subapavel.jqj.value.JqNull.values()
+
+io.github.subapavel.jqj.value.JqNumber | public abstract boolean io.github.subapavel.jqj.value.JqNumber.fitsLong()
+io.github.subapavel.jqj.value.JqNumber | public abstract double io.github.subapavel.jqj.value.JqNumber.doubleValue()
+io.github.subapavel.jqj.value.JqNumber | public abstract java.math.BigDecimal io.github.subapavel.jqj.value.JqNumber.decimalValue()
+io.github.subapavel.jqj.value.JqNumber | public abstract long io.github.subapavel.jqj.value.JqNumber.longValue()
+io.github.subapavel.jqj.value.JqNumber | public abstract sealed interface io.github.subapavel.jqj.value.JqNumber extends io.github.subapavel.jqj.value.JqValue
+
+io.github.subapavel.jqj.value.JqObject | public abstract int io.github.subapavel.jqj.value.JqObject.size()
+io.github.subapavel.jqj.value.JqObject | public abstract io.github.subapavel.jqj.value.JqValue io.github.subapavel.jqj.value.JqObject.get(java.lang.String)
+io.github.subapavel.jqj.value.JqObject | public abstract sealed interface io.github.subapavel.jqj.value.JqObject extends io.github.subapavel.jqj.value.JqValue
+io.github.subapavel.jqj.value.JqObject | public abstract void io.github.subapavel.jqj.value.JqObject.forEach(java.util.function.BiConsumer<? super java.lang.String, ? super io.github.subapavel.jqj.value.JqValue>)
+
+io.github.subapavel.jqj.value.JqString | public abstract java.lang.String io.github.subapavel.jqj.value.JqString.value()
+io.github.subapavel.jqj.value.JqString | public abstract java.lang.foreign.MemorySegment io.github.subapavel.jqj.value.JqString.utf8()
+io.github.subapavel.jqj.value.JqString | public abstract sealed interface io.github.subapavel.jqj.value.JqString extends io.github.subapavel.jqj.value.JqValue
+
+io.github.subapavel.jqj.value.JqValue | public abstract java.lang.String io.github.subapavel.jqj.value.JqValue.toJson()
+io.github.subapavel.jqj.value.JqValue | public abstract sealed interface io.github.subapavel.jqj.value.JqValue permits io.github.subapavel.jqj.value.JqArray, io.github.subapavel.jqj.value.JqBool, io.github.subapavel.jqj.value.JqNull, io.github.subapavel.jqj.value.JqNumber, io.github.subapavel.jqj.value.JqObject, io.github.subapavel.jqj.value.JqString

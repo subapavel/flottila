@@ -1,0 +1,575 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case control/if-then-else
+def ff02dcf07b49
+rc 0
+stdout ["t","t","t","t","f","f","t"]\n
+stderr
+end
+
+case control/if-elif-chain
+def 1bf446c02305
+rc 0
+stdout ["a","b","c","d"]\n
+stderr
+end
+
+case control/if-no-else
+def baa03ddbc425
+rc 0
+stdout ["a",2,null]\n
+stderr
+end
+
+case control/if-elif-no-else
+def 030067bf4f5a
+rc 0
+stdout ["a","b",3]\n
+stderr
+end
+
+case control/if-cond-several
+def 7e2968677c7b
+rc 0
+stdout ["t","f","f","t"]\n
+stderr
+end
+
+case control/if-cond-outer-loop
+def 0b2a0f04ddbf
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case control/if-elif-cond-several
+def 403275c959a3
+rc 0
+stdout [2,3]\n
+stderr
+end
+
+case control/if-cond-several-no-else
+def daa2ef435457
+rc 0
+stdout [5,"t"]\n
+stderr
+end
+
+case control/if-cond-error
+def 8e73f8d96f28
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): c\n
+end
+
+case control/if-cond-error-after-result
+def e2b86ca6b28e
+rc 5
+stdout 1\n
+stderr jq: error (at <stdin>:1): c\n
+end
+
+case control/if-branch-input
+def 1760f6972830
+rc 0
+stdout "B"\n
+stderr
+end
+
+case control/try-catch-value
+def 3eaace1f0741
+rc 0
+stdout 1\n
+stderr
+end
+
+case control/try-no-catch
+def e7dceb36814c
+rc 0
+stdout []\n
+stderr
+end
+
+case control/try-no-error
+def d8b5bb039c9d
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/try-handler-generator
+def 889b150a1eaf
+rc 0
+stdout ["x","x"]\n
+stderr
+end
+
+case control/try-handler-input
+def a5e23eacb5fa
+rc 0
+stdout 2\n
+stderr
+end
+
+case control/try-navigation-error
+def 94041b33ae99
+rc 0
+stdout "Cannot index array with string (\\"a\\")"\n
+stderr
+end
+
+case control/try-per-element
+def 2978d8d00297
+rc 0
+stdout [1,"c",3]\n
+stderr
+end
+
+case control/try-downstream-passes
+def 98143e8bc1d2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-nested-downstream
+def 7fef88ba4d96
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-triple-downstream
+def 05e39b6ee3e8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-inner-downstream
+def 91816cea1d59
+rc 0
+stdout "x"\n
+stderr
+end
+
+case control/try-inner-downstream-handler
+def f5935ace7ce5
+rc 0
+stdout "o"\n
+stderr
+end
+
+case control/try-op-downstream
+def 9a553bd3b04b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("a") cannot be added\n
+end
+
+case control/try-collect-downstream
+def 06f6598f7164
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-collect-downstream-caught
+def b6ea2eeec379
+rc 0
+stdout "x"\n
+stderr
+end
+
+case control/try-postfix-downstream
+def ce8b6a411560
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-handler-raises
+def 7bed4e79f592
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): b\n
+end
+
+case control/try-handler-raises-caught
+def d5f6c187f11d
+rc 0
+stdout "b"\n
+stderr
+end
+
+case control/try-handler-downstream
+def 94a6bd62b6d8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/try-abandons
+def 643b3e9244d8
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/try-abandons-no-handler
+def aa8d35a5d500
+rc 0
+stdout [1]\n
+stderr
+end
+
+case control/try-postfix-generator
+def c965621bcdbb
+rc 0
+stdout [1]\n
+stderr
+end
+
+case control/try-postfix-per-element
+def 6e73359e24ba
+rc 0
+stdout [1,3]\n
+stderr
+end
+
+case control/try-altbind-downstream
+def 02e2a401120f
+rc 0
+stdout [[1]]\n
+stderr
+end
+
+case control/try-altbind-inner
+def dc022b5ef599
+rc 0
+stdout ["outer"]\n
+stderr
+end
+
+case control/error-string
+def ce4c99820f99
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boom\n
+end
+
+case control/error-input-string
+def c9105fcfc112
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): msg\n
+end
+
+case control/error-null-uncaught
+def 027630b0cf92
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): null\n
+end
+
+case control/error-null-caught
+def f536cf7fb6f6
+rc 0
+stdout null\n
+stderr
+end
+
+case control/error-null-input
+def 91e1a674d569
+rc 0
+stdout [null]\n
+stderr
+end
+
+case control/error-number
+def 9e0c460a2323
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): 1\n
+end
+
+case control/error-big-literal
+def 0aa0d8e7abff
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): 100000000000000000000000001\n
+end
+
+case control/error-big-literal-view
+def a78d164cb664
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): 100000000000000000000000001\n
+end
+
+case control/error-false
+def 6edf6b26b7ca
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): false\n
+end
+
+case control/error-array
+def 4e52141cfb5a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): [1,"a",null]\n
+end
+
+case control/error-object-utf8
+def 64fa2fe2ce19
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): {"a":[1,"é"]}\n
+end
+
+case control/error-view-payload
+def 225bc82f3692
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): {"b":1}\n
+end
+
+case control/error-view-string
+def defa3380e986
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): from the input\n
+end
+
+case control/error-view-caught
+def 8c7233c4c7fe
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/error-nul-string
+def 5d477380ea55
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): a\n
+end
+
+case control/error-escapes
+def 5c933cb2deae
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): a"b\\c\nd\te\n
+end
+
+case control/error-generator-arg
+def 1f8702f8f841
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): 1\n
+end
+
+case control/error-long-object
+def 6f7d2a5bcf06
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): {"k":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\n
+end
+
+case control/error-long-string
+def 4aaf42f87407
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n
+end
+
+case control/error-no-input
+def 5bfcdfdc46cd
+rc 5
+stdout
+stderr jq: error (at <unknown>): x\n
+end
+
+case control/error-each-input
+def ba6184ee25ad
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): 1\njq: error (at <stdin>:2): two\n
+end
+
+case control/error-second-input
+def c51e51bdbc00
+rc 0
+stdout 1\n3\n
+stderr jq: error (at <stdin>:2): x\n
+end
+
+case control/error-after-results
+def cc63da162935
+rc 5
+stdout 1\n
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/error-forged-break-uncaught
+def 0175a30fabdc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1) (not a string): {"__jq":0}\n
+end
+
+case control/label-no-break
+def 257d3c7beff8
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/label-break-generator
+def 39a04c6311c2
+rc 0
+stdout [1]\n
+stderr
+end
+
+case control/label-collect-break
+def 349ffc6115d7
+rc 0
+stdout []\n
+stderr
+end
+
+case control/label-alt-break
+def 210083b4a6ed
+rc 0
+stdout []\n
+stderr
+end
+
+case control/label-alt-left-then-break
+def 501887067d11
+rc 0
+stdout [1]\n
+stderr
+end
+
+case control/label-if-break
+def 947be8e9146f
+rc 0
+stdout [2]\n
+stderr
+end
+
+case control/label-bind-break
+def 159166324a94
+rc 0
+stdout [1]\n
+stderr
+end
+
+case control/label-nested-same-name
+def ea41155c8cfe
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/label-break-then-comma
+def 29db9a47264e
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/label-break-outer
+def e9355b265bd3
+rc 0
+stdout [1,3]\n
+stderr
+end
+
+case control/label-break-inner
+def ec6f36616198
+rc 0
+stdout [1,3,4]\n
+stderr
+end
+
+case control/label-var-shadow
+def 4d67862da916
+rc 0
+stdout 1\n
+stderr
+end
+
+case control/label-each-input
+def 683f4f0cbe94
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case control/label-break-after-error
+def af8ba84ae845
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case control/label-as-var
+def 47e4b58be62b
+rc 3
+stdout
+stderr jq: error: $l is not defined at <top-level>, line 1, column 12:\n    label $l | $l\n               ^^\njq: 1 compile error\n
+end
+
+case control/break-unknown
+def 8ca4745bef52
+rc 3
+stdout
+stderr jq: error: $*label-l is not defined at <top-level>, line 1, column 1:\n    break $l\n    ^^^^^^^^\njq: 1 compile error\n
+end
+
+case control/break-out-of-scope
+def 7a3c704215df
+rc 3
+stdout
+stderr jq: error: $*label-l is not defined at <top-level>, line 1, column 17:\n    (label $l | 1), break $l\n                    ^^^^^^^^\njq: 1 compile error\n
+end
+
+case control/break-and-var-unknown
+def 19e2ee6ecd39
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x, break $l, $y\n    ^^\njq: error: $*label-l is not defined at <top-level>, line 1, column 5:\n    $x, break $l, $y\n        ^^^^^^^^\njq: error: $y is not defined at <top-level>, line 1, column 15:\n    $x, break $l, $y\n                  ^^\njq: 3 compile errors\n
+end
+
+case control/deviation-try-break
+def 639417fb98c2
+rc 0
+stdout [1,{"__jq":0},2]\n
+stderr
+end
+
+case control/deviation-postfix-break
+def defa9a1cd6dd
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case control/deviation-altbind-break
+def ac905d1d09d3
+rc 0
+stdout [1,[1]]\n
+stderr
+end
+
+case control/deviation-forged-break
+def d7f4dab4192b
+rc 0
+stdout [1]\n
+stderr
+end

@@ -1,0 +1,29 @@
+# The required cases of #118 "Tail calls as pending jumps" (ADR-0047 and its #118 amendment, ADR-0006, ADR-0046,
+# ADR-0020): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# differential: the deep cases of tail.cases, each with "limit recursion-depth 16" (recorded on jq-ref 1.8.2).
+tail/until-ten-million
+tail/fresh-closure-five-million
+tail/permuted-closures-five-million
+tail/recurse-three-million
+tail/range-3-five-million
+tail/until-free-slot-five-million
+tail/repeat-five-million
+tail/group-five-million
+tail/alt-right-five-million
+tail/bind-body-five-million
+
+# differential: the shallow cases of tail.cases, calls that are no tail calls, repeat's jump and J4's breaking left
+# call.
+tail/many-valued-bind-is-no-tail-position
+tail/repeat-reruns-its-closure-on-its-input
+tail/free-break-in-a-closure-is-no-tail-call
+tail/call-inside-a-closure-is-no-tail-call
+tail/breaking-left-call-leaves-the-callers-jump
+
+# differential: F-56's three reference jq probes (diff/cardinality.cases, #112), which ADR-0047 makes cases of the
+# tail-call ticket: a jump that dropped a pending result or error would break them.
+cardinality/limit-stops-before-the-error
+cardinality/first-stops-before-the-endless-rest
+cardinality/recursion-after-a-comma-keeps-the-pending-errors

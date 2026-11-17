@@ -1,0 +1,11 @@
+# The required cases of #94 "operator runs lower to one Binds, and/or runs are balanced" (ADR-0043, ADR-0020): give
+# this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per
+# line; # and blank lines skipped.
+
+# differential: every case of runs.cases.
+runs/sum-of-70-terms-in-jq-order
+runs/sum-of-70-errors-raises-the-rightmost-first
+runs/and-of-70-truthy-terms-with-generators
+runs/and-of-70-terms-false-between-generators
+runs/or-of-70-falsy-terms-with-generators
+runs/alternative-of-70-mixed-terms-in-jq-order

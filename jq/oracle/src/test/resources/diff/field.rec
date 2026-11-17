@@ -1,0 +1,421 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case field/hit-null
+def ddb269287a18
+rc 0
+stdout null\n
+stderr
+end
+
+case field/hit-true
+def b7006d289d12
+rc 0
+stdout true\n
+stderr
+end
+
+case field/hit-false
+def 32075f208fed
+rc 0
+stdout false\n
+stderr
+end
+
+case field/hit-number
+def f46f783b4f89
+rc 0
+stdout 42\n
+stderr
+end
+
+case field/hit-string
+def 68c8135c1bc3
+rc 0
+stdout "x y"\n
+stderr
+end
+
+case field/hit-array
+def 36b06bf1a649
+rc 0
+stdout [1,[2],{}]\n
+stderr
+end
+
+case field/hit-object
+def 39a68bf27285
+rc 0
+stdout {"b":{},"c":[]}\n
+stderr
+end
+
+case field/miss-key
+def b5c5d70a3c3e
+rc 0
+stdout null\n
+stderr
+end
+
+case field/miss-empty
+def 5a7f883b126b
+rc 0
+stdout null\n
+stderr
+end
+
+case field/null-input
+def 228e9680303a
+rc 0
+stdout null\n
+stderr
+end
+
+case field/duplicate-dot
+def 643e288baf03
+rc 0
+stdout {"a":3,"b":2}\n
+stderr
+end
+
+case field/duplicate-field
+def dc66c655da42
+rc 0
+stdout 3\n
+stderr
+end
+
+case field/duplicate-nested
+def 5e7de60feedb
+rc 0
+stdout null\n
+stderr
+end
+
+case field/chain-3
+def 2746f77f8c38
+rc 0
+stdout "x"\n
+stderr
+end
+
+case field/chain-null-middle
+def efbc3629da9b
+rc 0
+stdout null\n
+stderr
+end
+
+case field/chain-error-middle
+def 0912253ee087
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("c")\n
+end
+
+case field/pipe
+def 7b71fbafad5b
+rc 0
+stdout 1\n
+stderr
+end
+
+case field/pipe-3
+def dcc16cfcd0e1
+rc 0
+stdout [true]\n
+stderr
+end
+
+case field/pipe-identity
+def be53d684b834
+rc 0
+stdout {"b":2}\n
+stderr
+end
+
+case field/parens
+def 7cbbb59ba7da
+rc 0
+stdout "p"\n
+stderr
+end
+
+case field/parens-postfix
+def a3adc6b65b4c
+rc 0
+stdout "q"\n
+stderr
+end
+
+case field/parens-pipe
+def d65e3d524ae3
+rc 0
+stdout 3\n
+stderr
+end
+
+case field/parens-nested
+def 51d105d999ca
+rc 0
+stdout [4]\n
+stderr
+end
+
+case field/space-steps
+def ac4fa167b967
+rc 0
+stdout 5\n
+stderr
+end
+
+case field/dot-space-field
+def 21d4f93155c7
+rc 0
+stdout 6\n
+stderr
+end
+
+case field/keyword-and
+def 4ff87587cfac
+rc 0
+stdout 1\n
+stderr
+end
+
+case field/keyword-if
+def bf7d1a216914
+rc 0
+stdout 2\n
+stderr
+end
+
+case field/keyword-loc
+def 3ff786f8d863
+rc 0
+stdout 3\n
+stderr
+end
+
+case field/keyword-chain
+def e6098c00541f
+rc 0
+stdout "k"\n
+stderr
+end
+
+case field/name-chars
+def d2b1637de6f5
+rc 0
+stdout true\n
+stderr
+end
+
+case field/error-array
+def fa00e41ab0a2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case field/error-empty-array
+def 5846264919c8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case field/parens-pipe-error
+def df8492d9a42c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with string ("c")\n
+end
+
+case field/error-string
+def 49ab3ccac487
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case field/error-number
+def 84deae717e4b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case field/error-true
+def 78143bae7530
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with string ("a")\n
+end
+
+case field/error-false
+def 3ee8914f1328
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with string ("a")\n
+end
+
+case field/error-name-24
+def 4da9acfad447
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx")\n
+end
+
+case field/error-name-25
+def cf7b2f9fb489
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwxy")\n
+end
+
+case field/error-name-27
+def 1d61a9dd0776
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwxyz0")\n
+end
+
+case field/error-name-28
+def 72cbe21c4b0c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case field/error-name-29
+def 3bb646c7d0c1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case field/error-name-30
+def 6241f72a7eb0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case field/error-file-argument
+def 551a7beef3db
+rc 5
+stdout
+stderr jq: error (at in.json:1): Cannot index array with string ("a")\n
+end
+
+case field/line-no-lf
+def ab0f53d64b1d
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case field/line-lf
+def c11e50fc4e41
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case field/line-inner-lfs
+def c7b34a9faee9
+rc 5
+stdout
+stderr jq: error (at <stdin>:2): Cannot index array with string ("a")\n
+end
+
+case field/line-trailing-lfs
+def cb5a29c9badf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case field/line-leading-lfs
+def a100555644eb
+rc 5
+stdout
+stderr jq: error (at <stdin>:2): Cannot index array with string ("a")\n
+end
+
+case field/line-crlf
+def e03b61d1b7e4
+rc 5
+stdout
+stderr jq: error (at <stdin>:3): Cannot index array with string ("a")\n
+end
+
+case field/line-number-eof
+def ac6e7d86d82c
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index number with string ("a")\n
+end
+
+case field/line-cut-before
+def 2dd7ed0b5c42
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case field/line-cut-after
+def 5ca9062addb3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case field/line-number-late
+def 22253609b8a5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case field/line-literal-late
+def 3db7cfc1fc8b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with string ("a")\n
+end
+
+case field/line-string-cut
+def c0b85ccc3d5c
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index string with string ("a")\n
+end
+
+case field/line-utf8-cut
+def 108423b63b57
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case field/line-cut-space
+def 4f51160133ed
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case field/line-cut-tab
+def 2cc6e1c5dbec
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end
+
+case field/line-cut-cr
+def 3186533a16c9
+rc 5
+stdout
+stderr jq: error (at <stdin>:0): Cannot index array with string ("a")\n
+end

@@ -1,0 +1,231 @@
+# Differential cases (ADR-0020) of #62 "S2a.12 The full parser": jq 1.8.2's precedence and associativity
+# (parser.y), one case per adjacent level pair, per associativity a value can show, and per Term form whose binding
+# the architect's jq-ref table names (ADR-0032). Each filter gives a different result under the other grouping, so
+# jq-ref's recording decides the grouping. Every case needs a construct that #62 parses but does not lower (ADR-0032:
+# an AST for every construct, IR only for what is built), so none is required at #62: each stays red under the
+# tickets that lower its constructs (comma and indexing #63, construction #64, arithmetic and negation #65,
+# comparison #66, variables #67, if/try/label/error #68, reduce/foreach #69, def #70; and/or/alternative and
+# assignment as the census assigns them). At #62 the parse of each is checked by
+# jq-core ResolverTest.everyUnloweredKindParsesAndResolvesToAStub. The precedence levels a syntax error shows (the
+# non-associative ones) are in syntax.cases. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# DiffCase.java. Expected outputs live in precedence.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# prefix forms: def, as and label take the whole pipe after them
+
+case precedence/def-scopes-the-pipe
+arg -c
+filter def f: 1; 2 | f
+stdin null\n
+end
+
+case precedence/def-after-a-pipe
+arg -c
+filter 1 | def f: 2; f
+stdin null\n
+end
+
+case precedence/as-scopes-the-pipe
+arg -c
+filter 1 as $x | 2 | $x
+stdin null\n
+end
+
+case precedence/as-nests-right
+arg -c
+filter "x" as $x | "y" as $y | $x + $y
+stdin null\n
+end
+
+case precedence/label-scopes-the-comma
+arg -c
+filter label $out | 1, break $out, 2
+stdin null\n
+end
+
+# adjacent binary levels, lowest first: | , // = or and == + * and unary minus
+
+case precedence/pipe-below-comma
+arg -c
+filter 1, 2 | . + 10
+stdin null\n
+end
+
+case precedence/comma-below-alternative
+arg -c
+filter 1, null // 2
+stdin null\n
+end
+
+case precedence/alternative-below-assign
+arg -c
+filter .a = null // 2
+stdin {}\n
+end
+
+case precedence/assign-below-or
+arg -c
+filter .a = true or false
+stdin {}\n
+end
+
+case precedence/or-below-and
+arg -c
+filter true or true and false
+stdin null\n
+end
+
+case precedence/and-below-compare
+arg -c
+filter false == false and false
+stdin null\n
+end
+
+case precedence/compare-below-additive
+arg -c
+filter 1 + 1 == 2
+stdin null\n
+end
+
+case precedence/additive-below-multiplicative
+arg -c
+filter 1 + 2 * 3
+stdin null\n
+end
+
+case precedence/multiplicative-above-additive-on-the-left
+arg -c
+filter 2 * 3 + 1
+stdin null\n
+end
+
+case precedence/multiplicative-below-negation
+arg -c
+filter - "a" * 2
+stdin null\n
+end
+
+case precedence/additive-below-negation
+arg -c
+filter - 1 + 2
+stdin null\n
+end
+
+case precedence/pipe-below-negation
+arg -c
+filter - 1 | . + 1
+stdin null\n
+end
+
+case precedence/negation-below-optional
+arg -c
+filter [- "a"?]
+stdin null\n
+end
+
+# associativity a value can show
+
+case precedence/additive-left
+arg -c
+filter 1 - 2 - 3
+stdin null\n
+end
+
+case precedence/additive-left-mixed
+arg -c
+filter 1 - 2 + 3
+stdin null\n
+end
+
+case precedence/multiplicative-left
+arg -c
+filter 8 / 4 / 2
+stdin null\n
+end
+
+case precedence/multiplicative-left-mixed
+arg -c
+filter 7 % 4 * 2
+stdin null\n
+end
+
+# what each source and body takes
+
+case precedence/as-source-takes-a-product
+arg -c
+filter 2 * 3 as $x | $x + 1
+stdin null\n
+end
+
+case precedence/as-source-takes-an-alternative
+arg -c
+filter 1 // 2 as $x | $x + 10
+stdin null\n
+end
+
+case precedence/as-source-stops-at-a-comma
+arg -c
+filter [1, 2 as $x | $x, 3]
+stdin null\n
+end
+
+case precedence/reduce-source-takes-a-sum
+arg -c
+filter reduce 1 + 2 as $x (0; . + $x)
+stdin null\n
+end
+
+case precedence/foreach-source-takes-a-sum
+arg -c
+filter foreach 1 + 2 as $x (0; . + $x)
+stdin null\n
+end
+
+case precedence/catch-takes-a-postfix-term
+arg -c
+filter try 1 catch 2 + 3
+stdin null\n
+end
+
+case precedence/try-takes-a-postfix-term
+arg -c
+filter try 1 + error("x")
+stdin null\n
+end
+
+case precedence/object-value-takes-a-pipe
+arg -c
+filter {a: 1 | . + 1}
+stdin null\n
+end
+
+# Term forms: each is a term that a postfix or binary operator can follow
+
+case precedence/term-index-after-a-space
+arg -c
+filter [5,6] [1]
+stdin null\n
+end
+
+case precedence/if-is-a-term
+arg -c
+filter if true then 1 else 2 end + 1
+stdin null\n
+end
+
+case precedence/reduce-is-a-term
+arg -c
+filter reduce (1,2) as $x (0; . + $x) * 2
+stdin null\n
+end
+
+case precedence/optional-binds-the-term
+arg -c
+filter error("x")? // 1
+stdin null\n
+end
+
+case precedence/postfix-chain
+arg -c
+filter .a[0].b
+stdin {"a":[{"b":1}]}\n
+end

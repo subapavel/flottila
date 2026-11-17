@@ -1,0 +1,386 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case literal/true
+def 7db6eb46e344
+rc 0
+stdout true\n
+stderr
+end
+
+case literal/false
+def ad98cd24282f
+rc 0
+stdout false\n
+stderr
+end
+
+case literal/null
+def 20b30e7230e0
+rc 0
+stdout null\n
+stderr
+end
+
+case literal/number-integer
+def 48cf4ad6d38a
+rc 0
+stdout 42\n
+stderr
+end
+
+case literal/number-leading-dot
+def 6d6b53ca7780
+rc 0
+stdout 0.5\n
+stderr
+end
+
+case literal/number-trailing-dot
+def c342db613002
+rc 0
+stdout 1\n
+stderr
+end
+
+case literal/number-leading-zeros
+def 95a228b429e0
+rc 0
+stdout 7\n
+stderr
+end
+
+case literal/number-zeros-around-point
+def 62a1ef4e63eb
+rc 0
+stdout 0.50\n
+stderr
+end
+
+case literal/number-trailing-zero
+def 71dd8f2a2b8c
+rc 0
+stdout 1.10\n
+stderr
+end
+
+case literal/number-exponent
+def 86282d860c91
+rc 0
+stdout 1E+2\n
+stderr
+end
+
+case literal/number-trailing-dot-exponent
+def c7118e10d52d
+rc 0
+stdout 1E+2\n
+stderr
+end
+
+case literal/number-leading-dot-zero-exponent
+def b65486b60944
+rc 0
+stdout 0\n
+stderr
+end
+
+case literal/number-zero-exponent
+def d1a370c5abdb
+rc 0
+stdout 0E+5\n
+stderr
+end
+
+case literal/number-small
+def 27ea3e6809ea
+rc 0
+stdout 1E-7\n
+stderr
+end
+
+case literal/number-21-digits
+def 6ef2237f5b35
+rc 0
+stdout 100000000000000000001\n
+stderr
+end
+
+case literal/number-exponent-1000
+def 572c72312b6a
+rc 0
+stdout 1E+1000\n
+stderr
+end
+
+case literal/number-infinity-literal
+def 871d0301ce61
+rc 0
+stdout 1.7976931348623157e+308\n
+stderr
+end
+
+case literal/number-below-lower-limit
+def da6615e47d4c
+rc 0
+stdout 1E-1147483646\n
+stderr
+end
+
+case literal/string-escapes
+def 2a40ee4fe6ac
+rc 0
+stdout "\\"\\\\/\\b\\f\\n\\r\\té😀\\u0000"\n
+stderr
+end
+
+case literal/string-empty
+def 4ed3bdda0590
+rc 0
+stdout ""\n
+stderr
+end
+
+case literal/string-surrogate-pair
+def 3b2c67136850
+rc 0
+stdout "😀"\n
+stderr
+end
+
+case literal/string-lone-low-surrogate
+def e1ff0f6c23c2
+rc 0
+stdout "a�"\n
+stderr
+end
+
+case literal/string-raw-tab
+def f92ed96fbd04
+rc 0
+stdout "a\\tb"\n
+stderr
+end
+
+case literal/string-raw-lf
+def 654a1c09f660
+rc 0
+stdout "a\\nb"\n
+stderr
+end
+
+case literal/error-escape-mid
+def 20c86146bfcb
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\v"') at <top-level>, line 1, column 3:\n    "u\\vw"\n      ^^\njq: 1 compile error\n
+end
+
+case literal/error-u-short
+def 64a143512e57
+rc 3
+stdout
+stderr jq: error: Invalid \\uXXXX escape at line 1, column 6 (while parsing '"\\u12"') at <top-level>, line 1, column 2:\n    "\\u12"\n     ^^^^\njq: 1 compile error\n
+end
+
+case literal/error-u-not-hex
+def b895c40fd64d
+rc 3
+stdout
+stderr jq: error: Invalid characters in \\uXXXX escape at line 1, column 8 (while parsing '"\\uZZZZ"') at <top-level>, line 1, column 2:\n    "\\uZZZZ"\n     ^^^^^^\njq: 1 compile error\n
+end
+
+case literal/error-high-surrogate-alone
+def d1ddf630a74e
+rc 3
+stdout
+stderr jq: error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 8 (while parsing '"\\ud800"') at <top-level>, line 1, column 2:\n    "\\ud800"\n     ^^^^^^\njq: 1 compile error\n
+end
+
+case literal/error-high-surrogate-then-escape
+def 2de25a89aacd
+rc 3
+stdout
+stderr jq: error: Invalid \\uXXXX\\uXXXX surrogate pair escape at line 1, column 10 (while parsing '"\\ud83d\\n"') at <top-level>, line 1, column 2:\n    "\\ud83d\\n"\n     ^^^^^^^^\njq: 1 compile error\n
+end
+
+case literal/error-two-blocks
+def 78711ff9e04a
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\v"') at <top-level>, line 1, column 2:\n    "\\va\\q"\n     ^^\njq: error: Invalid escape at line 1, column 4 (while parsing '"\\q"') at <top-level>, line 1, column 5:\n    "\\va\\q"\n        ^^\njq: 2 compile errors\n
+end
+
+case literal/error-byte-column
+def bc3745a2ff85
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\v"') at <top-level>, line 1, column 4:\n    "é\\v"\n       ^^\njq: 1 compile error\n
+end
+
+case literal/error-line-3
+def 1139e214b5ac
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\v"') at <top-level>, line 3, column 3:\n    "a\\v"\n      ^^\njq: 1 compile error\n
+end
+
+case literal/error-backslash-lf
+def 909a40548246
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 2, column 1 (while parsing '"\\\n"') at <top-level>, line 1, column 2:\n    "\\\n     ^\njq: 1 compile error\n
+end
+
+case literal/error-backslash-tab
+def 22b5b26912be
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\\t"') at <top-level>, line 1, column 2:\n    "\\\t"\n     ^^\njq: 1 compile error\n
+end
+
+case literal/error-backslash-crlf
+def 7b86f69923b9
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 4 (while parsing '"\\\x0d"') at <top-level>, line 1, column 2:\n    "\\\x0d\n     ^^\njq: 1 compile error\n
+end
+
+case literal/error-backslash-e-acute
+def 16e67c55338c
+rc 3
+stdout
+stderr jq: error: Invalid escape at line 1, column 6 (while parsing '"\\�"') at <top-level>, line 1, column 2:\n    "\\é"\n     ^^\njq: 1 compile error\n
+end
+
+case literal/format-text-string
+def 2efbe5e8b2d7
+rc 0
+stdout "é"\n
+stderr
+end
+
+case literal/format-text-number
+def f7d3f54d51c0
+rc 0
+stdout "1.10"\n
+stderr
+end
+
+case literal/format-text-21-digits
+def 7ac0a59c1e5a
+rc 0
+stdout "100000000000000000001"\n
+stderr
+end
+
+case literal/format-text-array
+def 983d0f000fff
+rc 0
+stdout "[1,\\"b\\",null]"\n
+stderr
+end
+
+case literal/format-text-object
+def e9024f28300f
+rc 0
+stdout "{\\"a\\":{\\"b\\":true}}"\n
+stderr
+end
+
+case literal/format-text-null
+def a878042d7fd8
+rc 0
+stdout "null"\n
+stderr
+end
+
+case literal/access-string-missing
+def d13edf5ffad8
+rc 0
+stdout null\n
+stderr
+end
+
+case literal/access-dot-space-string
+def a47f3c94376f
+rc 0
+stdout 1\n
+stderr
+end
+
+case literal/access-escaped-key
+def db645edd229d
+rc 0
+stdout 2\n
+stderr
+end
+
+case literal/access-long-name-error
+def 7a21616bf37a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("éééééééééééé...")\n
+end
+
+case literal/access-string-term-field
+def def4ee91a35b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("x")\n
+end
+
+case literal/access-field-e0
+def 168f1cc1a69e
+rc 0
+stdout 1\n
+stderr
+end
+
+case literal/access-dot-digit-is-number
+def 6d13357a642f
+rc 0
+stdout 0.5\n
+stderr
+end
+
+case literal/comment-lf
+def 646909cb123e
+rc 0
+stdout 1\n
+stderr
+end
+
+case literal/comment-continued
+def f9b091be125e
+rc 0
+stdout {"b":1}\n
+stderr
+end
+
+case literal/comment-escaped-backslash
+def 2374f6932b0f
+rc 0
+stdout 1\n
+stderr
+end
+
+case literal/comment-continued-crlf
+def 0ee711c7386e
+rc 0
+stdout {"b":1}\n
+stderr
+end
+
+case literal/comment-cr-is-no-line-end
+def c2f76e256c37
+rc 0
+stdout {"b":1}\n
+stderr
+end
+
+case literal/comment-at-end
+def d234d1009e3b
+rc 0
+stdout {"b":1}\n
+stderr
+end

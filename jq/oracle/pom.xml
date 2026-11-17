@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.subapavel.jqj</groupId>
+    <artifactId>jqj-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>oracle</artifactId>
+  <name>oracle</name>
+
+  <!-- The compile-mode oracle's tests (JUnit tag compile-mode) run only under -Pcompile-oracle: after every merge, in
+       the spec gate, and in the ticket gate since #89 (F-29, F-46, ADR-0020 amendment for #60). They hold both of its
+       runs against the optimised one, the conservative compile and, since #109, the trampoline (F-58). -->
+  <properties>
+    <oracle.excludedGroups>compile-mode</oracle.excludedGroups>
+  </properties>
+
+  <!-- Tests only: the oracle runs the code of every module (ADR-0014). -->
+  <dependencies>
+    <dependency>
+      <groupId>io.github.subapavel.jqj</groupId>
+      <artifactId>query-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.subapavel.jqj</groupId>
+      <artifactId>jq-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.subapavel.jqj</groupId>
+      <artifactId>jq-cli</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- The command line's in-process entry is not exported API (ADR-0020); only the oracle compiles against it.
+           CardinalityBoundsTest (#112) builds a filter's Program with jq-core's parser and resolver, so it can watch
+           each node in query-core's IR; the tests run on the class path. -->
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <compilerArgs combine.children="append">
+            <arg>--add-exports</arg>
+            <arg>io.github.subapavel.jqj.cli/io.github.subapavel.jqj.cli=io.github.subapavel.jqj.oracle</arg>
+            <arg>--add-exports</arg>
+            <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.parse=io.github.subapavel.jqj.oracle</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <!-- Oracle reports (ADR-0020) are written under surefire only: PIT does not pass this property on, so a
+           mutant's verdicts never reach the report that ratchet.java reads. -->
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${oracle.excludedGroups}</excludedGroups>
+          <systemPropertyVariables>
+            <oracle.reports>${project.build.directory}/oracle-reports</oracle.reports>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <!-- Coverage of query-core and jq-core from every test in the reactor (ADR-0014). -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>jacoco-report-aggregate</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report-aggregate</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- ./mvnw -pl oracle -am test pitest:mutationCoverage: mutates the upstream modules (ADR-0014). -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <!-- OWN_SURVIVORS (F-84 round 2): the run mutates only the mutants whose status in query-core's or jq-core's
+             own report is not in ratchet.java's killed set (KILLED, TIMED_OUT, MEMORY_ERROR), the only ones whose
+             kill here can change ratchet.java's union. A missing own report fails the run, so the class-C modules'
+             PIT goes first in the same reactor (gate-spec.sh, nightly.yml). -->
+        <dependencies>
+          <dependency>
+            <groupId>io.github.subapavel.jqj</groupId>
+            <artifactId>pit-filter</artifactId>
+            <version>${project.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <crossModule>true</crossModule>
+          <features>
+            <feature>+OWN_SURVIVORS(report[${project.basedir}/../query-core/target/pit-reports/mutations.xml] report[${project.basedir}/../jq-core/target/pit-reports/mutations.xml])</feature>
+          </features>
+          <!-- The Survey runs the cases nobody requires and fails only on CRASH (ADR-0020). The compile-mode oracle
+               leaves PIT with the ticket gate (F-27, ADR-0020 amendment for #60). -->
+          <excludedTestClasses>
+            <param>io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest</param>
+            <param>io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest</param>
+            <param>io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest</param>
+            <param>io.github.subapavel.jqj.oracle.json.JsonSurveyTest</param>
+            <param>io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest</param>
+            <!-- 116.4 s in surefire; first killer of 8 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
+            <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.OperatorChainTest</param>
+            <!-- 1.8 s in surefire; killer of 0 of 3 751 jq-core mutants when the only tests: its filters run in child
+                 JVMs on the unmutated class path (#118). -->
+            <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
+          </excludedTestClasses>
+          <!-- Mutated here: query-core and jq-core, the class-C modules. Their tests still run. -->
+          <excludedClasses>
+            <!-- No ratchet line reads oracle's own mutants; its corpus loader is then never a mutant (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.oracle.*</param>
+            <!-- No ratchet line reads jq-cli's mutants from this run (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.cli.*</param>
+          </excludedClasses>
+          <!-- Only oracle's own tests run here: ratchet.java unions each module's own kills with these (F-84). -->
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- ./mvnw -B -Pbench,compile-oracle verify: scripts/after-merge.sh, the spec gate's clean verify and, since #89,
+         the ticket gate's step 1 (F-46). -->
+    <profile>
+      <id>compile-oracle</id>
+      <properties>
+        <oracle.excludedGroups></oracle.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
+</project>

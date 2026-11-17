@@ -1,0 +1,211 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-depth/arrays-two-wrappers-9999
+def cdf2e3e1864b
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/arrays-three-wrappers-9999
+def 91723741fc9f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/arrays-three-wrappers-9998
+def 05dcda290ee7
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/left-order-deep-key-first-9999
+def 9b00bd1797c2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/left-order-deep-key-first-9998
+def 55a23092f889
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/left-order-shallow-key-first-9999
+def 1b342fa28d8a
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/left-order-deep-left-shallow-right-9999
+def b7bd7db3f81d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/left-order-shallow-left-deep-right-9999
+def 905f6361f2ba
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/sizes-last-right-larger-9999
+def 213746842ef2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/sizes-last-right-larger-9998
+def 4a155e027c8e
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/sizes-last-left-larger-9999
+def 29d0fbc94292
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/identity-same-index-9999
+def 36bcb9c90122
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/identity-root-10000
+def d056387017fe
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/identity-root-against-wrapped-10000
+def 7912a3bab351
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/identity-root-against-wrapped-9999
+def ad6ce8f89ee7
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/reduce-merge-empty-innermost-10000
+def f3c4acf18470
+rc 0
+stdout null\n
+stderr
+end
+
+case arith-depth/reduce-merge-empty-innermost-10001
+def bf698d4c324c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Object merge too deep\n
+end
+
+case arith-depth/reduce-merge-number-innermost-10001
+def d0b1d51f2dab
+rc 0
+stdout null\n
+stderr
+end
+
+case arith-depth/reduce-merge-number-innermost-10002
+def 7911c9eab207
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Object merge too deep\n
+end
+
+case arith-depth/reduce-merge-million
+def 1ca109fc3132
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Object merge too deep\n
+end
+
+case arith-depth/reduce-merge-shallow-right-10001
+def 5e4bd88a70ed
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-depth/reduce-merge-empty-left-10002
+def b76e88af23aa
+rc 0
+stdout null\n
+stderr
+end
+
+case arith-depth/reduce-equal-arrays-10000
+def 3f41fcc74c2d
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/reduce-equal-arrays-10001
+def fd113f14f35a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/reduce-equal-objects-10000
+def fcb635c68dd9
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-depth/reduce-equal-objects-10001
+def f1ef32d6164b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/reduce-depth-before-kind-10000
+def 4a9c38b7322d
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-depth/reduce-depth-before-kind-10001
+def c2052d3ebecb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/reduce-depth-million
+def d70d58ddd43c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Equality check too deep\n
+end
+
+case arith-depth/reduce-identity-built-10001
+def 41f05f538815
+rc 0
+stdout []\n
+stderr
+end

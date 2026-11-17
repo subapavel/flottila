@@ -1,0 +1,277 @@
+# Differential cases (ADR-0020) of #71 "S2a.21 Prelude loader": the builtins jq writes in jq (builtin.jq), loaded by
+# the resolver (ADR-0042); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected
+# outputs live in prelude.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# limit/2 lowers onto #69's foreach and #68's label and break (the #69 hand-over); range/1 is the prelude's
+# range(0;$x) (ADR-0041).
+
+case prelude/limit-range
+arg -c
+filter [limit(3; range(10))]
+stdin null\n
+end
+
+case prelude/limit-zero
+arg -c
+filter [limit(0; 1, 2)]
+stdin null\n
+end
+
+case prelude/limit-negative
+arg -c
+filter limit(-1; 1)
+stdin null\n
+end
+
+case prelude/limit-stops-before-error
+arg -c
+filter [limit(1; 1, error("x"))]
+stdin null\n
+end
+
+case prelude/limit-fewer-than-n
+arg -c
+filter [limit(5; 1, 2)]
+stdin null\n
+end
+
+# map/1: [.[] | f], over arrays and objects; an error in f ends the run.
+
+case prelude/map
+arg -c
+filter map(.a)
+stdin [{"a":1},{"a":2}]\n
+end
+
+case prelude/map-empty-array
+arg -c
+filter map(.+1)
+stdin []\n
+end
+
+case prelude/map-object-values
+arg -c
+filter map(.+1)
+stdin {"a":1,"b":2}\n
+end
+
+case prelude/map-generator
+arg -c
+filter map(., empty, .)
+stdin [1,2]\n
+end
+
+case prelude/map-error
+arg -c
+filter map(.a)
+stdin [1]\n
+end
+
+case prelude/map-scalar
+arg -c
+filter map(.)
+stdin 5\n
+end
+
+# select/1: one copy of . per truthy output of f.
+
+case prelude/select
+arg -c
+filter [.[] | select(. > 1)]
+stdin [1,2,3]\n
+end
+
+case prelude/select-truthiness
+arg -c
+filter [.[] | select(.)]
+stdin [null,false,0,"",[]]\n
+end
+
+case prelude/select-generator
+arg -c
+filter [select(true, false, true)]
+stdin 1\n
+end
+
+# first/1 stops at its first result; first/0, last/0 and nth/1 are indexes.
+
+case prelude/first
+arg -c
+filter first(.[])
+stdin [3,4]\n
+end
+
+case prelude/first-empty
+arg -c
+filter [first(empty)]
+stdin null\n
+end
+
+case prelude/first-before-error
+arg -c
+filter first(1, error("x"))
+stdin null\n
+end
+
+case prelude/first-last-nth
+arg -c
+filter [first, last, nth(1)]
+stdin [5,6,7]\n
+end
+
+case prelude/first-of-empty-array
+arg -c
+filter [first, last]
+stdin []\n
+end
+
+# add/0 and add/1: reduce with + from null.
+
+case prelude/add-numbers
+arg -c
+filter add
+stdin [1,2,3]\n
+end
+
+case prelude/add-empty
+arg -c
+filter add
+stdin []\n
+end
+
+case prelude/add-strings
+arg -c
+filter add
+stdin ["a","b"]\n
+end
+
+case prelude/add-arrays
+arg -c
+filter add
+stdin [[1],[2,3]]\n
+end
+
+case prelude/add-object-values
+arg -c
+filter add
+stdin {"a":1,"b":2}\n
+end
+
+case prelude/add-generator
+arg -c
+filter add(.[].a)
+stdin [{"a":1},{"a":2}]\n
+end
+
+case prelude/add-type-error
+arg -c
+filter add
+stdin [1,"a"]\n
+end
+
+# any and all: isempty with label and break; they stop at the first deciding result.
+
+case prelude/any-all-arrays
+arg -c
+filter [any, all]
+stdin [false,true]\n
+end
+
+case prelude/any-all-empty
+arg -c
+filter [any, all]
+stdin []\n
+end
+
+case prelude/any-all-condition
+arg -c
+filter [any(. > 2), all(. > 0)]
+stdin [1,3]\n
+end
+
+case prelude/any-all-generator
+arg -c
+filter [any(.[]; . == 2), all(.[]; . < 3)]
+stdin [1,2,3]\n
+end
+
+case prelude/any-stops-before-error
+arg -c
+filter [any(true, error("x"); .)]
+stdin null\n
+end
+
+case prelude/all-stops-before-error
+arg -c
+filter [all(false, error("x"); .)]
+stdin null\n
+end
+
+case prelude/isempty
+arg -c
+filter [isempty(empty), isempty(1, error("x"))]
+stdin null\n
+end
+
+# Shadowing (ADR-0042): a user definition shadows a prelude one and a native for the user's filter only; a prelude
+# body never sees a user definition. `..` is a call of recurse/0 (parser.y), so the user's recurse/0 is the one it
+# calls (O1 of the design approval).
+
+case prelude/shadow-map
+arg -c
+filter def map(f): "x"; [1]|map(.)
+stdin null\n
+end
+
+case prelude/shadow-empty
+arg -c
+filter def empty: 1; [empty, select(false)]
+stdin null\n
+end
+
+case prelude/shadow-first
+arg -c
+filter def first(f): 9; [isempty(empty)]
+stdin null\n
+end
+
+case prelude/shadow-recurse-dotdot
+arg -c
+filter def recurse: 5; [..]
+stdin [1]\n
+end
+
+# Binding errors come before any Stub (ADR-0040, ADR-0042): ltrimstr reaches startswith, an unbuilt native, but the
+# unknown name is reported. A jq-defined builtin's closure argument (map) and a bytecoded builtin's (path, range/2)
+# are inner compile levels, reported only when the outer level has no error; a C builtin's (getpath) stays in the
+# caller's level (jq-ref 1.8.2).
+
+case prelude/bind-error-before-stub
+arg -c
+filter ltrimstr("a"), nosuch
+stdin null\n
+end
+
+case prelude/bind-error-map-argument
+arg -c
+filter zz1, map(zz2)
+stdin null\n
+end
+
+case prelude/bind-error-path-argument
+arg -c
+filter zz1, path(zz2)
+stdin null\n
+end
+
+case prelude/bind-error-range-argument
+arg -c
+filter zz1, range(zz2; 1)
+stdin null\n
+end
+
+case prelude/bind-error-getpath-argument
+arg -c
+filter zz1, getpath(zz2)
+stdin null\n
+end

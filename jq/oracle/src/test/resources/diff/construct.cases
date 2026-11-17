@@ -1,0 +1,341 @@
+# Differential cases (ADR-0020) of #64 "S2a.14 Construction": array and object construction, the order of their
+# results (ADR-0034 amendment: each key binds outside its own value, each pair outside the next), the key list (a
+# repeated key keeps its first place and its last value), shorthand keys, navigation on built values, and constant
+# keys, which jq rejects at parse time (ADR-0036) while any other non-string key fails at run time. jq's -n is not
+# built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in construct.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+# the order of results
+
+case construct/object-pairs-product
+arg -c
+filter {a:(1,2),b:(3,4)}
+stdin null\n
+end
+
+case construct/object-key-outside-value
+arg -c
+filter {("a","b"):(1,2)}
+stdin null\n
+end
+
+case construct/object-repeated-key
+arg -c
+filter {a:(1,2),a:3}
+stdin null\n
+end
+
+case construct/object-repeated-key-keeps-first-place
+arg -c
+filter {a:1,b:2,a:3}
+stdin null\n
+end
+
+case construct/object-insertion-order
+arg -c
+filter {b:1,a:2}
+stdin null\n
+end
+
+case construct/array-of-commas
+arg -c
+filter [(1,2),(3,4)]
+stdin null\n
+end
+
+case construct/objects-then-field
+arg -c
+filter {x:(1,2)},{x:3} | .x
+stdin null\n
+end
+
+case construct/object-empty-value
+arg -c
+filter {a:1,b:empty}
+stdin null\n
+end
+
+case construct/array-empty-body
+arg -c
+filter [empty]
+stdin null\n
+end
+
+# navigation on built values
+
+case construct/object-iterate
+arg -c
+filter {a:1,b:2} | [.[]]
+stdin null\n
+end
+
+case construct/object-index-number
+arg -c
+filter {a:1} | .[0]
+stdin null\n
+end
+
+case construct/array-index-and-slice
+arg -c
+filter [1,2,3] | .[1], .[1:]
+stdin null\n
+end
+
+case construct/object-field
+arg -c
+filter {a:{b:2}} | .a.b
+stdin null\n
+end
+
+# shorthand keys
+
+case construct/shorthand-keys
+arg -c
+filter {a, "b c", d}
+stdin {"a":1,"b c":2,"e":3}\n
+end
+
+case construct/shorthand-key-on-array
+arg -c
+filter {a}
+stdin [1]\n
+end
+
+case construct/shorthand-and-computed
+arg -c
+filter {a, (.k): .a}
+stdin {"a":1,"k":"z"}\n
+end
+
+# constant keys: parse-time errors (ADR-0036), one block each
+
+case construct/key-number-computed
+arg -c
+filter {(1):2}
+stdin null\n
+end
+
+case construct/key-null-computed
+arg -c
+filter {(null):1}
+stdin null\n
+end
+
+case construct/key-true-computed
+arg -c
+filter {(true):1}
+stdin null\n
+end
+
+case construct/key-false-computed
+arg -c
+filter {(false):1}
+stdin null\n
+end
+
+case construct/key-in-parentheses
+arg -c
+filter {((1)):1}
+stdin null\n
+end
+
+case construct/key-number-then-dot
+arg -c
+filter {(1|.):1}
+stdin null\n
+end
+
+case construct/key-dot-then-number
+arg -c
+filter {(.|1):1}
+stdin null\n
+end
+
+case construct/key-number-then-dots
+arg -c
+filter {(1|.|.):1}
+stdin null\n
+end
+
+case construct/key-number-second-pair
+arg -c
+filter {a:1,(2):3}
+stdin null\n
+end
+
+case construct/key-two-errors
+arg -c
+filter {(1):2} | {(true):3, (.a):4}
+stdin null\n
+end
+
+case construct/key-string-computed
+arg -c
+filter {("a"):1}
+stdin null\n
+end
+
+# constant containers as keys: jq folds them, so the error is at parse time
+
+case construct/key-array-constant
+arg -c
+filter {([1]):1}
+stdin null\n
+end
+
+case construct/key-object-constant
+arg -c
+filter {({a:1}):1}
+stdin null\n
+end
+
+# keys known only at run time
+
+case construct/key-number-at-run-time
+arg -c
+filter {(.):1}
+stdin 1\n
+end
+
+case construct/key-null-at-run-time
+arg -c
+filter {(.a):1}
+stdin {}\n
+end
+
+case construct/key-after-a-string-key
+arg -c
+filter {("a",1):2}
+stdin null\n
+end
+
+case construct/key-length-at-run-time
+arg -c
+filter {("a"|length):1}
+stdin null\n
+end
+
+# the folds of a constant key (ADR-0036): what jq folds is a parse-time error, anything else fails at run time
+
+case construct/key-array-two-constants
+arg -c
+filter {([1,2]):1}
+stdin null\n
+end
+
+case construct/key-array-left-nested-commas
+arg -c
+filter {([(1,2),3]):1}
+stdin null\n
+end
+
+case construct/key-array-right-nested-commas
+arg -c
+filter {([1,(2,3)]):1}
+stdin null\n
+end
+
+case construct/key-array-empty
+arg -c
+filter {([]):1}
+stdin null\n
+end
+
+case construct/key-array-of-dot
+arg -c
+filter {([.]):1}
+stdin null\n
+end
+
+case construct/key-parentheses-pipe-dot
+arg -c
+filter {((1)|(.)):1}
+stdin null\n
+end
+
+case construct/key-object-nested-constants
+arg -c
+filter {({"a":1,b:[2]}):1}
+stdin null\n
+end
+
+case construct/key-object-shorthand
+arg -c
+filter {({a}):1}
+stdin null\n
+end
+
+case construct/key-interpolated-string
+arg -c
+filter {("a\\(1)"):1}
+stdin null\n
+end
+
+case construct/key-interpolated-string-then-constant-key
+arg -c
+filter {("a\\(1)"):1} | {(1):2}
+stdin null\n
+end
+
+case construct/key-array-dot-then-commas
+arg -c
+filter {([.|(1,2)]):1}
+stdin null\n
+end
+
+case construct/key-array-commas-then-dot
+arg -c
+filter {([(1,2)|.]):1}
+stdin null\n
+end
+
+case construct/key-array-dot-then-commas-on-the-left
+arg -c
+filter {([(.|(1,2)),3]):1}
+stdin null\n
+end
+
+case construct/key-array-pipe-of-constants
+arg -c
+filter {([1|2]):1}
+stdin null\n
+end
+
+case construct/key-object-variable-shorthand-then-constant-key
+arg -c
+filter . as $x | {({$x}):1} | {(1):2}
+stdin null\n
+end
+
+# built objects with computed keys, and navigation on built objects
+
+case construct/key-computed-repeated
+arg -c
+filter {(.k):1, (.j):2, (.k):3}
+stdin {"k":"a","j":"b"}\n
+end
+
+case construct/key-computed-then-missing-field
+arg -c
+filter {(.k):1} | .z
+stdin {"k":"a"}\n
+end
+
+case construct/key-computed-then-field
+arg -c
+filter {(.k):1} | .a
+stdin {"k":"a"}\n
+end
+
+case construct/object-empty-iterate
+arg -c
+filter {} | .[]
+stdin null\n
+end
+
+case construct/object-field-second
+arg -c
+filter {a:1,b:2} | .b
+stdin null\n
+end

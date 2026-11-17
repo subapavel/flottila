@@ -1,0 +1,71 @@
+# The required cases of #34 "S1.12 Fields, chains, pipe, parentheses and the error line" (ADR-0020): give this file to
+# the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank
+# lines skipped. jq.test:148, 152, 156, 160 and man.test:29 moved to #36 (architect, 2026-11-11, C1).
+
+# jqtest: man.test program line 33 (.foo on an object without the key -> null).
+man.test#0ade8296aa15
+
+# differential: ADR-0024's bench.G1.1k, in the family/name form of every case id (diff/bench.cases).
+bench/G1.1k
+
+# differential: the family diff/field.cases.
+field/chain-3
+field/chain-error-middle
+field/chain-null-middle
+field/dot-space-field
+field/duplicate-dot
+field/duplicate-field
+field/duplicate-nested
+field/error-array
+field/error-empty-array
+field/error-false
+field/error-file-argument
+field/error-name-24
+field/error-name-25
+field/error-name-27
+field/error-name-28
+field/error-name-29
+field/error-name-30
+field/error-number
+field/error-string
+field/error-true
+field/hit-array
+field/hit-false
+field/hit-null
+field/hit-number
+field/hit-object
+field/hit-string
+field/hit-true
+field/keyword-and
+field/keyword-chain
+field/keyword-if
+field/keyword-loc
+field/line-crlf
+field/line-cut-after
+field/line-cut-before
+field/line-cut-cr
+field/line-cut-space
+field/line-cut-tab
+field/line-inner-lfs
+field/line-lf
+field/line-leading-lfs
+field/line-literal-late
+field/line-no-lf
+field/line-number-eof
+field/line-number-late
+field/line-string-cut
+field/line-trailing-lfs
+field/line-utf8-cut
+field/miss-empty
+field/miss-key
+field/name-chars
+field/null-input
+field/parens
+field/parens-nested
+field/parens-pipe
+field/parens-pipe-error
+field/parens-postfix
+field/pipe
+field/pipe-3
+field/pipe-identity
+field/space-steps

@@ -1,0 +1,106 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case chains/in-level-errors-in-source-order
+def ca927380a17f
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 1:\n    zz1 + zz2 and zz3 or zz4\n    ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 7:\n    zz1 + zz2 and zz3 or zz4\n          ^^^\njq: error: zz3/0 is not defined at <top-level>, line 1, column 15:\n    zz1 + zz2 and zz3 or zz4\n                  ^^^\njq: error: zz4/0 is not defined at <top-level>, line 1, column 22:\n    zz1 + zz2 and zz3 or zz4\n                         ^^^\njq: 4 compile errors\n
+end
+
+case chains/inner-levels-right-first-along-a-sum
+def 67fbb367615a
+rc 3
+stdout
+stderr jq: error: zz3/0 is not defined at <top-level>, line 1, column 34:\n    def f(g): g; f(zz1) + f(zz2) + f(zz3)\n                                     ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 25:\n    def f(g): g; f(zz1) + f(zz2) + f(zz3)\n                            ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) + f(zz2) + f(zz3)\n                   ^^^\njq: 3 compile errors\n
+end
+
+case chains/inner-levels-of-a-sum-under-and
+def c57da3df7a7b
+rc 3
+stdout
+stderr jq: error: zz2/0 is not defined at <top-level>, line 1, column 25:\n    def f(g): g; f(zz1) + f(zz2) and f(zz3)\n                            ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) + f(zz2) and f(zz3)\n                   ^^^\njq: error: zz3/0 is not defined at <top-level>, line 1, column 36:\n    def f(g): g; f(zz1) + f(zz2) and f(zz3)\n                                       ^^^\njq: 3 compile errors\n
+end
+
+case chains/inner-levels-of-and-over-a-sum
+def a633b951e4bc
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) and f(zz2) + f(zz3)\n                   ^^^\njq: error: zz3/0 is not defined at <top-level>, line 1, column 36:\n    def f(g): g; f(zz1) and f(zz2) + f(zz3)\n                                       ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 27:\n    def f(g): g; f(zz1) and f(zz2) + f(zz3)\n                              ^^^\njq: 3 compile errors\n
+end
+
+case chains/inner-levels-of-or-over-a-sum-under-alternative
+def 5f6aa5aebfcc
+rc 3
+stdout
+stderr jq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) or f(zz2) + f(zz3) // f(zz4)\n                   ^^^\njq: error: zz3/0 is not defined at <top-level>, line 1, column 35:\n    def f(g): g; f(zz1) or f(zz2) + f(zz3) // f(zz4)\n                                      ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 26:\n    def f(g): g; f(zz1) or f(zz2) + f(zz3) // f(zz4)\n                             ^^^\njq: error: zz4/0 is not defined at <top-level>, line 1, column 45:\n    def f(g): g; f(zz1) or f(zz2) + f(zz3) // f(zz4)\n                                                ^^^\njq: 4 compile errors\n
+end
+
+case chains/inner-levels-of-a-product-in-a-difference
+def ec1a379d3d12
+rc 3
+stdout
+stderr jq: error: zz5/0 is not defined at <top-level>, line 1, column 52:\n    def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)\n                                                       ^^^\njq: error: zz4/0 is not defined at <top-level>, line 1, column 43:\n    def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)\n                                              ^^^\njq: error: zz3/0 is not defined at <top-level>, line 1, column 34:\n    def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)\n                                     ^^^\njq: error: zz2/0 is not defined at <top-level>, line 1, column 25:\n    def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)\n                            ^^^\njq: error: zz1/0 is not defined at <top-level>, line 1, column 16:\n    def f(g): g; f(zz1) * f(zz2) - f(zz3) / f(zz4) % f(zz5)\n                   ^^^\njq: 5 compile errors\n
+end
+
+case chains/assignment-under-alternative-is-inner-levels
+def 9da2fad7ecaa
+rc 3
+stdout
+stderr jq: error: zz2/0 is not defined at <top-level>, line 1, column 12:\n    zz1 = 1 // zz2\n               ^^^\njq: 1 compile error\n
+end
+
+case chains/folded-prefix-then-a-term
+def e45de5d9f4ab
+rc 0
+stdout 2\n
+stderr
+end
+
+case chains/folded-prefix-then-terms
+def 5fa1d69f59ab
+rc 0
+stdout 8\n
+stderr
+end
+
+case chains/comparisons-in-and-or
+def fb8a9bfd11b5
+rc 0
+stdout true\n
+stderr
+end
+
+case chains/difference-is-left-associative
+def 8565d7deecf6
+rc 0
+stdout -5\n
+stderr
+end
+
+case chains/quotient-is-left-associative
+def b165887d83ec
+rc 0
+stdout 1\n
+stderr
+end
+
+case chains/difference-of-generators-in-jq-order
+def 570fd135a3dc
+rc 0
+stdout -109\n-108\n-119\n-118\n-209\n-208\n-219\n-218\n
+stderr
+end
+
+case chains/and-or-of-generators-in-jq-order
+def 5183a0f807f9
+rc 0
+stdout true\nfalse\ntrue\ntrue\nfalse\n
+stderr
+end
+
+case chains/folded-prefix-then-generators-in-jq-order
+def 83847198edeb
+rc 0
+stdout -11\n-21\n-21\n-41\n
+stderr
+end

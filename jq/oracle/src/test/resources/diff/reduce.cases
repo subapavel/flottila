@@ -1,0 +1,526 @@
+# Differential cases (ADR-0020) of #69 "S2a.19 reduce, foreach and range/2" (ADR-0041): reduce and both foreach forms
+# over updates with several results or none, init as a generator, the scope of SRC, INIT, UPDATE and EXTRACT, ?//
+# retries that roll nothing back, break inside a loop, the wrap depth of an error raised under a loop, and range/2
+# with fractional, negative, empty and non-numeric bounds. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in reduce.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c. No case here uses range/1 or
+# another prelude function: those are required at #71's gate (ADR-0041).
+#
+# Every case needs #67 (as $x, patterns, ?//). A case that also needs another blocker's construct says so in a
+# "needs" comment: #65 (+ - * / and unary minus), #66 (== and <), #68 (if, try, error, label and break).
+
+# reduce: the slot holds the last result of each update; the source runs on the reduce's input.
+
+case reduce/range2-last
+arg -c
+filter reduce range(3;6) as $x (null; $x)
+stdin null\n
+end
+
+case reduce/range2-single
+arg -c
+filter reduce range(3;4) as $x (0; [., $x])
+stdin null\n
+end
+
+case reduce/range2-pairs
+arg -c
+filter reduce range(3;6) as $x ([]; [., $x])
+stdin null\n
+end
+
+# needs #65
+case reduce/range2-sum
+arg -c
+filter reduce range(3;6) as $x (0; . + $x)
+stdin null\n
+end
+
+# needs #65. Each result of the update starts from the same state, and the last one wins.
+case reduce/multi-update
+arg -c
+filter reduce (1,2,3) as $x (0; .+1, .+10)
+stdin null\n
+end
+
+case reduce/multi-update-last-wins
+arg -c
+filter reduce (1,2,3) as $x (null; $x, [$x])
+stdin null\n
+end
+
+case reduce/multi-update-same-start
+arg -c
+filter reduce (1,2) as $x (0; [., $x], [$x, .])
+stdin null\n
+end
+
+# An update with no results leaves null, and the next update starts from it.
+case reduce/update-empty
+arg -c
+filter reduce (1,2) as $x (5; empty)
+stdin null\n
+end
+
+case reduce/update-empty-then-next
+arg -c
+filter reduce ([], [3]) as $x (7; $x[] as $y | [., $y])
+stdin null\n
+end
+
+case reduce/empty-source
+arg -c
+filter reduce empty as $x (5; .)
+stdin null\n
+end
+
+case reduce/empty-array-source
+arg -c
+filter reduce .[] as $x (5; [., $x])
+stdin []\n
+end
+
+# needs #65
+case reduce/null-init-sum
+arg -c
+filter reduce .[] as $x (null; . + $x)
+stdin [1,2,3]\n
+end
+
+case reduce/null-init-pairs
+arg -c
+filter reduce .[] as $x (null; [., $x])
+stdin [1,2]\n
+end
+
+# needs #65. Each init result runs its own loop.
+case reduce/init-generator
+arg -c
+filter [reduce (1,2) as $x (0, 10; .+$x)]
+stdin null\n
+end
+
+case reduce/init-generator-pairs
+arg -c
+filter [reduce (1,2) as $x (0, 10; [., $x])]
+stdin null\n
+end
+
+case reduce/init-empty
+arg -c
+filter [reduce (1,2) as $x (empty; [., $x])]
+stdin null\n
+end
+
+case reduce/input-is-the-sources-and-inits
+arg -c
+filter reduce .[] as $x (.; [$x, .[0]])
+stdin [1,2]\n
+end
+
+case reduce/nested
+arg -c
+filter reduce (1,2) as $x (0; reduce (10,20) as $y (.; [., $x, $y]))
+stdin null\n
+end
+
+case reduce/pattern-array
+arg -c
+filter reduce .[] as [$a, $b] (null; [., $a, $b])
+stdin [[1,2],[3]]\n
+end
+
+case reduce/pattern-object
+arg -c
+filter reduce .[] as {k: $v} ([]; [., $v])
+stdin [{"k":1},{"j":2}]\n
+end
+
+case reduce/source-error
+arg -c
+filter reduce (1, .a) as $x (0; [., $x])
+stdin []\n
+end
+
+case reduce/update-error
+arg -c
+filter reduce (1,2) as $x (0; .a)
+stdin null\n
+end
+
+case reduce/range2-hundred-thousand
+arg -c
+filter reduce range(0;100000) as $x (0; $x)
+stdin null\n
+end
+
+case reduce/deep-million
+arg -c
+filter reduce range(0;1000000) as $i (0; [.]) | 1
+stdin null\n
+end
+
+# foreach: each update result is emitted (two-argument form) or extracted (three-argument form).
+
+# needs #65
+case reduce/foreach-multi-update
+arg -c
+filter [foreach (1,2) as $x (0; .+1, .+10)]
+stdin null\n
+end
+
+case reduce/foreach-multi-update-pairs
+arg -c
+filter [foreach (1,2) as $x (0; [., $x], $x)]
+stdin null\n
+end
+
+# needs #65
+case reduce/foreach-extract-two
+arg -c
+filter [foreach (1,2) as $x (0; .+$x; ., -.)]
+stdin null\n
+end
+
+case reduce/foreach-pairs
+arg -c
+filter [foreach (1,2) as $x (0; [., $x])]
+stdin null\n
+end
+
+case reduce/foreach-extract-pairs
+arg -c
+filter [foreach (1,2,3) as $x (null; [., $x]; .[1])]
+stdin null\n
+end
+
+case reduce/foreach-extract-empty
+arg -c
+filter [foreach (1,2) as $x (0; [., $x]; empty)]
+stdin null\n
+end
+
+case reduce/foreach-update-empty
+arg -c
+filter [foreach (1,2) as $x (0; empty)]
+stdin null\n
+end
+
+case reduce/foreach-update-empty-then-next
+arg -c
+filter [foreach ([], [3]) as $x (7; $x[] as $y | [., $y])]
+stdin null\n
+end
+
+case reduce/foreach-empty-source
+arg -c
+filter [foreach empty as $x (0; .)]
+stdin null\n
+end
+
+case reduce/foreach-init-generator
+arg -c
+filter [foreach (1,2) as $x (0, 10; [., $x]; .[1])]
+stdin null\n
+end
+
+case reduce/foreach-range2
+arg -c
+filter [foreach range(0;4) as $x (null; $x; [$x, .])]
+stdin null\n
+end
+
+case reduce/foreach-extract-error
+arg -c
+filter foreach (1,2) as $x (0; $x; .a)
+stdin null\n
+end
+
+case reduce/foreach-stop-downstream
+arg -c
+filter [foreach (1,2,3) as $x (0; [., $x]) | .[1]] | .[1:]
+stdin null\n
+end
+
+# Scope: SRC and INIT see the outer scope, UPDATE and EXTRACT the pattern's names, and nothing after the loop does.
+
+case reduce/scope-init-unbound
+arg -c
+filter reduce 1 as $x ($x; .)
+stdin null\n
+end
+
+case reduce/scope-source-unbound
+arg -c
+filter reduce $x as $x (0; .)
+stdin null\n
+end
+
+case reduce/scope-after-unbound
+arg -c
+filter reduce 1 as $x (0; .) | $x
+stdin null\n
+end
+
+case reduce/scope-foreach-init-unbound
+arg -c
+filter foreach 1 as $x ($x; .)
+stdin null\n
+end
+
+case reduce/scope-foreach-extract-sees-pattern
+arg -c
+filter [foreach (1,2) as $x (0; .; $x)]
+stdin null\n
+end
+
+# needs #65
+case reduce/scope-init-outer
+arg -c
+filter 2 as $x | reduce 1 as $x ($x; .+$x)
+stdin null\n
+end
+
+case reduce/scope-init-outer-pairs
+arg -c
+filter 2 as $x | reduce 1 as $x ($x; [., $x])
+stdin null\n
+end
+
+case reduce/scope-source-outer
+arg -c
+filter 2 as $x | [reduce ($x, 3) as $x (0; [., $x])]
+stdin null\n
+end
+
+case reduce/scope-outer-after
+arg -c
+filter 2 as $x | reduce 1 as $x (0; .) | $x
+stdin null\n
+end
+
+# ?//: a retried alternative reruns the update on the slot as the failed attempt left it; nothing is rolled back.
+
+# needs #65 #66 #68
+case reduce/altbind-no-rollback
+arg -c
+filter reduce ([1],[2]) as [$a] ?// $a (0; if $a == 2 then error("x") else .+$a end)
+stdin null\n
+end
+
+# needs #65 #66 #68. A downstream error of the extract retries with the state the first alternative stored.
+case reduce/altbind-foreach-downstream
+arg -c
+filter [[1]] | [foreach .[] as [$a] ?// $a (0; .+1; [$a, .]) | if .[0] == 1 then error("x") else . end]
+stdin null\n
+end
+
+case reduce/altbind-match-error
+arg -c
+filter reduce ([1],2) as [$a] ?// $a (0; [., $a])
+stdin null\n
+end
+
+case reduce/altbind-last-error
+arg -c
+filter reduce ([1],2) as [$a] ?// [$a] (0; [., $a])
+stdin null\n
+end
+
+# break: a false passes at once; reduce emits nothing after one, foreach keeps what it emitted.
+
+# needs #65 #66 #68
+case reduce/break-in-update
+arg -c
+filter [label $f | reduce (0,1,2,3,4) as $x (0; if $x == 3 then break $f else .+$x end)]
+stdin null\n
+end
+
+# needs #65 #68
+case reduce/break-in-init
+arg -c
+filter [label $f | reduce (1,2) as $x ((1, break $f); .+$x)]
+stdin null\n
+end
+
+# needs #65 #66 #68
+case reduce/break-in-foreach
+arg -c
+filter [label $f | foreach (1,2,3) as $x (0; if $x == 3 then break $f else .+$x end)]
+stdin null\n
+end
+
+# needs #68
+case reduce/break-in-source
+arg -c
+filter [label $f | reduce (1, 2, break $f, 3) as $x (0; [., $x])]
+stdin null\n
+end
+
+# Wrap depth: an error raised in the update is downstream of the inner try's body, so only the outer try catches it.
+
+# needs #68
+case reduce/wrap-depth
+arg -c
+filter try (reduce (try (1,2) catch 0) as $x (0; error("e"))) catch "o"
+stdin null\n
+end
+
+# needs #68
+case reduce/wrap-depth-foreach
+arg -c
+filter [try (foreach (try (1,2) catch 0) as $x (0; $x; error("e"))) catch "o"]
+stdin null\n
+end
+
+# needs #68
+case reduce/source-error-caught
+arg -c
+filter try reduce (1, error("s"), 3) as $x (0; [., $x]) catch .
+stdin null\n
+end
+
+# range/2: the start is the outer loop; it adds 1 per step and stops at v >= end on doubles.
+
+case reduce/range2-ten
+arg -c
+filter [range(0;10)]
+stdin null\n
+end
+
+case reduce/range2-fractional-start
+arg -c
+filter [range(0.5;3)]
+stdin null\n
+end
+
+case reduce/range2-fractional-end
+arg -c
+filter [range(0;2.5)]
+stdin null\n
+end
+
+case reduce/range2-negative
+arg -c
+filter [range(-2.5;0)]
+stdin null\n
+end
+
+case reduce/range2-negative-both
+arg -c
+filter [range(-3;-1)]
+stdin null\n
+end
+
+case reduce/range2-descending
+arg -c
+filter [range(3;1)]
+stdin null\n
+end
+
+case reduce/range2-equal
+arg -c
+filter [range(1;1)]
+stdin null\n
+end
+
+case reduce/range2-one
+arg -c
+filter [range(1;2)]
+stdin null\n
+end
+
+case reduce/range2-generators
+arg -c
+filter [range(0,1;3,4)]
+stdin null\n
+end
+
+case reduce/range2-bounds-from-input
+arg -c
+filter [range(.a;.b)]
+stdin {"a":1,"b":4}\n
+end
+
+case reduce/range2-past-double
+arg -c
+filter [range(100000000000000000001;100000000000000000003)]
+stdin null\n
+end
+
+case reduce/range2-end-string
+arg -c
+filter range(5;"a")
+stdin null\n
+end
+
+case reduce/range2-start-null
+arg -c
+filter range(null;1)
+stdin null\n
+end
+
+case reduce/range2-both-strings
+arg -c
+filter [range("a";"b")]
+stdin null\n
+end
+
+case reduce/range2-error-before-results
+arg -c
+filter [range(0;3)], range(0;"x")
+stdin null\n
+end
+
+# needs #68
+case reduce/range2-end-string-caught
+arg -c
+filter try range(5;"a") catch .
+stdin null\n
+end
+
+# needs #68
+case reduce/range2-start-null-caught
+arg -c
+filter try range(null;1) catch .
+stdin null\n
+end
+
+# O1 (ADR-0041): the first value keeps the start's literal form; later values are sums.
+
+case reduce/range2-literal-start
+arg -c
+filter [range(1.10;3)]
+stdin null\n
+end
+
+case reduce/range2-literal-one-point-zero
+arg -c
+filter [range(1.0;3)]
+stdin null\n
+end
+
+case reduce/range2-literal-exponent
+arg -c
+filter [range(1e0;3)]
+stdin null\n
+end
+
+case reduce/range2-literal-from-input
+arg -c
+filter .a as $a | [range($a;3)]
+stdin {"a":1.0}\n
+end
+
+case reduce/range2-literal-from-input-direct
+arg -c
+filter [range(.a;3)]
+stdin {"a":1.10}\n
+end
+
+case reduce/range2-literal-end
+arg -c
+filter [range(0;1.10)]
+stdin null\n
+end
+

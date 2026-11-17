@@ -1,0 +1,113 @@
+# Differential cases (ADR-0020) of #35 "S1.13 Strings", table B of the approved design: jq's escape decoding, its
+# U+FFFD replacement over the escape output and the raw bytes together (ADR-0015 amendment, F-26), jq's re-escape on
+# output (jvp_dump_string) and the leading BOM. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java;
+# a JSON backslash is \\ here and a raw byte \xHH. Expected outputs live in string.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable.
+
+case string/mixed-escapes
+arg -c
+filter .
+stdin "é\\/x\\u007f"\n
+end
+
+case string/raw-ff
+arg -c
+filter .
+stdin "\xff"\n
+end
+
+case string/raw-del
+arg -c
+filter .
+stdin "a\x7fb"\n
+end
+
+case string/escaped-key-field
+arg -c
+filter .a
+stdin {"\\u0061":1}\n
+end
+
+case string/escaped-duplicate-key
+arg -c
+filter .
+stdin {"a":1,"\\u0061":2}\n
+end
+
+case string/escaped-duplicate-key-field
+arg -c
+filter .a
+stdin {"a":1,"\\u0061":2}\n
+end
+
+case string/all-escapes
+arg -c
+filter .
+stdin "\\"\\\\\\/\\b\\f\\n\\r\\t\\u0000\\u001F\\u0020\\u00e9\\u20AC\\uFFFE\\ud834\\uDD1E"\n
+end
+
+case string/controls
+arg -c
+filter .
+stdin "\\u0001\\u000b\\u001b"\n
+end
+
+case string/lone-low-surrogate
+arg -c
+filter .
+stdin "\\udc00x"\n
+end
+
+case string/bad-then-escape
+arg -c
+filter .
+stdin "\xc3\\u00e9"\n
+end
+
+case string/cut-lead-at-end
+arg -c
+filter .
+stdin "\xe2A"\n
+end
+
+case string/cut-lead-before-escape
+arg -c
+filter .
+stdin "\xe2\\u0041"\n
+end
+
+case string/cut-lead-mid
+arg -c
+filter .
+stdin "\xe2AB"\n
+end
+
+case string/bom-only
+arg -c
+filter .
+stdin \xef\xbb\xbf
+end
+
+case string/bom-partial-1
+arg -c
+filter .
+stdin \xef
+end
+
+case string/bom-partial-2
+arg -c
+filter .
+stdin \xef\xbb
+end
+
+case string/bom-then-whitespace
+arg -c
+filter .
+stdin \xef\xbb\xbf\x20\n
+end
+
+case string/bom-document
+arg -c
+filter .
+stdin \xef\xbb\xbf{"a":"é"}\n
+end

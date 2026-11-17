@@ -1,0 +1,225 @@
+# Differential cases (ADR-0020) of #63: the iteration .[] and its quiet variant .[]?; format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in iterate.rec, written
+# by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# P1: each form on each kind (null true 1 "abc" [1] {"a":1}).
+
+case iterate/plain-null
+arg -c
+filter .[]
+stdin null\n
+end
+
+case iterate/plain-true
+arg -c
+filter .[]
+stdin true\n
+end
+
+case iterate/plain-number
+arg -c
+filter .[]
+stdin 1\n
+end
+
+case iterate/plain-string
+arg -c
+filter .[]
+stdin "abc"\n
+end
+
+case iterate/plain-array
+arg -c
+filter .[]
+stdin [1]\n
+end
+
+case iterate/plain-object
+arg -c
+filter .[]
+stdin {"a":1}\n
+end
+
+case iterate/quiet-null
+arg -c
+filter .[]?
+stdin null\n
+end
+
+case iterate/quiet-true
+arg -c
+filter .[]?
+stdin true\n
+end
+
+case iterate/quiet-number
+arg -c
+filter .[]?
+stdin 1\n
+end
+
+case iterate/quiet-string
+arg -c
+filter .[]?
+stdin "abc"\n
+end
+
+case iterate/quiet-array
+arg -c
+filter .[]?
+stdin [1]\n
+end
+
+case iterate/quiet-object
+arg -c
+filter .[]?
+stdin {"a":1}\n
+end
+
+# Objects: the order of the keys as written, a duplicate key at its first place with its last value (ADR-0002).
+
+case iterate/object-order
+arg -c
+filter .[]
+stdin {"b":1,"a":2}\n
+end
+
+case iterate/empty-object
+arg -c
+filter .[]
+stdin {}\n
+end
+
+case iterate/duplicate-keys
+arg -c
+filter .[]
+stdin {"x":0,"a":1,"b":2,"a":3,"x":9}\n
+end
+
+case iterate/nested-values
+arg -c
+filter .[]
+stdin [[1,[2]],{"a":{}},"s",null]\n
+end
+
+# P4: the value in the message, cut by jv_dump_string_trunc (a 30-byte buffer): ASCII strings of 20 to 32 bytes.
+
+case iterate/cut-string-20
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrst"\n
+end
+
+case iterate/cut-string-21
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstu"\n
+end
+
+case iterate/cut-string-22
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuv"\n
+end
+
+case iterate/cut-string-23
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvw"\n
+end
+
+case iterate/cut-string-24
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwx"\n
+end
+
+case iterate/cut-string-25
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxy"\n
+end
+
+case iterate/cut-string-26
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz"\n
+end
+
+case iterate/cut-string-27
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz0"\n
+end
+
+case iterate/cut-string-28
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz01"\n
+end
+
+case iterate/cut-string-29
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz012"\n
+end
+
+case iterate/cut-string-30
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz0123"\n
+end
+
+case iterate/cut-string-31
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz01234"\n
+end
+
+case iterate/cut-string-32
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyz012345"\n
+end
+
+# P4: an e-acute (2 bytes) across the cut: at dump bytes 24-25 and 25-26 of a long string; a whole dump of
+# 29 bytes and a cut one of 30 bytes ending in it.
+
+case iterate/cut-e-acute-at-24
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwéabcdefghij"\n
+end
+
+case iterate/cut-e-acute-at-25
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxéabcdefghij"\n
+end
+
+case iterate/cut-e-acute-dump-29
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyé"\n
+end
+
+case iterate/cut-e-acute-dump-30
+arg -c
+filter .[]
+stdin "abcdefghijklmnopqrstuvwxyzé"\n
+end
+
+case iterate/cut-number-long
+arg -c
+filter .[]
+stdin 1234567890123456789012345678901234567890\n
+end
+
+# P5: a quiet variant drops only its own error: an error downstream propagates.
+
+case iterate/quiet-downstream-error
+arg -c
+filter .[]? | .a
+stdin [1]\n
+end
+

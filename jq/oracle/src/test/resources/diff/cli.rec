@@ -1,0 +1,155 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case cli/compact-before-filter
+def 0916e35b2c92
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/compact-after-filter
+def 3d67180f3004
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/compact-after-file
+def 285f67ce511b
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/compact-long
+def 2e21587aa748
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/double-dash-before-filter
+def 3d86806caf49
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/double-dash-before-file
+def 6ec3636ae9aa
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/double-dash-stdin
+def fdbc2c8e25b1
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/double-dash-option-is-file
+def c893c5a6ee62
+rc 2
+stdout
+stderr jq: error: Could not open file -c: No such file or directory\n
+end
+
+case cli/combined-cM
+def c92f901bd586
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/combined-Mc
+def b6c1c52d2acf
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/monochrome-long
+def f887d92c7324
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/missing-file
+def 5eb509d18e7d
+rc 2
+stdout
+stderr jq: error: Could not open file missing.json: No such file or directory\n
+end
+
+case cli/missing-file-dot-slash
+def be0c13b8b2d2
+rc 2
+stdout
+stderr jq: error: Could not open file ./missing.json: No such file or directory\n
+end
+
+case cli/unknown-long
+def a2d1d871c8cf
+rc 2
+stdout
+stderr jq: Unknown option --nosuch\nUse jq --help for help with command-line options,\nor see the jq manpage, or online docs at https://jqlang.org\n
+end
+
+case cli/unknown-after-file
+def 6c93ce178002
+rc 2
+stdout
+stderr jq: Unknown option --nosuch\nUse jq --help for help with command-line options,\nor see the jq manpage, or online docs at https://jqlang.org\n
+end
+
+case cli/unknown-in-cluster
+def 628a0e13a173
+rc 2
+stdout
+stderr jq: Unknown option -x\nUse jq --help for help with command-line options,\nor see the jq manpage, or online docs at https://jqlang.org\n
+end
+
+case cli/unknown-short
+def b482df3c607e
+rc 2
+stdout
+stderr jq: Unknown option -x\nUse jq --help for help with command-line options,\nor see the jq manpage, or online docs at https://jqlang.org\n
+end
+
+case cli/error-file-name
+def c45623a46069
+rc 5
+stdout
+stderr jq: error (at arr.json:1): Cannot index array with string ("a")\n
+end
+
+case cli/error-file-name-dot-slash
+def e792cb6489c8
+rc 5
+stdout
+stderr jq: error (at ./arr.json:1): Cannot index array with string ("a")\n
+end
+
+case cli/arg-option
+def 10949ab659ee
+rc 0
+stdout 1\n
+stderr
+end
+
+case cli/malformed-stdin
+def 071f408000e8
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 1, column 4\n
+end
+
+case cli/malformed-file
+def 2d3d6ba0dd41
+rc 5
+stdout
+stderr jq: parse error: Unfinished JSON term at EOF at line 2, column 0\n
+end

@@ -1,0 +1,45 @@
+# Differential cases (ADR-0020); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Expected outputs live in basics.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case basics/compact-object
+arg -c
+filter .
+stdin {"a":1}\n
+end
+
+case basics/field-of-array
+filter .a
+stdin [1]
+end
+
+case basics/syntax-error-eof
+filter .a |
+stdin {"a":1}\n
+end
+
+case basics/index-of-array
+arg -c
+filter .[0]
+stdin [1]\n
+end
+
+case basics/file-argument
+arg -c
+filter .
+arg in.json
+file in.json {"b":2}\n
+end
+
+case basics/recurse-of-array
+arg -c
+filter ..
+stdin [1]\n
+end
+
+# DifferentialRunnerTest's recorded Stub case since #110 built `..`: $ENV is unbuilt until spec 7 (ADR-0042
+# amendment for #110).
+case basics/env-type
+arg -c
+filter $ENV|type
+stdin null\n
+end

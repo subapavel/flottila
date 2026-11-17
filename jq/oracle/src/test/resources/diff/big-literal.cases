@@ -1,0 +1,79 @@
+# Differential cases (ADR-0020) of #90 "Numbers.compare: big and tiny literal tokens compared through double": two
+# literals compare as exact decimals (ADR-0012 "Comparison"), also when their tokens are already in jq's canonical
+# exponent form (1E+400, 1E-400, 1.5E-323), whose doubles are +Infinity, 0 or a rounded subnormal. The literals come
+# from the filter, from tonumber, from a negation, and from the input, alone and against a filter literal; ==, !=,
+# <, <=, >, >=, sort, unique, group_by, min and max over them. A filter that ignores its input runs on stdin null.
+# Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# big-literal.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case big-literal/ticket-equal
+arg -c
+filter [1E+400 == 1E+401, 1E-400 == 0]
+stdin null\n
+end
+
+case big-literal/filter-operators
+arg -c
+filter [1E+400 != 1E+401, 1E+400 < 1E+401, 1E+400 <= 1E+401, 1E+401 > 1E+400, 1E+401 >= 1E+400, 1E+401 < 1E+400, 1E-400 > 0, 0 < 1E-400, 1E-400 < 1E-399]
+stdin null\n
+end
+
+case big-literal/filter-subnormal
+arg -c
+filter [1.5E-323 == 1.6E-323, 1.5E-323 < 1.6E-323, 1E-330 == 2E-330, 1E-330 < 2E-330]
+stdin null\n
+end
+
+case big-literal/filter-negated
+arg -c
+filter [-1E+400 == -1E+401, -1E+400 > -1E+401, (1E+400 | -.) == (1E+401 | -.), (1E-400 | -.) == 0]
+stdin null\n
+end
+
+case big-literal/filter-tonumber
+arg -c
+filter [("1E+400" | tonumber) == ("1E+401" | tonumber), ("1E-400" | tonumber) == 0, ("1E+400" | tonumber) < ("1E+401" | tonumber), ("1E+400" | tonumber) == 1E+401]
+stdin null\n
+end
+
+case big-literal/filter-sort-unique
+arg -c
+filter [1E+401, 1E+400, 1E-400, 0, 1E-401, 1E+400, -1E+400, -1E+401] | sort, unique, (group_by(.) | map(length)), min, max
+stdin null\n
+end
+
+case big-literal/input-operators
+arg -c
+filter [.[0] == .[1], .[2] == .[3], .[2] == .[4], .[0] < .[1], .[3] < .[2], .[4] < .[2], .[0] != .[1]]
+stdin [1E+400,1E+401,1E-400,0,1E-401]\n
+end
+
+case big-literal/input-against-filter
+arg -c
+filter [.[0] == 1E+400, .[0] == 1E+401, .[1] == 1E+400, .[2] == 0, .[2] == 1E-400, .[0] < 1E+401, 1E-401 < .[2]]
+stdin [1E+400,1E+401,1E-400]\n
+end
+
+case big-literal/input-sort-unique
+arg -c
+filter sort, unique, (group_by(.) | map(length)), min, max
+stdin [1E+401,1E+400,1E-400,0,1E-401,1E+400,-1E+400,-1E+401,1.5E-323,1.6E-323]\n
+end
+
+case big-literal/input-bound
+arg -c
+filter . as [$a, $b, $c] | [$a == $b, $a < $b, $c == 0, ([.[]] | .[0] == .[1]), (map(-.) | .[0] == .[1])]
+stdin [1E+400,1E+401,1E-400]\n
+end
+
+case big-literal/input-big-value
+arg -c
+filter [. == 1E+400, . == 1E+401, . < 1E+401, . > 1E+399, -. == -1E+401, -. < -1E+399]
+stdin 1E+400\n
+end
+
+case big-literal/input-tiny-value
+arg -c
+filter [. == 1E-400, . == 0, . == 1E-401, . > 0, -. == 0, -. < 0]
+stdin 1E-400\n
+end

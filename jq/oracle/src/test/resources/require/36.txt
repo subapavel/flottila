@@ -1,0 +1,57 @@
+# The required cases of #36 "S1.14 Numbers" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# man.test:5 and json/y_number_real_capital_e_pos_exp came from #33; jq.test:148, 152, 156, 160 and man.test:29
+# from #34 (architect, 2026-11-11). None of these needs #35's string decoding: every string is tag 5.
+
+# jqtest: man.test program lines 5 and 29; jq.test program lines 148, 152, 156 and 160. Each expected value is a
+# number, which the runner's copy reads with doubleValue() and decimalValue().
+man.test#47f9f93530b6
+man.test#14c48adde9d4
+jq.test#30896d652d49
+jq.test#c400185394bd
+jq.test#ab86f854cabe
+jq.test#a1992d239479
+
+# differential: the family diff/number.cases (table D of the #36 design).
+number/below-emin-exact
+number/corpus
+number/duplicate-key
+number/eof-no-lf
+number/eof-no-lf-infinite
+number/eof-no-lf-tiny
+number/exponent-digits
+number/exponent-to-plain
+number/exponent-to-scientific
+number/fraction-zeros
+number/long-coefficient
+number/lower-limit
+number/saturated-exponent
+number/ticket-field
+number/ticket-object
+number/top-level
+number/upper-limit
+number/zero-limits
+number/zeros
+
+# json: the 20 JSONTestSuite files of the #36 design section 2 (the ticket's 19 and y_number_real_capital_e_pos_exp
+# from #33); none of them is in ratchet/oracle/json.txt.
+json/i_number_double_huge_neg_exp
+json/i_number_huge_exp
+json/i_number_neg_int_huge_exp
+json/i_number_pos_double_huge_exp
+json/i_number_real_neg_overflow
+json/i_number_real_pos_overflow
+json/i_number_real_underflow
+json/y_number
+json/y_number_0e+1
+json/y_number_0e1
+json/y_number_double_close_to_zero
+json/y_number_int_with_exp
+json/y_number_real_capital_e
+json/y_number_real_capital_e_neg_exp
+json/y_number_real_capital_e_pos_exp
+json/y_number_real_exponent
+json/y_number_real_fraction_exponent
+json/y_number_real_neg_exp
+json/y_number_real_pos_exponent
+json/y_object_extreme_numbers

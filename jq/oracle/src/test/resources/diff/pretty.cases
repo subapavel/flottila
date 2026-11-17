@@ -1,0 +1,96 @@
+# Differential cases (ADR-0020) of pretty output, jq's default indent 2 (#37); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Expected outputs live in pretty.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+# Numbers are CANONICAL and strings tag 5 (ADR-0012, ADR-0015): the other arms are #35's and #36's.
+
+case pretty/null
+filter .
+stdin null
+end
+
+case pretty/true
+filter .
+stdin true\n
+end
+
+case pretty/false
+filter .
+stdin \x20false\x20
+end
+
+case pretty/number
+filter .
+stdin -1.5\n
+end
+
+case pretty/string
+filter .
+stdin "a b/c é€𝄞 x"\n
+end
+
+case pretty/array
+filter .
+stdin [ 1 ,\t"two" ,\n[ null ] , [true,false], -0, 100000000000000000000 ]\n
+end
+
+case pretty/object
+filter .
+stdin {\n  "a" : 1,\n\t"b" : [true, false],\n  "c" : {"d" : null, "e" : "f"}\n}\n
+end
+
+case pretty/empty-array
+filter .
+stdin [\x20]\n
+end
+
+case pretty/empty-object
+filter .
+stdin {\n}\n
+end
+
+case pretty/nested-empty
+filter .
+stdin {"a":[],"b":{},"c":[[]]}\n
+end
+
+case pretty/nested-empty-mixed
+filter .
+stdin [[ ],{\n},[[\t]],{"a":{ }},[{}],{"b":[[],{}]},[[[[]]]],{"":[]}]
+end
+
+case pretty/object-array-object
+filter .
+stdin {"a":[{"b":1,"c":{"d":[2,"e"]}},3],"f":"g"}\n
+end
+
+case pretty/deep-arrays
+filter .
+stdin [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n
+end
+
+case pretty/deep-mixed
+filter .
+stdin {"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[{"a":[1]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}\n
+end
+
+case pretty/empty-stdin
+filter .
+end
+
+case pretty/whitespace-stdin
+filter .
+stdin \x20\t\x0d\n\x20\n
+end
+
+case pretty/no-filter
+stdin {"a":[1,{"b":null}]}\n
+end
+
+case pretty/field
+filter .a
+stdin {"a":{"b":[1,{}],"c":"d"},"z":0}\n
+end
+
+case pretty/duplicate-keys
+filter .
+stdin {"x":0,"a":1,"b":2,"a":3,"x":9,"n":{"k":1,"k":[2]},"o":[{"k":{"j":1},"k":{"j":2,"j":3}}]}\n
+end

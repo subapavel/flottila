@@ -1,0 +1,466 @@
+# Differential cases (ADR-0020) of #67 "S2a.17 Variables and destructuring" (ADR-0038): `E as $x | body` and its
+# scope, each pattern form ($x, [..], {$x}, {"k":$v}, {(e):$v}, {$name: P}, nested), the matcher's order (array
+# elements last first, object entries in source order, each key run on the value at its own level), absent parts and
+# nulls, non-container errors, repeated names, the `?//` alternatives (which error starts the next one, the last
+# one's error, a group name inside a key), $__loc__, unbound variables and the variable keys {$x} and {$x: v}.
+# jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in bind.rec, written
+# by scripts/oracle-record.sh only. Ids are immutable.
+
+# E as $x | body
+
+case bind/var-body-sees-input-and-slot
+arg -c
+filter . as $x | [$x, .]
+stdin 1\n
+end
+
+case bind/var-per-result
+arg -c
+filter (1, 2) as $x | [$x, .]
+stdin null\n
+end
+
+case bind/var-inner-shadows-outer
+arg -c
+filter 1 as $x | (2 as $x | $x), $x
+stdin null\n
+end
+
+case bind/var-as-argument
+arg -c
+filter 1 as $i | [5, 6] | .[$i]
+stdin null\n
+end
+
+case bind/var-as-field-name
+arg -c
+filter "b" as $k | .[$k]
+stdin {"a":1,"b":2}\n
+end
+
+case bind/var-empty-source
+arg -c
+filter [.[] as $x | $x]
+stdin []\n
+end
+
+# pattern forms
+
+case bind/array-pattern
+arg -c
+filter . as [$a, $b] | [$a, $b]
+stdin [1,2]\n
+end
+
+case bind/array-pattern-short-array
+arg -c
+filter . as [$a, $b, $c] | [$a, $b, $c]
+stdin [1]\n
+end
+
+case bind/array-pattern-on-null
+arg -c
+filter . as [$a] | [$a]
+stdin null\n
+end
+
+case bind/object-shorthand
+arg -c
+filter . as {$a} | $a
+stdin {"a":1,"b":2}\n
+end
+
+case bind/object-string-key
+arg -c
+filter . as {"k": $v} | $v
+stdin {"k":2}\n
+end
+
+case bind/object-keyword-key
+arg -c
+filter . as {if: $v} | $v
+stdin {"if":3}\n
+end
+
+case bind/object-computed-key
+arg -c
+filter . as {(.k): $v} | $v
+stdin {"k":"z","z":4}\n
+end
+
+case bind/object-name-pattern
+arg -c
+filter . as {$a: [$b]} | [$a, $b]
+stdin {"a":[5]}\n
+end
+
+case bind/object-absent-key
+arg -c
+filter . as {a: $x, b: [$y]} | [$x, $y]
+stdin {}\n
+end
+
+case bind/object-pattern-on-null
+arg -c
+filter . as {a: $x} | [$x]
+stdin null\n
+end
+
+case bind/nested-patterns
+arg -c
+filter . as [{a: [$x]}, [[$y]], {$z}] | [$x, $y, $z]
+stdin [{"a":[1]},[[2]],{"z":3}]\n
+end
+
+case bind/object-constant-string-key
+arg -c
+filter . as {("a"): $v} | $v
+stdin {"a":6}\n
+end
+
+# a key expression runs on the value at its own level
+
+case bind/key-runs-on-own-level
+arg -c
+filter . as {k: {(.n): $v}} | $v
+stdin {"n":"top","k":{"n":"x","x":1,"top":2}}\n
+end
+
+case bind/key-generator
+arg -c
+filter . as {("a", "b"): $v} | $v
+stdin {"a":1,"b":2}\n
+end
+
+case bind/key-generator-two-entries
+arg -c
+filter . as {("a", "b"): $x, ("c", "d"): $y} | [$x, $y]
+stdin {"a":1,"b":2,"c":3,"d":4}\n
+end
+
+case bind/key-generator-in-array-pattern
+arg -c
+filter . as [{("a", "b"): $x}, {("c", "d"): $y}] | [$x, $y]
+stdin [{"a":1,"b":2},{"c":3,"d":4}]\n
+end
+
+case bind/key-sees-outer-variable
+arg -c
+filter "b" as $k | . as {a: $k, ($k): $v} | [$k, $v]
+stdin {"a":"c","b":1,"c":2}\n
+end
+
+case bind/key-own-name-unbound
+arg -c
+filter . as {a: $k, ($k): $v} | $v
+stdin {"a":"b","b":1}\n
+end
+
+case bind/key-runtime-number
+arg -c
+filter . as {(.n): $v} | $v
+stdin {"n":1}\n
+end
+
+case bind/key-constant-number
+arg -c
+filter . as {(1): $a} | $a
+stdin {}\n
+end
+
+case bind/key-constant-null
+arg -c
+filter . as {(null): $a} | $a
+stdin {}\n
+end
+
+# non-container errors
+
+case bind/array-pattern-on-number
+arg -c
+filter . as [$a] | $a
+stdin 1\n
+end
+
+case bind/array-pattern-on-object
+arg -c
+filter . as [$a] | $a
+stdin {"a":1}\n
+end
+
+case bind/object-pattern-on-array
+arg -c
+filter . as {a: $a} | $a
+stdin [1]\n
+end
+
+case bind/object-pattern-on-string
+arg -c
+filter . as {$a} | $a
+stdin "s"\n
+end
+
+case bind/inner-pattern-on-number
+arg -c
+filter . as [[$a]] | $a
+stdin [7]\n
+end
+
+# the matcher's order
+
+case bind/order-array-elements
+arg -c
+filter . as [{a: $x}, {b: $y}] | 0
+stdin [1,2]\n
+end
+
+case bind/order-object-entries
+arg -c
+filter . as {a: [$x], b: {c: $y}} | 0
+stdin {"a":1,"b":2}\n
+end
+
+case bind/order-results-array
+arg -c
+filter . as [$a, $b] | $a, $b
+stdin [1,2]\n
+end
+
+# repeated names
+
+case bind/repeat-array
+arg -c
+filter [1, 2] as [$a, $a] | $a
+stdin null\n
+end
+
+case bind/repeat-object
+arg -c
+filter . as {a: $x, b: $x} | $x
+stdin {"a":1,"b":2}\n
+end
+
+case bind/repeat-nested
+arg -c
+filter . as [$a, [$a]] | $a
+stdin [1,[2]]\n
+end
+
+case bind/repeat-array-alt
+arg -c
+filter [1, 2] as [$a, $a] ?// $z | $a
+stdin null\n
+end
+
+case bind/repeat-object-alt
+arg -c
+filter . as {a: $x, b: $x} ?// $z | $x
+stdin {"a":1,"b":2}\n
+end
+
+# ?// alternatives
+
+case bind/alt-first-matches
+arg -c
+filter . as [$a] ?// $a | $a
+stdin [1]\n
+end
+
+case bind/alt-second-on-match-error
+arg -c
+filter . as [$a] ?// $a | $a
+stdin 1\n
+end
+
+case bind/alt-value-error-propagates
+arg -c
+filter (1, ("a" | .[0])) as [$a] ?// $a | $a
+stdin null\n
+end
+
+case bind/alt-downstream-error
+arg -c
+filter [[1]] | (.[] as [$a] ?// $a | $a) | .[0]
+stdin null\n
+end
+
+case bind/alt-downstream-error-last
+arg -c
+filter [[1]] | (.[] as [$a] ?// $a | $a) | .x
+stdin null\n
+end
+
+case bind/alt-last-match-error
+arg -c
+filter . as [$a] ?// {a: $a} | $a
+stdin 1\n
+end
+
+case bind/alt-last-body-error
+arg -c
+filter . as [$a] ?// $a | ($a | .x)
+stdin [1]\n
+end
+
+case bind/alt-results-before-error-kept
+arg -c
+filter . as [$a] ?// $a | $a, ($a | .[0])
+stdin [5]\n
+end
+
+case bind/alt-absent-name-is-null
+arg -c
+filter . as [$a, $b] ?// {$a} | [$a, $b]
+stdin {"a":1}\n
+end
+
+case bind/alt-earlier-name-cleared
+arg -c
+filter . as {$b, c: [$x]} ?// {$a} | [$a, $b, $x]
+stdin {"a":1,"b":2,"c":3}\n
+end
+
+case bind/alt-group-name-in-key
+arg -c
+filter "o" as $a | {"a":"x","x":5,"o":6} | . as [$b] ?// {$a, ($a): $b} | $b
+stdin null\n
+end
+
+case bind/alt-group-name-in-key-first
+arg -c
+filter "o" as $a | {"a":"x","x":5,"o":6} | . as {$a, ($a): $b} ?// [$b] | $b
+stdin null\n
+end
+
+case bind/alt-group-name-in-key-before-store
+arg -c
+filter "o" as $a | {"a":"x","x":5,"o":6} | . as [$b] ?// {($a): $b, $a} | $b
+stdin null\n
+end
+
+case bind/alt-group-name-in-key-after-failed-store
+arg -c
+filter "o" as $a | {"a":"x","x":5,"o":6,"b":1} | . as {$a, b: [$b]} ?// {($a): $b, $a} | $b
+stdin null\n
+end
+
+case bind/alt-per-result-restart
+arg -c
+filter .[] as [$a] ?// $a | $a
+stdin [[1],2,[3]]\n
+end
+
+case bind/alt-three-all-fail
+arg -c
+filter . as [$a] ?// {a: $a} ?// [[$a]] | $a
+stdin "s"\n
+end
+
+# $__loc__
+
+case bind/loc-line-1
+arg -c
+filter $__loc__
+stdin null\n
+end
+
+case bind/loc-line-3
+arg -c
+filter \n\n$__loc__
+stdin null\n
+end
+
+case bind/loc-after-two-cr
+arg -c
+filter .\x0d|\x0d$__loc__
+stdin null\n
+end
+
+case bind/loc-shorthand
+arg -c
+filter {$__loc__}
+stdin null\n
+end
+
+case bind/loc-as-key
+arg -c
+filter {($__loc__): 1}
+stdin null\n
+end
+
+case bind/loc-as-pattern-key
+arg -c
+filter . as {($__loc__): $x} | 1
+stdin null\n
+end
+
+# unbound variables
+
+case bind/unbound-one
+arg -c
+filter $x
+stdin null\n
+end
+
+case bind/unbound-two
+arg -c
+filter [$b, $a]
+stdin null\n
+end
+
+case bind/unbound-outside-scope
+arg -c
+filter (1 as $x | $x), $x
+stdin null\n
+end
+
+case bind/unbound-in-own-source
+arg -c
+filter $x as $x | $x
+stdin null\n
+end
+
+case bind/unbound-in-pattern-key
+arg -c
+filter . as {($k): $v} | $v
+stdin null\n
+end
+
+case bind/unbound-and-constant-key
+arg -c
+filter {(1): $a} | $b
+stdin null\n
+end
+
+case bind/unbound-operator-operands
+arg -c
+filter $b + $a
+stdin null\n
+end
+
+# {$x} and {$x: v}
+
+case bind/object-var-shorthand
+arg -c
+filter 1 as $x | {$x}
+stdin null\n
+end
+
+case bind/object-var-key
+arg -c
+filter "k" as $x | {$x: 2}
+stdin null\n
+end
+
+case bind/object-var-key-number
+arg -c
+filter 1 as $x | {$x: 2}
+stdin null\n
+end
+
+case bind/object-var-key-generator
+arg -c
+filter ("a", "b") as $x | {$x: 1, $x}
+stdin null\n
+end

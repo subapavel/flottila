@@ -1,0 +1,43 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case comma/fields
+def 79140dc25c87
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case comma/three
+def 6c6dcb97eeae
+rc 0
+stdout 1\n2\n1\n
+stderr
+end
+
+case comma/nulls
+def c2a4c6543f42
+rc 0
+stdout null\nnull\n
+stderr
+end
+
+case comma/pipe-order
+def 045c4d77f4d6
+rc 0
+stdout 1\n1\n2\n2\n
+stderr
+end
+
+case comma/error-in-second
+def 04fecc123113
+rc 5
+stdout 5\n
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case comma/error-in-first
+def 547d89ee2f8d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end

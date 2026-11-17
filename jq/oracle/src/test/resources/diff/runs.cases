@@ -1,0 +1,70 @@
+# Differential cases (ADR-0020) of #94 "operator runs lower to one Binds, and/or runs are balanced" (ADR-0043):
+# past BIND_RUN nested Binds a run of one left-associative operator lowers to one Binds, and a run of more than
+# PIPE_CHAIN terms of and or or is built balanced. Each run has 70 parts, two of them the generator (1,2), so each
+# goes through the Binds or the balanced tree with a part that recurses. The cases pin that it keeps jq's order:
+#
+# - runs/sum-of-70-terms-in-jq-order: the terms add left to right and the right operand of the top operator runs
+#   outermost. At 2^53 a double steps by 2 and + rounds to even, so each step shows: a + of 1 is lost or rounds up,
+#   a + of 3 adds 4, and the second (1,2) gives the outer loop, the first the inner one. jq-ref 1.8.2 gives
+#   9007199254741124, …128, …126, …130; the same terms right-nested give …128 four times, and on b = 0, where the
+#   sum is exact, the four results are 135, 136, 136, 137 and no order shows.
+# - runs/sum-of-70-errors-raises-the-rightmost-first: the right operands run from the top operator down before the
+#   leftmost term, so after the two (1,2) the first error raised is the rightmost, z; the leftmost first would raise
+#   a, the right operands from the bottom up m1.
+# - runs/and-of-70-truthy-terms-with-generators: each result of a generating term runs every later term; 0, "", {}
+#   and [] are true: four results.
+# - runs/and-of-70-terms-false-between-generators: the false after the first (1,2) ends each of its two results, so
+#   the second (1,2) never runs: two results.
+# - runs/or-of-70-falsy-terms-with-generators: the first (1,2) gives true twice and the second never runs.
+# - runs/alternative-of-70-mixed-terms-in-jq-order: a // run of 70 terms, past PIPE_CHAIN so a balanced Alt (#94),
+#   of false, null, empty, field reads of null and (false, .k) before term 20, (false, 3), the first with a truthy
+#   result; after it error("never"), (1, 2), error("z") and a last "last". Only the terms' order decides the output:
+#   the terms in jq's order give 3; the right half first, the terms reversed, give "last", and an order that reaches
+#   an error or (1, 2) first gives that.
+#
+# Every case is required at #94 (oracle/src/test/resources/require/94.txt). The 20 000-part runs are pinned by jq-core
+# IrDepthTest. jq's -n is not built in jqj's command line yet, so a filter that ignores its input runs on stdin null.
+# Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in runs.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+# arithmetic runs
+
+case runs/sum-of-70-terms-in-jq-order
+arg -c
+filter .b + (1,2) + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + .d + .c + (1,2)
+stdin {"b":9007199254740992,"c":1,"d":3}\n
+end
+
+case runs/sum-of-70-errors-raises-the-rightmost-first
+arg -c
+filter error("a") + error("m1") + error("m2") + error("m3") + error("m4") + error("m5") + error("m6") + error("m7") + error("m8") + error("m9") + error("m10") + error("m11") + error("m12") + error("m13") + error("m14") + error("m15") + error("m16") + error("m17") + error("m18") + error("m19") + error("m20") + error("m21") + error("m22") + error("m23") + error("m24") + error("m25") + error("m26") + error("m27") + error("m28") + error("m29") + error("m30") + error("m31") + error("m32") + error("m33") + error("m34") + error("m35") + error("m36") + error("m37") + error("m38") + error("m39") + error("m40") + error("m41") + error("m42") + error("m43") + error("m44") + error("m45") + error("m46") + error("m47") + error("m48") + error("m49") + error("m50") + error("m51") + error("m52") + error("m53") + error("m54") + error("m55") + error("m56") + error("m57") + error("m58") + error("m59") + error("m60") + error("m61") + error("m62") + error("m63") + error("m64") + error("m65") + error("m66") + error("z") + (1,2) + (1,2)
+stdin null\n
+end
+
+# and/or runs
+
+case runs/and-of-70-truthy-terms-with-generators
+arg -c
+filter .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and (1,2) and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and (1,2) and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a and .t and .z and .s and .o and .a
+stdin {"t":true,"z":0,"s":"","o":{},"a":[]}\n
+end
+
+case runs/and-of-70-terms-false-between-generators
+arg -c
+filter .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and (1,2) and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .f and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and .t and (1,2) and .t and .t and .t and .t and .t and .t and .t and .t and .t
+stdin {"t":true,"f":false}\n
+end
+
+case runs/or-of-70-falsy-terms-with-generators
+arg -c
+filter .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or (1,2) or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or (1,2) or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n or .f or .n
+stdin {"f":false,"n":null}\n
+end
+
+# alternative runs
+
+case runs/alternative-of-70-mixed-terms-in-jq-order
+arg -c
+filter false // null // empty // .k3 // (false, .k4) // false // null // empty // .k8 // (false, .k9) // false // null // empty // .k13 // (false, .k14) // false // null // empty // .k18 // (false, .k19) // (false, 3) // null // empty // .k23 // (false, .k24) // error("never") // null // empty // .k28 // (false, .k29) // false // null // empty // .k33 // (false, .k34) // false // null // empty // .k38 // (false, .k39) // false // null // empty // .k43 // (false, .k44) // false // null // empty // .k48 // (false, .k49) // (1, 2) // null // empty // .k53 // (false, .k54) // false // null // empty // .k58 // (false, .k59) // error("z") // null // empty // .k63 // (false, .k64) // false // null // empty // .k68 // "last"
+stdin null\n
+end

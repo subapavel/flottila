@@ -1,0 +1,7 @@
+target/
+.logs/
+.idea/
+*.iml
+.DS_Store
+.claude/settings.local.json
+.claude/worktrees/

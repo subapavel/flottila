@@ -1,0 +1,441 @@
+# Differential cases (ADR-0020) of #62 "S2a.12 The full parser": syntax errors, jq's recovery messages, the program
+# that is not given, and where the end of the file is reported (ADR-0032). A recording whose stderr has a line
+# "jq: error: syntax error" compares rc and stdout only (ADR-0020, DEVIATIONS "Syntax-error text"); jq-core's
+# SyntaxErrorTest checks the blocks, line and column of the exception against these recordings. The "not given" cases
+# have no syntax error, so their stderr is compared byte for byte. Every case is required at #62
+# (oracle/src/test/resources/require/62.txt). Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# DiffCase.java; a backslash of the filter is \\ here, a raw LF \n, a raw TAB \t, other control bytes and a
+# trailing space \xHH. Expected outputs live in syntax.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# non-associative levels: the second operator of a level is the syntax error
+
+case syntax/compare-nonassoc
+arg -c
+filter 1 < 2 < 3
+stdin null\n
+end
+
+case syntax/compare-nonassoc-around-a-sum
+arg -c
+filter 1 < 2 + 3 < 4
+stdin null\n
+end
+
+case syntax/compare-nonassoc-line-3
+arg -c
+filter 1 +\n2 <\n3 < 4
+stdin null\n
+end
+
+case syntax/equal-nonassoc
+arg -c
+filter 1 == 1 == true
+stdin null\n
+end
+
+case syntax/assign-nonassoc
+arg -c
+filter .a = .b = 1
+stdin {}\n
+end
+
+case syntax/update-nonassoc
+arg -c
+filter .a |= 1 |= 2
+stdin null\n
+end
+
+# a place that takes a postfix term or a restricted expression
+
+case syntax/object-value-as
+arg -c
+filter {a: 1 as $x | $x}
+stdin null\n
+end
+
+case syntax/def-after-an-operator
+arg -c
+filter 1 + def f: 2; f
+stdin null\n
+end
+
+case syntax/try-body-operator-in-array
+arg -c
+filter [try error("x") + 1 catch .]
+stdin null\n
+end
+
+case syntax/try-body-operator
+arg -c
+filter try error("x") + 1 catch .
+stdin null\n
+end
+
+case syntax/reduce-source-comma
+arg -c
+filter reduce 1, 2 as $x (0; . + $x)
+stdin null\n
+end
+
+# recovery messages: a syntax block, then jq's message, and the parse goes on
+
+case syntax/object-key-expression
+arg -c
+filter {1+2:3}
+stdin null\n
+end
+
+case syntax/object-key-expression-twice
+arg -c
+filter {1+2:3} | {4*5:6}
+stdin null\n
+end
+
+case syntax/dot-e-acute
+arg -c
+filter .é
+stdin null\n
+end
+
+case syntax/dot-at
+arg -c
+filter .@
+stdin null\n
+end
+
+case syntax/dot-backtick
+arg -c
+filter .`
+stdin null\n
+end
+
+case syntax/dot-brace
+arg -c
+filter .{
+stdin null\n
+end
+
+# no top-level program: not a syntax error, so the text matches jq's exactly
+
+case syntax/program-empty
+arg -c
+filter
+stdin null\n
+end
+
+case syntax/program-only-definitions
+arg -c
+filter def f: 1;
+stdin null\n
+end
+
+case syntax/program-only-two-definitions
+arg -c
+filter def f: 1; def g: f;
+stdin null\n
+end
+
+case syntax/program-only-comment
+arg -c
+filter #c
+stdin null\n
+end
+
+case syntax/program-only-spaces
+arg -c
+filter \x20\x20\x20
+stdin null\n
+end
+
+case syntax/program-only-lf
+arg -c
+filter \n
+stdin null\n
+end
+
+# the end of the file is reported at the lexer's last match: a whitespace run, a comment's byte or its LF
+
+case syntax/eof-after-spaces
+arg -c
+filter .a |\x20\x20\x20
+stdin null\n
+end
+
+case syntax/eof-after-lf
+arg -c
+filter .a |\n
+stdin null\n
+end
+
+case syntax/eof-after-lines
+arg -c
+filter .a |\n\n\x20\x20
+stdin null\n
+end
+
+case syntax/eof-after-cr
+arg -c
+filter .a |\x0d
+stdin null\n
+end
+
+case syntax/eof-after-comment
+arg -c
+filter .a | # cd
+stdin null\n
+end
+
+case syntax/eof-after-comment-lf
+arg -c
+filter .a | # c\n
+stdin null\n
+end
+
+case syntax/eof-after-comment-line
+arg -c
+filter .a | # c\n\x20
+stdin null\n
+end
+
+case syntax/eof-after-hash
+arg -c
+filter .a | #
+stdin null\n
+end
+
+case syntax/eof-after-continued-comment
+arg -c
+filter .a | # c\\\nd
+stdin null\n
+end
+
+case syntax/eof-on-line-2
+arg -c
+filter .a\n|\n
+stdin null\n
+end
+
+# no Stub hides a syntax error (ADR-0032): an unbuilt construct, then the error
+
+case syntax/after-an-index
+arg -c
+filter .[0] +
+stdin null\n
+end
+
+case syntax/after-a-comma
+arg -c
+filter .a, .b |
+stdin null\n
+end
+
+case syntax/after-an-index-a-closer
+arg -c
+filter .[0] | )
+stdin null\n
+end
+
+case syntax/after-an-interpolation
+arg -c
+filter "a\\(1)b" |
+stdin null\n
+end
+
+case syntax/after-a-format-string
+arg -c
+filter @base64 "x\\(.)" +
+stdin null\n
+end
+
+# string parts: a syntax error inside an interpolation
+
+case syntax/in-interpolation
+arg -c
+filter "\\(1 +)"
+stdin null\n
+end
+
+case syntax/in-interpolation-wrong-closer
+arg -c
+filter "\\(1]"
+stdin null\n
+end
+
+case syntax/in-interpolation-nonassoc
+arg -c
+filter "a\\(1 < 2 < 3)"
+stdin null\n
+end
+
+# the inputs of the older Stub tests (ParserTest, CompileTest, LexerStubTest, FieldNameCharsTest) that jq rejects
+
+case syntax/paren-unclosed
+arg -c
+filter (.a
+stdin null\n
+end
+
+case syntax/close-paren-alone
+arg -c
+filter )
+stdin null\n
+end
+
+case syntax/pipe-first
+arg -c
+filter |.a
+stdin null\n
+end
+
+case syntax/paren-empty
+arg -c
+filter ()
+stdin null\n
+end
+
+case syntax/dot-space-dot
+arg -c
+filter . .
+stdin null\n
+end
+
+case syntax/field-space-dot
+arg -c
+filter .a .
+stdin null\n
+end
+
+case syntax/close-paren-extra
+arg -c
+filter (.a))
+stdin null\n
+end
+
+case syntax/pipe-twice
+arg -c
+filter .a | | .b
+stdin null\n
+end
+
+case syntax/and-alone
+arg -c
+filter and
+stdin null\n
+end
+
+case syntax/comma-alone
+arg -c
+filter ,
+stdin null\n
+end
+
+case syntax/field-dot-e-acute
+arg -c
+filter .a.é
+stdin null\n
+end
+
+case syntax/form-feed-before-dot
+arg -c
+filter \x0c.
+stdin null\n
+end
+
+case syntax/vertical-tab-before-dot
+arg -c
+filter \x0b.
+stdin null\n
+end
+
+case syntax/rec-then-name
+arg -c
+filter ..a
+stdin null\n
+end
+
+case syntax/rec-then-name-in-parens
+arg -c
+filter (..a)
+stdin null\n
+end
+
+case syntax/rec-then-name-after-pipe
+arg -c
+filter . | ..a
+stdin null\n
+end
+
+case syntax/field-then-at
+arg -c
+filter .a@
+stdin null\n
+end
+
+case syntax/field-then-bracket
+arg -c
+filter .a[
+stdin null\n
+end
+
+case syntax/dot-bracket
+arg -c
+filter .[
+stdin null\n
+end
+
+case syntax/field-then-backtick
+arg -c
+filter .a`
+stdin null\n
+end
+
+case syntax/field-then-brace
+arg -c
+filter .a{
+stdin null\n
+end
+
+case syntax/field-then-slash
+arg -c
+filter .a/
+stdin null\n
+end
+
+case syntax/dot-slash
+arg -c
+filter ./
+stdin null\n
+end
+
+case syntax/field-then-colon
+arg -c
+filter .a:
+stdin null\n
+end
+
+case syntax/dot-colon
+arg -c
+filter .:
+stdin null\n
+end
+
+# #64 (ADR-0036): a constant key's parser-action error and the syntax errors around it, in the order the parse meets
+# them. Required at #64 (require/64.txt); jq-core's ConstantKeyTest checks the blocks.
+
+case syntax/object-key-number-literal
+arg -c
+filter {1:2}
+stdin null\n
+end
+
+case syntax/object-key-error-then-syntax-error
+arg -c
+filter {(1): 2 3}
+stdin null\n
+end
+
+case syntax/object-key-error-after-a-recovery
+arg -c
+filter {1+2:3} | {(1):2}
+stdin null\n
+end

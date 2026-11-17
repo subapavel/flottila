@@ -1,0 +1,43 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case runs/sum-of-70-terms-in-jq-order
+def dd87d17f0be4
+rc 0
+stdout 9007199254741124\n9007199254741128\n9007199254741126\n9007199254741130\n
+stderr
+end
+
+case runs/sum-of-70-errors-raises-the-rightmost-first
+def 31ba878d9b19
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): z\n
+end
+
+case runs/and-of-70-truthy-terms-with-generators
+def 39e4d98ac987
+rc 0
+stdout true\ntrue\ntrue\ntrue\n
+stderr
+end
+
+case runs/and-of-70-terms-false-between-generators
+def 9f3df3d955f3
+rc 0
+stdout false\nfalse\n
+stderr
+end
+
+case runs/or-of-70-falsy-terms-with-generators
+def 6bd5715dd890
+rc 0
+stdout true\ntrue\n
+stderr
+end
+
+case runs/alternative-of-70-mixed-terms-in-jq-order
+def 581010554748
+rc 0
+stdout 3\n
+stderr
+end

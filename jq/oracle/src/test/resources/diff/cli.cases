@@ -1,0 +1,182 @@
+# Differential cases (ADR-0020) of the command line (#38): where options go, --, combined short flags, a missing
+# file, an unknown option, the file name in an error. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/
+# DiffCase.java. Expected outputs live in cli.rec, written by scripts/oracle-record.sh only. Ids are immutable. Every
+# case uses -c: pretty output is a Stub until #37.
+
+# Options before or after the filter, and after the file.
+
+case cli/compact-before-filter
+arg -c
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/compact-after-filter
+filter .a
+arg -c
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/compact-after-file
+filter .a
+arg in.json
+arg -c
+file in.json {"a":1}\n
+end
+
+case cli/compact-long
+arg --compact-output
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+# -- ends the options: what follows is the filter, then files, even when it looks like an option.
+
+case cli/double-dash-before-filter
+arg -c
+arg --
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/double-dash-before-file
+arg -c
+filter .a
+arg --
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/double-dash-stdin
+arg -c
+arg --
+filter .a
+stdin {"a":1}\n
+end
+
+case cli/double-dash-option-is-file
+arg -c
+filter .a
+arg --
+arg -c
+file in.json {"a":1}\n
+end
+
+# Combined short flags.
+
+case cli/combined-cM
+arg -cM
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/combined-Mc
+arg -Mc
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/monochrome-long
+arg -c
+arg --monochrome-output
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+# A file that does not exist: jq's text, exit code 2.
+
+case cli/missing-file
+arg -c
+filter .a
+arg missing.json
+stdin {"a":1}\n
+end
+
+case cli/missing-file-dot-slash
+arg -c
+filter .a
+arg ./missing.json
+stdin {"a":1}\n
+end
+
+# An unknown option: jq's three-line usage text, exit code 2.
+
+case cli/unknown-long
+arg -c
+arg --nosuch
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/unknown-after-file
+arg -c
+filter .a
+arg in.json
+arg --nosuch
+file in.json {"a":1}\n
+end
+
+case cli/unknown-in-cluster
+arg -cx
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/unknown-short
+arg -x
+arg -c
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+# The file name in a .a error, as given.
+
+case cli/error-file-name
+arg -c
+filter .a
+arg arr.json
+file arr.json [1]\n
+end
+
+case cli/error-file-name-dot-slash
+arg -c
+filter .a
+arg ./arr.json
+file arr.json [1]\n
+end
+
+# Not required (require/38.txt): a jq option that is not built yet is a Stub (spec 7), and malformed input prints the
+# Stub text in jq's frame until spec 5. jq-cli's CommandLineTest cites these recordings.
+
+case cli/arg-option
+arg -c
+arg --arg
+arg x
+arg 1
+filter .a
+arg in.json
+file in.json {"a":1}\n
+end
+
+case cli/malformed-stdin
+arg -c
+filter .a
+stdin [1,2
+end
+
+case cli/malformed-file
+arg -c
+filter .a
+arg bad.json
+file bad.json {"a":\n
+end

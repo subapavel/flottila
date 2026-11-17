@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# commit-msg hook (#50): checks the message git is about to commit, a merge commit's included, with the trailer
+# rules of scripts/check-trailers.sh (its --message mode, so the rules live in one place). Enable it in a clone
+# or worktree with: git config core.hooksPath scripts/hooks
+exec bash "$(dirname "$0")/../check-trailers.sh" --message "$@"

@@ -1,0 +1,155 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-containers/string-concat
+def cd55cdce114d
+rc 0
+stdout ["","abcd","a","a"]\n
+stderr
+end
+
+case arith-containers/string-concat-escaped-input
+def 43bcec12588f
+rc 0
+stdout "éü"\n
+stderr
+end
+
+case arith-containers/null-identity-containers
+def 49cbb0f2fd4f
+rc 0
+stdout [{},{},[],[]]\n
+stderr
+end
+
+case arith-containers/input-object-plus-null-keeps-order
+def 348a0e80a24c
+rc 0
+stdout {"b":1,"a":2}\n
+stderr
+end
+
+case arith-containers/array-concat
+def d6b6871a35c5
+rc 0
+stdout [[1,2,3],[]]\n
+stderr
+end
+
+case arith-containers/array-concat-input
+def 7f44038f040e
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case arith-containers/array-difference
+def ea21f71dc485
+rc 0
+stdout [[2,3],[1,{"a":3}],[],[1],[]]\n
+stderr
+end
+
+case arith-containers/array-difference-trailing-zeros
+def 15fad286a2d3
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-containers/array-difference-trailing-zeros-input
+def 2f1d0b840e5e
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-containers/array-difference-big-integers
+def 75a863846662
+rc 0
+stdout [100000000000000000002]\n
+stderr
+end
+
+case arith-containers/array-difference-big-integers-input
+def 338aa8e4d299
+rc 0
+stdout [100000000000000000002]\n
+stderr
+end
+
+case arith-containers/object-plus-repeated-key
+def 0f43f20fc1f0
+rc 0
+stdout {"a":3,"b":2,"c":4}\n
+stderr
+end
+
+case arith-containers/object-plus-input
+def 7463779a683e
+rc 0
+stdout {"a":3,"b":2,"c":4}\n
+stderr
+end
+
+case arith-containers/object-plus-read-repeated-key-left
+def 56867d491c53
+rc 0
+stdout {"a":3,"b":2,"c":4}\n
+stderr
+end
+
+case arith-containers/object-plus-read-repeated-key-right
+def 3d22460ffd33
+rc 0
+stdout {"x":1,"b":2}\n
+stderr
+end
+
+case arith-containers/object-plus-literal-repeated-key
+def ce831dff04cc
+rc 0
+stdout {"a":3}\n
+stderr
+end
+
+case arith-containers/merge-nested
+def 09ec03298864
+rc 0
+stdout {"a":{"b":3,"c":2},"d":4}\n
+stderr
+end
+
+case arith-containers/merge-object-replaces-number
+def cae352beb0fa
+rc 0
+stdout [{"a":{"b":2}},{"a":1},{}]\n
+stderr
+end
+
+case arith-containers/merge-key-order
+def 9728702389d0
+rc 0
+stdout {"a":1,"b":{"x":1,"y":2},"c":2}\n
+stderr
+end
+
+case arith-containers/merge-null-values
+def ef6bf6612c57
+rc 0
+stdout [{"a":null},{"a":{"x":1}}]\n
+stderr
+end
+
+case arith-containers/merge-input
+def f410f7cc0c52
+rc 0
+stdout {"a":{"b":1,"c":2}}\n
+stderr
+end
+
+case arith-containers/merge-read-repeated-key
+def 273b2476053c
+rc 0
+stdout {"a":{"y":2,"z":3}}\n
+stderr
+end

@@ -1,0 +1,568 @@
+# Differential cases (ADR-0020) of #82 and #85: objects with and without a repeated key, iterated, printed and indexed,
+# around the key proof a read object's walk begins with (ADR-0044: up to 8 keys compared pairwise, more hashed, keys of
+# one hash sorted; first place and last value, ADR-0002); format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in distinct.rec, written
+# by scripts/oracle-record.sh only. Ids are immutable. Each object of #82 runs .[] . .k0 .k8 .zz with -c.
+
+# The 8-key boundary: 8 keys are compared pairwise, 9 are hashed (ADR-0044).
+
+case distinct/eight-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+end
+
+case distinct/eight-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+end
+
+case distinct/eight-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+end
+
+case distinct/eight-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+end
+
+case distinct/eight-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7}\n
+end
+
+case distinct/nine-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+case distinct/nine-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+case distinct/nine-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+case distinct/nine-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+case distinct/nine-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+# 9 distinct keys and a repeat of the first, the middle or the last, written last; 9 keys of which 8 distinct.
+
+case distinct/nine-repeat-first-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/nine-repeat-first-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/nine-repeat-first-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/nine-repeat-first-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/nine-repeat-first-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/nine-repeat-middle-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k4":9}\n
+end
+
+case distinct/nine-repeat-middle-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k4":9}\n
+end
+
+case distinct/nine-repeat-middle-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k4":9}\n
+end
+
+case distinct/nine-repeat-middle-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k4":9}\n
+end
+
+case distinct/nine-repeat-middle-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k4":9}\n
+end
+
+case distinct/nine-repeat-last-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k8":9}\n
+end
+
+case distinct/nine-repeat-last-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k8":9}\n
+end
+
+case distinct/nine-repeat-last-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k8":9}\n
+end
+
+case distinct/nine-repeat-last-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k8":9}\n
+end
+
+case distinct/nine-repeat-last-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k8":9}\n
+end
+
+case distinct/eight-and-a-repeat-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k0":8}\n
+end
+
+case distinct/eight-and-a-repeat-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k0":8}\n
+end
+
+case distinct/eight-and-a-repeat-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k0":8}\n
+end
+
+case distinct/eight-and-a-repeat-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k0":8}\n
+end
+
+case distinct/eight-and-a-repeat-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k0":8}\n
+end
+
+# ADR-0002's first place and last value on a narrow object, and 10 copies of one key.
+
+case distinct/abaa-iterate
+arg -c
+filter .[]
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/abaa-dot
+arg -c
+filter .
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/abaa-k0
+arg -c
+filter .k0
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/abaa-k8
+arg -c
+filter .k8
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/abaa-zz
+arg -c
+filter .zz
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/abaa-a
+arg -c
+filter .a
+stdin {"a":1,"b":2,"a":3,"a":4}\n
+end
+
+case distinct/ten-copies-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k0":1,"k0":2,"k0":3,"k0":4,"k0":5,"k0":6,"k0":7,"k0":8,"k0":9}\n
+end
+
+case distinct/ten-copies-dot
+arg -c
+filter .
+stdin {"k0":0,"k0":1,"k0":2,"k0":3,"k0":4,"k0":5,"k0":6,"k0":7,"k0":8,"k0":9}\n
+end
+
+case distinct/ten-copies-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k0":1,"k0":2,"k0":3,"k0":4,"k0":5,"k0":6,"k0":7,"k0":8,"k0":9}\n
+end
+
+case distinct/ten-copies-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k0":1,"k0":2,"k0":3,"k0":4,"k0":5,"k0":6,"k0":7,"k0":8,"k0":9}\n
+end
+
+case distinct/ten-copies-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k0":1,"k0":2,"k0":3,"k0":4,"k0":5,"k0":6,"k0":7,"k0":8,"k0":9}\n
+end
+
+# Nested: a distinct outer object around an inner one with a repeat, and an outer repeat around a distinct
+# inner object; the inner keys are the outer names.
+
+case distinct/wide-around-repeat-iterate
+arg -c
+filter .[]
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/wide-around-repeat-dot
+arg -c
+filter .
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/wide-around-repeat-k0
+arg -c
+filter .k0
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/wide-around-repeat-k8
+arg -c
+filter .k8
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/wide-around-repeat-zz
+arg -c
+filter .zz
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/repeat-around-wide-iterate
+arg -c
+filter .[]
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+case distinct/repeat-around-wide-dot
+arg -c
+filter .
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+case distinct/repeat-around-wide-k0
+arg -c
+filter .k0
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+case distinct/repeat-around-wide-k8
+arg -c
+filter .k8
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+case distinct/repeat-around-wide-zz
+arg -c
+filter .zz
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+# Tag-6 keys: "\u0061" repeats a by its decoded bytes; an escaped k20 repeats nothing.
+
+case distinct/escaped-repeat-iterate
+arg -c
+filter .[]
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-repeat-dot
+arg -c
+filter .
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-repeat-k0
+arg -c
+filter .k0
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-repeat-k8
+arg -c
+filter .k8
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-repeat-zz
+arg -c
+filter .zz
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-repeat-a
+arg -c
+filter .a
+stdin {"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}\n
+end
+
+case distinct/escaped-distinct-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"\\u006b20":20}\n
+end
+
+case distinct/escaped-distinct-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"\\u006b20":20}\n
+end
+
+case distinct/escaped-distinct-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"\\u006b20":20}\n
+end
+
+case distinct/escaped-distinct-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"\\u006b20":20}\n
+end
+
+case distinct/escaped-distinct-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"\\u006b20":20}\n
+end
+
+# NavigationBudgetTest's two 20-key documents.
+
+case distinct/twenty-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+end
+
+case distinct/twenty-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+end
+
+case distinct/twenty-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+end
+
+case distinct/twenty-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+end
+
+case distinct/twenty-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}\n
+end
+
+case distinct/twenty-repeat-iterate
+arg -c
+filter .[]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19,"k0":20}\n
+end
+
+case distinct/twenty-repeat-dot
+arg -c
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19,"k0":20}\n
+end
+
+case distinct/twenty-repeat-k0
+arg -c
+filter .k0
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19,"k0":20}\n
+end
+
+case distinct/twenty-repeat-k8
+arg -c
+filter .k8
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19,"k0":20}\n
+end
+
+case distinct/twenty-repeat-zz
+arg -c
+filter .zz
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19,"k0":20}\n
+end
+
+# .[] | .[] over three wide objects ([.[] | .[]] needs #64's construction): distinct, a repeat, a tag-6 repeat.
+
+case distinct/three-iterate-iterate
+arg -c
+filter .[] | .[]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8},{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9},{"a":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"\\u0061":9}]\n
+end
+
+# Pretty output (#37) of wide objects, distinct, with a repeat, and nested.
+
+case distinct/pretty-nine
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}\n
+end
+
+case distinct/pretty-nine-repeat-first
+filter .
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/pretty-wide-around-repeat
+filter .
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k0":10},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9}\n
+end
+
+case distinct/pretty-repeat-around-wide
+filter .
+stdin {"k0":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9},"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k9":10}\n
+end
+
+# #85: 16 keys of four blocks, each Aa or BB, key i's block b BB when bit b of i is set: one hash under a 31-polynomial
+# of the bytes (String.hashCode's), so a hash proof probes past its budget and sorts them (ADR-0044). Then twice more,
+# the first and a middle key repeated at the end.
+
+case distinct/colliding16-iterate
+arg -c
+filter .[]
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+end
+
+case distinct/colliding16-dot
+arg -c
+filter .
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+end
+
+case distinct/colliding16-keys
+arg -c
+filter keys
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+end
+
+case distinct/colliding16-to-entries
+arg -c
+filter to_entries
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}\n
+end
+
+case distinct/colliding16-repeat-iterate
+arg -c
+filter .[]
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15,"AaAaAaAa":16,"BBBBBBAa":17}\n
+end
+
+case distinct/colliding16-repeat-dot
+arg -c
+filter .
+stdin {"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15,"AaAaAaAa":16,"BBBBBBAa":17}\n
+end
+
+# #85: to_entries becomes a native (ADR-0044, amending ADR-0042): an array's indices as keys, the errors of the kinds
+# that have no keys, and a read object's repeat at its first place with its last value.
+
+case distinct/to-entries-array
+arg -c
+filter to_entries
+stdin [10,20]\n
+end
+
+case distinct/to-entries-null
+arg -c
+filter to_entries
+stdin null\n
+end
+
+case distinct/to-entries-number
+arg -c
+filter to_entries
+stdin 1\n
+end
+
+case distinct/to-entries-repeat
+arg -c
+filter to_entries
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+# #85: the other walkers of ADR-0044 on 9 keys and a repeat of the first: length, object + on either side, and == on
+# either side, against the object it reads as and the one it would be if the first value won.
+
+case distinct/repeat-length
+arg -c
+filter length
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/repeat-plus
+arg -c
+filter [. + {"k9":10}, {"z":-1} + .]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end
+
+case distinct/repeat-equal
+arg -c
+filter [. == {"k0":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}, {"k0":9,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8} == ., . == {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8}]
+stdin {"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k0":9}\n
+end

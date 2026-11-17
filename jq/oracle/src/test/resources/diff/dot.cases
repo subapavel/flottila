@@ -1,0 +1,90 @@
+# Differential cases (ADR-0020) of `.` end to end, compact (#33); format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Expected outputs live in dot.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case dot/null
+arg -c
+filter .
+stdin null
+end
+
+case dot/true
+arg -c
+filter .
+stdin true\n
+end
+
+case dot/false
+arg -c
+filter .
+stdin \x20false\x20
+end
+
+case dot/number
+arg -c
+filter .
+stdin [-0,100000000000000000000,-1.5]
+end
+
+case dot/string
+arg -c
+filter .
+stdin "a b/c é€𝄞 x"\n
+end
+
+case dot/array
+arg -c
+filter .
+stdin [ 1 ,\t"two" ,\n[ null ] , { } , [true,false] ]\n
+end
+
+case dot/object
+arg -c
+filter .
+stdin {\n  "a" : 1,\n\t"b" : [true, false],\n  "c" : {"d" : null, "e" : "f"}\n}\n
+end
+
+case dot/empty-stdin
+arg -c
+filter .
+end
+
+case dot/whitespace-stdin
+arg -c
+filter .
+stdin \x20\t\x0d\n\x20\n
+end
+
+case dot/crlf-around
+arg -c
+filter .
+stdin \x0d\n\x20{"a":[1,2]}\x0d\n
+end
+
+case dot/no-filter
+arg -c
+stdin [1,{"b":null}]\n
+end
+
+case dot/nested-empty
+arg -c
+filter .
+stdin [[ ],{\n},[[\t]],{"a":{ }},[{}],{"b":[[],{}]},[[[[]]]]]
+end
+
+case dot/duplicate-keys
+arg -c
+filter .
+stdin {"x":0,"a":1,"b":2,"a":3,"x":9,"n":{"k":1,"k":[2]},"o":[{"k":{"j":1},"k":{"j":2,"j":3}}]}\n
+end
+
+case dot/raw-utf8
+arg -c
+filter .
+stdin {"ключ":["é","€","𝄞","\xf4\x8f\xbf\xbf","\xe2\x80\xa8","\xef\xbf\xbf","\xc2\x80"],"π":"\xed\x9f\xbf"}\n
+end
+
+case dot/filter-whitespace
+arg -c
+filter \x20\t\x0d\n.\n\t\x20
+stdin {"a":1}
+end

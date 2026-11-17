@@ -1,0 +1,14 @@
+# The required cases of #112 "S2b.9 Cardinality, ending at its result" (ADR-0020, ADR-0007 and its #112 amendment,
+# F-56): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>.
+# One id per line; # and blank lines skipped.
+
+# differential: F-56's three reference jq probes (diff/cardinality.cases, recorded on jq-ref 1.8.2). They are guards
+# here: an over-claimed "one" or "at most one" that a later backend acts on would break them.
+cardinality/limit-stops-before-the-error
+cardinality/first-stops-before-the-endless-rest
+cardinality/recursion-after-a-comma-keeps-the-pending-errors
+
+# differential: the Reduce rule (#112 review), recorded on jq-ref 1.8.2: a Reduce whose each never ends normally is
+# NEVER only after an init result, and one of a source with no result gives its init.
+cardinality/reduce-of-an-empty-init-ends-before-its-break
+cardinality/reduce-of-a-source-with-no-result-never-runs-its-break

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.subapavel.jqj</groupId>
+    <artifactId>jqj-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>jq-cli</artifactId>
+  <name>jq-cli</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.subapavel.jqj</groupId>
+      <artifactId>jq-core</artifactId>
+    </dependency>
+    <!-- Already on the class path through jq-core. Declared because PIT's crossModule run below mutates only the
+         modules this POM declares (pitest-maven 1.30.2), and query-core is class C (#47). -->
+    <dependency>
+      <groupId>io.github.subapavel.jqj</groupId>
+      <artifactId>query-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-product</id>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- package writes the module path target/lib/ (this jar and its runtime dependencies) and the launcher
+           target/jqj from src/launcher (ADR-0013, #38). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <outputDirectory>${project.build.directory}/lib</outputDirectory>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>lib</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <includeScope>runtime</includeScope>
+              <outputDirectory>${project.build.directory}/lib</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>launcher</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>src/launcher</directory>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Unit tests run on the class path (ADR-0013). The *ModulePathTest classes run with jq-cli and jq-core as
+           named modules, as the launcher and a host put them on the module path (ADR-0013, ADR-0016, #24, #38). The
+           launcher test runs target/jqj after package (#38). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>default-test</id>
+            <configuration>
+              <excludes>
+                <exclude>**/*ModulePathTest.java</exclude>
+                <exclude>**/LauncherTest.java</exclude>
+              </excludes>
+            </configuration>
+          </execution>
+          <execution>
+            <id>module-path</id>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <useModulePath>true</useModulePath>
+              <includes>
+                <include>**/*ModulePathTest.java</include>
+              </includes>
+            </configuration>
+          </execution>
+          <execution>
+            <id>launcher</id>
+            <phase>integration-test</phase>
+            <goals>
+              <goal>test</goal>
+            </goals>
+            <configuration>
+              <includes>
+                <include>**/LauncherTest.java</include>
+              </includes>
+              <systemPropertyVariables>
+                <jqj.launcher>${project.build.directory}/jqj</jqj.launcher>
+                <jqj.lib>${project.build.directory}/lib</jqj.lib>
+              </systemPropertyVariables>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Mutation of query-core and jq-core comes from every test in the reactor (ADR-0014): this crossModule run
+           mutates them under jq-cli's tests, and ratchet.java combines its report as it does oracle's (#47). -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <crossModule>true</crossModule>
+          <!-- They run only in the surefire executions above, which PIT does not run. -->
+          <excludedTestClasses>
+            <param>io.github.subapavel.jqj.cli.LauncherTest</param>
+            <param>io.github.subapavel.jqj.cli.*ModulePathTest</param>
+          </excludedTestClasses>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

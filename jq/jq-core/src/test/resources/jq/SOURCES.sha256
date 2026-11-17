@@ -1,0 +1,5 @@
+# jq 1.8.2 release tarball jq-1.8.2.tar.gz sha256 71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af
+# (https://github.com/jqlang/jq/releases/download/jq-1.8.2/, matching its sha256sum.txt): builtin.jq is its
+# src/builtin.jq, byte for byte, the same bytes as the jq-1.8.2 tag's src/builtin.jq (#62); since #71 (ADR-0042) it is
+# the main resource jq-core/src/main/resources/io/github/subapavel/jqj/internal/parse/builtin.jq
+b8a5fd9579be9b51c9a04e6620f8c1655539aa57eea33a84e202a8dea401f2a4  builtin.jq

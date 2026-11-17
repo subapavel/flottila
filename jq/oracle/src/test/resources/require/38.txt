@@ -1,0 +1,25 @@
+# The required cases of #38 "S1.16 Command line" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# cli/arg-option, cli/malformed-stdin and cli/malformed-file are recorded but not required: jqj ends them with a Stub
+# (an option not built yet; malformed input's text until spec 5), which every runner scores FAIL (ADR-0024).
+
+# differential: the family diff/cli.cases.
+cli/combined-Mc
+cli/combined-cM
+cli/compact-after-file
+cli/compact-after-filter
+cli/compact-before-filter
+cli/compact-long
+cli/double-dash-before-file
+cli/double-dash-before-filter
+cli/double-dash-option-is-file
+cli/double-dash-stdin
+cli/error-file-name
+cli/error-file-name-dot-slash
+cli/missing-file
+cli/missing-file-dot-slash
+cli/monochrome-long
+cli/unknown-after-file
+cli/unknown-in-cluster
+cli/unknown-long
+cli/unknown-short

@@ -1,0 +1,6 @@
+# LF on every OS: oracle cases, expected outputs and fixtures are compared byte by byte, and a Windows checkout would otherwise write CRLF.
+# scripts/check-lf-checkout.sh checks it.
+* text=auto eol=lf
+
+# The Windows wrapper script is committed with CRLF and checked out as committed.
+mvnw.cmd -text

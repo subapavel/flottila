@@ -1,0 +1,603 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case index/zero-null
+def 3b71a47718a8
+rc 0
+stdout null\n
+stderr
+end
+
+case index/zero-true
+def 9aaf68e5137b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with number (0)\n
+end
+
+case index/zero-number
+def e6d25b4ee10c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with number (0)\n
+end
+
+case index/zero-string
+def de0ef639c4b1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with number (0)\n
+end
+
+case index/zero-array
+def b39da2bb1866
+rc 0
+stdout 1\n
+stderr
+end
+
+case index/zero-object
+def bc779f8a4361
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (0)\n
+end
+
+case index/string-null
+def e64b2d16ddee
+rc 0
+stdout null\n
+stderr
+end
+
+case index/string-true
+def 27f7be2de974
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with string ("a")\n
+end
+
+case index/string-number
+def d94369242ecb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case index/string-string
+def be051de5c861
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case index/string-array
+def 92b7991c6059
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case index/string-object
+def 6dfa9d87cb77
+rc 0
+stdout 1\n
+stderr
+end
+
+case index/true-null
+def 5df749fba7eb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index null with boolean (true)\n
+end
+
+case index/true-true
+def a993d08df6da
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with boolean (true)\n
+end
+
+case index/true-number
+def 91467ea2ba01
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with boolean (true)\n
+end
+
+case index/true-string
+def 495ce2961684
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with boolean (true)\n
+end
+
+case index/true-array
+def 17156dbf220a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with boolean (true)\n
+end
+
+case index/true-object
+def 622e418f8044
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with boolean (true)\n
+end
+
+case index/null-null
+def ac970986bd44
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index null with null (null)\n
+end
+
+case index/null-true
+def 713eb62b1781
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index boolean with null (null)\n
+end
+
+case index/null-number
+def 232897498fb5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with null (null)\n
+end
+
+case index/null-string
+def 25a068e93d6b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with null (null)\n
+end
+
+case index/null-array
+def fe2947eb1aff
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with null (null)\n
+end
+
+case index/null-object
+def 6417183f3c8d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with null (null)\n
+end
+
+case index/field-quiet-null
+def 9f3cf2ffbd21
+rc 0
+stdout null\n
+stderr
+end
+
+case index/field-quiet-true
+def 46fb71b53186
+rc 0
+stdout
+stderr
+end
+
+case index/field-quiet-number
+def dceb98c26b7b
+rc 0
+stdout
+stderr
+end
+
+case index/field-quiet-string
+def 4935db9aba0e
+rc 0
+stdout
+stderr
+end
+
+case index/field-quiet-array
+def 0c7a68068de1
+rc 0
+stdout
+stderr
+end
+
+case index/field-quiet-object
+def a69dc39a6ad9
+rc 0
+stdout 1\n
+stderr
+end
+
+case index/zero-quiet-null
+def 476c641c77e3
+rc 0
+stdout null\n
+stderr
+end
+
+case index/zero-quiet-true
+def c0e1e43ce065
+rc 0
+stdout
+stderr
+end
+
+case index/zero-quiet-number
+def bc07287ce6d1
+rc 0
+stdout
+stderr
+end
+
+case index/zero-quiet-string
+def 8947d0740539
+rc 0
+stdout
+stderr
+end
+
+case index/zero-quiet-array
+def 96b8e09fe08c
+rc 0
+stdout 1\n
+stderr
+end
+
+case index/zero-quiet-object
+def 650ecccabcc8
+rc 0
+stdout
+stderr
+end
+
+case index/key-1.7
+def c99fbe4190dd
+rc 0
+stdout 1\n
+stderr
+end
+
+case index/key-m1
+def 7430702780c2
+rc 0
+stdout 2\n
+stderr
+end
+
+case index/key-m1.5
+def 1134ee9f03cf
+rc 0
+stdout 2\n
+stderr
+end
+
+case index/key-m0.5
+def b8bb25f5ac0a
+rc 0
+stdout 0\n
+stderr
+end
+
+case index/key-3
+def b9381b2dfabf
+rc 0
+stdout null\n
+stderr
+end
+
+case index/key-m4
+def 645aa6604100
+rc 0
+stdout null\n
+stderr
+end
+
+case index/key-1e300
+def 1ff344dbc10b
+rc 0
+stdout null\n
+stderr
+end
+
+case index/key-m1e300
+def 0c5bb38a894f
+rc 0
+stdout null\n
+stderr
+end
+
+case index/key-nan
+def ebb1f1189a34
+rc 0
+stdout null\n
+stderr
+end
+
+case index/key-1e1000
+def b03dd9f0eeac
+rc 0
+stdout null\n
+stderr
+end
+
+case index/object-key-1.0
+def 5966e8b99c9a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (1.0)\n
+end
+
+case index/object-key-1e2
+def cfc199604831
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (1E+2)\n
+end
+
+case index/object-key-big
+def 87015defdaa6
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (100000000000000000001)\n
+end
+
+case index/array-key-27
+def 2f95470850ad
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwxyz0")\n
+end
+
+case index/array-key-28
+def 43331bd6215d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case index/array-key-29
+def 12997f071352
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case index/array-key-30
+def 2cea1ef95800
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case index/array-key-31
+def 7e2afaf60813
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("abcdefghijklmnopqrstuvwx...")\n
+end
+
+case index/order-key-outer
+def f37f67b60936
+rc 0
+stdout 1\n3\n2\n4\n
+stderr
+end
+
+case index/scope-key-error-first
+def 949972b00444
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("b")\n
+end
+
+case index/quiet-target-error
+def d84bf2f6cec6
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case index/quiet-key-error
+def f1527342a2ab
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("b")\n
+end
+
+case index/dump-array-key-29
+def e818ec9cd6fa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array ([10,11,12,13,14,15,16,17,1,2])\n
+end
+
+case index/dump-array-key-30
+def ed387e92fd19
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array ([10,11,12,13,14,15,16,17,...])\n
+end
+
+case index/dump-array-key-long
+def e3f299e7027a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array ([10,11,12,13,14,15,16,17,...])\n
+end
+
+case index/dump-array-key-nested
+def 250f0dec3a7d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array ([[10,11],[12,13],[14,15],...])\n
+end
+
+case index/dump-array-key-e-acute-at-23
+def 698f11be89a3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array (["aaaaaaaaaaaaaaaaaaaaaé...])\n
+end
+
+case index/dump-array-key-e-acute-at-24
+def c509630bdf3e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array (["aaaaaaaaaaaaaaaaaaaaaa...])\n
+end
+
+case index/dump-array-key-escape-at-24
+def a832329a5866
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array (["aaaaaaaaaaaaaaaaaaaaaa\\...])\n
+end
+
+case index/dump-built-array-key
+def 258eb64aff8c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with array ([10,11,12,13,14,15,16,17,...])\n
+end
+
+case index/dump-object-key-29
+def 51dcf86cfd9c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"a":1,"b":2,"c":3,"d":45678})\n
+end
+
+case index/dump-object-key-30
+def bb77464ff382
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"a":1,"b":2,"c":3,"d":45...})\n
+end
+
+case index/dump-object-key-long
+def 287033b49100
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with object ({"a":1,"b":2,"c":3,"d":4,...})\n
+end
+
+case index/dump-object-key-on-number
+def 6eb879f99e69
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with object ({"a":1,"b":2,"c":3,"d":4,...})\n
+end
+
+case index/object-key-on-null
+def 29452233f39f
+rc 0
+stdout null\n
+stderr
+end
+
+case index/slice-key-on-null
+def 91e048f2d5a1
+rc 0
+stdout null\n
+stderr
+end
+
+case index/array-key-on-null
+def 73330bf49bfa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index null with array ([1])\n
+end
+
+case index/nan-key-on-array
+def c987ccebcfdd
+rc 0
+stdout null\nnull\n
+stderr
+end
+
+case index/nan-key-on-built-array
+def 75c867996c40
+rc 0
+stdout null\n
+stderr
+end
+
+case index/nan-key-on-null
+def 0515cdfb8f3b
+rc 0
+stdout null\n
+stderr
+end
+
+case index/nan-key-on-string
+def 38d72617ce04
+rc 0
+stdout "Cannot index string with number (null)"\n
+stderr
+end
+
+case index/nan-key-on-object
+def 90e515040986
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (null)\n
+end
+
+case index/array-key-on-array-runs
+def ec6aaaa9c46c
+rc 0
+stdout [0,2]\n[0,2,4]\n[0,2]\n[1]\n[]\n[]\n[]\n
+stderr
+end
+
+case index/array-key-on-array-overlap
+def dc8d9ee667a0
+rc 0
+stdout [0,1]\n
+stderr
+end
+
+case index/array-key-on-array-containers
+def 5a7eedf1b21e
+rc 0
+stdout [0,2]\n[1]\n[]\n
+stderr
+end
+
+case index/array-key-on-array-nan
+def f2f1ac977dee
+rc 0
+stdout []\n
+stderr
+end
+
+case index/array-key-on-empty-array
+def 772883167550
+rc 0
+stdout []\n[]\n
+stderr
+end
+
+case index/array-key-on-array-quiet
+def e81f3a582998
+rc 0
+stdout [1]\n
+stderr
+end
+
+case index/array-key-on-built-array
+def d92bb097f646
+rc 0
+stdout [1,3]\n
+stderr
+end
+
+case index/array-key-on-array-deep-after-unequal
+def 7edf5d1fc3f6
+rc 0
+stdout "Equality check too deep"\n
+stderr
+end

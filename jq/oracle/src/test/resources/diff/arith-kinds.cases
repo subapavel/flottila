@@ -1,0 +1,1585 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": every operator on every pair of
+# kinds, one value of each kind (null, false, true, 1, "a", [1], {"a":1}), both read from one document as .[0] OP
+# .[1], with jq's error texts; then the 29-byte cut of a value in those texts (jv_dump_string_trunc, ErrorDump): a
+# dump of 29 bytes shows whole, a longer one keeps 25 bytes (26 for a number) and ends in ...", ...] or ...}, stepping
+# back to a character start but not to an escape start. Written by a script from the product of the kinds; Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-kinds.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+# plus
+
+case arith-kinds/plus-null-null
+arg -c
+filter .[0] + .[1]
+stdin [null,null]\n
+end
+
+case arith-kinds/plus-null-false
+arg -c
+filter .[0] + .[1]
+stdin [null,false]\n
+end
+
+case arith-kinds/plus-null-true
+arg -c
+filter .[0] + .[1]
+stdin [null,true]\n
+end
+
+case arith-kinds/plus-null-number
+arg -c
+filter .[0] + .[1]
+stdin [null,1]\n
+end
+
+case arith-kinds/plus-null-string
+arg -c
+filter .[0] + .[1]
+stdin [null,"a"]\n
+end
+
+case arith-kinds/plus-null-array
+arg -c
+filter .[0] + .[1]
+stdin [null,[1]]\n
+end
+
+case arith-kinds/plus-null-object
+arg -c
+filter .[0] + .[1]
+stdin [null,{"a":1}]\n
+end
+
+case arith-kinds/plus-false-null
+arg -c
+filter .[0] + .[1]
+stdin [false,null]\n
+end
+
+case arith-kinds/plus-false-false
+arg -c
+filter .[0] + .[1]
+stdin [false,false]\n
+end
+
+case arith-kinds/plus-false-true
+arg -c
+filter .[0] + .[1]
+stdin [false,true]\n
+end
+
+case arith-kinds/plus-false-number
+arg -c
+filter .[0] + .[1]
+stdin [false,1]\n
+end
+
+case arith-kinds/plus-false-string
+arg -c
+filter .[0] + .[1]
+stdin [false,"a"]\n
+end
+
+case arith-kinds/plus-false-array
+arg -c
+filter .[0] + .[1]
+stdin [false,[1]]\n
+end
+
+case arith-kinds/plus-false-object
+arg -c
+filter .[0] + .[1]
+stdin [false,{"a":1}]\n
+end
+
+case arith-kinds/plus-true-null
+arg -c
+filter .[0] + .[1]
+stdin [true,null]\n
+end
+
+case arith-kinds/plus-true-false
+arg -c
+filter .[0] + .[1]
+stdin [true,false]\n
+end
+
+case arith-kinds/plus-true-true
+arg -c
+filter .[0] + .[1]
+stdin [true,true]\n
+end
+
+case arith-kinds/plus-true-number
+arg -c
+filter .[0] + .[1]
+stdin [true,1]\n
+end
+
+case arith-kinds/plus-true-string
+arg -c
+filter .[0] + .[1]
+stdin [true,"a"]\n
+end
+
+case arith-kinds/plus-true-array
+arg -c
+filter .[0] + .[1]
+stdin [true,[1]]\n
+end
+
+case arith-kinds/plus-true-object
+arg -c
+filter .[0] + .[1]
+stdin [true,{"a":1}]\n
+end
+
+case arith-kinds/plus-number-null
+arg -c
+filter .[0] + .[1]
+stdin [1,null]\n
+end
+
+case arith-kinds/plus-number-false
+arg -c
+filter .[0] + .[1]
+stdin [1,false]\n
+end
+
+case arith-kinds/plus-number-true
+arg -c
+filter .[0] + .[1]
+stdin [1,true]\n
+end
+
+case arith-kinds/plus-number-number
+arg -c
+filter .[0] + .[1]
+stdin [1,1]\n
+end
+
+case arith-kinds/plus-number-string
+arg -c
+filter .[0] + .[1]
+stdin [1,"a"]\n
+end
+
+case arith-kinds/plus-number-array
+arg -c
+filter .[0] + .[1]
+stdin [1,[1]]\n
+end
+
+case arith-kinds/plus-number-object
+arg -c
+filter .[0] + .[1]
+stdin [1,{"a":1}]\n
+end
+
+case arith-kinds/plus-string-null
+arg -c
+filter .[0] + .[1]
+stdin ["a",null]\n
+end
+
+case arith-kinds/plus-string-false
+arg -c
+filter .[0] + .[1]
+stdin ["a",false]\n
+end
+
+case arith-kinds/plus-string-true
+arg -c
+filter .[0] + .[1]
+stdin ["a",true]\n
+end
+
+case arith-kinds/plus-string-number
+arg -c
+filter .[0] + .[1]
+stdin ["a",1]\n
+end
+
+case arith-kinds/plus-string-string
+arg -c
+filter .[0] + .[1]
+stdin ["a","a"]\n
+end
+
+case arith-kinds/plus-string-array
+arg -c
+filter .[0] + .[1]
+stdin ["a",[1]]\n
+end
+
+case arith-kinds/plus-string-object
+arg -c
+filter .[0] + .[1]
+stdin ["a",{"a":1}]\n
+end
+
+case arith-kinds/plus-array-null
+arg -c
+filter .[0] + .[1]
+stdin [[1],null]\n
+end
+
+case arith-kinds/plus-array-false
+arg -c
+filter .[0] + .[1]
+stdin [[1],false]\n
+end
+
+case arith-kinds/plus-array-true
+arg -c
+filter .[0] + .[1]
+stdin [[1],true]\n
+end
+
+case arith-kinds/plus-array-number
+arg -c
+filter .[0] + .[1]
+stdin [[1],1]\n
+end
+
+case arith-kinds/plus-array-string
+arg -c
+filter .[0] + .[1]
+stdin [[1],"a"]\n
+end
+
+case arith-kinds/plus-array-array
+arg -c
+filter .[0] + .[1]
+stdin [[1],[1]]\n
+end
+
+case arith-kinds/plus-array-object
+arg -c
+filter .[0] + .[1]
+stdin [[1],{"a":1}]\n
+end
+
+case arith-kinds/plus-object-null
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},null]\n
+end
+
+case arith-kinds/plus-object-false
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},false]\n
+end
+
+case arith-kinds/plus-object-true
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},true]\n
+end
+
+case arith-kinds/plus-object-number
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},1]\n
+end
+
+case arith-kinds/plus-object-string
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},"a"]\n
+end
+
+case arith-kinds/plus-object-array
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},[1]]\n
+end
+
+case arith-kinds/plus-object-object
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1},{"a":1}]\n
+end
+
+# minus
+
+case arith-kinds/minus-null-null
+arg -c
+filter .[0] - .[1]
+stdin [null,null]\n
+end
+
+case arith-kinds/minus-null-false
+arg -c
+filter .[0] - .[1]
+stdin [null,false]\n
+end
+
+case arith-kinds/minus-null-true
+arg -c
+filter .[0] - .[1]
+stdin [null,true]\n
+end
+
+case arith-kinds/minus-null-number
+arg -c
+filter .[0] - .[1]
+stdin [null,1]\n
+end
+
+case arith-kinds/minus-null-string
+arg -c
+filter .[0] - .[1]
+stdin [null,"a"]\n
+end
+
+case arith-kinds/minus-null-array
+arg -c
+filter .[0] - .[1]
+stdin [null,[1]]\n
+end
+
+case arith-kinds/minus-null-object
+arg -c
+filter .[0] - .[1]
+stdin [null,{"a":1}]\n
+end
+
+case arith-kinds/minus-false-null
+arg -c
+filter .[0] - .[1]
+stdin [false,null]\n
+end
+
+case arith-kinds/minus-false-false
+arg -c
+filter .[0] - .[1]
+stdin [false,false]\n
+end
+
+case arith-kinds/minus-false-true
+arg -c
+filter .[0] - .[1]
+stdin [false,true]\n
+end
+
+case arith-kinds/minus-false-number
+arg -c
+filter .[0] - .[1]
+stdin [false,1]\n
+end
+
+case arith-kinds/minus-false-string
+arg -c
+filter .[0] - .[1]
+stdin [false,"a"]\n
+end
+
+case arith-kinds/minus-false-array
+arg -c
+filter .[0] - .[1]
+stdin [false,[1]]\n
+end
+
+case arith-kinds/minus-false-object
+arg -c
+filter .[0] - .[1]
+stdin [false,{"a":1}]\n
+end
+
+case arith-kinds/minus-true-null
+arg -c
+filter .[0] - .[1]
+stdin [true,null]\n
+end
+
+case arith-kinds/minus-true-false
+arg -c
+filter .[0] - .[1]
+stdin [true,false]\n
+end
+
+case arith-kinds/minus-true-true
+arg -c
+filter .[0] - .[1]
+stdin [true,true]\n
+end
+
+case arith-kinds/minus-true-number
+arg -c
+filter .[0] - .[1]
+stdin [true,1]\n
+end
+
+case arith-kinds/minus-true-string
+arg -c
+filter .[0] - .[1]
+stdin [true,"a"]\n
+end
+
+case arith-kinds/minus-true-array
+arg -c
+filter .[0] - .[1]
+stdin [true,[1]]\n
+end
+
+case arith-kinds/minus-true-object
+arg -c
+filter .[0] - .[1]
+stdin [true,{"a":1}]\n
+end
+
+case arith-kinds/minus-number-null
+arg -c
+filter .[0] - .[1]
+stdin [1,null]\n
+end
+
+case arith-kinds/minus-number-false
+arg -c
+filter .[0] - .[1]
+stdin [1,false]\n
+end
+
+case arith-kinds/minus-number-true
+arg -c
+filter .[0] - .[1]
+stdin [1,true]\n
+end
+
+case arith-kinds/minus-number-number
+arg -c
+filter .[0] - .[1]
+stdin [1,1]\n
+end
+
+case arith-kinds/minus-number-string
+arg -c
+filter .[0] - .[1]
+stdin [1,"a"]\n
+end
+
+case arith-kinds/minus-number-array
+arg -c
+filter .[0] - .[1]
+stdin [1,[1]]\n
+end
+
+case arith-kinds/minus-number-object
+arg -c
+filter .[0] - .[1]
+stdin [1,{"a":1}]\n
+end
+
+case arith-kinds/minus-string-null
+arg -c
+filter .[0] - .[1]
+stdin ["a",null]\n
+end
+
+case arith-kinds/minus-string-false
+arg -c
+filter .[0] - .[1]
+stdin ["a",false]\n
+end
+
+case arith-kinds/minus-string-true
+arg -c
+filter .[0] - .[1]
+stdin ["a",true]\n
+end
+
+case arith-kinds/minus-string-number
+arg -c
+filter .[0] - .[1]
+stdin ["a",1]\n
+end
+
+case arith-kinds/minus-string-string
+arg -c
+filter .[0] - .[1]
+stdin ["a","a"]\n
+end
+
+case arith-kinds/minus-string-array
+arg -c
+filter .[0] - .[1]
+stdin ["a",[1]]\n
+end
+
+case arith-kinds/minus-string-object
+arg -c
+filter .[0] - .[1]
+stdin ["a",{"a":1}]\n
+end
+
+case arith-kinds/minus-array-null
+arg -c
+filter .[0] - .[1]
+stdin [[1],null]\n
+end
+
+case arith-kinds/minus-array-false
+arg -c
+filter .[0] - .[1]
+stdin [[1],false]\n
+end
+
+case arith-kinds/minus-array-true
+arg -c
+filter .[0] - .[1]
+stdin [[1],true]\n
+end
+
+case arith-kinds/minus-array-number
+arg -c
+filter .[0] - .[1]
+stdin [[1],1]\n
+end
+
+case arith-kinds/minus-array-string
+arg -c
+filter .[0] - .[1]
+stdin [[1],"a"]\n
+end
+
+case arith-kinds/minus-array-array
+arg -c
+filter .[0] - .[1]
+stdin [[1],[1]]\n
+end
+
+case arith-kinds/minus-array-object
+arg -c
+filter .[0] - .[1]
+stdin [[1],{"a":1}]\n
+end
+
+case arith-kinds/minus-object-null
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},null]\n
+end
+
+case arith-kinds/minus-object-false
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},false]\n
+end
+
+case arith-kinds/minus-object-true
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},true]\n
+end
+
+case arith-kinds/minus-object-number
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},1]\n
+end
+
+case arith-kinds/minus-object-string
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},"a"]\n
+end
+
+case arith-kinds/minus-object-array
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},[1]]\n
+end
+
+case arith-kinds/minus-object-object
+arg -c
+filter .[0] - .[1]
+stdin [{"a":1},{"a":1}]\n
+end
+
+# times
+
+case arith-kinds/times-null-null
+arg -c
+filter .[0] * .[1]
+stdin [null,null]\n
+end
+
+case arith-kinds/times-null-false
+arg -c
+filter .[0] * .[1]
+stdin [null,false]\n
+end
+
+case arith-kinds/times-null-true
+arg -c
+filter .[0] * .[1]
+stdin [null,true]\n
+end
+
+case arith-kinds/times-null-number
+arg -c
+filter .[0] * .[1]
+stdin [null,1]\n
+end
+
+case arith-kinds/times-null-string
+arg -c
+filter .[0] * .[1]
+stdin [null,"a"]\n
+end
+
+case arith-kinds/times-null-array
+arg -c
+filter .[0] * .[1]
+stdin [null,[1]]\n
+end
+
+case arith-kinds/times-null-object
+arg -c
+filter .[0] * .[1]
+stdin [null,{"a":1}]\n
+end
+
+case arith-kinds/times-false-null
+arg -c
+filter .[0] * .[1]
+stdin [false,null]\n
+end
+
+case arith-kinds/times-false-false
+arg -c
+filter .[0] * .[1]
+stdin [false,false]\n
+end
+
+case arith-kinds/times-false-true
+arg -c
+filter .[0] * .[1]
+stdin [false,true]\n
+end
+
+case arith-kinds/times-false-number
+arg -c
+filter .[0] * .[1]
+stdin [false,1]\n
+end
+
+case arith-kinds/times-false-string
+arg -c
+filter .[0] * .[1]
+stdin [false,"a"]\n
+end
+
+case arith-kinds/times-false-array
+arg -c
+filter .[0] * .[1]
+stdin [false,[1]]\n
+end
+
+case arith-kinds/times-false-object
+arg -c
+filter .[0] * .[1]
+stdin [false,{"a":1}]\n
+end
+
+case arith-kinds/times-true-null
+arg -c
+filter .[0] * .[1]
+stdin [true,null]\n
+end
+
+case arith-kinds/times-true-false
+arg -c
+filter .[0] * .[1]
+stdin [true,false]\n
+end
+
+case arith-kinds/times-true-true
+arg -c
+filter .[0] * .[1]
+stdin [true,true]\n
+end
+
+case arith-kinds/times-true-number
+arg -c
+filter .[0] * .[1]
+stdin [true,1]\n
+end
+
+case arith-kinds/times-true-string
+arg -c
+filter .[0] * .[1]
+stdin [true,"a"]\n
+end
+
+case arith-kinds/times-true-array
+arg -c
+filter .[0] * .[1]
+stdin [true,[1]]\n
+end
+
+case arith-kinds/times-true-object
+arg -c
+filter .[0] * .[1]
+stdin [true,{"a":1}]\n
+end
+
+case arith-kinds/times-number-null
+arg -c
+filter .[0] * .[1]
+stdin [1,null]\n
+end
+
+case arith-kinds/times-number-false
+arg -c
+filter .[0] * .[1]
+stdin [1,false]\n
+end
+
+case arith-kinds/times-number-true
+arg -c
+filter .[0] * .[1]
+stdin [1,true]\n
+end
+
+case arith-kinds/times-number-number
+arg -c
+filter .[0] * .[1]
+stdin [1,1]\n
+end
+
+case arith-kinds/times-number-string
+arg -c
+filter .[0] * .[1]
+stdin [1,"a"]\n
+end
+
+case arith-kinds/times-number-array
+arg -c
+filter .[0] * .[1]
+stdin [1,[1]]\n
+end
+
+case arith-kinds/times-number-object
+arg -c
+filter .[0] * .[1]
+stdin [1,{"a":1}]\n
+end
+
+case arith-kinds/times-string-null
+arg -c
+filter .[0] * .[1]
+stdin ["a",null]\n
+end
+
+case arith-kinds/times-string-false
+arg -c
+filter .[0] * .[1]
+stdin ["a",false]\n
+end
+
+case arith-kinds/times-string-true
+arg -c
+filter .[0] * .[1]
+stdin ["a",true]\n
+end
+
+case arith-kinds/times-string-number
+arg -c
+filter .[0] * .[1]
+stdin ["a",1]\n
+end
+
+case arith-kinds/times-string-string
+arg -c
+filter .[0] * .[1]
+stdin ["a","a"]\n
+end
+
+case arith-kinds/times-string-array
+arg -c
+filter .[0] * .[1]
+stdin ["a",[1]]\n
+end
+
+case arith-kinds/times-string-object
+arg -c
+filter .[0] * .[1]
+stdin ["a",{"a":1}]\n
+end
+
+case arith-kinds/times-array-null
+arg -c
+filter .[0] * .[1]
+stdin [[1],null]\n
+end
+
+case arith-kinds/times-array-false
+arg -c
+filter .[0] * .[1]
+stdin [[1],false]\n
+end
+
+case arith-kinds/times-array-true
+arg -c
+filter .[0] * .[1]
+stdin [[1],true]\n
+end
+
+case arith-kinds/times-array-number
+arg -c
+filter .[0] * .[1]
+stdin [[1],1]\n
+end
+
+case arith-kinds/times-array-string
+arg -c
+filter .[0] * .[1]
+stdin [[1],"a"]\n
+end
+
+case arith-kinds/times-array-array
+arg -c
+filter .[0] * .[1]
+stdin [[1],[1]]\n
+end
+
+case arith-kinds/times-array-object
+arg -c
+filter .[0] * .[1]
+stdin [[1],{"a":1}]\n
+end
+
+case arith-kinds/times-object-null
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},null]\n
+end
+
+case arith-kinds/times-object-false
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},false]\n
+end
+
+case arith-kinds/times-object-true
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},true]\n
+end
+
+case arith-kinds/times-object-number
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},1]\n
+end
+
+case arith-kinds/times-object-string
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},"a"]\n
+end
+
+case arith-kinds/times-object-array
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},[1]]\n
+end
+
+case arith-kinds/times-object-object
+arg -c
+filter .[0] * .[1]
+stdin [{"a":1},{"a":1}]\n
+end
+
+# divide
+
+case arith-kinds/divide-null-null
+arg -c
+filter .[0] / .[1]
+stdin [null,null]\n
+end
+
+case arith-kinds/divide-null-false
+arg -c
+filter .[0] / .[1]
+stdin [null,false]\n
+end
+
+case arith-kinds/divide-null-true
+arg -c
+filter .[0] / .[1]
+stdin [null,true]\n
+end
+
+case arith-kinds/divide-null-number
+arg -c
+filter .[0] / .[1]
+stdin [null,1]\n
+end
+
+case arith-kinds/divide-null-string
+arg -c
+filter .[0] / .[1]
+stdin [null,"a"]\n
+end
+
+case arith-kinds/divide-null-array
+arg -c
+filter .[0] / .[1]
+stdin [null,[1]]\n
+end
+
+case arith-kinds/divide-null-object
+arg -c
+filter .[0] / .[1]
+stdin [null,{"a":1}]\n
+end
+
+case arith-kinds/divide-false-null
+arg -c
+filter .[0] / .[1]
+stdin [false,null]\n
+end
+
+case arith-kinds/divide-false-false
+arg -c
+filter .[0] / .[1]
+stdin [false,false]\n
+end
+
+case arith-kinds/divide-false-true
+arg -c
+filter .[0] / .[1]
+stdin [false,true]\n
+end
+
+case arith-kinds/divide-false-number
+arg -c
+filter .[0] / .[1]
+stdin [false,1]\n
+end
+
+case arith-kinds/divide-false-string
+arg -c
+filter .[0] / .[1]
+stdin [false,"a"]\n
+end
+
+case arith-kinds/divide-false-array
+arg -c
+filter .[0] / .[1]
+stdin [false,[1]]\n
+end
+
+case arith-kinds/divide-false-object
+arg -c
+filter .[0] / .[1]
+stdin [false,{"a":1}]\n
+end
+
+case arith-kinds/divide-true-null
+arg -c
+filter .[0] / .[1]
+stdin [true,null]\n
+end
+
+case arith-kinds/divide-true-false
+arg -c
+filter .[0] / .[1]
+stdin [true,false]\n
+end
+
+case arith-kinds/divide-true-true
+arg -c
+filter .[0] / .[1]
+stdin [true,true]\n
+end
+
+case arith-kinds/divide-true-number
+arg -c
+filter .[0] / .[1]
+stdin [true,1]\n
+end
+
+case arith-kinds/divide-true-string
+arg -c
+filter .[0] / .[1]
+stdin [true,"a"]\n
+end
+
+case arith-kinds/divide-true-array
+arg -c
+filter .[0] / .[1]
+stdin [true,[1]]\n
+end
+
+case arith-kinds/divide-true-object
+arg -c
+filter .[0] / .[1]
+stdin [true,{"a":1}]\n
+end
+
+case arith-kinds/divide-number-null
+arg -c
+filter .[0] / .[1]
+stdin [1,null]\n
+end
+
+case arith-kinds/divide-number-false
+arg -c
+filter .[0] / .[1]
+stdin [1,false]\n
+end
+
+case arith-kinds/divide-number-true
+arg -c
+filter .[0] / .[1]
+stdin [1,true]\n
+end
+
+case arith-kinds/divide-number-number
+arg -c
+filter .[0] / .[1]
+stdin [1,1]\n
+end
+
+case arith-kinds/divide-number-string
+arg -c
+filter .[0] / .[1]
+stdin [1,"a"]\n
+end
+
+case arith-kinds/divide-number-array
+arg -c
+filter .[0] / .[1]
+stdin [1,[1]]\n
+end
+
+case arith-kinds/divide-number-object
+arg -c
+filter .[0] / .[1]
+stdin [1,{"a":1}]\n
+end
+
+case arith-kinds/divide-string-null
+arg -c
+filter .[0] / .[1]
+stdin ["a",null]\n
+end
+
+case arith-kinds/divide-string-false
+arg -c
+filter .[0] / .[1]
+stdin ["a",false]\n
+end
+
+case arith-kinds/divide-string-true
+arg -c
+filter .[0] / .[1]
+stdin ["a",true]\n
+end
+
+case arith-kinds/divide-string-number
+arg -c
+filter .[0] / .[1]
+stdin ["a",1]\n
+end
+
+case arith-kinds/divide-string-string
+arg -c
+filter .[0] / .[1]
+stdin ["a","a"]\n
+end
+
+case arith-kinds/divide-string-array
+arg -c
+filter .[0] / .[1]
+stdin ["a",[1]]\n
+end
+
+case arith-kinds/divide-string-object
+arg -c
+filter .[0] / .[1]
+stdin ["a",{"a":1}]\n
+end
+
+case arith-kinds/divide-array-null
+arg -c
+filter .[0] / .[1]
+stdin [[1],null]\n
+end
+
+case arith-kinds/divide-array-false
+arg -c
+filter .[0] / .[1]
+stdin [[1],false]\n
+end
+
+case arith-kinds/divide-array-true
+arg -c
+filter .[0] / .[1]
+stdin [[1],true]\n
+end
+
+case arith-kinds/divide-array-number
+arg -c
+filter .[0] / .[1]
+stdin [[1],1]\n
+end
+
+case arith-kinds/divide-array-string
+arg -c
+filter .[0] / .[1]
+stdin [[1],"a"]\n
+end
+
+case arith-kinds/divide-array-array
+arg -c
+filter .[0] / .[1]
+stdin [[1],[1]]\n
+end
+
+case arith-kinds/divide-array-object
+arg -c
+filter .[0] / .[1]
+stdin [[1],{"a":1}]\n
+end
+
+case arith-kinds/divide-object-null
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},null]\n
+end
+
+case arith-kinds/divide-object-false
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},false]\n
+end
+
+case arith-kinds/divide-object-true
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},true]\n
+end
+
+case arith-kinds/divide-object-number
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},1]\n
+end
+
+case arith-kinds/divide-object-string
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},"a"]\n
+end
+
+case arith-kinds/divide-object-array
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},[1]]\n
+end
+
+case arith-kinds/divide-object-object
+arg -c
+filter .[0] / .[1]
+stdin [{"a":1},{"a":1}]\n
+end
+
+# mod
+
+case arith-kinds/mod-null-null
+arg -c
+filter .[0] % .[1]
+stdin [null,null]\n
+end
+
+case arith-kinds/mod-null-false
+arg -c
+filter .[0] % .[1]
+stdin [null,false]\n
+end
+
+case arith-kinds/mod-null-true
+arg -c
+filter .[0] % .[1]
+stdin [null,true]\n
+end
+
+case arith-kinds/mod-null-number
+arg -c
+filter .[0] % .[1]
+stdin [null,1]\n
+end
+
+case arith-kinds/mod-null-string
+arg -c
+filter .[0] % .[1]
+stdin [null,"a"]\n
+end
+
+case arith-kinds/mod-null-array
+arg -c
+filter .[0] % .[1]
+stdin [null,[1]]\n
+end
+
+case arith-kinds/mod-null-object
+arg -c
+filter .[0] % .[1]
+stdin [null,{"a":1}]\n
+end
+
+case arith-kinds/mod-false-null
+arg -c
+filter .[0] % .[1]
+stdin [false,null]\n
+end
+
+case arith-kinds/mod-false-false
+arg -c
+filter .[0] % .[1]
+stdin [false,false]\n
+end
+
+case arith-kinds/mod-false-true
+arg -c
+filter .[0] % .[1]
+stdin [false,true]\n
+end
+
+case arith-kinds/mod-false-number
+arg -c
+filter .[0] % .[1]
+stdin [false,1]\n
+end
+
+case arith-kinds/mod-false-string
+arg -c
+filter .[0] % .[1]
+stdin [false,"a"]\n
+end
+
+case arith-kinds/mod-false-array
+arg -c
+filter .[0] % .[1]
+stdin [false,[1]]\n
+end
+
+case arith-kinds/mod-false-object
+arg -c
+filter .[0] % .[1]
+stdin [false,{"a":1}]\n
+end
+
+case arith-kinds/mod-true-null
+arg -c
+filter .[0] % .[1]
+stdin [true,null]\n
+end
+
+case arith-kinds/mod-true-false
+arg -c
+filter .[0] % .[1]
+stdin [true,false]\n
+end
+
+case arith-kinds/mod-true-true
+arg -c
+filter .[0] % .[1]
+stdin [true,true]\n
+end
+
+case arith-kinds/mod-true-number
+arg -c
+filter .[0] % .[1]
+stdin [true,1]\n
+end
+
+case arith-kinds/mod-true-string
+arg -c
+filter .[0] % .[1]
+stdin [true,"a"]\n
+end
+
+case arith-kinds/mod-true-array
+arg -c
+filter .[0] % .[1]
+stdin [true,[1]]\n
+end
+
+case arith-kinds/mod-true-object
+arg -c
+filter .[0] % .[1]
+stdin [true,{"a":1}]\n
+end
+
+case arith-kinds/mod-number-null
+arg -c
+filter .[0] % .[1]
+stdin [1,null]\n
+end
+
+case arith-kinds/mod-number-false
+arg -c
+filter .[0] % .[1]
+stdin [1,false]\n
+end
+
+case arith-kinds/mod-number-true
+arg -c
+filter .[0] % .[1]
+stdin [1,true]\n
+end
+
+case arith-kinds/mod-number-number
+arg -c
+filter .[0] % .[1]
+stdin [1,1]\n
+end
+
+case arith-kinds/mod-number-string
+arg -c
+filter .[0] % .[1]
+stdin [1,"a"]\n
+end
+
+case arith-kinds/mod-number-array
+arg -c
+filter .[0] % .[1]
+stdin [1,[1]]\n
+end
+
+case arith-kinds/mod-number-object
+arg -c
+filter .[0] % .[1]
+stdin [1,{"a":1}]\n
+end
+
+case arith-kinds/mod-string-null
+arg -c
+filter .[0] % .[1]
+stdin ["a",null]\n
+end
+
+case arith-kinds/mod-string-false
+arg -c
+filter .[0] % .[1]
+stdin ["a",false]\n
+end
+
+case arith-kinds/mod-string-true
+arg -c
+filter .[0] % .[1]
+stdin ["a",true]\n
+end
+
+case arith-kinds/mod-string-number
+arg -c
+filter .[0] % .[1]
+stdin ["a",1]\n
+end
+
+case arith-kinds/mod-string-string
+arg -c
+filter .[0] % .[1]
+stdin ["a","a"]\n
+end
+
+case arith-kinds/mod-string-array
+arg -c
+filter .[0] % .[1]
+stdin ["a",[1]]\n
+end
+
+case arith-kinds/mod-string-object
+arg -c
+filter .[0] % .[1]
+stdin ["a",{"a":1}]\n
+end
+
+case arith-kinds/mod-array-null
+arg -c
+filter .[0] % .[1]
+stdin [[1],null]\n
+end
+
+case arith-kinds/mod-array-false
+arg -c
+filter .[0] % .[1]
+stdin [[1],false]\n
+end
+
+case arith-kinds/mod-array-true
+arg -c
+filter .[0] % .[1]
+stdin [[1],true]\n
+end
+
+case arith-kinds/mod-array-number
+arg -c
+filter .[0] % .[1]
+stdin [[1],1]\n
+end
+
+case arith-kinds/mod-array-string
+arg -c
+filter .[0] % .[1]
+stdin [[1],"a"]\n
+end
+
+case arith-kinds/mod-array-array
+arg -c
+filter .[0] % .[1]
+stdin [[1],[1]]\n
+end
+
+case arith-kinds/mod-array-object
+arg -c
+filter .[0] % .[1]
+stdin [[1],{"a":1}]\n
+end
+
+case arith-kinds/mod-object-null
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},null]\n
+end
+
+case arith-kinds/mod-object-false
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},false]\n
+end
+
+case arith-kinds/mod-object-true
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},true]\n
+end
+
+case arith-kinds/mod-object-number
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},1]\n
+end
+
+case arith-kinds/mod-object-string
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},"a"]\n
+end
+
+case arith-kinds/mod-object-array
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},[1]]\n
+end
+
+case arith-kinds/mod-object-object
+arg -c
+filter .[0] % .[1]
+stdin [{"a":1},{"a":1}]\n
+end
+
+# the 29-byte cut
+
+case arith-kinds/cut-string-29-bytes-whole
+arg -c
+filter .[0] - 1
+stdin ["abcdefghijklmnopqrstuvwxyz0"]\n
+end
+
+case arith-kinds/cut-string-30-bytes
+arg -c
+filter .[0] - 1
+stdin ["abcdefghijklmnopqrstuvwxyz01"]\n
+end
+
+case arith-kinds/cut-string-right-operand
+arg -c
+filter 1 - .[0]
+stdin ["abcdefghijklmnopqrstuvwxyz0123456789"]\n
+end
+
+case arith-kinds/cut-array-29-bytes-whole
+arg -c
+filter .[0] - 1
+stdin [[1,2,3,4,5,6,7,8,9,10,11,123]]\n
+end
+
+case arith-kinds/cut-array-30-bytes
+arg -c
+filter .[0] - 1
+stdin [[1,2,3,4,5,6,7,8,9,10,11,1234]]\n
+end
+
+case arith-kinds/cut-object-29-bytes-whole
+arg -c
+filter .[0] - 1
+stdin [{"aaaaaaaa":1,"bbbbbbbbbb":2}]\n
+end
+
+case arith-kinds/cut-object-30-bytes
+arg -c
+filter .[0] - 1
+stdin [{"aaaaaaaaa":1,"bbbbbbbbbb":2}]\n
+end
+
+case arith-kinds/cut-multibyte-at-the-cut
+arg -c
+filter .[0] - 1
+stdin ["a\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9"]\n
+end
+
+case arith-kinds/cut-multibyte-even
+arg -c
+filter .[0] - 1
+stdin ["\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9\\u00e9"]\n
+end
+
+case arith-kinds/cut-escapes-even
+arg -c
+filter .[0] - 1
+stdin ["\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n"]\n
+end
+
+case arith-kinds/cut-escapes-split
+arg -c
+filter .[0] - 1
+stdin ["a\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n"]\n
+end
+
+case arith-kinds/cut-unicode-escape-split
+arg -c
+filter .[0] - 1
+stdin ["aaaaaaaaaaaaaaaaaaaaaa\\u0001b"]\n
+end
+
+case arith-kinds/cut-unicode-escape-split-later
+arg -c
+filter .[0] - 1
+stdin ["aaaaaaaaaaaaaaaaaaaaa\\u0001b"]\n
+end
+
+case arith-kinds/cut-both-operands
+arg -c
+filter .[0] - .[1]
+stdin ["abcdefghijklmnopqrstuvwxyz0123456789",[1,2,3,4,5,6,7,8,9,10,11,12,13]]\n
+end
+
+case arith-kinds/cut-long-literal-number
+arg -c
+filter .[0] - .[1]
+stdin [1.000000000000000000000000000001,"a"]\n
+end
+
+case arith-kinds/cut-divide-by-zero-long-number
+arg -c
+filter .[0] / 0
+stdin [1.000000000000000000000000000001]\n
+end

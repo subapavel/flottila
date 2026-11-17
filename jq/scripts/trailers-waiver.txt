@@ -1,0 +1,11 @@
+# Commits scripts/check-trailers.sh skips, by full SHA, one per line (docs/findings/F-28.md).
+# These eight architect docs/handoff commits on spec/22-walking-skeleton lack trailers; rewriting
+# them would change every later SHA cited as evidence. Adding a line is owner-only.
+8f176263f51909df3a41bdb68298ba214c0b8216
+8f6a6d54780b01d8e7a72e504cbb2490c1f6df28
+bf53a83242dafb700de722da77a717312eca9438
+ece41f73a22befee66eb905d936495d11f0931bd
+94e0338bfa4a34e70912c20c9e3989673db8e44a
+2e0cec0b7838ff7d85137fbf06364d1fa2be055e
+b0e4a8441c700047c24986615b103f98a039915f
+669a17029e86b4698f841b15fc09e3ba6de31cd5

@@ -1,0 +1,46 @@
+package io.github.subapavel.jqj.query.internal.interpret;
+
+import io.github.subapavel.jqj.query.run.CallForm;
+import io.github.subapavel.jqj.query.run.FnN;
+import io.github.subapavel.jqj.query.run.RunState;
+import io.github.subapavel.jqj.query.run.Sink;
+
+/**
+ * A call of an {@link FnN} on its arguments, read into an array that is new for each call, so the operation may keep
+ * it (ADR-0034 amendment): its result goes to the sink; {@link CallForm#NONE} is none.
+ */
+public final class IntrinsicNOp extends Op {
+  private final FnN fn;
+  private final Argument[] args;
+
+  public IntrinsicNOp(boolean valueForm, FnN fn, Argument[] args) {
+    super(valueForm);
+    this.fn = fn;
+    this.args = args;
+  }
+
+  @Override
+  public boolean run(RunState state, Object[] slots, Object in, Sink out) {
+    Object v = fn.apply(state, in, values(slots, in));
+    return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    return fn.apply(state, in, values(slots, in));
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, values(slots, in)), out);
+  }
+
+  /** The arguments' values for {@code in}, in a new array. */
+  private Object[] values(Object[] slots, Object in) {
+    Object[] values = new Object[args.length];
+    for (int i = 0; i < values.length; i++) {
+      values[i] = args[i].read(slots, in);
+    }
+    return values;
+  }
+}

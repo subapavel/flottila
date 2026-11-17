@@ -1,0 +1,122 @@
+# Differential cases (ADR-0020) of literal numbers printed in jq's canonical form (#36, ADR-0012, ADR-0028, F-1),
+# table D of the #36 design; format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Every token is strict JSON: the lenient spellings (NaN, Infinity, +1, .5, 1., 007) stay malformed until spec 5.
+# Expected outputs live in number.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case number/ticket-object
+arg -c
+filter .
+stdin {"a":1e2,"b":1.10,"c":-0,"d":0.0000001}\n
+end
+
+case number/ticket-field
+arg -c
+filter .a
+stdin {"a":1e2,"b":1.10,"c":-0,"d":0.0000001}\n
+end
+
+case number/exponent-to-plain
+arg -c
+filter .
+stdin [1e-2,12e-1,1.5e1,1.0e1,150e-2,-1e-6,123e-1,0.5e0]\n
+end
+
+case number/exponent-to-scientific
+arg -c
+filter .
+stdin [1e2,1E+2,20e1,123.456e78,-1.0e+28,1e-7,12e-8,1.5e2]\n
+end
+
+case number/fraction-zeros
+arg -c
+filter .
+stdin [0.0000010,0.00000010,0.0000000,-0.0000001,0.00000012]\n
+end
+
+case number/zeros
+arg -c
+filter .
+stdin [0e1,-0e5,0e0,-0e0,0.000e5,0e-6,0E-1]\n
+end
+
+case number/exponent-digits
+arg -c
+filter .
+stdin [1e00,1e-0,1e007,1E-000000000000000000002]\n
+end
+
+case number/long-coefficient
+arg -c
+filter .
+stdin [123456789012345678901234567890e-5,-98765432109876543210e20]\n
+end
+
+case number/upper-limit
+arg -c
+filter .
+stdin [1e999999999,9.999e999999999,0.1e1000000000,10e999999999,-1E1000000000]\n
+end
+
+case number/saturated-exponent
+arg -c
+filter .
+stdin [1e1999999999,1e2000000000,1E+12345678901,1e-2000000000,0e2000000000]\n
+end
+
+case number/lower-limit
+arg -c
+filter .
+stdin [5e-1147483647,4e-1147483647,-4e-1147483647,15e-1147483647,99e-1147483648,95e-1147483647]\n
+end
+
+case number/zero-limits
+arg -c
+filter .
+stdin [0e-1147483650,-0e1000000000]\n
+end
+
+case number/below-emin-exact
+arg -c
+filter .
+stdin [1e-1000000000,1.5e-1100000000]\n
+end
+
+case number/top-level
+arg -c
+filter .
+stdin 1e2\n
+end
+
+case number/eof-no-lf
+arg -c
+filter .
+stdin 1e2
+end
+
+case number/eof-no-lf-infinite
+arg -c
+filter .
+stdin 1E1000000000
+end
+
+case number/eof-no-lf-tiny
+arg -c
+filter .
+stdin 5E-1147483647
+end
+
+case number/duplicate-key
+arg -c
+filter .
+stdin {"a":1e2,"b":0,"a":2e2}\n
+end
+
+# One array over every class of the design's table A: zeros and their exponent clamp, the plain layouts (e = 0, a
+# point inside the digits, a 0. prefix), the exponent layout on both sides of the adjusted exponent -6, the upper
+# limit and its Infinity literal, exponents past ten digits (int and long wrap points included), the subnormal
+# range above the lower limit, and the HALF_UP rounding below it (k > 0, k = 0, k < 0, a carry through nines).
+case number/corpus
+arg -c
+filter .
+stdin [0,-0,0.0,-0.0,0.000000,-0.000000,0.0000000,-0.0000000,0.00000000000,0e0,-0e0,0e1,0e+1,0E-1,-0e5,0.000e5,0.00e2,0e-6,0e-7,-0.0e-5,0e999999999,0e1000000000,-0e1000000000,0e2000000000,0e99999999999,0e18446744073709551616,0e-1147483646,0e-1147483647,-0e-1147483650,0e-99999999999,1,-1,10,100,1.10,3.00,-1.5,0.5,0.000001,-0.000001,0.0000012,0.0000010,0.00000010,0.00000012,0.0000001,-0.0000001,0.000000000123,1e0,123e0,-45E+0,10.0e1,1.5e1,-2.50e2,0.001e3,9876543210e0,1e-0,1e+0,1e00,12e-1,123e-2,-1234e-3,1.25e1,100e-2,5.000e2,31415926535e-10,120e-1,1.2e1,1.20e2,1e-1,1e-6,-1e-6,12e-7,123e-8,1234567e-12,5e-3,25e-4,0.00012e0,0.1e0,0.01e1,1e-7,-1e-7,12e-8,123e-9,1234567e-13,1.0e-7,12e-9,1e-10,-5e-100,1e1,1e2,-1E2,1E+2,25e1,-3.0e3,12e1,1.2e2,20e1,0.01e3,0.10e2,0.010e3,1e10,1.5e2,123.456e78,-1.0e+28,1.0e+28,123e45,123e65,1E22,1e308,1.7976931348623157e308,2e308,1e400,-1e400,1e-308,4.9e-324,1e-400,1E007,1e-000000000000000000002,1e0000000000000000000000000005,1e+000,123456789012345678901234567890e-5,-98765432109876543210e20,1.0000000000000000000000000001e1,10000000000000000000000000000e-28,12345678901234567890123456789012345678901234567890,0.12345678901234567890123456789,1e999999999,-9e999999999,9.999e999999999,9.99999999999999999999e999999999,0.1e1000000000,0.00001e1000000004,0.0001e1000000003,99e999999998,1.5e999999999,10e999999999,100e999999998,1e1000000000,-1E1000000000,1e1000000001,1e1999999999,1e2000000000,1E+12345678901,1e2147483647,1e2147483648,1e4294967296,1e4294967297,1e9223372036854775807,1e9223372036854775808,1e18446744073709551616,1e18446744073709551617,1e99999999999999999999,1e-1000000000,1.5e-1100000000,-7e-1100000000,123456789e-1147483646,5e-1147483646,1e-1147483646,5e-1147483647,-5e-1147483647,4e-1147483647,-4e-1147483647,1e-1147483647,15e-1147483647,14e-1147483647,95e-1147483647,99e-1147483648,149e-1147483648,150e-1147483648,999e-1147483648,9999e-1147483649,1.5e-1147483646,0.5e-1147483646,1e-1147483648,9e-1147483648,-9e-1147483648,1234567e-1147483650,123e-1147483648,1e-2000000000,1e-2147483648,1e-4294967296,1e-4294967297,1e-18446744073709551616,-1e-99999999999999999999,1e-9223372036854775808]\n
+end

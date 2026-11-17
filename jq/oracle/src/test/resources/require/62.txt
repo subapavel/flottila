@@ -1,0 +1,82 @@
+# The required cases of #62 "S2a.12 The full parser" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The precedence/* family (diff/precedence.cases) is not required here: every case needs a construct that #62 parses
+# but does not lower (ADR-0032), so each is required by the tickets that lower its constructs.
+
+# jqtest: the census cases of S2a.12 (oracle/src/test/resources/census/jqtest.tsv), jq.test %%FAIL program lines 133
+# ({1+2:3}), 548 (. as [] | null), 554 (. as {} | null), 1988 (%::wat), 2075 ({) and 2081 (}).
+jq.test#03815d597aa8
+jq.test#7174c6d7166e
+jq.test#a8fe56a989c6
+jq.test#c688305fcc52
+jq.test#dcc547ee570b
+jq.test#e1de014beb31
+
+# differential: the syntax error of spec 1 that stayed red (basics/syntax-error-eof), then the family diff/syntax.cases.
+basics/syntax-error-eof
+syntax/after-a-comma
+syntax/after-a-format-string
+syntax/after-an-index
+syntax/after-an-index-a-closer
+syntax/after-an-interpolation
+syntax/and-alone
+syntax/assign-nonassoc
+syntax/close-paren-alone
+syntax/close-paren-extra
+syntax/comma-alone
+syntax/compare-nonassoc
+syntax/compare-nonassoc-around-a-sum
+syntax/compare-nonassoc-line-3
+syntax/def-after-an-operator
+syntax/dot-at
+syntax/dot-backtick
+syntax/dot-brace
+syntax/dot-bracket
+syntax/dot-colon
+syntax/dot-e-acute
+syntax/dot-slash
+syntax/dot-space-dot
+syntax/eof-after-comment
+syntax/eof-after-comment-lf
+syntax/eof-after-comment-line
+syntax/eof-after-continued-comment
+syntax/eof-after-cr
+syntax/eof-after-hash
+syntax/eof-after-lf
+syntax/eof-after-lines
+syntax/eof-after-spaces
+syntax/eof-on-line-2
+syntax/equal-nonassoc
+syntax/field-dot-e-acute
+syntax/field-space-dot
+syntax/field-then-at
+syntax/field-then-backtick
+syntax/field-then-brace
+syntax/field-then-bracket
+syntax/field-then-colon
+syntax/field-then-slash
+syntax/form-feed-before-dot
+syntax/in-interpolation
+syntax/in-interpolation-nonassoc
+syntax/in-interpolation-wrong-closer
+syntax/object-key-expression
+syntax/object-key-expression-twice
+syntax/object-value-as
+syntax/paren-empty
+syntax/paren-unclosed
+syntax/pipe-first
+syntax/pipe-twice
+syntax/program-empty
+syntax/program-only-comment
+syntax/program-only-definitions
+syntax/program-only-lf
+syntax/program-only-spaces
+syntax/program-only-two-definitions
+syntax/rec-then-name
+syntax/rec-then-name-after-pipe
+syntax/rec-then-name-in-parens
+syntax/reduce-source-comma
+syntax/try-body-operator
+syntax/try-body-operator-in-array
+syntax/update-nonassoc
+syntax/vertical-tab-before-dot

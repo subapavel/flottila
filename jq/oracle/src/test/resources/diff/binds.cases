@@ -1,0 +1,50 @@
+# Differential cases (ADR-0020) of #93 "wide constructs lower to one Binds" (ADR-0043): past BIND_RUN nested Binds
+# an object, an interpolation and a pattern lower to one Binds whose values are the nested form's, in its order
+# (jq-core ResolverTest.aWideConstructLowersToOneBindsInJqsOrder). Each construct has 70 parts, two of them the
+# generator (1,2), so it goes through the Binds; the four results show which generator loops outermost:
+#
+# - binds/object-of-70-constant-keys-in-jq-order: keys p69 down to p0, the values of p68 and p1 are (1,2). jq-ref
+#   1.8.2 gives p68 1, 1, 2, 2 and p1 1, 2, 1, 2: the first pair's generator is the outer loop. The keys print in
+#   source order, p69 first, not sorted (p0 first) and not in reverse.
+# - binds/object-of-70-computed-keys-in-jq-order: the same pairs with each key computed, (.a + "69") down to
+#   (.a + "0") on .a = "p", so each pair has its key, its value and the check of its key: the same four results.
+# - binds/interpolation-of-70-parts-last-part-outermost: parts 1 and 68 of 70 are (1,2), the others "-". jq-ref
+#   gives part 1 as 1, 2, 1, 2 and part 68 as 1, 1, 2, 2: the last part's generator is the outer loop.
+# - binds/pattern-of-70-keys-first-key-outermost: an object pattern of 70 computed keys on [10,20,30], keys 1 and 68
+#   (1,2), each other ($z) on 0 as $z (a constant number key is a compile error, rc 3, in jq-ref). A key is
+#   evaluated on the value the pattern destructures: $a1 is 20, 20, 30, 30 and $a68 20, 30, 20, 30, so the first
+#   key's generator is the outer loop; $a0 and $a69 are 10.
+#
+# Every case is required at #93 (oracle/src/test/resources/require/93.txt). jq's -n is not built in jqj's command
+# line yet, so a filter reads its stdin. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Expected outputs live in binds.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# objects
+
+case binds/object-of-70-constant-keys-in-jq-order
+arg -c
+filter {p69: .v, p68: (1,2), p67: .v, p66: .v, p65: .v, p64: .v, p63: .v, p62: .v, p61: .v, p60: .v, p59: .v, p58: .v, p57: .v, p56: .v, p55: .v, p54: .v, p53: .v, p52: .v, p51: .v, p50: .v, p49: .v, p48: .v, p47: .v, p46: .v, p45: .v, p44: .v, p43: .v, p42: .v, p41: .v, p40: .v, p39: .v, p38: .v, p37: .v, p36: .v, p35: .v, p34: .v, p33: .v, p32: .v, p31: .v, p30: .v, p29: .v, p28: .v, p27: .v, p26: .v, p25: .v, p24: .v, p23: .v, p22: .v, p21: .v, p20: .v, p19: .v, p18: .v, p17: .v, p16: .v, p15: .v, p14: .v, p13: .v, p12: .v, p11: .v, p10: .v, p9: .v, p8: .v, p7: .v, p6: .v, p5: .v, p4: .v, p3: .v, p2: .v, p1: (1,2), p0: .v}
+stdin {"v":0}\n
+end
+
+case binds/object-of-70-computed-keys-in-jq-order
+arg -c
+filter {(.a + "69"): .v, (.a + "68"): (1,2), (.a + "67"): .v, (.a + "66"): .v, (.a + "65"): .v, (.a + "64"): .v, (.a + "63"): .v, (.a + "62"): .v, (.a + "61"): .v, (.a + "60"): .v, (.a + "59"): .v, (.a + "58"): .v, (.a + "57"): .v, (.a + "56"): .v, (.a + "55"): .v, (.a + "54"): .v, (.a + "53"): .v, (.a + "52"): .v, (.a + "51"): .v, (.a + "50"): .v, (.a + "49"): .v, (.a + "48"): .v, (.a + "47"): .v, (.a + "46"): .v, (.a + "45"): .v, (.a + "44"): .v, (.a + "43"): .v, (.a + "42"): .v, (.a + "41"): .v, (.a + "40"): .v, (.a + "39"): .v, (.a + "38"): .v, (.a + "37"): .v, (.a + "36"): .v, (.a + "35"): .v, (.a + "34"): .v, (.a + "33"): .v, (.a + "32"): .v, (.a + "31"): .v, (.a + "30"): .v, (.a + "29"): .v, (.a + "28"): .v, (.a + "27"): .v, (.a + "26"): .v, (.a + "25"): .v, (.a + "24"): .v, (.a + "23"): .v, (.a + "22"): .v, (.a + "21"): .v, (.a + "20"): .v, (.a + "19"): .v, (.a + "18"): .v, (.a + "17"): .v, (.a + "16"): .v, (.a + "15"): .v, (.a + "14"): .v, (.a + "13"): .v, (.a + "12"): .v, (.a + "11"): .v, (.a + "10"): .v, (.a + "9"): .v, (.a + "8"): .v, (.a + "7"): .v, (.a + "6"): .v, (.a + "5"): .v, (.a + "4"): .v, (.a + "3"): .v, (.a + "2"): .v, (.a + "1"): (1,2), (.a + "0"): .v}
+stdin {"a":"p","v":0}\n
+end
+
+# interpolations
+
+case binds/interpolation-of-70-parts-last-part-outermost
+arg -c
+filter "\\(.v)\\((1,2))\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\(.v)\\((1,2))\\(.v)"
+stdin {"v":"-"}\n
+end
+
+# patterns
+
+case binds/pattern-of-70-keys-first-key-outermost
+arg -c
+filter 0 as $z | . as {($z): $a0, (1,2): $a1, ($z): $a2, ($z): $a3, ($z): $a4, ($z): $a5, ($z): $a6, ($z): $a7, ($z): $a8, ($z): $a9, ($z): $a10, ($z): $a11, ($z): $a12, ($z): $a13, ($z): $a14, ($z): $a15, ($z): $a16, ($z): $a17, ($z): $a18, ($z): $a19, ($z): $a20, ($z): $a21, ($z): $a22, ($z): $a23, ($z): $a24, ($z): $a25, ($z): $a26, ($z): $a27, ($z): $a28, ($z): $a29, ($z): $a30, ($z): $a31, ($z): $a32, ($z): $a33, ($z): $a34, ($z): $a35, ($z): $a36, ($z): $a37, ($z): $a38, ($z): $a39, ($z): $a40, ($z): $a41, ($z): $a42, ($z): $a43, ($z): $a44, ($z): $a45, ($z): $a46, ($z): $a47, ($z): $a48, ($z): $a49, ($z): $a50, ($z): $a51, ($z): $a52, ($z): $a53, ($z): $a54, ($z): $a55, ($z): $a56, ($z): $a57, ($z): $a58, ($z): $a59, ($z): $a60, ($z): $a61, ($z): $a62, ($z): $a63, ($z): $a64, ($z): $a65, ($z): $a66, ($z): $a67, (1,2): $a68, ($z): $a69} | [$a1, $a68, $a0, $a69]
+stdin [10,20,30]\n
+end
