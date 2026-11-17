@@ -8,9 +8,7 @@ docs/DECISIONS.md | * | history: decisions are not rewritten (D-148)
 docs/archive/** | * | history: archived documents (D-148)
 docs/findings/** | * | history: findings are records of what was found (D-148)
 docs/review/** | * | history: review reports of past commits (D-148)
-issues/** | * | history: issue records (D-148)
 bench/RESULTS.md | * | history: a recorded number keeps the commit and configuration it was taken with (D-148)
-agent/BACKLOG.md | * | history: the done rows; the rename tool translates the open ones (D-148)
 
 # The changelog of docs/ARCHITECTURE.md is history (D-148): the literals its rows hold, not the whole file.
 docs/ARCHITECTURE.md | -Dflottila.it.postgres | changelog row: the integration-test property as it was then named

@@ -17,9 +17,9 @@ Where to look:
 
 - `docs/ARCHITECTURE.md` — the binding design (amendments block at the top, then the v3.3 text)
 - `docs/GATE.md` — what "you can test the first real iFlow" means
-- `agent/BACKLOG.md` — the open work, until it moves to GitHub Issues
+- GitHub Issues — the open work
 - `AGENTS.md` — how the work is done (one issue, one session, one pull request, one review)
-- `docs/DECISIONS.md`, `docs/findings/`, `issues/` — what was decided, what deviated, what is open
+- `docs/DECISIONS.md`, `docs/findings/` — what was decided, what deviated
 - `agent/cloud/` — the cloud environment the autonomous session runs in
 
 Build at the current state, JDK 25. The repository holds two areas, each built on its own

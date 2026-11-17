@@ -26,7 +26,7 @@ nothing here.
   5. `docs/findings/F-27.md` (the measured at-least-once hand-over) and `docs/findings/F-28.md` (node lease and self-fencing).
   6. `docs/GATE.md` §CORE-GATE (the targets).
   7. `bench/RESULTS.md`: the newest sections first.
-  8. `agent/BACKLOG.md`: what is planned. CORE-5, P2-15b/c, P2-16, CORE-7, CORE-17 and FIX-133..135 matter most.
+  8. `docs/archive/agent/BACKLOG.md`: what is planned. CORE-5, P2-15b/c, P2-16, CORE-7, CORE-17 and FIX-133..135 matter most.
 - Code to read for the critical paths:
   - `flottila-runtime/src/main/java/io/flottila/runtime/store/PgIntake.java` (group commit, durable save before the 202)
   - `.../runtime/journal/*` (the node-local body journal, segments, sweeper)

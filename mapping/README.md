@@ -14,8 +14,8 @@ Status: **Milestone 1 — spec 1 (walking skeleton) built: one field link from t
 the engine, the service and the XSLT export.** See `docs/wayfinder/phase-0-map.md` and
 `docs/GATE.md` (milestone 1).
 
-Built AI-first: agents write the code under the repository's process (the root `AGENTS.md`) and the engine's technical rules in `CLAUDE.md` here; work is tracked in the root
-`agent/BACKLOG.md`.
+Built AI-first: agents write the code under the repository's process (the root `AGENTS.md`) and the engine's technical rules in `CLAUDE.md` here; work is tracked in
+GitHub Issues.
 
 ## Run the Mapping studio and test a mapping
 

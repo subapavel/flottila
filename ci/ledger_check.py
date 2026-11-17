@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ledger table-shape guard (FIX-139): every row of every markdown table in agent/BACKLOG.md and
+"""Ledger table-shape guard (FIX-139): every row of every markdown table in docs/archive/agent/BACKLOG.md and
 docs/DECISIONS.md must end with an unescaped pipe and split, on pipes not preceded by a backslash, into
 the header's cell count (BACKLOG: exactly; DECISIONS: at most, legacy rows without a Reason cell are
 tolerated). Counting pipes is not the check: a stray separator paid for by a missing closing pipe has the
@@ -15,7 +15,7 @@ D-020a are different ids. Every occurrence line of a duplicated id is reported.
 
 Usage:
   python3 ci/ledger_check.py              # from the repository root
-  python3 ci/ledger_check.py --root <dir> # a tree holding agent/BACKLOG.md and docs/DECISIONS.md
+  python3 ci/ledger_check.py --root <dir> # a tree holding docs/archive/agent/BACKLOG.md and docs/DECISIONS.md
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 # (path under the root, whether a row may have fewer cells than its header)
-LEDGERS = ((Path("agent") / "BACKLOG.md", False), (Path("docs") / "DECISIONS.md", True))
+LEDGERS = ((Path("docs") / "archive" / "agent" / "BACKLOG.md", False), (Path("docs") / "DECISIONS.md", True))
 SEPARATOR = re.compile(r":?-+:?")
 UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
 
