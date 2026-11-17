@@ -12,7 +12,7 @@ Call `mcp__claude-code-remote__get_session` with no `session_id` and read
 
 - `allowed`: normal run.
 - `allowed_warning`: at most one worker running in total, counting those already running.
-- anything else, or the field is missing: start nothing. Still do step 3 (stalled workers), then stop.
+- anything else, or the field is missing: start nothing. Still do steps 2 and 3 (stalled workers), then stop.
 
 ## 2. What is running
 
