@@ -4,7 +4,7 @@ import dev.rail8.jq.internal.value.BuiltObject;
 import dev.rail8.jq.internal.value.ObjectView;
 import java.util.function.BiConsumer;
 
-/** A jq object (ADR-0016): a document's, or one built at run time. */
+/** A jq object: a document's, or one built at run time. */
 public sealed interface JqObject extends JqValue permits ObjectView, BuiltObject {
   /** The number of keys. */
   int size();

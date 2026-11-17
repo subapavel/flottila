@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The values of a filter's host variables for one run (ADR-0016, ADR-0038), each by its name without the {@code $}.
+ * The values of a filter's host variables for one run, each by its name without the {@code $}.
  * Immutable; a run reads the names its compile declared and ignores the others.
  */
 public final class Bindings {

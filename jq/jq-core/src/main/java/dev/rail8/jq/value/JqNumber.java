@@ -5,9 +5,12 @@ import dev.rail8.jq.internal.value.LiteralNumber;
 import dev.rail8.jq.internal.value.NumberView;
 import java.math.BigDecimal;
 
-/** A jq number (ADR-0016, ADR-0012, ADR-0003): a document's, a literal written in the filter, or a computed one. */
+/** A jq number: a document's, a literal written in the filter, or a computed one. */
 public sealed interface JqNumber extends JqValue permits NumberView, LiteralNumber, DoubleNumber {
-  /** The number as a double, by ADR-0012's 17-digit rule. */
+  /**
+   * The number as a double: up to 17 significant digits the correctly rounded parse, more than 17 rounded HALF_EVEN to
+   * 17 digits first, then parsed.
+   */
   double doubleValue();
 
   /** Whether the number is an integer a long holds; false for {@code -0}. */
@@ -21,8 +24,7 @@ public sealed interface JqNumber extends JqValue permits NumberView, LiteralNumb
   long longValue();
 
   /**
-   * The number as a decimal: for a literal the value of its canonical form, for a computed one its printed digits
-   * (ADR-0028).
+   * The number as a decimal: for a literal the value of its canonical form, for a computed one its printed digits.
    *
    * <p>A literal keeps its scale ({@code 1.10} has scale 2), and {@code -0} gives a zero of the same scale, since
    * {@code BigDecimal} has no -0. Within jq's exponent limits the value is the literal's exact value. Past them it is

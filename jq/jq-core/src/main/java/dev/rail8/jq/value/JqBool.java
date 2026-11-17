@@ -1,6 +1,6 @@
 package dev.rail8.jq.value;
 
-/** jq's booleans (ADR-0003). */
+/** jq's booleans. */
 public enum JqBool implements JqValue {
   FALSE(false),
   TRUE(true);

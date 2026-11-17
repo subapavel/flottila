@@ -3,7 +3,7 @@ package dev.rail8.jq.value;
 import dev.rail8.jq.internal.value.ArrayView;
 import dev.rail8.jq.internal.value.BuiltArray;
 
-/** A jq array (ADR-0016): a document's, or one built at run time. */
+/** A jq array: a document's, or one built at run time. */
 public sealed interface JqArray extends JqValue permits ArrayView, BuiltArray {
   /** The number of elements. */
   int length();

@@ -11,17 +11,17 @@ import dev.rail8.jq.value.JqNull;
 import dev.rail8.jq.value.JqValue;
 import java.util.List;
 
-/** A compiled filter, immutable and thread-safe (ADR-0016). It runs in push form (ADR-0008). */
+/** A compiled filter, immutable and thread-safe. It runs in push form: each result goes to the sink as it is made. */
 public final class JqFilter {
-  /** ADR-0017: a run that a budget or a cancel ended exits with 5. */
+  /** The exit code of a run that a budget, a cancel or the stack ended. */
   private static final int TERMINATED = 5;
 
   private final Executable executable;
 
-  /** The engine's limits, each run's budgets until a run brings its own (ADR-0030). */
+  /** The engine's limits, each run's budgets. */
   private final Limits limits;
 
-  /** The declared host variables, sorted: each name's place is its parameter slot (ADR-0038). */
+  /** The declared host variables, sorted: each name's place is its parameter slot. */
   private final List<String> variables;
 
   /** The name of each function of the program the executable was compiled from, by its place. */
@@ -37,8 +37,8 @@ public final class JqFilter {
   /**
    * Runs the filter on {@code input}, each declared variable bound to its value in {@code bindings}; true when the
    * results ran out, false when the sink stopped. The run begins the Workspace's run state with the engine's limits
-   * and ends it however it ends, so the Workspace is free again after a termination, an error or the sink's exception
-   * (ADR-0030). A name in {@code bindings} that the compile did not declare is ignored.
+   * and ends it however it ends, so the Workspace is free again after a termination, an error or the sink's
+   * exception. A name in {@code bindings} that the compile did not declare is ignored.
    *
    * @throws JqFilterException with jq's error value, detached from every document, when the filter raises an error
    * @throws JqTermination with exit code 5 when the steps, the deadline, the recursion depth, the bytes built or written
@@ -59,8 +59,8 @@ public final class JqFilter {
         state.end();
       }
     } catch (FilterException e) {
-      // After the run, so the detach charges nothing (ADR-0016's host rule, ADR-0039), and while the document still
-      // holds: the payload outlives the Workspace's next read.
+      // After the run, so the detach charges nothing (a copy made for the host after a run is not charged), and while
+      // the document still holds: the payload outlives the Workspace's next read.
       throw new JqFilterException(Detach.of((JqValue) e.value()));
     } catch (Termination t) {
       throw terminated(t);
@@ -68,19 +68,17 @@ public final class JqFilter {
   }
 
   /**
-   * The IR this filter runs and its facts (ADR-0016, ADR-0018), the text {@code jqj --explain} prints: unstable and
-   * outside semver. Main, then each function of the frozen program, the specialised one in the optimised compile
-   * (ADR-0045 #117), one line per node: its function ({@code main} or
-   * {@code fn<place>}), its pre-order id in that body from 0, its kind and its source span {@code <start>..<end>} in
-   * UTF-8 bytes, then its facts as {@code name=value}. A Call shows its kind, {@code
-   * call=<PLAIN|RECURSIVE|TAIL_SELF|TAIL_GROUP>}, no tail kind in the conservative compile (ADR-0047 #118), and {@code
-   * callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
+   * The IR this filter runs and its facts, the text the command line's {@code --explain} prints: unstable and
+   * outside semver. Main, then each function of the frozen program, the specialised one in the optimised compile,
+   * one line per node: its function ({@code main} or {@code fn<place>}), its pre-order id in that body from 0, its
+   * kind and its source span {@code <start>..<end>} in UTF-8 bytes, then its facts as {@code name=value}. A Call shows
+   * its kind, {@code call=<PLAIN|RECURSIVE|TAIL_SELF|TAIL_GROUP>}, no tail kind in the conservative compile, and
+   * {@code callee=fn<place>}, a ParamCall {@code param=<j>}, and every node its cardinality {@code
    * card=<NONE|ONE|AT_MOST_ONE|MANY>}, MANY everywhere in the conservative compile, then whether it may break out,
    * {@code breaks=<true|false>}, true everywhere in the conservative compile, then its run form, {@code
    * form=<push|value>}, value only where its cardinality is at most one and it may not break out. Each function's
    * lines follow a line {@code function fn<place> <name>/<arity> <start>..<end> closures=<n> values=<m>}, and a copy's
-   * with {@code
-   * copyOf=fn<o>}, the original it copies, whose name it has. The stack units (ADR-0046) follow: a Call's and a
+   * with {@code copyOf=fn<o>}, the original it copies, whose name it has. The stack units follow: a Call's and a
    * ParamCall's {@code units}, the {@code emitDepth} of each function and closure argument, and a closing line with
    * {@code callFreeDepth}, {@code starterUnits}, {@code bytesPerUnit} and {@code reserve}, then {@code specialised=<n>},
    * the nodes the copies hold, and {@code refused=<k>}, the keys that did not fit the specialisation cap. Every line
@@ -103,8 +101,8 @@ public final class JqFilter {
   }
 
   /**
-   * The termination a host sees for query-core's (ADR-0016): the same cause and budget, the budget's message, and the
-   * stack's "Stack exhausted" (ADR-0045 #107).
+   * The termination a host sees for query-core's: the same cause and budget, the budget's message, and the stack's
+   * "Stack exhausted".
    */
   private static JqTermination terminated(Termination t) {
     return switch (t.cause()) {

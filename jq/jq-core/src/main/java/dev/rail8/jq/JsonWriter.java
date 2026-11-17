@@ -9,9 +9,8 @@ import java.nio.channels.WritableByteChannel;
 import java.util.Objects;
 
 /**
- * Sinks that write each result as UTF-8 JSON (ADR-0016, ADR-0015, ADR-0027): one line per result, drained into the
- * target before emit returns, never flushed. {@code compact()} prints as jq's {@code -c}, {@code pretty()} as jq's
- * default indent 2 (#37).
+ * Sinks that write each result as UTF-8 JSON: one line per result, drained into the target before emit returns, never
+ * flushed. {@code compact()} prints as jq's {@code -c}, {@code pretty()} as jq's default indent 2.
  */
 public final class JsonWriter {
   private JsonWriter() {}
@@ -23,14 +22,14 @@ public final class JsonWriter {
 
   /**
    * A sink that prints each result and one LF into {@code out}, charging one step per started KiB of each drain
-   * (F-23) and, in a run, the drain's bytes against its bytes-written budget before they are written (ADR-0030). A
-   * target's IOException leaves emit as an UncheckedIOException with it as the cause (ADR-0027).
+   * and, in a run, the drain's bytes against its bytes-written budget before they are written. A target's IOException
+   * leaves emit as an UncheckedIOException with it as the cause.
    *
    * @throws NullPointerException if {@code options} is null
    */
   public static JqSink sink(Workspace workspace, OutputStream out, OutputOptions options) {
     Objects.requireNonNull(options, "options");
-    // OutputOptions has two instances so far (ADR-0024): every options that is not compact() is pretty().
+    // OutputOptions has two instances: every options that is not compact() is pretty().
     boolean pretty = options != OutputOptions.compact();
     Printer printer = workspace.printer;
     Printer.Target target =
@@ -42,7 +41,7 @@ public final class JsonWriter {
           } catch (IOException e) {
             throw new UncheckedIOException(e);
           }
-          // Outside a run these ticks count in the steps but not against the next run (ADR-0030, #77).
+          // Outside a run these ticks count in the steps but not against the next run.
           workspace.state.tickWritten((length + 1023) >>> 10);
         };
     return v -> {

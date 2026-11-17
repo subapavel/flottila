@@ -4,9 +4,9 @@ import dev.rail8.jq.JqCompileException;
 import dev.rail8.jq.JqSyntaxException;
 
 /**
- * GLOSSARY "Stub", ADR-0024: a body that is not built yet ends with a {@link JqCompileException} whose
- * message starts with {@link #PREFIX}, and a malformed document with a {@link JqSyntaxException} whose message
- * does. The oracle runners score a case FAIL by that prefix.
+ * A Stub: a body that is not built ends with a {@link JqCompileException} whose message starts with
+ * {@link #PREFIX}, and a malformed document with a {@link JqSyntaxException} whose message does. The oracle runners
+ * score a case FAIL by that prefix.
  */
 public final class Stub {
   /** The mark every Stub message starts with. */
@@ -20,8 +20,8 @@ public final class Stub {
   }
 
   /**
-   * The malformed-document Stub (ADR-0024): jq's text comes by replay in spec 5; until then the mark with the line
-   * and column of the detecting byte.
+   * The malformed-document Stub: the mark with the line and column of the detecting byte, in place of jq's own error
+   * text.
    */
   public static JqSyntaxException malformed(long offset, int line, int column) {
     return new JqSyntaxException(PREFIX + "malformed document at line " + line + ", column " + column, offset, line, column);

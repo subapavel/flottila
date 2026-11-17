@@ -5,8 +5,8 @@ import dev.rail8.jq.value.JqValue;
 import java.util.Objects;
 
 /**
- * An evaluation that ended and cannot be caught by jq (ADR-0016, ADR-0008, ADR-0017): its cause, the exit
- * code, the value it carries ({@link JqNull#NULL} when there is none, ADR-0024) and, for the
+ * An evaluation that ended and cannot be caught by jq: its cause, the exit code, the value it carries
+ * ({@link JqNull#NULL} when there is none) and, for the
  * {@link Cause#BUDGET} cause only, the budget that ran out.
  */
 public final class JqTermination extends JqException {
@@ -49,8 +49,7 @@ public final class JqTermination extends JqException {
   }
 
   /**
-   * As the public constructor, with {@code message} instead of the cause's name: the text a run's budget carries
-   * (ADR-0030).
+   * As the public constructor, with {@code message} instead of the cause's name: the text a run's budget carries.
    */
   JqTermination(Cause cause, int exitCode, JqValue value, Budget budget, String message) {
     Objects.requireNonNull(value, "value");

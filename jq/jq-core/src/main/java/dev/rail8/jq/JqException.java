@@ -1,8 +1,8 @@
 package dev.rail8.jq;
 
 /**
- * Every exception jqj throws (ADR-0016). Sealed and abstract, so a host's exhaustive {@code switch} over
- * the four subclasses needs no default (ADR-0024). No subclass records a stack trace.
+ * Every exception the engine throws. Sealed and abstract, so a host's exhaustive {@code switch} over
+ * the four subclasses needs no default. No subclass records a stack trace.
  */
 public abstract sealed class JqException extends RuntimeException
     permits JqCompileException, JqSyntaxException, JqFilterException, JqTermination {
