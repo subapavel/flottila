@@ -9,7 +9,7 @@ import java.util.Objects;
  * The main payload of an {@link Envelope}: a handle to content, never a stream and never a byte
  * array. One final class, no visible variants; where the bytes live is the {@link BlobStore}'s
  * concern. {@link #open()} returns a fresh cold stream any number of times; {@link #whole()}
- * materialises only below the store's tree limit (ARCHITECTURE §5).
+ * materialises only below the store's tree limit.
  *
  * @since 0.1
  */

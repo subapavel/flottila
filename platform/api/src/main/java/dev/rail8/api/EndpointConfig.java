@@ -6,7 +6,7 @@ import java.util.Objects;
 
 /**
  * The configuration a component receives for one endpoint, validated at deploy time against the
- * component's {@link Component#configSchema()}. Draft — review at hand-over.
+ * component's {@link Component#configSchema()}.
  *
  * @param name endpoint name inside the flow
  * @param uri scheme-specific address ({@code http://…}, {@code sftp://…}, {@code mock://…})

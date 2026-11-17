@@ -1,8 +1,8 @@
 package dev.rail8.api;
 
 /**
- * Builds the {@link Stage} for one step type from its configuration — the step SPI, pluggable like a
- * {@link Component} (ARCHITECTURE §7: "steps are pluggable the same way"). Registered with the flow builder;
+ * Builds the {@link Stage} for one step type from its configuration: the step SPI, pluggable the same way as a
+ * {@link Component}. Registered with the flow builder;
  * the built-in types ({@code to}, {@code route}, {@code filter}, {@code extractKey}, {@code validate}) are
  * not factories.
  *
@@ -21,7 +21,7 @@ public interface StepFactory {
 
     /**
      * Builds the stage; an {@link IllegalArgumentException} naming the step and the key for a bad
-     * configuration. The stage holds what it is given here and nothing else (CLAUDE.md).
+     * configuration. The stage holds what it is given here and nothing else.
      */
     Stage create(StepConfig step, StepResources resources);
 }

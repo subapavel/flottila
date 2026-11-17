@@ -5,8 +5,7 @@ import java.util.Objects;
 /**
  * What a consumer's handler returns ({@code Function<Envelope, Future<Ack>>}): the state the
  * consumer needs to finish its own protocol — delete the file, commit the session, send 202 or the
- * reply itself. The durable save before an irreversible ACK is the consumer's job (ARCHITECTURE §4, §7).
- * Draft — review at hand-over.
+ * reply itself. Saving the message durably before an ACK that cannot be taken back is the consumer's job.
  *
  * @since 0.1
  */
@@ -15,7 +14,7 @@ public sealed interface Ack permits Ack.Accepted, Ack.Reply, Ack.Nack {
     /**
      * Accepted for processing (async modes): the message is durable, the consumer may ACK irreversibly. {@code messageId} is
      * the message the arrival is: its own id, or an earlier message's when the durable save found the arrival's dedupe key
-     * ({@link Component#dedupeBy}) taken by that message (D-084) — the arrival itself was not saved then.
+     * ({@link Component#dedupeBy}) taken by that message — the arrival itself was not saved then.
      *
      * @since 0.1
      */

@@ -1,10 +1,10 @@
 package dev.rail8.api;
 
 /**
- * A body an operator gave up: the start of the node that held it accepted its loss with {@code RAIL8_JOURNAL_ACCEPT_LOSS}
- * (D-105), so it can never be read again. Not the miss signal ({@link BlobNotFoundException}: nothing stored, never written
- * or removed by retention, D-096) — the message's rows say a body was stored — and never retryable: no other node and no
- * later try holds it. A {@link BlobStore}'s {@code read}, {@code open} and {@code exists} fail with it; a same-id DLQ retry from such
+ * A body an operator gave up: the node that held it was started with {@code RAIL8_JOURNAL_ACCEPT_LOSS}, accepting its
+ * loss, so it can never be read again. This is not the miss signal ({@link BlobNotFoundException}: nothing was ever
+ * stored, or retention removed it), because the message's rows say a body was stored. It is never retryable: no other
+ * node and no later try holds the body. A {@link BlobStore}'s {@code read}, {@code open} and {@code exists} fail with it; a same-id DLQ retry from such
  * a body is refused.
  *
  * @since 0.1

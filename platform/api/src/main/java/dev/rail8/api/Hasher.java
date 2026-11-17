@@ -45,7 +45,7 @@ public interface Hasher {
     }
 }
 
-/** Package-private default: SHA-256 truncated to 64 bits, as the milestone-1 prototype's fallback did. */
+/** The JDK-only hasher behind {@link Hasher#sha256()}: SHA-256 truncated to 64 bits. */
 final class Sha256Hasher implements Hasher {
 
     static final Sha256Hasher INSTANCE = new Sha256Hasher();

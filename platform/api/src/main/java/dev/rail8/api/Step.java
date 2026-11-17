@@ -3,7 +3,7 @@ package dev.rail8.api;
 /**
  * One transformation of the message. Runs on the message's virtual thread and may block on I/O
  * through Vert.x clients and {@code Future.await()}; returns a new {@link Envelope}, never mutates
- * the one it got (ARCHITECTURE §6).
+ * the one it got.
  *
  * @since 0.1
  */

@@ -1,7 +1,7 @@
 package dev.rail8.api;
 
 /**
- * A failure that says whose fault it is (D-049): implemented by the exceptions a step or a producer throws, so the component
+ * A failure that says whose fault it is: implemented by the exceptions a step or a producer throws, so the component
  * that speaks to the sender can answer by {@link Kind} without knowing the step's types (core and the components depend on
  * the api only). A failure that implements nothing of this is {@link Kind#INTERNAL} by default.
  *

@@ -1,4 +1,7 @@
 /**
- * Public types every extension sees (ARCHITECTURE §5–§7, §12): Envelope, Body, Step, Stage, Pipeline, Component SPI, BlobStore, Runtime. Depends on the JDK plus Vert.x {@code Future}, {@code Buffer}, {@code ReadStream}/{@code WriteStream} and nothing else; enforced by rail8-archtest. Types arrive in P0-05.
+ * The public types every extension sees: the message ({@link dev.rail8.api.Envelope}, {@link dev.rail8.api.Body}), the
+ * pipeline ({@link dev.rail8.api.Step}, {@link dev.rail8.api.Stage}, {@link dev.rail8.api.Pipeline}), the Component SPI,
+ * the {@link dev.rail8.api.BlobStore} and the {@link dev.rail8.api.Runtime}. The package depends on the JDK and on Vert.x
+ * {@code Future}, {@code Buffer}, {@code ReadStream} and {@code WriteStream} only; an architecture test enforces this.
  */
 package dev.rail8.api;
