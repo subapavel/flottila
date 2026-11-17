@@ -61,7 +61,7 @@ corpus/
 2. Owner: builds it on PO 7.5 and CPI locally, returns outputs or error texts, releases, date.
    Only the synthetic material enters `observations/<obs-id>/`.
 3. A class-A `oracle:corpus` ticket sets the cases to `observed`. A contradiction with an assumed
-   reading is a finding (the root `docs/WORKFLOW.md` §7). PO 7.5 wins over CPI; a divergence is recorded
+   reading goes to the owner-proxy as a GitHub issue labelled `owner-question`. PO 7.5 wins over CPI; a divergence is recorded
    in `meta.json` and becomes a catalogue deviation.
 
 ## W3C suites

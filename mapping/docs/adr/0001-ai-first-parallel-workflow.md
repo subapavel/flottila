@@ -1,6 +1,6 @@
 # AI-first workflow: Flottila's rigour, Matt Pocock's skill chain, parallel tickets
 
-Status: accepted (2026-10-30)
+Status: superseded by the root `AGENTS.md` (2026-11-17)
 
 Flottila ran one writer at a time with a review after every task; over its first 81 tasks 52 had
 at least one review FAIL and the backlog grew 85 fix rows, while its single-file ledger made
