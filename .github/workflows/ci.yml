@@ -1,8 +1,9 @@
 # The platform's checks on GitHub.
 # On every change (a push to main, a pull request): the sign-off check of every commit, and the build with unit
 # and integration tests on the pinned Postgres, the name guard and the demo package. These block a merge.
-# Once a night and on demand, as a report that blocks nothing: the same tests on the oldest supported Postgres,
-# the coverage floors and the "coverage must not fall" comparison, the benchmark and mutation testing.
+# Once a night and on demand, as a report that blocks nothing: the whole stack in Docker with the demo deployed,
+# the same tests on the oldest supported Postgres, the coverage floors and the "coverage must not fall"
+# comparison, the benchmark and mutation testing.
 name: ci
 
 on:
@@ -122,7 +123,8 @@ jobs:
           if-no-files-found: ignore
 
   stack:
-    name: "stack (deploy/compose: up, /health within 60 s, deploy exit 0, demo listed)"
+    name: "nightly · stack (deploy/compose: up, /health within 60 s, deploy exit 0, demo listed)"
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     env:

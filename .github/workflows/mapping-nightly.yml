@@ -7,6 +7,7 @@ name: mapping-nightly
 # coverage: the build with the coverage floors and the benchmarks, then scripts/ratchet-ci.sh push compares it with
 #   the ratchet of the closest earlier commit whose push run of mapping-ci's backend job was green.
 # windows: the whole reactor compiles on Windows (drive letters and backslashes in paths).
+# ui-e2e and stack: the UI's end-to-end tests, then the jar with the UI inside and the @stack suite against it.
 # A drop is reported until the date in scripts/ratchet-enforced-from and fails the job from that day; either way it
 # only turns the nightly report red. It commits nothing.
 on:
@@ -146,3 +147,78 @@ jobs:
           EOF
       - name: Whole reactor compiles; Spotless, enforcer, licences
         run: ../mvnw.cmd -B -q -DskipTests verify
+
+  # The UI's end-to-end tests, and the built UI for the stack job below.
+  ui-e2e:
+    name: mapping · ui end-to-end
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping/ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mapping/ui/package-lock.json
+      - run: npm ci
+      # The pinned @playwright/test (1.63.0) decides the Chromium build.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: mapping/ui/dist
+          if-no-files-found: error
+
+  # The jar with the UI inside, started and tested end to end (the @stack suite).
+  stack:
+    name: mapping · stack
+    needs: ui-e2e
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mapping/ui/package-lock.json
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: mapping/ui/dist
+      - name: Jar with the UI inside
+        run: ../mvnw -B -Pui -pl service -am package -DskipTests
+      - name: Playwright
+        working-directory: mapping/ui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: '@stack suite against the jar'
+        working-directory: mapping/ui
+        run: npm run e2e:stack
