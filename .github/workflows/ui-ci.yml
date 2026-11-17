@@ -1,7 +1,7 @@
 name: ui-ci
 
 # The Rail8 web application (ui/) on every change to it: licences of every npm package, type check, lint, unit tests,
-# component tests in Chromium and the production build. The platform's ci.yml checks the sign-off of every commit.
+# component tests in Chromium and the production build.
 on:
   pull_request:
     paths:
@@ -39,7 +39,8 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm ci
-      # The licence list of AGENTS.md, with the dev-only exceptions in mapping/ui/scripts/licence-exceptions.json.
+      # Every npm package carries an allowed licence (Apache 2.0, MIT, BSD, ISC, MPL 2.0, EPL); a few dev-only build
+      # tools are listed as exceptions.
       - name: Licences
         run: npm run licences
       # The pinned playwright devDependency decides the Chromium build.
