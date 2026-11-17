@@ -142,7 +142,7 @@ describe('the connected fields', () => {
   });
 });
 
-describe('the orphaned references (GLOSSARY: Orphaned reference, Field status)', () => {
+describe('the orphaned references and the field status', () => {
   test('a field is found at any depth of a recursive type; a missing step, a step below a leaf or another root finds none', () => {
     expect(fieldAt(doc, '/Doc')).toBe(doc.root);
     expect(fieldAt(doc, '/Doc/@id')?.valueType).toBe('xs:string');
@@ -176,7 +176,7 @@ describe('the orphaned references (GLOSSARY: Orphaned reference, Field status)',
   });
 });
 
-describe('the orphaned target field mappings (GLOSSARY, #174)', () => {
+describe('the orphaned target field mappings', () => {
   const mapped = (...paths: string[]): MappingModel => ({
     formatVersion: 1,
     targetFieldMappings: Object.fromEntries(paths.map((path, i) => [path, { id: `t${i}`, result: null, boxes: {} }])),

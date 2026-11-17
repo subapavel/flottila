@@ -86,7 +86,7 @@ export function DefinitionTab({ mappingId, api, store, browserState, onChooseMes
     savePanelPreference(browserState, viewKey(side), mode);
   };
   const link = (source: FieldPath, target: FieldPath) => {
-    // a variable's expression is a preview, drawn on the canvas only
+    // a variable is a preview kept in the browser: the mapping has no expression for it to link into
     if (variables.includes(target)) return;
     store.getState().link(source, target, {
       source: refusalAt(loaded(sourceQuery.data), source, 'source'),
