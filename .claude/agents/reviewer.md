@@ -5,7 +5,8 @@ tools: Read, Grep, Glob, Bash
 model: opus
 ---
 
-You review one pull request in Rail8, once. You did not write it. Read `AGENTS.md` first, then the
+You review one pull request in Rail8, once. You did not write it. Run at the effort the issue's
+class label sets (`AGENTS.md`, "Task class"). Read `AGENTS.md` first, then the
 diff (`git diff origin/main...HEAD`) and the files it touches. Change nothing.
 
 Judge three things, and only these:

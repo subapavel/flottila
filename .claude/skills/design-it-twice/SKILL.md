@@ -8,6 +8,8 @@ description: Design a contract several times before building it — several agen
      (../LICENSE-mattpocock-skills). After John Ousterhout's "Design It Twice": the first idea is
      rarely the best. -->
 
+Required for every `class:C` issue before its implementation (`AGENTS.md`, "Task class").
+
 ## 1. Frame the problem
 
 Write a brief of at most 40 lines that every designer gets unchanged:

@@ -33,6 +33,19 @@ Design first only for hard things: contracts, public API, storage format, securi
 `design-it-twice`). The owner-proxy judges the design and a second model argues against it. No records beyond the issue,
 the pull request and the commits.
 
+## Task class
+
+Every issue carries one class label. It sets the model and effort of the session and the review:
+
+| Label | Work | Session | Review | Design first |
+| --- | --- | --- | --- | --- |
+| `class:A` mechanical | docs, CI scripts, fixtures, mock behaviour, compose files | Sonnet 5.5, medium | Opus 5.5, medium | no |
+| `class:B` standard | a component with its mock, a step, a fix in existing code, the admin API, the CLI | Opus 5.5, high | Opus 5.5, high | no |
+| `class:C` hard | batcher, admission, `BlobStore`, concurrency, leases, public types in `rail8-api`, JSON Schemas, security, storage format | Opus 5.5, xhigh | Opus 5.5, xhigh | yes, `design-it-twice` |
+
+Whoever opens the issue sets the class; when it is unclear, the owner-proxy decides. When a task
+turns out harder than its class, raise the label and say why in the issue. Never lower it mid-task.
+
 Blocking on every change: the build with unit and integration tests on one Postgres version, and
 the sign-off check. The build also runs Error Prone (its errors fail) and `ci/change_guard.py`,
 which rejects task or decision references in comments and hard-coded colours on the changed lines. Coverage, mutation tests, a second Postgres, Windows, performance and the
