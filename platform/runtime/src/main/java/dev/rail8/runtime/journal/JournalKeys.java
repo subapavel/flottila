@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.IntFunction;
 
 /**
- * The tenant keys (D-106, CORE-3 item 2): {@code journal_keys(key_id, tenant, wrapped, created_at)}, a tenant's 256-bit key
+ * The tenant keys: {@code journal_keys(key_id, tenant, wrapped, created_at)}, a tenant's 256-bit key
  * made on its first use, wrapped under the master key ({@link MasterKeySource}) with AES-256-GCM — a random 96-bit nonce, the
  * AAD the key id (u32) and the tenant (UTF-8) — and stored as {@code nonce ‖ ciphertext ‖ tag}; the key id, the record
  * header's tenant key id, comes from {@code journal_key_ids} before the wrap. A start unwraps every row; a row that fails

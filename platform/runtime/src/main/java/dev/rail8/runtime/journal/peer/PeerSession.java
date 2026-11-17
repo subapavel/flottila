@@ -7,7 +7,7 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 
 /**
- * An established peer link's frame keys (CORE-5 S2): each direction its own HMAC-SHA256 key from the handshake and its own
+ * An established peer link's frame keys: each direction its own HMAC-SHA256 key from the handshake and its own
  * sequence, so a frame replayed, reordered, reflected or cut out fails its receiver's check. Not thread-safe: the link seals
  * under its write lock and opens on its event loop.
  *

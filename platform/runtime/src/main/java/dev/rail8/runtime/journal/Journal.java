@@ -47,7 +47,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * The body journal of one node (CORE-3 items 1–3, 8, 9 file part; D-105): segment files {@code segments/<n>.seg} of
+ * The body journal of one node: segment files {@code segments/<n>.seg} of
  * encrypted records under {@code RAIL8_JOURNAL_DIR}, held by a {@code LOCK} and named by a {@code NODE} file.
  *
  * <p><b>Append.</b> The caller's thread encrypts and CRCs its record, then reserves (segment, position) and enqueues it
@@ -63,7 +63,7 @@ import java.util.stream.Stream;
  * {@code RAIL8_JOURNAL_APPEND_WAIT} passes on the injected timer, then fails {@link JournalBusyException} with nothing
  * reserved. An append that finds nothing pending is always taken.
  *
- * <p><b>Journal bound</b> (CORE-3 item 11). The journal's bytes — every segment file (header, records, footer), every spill
+ * <p><b>Journal bound</b>. The journal's bytes — every segment file (header, records, footer), every spill
  * file and every record reserved and not yet written — are counted against {@code RAIL8_JOURNAL_MAX_BYTES} (max). An
  * {@link Bound#INTAKE intake}'s record is taken while the bytes and its record stay at or below max − max/16 and refused one
  * byte above it; a {@link Bound#RESERVE step body} (a park's included) may use the reserve up to max. A refused record is a
@@ -97,7 +97,7 @@ import java.util.stream.Stream;
  * ({@link ReadChannels}) — checked by CRC32C and, read for a key, against the key its header names (a failure is
  * {@link JournalCorruptException} and an ERROR, never "not found"), then decrypted under its tenant key.
  *
- * <p><b>Large bodies</b> (CORE-3 item 4). A body above {@code RAIL8_JOURNAL_RECORD_MAX} is {@link #spill spilled}: written
+ * <p><b>Large bodies</b>. A body above {@code RAIL8_JOURNAL_RECORD_MAX} is {@link #spill spilled}: written
  * from its first byte, on the caller's thread, as a one-record segment of its own under {@code spill/} (a large record,
  * {@link RecordFormat}), hashed once while it streams. Its number comes from the one sequence the writer's segments take
  * theirs from, so it never names a segment the writer has or will have. It reads back from the spill any number of times;
@@ -206,7 +206,7 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * What a record may use of {@code RAIL8_JOURNAL_MAX_BYTES} (CORE-3 item 11).
+     * What a record may use of {@code RAIL8_JOURNAL_MAX_BYTES}.
      *
      * @since 0.1
      */
@@ -233,7 +233,7 @@ public final class Journal implements AutoCloseable {
     private record Opened(SegmentFile file, Throwable failure) { }
 
     /**
-     * A pre-open given up because the journal closed while its row insert was retried (CORE-4c3): the writer stops on it like
+     * A pre-open given up because the journal closed while its row insert was retried: the writer stops on it like
      * on any failed pre-open — the records waiting for that segment fail retryable — but no write or force failed, so it logs
      * no fail-stop ERROR.
      */
@@ -243,7 +243,7 @@ public final class Journal implements AutoCloseable {
         }
     }
 
-    /** The rows of a journal without Postgres (CORE-4a's tests): every insert succeeds at once, no row is kept. */
+    /** The rows of a journal without Postgres (as in tests): every insert succeeds at once, no row is kept. */
     private static final SegmentRows NO_ROWS = (node, segment) -> Future.succeededFuture();
     /** The journal ids of the opens that are given no id source (tests without a node): a fresh random one. */
     private static final Supplier<UUID> RANDOM_IDS = UUID::randomUUID;
@@ -293,8 +293,8 @@ public final class Journal implements AutoCloseable {
     private Throwable outage;  // the last failure of the pre-open row insert being retried (DEGRADED), else null
     private Timer.Cancellable retry;               // the pending retry of that insert (a fired one cancels to false)
     private CompletableFuture<Opened> retrying;   // the pre-open it completes
-    private long bytes;        // the journal's bytes: segment, spill and replica files, reservations (CORE-3 item 11)
-    private long replicaBytes; // the replicas' part of them: their files and reservations (CORE-5b1)
+    private long bytes;        // the journal's bytes: segment, spill and replica files, reservations
+    private long replicaBytes; // the replicas' part of them: their files and reservations
     private boolean warned;    // the bytes crossed 80 % and did not fall below since
     private final boolean[] refusing = new boolean[Bound.values().length];   // by ordinal: refusals began, not fallen below 80 % since
     private long dirForces;    // forces of segments/ begun by this journal: the last one's generation
@@ -354,7 +354,7 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * Opens the journal in {@code config.dir()} (CORE-3 item 9). It takes the {@code LOCK} (held elsewhere → refused), then
+     * Opens the journal in {@code config.dir()}. It takes the {@code LOCK} (held elsewhere → refused), then
      * only reads until every check passed: the file system's room for {@code RAIL8_JOURNAL_MAX_BYTES}; the identity
      * ({@code NODE} against the node's {@code journal_nodes} row, {@link JournalStart#identity}: a first start writes
      * {@code NODE} with the id {@code journalIds} gives, then the row; a {@code NODE} without its row and no segment file
@@ -689,14 +689,14 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * Reserves {@code length} bytes for a replica's OPEN (CORE-5b1 C4), or refuses them when the replicas' bytes and they would
+     * Reserves {@code length} bytes for a replica's OPEN, or refuses them when the replicas' bytes and they would
      * pass half the intake edge (max − max/16), or the journal's bytes and they the edge: the holder's own intake keeps the rest.
      */
     void reserveReplica(long length) {
         lock.lock();
         try {
             long edge = limits[Bound.INTAKE.ordinal()];
-            if (length > edge / 2 - replicaBytes || length > edge - bytes) {   // subtracted: OPEN's length is a wire u64 (r1 R1)
+            if (length > edge / 2 - replicaBytes || length > edge - bytes) {   // subtracted, not added: OPEN's length is a wire u64 that a sum could overflow
                 throw new JournalFullException("journal " + config.dir() + " has no room for a replica of " + length + " bytes: replicas hold "
                         + replicaBytes + " of their half " + edge / 2 + " of the intake edge " + edge + ", the journal " + bytes);
             }
@@ -719,7 +719,7 @@ public final class Journal implements AutoCloseable {
         }
     }
 
-    /** The other nodes' segments this node holds (CORE-5b1): their files count in {@link #bytes()}. */
+    /** The other nodes' segments this node holds: their files count in {@link #bytes()}. */
     public Replicas replicas() {
         return replicas;
     }
@@ -742,7 +742,7 @@ public final class Journal implements AutoCloseable {
         return config.node();
     }
 
-    /** This journal's id ({@code journal_nodes.journal_id}, its segments' headers): what a peer's READ names it by (CORE-5a W3). */
+    /** This journal's id ({@code journal_nodes.journal_id}, its segments' headers): what a peer's READ names it by. */
     public UUID id() {
         return format.journal();
     }
@@ -757,7 +757,7 @@ public final class Journal implements AutoCloseable {
         return extents.containsKey(n);
     }
 
-    /** The journal's bytes now (CORE-3 item 11): its segment and spill files and the records reserved and not yet written. */
+    /** The journal's bytes now: its segment and spill files and the records reserved and not yet written. */
     public long bytes() {
         lock.lock();
         try {
@@ -912,7 +912,7 @@ public final class Journal implements AutoCloseable {
 
     /**
      * One try of segment {@code n}'s pre-open, on a virtual thread of its own: its row, then its file. A failed row insert
-     * is no fail-stop (no file exists): it is tried again {@code backoff} later on the timer (CORE-3 item 3, CORE-4c1 r1);
+     * is no fail-stop (no file exists): it is tried again {@code backoff} later on the timer;
      * a failed file creation completes {@code f} with its failure, which fails the journal when the writer moves on.
      */
     private void attempt(long n, CompletableFuture<Opened> f, Duration backoff) {
@@ -972,7 +972,7 @@ public final class Journal implements AutoCloseable {
 
     /**
      * Forces {@code segments/} as one generation of its forces (a pre-open's, a persist's): the generation is taken before the
-     * force and ended after it, a failure recorded with its generation before the end is (CORE-4c3 r1 carry).
+     * force and ended after it, a failure recorded with its generation before the end is.
      *
      * @return the force's generation
      */
@@ -1176,7 +1176,7 @@ public final class Journal implements AutoCloseable {
 
     /**
      * {@link #stream(JournalRef, BlobKey)} of a record that lies in another node's journal at {@code ref}, its bytes as they lie
-     * there — from its first one, in order — read from {@code raw} (the peer link's READ, CORE-5a S7): checked here by CRC32C,
+     * there — from its first one, in order — read from {@code raw} (the peer link's READ): checked here by CRC32C,
      * against {@code key} and by AEAD under this journal's tenant keys, exactly as a local record is; a record of
      * {@code ref}'s length longer than this journal's segment records is read as a large one, one chunk at a time. Closing the
      * answer closes {@code raw}, and so does a failure here; {@code raw} ending before the record does is corrupt.
@@ -1211,7 +1211,7 @@ public final class Journal implements AutoCloseable {
 
     /**
      * The bytes of the record at {@code ref} as they lie in its segment, unchecked: what this node's peer link sends a reader on
-     * another node, which checks them ({@link #stream(JournalRef, BlobKey, InputStream)}, CORE-5a). The stream reads a channel of
+     * another node, which checks them ({@link #stream(JournalRef, BlobKey, InputStream)}). The stream reads a channel of
      * its own of the segment file from the record's first byte on — its caller reads {@code ref.length()} of them; closing it closes
      * the channel.
      *
@@ -1323,7 +1323,7 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * {@link #spill(BlobKey, int, InputStream, long, Hasher)} of a spill bounded while it streams (CORE-4d r1): its segment
+     * {@link #spill(BlobKey, int, InputStream, long, Hasher)} of a spill bounded while it streams: its segment
      * header is refused ({@link JournalFullException}, no file, nothing read) when it does not fit under {@code bound}'s limit —
      * an intake's spill past {@code RAIL8_JOURNAL_MAX_BYTES − 1/16} writes no chunk only to be answered 503 —, then each
      * write is counted as it is made and one that would pass max fails the spill with a {@link JournalFullException}; its file
@@ -1393,7 +1393,7 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * A large body spilled (CORE-3 item 4): a one-record segment of its own under {@code spill/}, until it is persisted into
+     * A large body spilled: a one-record segment of its own under {@code spill/}, until it is persisted into
      * {@code segments/} or abandoned. Its ref is known from the start.
      *
      * @since 0.1
@@ -1547,7 +1547,7 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * Segment {@code n}, sealed, has lost its row to the sweeper (CORE-3 item 10): the journal holds it no more (a read of it
+     * Segment {@code n}, sealed, has lost its row to the sweeper: the journal holds it no more (a read of it
      * fails as of a segment it does not hold), its cached read channel is dropped — closed now or by its last read — and its file
      * unlinked, its bytes out of the bound. On the sweeper's thread, never on the hot path.
      */

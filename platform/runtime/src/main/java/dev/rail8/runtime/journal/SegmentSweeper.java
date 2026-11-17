@@ -17,7 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
- * The segment sweeper of a node's journal (CORE-3 items 10 and 14, D-105): a pass removes the segments of this node no row pins.
+ * The segment sweeper of a node's journal: a pass removes the segments of this node no row pins.
  *
  * <p>A pass runs on a virtual thread of its own. Its candidates are the journal's segments sealed at least
  * {@code RAIL8_JOURNAL_SWEEP_GRACE} ago on the injected clock (by the trailer's sealed ms; a segment found at start counts from

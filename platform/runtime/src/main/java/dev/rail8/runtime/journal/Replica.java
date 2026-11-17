@@ -9,7 +9,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.zip.CRC32C;
 
 /**
- * One segment of another node's journal this holder keeps a copy of (CORE-5b1): {@code replicas/<owner>/<journal id>/<n>.part},
+ * One segment of another node's journal this holder keeps a copy of: {@code replicas/<owner>/<journal id>/<n>.part},
  * opened by {@link Replicas#open}, its header written and forced. Its bytes are appended by one thread ({@link #write}, the link's
  * writer) and forced and sealed by one other ({@link #force}, {@link #seal}, the link's force thread) — a seal only once every
  * write before it returned. What it counts in the journal's bytes is the larger of its reservation and its end until it is
@@ -98,8 +98,8 @@ public final class Replica {
 
     /**
      * Closes the file and trues its count to the bytes it holds (its size, read before the close: a torn write's bytes past
-     * {@link #end()} included, r1 R2), the close failing or not (a link closed, a replica failed: the {@code .part} is kept,
-     * CORE-5b1 C2); a size that cannot be read counts its end. Nothing is forced. A second call does nothing.
+     * {@link #end()} included), the close failing or not (a link closed, a replica failed: the {@code .part} is kept);
+     * a size that cannot be read counts its end. Nothing is forced. A second call does nothing.
      */
     public void detach() throws IOException {
         synchronized (this) {

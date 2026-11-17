@@ -9,11 +9,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * The journal's rows in Postgres (CORE-3 items 5 and 9): its {@code journal_nodes} row and its {@code journal_segments}
+ * The journal's rows in Postgres: its {@code journal_nodes} row and its {@code journal_segments}
  * rows. Every segment — the one an open starts, each one the writer pre-opens, a large body's at its
  * {@link Journal.Spill#persist() persist} — has its row inserted before its file appears in {@code segments/}, so no segment
  * file lies there without its row. At start the journal reads its node's journal id and segment rows through here. The
- * Postgres implementation is {@link PgSegmentRows}; a journal without Postgres (CORE-4a/4b's, their tests) keeps no rows:
+ * Postgres implementation is {@link PgSegmentRows}; a journal without Postgres (as in tests) keeps no rows:
  * only {@link #insert} is its own, every other method answers as no row were kept. The start also reads the committed
  * {@link Pin pins} into the journal through here and, once an operator accepted a loss ({@code RAIL8_JOURNAL_ACCEPT_LOSS}),
  * {@link #giveUp gives} them up.
@@ -50,7 +50,7 @@ public interface SegmentRows {
     }
 
     /**
-     * The sweep of {@code node}'s {@code candidates} (CORE-3 item 10): of them, the rows no pin holds — a work row's ref not lost,
+     * The sweep of {@code node}'s {@code candidates}: of them, the rows no pin holds — a work row's ref not lost,
      * a DLQ row's kept ref not archived and not lost, a kept ref not archived, not lost and created after {@code keptSince} (the
      * clock − {@code RAIL8_JOURNAL_KEEP_MAX_AGE}) — locked, passing a row another transaction holds, their pins asked again
      * under a later snapshot, then deleted; answers the segments whose row it deleted (their files are the caller's to unlink).
@@ -66,10 +66,10 @@ public interface SegmentRows {
     }
 
     /**
-     * A committed pin of a node's journal (CORE-3 item 9): a work row ({@code seq} at least 1, its message's ingress body) or a
+     * A committed pin of a node's journal: a work row ({@code seq} at least 1, its message's ingress body) or a
      * kept ref ({@code seq} {@value #REF}, its key) that is not lost — a ref also not archived — naming the record at
      * {@code segment, position, length}. At recovery a kept ref pins only while its segment row is registered; a work row
-     * always pins ([amended by FIX-140]).
+     * always pins.
      *
      * @since 0.1
      */
@@ -99,7 +99,7 @@ public interface SegmentRows {
     /**
      * The pins of {@code node}'s journal that no record held now holds: a pin is held when {@code ends} names its segment and it
      * ends at or before the end of that segment's records; an empty {@code ends} holds none (every pin). In no order. A kept
-     * ref is a pin only while its segment row is registered; a work row always is ([amended by FIX-140]).
+     * ref is a pin only while its segment row is registered; a work row always is.
      */
     default Future<List<Pin>> pinsBeyond(String node, Map<Long, Long> ends) {
         return Future.succeededFuture(List.of());
@@ -112,7 +112,7 @@ public interface SegmentRows {
 
     /**
      * Gives {@code pins} up in one transaction: every work row and kept ref of {@code node} whose ref lies in a given-up extent — in
-     * a pin's segment, from its cut in {@code ends} (the records a start's scan holds there; CORE-4d r1: the bytes from it are gone
+     * a pin's segment, from its cut in {@code ends} (the records a start's scan holds there; the bytes from it are gone
      * whether or not a row pins them), from 0 for a segment not in {@code ends} (its file gone, or the whole journal given up) —
      * gets {@code lost_at} (one instant, the record's), its rows read after the transaction locked them {@code for update}, so a
      * reference insert copying one of them meanwhile is waited for and its copy given up too, or waits and finds no source;

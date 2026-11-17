@@ -11,7 +11,7 @@ import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 
 /**
- * The chunked AEAD construction of the encrypted spool, shared by the journal's records (CORE-3 item 2): a key per object,
+ * The chunked AEAD construction of the encrypted spool, shared by the journal's records: a key per object,
  * HKDF-SHA256 (RFC 5869: extract with a random 16-byte salt, expand one block under a fixed info label) of a master key,
  * and AES-256-GCM per chunk with a 16-byte tag under the nonce {@code salt[0..8) ‖ u32 counter}, whose top bit marks the
  * last chunk. A fresh salt gives a fresh key, so one master key never sees a (key, nonce) pair twice; a chunk swapped,

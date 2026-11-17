@@ -8,7 +8,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 
 /**
- * A segment record, format v1 (CORE-3 item 2), big-endian: {@code crc32c u32} · {@code length u32} · {@code version u8} ·
+ * A segment record, format v1, big-endian: {@code crc32c u32} · {@code length u32} · {@code version u8} ·
  * {@code kind u8} · {@code tenant key id u32} · {@code plain size u64} · {@code message id (u16 length, UTF-8)} ·
  * {@code step u32} · {@code part (u16 length, UTF-8)} · {@code salt[16]} · AEAD chunks. The chunks are {@link ChunkedAead}
  * under HKDF-SHA256(tenant key, salt, {@value #INFO}): AES-256-GCM over {@value #CHUNK}-byte plaintext chunks with one
@@ -18,7 +18,7 @@ import java.util.Arrays;
  *
  * <p>Two kinds. A body record ({@value #KIND_BODY}, at most {@code RAIL8_JOURNAL_RECORD_MAX} of plaintext) is whole:
  * {@code length} is the record's length and the CRC32C covers every byte after it. A large record ({@value #KIND_LARGE},
- * CORE-3 item 4: a segment of its own, written while its body streams in) is longer than a u32 may say and its plain size
+ * a segment of its own, written while its body streams in) is longer than a u32 may say and its plain size
  * is known only at its end: {@code length} is the header's length and the CRC32C covers the header alone; the chunks run
  * to the record's end, {@code plain size} decides how many there are, and their tags alone authenticate them. Its chunks
  * but the last authenticate the header with the plain size as zero (all a streaming writer knows then); the last one

@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 /**
- * The peer link's settings (CORE-5 S11), read by {@code NodeConfig} from the {@code RAIL8_PEER_*} keys; an in-process one is
+ * The peer link's settings, read by {@code NodeConfig} from the {@code RAIL8_PEER_*} keys; an in-process one is
  * held to the same ranges, each refusal naming its key.
  *
  * @param bind    {@code RAIL8_PEER_BIND}: the address the link listens on (0.0.0.0)
@@ -28,9 +28,9 @@ public record PeerConfig(String bind, int port, String host, Duration timeout, i
     public static final Duration TIMEOUT_MAX = Duration.ofSeconds(30);
     /** The most {@code RAIL8_PEER_READS}. */
     public static final int READS_MAX = 64;
-    /** The most connections a listener holds in their handshake (not yet proven); a further one is closed at once (r2 R1). */
+    /** The most connections a listener holds in their handshake (not yet proven); a further one is closed at once. */
     public static final int HANDSHAKES_MAX = 64;
-    /** The most of them from one source address (CORE-5a2 P4), beside {@link #HANDSHAKES_MAX}; a further one is closed at once. */
+    /** The most of them from one source address, beside {@link #HANDSHAKES_MAX}; a further one is closed at once. */
     public static final int HANDSHAKES_PER_SOURCE = 8;
 
     public PeerConfig {

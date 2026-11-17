@@ -3,7 +3,7 @@ package dev.rail8.runtime.journal;
 import java.util.Objects;
 
 /**
- * What {@link Journal#append} writes (CORE-3 item 2): the message id, step and part go into the record header in plain
+ * What {@link Journal#append} writes: the message id, step and part go into the record header in plain
  * (authenticated, not encrypted), the body is encrypted under the tenant key {@code tenantKeyId}. The body is read only
  * while {@code append} runs; it is not copied, so the caller does not change it before {@code append} returns.
  *

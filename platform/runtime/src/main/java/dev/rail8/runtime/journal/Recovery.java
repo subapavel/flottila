@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 import java.util.zip.CRC32C;
 
 /**
- * The file part of a start (CORE-3 item 9), by CRC32C alone — no tenant key is asked for — in two steps, so a start that
+ * The file part of a start, by CRC32C alone — no tenant key is asked for — in two steps, so a start that
  * refuses changes nothing: {@link #plan} reads and {@link #apply} writes. A segment with a valid trailer is taken as sealed,
  * never rewritten; when its index fails its CRC it is read without the index (WARNING). A segment without one (unsealed, or
  * a torn seal) is scanned record by record (length bounds, CRC32C, a v1 header; a large record, whose CRC32C covers its
@@ -147,7 +147,7 @@ final class Recovery {
         return Journal.Extent.sealed(t.indexPosition(), null);
     }
 
-    /** The end of the whole records of segment {@code n} from its header on (a replica's {@code .part}, CORE-5b1): where a cut goes. */
+    /** The end of the whole records of segment {@code n} from its header on (a replica's {@code .part}): where a cut goes. */
     static long wholeRecords(FileChannel ch, long n, int headerLength, long size) throws IOException {
         return scan(ch, n, headerLength, size).end();
     }

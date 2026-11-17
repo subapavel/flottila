@@ -32,7 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * This node's reads of records in other nodes' journals (CORE-5a S1, S2, S7): one {@code read} link per peer, dialled on the
+ * This node's reads of records in other nodes' journals: one {@code read} link per peer, dialled on the
  * first read of it at the address {@code addressOf} names (the last renew's live peers) and again after it closed. A read sends
  * READ(id, owner, journal id, n, pos, len) and takes the BYTES frames in order into a buffer of its own; the record is checked
  * by this node's journal ({@link Journal#stream(JournalRef, BlobKey, InputStream)}: CRC32C, AEAD, the key), never trusted as
@@ -40,8 +40,8 @@ import java.util.function.Function;
  *
  * <p>Flow control: a read whose buffer holds {@value #PAUSE_AT} bytes its consumer has not taken pauses the link's socket
  * until it holds half of that again, so the peer's bytes wait in the sockets (TCP back-pressure), not in this heap. A paused link pauses
- * every read on it; its other reads wait while the paused one's consumer still takes bytes (head-of-line, FIX-177), and fail
- * with it once that consumer took nothing for a whole {@code RAIL8_PEER_TIMEOUT} (r2 R3: the link closes).
+ * every read on it; its other reads wait while the paused one's consumer still takes bytes (head-of-line blocking), and fail
+ * with it once that consumer took nothing for a whole {@code RAIL8_PEER_TIMEOUT} (the link closes).
  *
  * <p>Failures are a retryable {@link RemoteBodyException} naming the owner, at once: an owner that is not live (no address —
  * nothing dialled), a dial that fails or throws, a link that cannot open, is refused, closed or lost (its watchdog:
@@ -52,7 +52,7 @@ import java.util.function.Function;
  */
 public final class PeerReads implements RemoteBodies {
 
-    /** The bytes a read holds for its consumer before it pauses its link (S5's window is 8 MiB). */
+    /** The bytes a read holds for its consumer before it pauses its link. */
     static final long PAUSE_AT = 4L << 20;
 
     private final PeerConfig config;
@@ -139,7 +139,7 @@ public final class PeerReads implements RemoteBodies {
         }
 
         /**
-         * Dials {@code address}: the future fails when the connect fails or throws (no TCP port: r2 R2) and when the link cannot
+         * Dials {@code address}: the future fails when the connect fails or throws (no TCP port, say) and when the link cannot
          * open on the connected socket (that socket then closed), so a read never waits on a dial that went nowhere.
          */
         private Future<Dialed> dial(String address) {
@@ -206,7 +206,7 @@ public final class PeerReads implements RemoteBodies {
 
         @Override public void received(PeerLink l, int type, byte[] frame) throws PeerRefusedException {
             if (type != Frames.BYTES && type != Frames.MISS) throw new PeerRefusedException("a frame of type " + type + " to a reader");
-            // a MISS is its read id; BYTES are their read id and at least one record byte (r2 R5: never a read() answering 0)
+            // a MISS is its read id; BYTES are their read id and at least one record byte (so a read() never answers 0)
             if (type == Frames.MISS ? Frames.payloadLength(frame) != 8 : Frames.payloadLength(frame) <= 8) {
                 throw new PeerRefusedException("a frame of type " + type + " of " + Frames.payloadLength(frame) + " bytes");
             }
@@ -307,7 +307,7 @@ public final class PeerReads implements RemoteBodies {
 
         @Override public int read(byte[] b, int off, int len) throws IOException {
             Objects.checkFromIndexSize(off, len, b.length);
-            if (len == 0) return 0;   // InputStream: no byte asked, none waited for (readNBytes asks for 0 once it has them all, R6)
+            if (len == 0) return 0;   // InputStream: no byte asked, none waited for (readNBytes asks for 0 once it has them all)
             lock.lock();
             try {
                 while (frames.isEmpty() && !ended) arrived.awaitUninterruptibly();

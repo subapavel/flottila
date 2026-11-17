@@ -20,7 +20,7 @@ import java.util.Objects;
 import java.util.function.LongConsumer;
 
 /**
- * A large record ({@link RecordFormat#KIND_LARGE}, CORE-3 item 4) written while its body streams in, and read back one
+ * A large record ({@link RecordFormat#KIND_LARGE}) written while its body streams in, and read back one
  * chunk at a time: either side holds one {@value RecordFormat#CHUNK}-byte chunk at a time (its plaintext, its ciphertext,
  * the hasher's copy), never the body.
  */
@@ -28,7 +28,7 @@ final class LargeRecord {
 
     private static final int CHUNK = RecordFormat.CHUNK;
     private static final int TAG = ChunkedAead.TAG_BYTES;
-    /** The cipher is fed in slices of this size: a one-shot call per chunk is too rare for the JIT to compile GCM (D-041). */
+    /** The cipher is fed in slices of this size: a one-shot call per chunk is too rare for the JIT to compile GCM. */
     private static final int SLICE = 64 * 1024;
 
     /** A record written: its plaintext's size, the record's whole length and the hash of the plaintext. */
@@ -107,7 +107,7 @@ final class LargeRecord {
 
     /**
      * {@link #reader(FileChannel, JournalRef, RecordFormat.Header, SecretKey, byte[])} of the large record whose bytes, from its
-     * first one, are {@code head} and then {@code rest} in order — another node's record as its peer link hands it over (CORE-5a).
+     * first one, are {@code head} and then {@code rest} in order — another node's record as its peer link hands it over.
      * Closing it closes {@code rest}.
      */
     static InputStream reader(InputStream rest, JournalRef ref, RecordFormat.Header h, SecretKey recordKey, byte[] head) {

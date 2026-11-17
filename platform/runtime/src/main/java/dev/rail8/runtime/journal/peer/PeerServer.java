@@ -29,23 +29,23 @@ import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 
 /**
- * A node's peer link listener (CORE-5 S1, S2; 5a: the read side). Each connection is a {@link PeerLink} whose HELLO must prove
+ * A node's peer link listener. Each connection is a {@link PeerLink} whose HELLO must prove
  * the environment's master key; on it, READ(id, owner, journal id, n, pos, len) of a record of this node's own journal is
  * answered with BYTES frames of at most 1 MiB each, the record's bytes as they lie in the segment (the reader checks them), and
- * a READ naming another owner, another journal id (W3) or a record this journal cannot hold answers MISS — an answer, not a
+ * a READ naming another owner, another journal id or a record this journal cannot hold answers MISS — an answer, not a
  * protocol error: the link stays up. Each READ is served on a virtual thread of its own, at most {@code RAIL8_PEER_READS}
  * at a time per link, begun in the order they arrived, and at most two frames of one READ written ahead of the socket (the reader's flow control holds the
  * rest back); a dialer with more than {@value PeerConfig#READS_MAX} READs open breaks the protocol and its link closes. At most
  * {@value PeerConfig#HANDSHAKES_MAX} connections are held in their handshake (not yet proven) at a time, at most
- * {@value PeerConfig#HANDSHAKES_PER_SOURCE} of them from one source address (CORE-5a2 P4): a further one is closed at once
- * (r2 R1), and so is one a link cannot open on (r2 R2); a link gives its places back once established, refused or closed.
+ * {@value PeerConfig#HANDSHAKES_PER_SOURCE} of them from one source address: a further one is closed at once, and so is
+ * one a link cannot open on; a link gives its places back once established, refused or closed.
  *
- * <p>The link's channel is the dialer's (CORE-5b1 C1): read links are served as above; a repl link is an owner's, whose
+ * <p>The link's channel is the dialer's: read links are served as above; a repl link is an owner's, whose
  * segments it holds ({@link Holder}, into {@link Journal#replicas()}). A repl link is closed after its proof when its HELLO's node
- * is not a DNS label (C8) or its epoch is below the owner's bound — the highest epoch accepted from that owner and
- * {@code epochOf(owner)} (the renew's, a lower bound: below 1 none), checked again at every OPEN (C6); else it supersedes the
+ * is not a DNS label or its epoch is below the owner's bound — the highest epoch accepted from that owner and
+ * {@code epochOf(owner)} (the renew's, a lower bound: below 1 none), checked again at every OPEN; else it supersedes the
  * owner's repl link — whose holder is stopped and whose socket is reset, its unsent bytes dropped, so an owner that reads none
- * of them cannot hold it (r1) — and takes its first frame once that one's writer stopped (A8).
+ * of them cannot hold it — and takes its first frame once that one's writer stopped.
  *
  * @since 0.1
  */
@@ -216,7 +216,7 @@ public final class PeerServer {
     /** A repl link's holder, once its owner and epoch hold (see the class comment); it supersedes the owner's earlier one. */
     private Holder hold(PeerLink link) throws PeerRefusedException {
         String owner = link.peerNode();
-        if (!Replicas.NODE_ID.matcher(owner).matches()) {   // C8: an owner is one directory under replicas/
+        if (!Replicas.NODE_ID.matcher(owner).matches()) {   // an owner is one directory under replicas/
             throw new PeerRefusedException("a repl link of node '" + owner + "': a node id is a DNS label of at most 63 lower-case letters, digits and inner dashes");
         }
         long epoch = link.peerEpoch();
@@ -231,7 +231,7 @@ public final class PeerServer {
             holders.put(owner, h);
             running.add(h);
             h.stopped().onComplete(v -> stopped(owner, h));
-            if (old != null) {   // ended for certain (r1): marked closing, its writer stopped, then its socket reset — in this order,
+            if (old != null) {   // ended for certain: marked closing, its writer stopped, then its socket reset — in this order,
                 // so the writer sends nothing more and its close once stopped queues no graceful close, whichever loop runs the reset
                 old.link().abandon(new IOException("superseded by a repl link of node " + owner + "'s epoch " + epoch));
                 old.stop();
@@ -256,7 +256,7 @@ public final class PeerServer {
     }
 
     /**
-     * One link's READs, served at most {@code config.reads()} at once and begun in the order they arrived (FIX-183): a READ
+     * One link's READs, served at most {@code config.reads()} at once and begun in the order they arrived: a READ
      * that finds the bound reached waits in the link's FIFO, with no thread; each READ in service has a virtual thread of its
      * own, which, however it ends, starts the FIFO's head or lowers the count in service.
      */
