@@ -12,7 +12,7 @@ fails=0
 check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fails=1; else echo "ok   $1"; fi; }
 
 # --- no command-line list in the scripts that run PIT ---
-for f in scripts/gate-spec.sh .github/workflows/nightly.yml; do
+for f in scripts/gate-spec.sh ../.github/workflows/jq-nightly.yml; do
   check "no excludedTestClasses property in $f" "$(grep -c 'excludedTestClasses' "$repo/$f")" 0
 done
 
@@ -34,24 +34,26 @@ expected() {
   esac
 }
 modules="query-core jq-core jq-cli oracle"
-if ! "$repo/mvnw" -B -q -f "$repo/pom.xml" -pl "${modules// /,}" \
+if ! "$repo/../mvnw" -B -q -f "$repo/pom.xml" -pl "${modules// /,}" \
     org.apache.maven.plugins:maven-help-plugin:3.5.2:effective-pom "-Doutput=$tmp/effective.xml" > "$tmp/mvn.log" 2>&1 < /dev/null; then
   echo "FAIL help:effective-pom:"; sed 's/^/     /' "$tmp/mvn.log"
   exit 1
 fi
 # <module>\tproject, <module>\texcluded\t<param> and <module>\tdependency\t<artifactId> (the project's own
-# dependencies, not those of dependencyManagement, build plugins or profiles) for every project of the effective POM
+# dependencies, not those of dependencyManagement, build plugins or profiles) for every project of the effective POM;
+# an artifactId rail8-jq-<x> is named by its module directory (rail8-jq-core is jq-core, rail8-jq-oracle is oracle)
 awk '
   function value(tag,   v) { v = $0; gsub(".*<" tag ">|</" tag ">.*", "", v); return v }
+  function dir(a) { if (sub(/^rail8-jq-/, "", a) && (a == "core" || a == "cli")) a = "jq-" a; return a }
   /<project[ >]/ { name = ""; parent = 0; skip = 0; deps = 0 }
   /<parent>/ { parent = 1 }
   /<\/parent>/ { parent = 0 }
-  !parent && name == "" && /<artifactId>/ { name = value("artifactId"); print name "\tproject" }
+  !parent && name == "" && /<artifactId>/ { name = dir(value("artifactId")); print name "\tproject" }
   /<(dependencyManagement|build|profiles)>/ { skip++ }
   /<\/(dependencyManagement|build|profiles)>/ { skip-- }
   !skip && /<dependencies>/ { deps = 1 }
   /<\/dependencies>/ { deps = 0 }
-  deps && /<artifactId>/ { print name "\tdependency\t" value("artifactId") }
+  deps && /<artifactId>/ { print name "\tdependency\t" dir(value("artifactId")) }
   /<excludedTestClasses>/ { inside = 1; next }
   /<\/excludedTestClasses>/ { inside = 0 }
   inside && /<param>/ { print name "\texcluded\t" value("param") }

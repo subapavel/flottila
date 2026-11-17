@@ -7,7 +7,7 @@
 #   [dir]  where the inputs are written; default bench/jmh/target/inputs (under target/, so never committed)
 #
 # Environment: JQ_REF (default /usr/local/bin/jq-ref), JMH_JAR (default bench/jmh/target/benchmarks.jar, from
-# ./mvnw -B -Pbench package; its class Inputs writes the documents), MACHINE (default claude-cloud-4vcpu).
+# ../mvnw -B -Pbench package; its class Inputs writes the documents), MACHINE (default claude-cloud-4vcpu).
 #
 # Per cell: one discarded run, then the best of 5 wall-clock runs, output to /dev/null. A 1k document runs as 10 000
 # concatenated copies, a 100k document as 100, a 10m document once, the ints of G4.1e4 (10^4 elements) as 100 (K);
@@ -25,7 +25,7 @@ jar=${JMH_JAR:-bench/jmh/target/benchmarks.jar}
 machine=${MACHINE:-claude-cloud-4vcpu}
 
 if [ ! -f "$jar" ]; then
-  echo "jq-ref.sh: $jar is missing; build it with ./mvnw -B -Pbench package" >&2
+  echo "jq-ref.sh: $jar is missing; build it with ../mvnw -B -Pbench package" >&2
   exit 2
 fi
 java -cp "$jar" dev.rail8.jq.bench.Inputs "$dir"

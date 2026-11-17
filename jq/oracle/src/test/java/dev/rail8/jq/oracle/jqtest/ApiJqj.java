@@ -49,11 +49,11 @@ final class ApiJqj implements Jqj {
   // environment({PAGER=less}); the API has no environment or ModuleLoader yet, so it is the sandbox for every file.
   private final JqEngine engine = JqEngine.builder().limits(limits()).host(Host.sandboxed()).build();
 
-  /** {@link Limits#embedded()} with an unlimited deadline (ADR-0024). */
+  /** {@link Limits#embedded()} with an unlimited deadline and jq's recursion depth from {@link Limits#cli()}. */
   static Limits limits() {
     Limits e = Limits.embedded();
     return new Limits(
-        e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), e.recursionDepth(), e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes());
+        e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), Limits.cli().recursionDepth(), e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes());
   }
 
   @Override

@@ -3,9 +3,9 @@ name: jq-nightly
 # The jq engine's nightly report; nothing here blocks a change.
 # mutation: PIT on the class-C modules of jq/quality/floors.tsv and on oracle; uploads the reports.
 # calibration: the calibration matrix at the committed stack constants, a check only; uploads its tsv.
-# reference: the recorded cases against the reference jq 1.8.2 (oracle-record.sh --verify), then the build with the
-#   compile-mode oracle.
-# bench: the build with the benchmarks, the ratchet check, the line-ending check and the script tests.
+# reference: with the reference jq 1.8.2 installed, the script tests, the recorded cases against it
+#   (oracle-record.sh --verify) and the build with the compile-mode oracle.
+# bench: the build with the benchmarks, the ratchet check and the line-ending check.
 # windows: the whole reactor compiles on Windows.
 # It commits nothing.
 on:
@@ -149,13 +149,24 @@ jobs:
           sudo install -m 755 jq-ref /usr/local/bin/jq-ref
           rm jq-ref
           jq-ref --version
+      - name: Script tests (every scripts/test/*-test.sh; the census and the recorder need the reference jq)
+        if: always()
+        run: |
+          set -e
+          bash scripts/check-script-tests.sh
+          for t in scripts/test/*-test.sh; do
+            echo "== $t"
+            bash "$t"
+          done
       - name: Recordings against the reference jq (oracle-record.sh --verify)
+        if: always()
         run: bash scripts/oracle-record.sh --verify $(git ls-files -- 'oracle/src/test/resources/**/*.rec')
       - name: Build with the compile-mode oracle
+        if: always()
         run: ../mvnw -B -Pcompile-oracle -Djacoco.skip=true verify
 
   bench:
-    name: jq · bench, ratchet, scripts
+    name: jq · bench, ratchet
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -184,15 +195,6 @@ jobs:
             </mirrors>
           </settings>
           XML
-      - name: Script tests (every scripts/test/*-test.sh)
-        if: always()
-        run: |
-          set -e
-          bash scripts/check-script-tests.sh
-          for t in scripts/test/*-test.sh; do
-            echo "== $t"
-            bash "$t"
-          done
       - name: Build with the benchmarks
         if: always()
         run: ../mvnw -B -Pbench verify

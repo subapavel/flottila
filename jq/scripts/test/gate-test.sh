@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Script test for scripts/gate-ticket.sh and scripts/gate-spec.sh (#25, ADR-0014). A throwaway repo holds copies of
-# the gate scripts and ratchet.java, a stub mvnw that logs its arguments, stub check scripts, and a stub java for
+# the gate scripts and ratchet.java, a stub mvnw beside the repository, as the root wrapper is beside jq/, that logs its arguments, stub check scripts, and a stub java for
 # the JMH jar. STUB_FAIL=<word>:<rc> makes the stub mvnw or check script whose arguments contain <word> exit <rc>.
 # STUB_COMPILE_REPORT=<printf rows> makes the stub mvnw, when called with the compile-oracle profile, write them as
 # oracle/target/oracle-reports/compile-conservative.tsv. The stub mvnw of the ticket gate's step 1 writes
@@ -41,7 +41,7 @@ case "$(basename "$0") $*" in
       { echo "# cell"; for i in $(seq "${STUB_MATRIX:-234}"); do printf "cell\txint\t$i\n"; done; printf "time-ms\t9000000\n"; } > jq-core/target/calibration.tsv ;;
 esac
 exit 0'
-printf '%s\n' "$stub" > "$repo/mvnw"
+printf '%s\n' "$stub" > "$repo/../mvnw"
 for s in check-lf-checkout check-trailers check-core-neutral oracle-record; do printf '%s\n' "$stub" > "$repo/scripts/$s.sh"; done
 # stub java: the JMH jar writes its result file, everything else runs the real java
 cat > "$repo/stubbin/java" <<JAVA
@@ -54,7 +54,7 @@ if [ "\$1" = "-jar" ]; then
 fi
 exec $(command -v java) "\$@"
 JAVA
-chmod +x "$repo/mvnw" "$repo/scripts/"*.sh "$repo/stubbin/java"
+chmod +x "$repo/../mvnw" "$repo/scripts/"*.sh "$repo/stubbin/java"
 
 g init -q -b main
 g config user.email a@b.c

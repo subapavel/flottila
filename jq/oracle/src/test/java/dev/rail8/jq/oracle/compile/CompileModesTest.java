@@ -54,7 +54,7 @@ class CompileModesTest {
 
   @Test
   void theHookUsesEmbeddedLimitsWithoutTheDeadline() {
-    // ADR-0017's embedded limits, with neither the deadline nor the regex match time (ADR-0020 amendment for #60).
+    // The embedded limits, with neither the deadline nor the regex match time, and jq's recursion depth.
     assertThat(CompileModes.limits())
         .as("the compile-mode oracle's limits")
         .isEqualTo(new Limits(1_000_000_000L, Limits.UNLIMITED_TIME, 10_000, 4_194_304, 1L << 30, 1L << 30, Limits.UNLIMITED_TIME, 512 * 1024L));

@@ -21,13 +21,13 @@ import org.junit.jupiter.api.Test;
 class ApiJqjTest {
 
   @Test
-  void theLimitsAreEmbeddedWithoutTheDeadline() {
+  void theLimitsAreEmbeddedWithoutTheDeadlineWithJqsRecursionDepth() {
     Limits e = Limits.embedded();
 
     assertThat(ApiJqj.limits())
         .isEqualTo(
             new Limits(
-                e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), e.recursionDepth(), e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes()));
+                e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), 4_194_304, e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes()));
   }
 
   @Test

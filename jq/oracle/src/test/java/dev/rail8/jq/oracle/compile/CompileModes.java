@@ -45,11 +45,14 @@ final class CompileModes {
 
   private CompileModes() {}
 
-  /** {@link Limits#embedded()} without the deadline and the regex match time: a slower mode cannot disagree by timing. */
+  /**
+   * {@link Limits#embedded()} without the deadline and the regex match time, so a slower mode cannot disagree by timing,
+   * and with jq's recursion depth from {@link Limits#cli()}, so deep recursion is compared with jq's.
+   */
   static Limits limits() {
     Limits e = Limits.embedded();
     return new Limits(
-        e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), e.recursionDepth(), e.bytesBuilt(), e.bytesWritten(), Limits.UNLIMITED_TIME, e.stackBytes());
+        e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), Limits.cli().recursionDepth(), e.bytesBuilt(), e.bytesWritten(), Limits.UNLIMITED_TIME, e.stackBytes());
   }
 
   /**

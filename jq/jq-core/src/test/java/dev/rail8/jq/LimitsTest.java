@@ -48,7 +48,7 @@ class LimitsTest {
     assertThat(cli.deadline()).as("deadline").isEqualTo(LONGEST);
     assertThat(cli.bytesBuilt()).as("bytesBuilt").isEqualTo(LARGEST);
     assertThat(cli.bytesWritten()).as("bytesWritten").isEqualTo(LARGEST);
-    // Kept from embedded(): the parse depth and regex limits and the stack bytes (ADR-0017).
+    // Kept from embedded(): the parse depth and regex limits and the stack bytes.
     assertThat(cli.nestingDepth()).as("nestingDepth").isEqualTo(10_000);
     // The command line keeps jq's own recursion depth, 4 194 304, for parity with jq.
     assertThat(cli.recursionDepth()).as("recursionDepth").isEqualTo(4_194_304);

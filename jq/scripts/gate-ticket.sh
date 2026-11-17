@@ -14,7 +14,7 @@
 #
 # Steps, numbered as in ADR-0014 (its step 2, PIT on the changed classes, left the ticket gate by F-27; PIT
 # runs only in the spec gate, on whole class-C modules):
-#        1 verify       ./mvnw -B -Pbench,compile-oracle verify (the whole reactor; the oracle needs every module; the
+#        1 verify       ../mvnw -B -Pbench,compile-oracle verify (the whole reactor; the oracle needs every module; the
 #                       compile-mode oracle runs here too, so step 4 sees a compile.txt regression before the merge, F-46)
 #          column       scripts/calibration-cells.sh: step 1 ran the -Xint 512 KiB calibration column, both modes, each
 #                       shape once (CalibrationTest.everyCellSwitchesBeforeTheBackstop, ADR-0046 #113); its cells are
@@ -77,7 +77,7 @@ fi
 column=jq-core/target/calibration-column.tsv
 column_cells=26
 rm -f "$column"
-step verify 0 ./mvnw -B -Pbench,compile-oracle "${require[@]}" verify
+step verify 0 ../mvnw -B -Pbench,compile-oracle "${require[@]}" verify
 step column 1 scripts/calibration-cells.sh "$column" check "$column_cells"
 step lf 0 scripts/check-lf-checkout.sh
 step trailers 0 scripts/check-trailers.sh "$ref..HEAD"

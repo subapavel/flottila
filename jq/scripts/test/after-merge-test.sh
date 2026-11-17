@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Script test for scripts/after-merge.sh (#60, F-29, ADR-0020 amendment for #60). A throwaway root holds copies of
-# after-merge.sh and ratchet.java and a stub mvnw that logs its arguments; STUB_FAIL=<rc> makes the stub exit <rc>.
+# after-merge.sh and ratchet.java and a stub mvnw beside the repository, as the root wrapper is beside jq/, that logs its arguments; STUB_FAIL=<rc> makes the stub exit <rc>.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
@@ -14,8 +14,8 @@ T=$'\t'
 repo=$tmp/repo
 mkdir -p "$repo/scripts" "$repo/ratchet/oracle" "$repo/oracle/target/oracle-reports"
 cp "$here/../after-merge.sh" "$here/../ratchet.java" "$repo/scripts/"
-printf '%s\n' '#!/usr/bin/env bash' 'echo "mvnw $*" >> "$STUB_CALLS"' 'exit "${STUB_FAIL:-0}"' > "$repo/mvnw"
-chmod +x "$repo/mvnw" "$repo/scripts/after-merge.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "mvnw $*" >> "$STUB_CALLS"' 'exit "${STUB_FAIL:-0}"' > "$repo/../mvnw"
+chmod +x "$repo/../mvnw" "$repo/scripts/after-merge.sh"
 export STUB_CALLS=$tmp/calls
 unset STUB_FAIL
 run() { : > "$STUB_CALLS"; (cd "$tmp" && "$repo/scripts/after-merge.sh" "$@" > "$tmp/out" 2>&1; echo $?); }

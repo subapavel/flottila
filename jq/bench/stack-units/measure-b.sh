@@ -5,7 +5,7 @@
 #
 # The compile mode is the engine's default, OPTIMISED: the public builder sets no other (CompileMode is engine-internal).
 #
-# Needs jq-core and query-core built (target/classes), e.g. ./mvnw -o -B -q -pl jq-core -am compile.
+# Needs jq-core and query-core built (target/classes), e.g. ../mvnw -o -B -q -pl jq-core -am compile.
 # Environment: JAVA_HOME (default /opt/temurin-25).
 #
 # Each cell is one fresh JVM with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS and _JAVA_OPTIONS unset, so no agent. The case

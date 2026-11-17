@@ -5,7 +5,7 @@
 #
 #   scripts/after-merge.sh <ticket>
 #
-# Steps: verify  ./mvnw -B -Pbench,compile-oracle verify
+# Steps: verify  ../mvnw -B -Pbench,compile-oracle verify
 #        regen   java scripts/ratchet.java regen --oracles
 # Logs: .logs/<ticket>-after-merge-<step>.log. Stops at the first failing step, shows its log's tail and exits with
 # its exit code; 2 is usage.
@@ -32,7 +32,7 @@ step() { # <name> <command…>
   fi
 }
 
-step verify ./mvnw -B -Pbench,compile-oracle verify
+step verify ../mvnw -B -Pbench,compile-oracle verify
 step regen java scripts/ratchet.java regen --oracles
 tail -n 20 ".logs/$ticket-after-merge-regen.log"
 echo "after-merge: $ticket done"
