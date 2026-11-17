@@ -3,7 +3,6 @@ package dev.rail8.runtime.flow;
 import dev.rail8.api.Ack;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
-import dev.rail8.api.Key;
 import dev.rail8.api.Runtime;
 import dev.rail8.components.sftp.EmbeddedSftp;
 import dev.rail8.components.sftp.SftpComponent;
@@ -50,7 +49,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
@@ -60,19 +58,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P2-02D done-when (D-084): a file the real sftp consumer delivers twice — its removal refused by the server after the durable
- * save answered — is one message and one work item. The node's own pieces: the runtime's tiered body store over the node's
- * journal (CORE-4c2: the durable body is a journal record named by a {@code body_refs} row, no {@code bodies} row), {@code PgIntake} over Postgres, an at-least-once flow built with the dedupe key the sftp component names, its worker
- * over the Postgres queue, a mock partner. Round 1 saves the file as {@code sd-1} and its removal is refused: the file stays.
- * Round 2 delivers it again as {@code sd-2}: the save finds its file key taken and answers {@code sd-1}; the removal goes
- * through. One ingress row, one item, one send.
- *
- * <p>The shape assumed: {@code Component.dedupeBy(EndpointConfig)}, {@code FlowBuilder.delivery(FlowDefinition, Path,
- * Optional<Key<String>>)}, {@code PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue)}; EmbeddedSftp's
- * {@code onNextRemoving} and {@code events()} (public for this case).
+ * The node deduplicates nothing: a file the real sftp consumer delivers again is a new message, saved, queued and sent again.
+ * The node's own pieces: the runtime's tiered body store over the node's journal, {@code PgIntake} over Postgres, an
+ * at-least-once flow and its worker over the Postgres queue, a mock partner. A file is delivered again when its removal failed
+ * after its save, and when someone uploads it again after it was removed.
  */
 @Timeout(120)
-class SftpIngressDedupeIT {
+class SftpRedeliveryIT {
 
     static final Path DEMO = Path.of("../../examples/demo");
     static final SharedPostgres pg = SharedPostgres.database();
@@ -135,9 +127,7 @@ class SftpIngressDedupeIT {
                 .recording(messages, Meter.system()).queue(queue).dlq(new PgDlq(pool)).intake(new PgIntake(pool, blobs, messages, queue));
         SftpComponent component = new SftpComponent(blobs, new FakeIds("sd"), rt.timer(), rt.clock());
         EndpointConfig in = sftp.endpoint("sftp-in", "/inbox", Map.of("intervalMs", 1000, "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
-        Optional<Key<String>> dedupe = component.dedupeBy(in);
-        assertEquals(Optional.of(SftpComponent.FILE_KEY), dedupe, "fixture: the sftp component dedupes by its file key");
-        delivery = builder.delivery(def, DEMO, dedupe);
+        delivery = builder.delivery(def, DEMO);
         worker = builder.worker(def, DEMO, "w1");
         Function<Envelope, Future<Ack>> recorded = e -> delivery.apply(e).onSuccess(answers::add);
         consumer = component.consumer(in, recorded);
@@ -150,7 +140,7 @@ class SftpIngressDedupeIT {
             if (consumer != null) consumer.stop().await();
             if (messages != null) messages.close();
             if (journal != null) journal.close();
-            pool.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes, processed_ids").execute().await();
+            pool.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes").execute().await();
         } finally {
             sftp.close();
         }
@@ -191,8 +181,19 @@ class SftpIngressDedupeIT {
         return sftp.events().stream().filter(e -> e.equals("remove /inbox/order.xml")).count();
     }
 
+    /** Two messages saved and sent for the one file: two ingress rows, two items, two sends. */
+    void assertTwoMessages() {
+        assertEquals(List.of("sd-1", "sd-2"), column("select id from messages where step = 0 order by id"), "two ingress rows");
+        assertEquals(List.of("sd-1", "sd-2"), column("select id from work order by seq"), "two work items");
+        assertEquals(List.of("sd-1", "sd-2"), column("select distinct message_id from body_refs order by message_id"), "both bodies are durable");
+
+        assertEquals(2, worker.poll().await(), "the worker runs both items");
+        assertEquals(List.of("sd-1", "sd-2"), partner.sentTo("partner").stream().map(Envelope::id).sorted().toList(), "two sends to the partner");
+        assertEquals(0, count("select count(*) from work"), "both items are completed");
+    }
+
     @Test
-    void aFileDeliveredTwiceIsOneMessageAndOneWorkItem() {
+    void aFileDeliveredAgainAfterItsRemovalFailedIsANewMessage() {
         sftp.drop("/inbox", "order.xml", Buffer.buffer("<order id=\"1\"/>"));
         sftp.onNextRemoving((session, path) -> {
             throw new IOException("the test refuses the first removal");
@@ -204,21 +205,24 @@ class SftpIngressDedupeIT {
         assertEquals(Set.of("order.xml"), sftp.files("/inbox"), "the refused removal left the file");
 
         round();
-        assertEquals(List.of(new Ack.Accepted("sd-1"), new Ack.Accepted("sd-1")), answers,
-                "round 2: the file delivered again (as sd-2) is accepted as the message it already is");
+        assertEquals(List.of(new Ack.Accepted("sd-1"), new Ack.Accepted("sd-2")), answers,
+                "round 2: the file delivered again is saved as a message of its own, sd-2");
         assertEquals(2, removes(), "its removal asked again");
         assertTrue(soon(() -> sftp.files("/inbox").isEmpty()), "and the file is gone: " + sftp.files("/inbox"));
+        assertTwoMessages();
+    }
 
-        assertEquals(List.of("sd-1"), column("select id from messages where step = 0 order by id"), "one ingress row: sd-2 was never recorded");
-        assertEquals(List.of("sd-1"), column("select id from work order by seq"), "one work item");
-        assertEquals(List.of("sd-1"), column("select message_id from processed_ids"), "one key row, naming the first message");
-        assertEquals(List.of("sd-1"), column("select distinct message_id from body_refs order by message_id"), "only sd-1's body is durable");
-        assertEquals(List.of(), column("select distinct message_id from bodies"), "as a kept ref: no bodies row (CORE-4c2)");
+    @Test
+    void aFileUploadedAgainIsANewMessage() {
+        sftp.drop("/inbox", "order.xml", Buffer.buffer("<order id=\"1\"/>"));
+        round();
+        assertEquals(List.of(new Ack.Accepted("sd-1")), answers, "round 1: saved as sd-1 and accepted");
+        assertTrue(soon(() -> sftp.files("/inbox").isEmpty()), "and removed: " + sftp.files("/inbox"));
 
-        assertEquals(1, worker.poll().await(), "the worker runs the one item");
-        assertEquals(List.of("sd-1"), partner.sentTo("partner").stream().map(Envelope::id).toList(), "one send to the partner");
-        assertEquals(0, worker.poll().await(), "nothing else is queued");
-        assertEquals(1, partner.sentTo("partner").size(), "still one send");
-        assertEquals(0, count("select count(*) from work"), "the item is completed");
+        sftp.drop("/inbox", "order.xml", Buffer.buffer("<order id=\"1\"/>"));   // the same name and the same bytes
+        round();
+        assertEquals(List.of(new Ack.Accepted("sd-1"), new Ack.Accepted("sd-2")), answers, "round 2: the same file uploaded again is sd-2");
+        assertTrue(soon(() -> sftp.files("/inbox").isEmpty()), "and removed again: " + sftp.files("/inbox"));
+        assertTwoMessages();
     }
 }

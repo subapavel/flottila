@@ -21,13 +21,12 @@ final class SimIntake implements Intake {
     }
 
     @Override
-    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                               Future<?> abandoned) {
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput, Future<?> abandoned) {
         String id = arrived.id();
         if (faults.hit(FaultKind.STORE_REFUSE, id, 1, 0)) {
             return Future.failedFuture(new IllegalStateException("STORE_REFUSE: the store refused the ingress record of " + id));
         }
         boolean enqueueRefused = faults.hit(FaultKind.STORE_REFUSE, id, 1, 1);
-        return intake.save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, enqueueRefused ? Future.succeededFuture() : abandoned);
+        return intake.save(arrived, ingress, flow, partitionKey, keepInput, enqueueRefused ? Future.succeededFuture() : abandoned);
     }
 }

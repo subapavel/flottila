@@ -209,8 +209,8 @@ class SimSchedulerTest {
         }
 
         @Override public Intake intake(Intake sim) {
-            return (arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned) ->
-                    call("save", arrived.id(), () -> sim.save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned));
+            return (arrived, ingress, flow, partitionKey, keepInput, abandoned) ->
+                    call("save", arrived.id(), () -> sim.save(arrived, ingress, flow, partitionKey, keepInput, abandoned));
         }
 
         @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {

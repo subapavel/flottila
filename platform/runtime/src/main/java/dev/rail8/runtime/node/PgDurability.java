@@ -24,15 +24,11 @@ final class PgDurability {
 
     /**
      * The one read: the session's own settings, the server's recovery state and standby names, whether the role sees every
-     * statistic, the {@code pg_stat_replication} entries as one array of {@code [name, state, sync_state]} (empty when none), and
-     * whether the role may run {@code pg_logical_emit_message}, the duplicate's commit barrier. That function is
-     * looked up with {@code to_regprocedure} by its PostgreSQL 17 signature, so a server without it answers false, never an error.
+     * statistic, and the {@code pg_stat_replication} entries as one array of {@code [name, state, sync_state]} (empty when none).
      */
     static final String READ = "select current_user::text, current_setting('synchronous_commit'), pg_is_in_recovery(), "
             + "current_setting('synchronous_standby_names'), pg_has_role(current_user, 'pg_read_all_stats', 'USAGE'), "
-            + "coalesce((select jsonb_agg(jsonb_build_array(application_name, state, sync_state) order by pid) from pg_stat_replication), '[]'::jsonb), "
-            + "coalesce(has_function_privilege(current_user, to_regprocedure('pg_catalog.pg_logical_emit_message(boolean,text,text,boolean)'), "
-            + "'EXECUTE'), false)";
+            + "coalesce((select jsonb_agg(jsonb_build_array(application_name, state, sync_state) order by pid) from pg_stat_replication), '[]'::jsonb)";
 
     private PgDurability() {
     }
@@ -65,10 +61,9 @@ final class PgDurability {
      * @param synchronousStandbyNames the server's {@code synchronous_standby_names}
      * @param readsAllStats the role has the privileges of {@code pg_read_all_stats} (it sees a standby's state)
      * @param standbys the {@code pg_stat_replication} rows
-     * @param emitsLogicalMessages the role may run {@code pg_logical_emit_message(boolean, text, text, boolean)}
      */
     record Server(String user, String synchronousCommit, boolean inRecovery, String synchronousStandbyNames, boolean readsAllStats,
-                  List<Standby> standbys, boolean emitsLogicalMessages) {
+                  List<Standby> standbys) {
 
         Server {
             standbys = List.copyOf(standbys);
@@ -91,9 +86,8 @@ final class PgDurability {
     /**
      * The pure verdict of {@code profile} on {@code server}. Both profiles refuse a session that does not commit {@code on} (a
      * pooler dropped the node's startup parameter) and a server in recovery (the host names a standby). {@code ha} also refuses an
-     * empty {@code synchronous_standby_names}, a role that cannot read every statistic, then a role that may not run
-     * {@code pg_logical_emit_message} (the duplicate's commit barrier), and a server with no sync or quorum standby
-     * streaming. Accepted under {@code local}, the notices state its promise and, with standbys streaming, name them and {@code ha};
+     * empty {@code synchronous_standby_names}, a role that cannot read every statistic, and a server with no sync or quorum
+     * standby streaming. Accepted under {@code local}, the notices state its promise and, with standbys streaming, name them and {@code ha};
      * accepted under {@code ha}, they name each standby a commit does not wait for.
      */
     static Verdict verdict(Durability profile, Server server) {
@@ -113,12 +107,6 @@ final class PgDurability {
         if (!server.readsAllStats()) {
             return Verdict.refused("RAIL8_PG_DURABILITY=ha and the role " + server.user() + " cannot read pg_stat_replication's state, so the node "
                     + "cannot see whether a synchronous standby streams: GRANT pg_monitor TO " + server.user() + " (D-127)");
-        }
-        if (!server.emitsLogicalMessages()) {
-            return Verdict.refused("RAIL8_PG_DURABILITY=ha and the role " + server.user() + " may not run pg_catalog.pg_logical_emit_message, "
-                    + "the commit barrier that holds a duplicate's answer until the earlier save is on a synchronous standby (ha needs "
-                    + "PostgreSQL 17 or later): GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(boolean, text, text, boolean) TO "
-                    + server.user() + " (D-128)");
         }
         if (server.standbys().stream().noneMatch(Standby::waitedFor)) {
             return Verdict.refused("RAIL8_PG_DURABILITY=ha and no sync or quorum standby is streaming (synchronous_standby_names '"
@@ -161,8 +149,7 @@ final class PgDurability {
             JsonArray standby = (JsonArray) entry;
             standbys.add(new Standby(standby.getString(0), standby.getString(1), standby.getString(2)));
         }
-        Verdict verdict = verdict(profile, new Server(row.getString(0), row.getString(1), row.getBoolean(2), row.getString(3), row.getBoolean(4), standbys,
-                row.getBoolean(6)));
+        Verdict verdict = verdict(profile, new Server(row.getString(0), row.getString(1), row.getBoolean(2), row.getString(3), row.getBoolean(4), standbys));
         if (verdict.refusal().isPresent()) throw new IllegalStateException(verdict.refusal().get());
         return verdict.notices();
     }

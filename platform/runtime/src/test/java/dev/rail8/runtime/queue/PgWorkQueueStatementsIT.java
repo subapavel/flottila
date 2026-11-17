@@ -221,7 +221,7 @@ class PgWorkQueueStatementsIT {
             dev.rail8.core.record.Snapshot ingress = new dev.rail8.core.record.Recorder(new dev.rail8.core.record.InMemoryMessageStore(),
                     java.time.Clock.fixed(T0, java.time.ZoneOffset.UTC), dev.rail8.core.record.Meter.system(), java.util.Map.of())
                     .startSnapshot(in, dev.rail8.core.record.Recorder.INGRESS, dev.rail8.core.record.RecordingPolicy.DEFAULT);
-            assertEquals("m-h", intake.save(in, ingress, "f", null, null, false, io.vertx.core.Promise.promise().future()).await(20, SECONDS));
+            assertEquals("m-h", intake.save(in, ingress, "f", null, false, io.vertx.core.Promise.promise().future()).await(20, SECONDS));
             awaitTrue(() -> rows.query("select count(*) from work").execute().await().iterator().next().getLong(0) == 0 && started.unsettled() == 0,
                     "the handed-off message ran and completed");
             queue.hasItems("f").await(10, SECONDS);   // whatever the chain end sent went before this round trip

@@ -444,9 +444,9 @@ class SegmentSweepIT {
         return new InDoubtSave(held, in.body().key(), added.get(0));
     }
 
-    /** {@code e}'s save on node a under partition key {@code partition}, no dedupe key, not waited for. */
+    /** {@code e}'s save on node a under partition key {@code partition}, not waited for. */
     Future<String> startUnder(Envelope e, String partition) {
-        return a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, null, false, undecided());
+        return a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, false, undecided());
     }
 
     /** A transaction id this server has not assigned yet: {@code pg_xact_status} refuses it (SQLSTATE 22023), checked here. */

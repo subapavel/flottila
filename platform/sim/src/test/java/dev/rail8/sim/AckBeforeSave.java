@@ -14,6 +14,6 @@ final class AckBeforeSave implements World {
     @Override public String name() { return NAME; }
 
     @Override public Intake intake(Intake sim) {
-        return (arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned) -> Future.succeededFuture(arrived.id());
+        return (arrived, ingress, flow, partitionKey, keepInput, abandoned) -> Future.succeededFuture(arrived.id());
     }
 }

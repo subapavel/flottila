@@ -315,8 +315,7 @@ public final class FlowBuilder {
      * so only its recorder is built here, with no step and no producer; the {@link #worker} builds the pipeline. With
      * {@code partitionBy: <key>} it also compiles the expression of the one {@code extractKey} step that sets that key, in
      * the step's language, and enqueues each message under its value, so that the messages of one key run in order. On a
-     * sync or at-most-once flow {@code partitionBy} has no effect. The save uses no dedupe key; see
-     * {@link #delivery(FlowDefinition, Path, Optional)}.
+     * sync or at-most-once flow {@code partitionBy} has no effect.
      *
      * @throws IllegalStateException when an at-least-once flow lacks the store ({@link #recording}), the {@link #queue} or
      *     the {@link #dlq}; the message names the one missing
@@ -326,18 +325,7 @@ public final class FlowBuilder {
      *     {@code maxBodyBytes} exceeds the store's tree limit
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir) {
-        return delivery(flow, baseDir, Optional.empty());
-    }
-
-    /**
-     * {@link #delivery(FlowDefinition, Path)} whose at-least-once save dedupes by the prop {@code dedupeBy} names, the one
-     * the flow's in endpoint's component names ({@link Component#dedupeBy}). Its value on each envelope as it arrived is the
-     * intake's dedupe key, scoped by the flow's id; a missing value or {@code ""} means no key, and so does an empty
-     * {@code dedupeBy}. A sync or at-most-once flow saves nothing, so it ignores the key.
-     */
-    public Delivery delivery(FlowDefinition flow, Path baseDir, Optional<Key<String>> dedupeBy) {
         Objects.requireNonNull(flow, "flow");
-        Objects.requireNonNull(dedupeBy, "dedupeBy");
         Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
@@ -354,7 +342,7 @@ public final class FlowBuilder {
                 Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue),
+                        partitionKey, intake != null ? intake : new SequentialIntake(store, queue),
                         flow.recording().keepsBody(), runtime.timer(), flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");

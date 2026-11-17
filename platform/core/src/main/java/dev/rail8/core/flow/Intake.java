@@ -22,19 +22,14 @@ public interface Intake {
      * write (the enqueue, or the commit that holds it) was already sent when it failed: that item may land, an accepted
      * duplicate of at-least-once delivery. {@code abandoned} is the delivery's answer: complete once that answer is decided (the
      * save timeout's Nack, the stop's deadline). Its {@link Future#isComplete()} is asked just before that last write, and true
-     * queues nothing and fails the future; an intake that groups saves asks it also, for a save without a dedupe key, when the save is taken into a
+     * queues nothing and fails the future; an intake that groups saves asks it also when the save is taken into a
      * group and again once the group's connection came, true there failing the save with nothing sent for it; a save may also end a wait of its own
      * once it completes (an intake waiting for room for its body stops waiting, retryable, nothing saved). A save that fails
      * before the last write may already have asked it.
-     *
-     * <p>{@code dedupeKey} (null: none) names what arrived, scoped by {@code flow}: a key an earlier message of
-     * {@code flow} was saved under records and queues nothing of {@code arrived} — it writes nothing, and saves sharing its
-     * transaction are unaffected — and never asks {@code abandoned}: the future succeeds with that earlier message's id. An intake that cannot dedupe fails a keyed save, never saves it undeduped.
      *
      * <p>{@code keepInput} says whether the flow keeps its input body beyond its run (the flow's
      * {@code RecordingPolicy.keepsBody()}): an intake with body references keeps one for the ingress body only when true
      * (false: the item names the body, nothing else does); an intake without references ignores it.
      */
-    Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                        Future<?> abandoned);
+    Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput, Future<?> abandoned);
 }

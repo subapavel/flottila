@@ -63,8 +63,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code PgIntakeContractIT} (runtime's PgIntake over Postgres).
  *
  * <p>The shape assumed: core {@code dev.rail8.core.flow.Intake} with {@code Future<String> save(Envelope arrived, Snapshot ingress,
- * String flow, String partitionKey, String dedupeKey, Future<?> abandoned)} (CORE-4d: the answer future) (P2-02D, D-084: the id the answer names; every
- * case here passes no dedupe key).
+ * String flow, String partitionKey, boolean keepInput, Future<?> abandoned)}: the id the answer names is the arrival's own.
  */
 @Timeout(60)
 public abstract class IntakeContract {
@@ -148,9 +147,9 @@ public abstract class IntakeContract {
     }
 
 
-    /** A save without a dedupe key (P2-02D: null — the keyed saves are PgIntake's, {@code PgIntakeIT}). */
+    /** A save of {@code e} under {@code partitionKey}, its input kept. */
     protected Future<String> save(Envelope e, String partitionKey, Future<?> abandoned) {
-        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, null, true, abandoned));   // the default policy keeps its input (CORE-4c2)
+        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, true, abandoned));   // the default policy keeps its input (CORE-4c2)
     }
 
     /** {@code f} once complete, either way; still pending after 20 s fails the case. */
@@ -182,7 +181,7 @@ public abstract class IntakeContract {
         Envelope keyed = arrive("m-keyed", keyedBytes);
         Future<String> saved = save(keyed, "K-1", Promise.promise().future());
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
-        assertEquals("m-keyed", saved.result(), "a save without a dedupe key answers the arrival's own id");
+        assertEquals("m-keyed", saved.result(), "a save answers the arrival's own id");
 
         List<Snapshot> rows = world.recorded("m-keyed");
         assertEquals(List.of(Recorder.INGRESS), stepNames(rows), "the ingress snapshot is recorded");

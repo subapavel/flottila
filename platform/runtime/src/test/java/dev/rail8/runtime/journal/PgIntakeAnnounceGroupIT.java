@@ -118,7 +118,7 @@ class PgIntakeAnnounceGroupIT {
 
     /** {@code e}'s save of flow {@code orders}, no key, called on a virtual thread; returns once the call returned. */
     Future<String> call(Envelope e) throws Exception {
-        return OnVirtualThread.join(OnVirtualThread.start(() -> intake.save(e, JournalWorld.ingress(e), FLOW, null, null, false, undecided())));
+        return OnVirtualThread.join(OnVirtualThread.start(() -> intake.save(e, JournalWorld.ingress(e), FLOW, null, false, undecided())));
     }
 
     /** Message {@code id} arriving at node-a with a body kept already in node-b's journal: node-a's store holds no copy of it. */

@@ -14,9 +14,7 @@ import java.util.Optional;
  * ({@link dev.rail8.api.BlobStore#persist}) and the ingress snapshot's record in the {@link MessageStore} are asked side by
  * side; once both succeeded, {@code abandoned} is asked and, not complete, enqueues the item in the {@link WorkQueue}. The first failure
  * decides at once, without waiting for the other save, and nothing is queued; a store that throws instead of failing its
- * future is the same failed save. The in-memory stores, and any queue other than Postgres, save this way. It dedupes nothing:
- * a save with a dedupe key fails at once, nothing persisted, recorded or queued, because deduplication needs the Postgres intake.
- * It keeps no body references: {@code keepInput} changes nothing.
+ * future is the same failed save. The in-memory stores, and any queue other than Postgres, save this way. It keeps no body references: {@code keepInput} changes nothing.
  *
  * <p>Given the node's {@link Workers} and id, it hands off: just before the enqueue it reserves a slot of the flow's
  * worker; with one the item is enqueued {@linkplain WorkQueue#enqueueLeased leased} to the node and, written leased, run in that
@@ -54,12 +52,7 @@ public final class SequentialIntake implements Intake {
     }
 
     @Override
-    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                               Future<?> abandoned) {
-        if (dedupeKey != null) {
-            return Future.failedFuture(new IllegalStateException("the save of " + arrived.id() + " has a dedupe key, which flow " + flow
-                    + "'s intake cannot keep: only the Postgres intake dedupes (D-084)"));
-        }
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput, Future<?> abandoned) {
         Future<Void> persist;
         try {
             persist = arrived.body().store().persist(arrived.body().key());

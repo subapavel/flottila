@@ -4,7 +4,6 @@ import dev.rail8.api.Timer;
 import dev.rail8.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.SqlConnection;
@@ -24,7 +23,7 @@ import java.util.Set;
 
 /**
  * The retention job: deletes what is older than the max age, in keyset batches, in the background. A run fixes its
- * cutoff once — the injected clock minus the max age, never the server's {@code now()} — and runs three phases, each in batches of
+ * cutoff once — the injected clock minus the max age, never the server's {@code now()} — and runs two phases, each in batches of
  * at most {@link Config#batch} scanned rows, one transaction per batch whose first statement tries the advisory lock
  * {@link #LOCK_KEY} without waiting:
  * <ol>
@@ -37,7 +36,6 @@ import java.util.Set;
  *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment). The
  *       batch holds its rows for update and passes a row a park holds ({@code skip locked}), and its delete re-checks those
  *       three under a snapshot taken after the select.</li>
- *   <li>{@code processed_ids}: a row older than the cutoff goes when no messages row has its message's id.</li>
  * </ol>
  * A phase ends with the batch that scanned fewer rows than the batch size. The lock found taken ends the run {@link Outcome#SKIPPED}
  * with what the committed batches deleted; so does {@link #close} between two batches. A failed batch is rolled back (unless its
@@ -122,12 +120,11 @@ public final class Retention {
      * @param keys message_keys rows deleted
      * @param bodies bodies rows deleted
      * @param bodyBytes the bytes of the deleted bodies
-     * @param processedIds processed_ids rows deleted
      * @param kept messages rows older than the cutoff the run kept (a newer row of the message, a work or a DLQ row)
      * @param batches transactions the run began, the last, short one of each phase included
      * @since 0.1
      */
-    public record Run(Instant cutoff, Outcome outcome, long messages, long keys, long bodies, long bodyBytes, long processedIds, long kept,
+    public record Run(Instant cutoff, Outcome outcome, long messages, long keys, long bodies, long bodyBytes, long kept,
                       int batches) {}
 
     /**
@@ -138,10 +135,10 @@ public final class Retention {
      * @param failed the runs that ended {@link Outcome#FAILED}
      * @since 0.1
      */
-    public record Totals(long runs, long skipped, long failed, long messages, long keys, long bodies, long bodyBytes, long processedIds) {
+    public record Totals(long runs, long skipped, long failed, long messages, long keys, long bodies, long bodyBytes) {
         private Totals plus(Run r) {
             return new Totals(runs + 1, skipped + (r.outcome() == Outcome.SKIPPED ? 1 : 0), failed + (r.outcome() == Outcome.FAILED ? 1 : 0),
-                    messages + r.messages(), keys + r.keys(), bodies + r.bodies(), bodyBytes + r.bodyBytes(), processedIds + r.processedIds());
+                    messages + r.messages(), keys + r.keys(), bodies + r.bodies(), bodyBytes + r.bodyBytes());
         }
     }
 
@@ -221,21 +218,7 @@ public final class Retention {
                     });
                 });
             }
-        },
-        PROCESSED_IDS("""
-                with scan as (
-                    select scope, key_hash, created_at from processed_ids
-                     where created_at < $1 and (created_at, scope, key_hash) > (coalesce($3, '-infinity'::timestamptz), $4, $5)
-                     order by created_at, scope, key_hash limit $2),
-                gone as (
-                    delete from processed_ids p using scan s
-                     where p.scope = s.scope and p.key_hash = s.key_hash
-                       and not exists (select 1 from messages m where m.id = p.message_id)
-                     returning 1)
-                select (select count(*) from scan), (select count(*) from gone), 0::bigint, 0::bigint, last.created_at, last.scope, last.key_hash
-                  from (select 1) one left join lateral
-                       (select created_at, scope, key_hash from scan order by created_at desc, scope desc, key_hash desc limit 1) last on true""",
-                "", Buffer.buffer());
+        };
 
         final String sql;
         /** The cursor before the first row: no created_at (read as -infinity in SQL), then the smallest value of each key column. */
@@ -298,7 +281,7 @@ public final class Retention {
     private volatile boolean closed;
     private Timer.Cancellable next;
     private final Set<Future<Run>> inFlight = new HashSet<>();
-    private Totals totals = new Totals(0, 0, 0, 0, 0, 0, 0, 0);
+    private Totals totals = new Totals(0, 0, 0, 0, 0, 0, 0);
 
     /** A job over {@code pool}: nothing runs before {@link #start} or {@link #runOnce}. */
     public Retention(Pool pool, Clock clock, Timer timer, Config config) {
@@ -401,12 +384,11 @@ public final class Retention {
             totals = totals.plus(run);
         }
         LOG.log(System.Logger.Level.INFO, "retention run " + outcome + " (cutoff " + cutoff + "): deleted " + run.messages() + " messages rows, "
-                + run.keys() + " key rows, " + run.bodies() + " bodies of " + run.bodyBytes() + " bytes, " + run.processedIds()
-                + " processed ids; kept " + run.kept() + " messages rows; " + run.batches() + " batches");
+                + run.keys() + " key rows, " + run.bodies() + " bodies of " + run.bodyBytes() + " bytes; kept " + run.kept() + " messages rows; " + run.batches() + " batches");
         return run;
     }
 
-    /** The three phases in order; DONE, or SKIPPED when the lock was taken or the job closed between two batches. */
+    /** The two phases in order; DONE, or SKIPPED when the lock was taken or the job closed between two batches. */
     private Outcome phases(Instant cutoff, Tally tally) {
         OffsetDateTime before = OffsetDateTime.ofInstant(cutoff, ZoneOffset.UTC);
         for (Phase phase : Phase.values()) {
@@ -442,7 +424,7 @@ public final class Retention {
     /** A run's counts while it runs, per phase (by ordinal): rows scanned, deleted and kept, and the phase's extra count. */
     private static final class Tally {
         final long[] deleted = new long[Phase.values().length];
-        /** Key rows deleted with the messages, the bodies' bytes; none for processed ids. */
+        /** Key rows deleted with the messages, the bodies' bytes. */
         final long[] extra = new long[Phase.values().length];
         /** Scanned rows whose message stayed: messages only. */
         final long[] kept = new long[Phase.values().length];
@@ -457,8 +439,7 @@ public final class Retention {
         Run run(Instant cutoff, Outcome outcome) {
             int m = Phase.MESSAGES.ordinal();
             int b = Phase.BODIES.ordinal();
-            return new Run(cutoff, outcome, deleted[m], extra[m], deleted[b], extra[b], deleted[Phase.PROCESSED_IDS.ordinal()],
-                    kept[m], batches);
+            return new Run(cutoff, outcome, deleted[m], extra[m], deleted[b], extra[b], kept[m], batches);
         }
     }
 }

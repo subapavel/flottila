@@ -50,17 +50,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * CORE-6b (D-109): the intake's group commit under any mix of ≤ 16 saves — keyed from a pool of three keys (repeats), unkeyed,
- * over two partitions, some answers decided before the call or right after it, one poison member whose item Postgres refuses,
+ * The intake's group commit under any mix of ≤ 16 saves over two partitions, some answers decided before the call or right after it, one poison member whose item Postgres refuses,
  * waits between calls that shape the groups — on a group max of 1..8 and 1..2 groups in flight (window zero: members go when a
  * slot frees). Invariants, read from Postgres after every save settled: a save that answers its own id has its rows committed,
  * and only such saves have rows (no ack without committed rows, no rows without an ack); a save that fails has nothing and its
- * body stays local; every undecided save but the poison succeeds — a poison or a duplicate never fails its neighbours; a key has
- * one row, naming a save that answered its own id, and every save under the key answers that id; a save decided before its call
- * never answers its own id; within one transaction the items follow the call order; no save is left open.
+ * body stays local; every save that succeeds answers its own id; every undecided save but the poison succeeds — a poison never
+ * fails its neighbours; a save decided before its call never answers its own id; within one transaction the items follow the call order; no save is left open.
  *
  * <p>One database and one node for every try (jqwik runs no {@code @BeforeEach}); each try has its own intake, fake clock, flow
- * (the key's scope) and id prefix.
+ * and id prefix.
  */
 class PgIntakeGroupPropertyIT {
 
@@ -111,21 +109,20 @@ class PgIntakeGroupPropertyIT {
 
     enum Answer { UNDECIDED, DECIDED_BEFORE, DECIDED_AFTER }
 
-    /** One save: its key (0: none, else K-1..K-3), its partition (P-0, P-1), its answer, and whether the case waits for it before the next call. */
-    record Call(int key, int partition, Answer answer, boolean waitAfter) {}
+    /** One save: its partition (0 or 1), its answer, and whether the case waits for it before the next call. */
+    record Call(int partition, Answer answer, boolean waitAfter) {}
 
     @Provide
     Arbitrary<List<Call>> calls() {
-        Arbitrary<Integer> key = Arbitraries.integers().between(0, 3);
         Arbitrary<Integer> partition = Arbitraries.integers().between(0, 1);
         Arbitrary<Answer> answer = Arbitraries.frequency(net.jqwik.api.Tuple.of(6, Answer.UNDECIDED), net.jqwik.api.Tuple.of(1, Answer.DECIDED_BEFORE),
                 net.jqwik.api.Tuple.of(2, Answer.DECIDED_AFTER));
         Arbitrary<Boolean> waitAfter = Arbitraries.frequency(net.jqwik.api.Tuple.of(4, false), net.jqwik.api.Tuple.of(1, true));
-        return Combinators.combine(key, partition, answer, waitAfter).as(Call::new).list().ofMinSize(2).ofMaxSize(16);
+        return Combinators.combine(partition, answer, waitAfter).as(Call::new).list().ofMinSize(2).ofMaxSize(16);
     }
 
     @Property(tries = 30)
-    void noAckWithoutCommittedRowsNoneLostDuplicatesIsolatedOrderKept(@ForAll("calls") List<Call> calls,
+    void noAckWithoutCommittedRowsNoneLostPoisonIsolatedOrderKept(@ForAll("calls") List<Call> calls,
                                                                       @ForAll @IntRange(min = 0, max = 15) int poisonAt,
                                                                       @ForAll @IntRange(min = 1, max = 8) int max,
                                                                       @ForAll @IntRange(min = 1, max = 2) int concurrency) throws Exception {
@@ -137,23 +134,20 @@ class PgIntakeGroupPropertyIT {
         PgIntake intake = new PgIntake(pool, a.blobs, a.messages, a.queue, timer, new NodeConfig.IntakeGroup(max, 1L << 20, Duration.ZERO, concurrency));
 
         List<String> ids = new ArrayList<>();
-        List<String> keys = new ArrayList<>();
         List<Future<String>> saves = new ArrayList<>();
         for (int i = 0; i < calls.size(); i++) {
             Call c = calls.get(i);
             boolean isPoison = i == poison;
             String id = prefix + "m%02d".formatted(i) + (isPoison ? "-poison" : "");
-            String key = isPoison || c.key() == 0 ? null : "K-" + c.key();
             Answer answer = isPoison ? Answer.UNDECIDED : c.answer();
             Envelope e = a.arrive(id, bytes(500, t * 100 + i));
             Promise<Void> decided = Promise.promise();
             if (answer == Answer.DECIDED_BEFORE) decided.complete();
             Future<String> save = OnVirtualThread.join(OnVirtualThread.start(
-                    () -> intake.save(e, JournalWorld.ingress(e), flow, "P-" + c.partition(), key, true, decided.future())));
+                    () -> intake.save(e, JournalWorld.ingress(e), flow, "P-" + c.partition(), true, decided.future())));
             if (answer == Answer.DECIDED_AFTER) decided.complete();
             if (c.waitAfter()) settled(save);
             ids.add(id);
-            keys.add(key);
             saves.add(save);
         }
         for (Future<String> save : saves) settled(save);
@@ -176,13 +170,7 @@ class PgIntakeGroupPropertyIT {
                 assertTrue(a.blobs.location(body).isEmpty(), id + ": committed, its local copy gone — " + context);
                 assertNotEquals(Answer.DECIDED_BEFORE, answer, id + ": decided before its call, it answered its own id — " + context);
             } else if (save.succeeded()) {
-                String first = save.result();
-                assertTrue(keys.get(i) != null, id + ": an unkeyed save answered another id " + first + " — " + context);
-                assertTrue(callIndex.containsKey(first), id + " answered " + first + ", no save of this try — " + context);
-                assertEquals(first, saves.get(callIndex.get(first)).result(), id + " answered " + first + ", which did not answer its own id — " + context);
-                assertEquals(List.of(first), keyRows(flow, keys.get(i)), id + ": its key names the id it answered — " + context);
-                nothingOf(id, context);
-                assertTrue(a.blobs.location(body).isEmpty(), id + ": a duplicate, its local copy evicted — " + context);
+                fail(id + ": succeeded answering another id " + save.result() + " — " + context);
             } else {
                 nothingOf(id, context);
                 assertTrue(a.blobs.location(body).isPresent(), id + ": failed, its body stays local — " + context);
@@ -195,18 +183,6 @@ class PgIntakeGroupPropertyIT {
             }
         }
         assertTrue(saves.get(poison).failed(), "the poison never saves — " + context);
-
-        for (String key : new TreeSet<>(keys.stream().filter(java.util.Objects::nonNull).toList())) {
-            List<String> named = keyRows(flow, key);
-            List<String> answered = new ArrayList<>();
-            for (int i = 0; i < ids.size(); i++) if (key.equals(keys.get(i)) && saves.get(i).succeeded()) answered.add(saves.get(i).result());
-            assertTrue(named.size() <= 1, key + ": one row at most: " + named + " — " + context);
-            if (!answered.isEmpty()) {
-                assertEquals(1, named.size(), key + ": saves answered " + answered + ", so its row is there — " + context);
-                assertTrue(ownIds.contains(named.getFirst()), key + ": its row names " + named + ", a save that answered its own id — " + context);
-                for (String id : answered) assertEquals(named.getFirst(), id, key + ": every save under it answers its row's id — " + context);
-            }
-        }
 
         assertEquals(ownIds, committedItems(prefix), "items committed exactly for the saves that answered their own id — " + context);
         for (Map.Entry<Long, List<String>> tx : itemsByTransaction(prefix).entrySet()) {
@@ -226,13 +202,6 @@ class PgIntakeGroupPropertyIT {
         assertEquals(0, rows("messages", "id", id), id + ": no ingress row — " + context);
         assertEquals(0, rows("work", "id", id), id + ": no item — " + context);
         assertEquals(0, rows("body_refs", "message_id", id), id + ": no kept ref — " + context);
-    }
-
-    static List<String> keyRows(String flow, String key) {
-        List<String> ids = new ArrayList<>();
-        db.pool().preparedQuery("select message_id from processed_ids where scope = $1 and key_hash = sha256(convert_to($2::text, 'UTF8'))")
-                .execute(Tuple.of(flow, key)).await().forEach(r -> ids.add(r.getString(0)));
-        return ids;
     }
 
     static Set<String> committedItems(String prefix) {
