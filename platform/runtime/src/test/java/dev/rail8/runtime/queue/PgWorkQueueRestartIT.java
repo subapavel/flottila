@@ -4,6 +4,7 @@ import dev.rail8.api.BlobKey;
 import dev.rail8.api.BlobNotFoundException;
 import dev.rail8.api.BodyLostException;
 import dev.rail8.api.Envelope;
+import dev.rail8.api.Key;
 import dev.rail8.api.Props;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.runtime.db.Migrations;
@@ -157,15 +158,38 @@ class PgWorkQueueRestartIT {
         assertTrue(rows.restart("m-2", "t", null, 2).await(20, TimeUnit.SECONDS), "witness: its step-1 twin restarts");
     }
 
-    /** R1: a DLQ row of a replay (prop {@code replayOf}) is not restarted. */
+    /** A prop a removed feature wrote (replay, gone with D-156); inert since D-156: a DLQ row written before keeps it as data. */
+    static final Key<String> RETIRED = new Key<>("replayOf");
+
+    /**
+     * FIX-265 (D-156): a DLQ row the worker parked at step 1 after attempt k is restarted whatever other prop it carries — here the
+     * retired one: true, the DLQ row gone, one work row of the id at step 1 with attempts k.
+     */
     @Test
-    void aRowOfAReplayIsNotRestarted() throws Exception {
-        Parked p = ParkedRows.row("m-1", "t", 1, Props.empty().with(Envelope.ATTEMPT, 2).with(Envelope.REPLAY_OF, "m-0"));
+    void aWorkersParkCarryingAnotherPropIsRestarted() throws Exception {
+        Parked p = ParkedRows.row("m-1", "t", 1, Props.empty().with(Envelope.ATTEMPT, 2).with(RETIRED, "m-0"));
         ParkedRows.park(pool, p, NODE);
-        assertFalse(rows.restart("m-1", "t", null, 2).await(20, TimeUnit.SECONDS), "a replay's row is not restarted");
-        unchanged(p);
+        assertTrue(rows.restart("m-1", "t", null, 2).await(20, TimeUnit.SECONDS), "a worker's park at attempt 2 restarts, whatever else it carries");
+        assertEquals(Optional.empty(), new PgDlq(pool).get("m-1").await(), "its DLQ row is gone");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work"), "one work row");
+        assertEquals(1, ParkedRows.count(pool, "select count(*) from work where id = 'm-1' and flow = 't' and step = 1 and attempts = 2"),
+                "the id's row at step 1 with attempts k = 2");
+    }
+
+    /**
+     * FIX-265: a DLQ row at step 1 that carries the retired prop and no {@code attempt} is not a worker's park — for no k is it
+     * restarted (false, the DLQ row unchanged, no work row). The attempt clause alone refuses it once the retired prop is inert.
+     */
+    @Test
+    void aRowWithoutAnAttemptIsNotRestartedForAnyAttempt() throws Exception {
+        Parked p = ParkedRows.row("m-1", "t", 1, Props.empty().with(RETIRED, "m-0"));
+        ParkedRows.park(pool, p, NODE);
+        for (int k : new int[] {0, 1, 2, 3}) {
+            assertFalse(rows.restart("m-1", "t", null, k).await(20, TimeUnit.SECONDS), "a row without an attempt is not restarted at k = " + k);
+            unchanged(p);
+        }
         parked("m-2", "t");
-        assertTrue(rows.restart("m-2", "t", null, 2).await(20, TimeUnit.SECONDS), "witness: its twin without replayOf restarts");
+        assertTrue(rows.restart("m-2", "t", null, 2).await(20, TimeUnit.SECONDS), "witness: a worker's park at step 1 with attempt 2 restarts");
     }
 
     @Test

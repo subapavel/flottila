@@ -281,7 +281,7 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * The restart (CORE-14b P8, D-135): {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
-     * after attempt {@code $4} (prop {@code attempt}), not one with the prop {@code replayOf} — a concurrent remove of it
+     * after attempt {@code $4} (prop {@code attempt}) — a concurrent remove of it
      * (another restart, a {@code PgDlq.remove}) commits first and leaves none, or waits for this statement —; {@code w}, the guard
      * (F-57, D-162 (5)), reads the message's work rows of the flow — under key {@code $3} when one is given (the key's rows), by id
      * and flow only when none is, never as a row without a key — of which a park whose settle has not landed leaves one, still
@@ -301,8 +301,7 @@ public final class PgWorkQueue implements WorkQueue {
      * deletes the row).
      */
     private static final String RESTART = """
-            with d as (select id from dlq where id = $1::text and flow = $2::text and step = 1 and props->>'attempt' = $4::int::text
-                           and props->'replayOf' is null for update),
+            with d as (select id from dlq where id = $1::text and flow = $2::text and step = 1 and props->>'attempt' = $4::int::text for update),
             w as (select o.seq from work o where o.flow = $2::text and o.id = $1::text and $3::text is null
                   union all
                   select o.seq from work o where o.flow = $2::text and o.partition_key = $3::text and o.id = $1::text),
@@ -612,7 +611,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * {@link #RESTART} in a transaction of its own, a keyed row under its key's lock ({@link #lockKeys}) as every keyed insert, its
      * guard read under that lock: {@code true} when the DLQ row was deleted and the work row inserted; {@code false} without a DLQ row
-     * of {@code messageId} in {@code flow} the worker parked at step 1 after attempt {@code attempt} (a row with the prop {@code replayOf} is none), nothing
+     * of {@code messageId} in {@code flow} the worker parked at step 1 after attempt {@code attempt}, nothing
      * written; beside a work row of the id in {@code flow} (under {@code partitionKey} when one is given) {@link UnsettledException}
      * naming the oldest, nothing written, whatever became of the body; else without its ingress body's kept ref
      * {@link BlobNotFoundException} ({@link BodyLostException} when an accepted loss gave it up), the failed future rolling the delete

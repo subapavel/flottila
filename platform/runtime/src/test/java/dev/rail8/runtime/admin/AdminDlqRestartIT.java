@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import dev.rail8.api.Headers;
+import dev.rail8.api.Key;
 import dev.rail8.api.Props;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
@@ -81,10 +82,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * partner that applied the first send (its answer lost) and deduplicates by message id records one effect.
  *
  * <p>CORE-14b P8 (D-135) over the admin API and a real Postgres: {@code POST /admin/dlq/{id}/retry} of a row the worker parked
- * (step 1, prop {@code attempt} k, no {@code replayOf}) answers 202 {@code {id, attempt: k + 1}}, its DLQ row gone and one work row
- * of the same id at step 1 with {@code max_attempts} k + 1; a second restart is 404. No DLQ row: 404. A row the worker did not park —
- * at a step other than 1 (a pre-D-135 park or a sync flow's), or a replay's ({@code replayOf}) — is 422, its DLQ row kept, nothing
- * written. The restarted item runs once, as attempt k + 1 (here 6, past the flow's bound of 4: only the row's own bound runs it),
+ * (step 1, prop {@code attempt} k, whatever other prop it carries — FIX-265) answers 202 {@code {id, attempt: k + 1}}, its DLQ row
+ * gone and one work row of the same id at step 1 with {@code max_attempts} k + 1; a second restart is 404. No DLQ row: 404. A row the
+ * worker did not park — at a step other than 1 (a pre-D-135 park or a sync flow's), or without an {@code attempt} — is 422, its DLQ
+ * row kept, nothing written. The restarted item runs once, as attempt k + 1 (here 6, past the flow's bound of 4: only the row's own bound runs it),
  * on the node whose journal holds its body (node-a) — though the admin call landed on node-b, whose worker claims nothing of it
  * (O6: until CORE-5 a node claims only rows whose body its journal holds).
  *
@@ -328,27 +329,47 @@ class AdminDlqRestartIT {
         Envelope atStep2 = recorded();
         Parked step2 = ParkedRows.row(atStep2.id(), "shop/orders", 2, Props.empty().with(Envelope.ATTEMPT, 1));
         ParkedRows.park(pool, step2, "node-a");
-        Envelope replayed = recorded();
-        Parked replay = ParkedRows.row(replayed.id(), "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1).with(Envelope.REPLAY_OF, "m-original"));
-        ParkedRows.park(pool, replay, "node-a");
+        Envelope noAttempt = recorded();
+        Parked unattempted = ParkedRows.row(noAttempt.id(), "shop/orders", 1, Props.empty().with(RETIRED, "m-original"));
+        ParkedRows.park(pool, unattempted, "node-a");
 
         Answer atStep2Refused = retry(atStep2.id());
         refusedNaming(atStep2Refused, 422, atStep2.id(), "parked at step 2, not by the worker");
-        assertTrue(atStep2Refused.json().getString("error").contains("was not parked by its flow's worker (step 2, attempt 1)"),
-                "the error says why, with the row's step and attempt: " + atStep2Refused.body());
+        assertEquals("message " + atStep2.id() + " was not parked by its flow's worker (step 2, attempt 1): it cannot be restarted",
+                atStep2Refused.json().getString("error"), "the error says exactly why, with the row's step and attempt");
         namesNoOtherRoute(atStep2Refused, "parked at step 2");
-        Answer replayRefused = retry(replayed.id());
-        refusedNaming(replayRefused, 422, replayed.id(), "a replay's row (replayOf)");
-        assertTrue(replayRefused.json().getString("error").contains("was not parked by its flow's worker (step 1, attempt 1, a replay)"),
-                "the error says why, a replay's row named so (until FIX-265): " + replayRefused.body());
-        namesNoOtherRoute(replayRefused, "a replay's row");
+        Answer noAttemptRefused = retry(noAttempt.id());
+        refusedNaming(noAttemptRefused, 422, noAttempt.id(), "a row without an attempt");
+        assertEquals("message " + noAttempt.id() + " was not parked by its flow's worker (step 1, attempt null): it cannot be restarted",
+                noAttemptRefused.json().getString("error"), "the error says exactly why; the retired prop on the row adds no words");
+        namesNoOtherRoute(noAttemptRefused, "a row without an attempt");
         assertEquals(Optional.of(step2), dlqRow(atStep2.id()), "its DLQ row kept");
-        assertEquals(Optional.of(replay), dlqRow(replayed.id()), "its DLQ row kept");
+        assertEquals(Optional.of(unattempted), dlqRow(noAttempt.id()), "its DLQ row kept");
         assertEquals(0, count("select count(*) from work"), "nothing written");
 
         Envelope witness = recorded();
         ParkedRows.park(pool, ParkedRows.byTheWorker(witness.id(), "shop/orders", 1), "node-a");
         assertEquals(202, retry(witness.id()).status(), "witness: a row the worker parked, on the same wiring, restarts");
+    }
+
+    /** A prop a removed feature wrote (replay, gone with D-156); inert since D-156: a DLQ row written before keeps it as data. */
+    static final Key<String> RETIRED = new Key<>("replayOf");
+
+    /**
+     * FIX-265 (D-156): a row the worker parked at step 1 after attempt 1 that also carries the retired prop is restarted like any
+     * worker's park — 202 {@code {id, attempt: 2}}, its DLQ row gone, one work row of the id at step 1 with {@code max_attempts} 2.
+     */
+    @Test
+    void aWorkersParkCarryingAnotherPropIs202() {
+        Envelope in = recorded();
+        ParkedRows.park(pool, ParkedRows.row(in.id(), "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1).with(RETIRED, "m-original")), "node-a");
+        Answer answer = retry(in.id());
+        assertEquals(202, answer.status(), "restarted, whatever else the row carries: " + answer.body());
+        assertEquals(new JsonObject().put("id", in.id()).put("attempt", 2), answer.json(), "the same id, as attempt 2");
+        assertEquals(Optional.empty(), dlqRow(in.id()), "its DLQ row is gone");
+        assertEquals(1, count("select count(*) from work"), "one work row");
+        assertEquals(1, count("select count(*) from work where id = $1 and step = 1 and attempts = 1 and max_attempts = 2", in.id()),
+                "the id's row at step 1, attempts k = 1, max_attempts k + 1 = 2");
     }
 
     @Test

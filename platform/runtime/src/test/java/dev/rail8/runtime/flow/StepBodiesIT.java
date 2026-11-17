@@ -220,9 +220,9 @@ class StepBodiesIT {
                     written.put(body.key(), out);
                     return e.next(body);
                 })),
-                // the first run of a message crashes, a rerun (it carries its attempt) passes, and so does a replay (a new message, D-066)
+                // the first run of a message crashes, a rerun (it carries its attempt) passes
                 factory("crash-first", (step, res) -> Stage.of(e -> {
-                    if (e.get(Envelope.ATTEMPT).isEmpty() && e.get(Envelope.REPLAY_OF).isEmpty()) throw new Crash("crashed at " + step.name() + " on the first run");
+                    if (e.get(Envelope.ATTEMPT).isEmpty()) throw new Crash("crashed at " + step.name() + " on the first run");
                     return e;
                 })));
     }

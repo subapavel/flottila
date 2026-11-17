@@ -84,12 +84,19 @@ class EnvelopeTest {
         assertSame(body0, e2.body());
     }
 
+    /** {@code withId} changes the id only; a prop set on the copy is absent on the ingress envelope it came from. */
     @Test
-    void replayCarriesTheOriginalIdAsAProp() {
-        Envelope replay = ingress.withId("m-2").with(Envelope.REPLAY_OF, "m-1");
-        assertEquals("m-2", replay.id());
-        assertEquals(Optional.of("m-1"), replay.get(Envelope.REPLAY_OF));
-        assertEquals(Optional.empty(), ingress.get(Envelope.REPLAY_OF));
+    void withIdChangesOnlyTheIdAndAPropOnTheCopyIsAbsentOnTheOriginal() {
+        Key<String> origin = new Key<>("origin");
+        Envelope copy = ingress.withId("m-2").with(origin, "m-1");
+        assertEquals("m-2", copy.id());
+        assertEquals("invoice", copy.flow());
+        assertEquals(0, copy.step());
+        assertEquals(Optional.of("text/xml"), copy.header(Envelope.H_CONTENT_TYPE));
+        assertSame(body0, copy.body());
+        assertEquals(Optional.of("m-1"), copy.get(origin));
+        assertEquals("m-1", ingress.id(), "the original keeps its id");
+        assertEquals(Optional.empty(), ingress.get(origin), "the original carries no prop the copy was given");
     }
 
     @Test

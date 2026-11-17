@@ -1,0 +1,6 @@
+platform/runtime/src/main/java/dev/rail8/runtime/journal/peer/PeerSession.java:11: * sequence, so a frame replayed, reordered, reflected or cut out fails its receiver's check. Not thread-safe: the link seals
+platform/runtime/src/main/java/dev/rail8/runtime/blob/TieredBlobStore.java:44: * the prefix already seen is replayed into the spill; the hash runs over every byte once (in memory at the end, or by the
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:52:     * replays the run; a run that passed has one {@code SIM PASS …} line with its comparisons instead.
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:64:        return out.append("mvn -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false")
+platform/sim/src/main/java/dev/rail8/sim/SimConfig.java:13: * @param name the name a failure line and the replay command carry ({@code config=V1})
+platform/sim/src/main/java/dev/rail8/sim/SimSeed.java:23:    /** The run seed as the failure line and the replay command print it: {@code 0x} and its unsigned hex digits. */

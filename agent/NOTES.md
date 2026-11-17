@@ -230,8 +230,12 @@ exceptions, `FlowBuilder.replay`, the deployments' replay pipeline per flow (a f
 for its delivery and its worker only) and the oracle's `Check.REPLAY_YIELDS_RECORDED` (D-165). A
 worker run starts in `FlowWorker.rebuild`, private. The properties `ReplayTest` carried that survive
 live in `DeliveryTest`, `ParkingTest`, `FlowBuilderTargetTest`, `RecorderTest` and the deployments'
-tests (`agent/work/FIX-264-scout.md`). Still in the code: `Envelope.REPLAY_OF` and the words
-", a replay" in `/retry`'s refusal (FIX-265); what has no main caller now is FIX-269's. A keyed
+tests (`agent/work/FIX-264-scout.md`). The last of it left with FIX-265 (2026-11-17): the constant
+`Envelope.REPLAY_OF`, the restart statement's and `/retry`'s guard on the prop and the words
+", a replay". A row the worker did not park is refused by its step and its `attempt` alone; an old
+DLQ row keeps the prop `replayOf` as inert data, and three tests name it once as a plain key
+(`RETIRED`). In `src/main` the word means only a simulation seed's replay, a peer frame replayed, a
+body's prefix replayed into the spill. What has no main caller now is FIX-269's. A keyed
 flow's row parked without its key is refused by `/retry` for ever (FIX-274).
 Cancel and the record of both acts are designed, not built (D-162; ARCHITECTURE section 6, *The
 operator's acts on a failed message*). F-57: a `/retry` before a park has settled inserts a second
@@ -499,4 +503,7 @@ same in the runs measured", never "in every run"; check the sibling contracts fo
 (`PollingConsumerContract` keeps about 45, watched by FIX-281). Two lessons the reviewer could not write into its
 memory (its file is at the 120-line cap; placing them is the owner's): "a lambda poll in a contract covers its
 false outcome by timing; check sibling contracts", and "a packet clause sharpened after the tests were approved
-needs its own case".
+needs its own case". A third, from MAP-12b's review (2026-11-16; the file is at 121 lines): "bash: validate API
+values inside jq, before line-splitting; `read -r` trims and splits". A fourth, from FIX-265's: "removing a guard
+leaves the draft D-row that documents it false - grep DECISIONS for the guard's words; an expensive-to-reverse
+mark needs a HANDOVER §6 item (WORKFLOW §4)".

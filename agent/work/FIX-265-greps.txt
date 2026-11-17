@@ -1,0 +1,30 @@
+# FIX-265 acceptance 3, run at HEAD 6b23ddc1 + working tree (grep 2 re-run after the AdminServer:145 edit)
+## grep 1: grep -rn "REPLAY_OF\|replayOf" platform bench --exclude-dir=target
+platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartTest.java:301:    static final Key<String> RETIRED = new Key<>("replayOf");
+platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartIT.java:356:    static final Key<String> RETIRED = new Key<>("replayOf");
+platform/runtime/src/test/java/dev/rail8/runtime/queue/PgWorkQueueRestartIT.java:162:    static final Key<String> RETIRED = new Key<>("replayOf");
+(exit 0)
+
+## grep 2: grep -rni "replay" --include=*.java --include=*.json --include=*.sql --include=*.yaml --include=*.yml <every src/main under platform/ and bench/>
+platform/runtime/src/main/java/dev/rail8/runtime/journal/peer/PeerSession.java:11: * sequence, so a frame replayed, reordered, reflected or cut out fails its receiver's check. Not thread-safe: the link seals
+platform/runtime/src/main/java/dev/rail8/runtime/blob/TieredBlobStore.java:44: * the prefix already seen is replayed into the spill; the hash runs over every byte once (in memory at the end, or by the
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:52:     * replays the run; a run that passed has one {@code SIM PASS …} line with its comparisons instead.
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:64:        return out.append("mvn -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false")
+platform/sim/src/main/java/dev/rail8/sim/SimConfig.java:13: * @param name the name a failure line and the replay command carry ({@code config=V1})
+platform/sim/src/main/java/dev/rail8/sim/SimSeed.java:23:    /** The run seed as the failure line and the replay command print it: {@code 0x} and its unsigned hex digits. */
+(exit 0)
+
+## Meaning of each hit
+### grep 1 (3 hits, 0 misses; no migration comment names it)
+- AdminDlqRestartTest.java:301 - case 1d's one string of the retired prop, beside its comment at :300 (expected)
+- AdminDlqRestartIT.java:356 - case 1d's one string, beside its comment at :355 (expected)
+- PgWorkQueueRestartIT.java:162 - cases 1a/1b's one string, beside its comment at :161 (expected)
+- no hit in any src/main, in bench/, or in a migration (.sql)
+### grep 2 (6 hits, 0 misses: none means the removed feature)
+- PeerSession.java:11 - a peer link frame replayed by an attacker (replay protection of the sealed sequence): another meaning
+- TieredBlobStore.java:44 - a streamed body's prefix replayed into the journal spill: another meaning (recovery/spill)
+- sim Verdict.java:52, :64 - the simulation's seed replay command (SimReplayTest): another meaning
+- sim SimConfig.java:13 - the simulation's replay command: another meaning
+- sim SimSeed.java:23 - the simulation's replay command printing the seed: another meaning
+- AdminServer.java:145 (former hit, a miss) now reads "There is no {@code /restart} route (404)." - the absence of the replay
+  routes stays pinned by tests (NodeIT, the two "no pointer to /replay" cases)

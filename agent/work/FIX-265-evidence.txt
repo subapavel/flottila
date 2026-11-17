@@ -1,0 +1,62 @@
+FIX-265 verifier evidence (acceptance 3, 4)
+HEAD 6b23ddc10bca9bfe594708d3f4bd9b3c328e3a83  date 2026-11-16  cores 4
+git status --short platform/:
+ M platform/api/src/main/java/dev/rail8/api/Body.java
+ M platform/api/src/main/java/dev/rail8/api/BodyLostException.java
+ M platform/api/src/main/java/dev/rail8/api/Envelope.java
+ M platform/api/src/main/java/dev/rail8/api/Props.java
+ M platform/api/src/test/java/dev/rail8/api/EnvelopeTest.java
+ M platform/core/src/main/java/dev/rail8/core/queue/WorkQueue.java
+ M platform/runtime/src/main/java/dev/rail8/runtime/admin/AdminServer.java
+ M platform/runtime/src/main/java/dev/rail8/runtime/queue/PgWorkQueue.java
+ M platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartIT.java
+ M platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartTest.java
+ M platform/runtime/src/test/java/dev/rail8/runtime/flow/StepBodiesIT.java
+ M platform/runtime/src/test/java/dev/rail8/runtime/queue/PgWorkQueueRestartIT.java
+dockerd started: sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &  (docker info ok after 8s)
+
+== A1: grep -rn "REPLAY_OF\|replayOf" platform bench --exclude-dir=target
+platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartTest.java:301:    static final Key<String> RETIRED = new Key<>("replayOf");
+platform/runtime/src/test/java/dev/rail8/runtime/admin/AdminDlqRestartIT.java:356:    static final Key<String> RETIRED = new Key<>("replayOf");
+platform/runtime/src/test/java/dev/rail8/runtime/queue/PgWorkQueueRestartIT.java:162:    static final Key<String> RETIRED = new Key<>("replayOf");
+== A2: grep -rni replay in src/main dirs
+platform/runtime/src/main/java/dev/rail8/runtime/journal/peer/PeerSession.java:11: * sequence, so a frame replayed, reordered, reflected or cut out fails its receiver's check. Not thread-safe: the lin
+platform/runtime/src/main/java/dev/rail8/runtime/blob/TieredBlobStore.java:44: * the prefix already seen is replayed into the spill; the hash runs over every byte once (in memory at the end, or by the
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:52:     * replays the run; a run that passed has one {@code SIM PASS …} line with its comparisons instead.
+platform/sim/src/main/java/dev/rail8/sim/Verdict.java:64:        return out.append("mvn -B -ntp -q -pl :rail8-sim -am test -Dtest=SimReplayTest -Dsurefire.failIfNoSpecifiedTests=false")
+platform/sim/src/main/java/dev/rail8/sim/SimConfig.java:13: * @param name the name a failure line and the replay command carry ({@code config=V1})
+platform/sim/src/main/java/dev/rail8/sim/SimSeed.java:23:    /** The run seed as the failure line and the replay command print it: {@code 0x} and its unsigned hex digits. */
+postgres 16 was down; started: sudo -n setsid pg_ctlcluster 16 main start
+A: VERIFIED_PASS (greps ran; A1 3 hits = the 3 RETIRED strings, no miss; A2 6 hits, all javadoc/comment text)
+
+== B: flock /tmp/rail8-maven.lock mvn -B -ntp -f platform/pom.xml clean verify -Pit -Dmaven.test.failure.ignore=true
+B: VERIFIED_PASS exit 0, BUILD SUCCESS 27:08 min, 17/17 modules SUCCESS  log agent/work/FIX-265-v-reactor.log
+   summed over 489 surefire+failsafe report files: Tests 4387, Failures 0, Errors 0, Skipped 0
+   the 7 named tests: each ran and passed (PgWorkQueueRestartIT x2, AdminDlqRestartIT x2, AdminDlqRestartTest x2, EnvelopeTest x1)
+
+== C: python3 ci/coverage_check.py --baseline-ref HEAD  -> exit 0, "coverage: no decrease"  VERIFIED_PASS  log agent/work/FIX-265-v-coverage.log
+   jacoco.csv sums (after / before from FIX-280-evidence part D):
+   api     L 283/285   B 100/100   | before L 284/286   B 100/100   | total -1 line, covered -1 (99.298 vs 99.301 %: same to 2 dp)
+   core    L 2373/2374 B 1225/1231 | before L 2373/2374 B 1225/1231 | identical
+   runtime L 6569/6602 B 2826/2841 | before L 6570/6603 B 2830/2845 | total -1 line, -4 branches; covered -1 line, -4 branches
+           (line 99.499 vs 99.500 %, branch 99.472 vs 99.473 %: same to 2 dp; uncovered unchanged: 33 lines, 15 branches)
+
+== D: scoped PIT, form: flock /tmp/rail8-maven.lock mvn -B -ntp -f platform/pom.xml -pl :rail8-<m> -am test-compile
+   org.pitest:pitest-maven:mutationCoverage -DtargetClasses=<globs> -DfailWhenNoMutations=false  (both exit 0, BUILD SUCCESS)
+D api  (dev.rail8.api.Envelope*, dev.rail8.api.Props*): VERIFIED_PASS  log agent/work/FIX-265-v-pit-api.log
+   generated 32, killed 32, survived 0, no coverage 0, timed out 0. Unkilled: none.
+D core (dev.rail8.core.queue.*): VERIFIED_PASS  log agent/work/FIX-265-v-pit-core.log
+   generated 115, killed 110, timed out 3 (PIT reports 113 = 98 % detected), survived 2, no coverage 0.
+   Unkilled: InMemoryWorkQueue:213 ConditionalsBoundaryMutator SURVIVED; WorkQueue$Item:62 PrimitiveReturnsMutator SURVIVED
+   (replaced int return with 0 for WorkQueue$Item::hashCode).
+   Before (worktree of 6b23ddc1, /tmp/fix265-before, removed after; log agent/work/FIX-265-v-pit-core-before.log):
+   generated 115, killed 113, survived 2, timed out 0. Unkilled: same two at the same class, line, mutator.
+   Compared: new none, gone none, same 2. (3 mutants KILLED before are TIMED_OUT after; both count as detected.)
+
+Architect's notes (2026-11-17, read from the logs and reports, nothing run but coverage_check.py):
+ B's total: 4387 is the sum over the reports under platform/. The reactor's 17th module, rail8-bench, lives in
+ bench/ and is not in that sum: its surefire run 239 and failsafe run 42 (FIX-265-v-reactor.log :80538, :84169;
+ bench/target: 63 report files, 281 tests). The log's 18 summary lines add up to 4668 = 4387 + 281, 0 failures.
+ C: `python3 ci/coverage_check.py --write` on these reports (agent/work/FIX-265-coverage-write.log): the file
+ ci/coverage-baseline.json came out byte-identical - no figure moves at its one decimal. Missed counts are
+ unchanged (api 2 lines; runtime 33 lines, 15 branches); the totals fell with the deleted, covered code.

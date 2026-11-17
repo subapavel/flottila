@@ -35,12 +35,9 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
      */
     public static final String H_MESSAGE_ID = "x-message-id";
 
-    /** Prop carrying the original message id when this envelope is a replay. */
-    public static final Key<String> REPLAY_OF = new Key<>("replayOf");
-
     /**
      * Prop carrying the attempt of the run this envelope belongs to: set from a message's second run on (the worker's second
-     * claim of its item onwards), absent on a first run, dropped by a replay. It scopes the keys of {@link #nextKey(String)}
+     * claim of its item onwards), absent on a first run. It scopes the keys of {@link #nextKey(String)}
      * to the run (D-066).
      */
     public static final Key<Integer> ATTEMPT = new Key<>("attempt");

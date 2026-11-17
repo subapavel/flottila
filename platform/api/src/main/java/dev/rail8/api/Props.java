@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Flow state: router decisions, split index, replayOf — anything a later stage decides on.
+ * Flow state: router decisions, split index — anything a later stage decides on.
  * Values must be JSON-serialisable (string, number, boolean, small object). Never reaches producers.
  *
  * @since 0.1

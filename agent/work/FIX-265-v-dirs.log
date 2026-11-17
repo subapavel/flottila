@@ -1,0 +1,13 @@
+platform/components/mock/src/main
+platform/components/http/src/main
+platform/components/sftp/src/main
+platform/runtime/src/main
+platform/schemas/src/main
+platform/api/src/main
+platform/sim/src/main
+platform/testkit/src/main
+platform/cli/src/main
+platform/steps/xslt/src/main
+platform/steps/validate/src/main
+platform/core/src/main
+bench/src/main

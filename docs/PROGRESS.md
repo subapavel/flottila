@@ -1,4 +1,20 @@
 
+## 2026-11-17 — FIX-265 the last of replay leaves the code: `Envelope.REPLAY_OF` and the two guards — done, review PASS [B]
+
+- Removed: the public constant `Envelope.REPLAY_OF` of `rail8-api` and its Javadoc mentions, the clause `props->'replayOf' is null`
+  of `PgWorkQueue`'s restart statement and its twin check in `AdminServer`. Draft - review at hand-over (HANDOVER §6).
+- Safe because a replay's row never carried the worker's `attempt`: the attempt check alone refuses it; old rows keep the prop.
+- Red first (test-author): a worker's park that carries another prop is restarted - `PgWorkQueueRestartIT`, `AdminDlqRestartIT`
+  (202), `AdminDlqRestartTest` red on the guards (`agent/work/FIX-265-1-red.log`, `-1-red-it.log`). "A row without an attempt is
+  not restarted" is green from the start: shown red on a scratch statement without the attempt clause. The 422's text is pinned whole.
+- VERIFIED_PASS (`agent/work/FIX-265-evidence.txt`): the two greps (3 hits, one `RETIRED` string per test file; 6 of the word in
+  another meaning); whole reactor `-Pit`, 4668 tests (4387 under platform/, 281 in bench/), 0 failures; coverage: missed unchanged
+  (api 2 lines; runtime 33 lines, 15 branches), no decrease, the baseline file identical after `--write`; scoped PIT: api 32 of 32,
+  core's queue package the same two survivors before and after.
+- Review [B]: FAIL r1 on two documents (D-135's row still described the removed re-check; HANDOVER §6 did not list the draft),
+  PASS r2. The FIX-262 entry's "ARCHITECTURE is ahead of the code until FIX-265" ends with this commit.
+- Also: FIX-268's packet and its stand-in partner are written; `ci` run 254 read green (237 to 254 in a row).
+
 ## 2026-11-16 — FIX-280 testkit's branch figure is the same in the runs measured — done, review PASS [B]
 
 - Cause: each of `ComponentContract`'s twelve polls kept its comparison in the call site's lambda; its false outcome was taken

@@ -5,6 +5,7 @@ import dev.rail8.api.BlobNotFoundException;
 import dev.rail8.api.BodyLostException;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
+import dev.rail8.api.Key;
 import dev.rail8.api.Props;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
@@ -264,9 +265,9 @@ class AdminDlqRestartTest {
 
     /**
      * FIX-263 A2 (D-156): every 422 of {@code /retry} says why the row is not restarted — the flow is not at-least-once; a row its
-     * flow's worker did not park, with its step and attempt (at step 2; at step 1 without an attempt, with attempt 0, a replay's
-     * row, which keeps its words ", a replay" until FIX-265); a keyed flow's row parked before its key was kept — and none names
-     * another route. Each refusal keeps its row and writes, runs and announces nothing. Witness: a row the worker parked restarts.
+     * flow's worker did not park, with its step and attempt (at step 2; at step 1 without an attempt, with attempt 0); a keyed
+     * flow's row parked before its key was kept — and none names another route. Each refusal keeps its row and writes, runs and
+     * announces nothing. Witness: a row the worker parked restarts. (FIX-265: a row with the retired prop is no refusal of its own.)
      */
     @Test
     void noRetryRefusalNamesAnotherRoute() throws Exception {
@@ -280,8 +281,6 @@ class AdminDlqRestartTest {
         says.put("m-none", "message m-none was not parked by its flow's worker (step 1, attempt ");
         refusedRows.put("m-zero", parked("m-zero", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 0)));
         says.put("m-zero", "message m-zero was not parked by its flow's worker (step 1, attempt 0)");
-        refusedRows.put("m-replay", parked("m-replay", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1).with(Envelope.REPLAY_OF, "m-original")));
-        says.put("m-replay", "message m-replay was not parked by its flow's worker (step 1, attempt 1, a replay)");
         refusedRows.put("m-keyless", parked("m-keyless", "shop/keyed", 1, Props.empty().with(Envelope.ATTEMPT, 1)));
         says.put("m-keyless", "message m-keyless of the keyed flow shop/keyed was parked before its key was kept");
 
@@ -296,6 +295,41 @@ class AdminDlqRestartTest {
         Answer restarted = retry(witness);
         assertEquals(202, restarted.status(), "witness: a row the worker parked restarts on the same wiring: " + restarted.json());
         assertEquals(new JsonObject().put("id", witness).put("attempt", 2), restarted.json(), "witness: restarted as attempt 2");
+    }
+
+    /** A prop a removed feature wrote (replay, gone with D-156); inert since D-156: a DLQ row written before keeps it as data. */
+    static final Key<String> RETIRED = new Key<>("replayOf");
+
+    /**
+     * FIX-265 (D-156): the 422 for a row its flow's worker did not park says exactly why, with the row's step and attempt, and no
+     * more — at step 2, and at step 1 without an attempt (with and without the retired prop: it adds no words).
+     */
+    @Test
+    void aRowTheWorkerDidNotParkSaysExactlyWhy() throws Exception {
+        Parked step2 = parked("m-step2", "shop/orders", 2, Props.empty().with(Envelope.ATTEMPT, 1));
+        assertEquals("message m-step2 was not parked by its flow's worker (step 2, attempt 1): it cannot be restarted",
+                refused("m-step2", step2, 422, "was not parked").json().getString("error"), "a step-2 row");
+        Parked none = parked("m-none", "shop/orders", 1, Props.empty());
+        assertEquals("message m-none was not parked by its flow's worker (step 1, attempt null): it cannot be restarted",
+                refused("m-none", none, 422, "was not parked").json().getString("error"), "a row without an attempt");
+        Parked retired = parked("m-retired", "shop/orders", 1, Props.empty().with(RETIRED, "m-original"));
+        assertEquals("message m-retired was not parked by its flow's worker (step 1, attempt null): it cannot be restarted",
+                refused("m-retired", retired, 422, "was not parked").json().getString("error"), "a row without an attempt, the retired prop on it");
+    }
+
+    /**
+     * FIX-265 (D-156): a row the worker parked at step 1 after attempt 1 that also carries the retired prop is restarted like any
+     * worker's park: 202 {@code {id, attempt: 2}}, and the worker woken here runs it once as attempt 2.
+     */
+    @Test
+    void aWorkersParkCarryingAnotherPropRestartsAsItsNextAttempt() throws Exception {
+        String id = recorded();
+        parked(id, "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1).with(RETIRED, "m-original"));
+        Answer a = retry(id);
+        assertEquals(202, a.status(), "restarted, whatever else the row carries: " + a.json());
+        assertEquals(new JsonObject().put("id", id).put("attempt", 2), a.json(), "the same id, as attempt 2");
+        until(() -> runs.size() == 1, "the worker woken here runs it");
+        assertEquals(List.of(id + "@2"), runs, "once, under its id, as attempt 2");
     }
 
     /**

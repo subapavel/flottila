@@ -45,7 +45,7 @@ public final class Body {
     /** The store holding the bytes. */
     public BlobStore store() { return store; }
 
-    /** A fresh cold stream of the bytes; call it as often as needed (retry, replay, snapshot). */
+    /** A fresh cold stream of the bytes; call it as often as needed (retry, snapshot). */
     public ReadStream<Buffer> open() {
         return store.open(key);
     }
