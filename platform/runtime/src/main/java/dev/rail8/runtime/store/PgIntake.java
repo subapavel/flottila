@@ -347,7 +347,7 @@ public final class PgIntake implements Intake {
 
     /**
      * {@code g} in one transaction on {@code conn}: committed when no member is abandoned at the check; else (a failed
-     * statement) rolled back and failed {@link RolledBack} with the cause. A commit the
+     * statement or a member found abandoned) rolled back and failed {@link RolledBack} with the cause. A commit the
      * server refused with an error reply of severity ERROR (a known abort: the session survives it) fails with its own cause; one
      * whose reply never came, or answered FATAL or PANIC (the session ends; the commit may have landed), fails with {@link InDoubt}
      * once the transaction id is known (a member naming a record), else with its own failure.
