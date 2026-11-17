@@ -6,9 +6,9 @@ import dev.rail8.jq.query.run.Sink;
 import dev.rail8.jq.query.run.Truth;
 
 /**
- * {@code left // right} (ADR-0037): the left side's results for which the truth holds, as they come, and the right
- * side's only when there was none. A false on the left, a stop or a break, returns at once, without the right
- * (ADR-0039). It catches nothing (ADR-0008) and charges no step of its own.
+ * {@code left // right}: the left side's results for which the truth holds, as they come, and the right side's only
+ * when there was none. A false on the left, a stop or a break, returns at once, without the right. It catches nothing
+ * and charges no step of its own.
  */
 public final class AltOp extends Op {
   private final Op left;
@@ -52,7 +52,7 @@ public final class AltOp extends Op {
   /**
    * The left side's value when the truth holds for it, and the right side's otherwise. Both sides of a value-form Alt
    * are value form wherever they run: a push left side would be many, and a push right side after a left one that may
-   * give a result would make the Alt many (ADR-0007 #112).
+   * give a result would make the Alt many.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

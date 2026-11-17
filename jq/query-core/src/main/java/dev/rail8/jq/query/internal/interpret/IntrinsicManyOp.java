@@ -5,9 +5,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * A call of a {@link Many} as a loop over its cursor (ADR-0034): one step per result, before its emit; a stop ends the
- * loop at once, with no further result or step. Each loop gets its arguments and the Many's loop slots in one new
- * array (ADR-0044). Its heap form is the {@link Loop}, which keeps the cursor while each result is answered.
+ * A call of a {@link Many} as a loop over its cursor: one step per result, before its emit; a stop ends the loop at
+ * once, with no further result or step. Each loop gets its arguments and the Many's loop slots in one new
+ * array. Its heap form is the {@link Loop}, which keeps the cursor while each result is answered.
  */
 public final class IntrinsicManyOp extends Op {
   /** The array of every loop with no argument and no loop slot: it has nothing to write, so the loops share it. */
@@ -38,7 +38,7 @@ public final class IntrinsicManyOp extends Op {
     return true;
   }
 
-  /** Never called: a Many intrinsic is never eligible for the value form (ADR-0047 #116). */
+  /** Never called: a Many intrinsic is never eligible for the value form. */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
     throw new IllegalStateException("A Many intrinsic has no value form");

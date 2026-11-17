@@ -5,18 +5,18 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * The form-B trampoline (ADR-0011, ADR-0046 and its #109 amendment): a driver that runs the ops' heap forms one action
- * at a time, so its Java depth does not grow with the filter. An action is a start of an op under a form, an emit of a
+ * The trampoline: a driver that runs the ops' heap forms one action at a time, so its Java depth does not grow with
+ * the filter. An action is a start of an op under a form, an emit of a
  * result into a sink, an answer to a form, or an error raised at a form. Each action sets exactly one next action, so
  * no sink calls a sink and no form calls a form. A consumer starts above the form that produced its input, so an error
  * raised downstream passes back down through the forms that produced the result, as it passes Java frames in push form.
- * A bounce from one action to the next charges no step (ADR-0008).
+ * A bounce from one action to the next charges no step.
  *
- * <p>The starter (GLOSSARY "Starter") runs main on the driver with {@link #run}. Main starts under {@link #BASE}, whose
- * answer ends the run, and its results go to {@link #HAND_BACK}, which stops the driver at each result (GLOSSARY
- * "Hand-back"). The starter emits that result from its own frame, with no driver live, and resumes the driver at the
- * form that produced it with the emit's answer or with the error the emit raised (M4). A Termination ends the run
- * wherever it is thrown.
+ * <p>The starter, the push-form frame that runs main on the driver, does so with {@link #run}. Main starts under
+ * {@link #BASE}, whose answer ends the run, and its results go to {@link #HAND_BACK}, which stops the driver at each
+ * result and hands it back. The starter emits that result from its own frame, with no driver live, and resumes the
+ * driver at the form that produced it with the emit's answer or with the error the emit raised. A Termination ends
+ * the run wherever it is thrown.
  */
 public final class Trampoline {
   private static final int START = 0;

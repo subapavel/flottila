@@ -5,9 +5,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code v1 as $s1 | … | vn as $sn | body} (ADR-0043), run as the chain of nested {@link BindOp}s it means. A value-form
- * value (ADR-0047 #116) returns its value, which sets its slot, and the loop goes on to the next value; with no result
- * the Binds runs out there. In the conservative compile a tail value runs into a {@link Holder} the same way. Any other
+ * {@code v1 as $s1 | … | vn as $sn | body}, run as the chain of nested {@link BindOp}s it means. A value-form value
+ * returns its value, which sets its slot, and the loop goes on to the next value; with no result the Binds runs out
+ * there. In the conservative compile a tail value runs into a {@link Holder} the same way. Any other
  * value runs the rest, the later values and the body, inside its emit, as a BindOp does. So the stack grows by one
  * recursion per generator value, not per value. Each value and the body run on the Binds' own input; no step of its
  * own. Its heap form keeps no state: each value's sink starts what comes after it.
@@ -16,8 +16,8 @@ public final class BindsOp extends Op {
   private final Op[] values;
 
   /**
-   * Whether each value is a tail emitter: one result at most, and it never breaks out (ADR-0043). A value-form value
-   * runs by its value form first (ADR-0047 #116), so only the conservative compile reads this.
+   * Whether each value is a tail emitter: one result at most, and it never breaks out. A value-form value runs by its
+   * value form first, so only the conservative compile reads this.
    */
   private final boolean[] tails;
 
@@ -86,8 +86,8 @@ public final class BindsOp extends Op {
 
   /**
    * The value form of the values from {@code first} on, then the body's value. A push value of a value-form Binds is
-   * many, so what comes after it gives no result (ADR-0007 #112): each of its results sets its slot and runs the rest,
-   * for its ticks and writes, and the Binds gives none.
+   * many, so what comes after it gives no result: each of its results sets its slot and runs the rest, for its ticks
+   * and writes, and the Binds gives none.
    */
   private Object evalFrom(int first, RunState state, Object[] slots, Object in) {
     for (int k = first; k < values.length; k++) {

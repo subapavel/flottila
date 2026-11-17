@@ -3,10 +3,10 @@ package dev.rail8.jq.query.internal.interpret;
 import dev.rail8.jq.query.run.FilterException;
 
 /**
- * The heap form of one activation of an op on the trampoline (GLOSSARY "Heap form", ADR-0046 and its #109 amendment):
- * what the op's push form keeps in its Java frame while a child runs or a result it emitted is answered, kept on the
- * heap. Each form lies on the form it was started under, {@link #under}: its own run answers there, and an error it
- * does not catch passes there, as the push form's return value and exception leave its frame for its caller's.
+ * The heap form of one activation of an op on the trampoline: what the op's push form keeps in its Java frame while a
+ * child runs or a result it emitted is answered, kept on the heap. Each form lies on the form it was started under,
+ * {@link #under}: its own run answers there, and an error it does not catch passes there, as the push form's return
+ * value and exception leave its frame for its caller's.
  */
 abstract class HeapForm {
   /** The form this one was started under: where its run's answer and its uncaught errors go. */

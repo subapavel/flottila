@@ -5,9 +5,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code label $name | body} (ADR-0008, ADR-0039): each run takes a fresh token into its slot and runs the body. A false
- * from the body that is a Break to this token ends the body as if it ran out; any other false, a stop or a Break to an
- * outer Label, passes on. No step of its own.
+ * {@code label $name | body}: each run takes a fresh token into its slot and runs the body. A false from the body that
+ * is a Break to this token ends the body as if it ran out; any other false, a stop or a Break to an outer Label, passes
+ * on. No step of its own.
  */
 public final class LabelOp extends Op {
   private final int slot;
@@ -21,7 +21,7 @@ public final class LabelOp extends Op {
 
   /**
    * The body in push form: a push-form Label's body is never value form, since a body that is at most one and may not
-   * break out makes its Label so (ADR-0007 #112, #115).
+   * break out makes its Label so.
    */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {

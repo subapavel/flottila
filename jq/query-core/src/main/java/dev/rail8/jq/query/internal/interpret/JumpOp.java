@@ -5,9 +5,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * A tail call, TAIL_SELF or TAIL_GROUP, as a pending jump (GLOSSARY "Tail call", ADR-0047 and its #118 amendment): it
- * ticks one step, as ADR-0008 charges every tail jump, sets the jump in the run state, itself with the running frame and
- * its input, and returns at once: true from {@link #run}, NONE from {@link #eval}, and an answer of true on the driver.
+ * A tail call, TAIL_SELF or TAIL_GROUP, as a pending jump: it ticks one step, as every tail jump does so that a chain
+ * of jumps still spends the step budget, sets the jump in the run state, itself with the running frame and its input,
+ * and returns at once: true from {@link #run}, NONE from {@link #eval}, and an answer of true on the driver.
  * It enters no activation and adds no units. The entry loop of the activation running in that frame, a {@link CallOp}'s
  * or its {@link CallOp.Active} form's, takes the jump: it builds the callee's frame with {@link #frame} and runs the
  * callee's body in the same activation, so neither the Java stack nor the live activations grow along a chain of jumps.

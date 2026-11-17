@@ -3,9 +3,9 @@ package dev.rail8.jq.query.internal.interpret;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * The sink a tail emitter runs into (ADR-0043 as amended by F-85): it holds the one result until {@link #take} and
- * answers it with a stop. So the tail run answers false exactly when its result came, and true when none did; the If
- * or Binds that owns the holder takes that result and does not pass the false on (ADR-0039).
+ * The sink a tail emitter, a run with one result at most that never breaks out, runs into: it holds the one result
+ * until {@link #take} and answers it with a stop. So the tail run answers false exactly when its result came, and true
+ * when none did; the If or Binds that owns the holder takes that result and does not pass the false on.
  */
 final class Holder implements Sink {
   private Object value;

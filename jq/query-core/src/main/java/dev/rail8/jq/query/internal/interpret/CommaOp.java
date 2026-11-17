@@ -5,8 +5,8 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code left, right} (ADR-0034): the left side's results, then one step for entering the right side (F-32), whatever
- * the left gave, then the right side's results. A stop on the left returns at once, without the step.
+ * {@code left, right}: the left side's results, then one step for entering the right side, whatever the left gave,
+ * then the right side's results. A stop on the left returns at once, without the step.
  */
 public final class CommaOp extends Op {
   private final Op left;
@@ -38,8 +38,8 @@ public final class CommaOp extends Op {
   }
 
   /**
-   * A value-form Comma's left side gives no result, or the Comma would be many (ADR-0007 #112): it runs, for its ticks
-   * and writes, then the step and the right side's value.
+   * A value-form Comma's left side gives no result, or the Comma would be many: it runs, for its ticks and writes,
+   * then the step and the right side's value.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

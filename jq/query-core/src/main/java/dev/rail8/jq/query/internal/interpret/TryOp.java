@@ -6,9 +6,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code try body catch handler} (ADR-0008, ADR-0039): the body's results pass through a sink that wraps each error
- * thrown downstream of them, so when an error leaves the body, one of depth above 0 is unwrapped and raised again, and
- * one of depth 0, the body's own, ends the body and runs the handler on its value. The handler runs outside the catch,
+ * {@code try body catch handler}: the body's results pass through a sink that wraps each error thrown downstream of
+ * them, so when an error leaves the body, one of depth above 0 is unwrapped and raised again, and one of depth 0, the
+ * body's own, ends the body and runs the handler on its value. The handler runs outside the catch,
  * so its errors propagate. A break or a stop is a false, which passes at once; a Termination is no FilterException.
  * Entering the handler charges no step.
  */
@@ -49,7 +49,7 @@ public final class TryOp extends Op {
   /**
    * The body's value, or the handler's on the value of an error that left the body: the catch is around the body only,
    * and what runs downstream runs after this returned, outside it. Both parts of a value-form Try are value form: a
-   * push part would be many or break out, and so would the Try (ADR-0007 #112, #115).
+   * push part would be many or break out, and so would the Try.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

@@ -9,10 +9,9 @@ import dev.rail8.jq.query.run.Termination;
 import java.util.Arrays;
 
 /**
- * Gathers its body's results and emits what the collector makes of them (ADR-0034 amendment). It charges the
- * container before its first allocation and each element before it stores it (ADR-0035): a collector charges per
- * element, never the capacity it grows to, and its growth copies charge no step. After a break in its body it emits
- * nothing and passes the false on (ADR-0039).
+ * Gathers its body's results and emits what the collector makes of them. It charges the container before its first
+ * allocation and each element before it stores it: a collector charges per element, never the capacity it grows to,
+ * and its growth copies charge no step. After a break in its body it emits nothing and passes the false on.
  */
 public final class CollectOp extends Op {
   /** The capacity of the first array, allocated with the first result. */
@@ -38,7 +37,7 @@ public final class CollectOp extends Op {
 
   /**
    * The body in push form: a Collect is at most one, so it is push form only where it may break out, and then so may
-   * its body (ADR-0007 #112, #115).
+   * its body.
    */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {

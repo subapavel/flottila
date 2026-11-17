@@ -4,8 +4,8 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * A constant: its one result is its value, whatever the input, and the sink's answer is the run's. It is no step site
- * (ADR-0008), so it charges no tick (ADR-0031).
+ * A constant: its one result is its value, whatever the input, and the sink's answer is the run's. It is no step
+ * site, so it charges no tick.
  */
 public final class ConstOp extends Op {
   private final Object value;

@@ -1,9 +1,9 @@
 package dev.rail8.jq.query.run;
 
 /**
- * Every error a filter raises (ADR-0008): it carries the error value and is created without a stack trace. Its wrap
- * depth (ADR-0039, GLOSSARY "Wrap depth") counts the Trys whose sink it was thrown from and whose run it has not left
- * yet: a Try runs its handler only on an error of depth 0, so a downstream error passes it. A new error has depth 0, and
+ * Every error a filter raises: it carries the error value and is created without a stack trace. Its wrap depth counts
+ * the Trys whose sink it was thrown from and whose run it has not left yet: a Try runs its handler only on an error
+ * of depth 0, so a downstream error passes it. A new error has depth 0, and
  * so does every error that leaves a whole run, since each Try that wrapped it unwrapped it on its way out.
  */
 public final class FilterException extends EvaluationException {

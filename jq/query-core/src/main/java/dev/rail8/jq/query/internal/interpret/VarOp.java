@@ -3,7 +3,7 @@ package dev.rail8.jq.query.internal.interpret;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
-/** A slot's value (ADR-0034): its one result, whatever the input. */
+/** A slot's value: its one result, whatever the input. */
 public final class VarOp extends Op {
   private final int slot;
 

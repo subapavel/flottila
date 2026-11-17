@@ -7,7 +7,7 @@ import dev.rail8.jq.query.run.Sink;
 
 /**
  * A call of an {@link FnN} on its arguments, read into an array that is new for each call, so the operation may keep
- * it (ADR-0034 amendment): its result goes to the sink; {@link CallForm#NONE} is none.
+ * it: its result goes to the sink; {@link CallForm#NONE} is none.
  */
 public final class IntrinsicNOp extends Op {
   private final FnN fn;

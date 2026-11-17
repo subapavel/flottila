@@ -5,8 +5,8 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code foreach} (ADR-0041): for each result of the init, the state slot takes it and {@code each} runs on the input,
- * emitting each of its results; a stop or a break passes at once (ADR-0039). No step of its own.
+ * {@code foreach}: for each result of the init, the state slot takes it and {@code each} runs on the input, emitting
+ * each of its results; a stop or a break passes at once. No step of its own.
  */
 public final class ForeachOp extends Op {
   private final Op init;
@@ -43,8 +43,7 @@ public final class ForeachOp extends Op {
 
   /**
    * The value of {@code each} with the slot set. A push init of a value-form Foreach is many, so {@code each} gives no
-   * result (ADR-0007 #112): each result of the init sets the slot and runs it, for its ticks and writes, and the Foreach
-   * gives none.
+   * result: each result of the init sets the slot and runs it, for its ticks and writes, and the Foreach gives none.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

@@ -1,8 +1,8 @@
 package dev.rail8.jq.query.run;
 
 /**
- * What an {@code If} or an {@code Alt} node asks of a result (ADR-0037): the format's own test, passed to the node as
- * data, like a {@link Collector}, so the core never looks inside a value.
+ * What an {@code If} or an {@code Alt} node asks of a result: the format's own test, passed to the node as data, like
+ * a {@link Collector}, so the core never looks inside a value.
  */
 @FunctionalInterface
 public interface Truth {

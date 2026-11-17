@@ -1,9 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 /**
- * An atomic argument of an intrinsic or a call (ADR-0034, ADR-0045 #107): the input, a cell's value or a constant. A
- * cell is read in the frame {@code level} links out from the running one (cell 0 of a closure's frame links its defining
- * frame).
+ * An atomic argument of an intrinsic or a call: the input, a cell's value or a constant. A cell is read in the frame
+ * {@code level} links out from the running one (cell 0 of a closure's frame links its defining frame).
  */
 public final class Argument {
   /** {@link #slot} of the input. */

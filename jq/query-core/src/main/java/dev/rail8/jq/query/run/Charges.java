@@ -1,9 +1,9 @@
 package dev.rail8.jq.query.run;
 
 /**
- * The bytes a builder charges with {@link RunState#chargeBuilt} before it allocates (ADR-0035, ADR-0017). An element
- * and an entry are the rates ADR-0017 sets; a container and a string are fixed charges per built value, measured with
- * JMH {@code -prof gc} as the bytes one empty value allocates (bench/RESULTS.md, #64). A number box is never charged.
+ * The bytes a builder charges with {@link RunState#chargeBuilt} before it allocates. An element and an entry are
+ * fixed rates, the references they hold; a container and a string are fixed charges per built value, measured with
+ * JMH {@code -prof gc} as the bytes one empty value allocates. A number box is never charged.
  */
 public final class Charges {
   private Charges() {}
@@ -16,10 +16,10 @@ public final class Charges {
 
   /**
    * Each built array or object, whatever it holds: the largest of an empty array (40 B), an object of a shaped site
-   * (48 B) and a growable object (64 B), measured 2026-11-13 (bench/RESULTS.md).
+   * (48 B) and a growable object (64 B).
    */
   public static final long CONTAINER = 64;
 
-  /** Each built string, on top of its UTF-8 length: an empty string, 40 B, measured 2026-11-13 (bench/RESULTS.md). */
+  /** Each built string, on top of its UTF-8 length: an empty string, 40 B. */
   public static final long STRING = 40;
 }
