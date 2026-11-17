@@ -43,3 +43,28 @@ Architect's notes on round 3 (2026-11-17, read, not run):
 Review [C] round 2 (2026-11-17): PASS, read from the logs (the reviewer ran nothing). After it the architect changed
  one sentence of ADR-0019 ("What cannot be decided ... among them ..."; the review's own note) - no script, no
  test, no workflow; agent/work/MAP-12b.diff is the reviewed state and lacks that sentence.
+D. VERIFIED_PASS acceptance 4, read on GitHub by the architect 2026-11-17: mapping-ci run 5 (id 43988478121), the
+ push run of 8d3daf374f1a462e083ae706dbb5d1b0f0cbf7fc. Job "mapping · backend" (id 133722661609): success; its steps
+ 5 and 6 (the script tests, ratchet-ci-test.sh among them) success - so gh, jq and git are where the harness looks on
+ ubuntu-24.04; step 10 "Ratchet check against the baseline": success, 5 s. The step's lines, whole:
+   LOOKUP pages 1 runs 5
+   LOOKUP run 43960684995 sha 71c3b69e742dbc8076461e6ffa09b9754c8587d8 status completed conclusion success
+   LOOKUP job 43960684995 name mapping · backend conclusion success
+   BASELINE 71c3b69e742dbc8076461e6ffa09b9754c8587d8 run 43960684995
+   NOT_RUN coverage ui/src/model / ui/src/studio/store (2 lines)
+   MEASURED coverage engine/api lines 274/276 branches 83/83
+   MEASURED coverage engine/ir lines 181/181 branches 79/79
+   MEASURED coverage engine/mapping lines 1157/1162 branches 456/461
+   MEASURED coverage engine/runtime lines 1142/1142 branches 452/452
+   MEASURED coverage engine/serializer lines 117/117 branches 58/58
+   MEASURED coverage engine/structure lines 110/118 branches 33/33
+   MEASURED coverage engine/structure-import lines 1722/1727 branches 891/891
+   MEASURED coverage engine/xdm lines 743/743 branches 432/432
+   MEASURED coverage engine/xslt-export lines 192/194 branches 88/88
+   MEASURED coverage service lines 410/416 branches 103/107
+   NOT_RUN mutation engine/api, ir, mapping, runtime, serializer, xdm, xslt-export (7 lines)
+   RATCHET CHECK OK
+ The baseline is the one expected (run 4 on 71c3b69e). The ten MEASURED counts equal the local ones of
+ agent/work/MAP-9-numbers.md (the service's 103 of 107 branches among them). The checkout with full history took 4 s
+ (00:32:50 to 00:32:54Z). Jobs "mapping · windows" and "mapping · ui": success. A fourth job (the stack), if the run
+ has one after the backend, was not read: the session stopped. For MAP-12c's record this is the week's first run.

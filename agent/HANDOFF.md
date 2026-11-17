@@ -1,20 +1,20 @@
 # Handoff
 
-state: D-148's plan is complete. The owner's answers of 2026-11-15 are on main (D-156 to D-159). The repository is renamed
-  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: MAP-12b (the ratchet check runs on GitHub).
-WIP: MAP-12b [C] on main (review PASS r2), open: acceptance 4 (the first real run), date 2026-11-25. FIX-268 [G] measured, not judged.
-  Mapping test rules are decided (D-164, ISSUE-13 closed), not built: MAP-11 [B] (packet written), 12b [C] (on main), 12c, 13 [C], 15; 10, 12a done.
-  `/retry` is guarded (FIX-275). Cancel is designed, not built: D-162 as D-163 amends it. `site` is red.
-next exact action: MAP-12b: read mapping-ci's run of this commit into its evidence, row done; FIX-268 [G]: ci run 255's jobs into the evidence, gate-reviewer.
-  Order (agreed 2026-11-16; cancel's build at the end of 1): (1) FIX-268 [G], 269, 276, 277, CONSIDER-17, 278;
-  (2) MAP-11 to 13, MAP-1; (3) FIX-271 to 273, CONSIDER-28. Then FIX-274 [C], BRAND-7 [A], FIX-236, 237, 228, 230, 232, 233, 223, 205, 196, 255-259, 261, 279.
-MAPPING: D-153 stands until MAP-1's design is accepted - root Design rules do not bind mapping/; Tests, Working rules, Context
-  hygiene do; nothing outside mapping/ depends on it; only closes, fixes, observes. Licences: D-159 (one list).
-Build: mapping `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min, 17 822 tests); platform `mvn -B -ntp -f
-  platform/pom.xml clean verify -Pit -Dmaven.test.failure.ignore=true` (26 min); one module: `-pl :rail8-runtime -am`.
-OWNER: applies agent/patches/BRAND-3-steering.patch and FIX-262-claude-replayable.patch (OPS-1's is applied) - never a session;
-  answers MAP-16; reads MAP-14's list, ISSUE-8, ISSUE-10 (seven), ISSUE-11 (2 to 6), ISSUE-9 rest, CONSIDER-27; sessions wanted: UI earlier, MAP-5. D-110 open.
-OWNER ACTIONS, never a session's: GitHub's About text (the line chosen 2026-11-15, in BRAND-6's packet); Pages on and DNS for
-  `rail8.dev` (after BRAND-6); archive `subapavel/flottila-mapping` (after MAP-3). TRAPS: `-Dtest=` on runtime OOMs; one Maven at a
-  time (`flock /tmp/rail8-maven.lock`); a container restart kills dockerd, Postgres, agents. The owner may push to `main`: fetch first.
-  open issues: ISSUE-1, 6, 8, 9, 10, 11. next free ids: D-166, FIX-282, BRAND-9, OPS-13, CONSIDER-31, ISSUE-14, F-61, MAP-17.
+state: STOPPED 2026-11-17 on the owner's stop request, relayed by his other session ("Rail8 projekt restructuring"); it was not typed in this
+  session, which reported to him and waits. Start nothing from the old order: the way of working is being restructured (RELAYED below).
+last commit: the state saved at the stop. Before it: MAP-12b (the ratchet check runs on GitHub), FIX-265 (replay is out of the code).
+DONE, on main: replay out of code and documents (FIX-262 to 267, 275), FIX-240, 270, 280; MAP-9, 10, 12a, 12b, 14; BRAND-6; D-156 to D-164.
+UNFINISHED 1 - FIX-268 [G]: check 7 and condition 6 measured on 77b2c587, every part VERIFIED_PASS (agent/work/FIX-268-evidence.txt, logs
+  beside it, ci run 255 green). NOT judged: no gate-reviewer ran; HANDOVER.md row 7 and bench/RESULTS.md unwritten - drafts agent/wip/FIX-268-close.py.
+UNFINISHED 2 - MAP-11 [B]: the 90/90 floor (three poms) is NOT on main: agent/wip/MAP-11.patch, with what steps 0 and 1 observed. Steps 2, 3 not done.
+WAS ABOUT TO START: FIX-269 [B] (facts only: agent/work/FIX-269-scout.md); after it FIX-276, 277, CONSIDER-17, 278; MAP-12c, 13, 15, MAP-1; FIX-271-273.
+RELAYED with the stop, the owner's, not confirmed in this session, NO CI CHANGED: per change only the build with unit and integration tests and
+  the sign-off check will block; coverage floors, no-decrease, mutation, the second Postgres, Windows and benchmarks become a nightly report that
+  blocks nothing. So MAP-11, 12c, 13, 15 are not to be built as their rows say. GitHub Issues replace agent/BACKLOG.md; one task per fresh session.
+  ASK HIM: mapping/scripts/ratchet-enforced-from holds 2026-11-25 - from that day MAP-12b's check fails mapping-ci's backend job on a decrease.
+MAPPING: D-153 stands until MAP-1's design is accepted - root Design rules do not bind mapping/; nothing outside mapping/ depends on it. D-159.
+Build: mapping `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min); platform `mvn -B -ntp -f platform/pom.xml clean verify -Pit` (26 min).
+OWNER: applies agent/patches/BRAND-3-steering.patch and FIX-262-claude-replayable.patch; answers MAP-16, ISSUE-8, 9 (rest), 10, 11 (2 to 6),
+  CONSIDER-27; About text, Pages and DNS for `rail8.dev`, archiving `subapavel/flottila-mapping` - never a session. D-110 open.
+TRAPS: `-Dtest=` on runtime OOMs; one Maven at a time (`flock /tmp/rail8-maven.lock`); a container restart kills dockerd, Postgres, agents; fetch first.
+open issues: ISSUE-1, 6, 8, 9, 10, 11. next free ids: D-166, FIX-282, BRAND-9, OPS-13, CONSIDER-31, ISSUE-14, F-61, MAP-17.

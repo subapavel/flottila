@@ -1,0 +1,59 @@
+MAP-11 - WORK IN PROGRESS, NOT ON MAIN (saved 2026-11-17, when the session stopped).
+Base: 8d3daf374f1a462e083ae706dbb5d1b0f0cbf7fc. Apply from the repository root: git apply agent/wip/MAP-11.patch
+What it is: steps 0 and 1 of agent/packets/MAP-11.md - the mapping engine's default JaCoCo branch floor 0.80 -> 0.90,
+and engine/structure and engine/structure-import lose their 0.80 / 0.00 overrides, so both inherit 0.90 / 0.90.
+Observed (agent/work/MAP-11-live-lines.log and -live-branches.log are committed; the build's 657 KB log and the
+effective-pom's are not): step 0 - with -Djacoco.min.lines=0.95
+engine/structure failed at jacoco-check ("lines covered ratio is 0.93, but expected minimum is 0.95"), with
+-Djacoco.min.branches=0.99 engine/mapping failed the same way (0.98 against 0.99); step 1 - with this patch
+`./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` exit 0, 16 modules SUCCESS, "All coverage checks have been
+met." in the nine engine modules and the service; effective-pom: 0.90 / 0.90 in the nine, service 0.80 / 0.00.
+Not done: the packet's steps 2 and 3 (the documents, the verifier's second run, the review), acceptance 5.
+Not to be finished as the row says without the owner's word: the stop message says coverage floors are to become a
+nightly report that blocks nothing.
+
+diff --git a/mapping/engine/structure-import/pom.xml b/mapping/engine/structure-import/pom.xml
+index e2686c3b..3968a8af 100644
+--- a/mapping/engine/structure-import/pom.xml
++++ b/mapping/engine/structure-import/pom.xml
+@@ -12,9 +12,6 @@
+   <name>Rail8 Mapping structure-import</name>
+ 
+   <properties>
+-    <!-- ADR-0019: lines >= 80 %, no branch floor -->
+-    <jacoco.min.lines>0.80</jacoco.min.lines>
+-    <jacoco.min.branches>0.00</jacoco.min.branches>
+     <!-- no mutation floor (ADR-0019) -->
+     <pit.skip>true</pit.skip>
+     <!-- the XSD reader library (ADR-0008) -->
+diff --git a/mapping/engine/structure/pom.xml b/mapping/engine/structure/pom.xml
+index aa6ef955..3ced0364 100644
+--- a/mapping/engine/structure/pom.xml
++++ b/mapping/engine/structure/pom.xml
+@@ -12,9 +12,6 @@
+   <name>Rail8 Mapping structure</name>
+ 
+   <properties>
+-    <!-- ADR-0019: lines >= 80 %, no branch floor -->
+-    <jacoco.min.lines>0.80</jacoco.min.lines>
+-    <jacoco.min.branches>0.00</jacoco.min.branches>
+     <!-- no mutation floor (ADR-0019) -->
+     <pit.skip>true</pit.skip>
+   </properties>
+diff --git a/mapping/pom.xml b/mapping/pom.xml
+index 49242410..bfc25ff1 100644
+--- a/mapping/pom.xml
++++ b/mapping/pom.xml
+@@ -62,9 +62,10 @@
+     <!-- in-memory file system with Windows path semantics, service tests only (#44) -->
+     <jimfs.version>1.3.2</jimfs.version>
+ 
+-    <!-- JaCoCo floors (ADR-0019): class-C default; structure, structure-import and service override -->
++    <!-- JaCoCo floors (ADR-0019 as D-164 amends it): every engine module with code takes 90 % of
++         lines and of branches; the service overrides -->
+     <jacoco.min.lines>0.90</jacoco.min.lines>
+-    <jacoco.min.branches>0.80</jacoco.min.branches>
++    <jacoco.min.branches>0.90</jacoco.min.branches>
+     <!-- PIT floor (ADR-0019); mapping-nightly.yml runs it, it is not bound to verify -->
+     <pit.mutation.threshold>80</pit.mutation.threshold>
+     <pit.failWhenNoMutations>true</pit.failWhenNoMutations>

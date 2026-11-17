@@ -1,0 +1,464 @@
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/root/.m2/wrapper/dists/apache-maven-3.9.11/a2d47e15/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Rail8 Mapping                                                      [pom]
+[INFO] Rail8 Mapping engine                                               [pom]
+[INFO] Rail8 Mapping xdm                                                  [jar]
+[INFO] Rail8 Mapping structure                                            [jar]
+[INFO] Rail8 Mapping ir                                                   [jar]
+[INFO] Rail8 Mapping mapping                                              [jar]
+[INFO] 
+[INFO] ---------------< dev.rail8.mapping:rail8-mapping-parent >---------------
+[INFO] Building Rail8 Mapping 0.1.0-SNAPSHOT                              [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] Rule 2: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-parent ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/target/jacoco.exec
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-parent ---
+[INFO] The goal is skip due to packaging 'pom'
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-parent ---
+[INFO] 
+[INFO] --- spotless:3.10.4:check (corpus-bench-format) @ rail8-mapping-parent ---
+[INFO] Spotless.Java is keeping 3 files clean - 0 needs changes to be clean, 0 were already clean, 3 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-parent ---
+[INFO] Skipping JaCoCo execution due to missing execution data file.
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-parent ---
+[INFO] Skipping JaCoCo execution due to missing execution data file:/home/user/flottila/mapping/target/jacoco.exec
+[INFO] 
+[INFO] ---------------< dev.rail8.mapping:rail8-mapping-engine >---------------
+[INFO] Building Rail8 Mapping engine 0.1.0-SNAPSHOT                       [2/6]
+[INFO]   from engine/pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-engine ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-engine ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-saxon) @ rail8-mapping-engine ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-engine ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/engine/target/jacoco.exec
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-engine ---
+[INFO] The goal is skip due to packaging 'pom'
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-engine ---
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-engine ---
+[INFO] Skipping JaCoCo execution due to missing execution data file.
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-engine ---
+[INFO] Skipping JaCoCo execution due to missing execution data file:/home/user/flottila/mapping/engine/target/jacoco.exec
+[INFO] 
+[INFO] ----------------< dev.rail8.mapping:rail8-mapping-xdm >-----------------
+[INFO] Building Rail8 Mapping xdm 0.1.0-SNAPSHOT                          [3/6]
+[INFO]   from engine/xdm/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-xdm ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-xdm ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-saxon) @ rail8-mapping-xdm ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-xdm ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/engine/xdm/target/jacoco.exec
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-xdm ---
+[INFO] Included licenses (whitelist): [Apache-2.0, MIT, MIT-0, BSD, EDL-1.0, ISC, 0BSD, MPL-2.0, EPL]
+[INFO] Writing third-party file to /home/user/flottila/mapping/engine/xdm/target/generated-sources/license/THIRD-PARTY.txt
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ rail8-mapping-xdm ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/xdm/src/main/resources
+[INFO] Copying 1 resource from target/generated-sources/license to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ rail8-mapping-xdm ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ rail8-mapping-xdm ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/xdm/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ rail8-mapping-xdm ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.1:test (default-test) @ rail8-mapping-xdm ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+[INFO] Running dev.rail8.mapping.xdm.StatisticFunctionsTest
+[INFO] Tests run: 1043, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.609 s -- in dev.rail8.mapping.xdm.StatisticFunctionsTest
+[INFO] Running dev.rail8.mapping.xdm.NumberPatternTest
+[INFO] Tests run: 65, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.120 s -- in dev.rail8.mapping.xdm.NumberPatternTest
+[INFO] Running dev.rail8.mapping.xdm.FormatDateTest
+[INFO] Tests run: 52, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.092 s -- in dev.rail8.mapping.xdm.FormatDateTest
+[INFO] Running dev.rail8.mapping.xdm.ContextFunctionsExistsMapWithDefaultTest
+[INFO] Tests run: 426, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.347 s -- in dev.rail8.mapping.xdm.ContextFunctionsExistsMapWithDefaultTest
+[INFO] Running dev.rail8.mapping.xdm.SuppressPathsInterruptionTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in dev.rail8.mapping.xdm.SuppressPathsInterruptionTest
+[INFO] Running dev.rail8.mapping.xdm.QueueBlockTest
+[INFO] Tests run: 211, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.167 s -- in dev.rail8.mapping.xdm.QueueBlockTest
+[INFO] Running dev.rail8.mapping.xdm.TableTextTest
+[INFO] Tests run: 203, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.207 s -- in dev.rail8.mapping.xdm.TableTextTest
+[INFO] Running dev.rail8.mapping.xdm.ContextFunctionsSuppressTest
+[INFO] Tests run: 435, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.241 s -- in dev.rail8.mapping.xdm.ContextFunctionsSuppressTest
+[INFO] Running dev.rail8.mapping.xdm.ContextFunctionsSortTest
+[INFO] Tests run: 748, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.358 s -- in dev.rail8.mapping.xdm.ContextFunctionsSortTest
+[INFO] Running dev.rail8.mapping.xdm.XsDecimalTest
+[INFO] Tests run: 274, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.097 s -- in dev.rail8.mapping.xdm.XsDecimalTest
+[INFO] Running dev.rail8.mapping.xdm.ContextFunctionsTest
+[INFO] Tests run: 3356, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.008 s -- in dev.rail8.mapping.xdm.ContextFunctionsTest
+[INFO] Running dev.rail8.mapping.xdm.ConstantFunctionsTest
+[INFO] Tests run: 229, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.076 s -- in dev.rail8.mapping.xdm.ConstantFunctionsTest
+[INFO] Running dev.rail8.mapping.xdm.QueueBlockSuppressTest
+[INFO] Tests run: 226, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.069 s -- in dev.rail8.mapping.xdm.QueueBlockSuppressTest
+[INFO] Running dev.rail8.mapping.xdm.LiftingTest
+[INFO] Tests run: 1265, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.324 s -- in dev.rail8.mapping.xdm.LiftingTest
+[INFO] Running dev.rail8.mapping.xdm.JavaPatternTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in dev.rail8.mapping.xdm.JavaPatternTest
+[INFO] Running dev.rail8.mapping.xdm.DatePatternTest
+[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in dev.rail8.mapping.xdm.DatePatternTest
+[INFO] Running dev.rail8.mapping.xdm.LiftBodyNullTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in dev.rail8.mapping.xdm.LiftBodyNullTest
+[INFO] Running dev.rail8.mapping.xdm.BooleanFunctionsTest
+[INFO] Tests run: 851, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.230 s -- in dev.rail8.mapping.xdm.BooleanFunctionsTest
+[INFO] Running dev.rail8.mapping.xdm.ContextFunctionsSuppressReadingsTest
+[INFO] Tests run: 1671, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.343 s -- in dev.rail8.mapping.xdm.ContextFunctionsSuppressReadingsTest
+[INFO] Running dev.rail8.mapping.xdm.FormatNumberTest
+[INFO] Tests run: 45, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in dev.rail8.mapping.xdm.FormatNumberTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 11151, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.4.1:jar (default-jar) @ rail8-mapping-xdm ---
+[INFO] Building jar: /home/user/flottila/mapping/engine/xdm/target/rail8-mapping-xdm-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-xdm ---
+[INFO] Spotless.Java is keeping 37 files clean - 0 needs changes to be clean, 0 were already clean, 37 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-xdm ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/xdm/target/jacoco.exec
+[INFO] Analyzed bundle 'Rail8 Mapping xdm' with 25 classes
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-xdm ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/xdm/target/jacoco.exec
+[INFO] Analyzed bundle 'rail8-mapping-xdm' with 25 classes
+[INFO] All coverage checks have been met.
+[INFO] 
+[INFO] -------------< dev.rail8.mapping:rail8-mapping-structure >--------------
+[INFO] Building Rail8 Mapping structure 0.1.0-SNAPSHOT                    [4/6]
+[INFO]   from engine/structure/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-structure ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-structure ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-saxon) @ rail8-mapping-structure ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-structure ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/engine/structure/target/jacoco.exec
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-structure ---
+[INFO] Included licenses (whitelist): [Apache-2.0, MIT, MIT-0, BSD, EDL-1.0, ISC, 0BSD, MPL-2.0, EPL]
+[INFO] Writing third-party file to /home/user/flottila/mapping/engine/structure/target/generated-sources/license/THIRD-PARTY.txt
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ rail8-mapping-structure ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/structure/src/main/resources
+[INFO] Copying 1 resource from target/generated-sources/license to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ rail8-mapping-structure ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ rail8-mapping-structure ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/structure/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ rail8-mapping-structure ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.6.1:test (default-test) @ rail8-mapping-structure ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+[INFO] Running dev.rail8.mapping.structure.StructureTest
+[INFO] Tests run: 409, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.013 s -- in dev.rail8.mapping.structure.StructureTest
+[INFO] Running dev.rail8.mapping.structure.WsdlOperationTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in dev.rail8.mapping.structure.WsdlOperationTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 412, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.4.1:jar (default-jar) @ rail8-mapping-structure ---
+[INFO] Building jar: /home/user/flottila/mapping/engine/structure/target/rail8-mapping-structure-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-structure ---
+[INFO] Spotless.Java is keeping 18 files clean - 0 needs changes to be clean, 0 were already clean, 18 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-structure ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/structure/target/jacoco.exec
+[INFO] Analyzed bundle 'Rail8 Mapping structure' with 16 classes
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-structure ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/structure/target/jacoco.exec
+[INFO] Analyzed bundle 'rail8-mapping-structure' with 16 classes
+[INFO] All coverage checks have been met.
+[INFO] 
+[INFO] -----------------< dev.rail8.mapping:rail8-mapping-ir >-----------------
+[INFO] Building Rail8 Mapping ir 0.1.0-SNAPSHOT                           [5/6]
+[INFO]   from engine/ir/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-ir ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-ir ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-saxon) @ rail8-mapping-ir ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-ir ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/engine/ir/target/jacoco.exec
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-ir ---
+[INFO] Included licenses (whitelist): [Apache-2.0, MIT, MIT-0, BSD, EDL-1.0, ISC, 0BSD, MPL-2.0, EPL]
+[INFO] Writing third-party file to /home/user/flottila/mapping/engine/ir/target/generated-sources/license/THIRD-PARTY.txt
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ rail8-mapping-ir ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/ir/src/main/resources
+[INFO] Copying 1 resource from target/generated-sources/license to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ rail8-mapping-ir ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 23 source files with javac [debug parameters release 25 module-path] to target/classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ rail8-mapping-ir ---
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/ir/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ rail8-mapping-ir ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug parameters release 25 module-path] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.1:test (default-test) @ rail8-mapping-ir ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+[INFO] Running dev.rail8.mapping.ir.LiftVerifierTest
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.369 s -- in dev.rail8.mapping.ir.LiftVerifierTest
+[INFO] Running dev.rail8.mapping.ir.TargetRepeatVerifierTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in dev.rail8.mapping.ir.TargetRepeatVerifierTest
+[INFO] Running dev.rail8.mapping.ir.LiftSlotVariablesTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in dev.rail8.mapping.ir.LiftSlotVariablesTest
+[INFO] Running dev.rail8.mapping.ir.TargetSlotsBodyTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in dev.rail8.mapping.ir.TargetSlotsBodyTest
+[INFO] Running dev.rail8.mapping.ir.IrOptimiserTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in dev.rail8.mapping.ir.IrOptimiserTest
+[INFO] Running dev.rail8.mapping.ir.FunCallTypingTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in dev.rail8.mapping.ir.FunCallTypingTest
+[INFO] Running dev.rail8.mapping.ir.IrVerifierTest
+[INFO] Tests run: 51, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.122 s -- in dev.rail8.mapping.ir.IrVerifierTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.4.1:jar (default-jar) @ rail8-mapping-ir ---
+[INFO] Building jar: /home/user/flottila/mapping/engine/ir/target/rail8-mapping-ir-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-ir ---
+[INFO] Spotless.Java is keeping 31 files clean - 0 needs changes to be clean, 0 were already clean, 31 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-ir ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/ir/target/jacoco.exec
+[INFO] Analyzed bundle 'Rail8 Mapping ir' with 20 classes
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-ir ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/ir/target/jacoco.exec
+[INFO] Analyzed bundle 'rail8-mapping-ir' with 20 classes
+[INFO] All coverage checks have been met.
+[INFO] 
+[INFO] --------------< dev.rail8.mapping:rail8-mapping-mapping >---------------
+[INFO] Building Rail8 Mapping mapping 0.1.0-SNAPSHOT                      [6/6]
+[INFO]   from engine/mapping/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce) @ rail8-mapping-mapping ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] Rule 3: org.apache.maven.enforcer.rules.dependency.DependencyConvergence passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-jmh) @ rail8-mapping-mapping ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-no-saxon) @ rail8-mapping-mapping ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- jacoco:0.8.16:prepare-agent (jacoco-prepare) @ rail8-mapping-mapping ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.16/org.jacoco.agent-0.8.16-runtime.jar=destfile=/home/user/flottila/mapping/engine/mapping/target/jacoco.exec
+[INFO] 
+[INFO] --- exec:3.6.4:exec (function-families) @ rail8-mapping-mapping ---
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+[INFO] 
+[INFO] --- license:2.7.1:add-third-party (check-licences) @ rail8-mapping-mapping ---
+[INFO] Included licenses (whitelist): [Apache-2.0, MIT, MIT-0, BSD, EDL-1.0, ISC, 0BSD, MPL-2.0, EPL]
+[INFO] Writing third-party file to /home/user/flottila/mapping/engine/mapping/target/generated-sources/license/THIRD-PARTY.txt
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ rail8-mapping-mapping ---
+[INFO] Copying 1 resource from ../../contract to target/classes/dev/rail8/mapping/mapping/internal
+[INFO] skip non existing resourceDirectory /home/user/flottila/mapping/engine/mapping/src/main/resources
+[INFO] Copying 1 resource from target/generated-resources/function-families to target/classes
+[INFO] Copying 1 resource from target/generated-sources/license to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ rail8-mapping-mapping ---
+[WARNING] *********************************************************************************************************************************************
+[WARNING] * Required filename-based automodules detected: [json-sKema-0.32.0.jar]. Please don't publish this project to a public artifact repository! *
+[WARNING] *********************************************************************************************************************************************
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 40 source files with javac [debug parameters release 25 module-path] to target/classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ rail8-mapping-mapping ---
+[INFO] Copying 6 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ rail8-mapping-mapping ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 26 source files with javac [debug parameters release 25 module-path] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.1:test (default-test) @ rail8-mapping-mapping ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=32789 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+[INFO] Running dev.rail8.mapping.mapping.FunctionCatalogueTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.375 s -- in dev.rail8.mapping.mapping.FunctionCatalogueTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelModelCheckTest
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.070 s -- in dev.rail8.mapping.mapping.MappingModelModelCheckTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelLoadTest
+[INFO] Tests run: 32, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.083 s -- in dev.rail8.mapping.mapping.MappingModelLoadTest
+[INFO] Running dev.rail8.mapping.mapping.SuppressCatalogueEntriesTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in dev.rail8.mapping.mapping.SuppressCatalogueEntriesTest
+[INFO] Running dev.rail8.mapping.mapping.FunctionCatalogueReadTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in dev.rail8.mapping.mapping.FunctionCatalogueReadTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelWriterTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in dev.rail8.mapping.mapping.MappingModelWriterTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelSchemaStageTest
+[INFO] Tests run: 81, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.178 s -- in dev.rail8.mapping.mapping.MappingModelSchemaStageTest
+[INFO] Running dev.rail8.mapping.mapping.JsonSourceLoweringTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.043 s -- in dev.rail8.mapping.mapping.JsonSourceLoweringTest
+[INFO] Running dev.rail8.mapping.mapping.LiftLoweringTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in dev.rail8.mapping.mapping.LiftLoweringTest
+[INFO] Running dev.rail8.mapping.mapping.DiagnosticOrderTest
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in dev.rail8.mapping.mapping.DiagnosticOrderTest
+[INFO] Running dev.rail8.mapping.mapping.SingleValueLoweringTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in dev.rail8.mapping.mapping.SingleValueLoweringTest
+[INFO] Running dev.rail8.mapping.mapping.ExistsMapWithDefaultCatalogueEntriesTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in dev.rail8.mapping.mapping.ExistsMapWithDefaultCatalogueEntriesTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelRoundTripTest
+[INFO] Tests run: 224, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.426 s -- in dev.rail8.mapping.mapping.MappingModelRoundTripTest
+[INFO] Running dev.rail8.mapping.mapping.FunctionBoxLoweringTest
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in dev.rail8.mapping.mapping.FunctionBoxLoweringTest
+[INFO] Running dev.rail8.mapping.mapping.MappingModelSchemaDriftTest
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by net.bytebuddy.dynamic.loading.ClassInjector$UsingUnsafe$Dispatcher$CreationAction (file:/root/.m2/repository/net/bytebuddy/byte-buddy/1.18.3/byte-buddy-1.18.3.jar)
+WARNING: Please consider reporting this to the maintainers of class net.bytebuddy.dynamic.loading.ClassInjector$UsingUnsafe$Dispatcher$CreationAction
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.616 s -- in dev.rail8.mapping.mapping.MappingModelSchemaDriftTest
+[INFO] Running dev.rail8.mapping.mapping.FunctionCatalogueSchemaTest
+[INFO] Tests run: 49, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.183 s -- in dev.rail8.mapping.mapping.FunctionCatalogueSchemaTest
+[INFO] Running dev.rail8.mapping.mapping.UnreachableBoxTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in dev.rail8.mapping.mapping.UnreachableBoxTest
+[INFO] Running dev.rail8.mapping.mapping.LoweringTest
+[INFO] Tests run: 51, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.109 s -- in dev.rail8.mapping.mapping.LoweringTest
+[INFO] Running dev.rail8.mapping.mapping.internal.StrictJsonReaderBoundsTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in dev.rail8.mapping.mapping.internal.StrictJsonReaderBoundsTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 563, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.4.1:jar (default-jar) @ rail8-mapping-mapping ---
+[INFO] Building jar: /home/user/flottila/mapping/engine/mapping/target/rail8-mapping-mapping-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.4:check (spotless-check) @ rail8-mapping-mapping ---
+[INFO] Spotless.Java is keeping 66 files clean - 0 needs changes to be clean, 0 were already clean, 66 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- jacoco:0.8.16:report (jacoco-report) @ rail8-mapping-mapping ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/mapping/target/jacoco.exec
+[INFO] Analyzed bundle 'Rail8 Mapping mapping' with 48 classes
+[INFO] 
+[INFO] --- jacoco:0.8.16:check (jacoco-check) @ rail8-mapping-mapping ---
+[INFO] Loading execution data file /home/user/flottila/mapping/engine/mapping/target/jacoco.exec
+[INFO] Analyzed bundle 'rail8-mapping-mapping' with 48 classes
+[WARNING] Rule violated for bundle rail8-mapping-mapping: branches covered ratio is 0.98, but expected minimum is 0.99
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Rail8 Mapping 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] Rail8 Mapping ...................................... SUCCESS [  1.182 s]
+[INFO] Rail8 Mapping engine ............................... SUCCESS [  0.030 s]
+[INFO] Rail8 Mapping xdm .................................. SUCCESS [  7.905 s]
+[INFO] Rail8 Mapping structure ............................ SUCCESS [  2.271 s]
+[INFO] Rail8 Mapping ir ................................... SUCCESS [  2.982 s]
+[INFO] Rail8 Mapping mapping .............................. FAILURE [  9.548 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  24.995 s
+[INFO] Finished at: 2026-11-17T00:33:53Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.16:check (jacoco-check) on project rail8-mapping-mapping: Coverage checks have not been met. See log for details. -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :rail8-mapping-mapping

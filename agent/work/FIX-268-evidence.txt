@@ -1,0 +1,66 @@
+FIX-268 evidence. Machine: 4 cores, kernel 6.18.44-fc-v509, docker server 29.9.2. Date 2026-11-17. Commit
+77b2c587af1e83f3fb34bc9580c533445e64e2d6
+Run 1 of part A raced the deploy one-shot (sync POST empty, A.2 id empty); kept as FIX-268-stack-run1-raced.log, not
+evidence.
+Run 2 (final) = FIX-268-stack.log, script FIX-268-run.sh (waits for deploy exit 0, 8 s). Host Postgres 16 left online;
+no port clash.
+A.1 VERIFIED_PASS FIX-268-stack.log:139-153: 9 services, no kafka, no clickhouse; deploy exited 0 (poll 8 s); /health
+200 UP
+A.2 VERIFIED_PASS FIX-268-stack.log:158-185: POST /in 200 PartnerInvoice reply; POST /invoice/async 202 id
+388e98fc-0506-48e9-8a00-3ae632cd2b87;
+    timeline last step partner OK attempt 1 (poll 1 s)
+A.3 VERIFIED_PASS FIX-268-stack.log:186-210: echo stopped; 202 M1=e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc; DLQ lists M1
+after 3 s (attempt 2,
+    step validate/partner conn refused 8090); timeline attempts 1 and 2 each FAILED at partner
+A.4 VERIFIED_PASS FIX-268-stack.log:211-261: retry 202 {"id":M1,"attempt":3}; timeline attempts 1,2 FAILED then 3 OK to
+partner (poll 1 s);
+    DLQ {"items":[]}; second retry 404 "no DLQ row for message M1"
+A.5 VERIFIED_PASS FIX-268-stack.log:262-331: 202 M2=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29; retry 202 attempt 3; timeline
+1 FAILED,2 FAILED,3 OK;
+    stand-in sends 9 (503 x8, 200 x1); distinct x-message-id: 1 value = M2. nsenter via sudo -n, port 8090 as packet
+says
+A.6 VERIFIED_PASS FIX-268-node.log: ERROR lines 0; FIX-268-stack.log:332-: down -v exit 0.
+    docker volume ls: 2 anonymous volumes remain (0d42590610a3.., b9ab9473eeb4..); containers inspiring_ardinghelli and
+    gracious_kilby (postgres:18.6, Exited 45 min / 45 h ago) predate this run (listed before part B); not the stack's
+B.1 VERIFIED_PASS FIX-268-it.log exit 0 BUILD SUCCESS: NodeIT 40/0/0/0 (all four named cases ok), InvoiceAsyncIT
+3/0/0/0,
+    AtLeastOnceIntakeIT 3/0/0/0, AdminDlqRestartIT 7/0/0/0, ComposeStackTest 24/0/0/0 (kafkaOnlyUnderTheKafkaProfile,
+    theDefaultUpStartsNeitherKafkaNorClickhouse ok). ps watch FIX-268-ps.log: grep -ci kafka = 0; images seen:
+postgres:18.6,
+    testcontainers/ryuk:0.14.0, valkey/valkey:8 (103 lines)
+B.2 VERIFIED_PASS NoKafkaClientTest 1/0/0/0 in api, core, runtime (it.log:77,164,498) and nokafka.log:70-413: api,
+core, sftp,
+    xslt, validate, http, runtime, mock; 8 files by find, all 8 ran. No module without one noted. nokafka.log exit 0,
+no OOM
+Platform-thread blocked lines: grep -ci blocked it.log = 0
+
+Architect's notes (2026-11-17; read from the logs, plus `docker ps -a --filter volume=<id>`; nothing else run):
+ Secrets: no token or key in any FIX-268 file. Every `Bearer` in FIX-268-stack.log is `Bearer ***` (10 of 10); every
+  hex string of 32 or more digits in the logs is the commit, an image digest, a container id or a volume id.
+ A.5, the count of sends: 9 = two runs of four sends answered 503 (attempts 1 and 2 of the message: the flow's
+  `delivery.retries.count: 1`, each run sending four times under the step's `retry.attempts: 3`), then the
+  retried attempt 3's one send answered 200. All nine carry the one id (FIX-268-stack.log:277-284 and the log's
+  second print after the retry).
+ A.6, the two volumes left: 0d42590610a3 belongs to the container gracious_kilby and b9ab9473eeb4 to
+  inspiring_ardinghelli - two postgres:18.6 test containers of earlier builds (exited 45 h and 49 min before this
+  note; the second died with the container restart of 2026-11-16 23:25 UTC). None is the stack's.
+ B.1, the watch: FIX-268-ps.log is a sample every 5 s and is not complete - it never saw the localstack container
+  that the run started. The complete list is the build's own: FIX-268-it.log's "Container <image> is starting"
+  lines name localstack/localstack:4 (1), postgres:18.6 (4), testcontainers/ryuk:0.14.0 (1), valkey/valkey:8 (1)
+  and no Kafka image; the word "kafka" appears in that log only in the names of NoKafkaClientTest's runs.
+ B.2: "a module with production code and no such test" was not looked for by the verifier. The eight test files
+  are in api, core, runtime, components http / mock / sftp, steps xslt / validate; the reactor's other modules
+  with main code - cli, sim, testkit, bench - have none. docs/GATE.md :105-110 asks it of the core modules.
+ The first run of part A (FIX-268-stack-run1-raced.log, FIX-268-node-run1.log) raced the deploy one-shot and is
+  not evidence; it is kept for the record of what the race looked like.
+ci on GitHub for the measured commit (read by the architect 2026-11-17): run 255 (id 43985634330) on
+ 77b2c587af1e83f3fb34bc9580c533445e64e2d6, by job name -
+ "build · unit · integration (-Pit) · ArchUnit · coverage floors · no-decrease · Postgres floor 17.11": success;
+ "build · unit · integration (-Pit) · ArchUnit · coverage floors · no-decrease · Postgres main 18.6": success;
+ "DCO sign-off on every commit": success;
+ "stack (deploy/compose: up, /health within 60 s, deploy exit 0, demo listed)": success;
+ "mutation (PIT, api + core)" and "bench (native Postgres on the runner)": skipped, as on every push.
+NOT JUDGED. The session stopped on 2026-11-17 before the gate-reviewer ran: no verdict exists on check 7 or on
+ condition 6, HANDOVER.md and bench/RESULTS.md are unchanged, and agent/wip/FIX-268-close.py holds the architect's
+ drafts for after a MET verdict. Committed with this file: FIX-268-stack.log, -node.log, -ps.log, -it.log,
+ -nokafka.log, -build.log, -run.sh. Not committed: run 1's two logs (the raced run, not evidence).

@@ -1,0 +1,210 @@
+rail8-1  | SLF4J(W): No SLF4J providers were found.
+rail8-1  | SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+rail8-1  | SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+rail8-1  | Nov 17, 2026 12:15:13 AM dev.rail8.runtime.journal.MasterKeySource load
+rail8-1  | WARNING: RAIL8_JOURNAL_KEY_GENERATE=true: the journal's master key is the generated file /var/lib/rail8/journal/MASTER, beside the data it protects (anyone who reads the journal directory reads every record). For a single dev node only (D-106): give every other node RAIL8_JOURNAL_KEY_FILE
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.FlywayExecutor init
+rail8-1  | INFO: Environment: default
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.FlywayExecutor init
+rail8-1  | INFO: Database: jdbc:postgresql:******** (PostgreSQL 18.6)
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory allAppliedMigrations
+rail8-1  | INFO: Schema history table "public"."flyway_schema_history" does not exist yet
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.internal.command.DbValidate validate
+rail8-1  | INFO: Successfully validated 19 migrations (execution time 00:00.035s)
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.internal.schemahistory.JdbcTableSchemaHistory create
+rail8-1  | INFO: Creating Schema History table "public"."flyway_schema_history" ...
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.internal.command.DbMigrate migrateGroup
+rail8-1  | INFO: Current version of schema "public": << Empty Schema >>
+rail8-1  | Nov 17, 2026 12:15:14 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "1 - m1 schema"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "2 - snapshots"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "3 - dlq by reference"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "4 - work attempts"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "5 - admin paging"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "6 - bodies"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "7 - deployments"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "8 - processed ids"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "9 - deployment dependencies"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "10 - retention"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "11 - drop payloads"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "12 - journal"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "13 - journal losses"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "14 - node lease"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "15 - work key seq"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "16 - audit"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "17 - restart"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "18 - peer address"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate doMigrateGroup
+rail8-1  | INFO: Migrating schema "public" to version "19 - message attempt"
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.internal.command.DbMigrate logSummary
+rail8-1  | INFO: Successfully applied 19 migrations to schema "public", now at version v19 (execution time 00:00.141s)
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.FlywayExecutor init
+rail8-1  | INFO: Environment: default
+rail8-1  | Nov 17, 2026 12:15:15 AM org.flywaydb.core.FlywayExecutor init
+rail8-1  | INFO: Database: jdbc:postgresql:******** (PostgreSQL 18.6)
+rail8-1  | Nov 17, 2026 12:15:15 AM dev.rail8.runtime.node.Node notices
+rail8-1  | WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+rail8-1  | Nov 17, 2026 12:15:15 AM dev.rail8.runtime.node.Node notices
+rail8-1  | WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+rail8-1  | Nov 17, 2026 12:15:15 AM dev.rail8.runtime.node.Node notices
+rail8-1  | WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+rail8-1  | Nov 17, 2026 12:15:15 AM dev.rail8.runtime.store.Retention once
+rail8-1  | INFO: retention run DONE (cutoff 2026-11-10T00:15:15.912382268Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+rail8-1  | Nov 17, 2026 12:15:29 AM dev.rail8.core.flow.FlowWorker failed
+rail8-1  | WARNING: message e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc of flow demo/invoice-async failed at worker stack (attempt 1 of 2); its retry waits PT1S: io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090
+rail8-1  | io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090
+rail8-1  | 	Suppressed: io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090
+rail8-1  | 	Caused by: java.net.ConnectException: Connection refused (connect failed)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnectNow(Unknown Source)
+rail8-1  | 		at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(Unknown Source)
+rail8-1  | 		at io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:330)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:387)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:435)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210)
+rail8-1  | 		at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+rail8-1  | 		at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+rail8-1  | 		at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+rail8-1  | 		at java.base/java.lang.Thread.run(Unknown Source)
+rail8-1  | 	Suppressed: io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090
+rail8-1  | 	Caused by: java.net.ConnectException: Connection refused (connect failed)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnectNow(Unknown Source)
+rail8-1  | 		at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(Unknown Source)
+rail8-1  | 		at io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:330)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:387)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:435)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210)
+rail8-1  | 		at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+rail8-1  | 		at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+rail8-1  | 		at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+rail8-1  | 		at java.base/java.lang.Thread.run(Unknown Source)
+rail8-1  | 	Suppressed: io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090
+rail8-1  | 	Caused by: java.net.ConnectException: Connection refused (connect failed)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+rail8-1  | 		at java.base/sun.nio.ch.Net.pollConnectNow(Unknown Source)
+rail8-1  | 		at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(Unknown Source)
+rail8-1  | 		at io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:330)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:387)
+rail8-1  | 		at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:435)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+rail8-1  | 		at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274)
+rail8-1  | 		at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210)
+rail8-1  | 		at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+rail8-1  | 		at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+rail8-1  | 		at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+rail8-1  | 		at java.base/java.lang.Thread.run(Unknown Source)
+rail8-1  | Caused by: java.net.ConnectException: Connection refused (connect failed)
+rail8-1  | 	at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+rail8-1  | 	at java.base/sun.nio.ch.Net.pollConnectNow(Unknown Source)
+rail8-1  | 	at java.base/sun.nio.ch.SocketChannelImpl.finishConnect(Unknown Source)
+rail8-1  | 	at io.netty.channel.socket.nio.NioSocketChannel.doFinishConnect(NioSocketChannel.java:330)
+rail8-1  | 	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.finishConnect(AbstractNioChannel.java:387)
+rail8-1  | 	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:435)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+rail8-1  | 	at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274)
+rail8-1  | 	at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210)
+rail8-1  | 	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+rail8-1  | 	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+rail8-1  | 	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+rail8-1  | 	at java.base/java.lang.Thread.run(Unknown Source)
+rail8-1  | 
+rail8-1  | Nov 17, 2026 12:15:40 AM dev.rail8.core.flow.FlowWorker failed
+rail8-1  | WARNING: message 55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 of flow demo/invoice-async failed at worker stack (attempt 1 of 2); its retry waits PT1S: dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)
+rail8-1  | 
+rail8-1  | dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)
+rail8-1  | 
+rail8-1  | 	at dev.rail8.components.http.HttpComponent$HttpProducer.lambda$reply$1(HttpComponent.java:504)
+rail8-1  | 	at io.vertx.core.impl.future.Composition.complete(Composition.java:40)
+rail8-1  | 	at io.vertx.core.impl.future.FutureBase.signalComplete(FutureBase.java:104)
+rail8-1  | 	at io.vertx.core.impl.future.FutureBase.emitResult(FutureBase.java:87)
+rail8-1  | 	at io.vertx.core.impl.future.FutureImpl.completeInternal(FutureImpl.java:137)
+rail8-1  | 	at io.vertx.core.impl.future.FutureImpl.tryComplete(FutureImpl.java:143)
+rail8-1  | 	at dev.rail8.components.http.HttpComponent$HttpProducer.lambda$head$1(HttpComponent.java:514)
+rail8-1  | 	at io.vertx.core.internal.ContextInternal.dispatch(ContextInternal.java:257)
+rail8-1  | 	at io.vertx.core.internal.ContextInternal.dispatch(ContextInternal.java:239)
+rail8-1  | 	at io.vertx.core.http.impl.HttpEventHandler.handleEnd(HttpEventHandler.java:76)
+rail8-1  | 	at io.vertx.core.http.impl.HttpClientResponseImpl.handleTrailers(HttpClientResponseImpl.java:332)
+rail8-1  | 	at io.vertx.core.http.impl.StatisticsGatheringHttpClientStream.lambda$trailersHandler$1(StatisticsGatheringHttpClientStream.java:140)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection$StreamImpl.handleEnd(Http1ClientConnection.java:729)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection$Stream$1.handleMessage(Http1ClientConnection.java:447)
+rail8-1  | 	at io.vertx.core.internal.concurrent.InboundMessageQueue.test(InboundMessageQueue.java:86)
+rail8-1  | 	at io.vertx.core.streams.impl.MessagePassingQueue.drain(MessagePassingQueue.java:228)
+rail8-1  | 	at io.vertx.core.streams.impl.MessagePassingQueue.drain(MessagePassingQueue.java:210)
+rail8-1  | 	at io.vertx.core.internal.concurrent.InboundMessageQueue.drainInternal(InboundMessageQueue.java:168)
+rail8-1  | 	at io.vertx.core.internal.concurrent.InboundMessageQueue.drain(InboundMessageQueue.java:145)
+rail8-1  | 	at io.vertx.core.internal.concurrent.InboundMessageQueue.write(InboundMessageQueue.java:132)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection$Stream.onEnd(Http1ClientConnection.java:500)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection.handleResponseEnd(Http1ClientConnection.java:1012)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection.handleHttpMessage(Http1ClientConnection.java:873)
+rail8-1  | 	at io.vertx.core.http.impl.http1.Http1ClientConnection.handleMessage(Http1ClientConnection.java:831)
+rail8-1  | 	at io.vertx.core.net.impl.VertxConnection.read(VertxConnection.java:309)
+rail8-1  | 	at io.vertx.core.net.impl.VertxHandler.channelRead(VertxHandler.java:170)
+rail8-1  | 	at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:355)
+rail8-1  | 	at io.netty.channel.CombinedChannelDuplexHandler$DelegatingChannelHandlerContext.fireChannelRead(CombinedChannelDuplexHandler.java:434)
+rail8-1  | 	at io.netty.handler.codec.ByteToMessageDecoder.fireChannelRead(ByteToMessageDecoder.java:361)
+rail8-1  | 	at io.netty.handler.codec.ByteToMessageDecoder.channelRead(ByteToMessageDecoder.java:325)
+rail8-1  | 	at io.netty.channel.CombinedChannelDuplexHandler.channelRead(CombinedChannelDuplexHandler.java:249)
+rail8-1  | 	at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:355)
+rail8-1  | 	at io.netty.channel.DefaultChannelPipeline$HeadContext.channelRead(DefaultChannelPipeline.java:1471)
+rail8-1  | 	at io.netty.channel.DefaultChannelPipeline.fireChannelRead(DefaultChannelPipeline.java:960)
+rail8-1  | 	at io.netty.channel.nio.AbstractNioByteChannel$NioByteUnsafe.read(AbstractNioByteChannel.java:176)
+rail8-1  | 	at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:448)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+rail8-1  | 	at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+rail8-1  | 	at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:274)
+rail8-1  | 	at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:210)
+rail8-1  | 	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+rail8-1  | 	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+rail8-1  | 	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+rail8-1  | 	at java.base/java.lang.Thread.run(Unknown Source)
+rail8-1  | 	Suppressed: dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)
+rail8-1  | 
+rail8-1  | 		... 47 more
+rail8-1  | 	Suppressed: dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)
+rail8-1  | 
+rail8-1  | 		... 47 more
+rail8-1  | 	Suppressed: dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)
+rail8-1  | 
+rail8-1  | 		... 47 more
+rail8-1  | 

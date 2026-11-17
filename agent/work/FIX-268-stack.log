@@ -1,0 +1,390 @@
+## A.1
+commit 77b2c587af1e83f3fb34bc9580c533445e64e2d6
+$ docker compose up -d --build
+ Image rail8-stack:local Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 508B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.41kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/eclipse-temurin:25.0.4.1_1-jre-noble
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 DONE 0.0s
+
+#5 [1/6] FROM docker.io/library/eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f
+#5 resolve docker.io/library/eclipse-temurin:25.0.4.1_1-jre-noble@sha256:ce8543ddd3070ccbeaac2106a74c9387ddeb8d47a1c43348345715c1ef245c7f 0.0s done
+#5 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context:
+#4 transferring context: 7.32kB 0.6s done
+#4 DONE 0.6s
+
+#6 [3/6] WORKDIR /opt/rail8
+#6 CACHED
+
+#7 [4/6] COPY platform/runtime/target/lib/ lib/
+#7 CACHED
+
+#8 [5/6] COPY platform/runtime/target/rail8-runtime-*.jar ./
+#8 CACHED
+
+#9 [2/6] RUN useradd --system --user-group --uid 10001 --create-home --home-dir /var/lib/rail8 rail8
+#9 CACHED
+
+#10 [6/6] RUN set -- rail8-runtime-*.jar && [ "$#" -eq 1 ] && [ -f "$1" ] && mv "$1" rail8-runtime.jar
+#10 CACHED
+
+#11 exporting to image
+#11 exporting layers done
+#11 exporting manifest sha256:369509f0d2f4820b3553cf4c0c95034571578b77e3afd56eb0e0f239ed065de8 done
+#11 exporting config sha256:77bf7c1675803b045e9a4b83ad1380bf95ef0d4dfc6d1a4828ee73330e17387b done
+#11 exporting attestation manifest sha256:823d75f843a095a27db2a6a7aa06f57bf0714aa5436c2b782d0d3b1b8c972272 done
+#11 exporting manifest list sha256:8bc30f786e1ccc6be5c10985edf4a267bd0c64bf543aca54adaac1ad44199d45 done
+#11 naming to docker.io/library/rail8-stack:local done
+#11 unpacking to docker.io/library/rail8-stack:local done
+#11 DONE 0.1s
+
+#12 resolving provenance for metadata file
+#12 DONE 0.0s
+ Image rail8-stack:local Built 
+ Network compose_default Creating 
+ Network compose_default Creating 
+ Volume compose_pg-data Creating 
+ Volume compose_pg-data Creating 
+ Volume compose_sftp-fingerprint Creating 
+ Volume compose_sftp-fingerprint Creating 
+ Volume compose_rail8-data Creating 
+ Volume compose_rail8-data Creating 
+ Volume compose_s3-data Creating 
+ Volume compose_s3-data Creating 
+ Volume compose_sftp-hostkeys Creating 
+ Volume compose_sftp-hostkeys Creating 
+ Volume compose_sftp-data Creating 
+ Volume compose_sftp-data Creating 
+ Volume compose_pg-data Created 
+ Volume compose_pg-data Created 
+ Volume compose_rail8-data Created 
+ Volume compose_rail8-data Created 
+ Volume compose_sftp-fingerprint Created 
+ Volume compose_sftp-fingerprint Created 
+ Volume compose_sftp-data Created 
+ Volume compose_sftp-data Created 
+ Volume compose_s3-data Created 
+ Volume compose_s3-data Created 
+ Volume compose_sftp-hostkeys Created 
+ Volume compose_sftp-hostkeys Created 
+ Network compose_default Created 
+ Network compose_default Created 
+ Container compose-postgres-1 Creating 
+ Container compose-valkey-1 Creating 
+ Container compose-sftp-keys-1 Creating 
+ Container compose-s3-1 Creating 
+ Container compose-netns-1 Creating 
+ Container compose-sftp-keys-1 Created 
+ Container compose-sftp-1 Creating 
+ Container compose-valkey-1 Created 
+ Container compose-netns-1 Created 
+ Container compose-postgres-1 Created 
+ Container compose-s3-1 Created 
+ Container compose-rail8-1 Creating 
+ Container compose-sftp-1 Created 
+ Container compose-rail8-1 Created 
+ Container compose-deploy-1 Creating 
+ Container compose-echo-1 Creating 
+ Container compose-deploy-1 Created 
+ Container compose-echo-1 Created 
+ Container compose-valkey-1 Starting 
+ Container compose-netns-1 Starting 
+ Container compose-postgres-1 Starting 
+ Container compose-sftp-keys-1 Starting 
+ Container compose-s3-1 Starting 
+ Container compose-valkey-1 Started 
+ Container compose-netns-1 Started 
+ Container compose-postgres-1 Started 
+ Container compose-sftp-keys-1 Started 
+ Container compose-sftp-keys-1 Waiting 
+ Container compose-s3-1 Started 
+ Container compose-sftp-keys-1 Waiting 
+ Container compose-postgres-1 Waiting 
+ Container compose-valkey-1 Waiting 
+ Container compose-s3-1 Waiting 
+ Container compose-netns-1 Waiting 
+ Container compose-sftp-keys-1 Exited 
+ Container compose-sftp-1 Starting 
+ Container compose-sftp-1 Started 
+ Container compose-sftp-keys-1 Exited 
+ Container compose-valkey-1 Healthy 
+ Container compose-netns-1 Healthy 
+ Container compose-postgres-1 Healthy 
+ Container compose-s3-1 Healthy 
+ Container compose-rail8-1 Starting 
+ Container compose-rail8-1 Started 
+ Container compose-netns-1 Waiting 
+ Container compose-rail8-1 Waiting 
+ Container compose-rail8-1 Waiting 
+ Container compose-netns-1 Healthy 
+ Container compose-rail8-1 Healthy 
+ Container compose-rail8-1 Healthy 
+ Container compose-echo-1 Starting 
+ Container compose-deploy-1 Starting 
+ Container compose-echo-1 Started 
+ Container compose-deploy-1 Started 
+[exit 0]
+[poll A.1 deploy exited: 8 s, satisfied]
+$ docker compose ps -a
+NAME                  IMAGE                                                                                       COMMAND                   SERVICE     CREATED          STATUS                      PORTS
+compose-deploy-1      eclipse-temurin:25.0.4.1_1-jre-noble                                                        "sh -c 'jar=$(ls /cl…"    deploy      19 seconds ago   Exited (0) 1 second ago     
+compose-echo-1        eclipse-temurin:25.0.4.1_1-jdk-noble                                                        "/__cacert_entrypoin…"    echo        19 seconds ago   Up 9 seconds (healthy)      
+compose-netns-1       eclipse-temurin:25.0.4.1_1-jre-noble                                                        "/__cacert_entrypoin…"    netns       19 seconds ago   Up 19 seconds (healthy)     127.0.0.1:8080-8082->8080-8082/tcp
+compose-postgres-1    postgres:18.6                                                                               "docker-entrypoint.s…"    postgres    19 seconds ago   Up 18 seconds (healthy)     5432/tcp
+compose-rail8-1       rail8-stack:local                                                                           "sh -c 'RAIL8_SECRET…"    rail8       19 seconds ago   Up 14 seconds (healthy)     
+compose-s3-1          chrislusf/seaweedfs:4.50                                                                    "sh -c 'printf '{\"id…"   s3          19 seconds ago   Up 18 seconds (healthy)     7333/tcp, 8080/tcp, 8333/tcp, 8888/tcp, 9333/tcp, 18080/tcp, 18888/tcp, 19333/tcp
+compose-sftp-1        atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961   "sh -c 'chown 1001:1…"    sftp        19 seconds ago   Up 18 seconds (healthy)     22/tcp
+compose-sftp-keys-1   atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961   "sh -c 'set -e\nif [ …"   sftp-keys   19 seconds ago   Exited (0) 18 seconds ago   
+compose-valkey-1      valkey/valkey:8.1.11                                                                        "tini -- docker-entr…"    valkey      19 seconds ago   Up 19 seconds (healthy)     6379/tcp
+[exit 0]
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/health 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 643
+
+{"status":"UP","checks":{"deployments":"UP","journal":"UP","postgres":"UP"},"snapshotWriteFailures":0,"notices":["the journal's master key is generated (RAIL8_JOURNAL_KEY_GENERATE=true) and lies beside the data it protects: for a single dev node only; give every other node RAIL8_JOURNAL_KEY_FILE (D-106)","RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)","one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))","no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)"]}
+## A.2
+$ curl --noproxy '*' -i -X POST localhost:8080/in --data-binary @/home/user/flottila/examples/demo/fixtures/sample-invoice.xml
+HTTP/1.1 200 OK
+date: Tue, 17 Nov 2026 00:15:27 GMT
+content-type: application/xml
+content-length: 197
+
+<?xml version="1.0" encoding="UTF-8"?>
+<PartnerInvoice number="4711" currency="CZK">
+   <Total>550.5</Total>
+   <Item sku="A-1" amount="200"/>
+   <Item sku="B-7" amount="350.5"/>
+</PartnerInvoice>
+
+$ curl --noproxy '*' -i -X POST localhost:8082/invoice/async --data-binary @/home/user/flottila/examples/demo/fixtures/sample-invoice.xml
+HTTP/1.1 202 Accepted
+x-message-id: 388e98fc-0506-48e9-8a00-3ae632cd2b87
+content-length: 0
+
+
+id=388e98fc-0506-48e9-8a00-3ae632cd2b87
+[poll A.2 timeline: 1 s, satisfied]
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/messages/388e98fc-0506-48e9-8a00-3ae632cd2b87 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 2942
+
+{"id":"388e98fc-0506-48e9-8a00-3ae632cd2b87","flow":"demo/invoice-async","steps":[{"step":0,"attempt":1,"name":"ingress","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.195498Z","wallNanos":0,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:b4c427b0c6f0f555","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":1,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.225010Z","wallNanos":3242499,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:b4c427b0c6f0f555","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":1,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.228383Z","wallNanos":1783458,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4711"},"body":{"hash":"sha256-64:b4c427b0c6f0f555","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":1,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.230186Z","wallNanos":103536,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4711"},"body":{"hash":"sha256-64:b4c427b0c6f0f555","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":1,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.230298Z","wallNanos":816013,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4711"},"body":{"hash":"sha256-64:d609b1e877a718cf","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":1,"name":"partner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:27.231132Z","wallNanos":8298820,"cpuNanos":null,"headers":{"date":"Tue, 17 Nov 2026 00:15:27 GMT","content-type":"application/xml"},"props":{"http.path":"/invoice/async","http.method":"POST","PARTNER":"domestic","http.status":200},"keys":{"invoiceId":"4711"},"body":{"hash":"sha256-64:d609b1e877a718cf","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}}]}
+## A.3
+$ docker compose stop echo
+ Container compose-echo-1 Stopping 
+ Container compose-echo-1 Stopped 
+[exit 0]
+$ curl --noproxy '*' -i -X POST localhost:8082/invoice/async --data-binary @/tmp/tmp.0KGHm9zKMr/4801.xml
+HTTP/1.1 202 Accepted
+x-message-id: e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc
+content-length: 0
+
+
+M1=e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc
+[poll A.3 dlq: 3 s, satisfied]
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/dlq 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 609
+
+{"items":[{"id":"e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc","flow":"demo/invoice-async","step":1,"name":"validate","error":"io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090","parkedAt":"2026-11-17T00:15:31.345626Z","headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}}],"next":null}
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/messages/e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 5628
+
+{"id":"e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc","flow":"demo/invoice-async","steps":[{"step":0,"attempt":1,"name":"ingress","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.836221Z","wallNanos":0,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":1,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.859893Z","wallNanos":4555026,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":1,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.864573Z","wallNanos":1964202,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":1,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.866571Z","wallNanos":157113,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":1,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.866738Z","wallNanos":951936,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":1,"name":"partner","outcome":"FAILED","error":"io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090","startedAt":"2026-11-17T00:15:28.867708Z","wallNanos":715335068,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":2,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.618049Z","wallNanos":2394923,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":2,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.620501Z","wallNanos":1529770,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":2,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.622059Z","wallNanos":127348,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":2,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.622195Z","wallNanos":1079022,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":2,"name":"partner","outcome":"FAILED","error":"io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090","startedAt":"2026-11-17T00:15:30.623299Z","wallNanos":711219759,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}}]}
+## A.4
+$ docker compose start echo
+ Container compose-sftp-keys-1 Starting 
+ Container compose-sftp-keys-1 Started 
+ Container compose-netns-1 Waiting 
+ Container compose-sftp-keys-1 Waiting 
+ Container compose-postgres-1 Waiting 
+ Container compose-valkey-1 Waiting 
+ Container compose-s3-1 Waiting 
+ Container compose-postgres-1 Healthy 
+ Container compose-netns-1 Healthy 
+ Container compose-valkey-1 Healthy 
+ Container compose-sftp-keys-1 Exited 
+ Container compose-s3-1 Healthy 
+ Container compose-rail8-1 Waiting 
+ Container compose-netns-1 Waiting 
+ Container compose-rail8-1 Healthy 
+ Container compose-netns-1 Healthy 
+ Container compose-echo-1 Starting 
+ Container compose-echo-1 Started 
+[exit 0]
+[poll A.4 echo healthy: 2 s, satisfied]
+$ docker compose ps echo
+NAME             IMAGE                                  COMMAND                  SERVICE   CREATED          STATUS                   PORTS
+compose-echo-1   eclipse-temurin:25.0.4.1_1-jdk-noble   "/__cacert_entrypoin…"   echo      28 seconds ago   Up 2 seconds (healthy)   
+[exit 0]
+$ curl --noproxy '*' -i -X POST -H 'Authorization: Bearer ***' localhost:8081/admin/dlq/e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc/retry 
+HTTP/1.1 202 Accepted
+content-type: application/json
+content-length: 57
+
+{"id":"e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc","attempt":3}
+[poll A.4 timeline: 1 s, satisfied]
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/messages/e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 8097
+
+{"id":"e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc","flow":"demo/invoice-async","steps":[{"step":0,"attempt":1,"name":"ingress","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.836221Z","wallNanos":0,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":1,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.859893Z","wallNanos":4555026,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":1,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.864573Z","wallNanos":1964202,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":1,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.866571Z","wallNanos":157113,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":1,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:28.866738Z","wallNanos":951936,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":1,"name":"partner","outcome":"FAILED","error":"io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090","startedAt":"2026-11-17T00:15:28.867708Z","wallNanos":715335068,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":2,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.618049Z","wallNanos":2394923,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":2,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.620501Z","wallNanos":1529770,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":2,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.622059Z","wallNanos":127348,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":2,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:30.622195Z","wallNanos":1079022,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":2,"name":"partner","outcome":"FAILED","error":"io.netty.channel.AbstractChannel$AnnotatedConnectException: Connection refused (connect failed): localhost/127.0.0.1:8090","startedAt":"2026-11-17T00:15:30.623299Z","wallNanos":711219759,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":3,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:35.851554Z","wallNanos":1946271,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":3,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":3,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:35.853543Z","wallNanos":1562581,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":3,"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":3,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:35.855131Z","wallNanos":128951,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":3,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:74c2e8e73b7033f0","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":3,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:35.855268Z","wallNanos":3552153,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":3,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":3,"name":"partner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:35.858847Z","wallNanos":64414990,"cpuNanos":null,"headers":{"date":"Tue, 17 Nov 2026 00:15:35 GMT","content-type":"application/xml"},"props":{"http.method":"POST","PARTNER":"domestic","http.status":200,"attempt":3,"http.path":"/invoice/async"},"keys":{"invoiceId":"4801"},"body":{"hash":"sha256-64:6daa8fb7c49bf6ce","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}}]}
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/dlq 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 24
+
+{"items":[],"next":null}
+$ curl --noproxy '*' -i -X POST -H 'Authorization: Bearer ***' localhost:8081/admin/dlq/e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc/retry 
+HTTP/1.1 404 Not Found
+content-type: application/json
+content-length: 71
+
+{"error":"no DLQ row for message e2bcb85d-ce41-40c0-8c19-d1b9ffe651fc"}
+## A.5
+$ docker compose stop echo
+ Container compose-echo-1 Stopping 
+ Container compose-echo-1 Stopped 
+[exit 0]
+netns pid=4467
+$ curl --noproxy '*' -i -X POST localhost:8082/invoice/async --data-binary @/tmp/tmp.0KGHm9zKMr/4802.xml
+HTTP/1.1 202 Accepted
+x-message-id: 55c8aaa1-20ad-4d65-aa4e-19a1541bdc29
+content-length: 0
+
+
+M2=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29
+[poll A.5 dlq: 3 s, satisfied]
+$ cat /tmp/tmp.0KGHm9zKMr/partner.log
+1 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+2 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+3 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+4 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+5 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+6 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+7 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+8 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+[exit 0]
+$ curl --noproxy '*' -i -X POST -H 'Authorization: Bearer ***' localhost:8081/admin/dlq/55c8aaa1-20ad-4d65-aa4e-19a1541bdc29/retry 
+HTTP/1.1 202 Accepted
+content-type: application/json
+content-length: 57
+
+{"id":"55c8aaa1-20ad-4d65-aa4e-19a1541bdc29","attempt":3}
+[poll A.5 timeline: 1 s, satisfied]
+$ curl --noproxy '*' -i -X GET -H 'Authorization: Bearer ***' localhost:8081/admin/messages/55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 
+HTTP/1.1 200 OK
+content-type: application/json
+content-length: 8116
+
+{"id":"55c8aaa1-20ad-4d65-aa4e-19a1541bdc29","flow":"demo/invoice-async","steps":[{"step":0,"attempt":1,"name":"ingress","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:39.601037Z","wallNanos":0,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":1,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:39.610125Z","wallNanos":2602735,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":1,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:39.612783Z","wallNanos":2001968,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":1,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:39.614811Z","wallNanos":163214,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":1,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:39.614983Z","wallNanos":894180,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":1,"name":"partner","outcome":"FAILED","error":"dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)\n","startedAt":"2026-11-17T00:15:39.615892Z","wallNanos":717554974,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"PARTNER":"domestic","http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":2,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:41.357786Z","wallNanos":2398286,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":2,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:41.360231Z","wallNanos":2248309,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":2,"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":2,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:41.362508Z","wallNanos":139252,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":2,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:41.362655Z","wallNanos":891419,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":2,"name":"partner","outcome":"FAILED","error":"dev.rail8.api.NackException: not accepted (retryable): HTTP 503 from partner-domestic: partner down (stand-in)\n","startedAt":"2026-11-17T00:15:41.363561Z","wallNanos":713573450,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":2,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":1,"attempt":3,"name":"validate","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:42.703782Z","wallNanos":1873226,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":3,"http.path":"/invoice/async","http.method":"POST"},"keys":{},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":2,"attempt":3,"name":"extractKey","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:42.705694Z","wallNanos":1598024,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"attempt":3,"http.path":"/invoice/async","http.method":"POST"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":3,"attempt":3,"name":"route","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:42.707319Z","wallNanos":186792,"cpuNanos":null,"headers":{"content-type":"application/x-www-form-urlencoded","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":3,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:4b90ec4f1101daee","size":211,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":4,"attempt":3,"name":"toPartner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:42.707518Z","wallNanos":1329196,"cpuNanos":null,"headers":{"content-type":"application/xml","accept":"*/*","user-agent":"curl/8.5.0"},"props":{"http.path":"/invoice/async","attempt":3,"http.method":"POST","PARTNER":"domestic"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}},{"step":5,"attempt":3,"name":"partner","outcome":"OK","error":null,"startedAt":"2026-11-17T00:15:42.708868Z","wallNanos":2715149,"cpuNanos":null,"headers":{"date":"Tue, 17 Nov 2026 00:15:42 GMT","server":"BaseHTTP/0.6 Python/3.13.18","content-type":"application/xml"},"props":{"http.method":"POST","PARTNER":"domestic","http.status":200,"attempt":3,"http.path":"/invoice/async"},"keys":{"invoiceId":"4802"},"body":{"hash":"sha256-64:aa3def5224a69bd3","size":197,"kept":true},"versions":{"flow":"demo/invoice-async@0.1.0","package":"demo@0.1.0"}}]}
+$ cat /tmp/tmp.0KGHm9zKMr/partner.log
+1 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+2 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+3 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+4 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+5 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+6 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+7 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+8 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 503
+9 POST /echo x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 bytes=197 -> 200
+[exit 0]
+sends=9 503=8 200=1
+distinct x-message-id: x-message-id=55c8aaa1-20ad-4d65-aa4e-19a1541bdc29 
+$ docker compose start echo
+ Container compose-sftp-keys-1 Starting 
+ Container compose-sftp-keys-1 Started 
+ Container compose-netns-1 Waiting 
+ Container compose-sftp-keys-1 Waiting 
+ Container compose-postgres-1 Waiting 
+ Container compose-valkey-1 Waiting 
+ Container compose-s3-1 Waiting 
+ Container compose-sftp-keys-1 Exited 
+ Container compose-valkey-1 Healthy 
+ Container compose-netns-1 Healthy 
+ Container compose-postgres-1 Healthy 
+ Container compose-s3-1 Healthy 
+ Container compose-netns-1 Waiting 
+ Container compose-rail8-1 Waiting 
+ Container compose-netns-1 Healthy 
+ Container compose-rail8-1 Healthy 
+ Container compose-echo-1 Starting 
+ Container compose-echo-1 Started 
+[exit 0]
+## A.6
+ERROR lines: 0
+$ docker compose --profile history --profile kafka down -v
+ Container compose-deploy-1 Stopping 
+ Container compose-echo-1 Stopping 
+ Container compose-sftp-1 Stopping 
+ Container compose-deploy-1 Stopped 
+ Container compose-deploy-1 Removing 
+ Container compose-deploy-1 Removed 
+ Container compose-echo-1 Stopped 
+ Container compose-echo-1 Removing 
+ Container compose-echo-1 Removed 
+ Container compose-rail8-1 Stopping 
+ Container compose-sftp-1 Stopped 
+ Container compose-sftp-1 Removing 
+ Container compose-sftp-1 Removed 
+ Container compose-rail8-1 Stopped 
+ Container compose-rail8-1 Removing 
+ Container compose-rail8-1 Removed 
+ Container compose-netns-1 Stopping 
+ Container compose-postgres-1 Stopping 
+ Container compose-valkey-1 Stopping 
+ Container compose-sftp-keys-1 Stopping 
+ Container compose-s3-1 Stopping 
+ Container compose-sftp-keys-1 Stopped 
+ Container compose-sftp-keys-1 Removing 
+ Container compose-sftp-keys-1 Removed 
+ Container compose-postgres-1 Stopped 
+ Container compose-postgres-1 Removing 
+ Container compose-postgres-1 Removed 
+ Container compose-valkey-1 Stopped 
+ Container compose-valkey-1 Removing 
+ Container compose-valkey-1 Removed 
+ Container compose-netns-1 Stopped 
+ Container compose-netns-1 Removing 
+ Container compose-netns-1 Removed 
+ Container compose-s3-1 Stopped 
+ Container compose-s3-1 Removing 
+ Container compose-s3-1 Removed 
+ Volume compose_pg-data Removing 
+ Volume compose_sftp-hostkeys Removing 
+ Volume compose_sftp-fingerprint Removing 
+ Network compose_default Removing 
+ Volume compose_pg-data Removed 
+ Volume compose_rail8-data Removing 
+ Volume compose_sftp-data Removing 
+ Volume compose_s3-data Removing 
+ Volume compose_sftp-fingerprint Removed 
+ Volume compose_sftp-hostkeys Removed 
+ Volume compose_sftp-data Removed 
+ Volume compose_s3-data Removed 
+ Volume compose_rail8-data Removed 
+ Network compose_default Removed 
+[exit 0]
+$ docker volume ls
+DRIVER    VOLUME NAME
+local     0d42590610a382faf2f76a4b757f9acbdd4472c40db490edd1067f8d6c21dafd
+local     b9ab9473eeb4cf23202850090cbcdb17634f4cccfe4e8c0264d78db2ce0aa615
+[exit 0]

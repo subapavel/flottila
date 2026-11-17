@@ -1,4 +1,19 @@
 
+## 2026-11-17 — the session stopped on the owner's relayed request: MAP-12b done, the rest saved unfinished
+
+- Stop: a message from the owner's other session ("Rail8 projekt restructuring") relayed his request to stop; it was not typed
+  in this session, which reports to him and waits. Nothing new was started after it; two running agents were let finish.
+- MAP-12b is `done`: acceptance 4 read on GitHub - `mapping-ci` run 5 on 8d3daf37, backend job green, `BASELINE 71c3b69e...
+  run 43960684995`, ten MEASURED lines equal to the local counts, `RATCHET CHECK OK` (`agent/work/MAP-12b-evidence.txt` D).
+- FIX-268 [G]: measured on 77b2c587, every part VERIFIED_PASS, `ci` run 255 green by job name - NOT judged: no gate-reviewer
+  ran, `HANDOVER.md` and `bench/RESULTS.md` are unchanged. Evidence and logs committed; drafts in `agent/wip/FIX-268-close.py`.
+- MAP-11 [B]: steps 0 and 1 ran (check alive; build green with the 90/90 floor). Not on main: `agent/wip/MAP-11.patch`.
+- FIX-269: only the scout ran (`agent/work/FIX-269-scout.md`). No packet, no test, no code.
+- Relayed with the stop, not confirmed here, no CI changed: per change only the build with unit and integration tests and the
+  sign-off check are to block; floors, no-decrease, mutation, the second Postgres, Windows and benchmarks become a nightly
+  report. The remaining mapping test-rule rows wait for the owner; so does the date 2026-11-25 of MAP-12b's check.
+- Context compacted earlier in this episode; tree and log re-verified. `ci` run 255 (77b2c587) green; 256 (8d3daf37) not read.
+
 ## 2026-11-17 — MAP-12b the mapping's ratchet check runs on GitHub against a baseline — on main, review PASS [C] r2; acceptance 4 open
 
 - New under `mapping/scripts/`: `ratchet-baseline.sh` (the closest strict ancestor of HEAD whose push run of `mapping-ci` on `main`
