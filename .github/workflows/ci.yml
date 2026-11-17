@@ -80,6 +80,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
+        run: bin/install-jq
       # jacoco.skip: coverage is measured only in the nightly coverage job, so a fall in coverage never blocks a change.
       # -T 1C: modules that do not depend on each other build at the same time; inside a module the test classes are spread
       # over one test JVM per core (rail8.test.forks in platform/pom.xml).
@@ -118,6 +120,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
+        run: bin/install-jq
       - name: Verify on Postgres 17.11
         run: mvn -B -ntp -f platform/pom.xml verify -Pit -Djacoco.skip=true -Drail8.it.postgres=postgres:17.11
 
@@ -132,6 +136,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
+        run: bin/install-jq
       # The floors of platform/pom.xml (90 % for api and core, 75 % elsewhere) fail this job when missed.
       - name: Verify with the coverage floors
         run: mvn -B -ntp -f platform/pom.xml verify -Pit
@@ -162,6 +168,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
+        run: bin/install-jq
       - name: Build the jars the node image and the deploy one-shot use
         run: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime,:rail8-cli -am
       - name: Start the stack and wait for /health (60 s bound)

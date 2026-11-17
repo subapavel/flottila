@@ -44,6 +44,7 @@
     <vertx.version>5.1.10</vertx.version>
     <junit.version>5.14.4</junit.version>
     <jqwik.version>1.10.2</jqwik.version>
+    <rail8-jq.version>0.1.0-SNAPSHOT</rail8-jq.version>
     <archunit.version>1.5.1</archunit.version>
     <testcontainers.version>2.0.5</testcontainers.version>
     <slf4j.version>2.0.17</slf4j.version>
@@ -119,6 +120,17 @@
         <groupId>dev.rail8</groupId>
         <artifactId>rail8-step-validate</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.rail8</groupId>
+        <artifactId>rail8-step-jq</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- The jq engine (Apache-2.0), built from jq/ and installed by bin/install-jq before the platform is built -->
+      <dependency>
+        <groupId>dev.rail8.jq</groupId>
+        <artifactId>rail8-jq-core</artifactId>
+        <version>${rail8-jq.version}</version>
       </dependency>
       <dependency>
         <groupId>dev.rail8</groupId>

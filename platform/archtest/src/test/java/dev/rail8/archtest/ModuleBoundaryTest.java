@@ -51,9 +51,9 @@ class ModuleBoundaryTest {
 
     /**
      * The exemption of {@link Rules#ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS} is used, not idle: the production Main exists and
-     * wires the shipped http component, the xslt steps with the xpath language and the xsd step (F-4).
+     * wires the shipped http component, the xslt steps with the xpath language, the xsd step and the jq step.
      */
-    @Test void mainIsTheWiringPointOfHttpXsltAndXsd() {
+    @Test void mainIsTheWiringPointOfHttpXsltXsdAndJq() {
         assertTrue(tree.contain(Rules.MAIN), "runtime has its wiring point " + Rules.MAIN);
         Set<String> wired = new TreeSet<>();
         for (JavaClass c : tree) {
@@ -63,7 +63,7 @@ class ModuleBoundaryTest {
                 if (target.startsWith("dev.rail8.components.") || target.startsWith("dev.rail8.steps.")) wired.add(target);
             }
         }
-        assertTrue(wired.containsAll(Set.of("dev.rail8.components.http", "dev.rail8.steps.xslt", "dev.rail8.steps.validate")),
-                "Main wires http, xslt/xpath and xsd; it names: " + wired);
+        assertTrue(wired.containsAll(Set.of("dev.rail8.components.http", "dev.rail8.steps.xslt", "dev.rail8.steps.validate", "dev.rail8.steps.jq")),
+                "Main wires http, xslt/xpath, xsd and jq; it names: " + wired);
     }
 }

@@ -1,0 +1,8 @@
+# `rail8 test` on two sync flows with a jq step (TestCommandTest): one maps an order for the partner, one counts down
+# recursively with its own recursion depth of 20 000, above the default of 10 000.
+schemaVersion: 1
+kind: package
+name: jq
+version: 0.1.0
+description: Two sync flows with a jq step, sending its result to the partner.
+dependencies: []

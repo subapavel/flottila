@@ -18,6 +18,7 @@
   <modules>
     <module>xslt</module>
     <module>validate</module>
+    <module>jq</module>
   </modules>
 
 </project>

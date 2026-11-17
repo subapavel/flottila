@@ -232,7 +232,7 @@ steps:
 ```
 
 Built-in step types: `to`, `route`, `filter`, `extractKey`, `validate`, `split`. Shipped step
-modules: `xslt` (Saxon-HE) and `xsd`. Conditions are XPath by default.
+modules: `xslt` (Saxon-HE), `xsd` and `jq`. Conditions are XPath by default.
 
 An endpoint names its scheme, direction and options, with an optional overlay per environment
 (`environments.<env>.config`), so one flow file is the same in every environment. An option whose
@@ -360,10 +360,18 @@ JSON reader and writer, with a command line and tests against the real jq. Embed
 default, among them a recursion depth of 10 000, settable through the engine's builder; the command
 line uses jq's own limits. Some depth limits (JSON reading, printing, comparing) are fixed at 10 000.
 
-The platform does not use the engine yet: there is no jq step.
+The `jq` step runs it in flows. Its `filter` is a jq program written in the flow, compiled once when
+the flow is built and run on each message's body, read whole as one JSON document. It must give
+exactly one result, which becomes the next body as compact JSON (`application/json`). A run has the
+engine's embedded limits, except two: the bytes it writes are bounded by the flow's `maxBodyBytes`,
+and its recursion depth is the step's `maxRecursionDepth`, else the node's
+`RAIL8_JQ_MAX_RECURSION_DEPTH` (10 000, at most 4 194 304). `rail8 validate` and `rail8 test` use
+10 000. A body that is not JSON is the sender's fault; an error the filter raises, no result, a
+second result or a budget run out is the flow's. The platform's build takes the engine's jar from
+the local Maven repository, put there by `bin/install-jq`; the engine's own tests run in `jq-ci`.
 
 **Planned**
-- A thin jq step in flows, with the recursion limit of 10 000 settable.
+- Wider jq in the step: the filter from a file, host variables, several results per message.
 
 ## 9. UI
 

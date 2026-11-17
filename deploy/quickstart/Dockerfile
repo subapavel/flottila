@@ -1,5 +1,5 @@
 # The quickstart's node image (docs/QUICKSTART.md, docker-compose.yml service `rail8`). It copies what the host built —
-#   mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+#   bin/install-jq && mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
 # — the runtime jar (its manifest names Main and a lib/ class path) and target/lib. Build context: the repository root;
 # Dockerfile.dockerignore keeps the context to those files.
 FROM eclipse-temurin:25.0.4.1_1-jre-noble

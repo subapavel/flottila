@@ -129,7 +129,7 @@ final class FlowTests {
         Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options));
         if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
         Package pkg = checked.pkg().orElseThrow();
-        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), Main.shipped());
+        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT));
         List<Doc> docs = run.docs(dir);
         List<String> problems = run.problems(docs);
         if (!problems.isEmpty()) return problems(problems, out);

@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 /**
  * {@code rail8 validate <dir> [--env <env>] [--deps <dir>]}: {@link Package#problems()}, then its dependencies'
  * closure resolved from the candidates ({@link Dependencies#resolve}), then — when that found no problem — the node's dry
- * build ({@link Deployments#validate}) over what a node ships ({@link Main#shipped()}) in the environment {@code --env} (dev
+ * build ({@link Deployments#validate}) over what a node ships ({@link Main#shipped(int)}) in the environment {@code --env} (dev
  * unless given, whatever {@code RAIL8_ENV} says), with in-memory stores on one Vert.x, the closure held for that call so that
  * the node's own resolution runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
  * then one {@code problem: } line per problem, each once; exit 0 without a problem, 1 with one.
@@ -57,7 +57,7 @@ final class Validate {
      *
      * @param pkg the package as loaded; empty when a file of it does not parse
      * @param problems each on one line, each once, in order: the load's, else {@link Package#problems()} and the dry build's
-     * @param schemes the schemes of the components the dry build ran over ({@link Main#shipped()}); empty when it did not run
+     * @param schemes the schemes of the components the dry build ran over ({@link Main#shipped(int)}); empty when it did not run
      * @param dependencies the closure the dry build held, leaves first; empty when it did not run
      */
     record Checked(Optional<Package> pkg, List<String> problems, Set<String> schemes, List<Dependencies.Found> dependencies) {}
@@ -135,7 +135,7 @@ final class Validate {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", env, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
                     .withSecrets(Secrets.placeholder());   // no secret off the node: references are syntax-checked, resolved to the placeholder
             FakeRuntime rt = FakeRuntime.create();
-            Main.Shipped shipped = Main.shipped();
+            Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
             Vertx vertx = Vertx.vertx();
             try {
                 Map<String, Component> components = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()))
