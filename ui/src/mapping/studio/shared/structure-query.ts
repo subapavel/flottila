@@ -1,4 +1,4 @@
-import { mutationOptions, queryOptions, useQueryClient } from '@tanstack/react-query';
+import { mutationOptions, queryOptions, skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ApiClient, RefreshResponse, StructureRequest } from '../../api/client';
 import type { MappingModel, StructureRef } from '../../generated/mapping-model';
 import type { WorkingCopyStore } from '../store/working-copy';
@@ -13,8 +13,17 @@ const structureRequest = (mappingId: string, { bundle, root }: Pick<StructureRef
 const structureQuery = (api: ApiClient, request: StructureRequest) => queryOptions({ queryKey: ['structure', request], queryFn: () => api.loadStructure(request) });
 
 /**
- * Loads a structure being chosen, under the query key `['structure', request]` of the studio's query client. It always
- * loads, never the cache's answer: a structure the service refused may have been fixed on disk since.
+ * The structure of one side as the service loads it; the trees and the rest of the studio share its query. A side not
+ * chosen yet loads nothing, and its query keeps no data.
+ */
+export function useStructure(mappingId: string, api: ApiClient, ref: StructureRef | undefined) {
+  const request = ref && structureRequest(mappingId, ref);
+  return useQuery({ queryKey: ['structure', request ?? null], queryFn: request ? () => api.loadStructure(request) : skipToken });
+}
+
+/**
+ * Loads a structure being chosen, through the query `useStructure` reads, so that the trees show it without a second
+ * load. It always loads, never the cache's answer: a structure the service refused may have been fixed on disk since.
  */
 export function useLoadStructure(mappingId: string, api: ApiClient) {
   const queryClient = useQueryClient();

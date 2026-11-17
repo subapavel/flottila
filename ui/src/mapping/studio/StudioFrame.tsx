@@ -3,6 +3,10 @@ import {
   AlertActionCloseButton,
   AlertGroup,
   Button,
+  EmptyState,
+  EmptyStateActions,
+  EmptyStateBody,
+  EmptyStateFooter,
   Flex,
   FlexItem,
   List,
@@ -17,7 +21,7 @@ import {
   TabTitleText,
   Title,
 } from '@patternfly/react-core';
-import { CheckCircleIcon, EditIcon, ExchangeAltIcon, ListAltIcon, SaveIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, CubesIcon, EditIcon, ExchangeAltIcon, ListAltIcon, ProjectDiagramIcon, SaveIcon } from '@patternfly/react-icons';
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
@@ -25,6 +29,7 @@ import { describeError, type ApiClient } from '../api/client';
 import { describeRefusal, type Refusal } from '../model/command';
 import { AboutStudio } from './AboutStudio';
 import type { BrowserStateStore } from './browser-state/browser-state';
+import { DefinitionTab } from './definition/DefinitionTab';
 import { DiscardDialog } from './DiscardDialog';
 import { MappingOverview } from './overview/MappingOverview';
 import { SaveConflict } from './SaveConflict';
@@ -36,6 +41,7 @@ import { selectUnsaved, type StudioTab, type WorkingCopyState, type WorkingCopyS
 /** The tabs the studio shows, in their order, each with its title and icon. */
 const VIEWS = [
   ['overview', 'Overview', ListAltIcon],
+  ['definition', 'Definition', ProjectDiagramIcon],
   ['signature', 'Signature', ExchangeAltIcon],
 ] as const satisfies readonly (readonly [StudioTab, string, typeof ListAltIcon])[];
 
@@ -101,7 +107,7 @@ export interface StudioFrameProps {
   api: ApiClient;
   /** The open mapping's store, whose UI slice holds the tab and edit mode. */
   store: WorkingCopyStore;
-  /** The port for viewer preferences: the tab chosen is kept there per mapping, and the Signature tab's previews. */
+  /** The port for viewer preferences: the tab chosen is kept there per mapping, and the previews and panel sizes of the Signature and Definition tabs. */
   browserState: BrowserStateStore;
   /** Told after each save the service accepted. */
   onSaved?: () => void;
@@ -124,6 +130,7 @@ type Discarding = { then: 'return to view mode' } | { then: 'close its tab'; clo
 export function StudioFrame({ mappingId, api, store, browserState, onSaved, guardClose }: StudioFrameProps) {
   const name = mappingId.slice(mappingId.lastIndexOf('/') + 1);
   const tab = useStore(store, (s) => s.tab);
+  const hasMessages = useStore(store, (s) => s.workingCopy.source !== undefined && s.workingCopy.target !== undefined);
   const editing = useStore(store, (s) => s.editing);
   const unsaved = useStore(store, selectUnsaved);
   const panelRef = useRef<HTMLElement>(null);
@@ -354,6 +361,12 @@ export function StudioFrame({ mappingId, api, store, browserState, onSaved, guar
         <StackItem isFilled>
           <TabContent id={panelId} ref={panelRef} aria-labelledby={labelId(tab)}>
             {tab === 'overview' && <MappingOverview mappingId={mappingId} store={store} />}
+            {tab === 'definition' &&
+              (hasMessages ? (
+                <DefinitionTab mappingId={mappingId} api={api} store={store} browserState={browserState} onChooseMessages={() => changeTab('signature')} />
+              ) : (
+                <ChooseMessages onChoose={() => changeTab('signature')} />
+              ))}
             {tab === 'signature' && <Signature mappingId={mappingId} api={api} store={store} browserState={browserState} />}
           </TabContent>
         </StackItem>
@@ -403,5 +416,21 @@ function CheckResult({ issues, onDismiss }: { issues: string[]; onDismiss: () =>
         CHECK_PASSED
       )}
     </Alert>
+  );
+}
+
+/** The body of Definition while the mapping lacks a message: what to do, and the way to the Signature tab. */
+function ChooseMessages({ onChoose }: { onChoose: () => void }) {
+  return (
+    <EmptyState titleText="Choose the source and target messages" headingLevel="h2" icon={CubesIcon}>
+      <EmptyStateBody>This tab needs both messages of the mapping.</EmptyStateBody>
+      <EmptyStateFooter>
+        <EmptyStateActions>
+          <Button variant="link" onClick={onChoose}>
+            Choose them on the Signature tab
+          </Button>
+        </EmptyStateActions>
+      </EmptyStateFooter>
+    </EmptyState>
   );
 }

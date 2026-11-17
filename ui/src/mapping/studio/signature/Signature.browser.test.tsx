@@ -126,6 +126,25 @@ describe('the Signature tab', () => {
     expect([saved.source?.fingerprint, saved.target?.fingerprint]).toEqual([orderStructure.fingerprint, orderStructure.fingerprint]);
   });
 
+  test("the structure a choice loads is the ['structure'] query the Definition tab shows: it loads no second time", async () => {
+    const fake = fakeApiClient(blank());
+    const loadStructure = vi.fn(fake.loadStructure);
+    renderStudio({ ...fake, loadStructure }, 'mappings/blank', { startEditing: true });
+    await button('Add source message').click();
+    await chooseElement('source', ORDER_XSD, ORDER);
+    await expect.element(choice('source')).not.toBeInTheDocument();
+    await button('Add target message').click();
+    await chooseElement('target', ORDER_XSD, ORDER);
+    await expect.element(choice('target')).not.toBeInTheDocument();
+    // a choice always loads, so that a structure fixed on disk is read again
+    expect(loadStructure).toHaveBeenCalledTimes(2);
+
+    await page.getByRole('tab', { name: 'Definition' }).click();
+
+    await expect.element(page.getByRole('table', { name: 'source fields' }).getByRole('button', { name: 'Order', exact: true })).toBeVisible();
+    expect(loadStructure).toHaveBeenCalledTimes(2);
+  });
+
   test('a structure the service refuses stays in the dialog with its diagnostics, and the working copy stays', async () => {
     renderStudio(fakeApiClient(blank()), 'mappings/blank', { startEditing: true });
     await button('Add target message').click();
