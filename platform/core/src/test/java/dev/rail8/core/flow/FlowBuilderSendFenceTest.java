@@ -93,11 +93,17 @@ class FlowBuilderSendFenceTest {
 
     /** An at-least-once flow of {@code timeout}, its {@code steps} after a message was accepted, and its worker, under the fence. */
     FlowWorker accepted(Component partner, String timeout, List<Map<String, Object>> steps) throws Exception {
+        return accepted(partner, timeout, steps, rt.timer());
+    }
+
+    /** As {@link #accepted(Component, String, List)}, the runs' time limits on {@code runLimits}. */
+    FlowWorker accepted(Component partner, String timeout, List<Map<String, Object>> steps, Timer runLimits) throws Exception {
         rt.withComponent(partner);
         StepFactory tick = ParkingTest.factory("tick", s -> Stage.of(e -> { rt.clock().advance(Duration.ofMillis(500)); return e; }));
         FlowBuilder b = new FlowBuilder(runtime(), List.of(tick), List.of(BuiltInStepsTest.HEADERS), ENDPOINTS)
                 .recording(new InMemoryMessageStore(), Meter.system()).queue(queue).dlq(dlq)
-                .targets(new Targets(Targets.DEFAULTS, Map.of(), rt.timer())).fence(fence);
+                .targets(new Targets(Targets.DEFAULTS, Map.of(), rt.timer())).fence(fence)
+                .runs(new Runs(rt.clock(), runLimits, Duration.ofMinutes(5)));
         FlowDefinition def = FlowBuilderSendDeadlineTest.flow("at-least-once", timeout, steps);
         Envelope in = rt.ingress("orders", Headers.empty(), Buffer.buffer("<order/>"));
         assertEquals(new Ack.Accepted(in.id()), b.delivery(def, NO_FILES).apply(in).await(5, SECONDS));
@@ -112,7 +118,8 @@ class FlowBuilderSendFenceTest {
     void aWorkersSendPastTheMessageDeadlineArmsNoFenceTimer() throws Exception {
         DeadlinePartner partner = new DeadlinePartner();
         cleanups.add(partner::replyAll);
-        FlowWorker w = accepted(partner, "500ms", List.of(TICK, ONCE));   // the tick takes all of the message's 500 ms
+        // the tick takes all of the message's 500 ms; the run's time limit has not fired yet, so the send itself finds no time left
+        FlowWorker w = accepted(partner, "500ms", List.of(TICK, ONCE), (delay, task) -> () -> true);
 
         assertEquals(1, w.poll().await(10, SECONDS));
         until(() -> parked().size() == 1, () -> "the refused send parked at the to (the fence open): " + parked());

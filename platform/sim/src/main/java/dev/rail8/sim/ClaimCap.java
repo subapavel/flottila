@@ -49,6 +49,8 @@ final class ClaimCap implements WorkQueue {
 
     @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return queue.renew(seq, attempts, lease); }
 
+    @Override public Future<Renewal> renewRow(long seq, int attempts, Duration lease) { return queue.renewRow(seq, attempts, lease); }
+
     @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return queue.defer(seq, attempts, delay); }
 
     @Override public Future<Boolean> stop(long seq, int attempts, Parked failure) { return queue.stop(seq, attempts, failure); }

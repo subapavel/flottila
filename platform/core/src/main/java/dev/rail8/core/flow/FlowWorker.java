@@ -58,6 +58,12 @@ import java.util.function.BooleanSupplier;
  * the item is settled only after the trail closed: a crash before that leaves the item to a rerun that records again.
  * What the trail could not persist or write never changes what is done with the item.
  *
+ * <p><b>Cancel.</b> An item marked by an operator's cancel ({@link WorkQueue.Item#cancel()}) ends: a run of one marked at its
+ * claim starts already stopped ({@link Runs#stoppedFromStart}), so its first step records the cancel; a mark the lease's
+ * renewal ({@link WorkQueue#renewRow}) or a later claim tells of stops the run that is going ({@link Runs#stop}). Either way, and
+ * for a run stopped by a cancel taken on this node, the item is completed once its run returned — after its sends settled —
+ * whatever the run did, and it is never parked, past its bound or not.
+ *
  * <p><b>Retries, then park.</b> The worker runs under a {@link RetryPolicy}: the flow's {@code delivery.retries}, else
  * the node's default ({@link FlowBuilder#retries}). Its count bounds the hand-outs of an item to count + 1, runs whose
  * outcome is in doubt included; a row with its own {@link WorkQueue.Item#maxAttempts()} (one an operator restarted for
@@ -69,7 +75,8 @@ import java.util.function.BooleanSupplier;
  * {@link Envelope#ATTEMPT} it failed at. An item without a partition key is then completed. A keyed item is parked and
  * stopped in one step ({@link WorkQueue#stop}), its partition key kept on the DLQ row: its row stays, held, the oldest of its
  * key, so the key's later items wait behind it in order until an operator retries or cancels the message, and one WARNING
- * names the message, the key and the work item. Any other failed attempt is deferred ({@link WorkQueue#defer}) by the wait before the next retry,
+ * names the message, the key and the work item. A run its time limit stopped ({@link RunStoppedException}) is a failed attempt
+ * that is not final. Any other failed attempt is deferred ({@link WorkQueue#defer}) by the wait before the next retry,
  * {@code delayBefore(attempt)}, and logged at WARNING. No thread waits across the interval: the row becomes claimable at
  * its due by any node allowed to claim it, with the same message id. A defer that fails leaves the item to its lease
  * and fails the round; one that answers false is stale, like a stale complete. The worker wakes itself at the earliest
@@ -174,6 +181,7 @@ public final class FlowWorker {
     private final Clock clock;
     private final Workers workers;
     private final WorkSignals signals;
+    private final Runs runs;
 
     private final Object lock = new Object();
     private final Map<Long, Lease> running = new HashMap<>();   // guarded by lock: claimed by this worker and not finished
@@ -195,7 +203,7 @@ public final class FlowWorker {
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, RetryPolicy retries, WorkQueue queue, MessageStore store, BlobStore blobs,
                Pipeline pipeline, Parking parking, StepConfig firstStep, Clock clock, Timer timer, Producers producers, BooleanSupplier fence,
-               Workers workers, WorkSignals signals) {
+               Workers workers, WorkSignals signals, Runs runs) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
@@ -213,6 +221,7 @@ public final class FlowWorker {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
+        this.runs = Objects.requireNonNull(runs, "runs");
     }
 
     /**
@@ -414,6 +423,7 @@ public final class FlowWorker {
      */
     private Future<Integer> claimed(AsyncResult<List<WorkQueue.Item>> claim, int asked, long since) {
         List<Lease> fresh = new ArrayList<>();
+        List<Lease> marked = new ArrayList<>();
         Promise<Integer> next;
         Promise<Void> due;
         synchronized (lock) {
@@ -427,7 +437,7 @@ public final class FlowWorker {
                 for (WorkQueue.Item item : claim.result()) {
                     Lease ours = running.get(item.seq());
                     if (ours != null) {   // its lease ran out under a run of ours that is still going: the run takes this claim on
-                        ours.adopt(item);
+                        if (ours.adopt(item)) marked.add(ours);
                         continue;
                     }
                     Lease lease = new Lease(item);
@@ -438,6 +448,7 @@ public final class FlowWorker {
             due = closeDue();   // a claim that returned nothing new to a closed worker running nothing
         }
         closeProducers(due);
+        marked.forEach(Lease::stopRun);
         List<Future<Void>> done = new ArrayList<>(fresh.size());
         for (Lease lease : fresh) done.add(process(lease, 0));
         if (next != null) poll().onComplete(next);
@@ -572,7 +583,7 @@ public final class FlowWorker {
         Thread.ofVirtual().name("rail8-worker-" + workerId + "-" + item.seq()).start(() -> {
             Verdict verdict = Verdict.LEAVE;
             try {
-                verdict = verdict(item);
+                verdict = verdict(lease);
             } finally {
                 if (lease.stop()) leftToLease();   // found lost: whoever holds it now, its lease end is claimed
                 ran.complete(verdict);
@@ -654,11 +665,15 @@ public final class FlowWorker {
     /**
      * Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. Anything
      * that fails before the run — the timeline read, the rebuild — leaves the item to its lease (past the bound: holds it); the
-     * run's failure is {@link #failed}'s to judge.
+     * run's failure is {@link #failed}'s to judge. An item marked by an operator's cancel — at its claim, or by a renewal or a
+     * claim while it runs, or a run that stopped for a cancel — ends: it is completed whatever its run did, and is never
+     * parked. One marked at its claim runs already stopped, so its first step records the cancel and nothing of the flow runs.
      */
-    private Verdict verdict(WorkQueue.Item item) {
+    private Verdict verdict(Lease lease) {
+        WorkQueue.Item item = lease.item;
         String id = item.messageId();
-        boolean exhausted = item.attempts() > bound(item);
+        WorkQueue.Cancel marked = lease.cancel();
+        boolean exhausted = marked == null && item.attempts() > bound(item);
         Envelope ingress;
         try {
             // the timeline is in attempt order: the first ingress row is attempt 1's, what arrived, never a later attempt's
@@ -688,13 +703,26 @@ public final class FlowWorker {
         Throwable failure = null;
         Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress body durable
         try {
-            trail.apply(pipeline, ingress);
+            Envelope from = ingress;
+            if (marked == null) trail.apply(pipeline, from);
+            else Runs.stoppedFromStart(cancelled(marked), () -> trail.apply(pipeline, from));
         } catch (Throwable thrown) {   // a checked one too: await() rethrows a failed future's checked cause as is
             failure = thrown;
         } finally {   // an Error too: a crashed run's bodies and rows are kept, and a rerun re-records what is missing
             trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
         }
+        WorkQueue.Cancel cancel = lease.cancel();
+        if (cancel != null || failure instanceof RunStoppedException stopped && stopped.why() instanceof Runs.Cancelled) {
+            LOG.log(System.Logger.Level.INFO, "message " + id + " of flow " + flow + " was cancelled" + (cancel == null ? "" : " by " + cancel.actor())
+                    + " and ends (work item " + item.seq() + ", attempt " + item.attempts() + ")");
+            return Verdict.COMPLETE;
+        }
         return failure == null ? Verdict.COMPLETE : failed(item, ingress, failure);
+    }
+
+    /** The stop a run of an item marked with {@code cancel} gets. */
+    private static Runs.Cancelled cancelled(WorkQueue.Cancel cancel) {
+        return new Runs.Cancelled(cancel.actor(), cancel.reason());
     }
 
     /**
@@ -906,10 +934,26 @@ public final class FlowWorker {
         private int token;                  // guarded by this
         private Timer.Cancellable next;     // guarded by this
         private Renewal renewal = Renewal.RENEWING;   // guarded by this
+        private WorkQueue.Cancel cancel;    // guarded by this: the operator's cancel the item is known to be marked with, null: none
 
         Lease(WorkQueue.Item item) {
             this.item = item;
             this.token = item.attempts();
+            this.cancel = item.cancel().orElse(null);
+        }
+
+        synchronized WorkQueue.Cancel cancel() { return cancel; }
+
+        /** {@code found}, the mark a claim or a renewal answered: true when it is news to this lease, which keeps it from now on. */
+        private synchronized boolean learnt(Optional<WorkQueue.Cancel> found) {
+            if (cancel != null || found.isEmpty()) return false;
+            cancel = found.get();
+            return true;
+        }
+
+        /** The run of the item, on this node, stopped by the cancel this lease knows of. */
+        void stopRun() {
+            runs.stop(item.messageId(), cancelled(cancel()));
         }
 
         synchronized void renewLater() {
@@ -918,13 +962,17 @@ public final class FlowWorker {
 
         synchronized int token() { return token; }
 
-        /** This worker claimed the item again while it runs: the newer attempts are the token from now on; a lost lease is renewed again. */
-        synchronized void adopt(WorkQueue.Item again) {
+        /**
+         * This worker claimed the item again while it runs: the newer attempts are the token from now on; a lost lease is renewed
+         * again. True when the claim told of a cancel this lease did not know of: the caller stops the run.
+         */
+        synchronized boolean adopt(WorkQueue.Item again) {
             token = again.attempts();
             if (renewal == Renewal.LOST) {
                 renewal = Renewal.RENEWING;
                 renewLater();
             }
+            return learnt(again.cancel());
         }
 
         /**
@@ -944,18 +992,24 @@ public final class FlowWorker {
                 if (renewal == Renewal.ENDED) return;   // fired as the run ended
                 asked = token;
             }
-            queue.renew(item.seq(), asked, policy.lease()).onComplete(answer -> renewed(asked, answer));
+            queue.renewRow(item.seq(), asked, policy.lease()).onComplete(answer -> renewed(asked, answer));
         }
 
-        /** A false answer is a lost lease only for the token still current; one for a token an adopted claim superseded is not. */
-        private void renewed(int asked, AsyncResult<Boolean> answer) {
+        /**
+         * A false answer is a lost lease only for the token still current; one for a token an adopted claim superseded is not. An
+         * answer that tells of a cancel stops the run.
+         */
+        private void renewed(int asked, AsyncResult<WorkQueue.Renewal> answer) {
             boolean lost;
+            boolean marked;
             synchronized (this) {
                 if (renewal == Renewal.ENDED) return;   // the run ended while the renewal was in flight: its answer no longer matters
-                lost = answer.succeeded() && !answer.result() && asked == token;
+                lost = answer.succeeded() && !answer.result().renewed() && asked == token;
                 if (lost) renewal = Renewal.LOST;
                 else renewLater();
+                marked = answer.succeeded() && learnt(answer.result().cancel());
             }
+            if (marked) stopRun();
             if (lost) {
                 LOG.log(System.Logger.Level.WARNING, "lease lost: message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
                         + asked + ") runs on at worker " + workerId + " but was claimed again, held or completed meanwhile; its lease is no longer renewed");

@@ -151,7 +151,8 @@ class FlowBuilderTest {
         Pipeline retried = builder.build(FlowDefinition.from(flow(List.of(Map.of("type", "flaky", "name", "io", "retryable", true)))), NO_FILES);
         Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
         Thread t = Thread.ofVirtual().start(() -> retried.apply(in));
-        while (t.isAlive()) { if (rt.timer().pending() > 0) rt.clock().advance(rt.timer().nextDelay()); Thread.onSpinWait(); Thread.yield(); }
+        // the run's time limit is pending throughout: a second task is the retry's wait, the earlier of the two
+        while (t.isAlive()) { if (rt.timer().pending() > 1) rt.clock().advance(rt.timer().nextDelay()); Thread.onSpinWait(); Thread.yield(); }
         assertEquals(2, flakyCalls.get(), "failed once, retried once, succeeded");
         Pipeline plain = builder.build(FlowDefinition.from(flow(List.of(Map.of("type", "plain", "name", "cpu")))), NO_FILES);
         assertThrows(IllegalStateException.class, () -> plain.apply(in));

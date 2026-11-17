@@ -17,7 +17,7 @@ import java.util.Set;
  * A flow file as core sees it: a plain map in (the YAML as {@code rail8-schemas} parsed and validated it), a typed definition
  * out. Core does not depend on the schema module, so the parts it needs are checked again here with the same paths in the
  * messages ({@code steps[2]}); a file that passed the schema never fails here, except for a zero {@code saveTimeout} or
- * {@code timeout}, which the schema admits. {@code recording} is the flow's policy (default:
+ * {@code timeout}, or a {@code timeout} over {@link #MAX_TIMEOUT}, which the schema admits. {@code recording} is the flow's policy (default:
  * all, keep); a step's own {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds
  * an at-least-once flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); {@code timeout} is
  * the time each run of a message has, in any delivery mode: its deadline is the run's start plus it ({@code delivery.timeout},
@@ -43,6 +43,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
 
     /** The time each run of a message has when the flow names none. */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+    /** The longest {@code delivery.timeout}: a day. */
+    public static final Duration MAX_TIMEOUT = Duration.ofHours(24);
 
     /** Why a flow document that sets {@code onFailure} is refused. */
     public static final String ON_FAILURE_GONE = "onFailure is gone: an ordered flow (partitionBy) always stops behind a message that"
@@ -65,7 +67,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         Objects.requireNonNull(saveTimeout, "delivery.saveTimeout");
         if (saveTimeout.compareTo(Duration.ZERO) <= 0) throw new IllegalArgumentException("delivery.saveTimeout must be positive, was " + saveTimeout);
         Objects.requireNonNull(timeout, "delivery.timeout");
-        if (!timeout.isPositive()) throw new IllegalArgumentException("delivery.timeout must be positive, was " + timeout);
+        if (!timeout.isPositive() || timeout.compareTo(MAX_TIMEOUT) > 0) {
+            throw new IllegalArgumentException("delivery.timeout must be positive and at most " + MAX_TIMEOUT + ", was " + timeout);
+        }
         Objects.requireNonNull(retry, "retry");
         Objects.requireNonNull(retries, "delivery.retries");
         retries.ifPresent(r -> withinRetryBounds(r, "delivery.retries"));

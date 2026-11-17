@@ -48,7 +48,9 @@ import java.util.function.Function;
  * holds the row, marked stopped ({@code stopped_at}), in one statement; {@link #stopped} pages the stopped rows on the
  * {@code work_stopped} index, which {@link #held} leaves out and {@link #release} refuses. Each held, stopped or lost row
  * ({@link #lost}) counts the rows of its key behind it ({@code blocks}); {@link #discard} deletes a lost row under its key's lock
- * and audits it in the same statement.
+ * and audits it in the same statement. A row an operator's cancel marked ({@code cancel_audit}, {@link PgFailedMessages#end}) is
+ * handed out with its mark, the cancel's actor and reason read off its audit row, and {@link #renewRow} answers the same;
+ * {@link #hold} and {@link #stop} refuse it, and {@link #defer} makes it due at once.
  *
  * <p>Body refs: an item names its input body's record by {@code body_node, body_segment,
  * body_position, body_length} (null: an older item, its body in {@code bodies}). A queue of a node claims — by the claim and
@@ -168,7 +170,14 @@ public final class PgWorkQueue implements WorkQueue {
             + " doubts = w.doubts + (w.locked_by is not null)::int";
 
     private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, doubts, max_attempts, body_node, body_segment, body_position,"
-            + " body_length";
+            + " body_length, cancel_audit";
+
+    /**
+     * The cancel a row {@code t} is marked with ({@code cancel_audit}), read off its audit row {@code a}: who cancelled it and the
+     * reason given; nulls for a row not marked.
+     */
+    private static final String MARK_COLUMNS = "a.actor as cancel_actor, a.detail->>'reason' as cancel_reason";
+    private static final String MARK = " left join audit a on a.id = t.cancel_audit";
 
     /**
      * Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. The UPDATE takes
@@ -177,7 +186,7 @@ public final class PgWorkQueue implements WorkQueue {
      * join the subselect to a Seq Scan of {@code work}, O(queue depth) per claim.
      */
     private static final String CLAIM = "with taken as (" + TAKE + " where w.seq = any(array(" + ELIGIBLE
-            + " order by w1.seq limit $3 for update skip locked))" + ITEM + ") select * from taken order by seq";
+            + " order by w1.seq limit $3 for update skip locked))" + ITEM + ") select t.*, " + MARK_COLUMNS + " from taken t" + MARK + " order by t.seq";
 
     /**
      * The node of the key's next row for the fast path that took nothing: the oldest row of key {@code $3} of flow
@@ -193,7 +202,7 @@ public final class PgWorkQueue implements WorkQueue {
      */
     private static final String CLAIM_NEXT_OF_KEY = "with taken as (" + TAKE
             + " where w.seq = any(array(" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked))" + ITEM + ")"
-            + " select t.*, " + NEXT_NODE + " as next_node from (select 1) one left join taken t on true";
+            + " select t.*, " + NEXT_NODE + " as next_node, " + MARK_COLUMNS + " from (select 1) one left join taken t on true" + MARK;
 
     /**
      * The holder's claim is the row's current one: it exists, is not held and was last handed out with
@@ -237,14 +246,19 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
-    private static final String HOLD = "update work set held_at = now()" + CURRENT;
+    /** {@link #RENEW}, answering the cancel the row is marked with: one row when the lease was extended, none otherwise. */
+    private static final String RENEW_ROW = "with t as (" + RENEW + " returning cancel_audit) select t.cancel_audit, " + MARK_COLUMNS + " from t" + MARK;
+
+    /** Only a row that is not marked by a cancel: a marked row ends, it is never held. */
+    private static final String HOLD = "update work set held_at = now()" + CURRENT + " and cancel_audit is null";
 
     /**
-     * A scheduled retry: due {@code $3} seconds after the database's {@code now()}, the holder and its
-     * lease cleared — the next hand-out counts no doubt — for the current holder only; seq, id, attempts, doubts and the body ref
-     * ({@code body_*}, which pins its journal segment) kept.
+     * A scheduled retry: due {@code $3} seconds after the database's {@code now()} — a row marked by a cancel at once, so its next
+     * hand-out ends it — the holder and its lease cleared — the next hand-out counts no doubt — for the current holder only; seq,
+     * id, attempts, doubts and the body ref ({@code body_*}, which pins its journal segment) kept.
      */
-    private static final String DEFER = "update work set available_at = now() + make_interval(secs => $3), locked_by = null, locked_until = null" + CURRENT;
+    private static final String DEFER = "update work set available_at = case when cancel_audit is null then now() + make_interval(secs => $3) else now() end,"
+            + " locked_by = null, locked_until = null" + CURRENT;
 
     /**
      * The rows of {@code w}'s key in its flow behind it (the barrier made visible), on the index {@code work_flow_key_seq};
@@ -258,14 +272,14 @@ public final class PgWorkQueue implements WorkQueue {
 
     /**
      * The stop, one statement: {@code w} locks the row {@code $19} for its current holder ({@code $20}, {@link #CURRENT}'s
-     * condition) when it is keyed and of the parked message {@code $1} in its flow {@code $2}; {@link PgDlq#parking} writes the DLQ
+     * condition) when it is keyed, not marked by a cancel and of the parked message {@code $1} in its flow {@code $2}; {@link PgDlq#parking} writes the DLQ
      * row only while {@code w} found it (the first park of the message wins) and from the kept ref of its body; {@code st} holds the
      * row and marks it stopped only while that ref is there. Both or neither: each half reads what the other reads. Answers the
      * rows stopped, the rows {@code w} found, the refs found and {@link PgDlq#REF_LOST}. A stopped row keeps its lease columns, as a
      * held one does; it is never claimed while held.
      */
     private static final String STOP = "with w as (select seq from work where seq = $19 and attempts = $20 and attempts > 0 and held_at is null"
-            + " and partition_key is not null and id = $1 and flow = $2 for update),\n" + PgDlq.parking("exists (select 1 from w)")
+            + " and partition_key is not null and cancel_audit is null and id = $1 and flow = $2 for update),\n" + PgDlq.parking("exists (select 1 from w)")
             + ",\nst as (update work set held_at = now(), stopped_at = now() where seq in (select seq from w) and exists (select 1 from b) returning seq)"
             + "\nselect (select count(*) from st), (select count(*) from w), (select count(*) from b), " + PgDlq.REF_LOST;
 
@@ -589,6 +603,12 @@ public final class PgWorkQueue implements WorkQueue {
         return pool.preparedQuery(RENEW).execute(Tuple.of(seq, attempts, seconds(lease))).map(rows -> rows.rowCount() == 1);
     }
 
+    /** {@link #RENEW_ROW}: the mark read in the statement that extends the lease. */
+    @Override public Future<Renewal> renewRow(long seq, int attempts, Duration lease) {
+        return pool.preparedQuery(RENEW_ROW).execute(Tuple.of(seq, attempts, seconds(lease)))
+                .map(rows -> rows.rowCount() == 0 ? Renewal.LOST : new Renewal(true, cancel(rows.iterator().next())));
+    }
+
     /** {@link #DEFER}: the delay on the database clock, to the microsecond (never the node's clock). */
     @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
         return pool.preparedQuery(DEFER).execute(Tuple.of(seq, attempts, delay.toNanos() / 1e9)).map(rows -> rows.rowCount() == 1);
@@ -719,15 +739,24 @@ public final class PgWorkQueue implements WorkQueue {
         return items;
     }
 
-    /** The item claimed in {@code r}; the store, if any, told where its input body lies. */
+    /** The item claimed in {@code r}, with its mark; the store, if any, told where its input body lies. */
     private Item located(Row r) {
-        Item item = item(r);
+        Integer bound = r.getInteger("max_attempts");   // null: the flow's bound
+        Item item = new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"),
+                r.getInteger("attempts"), r.getInteger("doubts"), bound == null ? 0 : bound, cancel(r));
         String bodyNode = r.getString("body_node");
         if (store != null && bodyNode != null) {
             store.located(BlobKey.body(item.messageId(), 0), bodyNode,
                     new JournalRef(r.getLong("body_segment"), r.getLong("body_position"), r.getLong("body_length")));
         }
         return item;
+    }
+
+    /** The cancel {@code r} is marked with, read with {@link #MARK_COLUMNS}; an actor whose audit row is gone reads as unknown. */
+    private static Optional<Cancel> cancel(Row r) {
+        Long audit = r.getLong("cancel_audit");
+        if (audit == null) return Optional.empty();
+        return Optional.of(new Cancel(audit, Objects.requireNonNullElse(r.getString("cancel_actor"), "unknown"), Optional.ofNullable(r.getString("cancel_reason"))));
     }
 
     private static Item item(Row r) {

@@ -8,7 +8,8 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
- * The operator's acts on a parked message: {@link #retry} runs it once more under its own id, {@link #cancel} ends it. Each act
+ * The operator's acts on a parked message: {@link #retry} runs it once more under its own id, {@link #cancel} ends it; and
+ * {@link #end}, which ends an at-least-once message wherever it is, parked or not yet done. Each act
  * that changes anything writes one audit row in the same transaction ({@code message.retry} or {@code message.cancel}, subject
  * {@code message/<id>}) and answers it as an {@link Event}; an act that changes nothing writes none.
  *
@@ -80,7 +81,7 @@ public interface FailedMessages {
      *
      * @since 0.1
      */
-    sealed interface Act permits Done, Unsettled, NotParked {}
+    sealed interface Act permits Done, Stopping, Unsettled, NotParked {}
 
     /**
      * The act committed.
@@ -93,6 +94,23 @@ public interface FailedMessages {
     record Done(Event event, Optional<String> node) implements Act {
 
         public Done {
+            Objects.requireNonNull(event, "event");
+            Objects.requireNonNull(node, "node");
+        }
+    }
+
+    /**
+     * The cancel committed on a message that has not ended: its work row is marked, and its run stops — the one running now at
+     * its holder's next renewal, a queued or waiting one at its next claim, before its first step does anything. Only
+     * {@link #end} answers it.
+     *
+     * @param event its audit row; for a message marked already, the first cancel's
+     * @param node the node holding the row's live lease, which stops the run; empty when no one holds it. Never null
+     * @since 0.1
+     */
+    record Stopping(Event event, Optional<String> node) implements Act {
+
+        public Stopping {
             Objects.requireNonNull(event, "event");
             Objects.requireNonNull(node, "node");
         }
@@ -147,6 +165,22 @@ public interface FailedMessages {
      *                                  stripping — thrown at the call
      */
     Future<Act> cancel(String messageId, Actor by, Optional<String> reason);
+
+    /**
+     * Ends the at-least-once message {@code messageId} wherever it is. A parked one is cancelled as {@link #cancel} does,
+     * answering what it answers. One whose work row is queued, waiting for its retry or leased — not held, not stopped, its
+     * body not lost — has the row marked with the cancel ({@link dev.rail8.core.queue.WorkQueue.Cancel}) and a waiting row
+     * made due now, with one audit row ({@code message.cancel}, subject {@code message/<id>}, the flow, the step, the partition
+     * key, the {@code reason} when given and the remote address), in one transaction: {@link Stopping}. One marked already
+     * answers {@link Stopping} with the first cancel's event and writes nothing.
+     *
+     * <p>{@link Unsettled} for a row that is held, stopped without a parked row, or lost: nothing written. {@link NotParked}
+     * when the message has neither a parked row nor a work row.
+     *
+     * @throws IllegalArgumentException a {@code reason} that is blank or longer than {@link #REASON_MAX} characters after
+     *                                  stripping — thrown at the call
+     */
+    Future<Act> end(String messageId, Actor by, Optional<String> reason);
 
     /**
      * {@code reason} stripped, checked as {@link #cancel} takes it.

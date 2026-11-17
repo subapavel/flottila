@@ -12,6 +12,7 @@ import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowDefinition;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.WorkQueue;
@@ -151,7 +152,10 @@ import java.util.function.Supplier;
  * worker did not park, or a keyed flow's row parked before its key was kept). {@code POST /admin/dlq/{id}/cancel} ends a parked
  * message on any node, deployed or not, and so frees its key: 200 {@code {id, auditId, cancelledAt}}, 404 (no DLQ row), 409 (a
  * work row of the message not settled yet), 400 (a body other than none or {@code {"reason"}}), 413 (a body above
- * {@link #CANCEL_BODY_MAX} bytes). There is no {@code /restart} route (404).
+ * {@link #CANCEL_BODY_MAX} bytes). {@code POST /admin/messages/{id}/cancel} ends an at-least-once message wherever it is, with the
+ * same body and answers: a parked one as the DLQ cancel does (200, {@code state: "ended"}); one queued, waiting or running has its
+ * work row marked and its run stopped (202 {@code {id, auditId, cancelledAt, state: "stopping", node}}); 404 for a message with
+ * neither, sync and at-most-once runs among them. There is no {@code /restart} route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
@@ -409,6 +413,7 @@ public final class AdminServer {
                 deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, f))));
                 // the only route that reads a body into memory: bounded, nothing written to disk
                 router.post("/admin/dlq/:id/cancel").handler(BodyHandler.create(false).setBodyLimit(CANCEL_BODY_MAX)).handler(offload(c -> cancel(c, f)));
+                router.post("/admin/messages/:id/cancel").handler(BodyHandler.create(false).setBodyLimit(CANCEL_BODY_MAX)).handler(offload(c -> end(c, f)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -759,6 +764,7 @@ public final class AdminServer {
             case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not restarted: its work item " + u.seq()
                     + " is not settled yet, or its body is lost"));
             case FailedMessages.NotParked n -> Json.of(404, error("no DLQ row for message " + id + " any more"));
+            case FailedMessages.Stopping s -> throw new IllegalStateException("a retry answered " + s);
             case FailedMessages.Done done -> {
                 workers.wake(flow);
                 announce(signals, done.node().orElse(null), flow, "restarted message " + id);
@@ -785,11 +791,52 @@ public final class AdminServer {
         return switch (act) {
             case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not cancelled: its work item " + u.seq() + " is not settled yet"));
             case FailedMessages.NotParked n -> Json.of(404, error("no DLQ row for message " + id));
-            case FailedMessages.Done done -> {
-                FailedMessages.Event e = done.event();
-                workers.wake(e.flow());
-                done.node().ifPresent(node -> announce(signals, node, e.flow(), "the key's next row after cancelled message " + id));
-                yield Json.of(200, new JsonObject().put("id", id).put("auditId", e.id()).put("cancelledAt", e.at().toString()));
+            case FailedMessages.Stopping s -> throw new IllegalStateException("a DLQ cancel answered " + s);
+            case FailedMessages.Done done -> Json.of(200, cancelled(id, done));
+        };
+    }
+
+    /**
+     * A parked message cancelled: its flow woken here and announced to the node of its key's next row when there is one. Answers
+     * {@code {id, auditId, cancelledAt}}.
+     */
+    private JsonObject cancelled(String id, FailedMessages.Done done) {
+        FailedMessages.Event e = done.event();
+        workers.wake(e.flow());
+        done.node().ifPresent(node -> announce(signals, node, e.flow(), "the key's next row after cancelled message " + id));
+        return new JsonObject().put("id", id).put("auditId", e.id()).put("cancelledAt", e.at().toString());
+    }
+
+    /**
+     * {@code POST /admin/messages/{id}/cancel}: the at-least-once message ends wherever it is ({@link FailedMessages#end}), with the
+     * body, the actor and their 400 and 413 as {@code POST /admin/dlq/{id}/cancel}. A parked message is cancelled as there: 200
+     * {@code {id, auditId, cancelledAt, state: "ended"}}. One not parked whose work row is queued, waiting or leased has the row
+     * marked: its run stops, the one going on this node at once (with the cancel's actor and reason), one on another node at that
+     * node's next lease renewal, one not running at its row's next claim, which a wake here and an announce to every node bring
+     * on. 202 {@code {id, auditId, cancelledAt, state: "stopping", node}}, {@code node} the holder of the row's live lease, null
+     * when none holds it; a repeat answers the first cancel. 409 naming the work item when it is held, stopped without a DLQ row,
+     * lost, or not settled beside a DLQ row; 404 when the message has neither: sync and at-most-once runs are not cancelled.
+     */
+    private Reply end(RoutingContext ctx, FailedMessages failed) {
+        String id = ctx.pathParam("id");
+        FailedMessages.Actor by = by(ctx.request());
+        Optional<String> reason = reason(ctx.request(), ctx.body());
+        FailedMessages.Act act = failed.end(id, by, reason).await();
+        return switch (act) {
+            case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not cancelled: its work item " + u.seq()
+                    + " is held, lost, or not settled yet"));
+            case FailedMessages.NotParked n -> Json.of(404, error("no queued, running or parked at-least-once message " + id
+                    + ": sync and at-most-once runs are not cancelled; their time limit ends them"));
+            case FailedMessages.Done done -> Json.of(200, cancelled(id, done).put("state", "ended"));
+            case FailedMessages.Stopping s -> {
+                FailedMessages.Event e = s.event();
+                deployments.ifPresent(d -> d.stop(id, new Runs.Cancelled(e.actor(), e.reason())));
+                if (s.node().isEmpty()) {
+                    workers.wake(e.flow());
+                    announce(signals, null, e.flow(), "cancelled message " + id);
+                }
+                yield Json.of(202, new JsonObject().put("id", id).put("auditId", e.id()).put("cancelledAt", e.at().toString())
+                        .put("state", "stopping").put("node", s.node().orElse(null)));
             }
         };
     }

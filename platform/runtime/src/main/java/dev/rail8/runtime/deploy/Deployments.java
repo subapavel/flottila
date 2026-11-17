@@ -19,8 +19,10 @@ import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.core.flow.Intake;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.core.flow.SequentialIntake;
 import dev.rail8.core.flow.WorkSignals;
+import dev.rail8.core.flow.WorkerPolicy;
 import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Meter;
@@ -227,6 +229,7 @@ public final class Deployments {
     private final ArchiveStore archives;
     private final PollerLeases leases;
     private final Targets targets;
+    private final Runs runs;   // every run of every flow deployed here, on the node's clock and timer
     private final BooleanSupplier fence;
     private final Workers workers;
     private final WorkSignals signals;
@@ -363,6 +366,15 @@ public final class Deployments {
         this.leases = Objects.requireNonNull(leases, "leases");
         this.targets = Objects.requireNonNull(targets, "targets");
         this.fence = Objects.requireNonNull(fence, "fence");
+        this.runs = new Runs(clock, timer, WorkerPolicy.DEFAULT.lease());
+    }
+
+    /**
+     * Stops every run of {@code messageId} going on this node, in any flow deployed here, with {@code why}: an operator's cancel
+     * taken here. True when one was running.
+     */
+    public boolean stop(String messageId, Runs.Why why) {
+        return runs.stop(messageId, why);
     }
 
     /**
@@ -1472,7 +1484,8 @@ public final class Deployments {
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals).retries(config.retries());
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals).retries(config.retries())
+                .runs(runs);
     }
 
     /**

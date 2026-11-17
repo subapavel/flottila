@@ -39,6 +39,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Instant heldAt;       // null: not held
         Instant stoppedAt;    // null: not stopped; else held too
         Instant availableAt;  // null: due; else not claimed before this instant (a deferred row)
+        FailedMessages.Event cancelled;   // null: not marked; else the operator's cancel it is marked with
         Row(Item item) { this.item = item; }
     }
 
@@ -124,18 +125,22 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     @Override public synchronized Future<Boolean> renew(long seq, int attempts, Duration lease) {
-        Row r = rows.get(seq);
-        if (!current(r, attempts)) return Future.succeededFuture(false);
-        r.lockedUntil = clock.instant().plus(lease);
-        return Future.succeededFuture(true);
+        return renewRow(seq, attempts, lease).map(Renewal::renewed);
     }
 
-    /** Not before {@code delay} from now on the injected clock; the holder and the lease cleared, the item as it was. */
+    @Override public synchronized Future<Renewal> renewRow(long seq, int attempts, Duration lease) {
+        Row r = rows.get(seq);
+        if (!current(r, attempts)) return Future.succeededFuture(Renewal.LOST);
+        r.lockedUntil = clock.instant().plus(lease);
+        return Future.succeededFuture(new Renewal(true, mark(r)));
+    }
+
+    /** Not before {@code delay} from now on the injected clock, a marked row at once; the holder and the lease cleared, the item as it was. */
     @Override public synchronized Future<Boolean> defer(long seq, int attempts, Duration delay) {
         Objects.requireNonNull(delay, "delay");
         Row r = rows.get(seq);
         if (!current(r, attempts)) return Future.succeededFuture(false);
-        r.availableAt = clock.instant().plus(delay);
+        r.availableAt = r.cancelled == null ? clock.instant().plus(delay) : null;
         r.lockedBy = null;      // no one's: the next hand-out is in no doubt
         r.lockedUntil = null;
         return Future.succeededFuture(true);
@@ -143,7 +148,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
 
     @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
         Row r = rows.get(seq);
-        if (!current(r, attempts)) return Future.succeededFuture(false);
+        if (!current(r, attempts) || r.cancelled != null) return Future.succeededFuture(false);
         r.heldAt = clock.instant();
         return Future.succeededFuture(true);
     }
@@ -152,7 +157,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
     @Override public synchronized Future<Boolean> stop(long seq, int attempts, Parked failure) {
         Objects.requireNonNull(failure, "failure");
         Row r = rows.get(seq);
-        if (!current(r, attempts) || r.item.partitionKey() == null || !r.item.messageId().equals(failure.messageId()) || !r.item.flow().equals(failure.flow())) {
+        if (!current(r, attempts) || r.cancelled != null || r.item.partitionKey() == null || !r.item.messageId().equals(failure.messageId())
+                || !r.item.flow().equals(failure.flow())) {
             return Future.succeededFuture(false);
         }
         dlq.park(failure);
@@ -277,6 +283,27 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return new FailedMessages.Done(event, Optional.empty());
     }
 
+    /**
+     * {@link FailedMessages#end} under this queue's monitor: a parked message cancelled as {@link #cancel} does; else the
+     * message's oldest work row, when it is not held, marked with one event and due now, answering its holder.
+     */
+    synchronized FailedMessages.Act end(String messageId, FailedMessages.Actor by, Optional<String> reason) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(by, "by");
+        Optional<String> given = FailedMessages.reason(reason);
+        if (parked(messageId).isPresent()) return cancel(messageId, by, given);
+        Row row = rows.values().stream().filter(r -> r.item.messageId().equals(messageId)).findFirst().orElse(null);   // seq order: the oldest
+        if (row == null) return FailedMessages.NotParked.INSTANCE;
+        if (row.heldAt != null) return new FailedMessages.Unsettled(row.item.seq());
+        Instant now = clock.instant();
+        if (row.cancelled == null) {
+            row.cancelled = new FailedMessages.Event(nextAudit++, now, messageId, row.item.flow(), by.name(), FailedMessages.Kind.CANCEL,
+                    OptionalInt.empty(), given, Optional.empty());
+            if (notDue(row, now)) row.availableAt = null;   // a waiting row is due now: its next claim ends it
+        }
+        return new FailedMessages.Stopping(row.cancelled, live(row, now) ? Optional.of(row.lockedBy) : Optional.empty());
+    }
+
     /** The worker holding a live lease on {@code seq}, if any. */
     public synchronized Optional<String> leaseHolder(long seq) {
         Row r = rows.get(seq);
@@ -363,7 +390,13 @@ public final class InMemoryWorkQueue implements WorkQueue {
         r.lockedBy = Objects.requireNonNull(workerId, "workerId");
         r.lockedEpoch = members.epoch(workerId);
         r.lockedUntil = now.plus(lease);
-        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1, i.doubts() + doubt, i.maxAttempts());
+        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1, i.doubts() + doubt, i.maxAttempts(), mark(r));
         return r.item;
+    }
+
+    /** The cancel {@code r} is marked with, if any. */
+    private static Optional<Cancel> mark(Row r) {
+        FailedMessages.Event e = r.cancelled;
+        return e == null ? Optional.empty() : Optional.of(new Cancel(e.id(), e.actor(), e.reason()));
     }
 }

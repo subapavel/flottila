@@ -21,6 +21,7 @@ import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.InMemoryBlobStore;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
@@ -181,6 +182,9 @@ class FlowWorkerTest {
     /** Everything one case, or one try of a property, runs on. */
     static final class World {
         final FakeRuntime rt = FakeRuntime.create();
+        /** The runs' time limits, on a timer of their own over the same clock: {@code rt.timer()} holds the worker's renewals and ticks only. */
+        final FakeTimer runLimits = new FakeTimer(rt.clock());
+        final Runs runs = new Runs(rt.clock(), runLimits, WorkerPolicy.DEFAULT.lease());
         final RecordingComponent partner = new RecordingComponent("mock");
         final HoldingMessageStore store = new HoldingMessageStore(new InMemoryMessageStore());
         final InMemoryDlq parked = new InMemoryDlq();
@@ -233,7 +237,7 @@ class FlowWorkerTest {
 
         FlowBuilder builder(Runtime runtime) {
             return new FlowBuilder(runtime, List.of(gate, crash, rewrite, stamp, storing, stampNext, crashFirst), List.of(BuiltInStepsTest.HEADERS), endpoints)
-                    .recording(store, Meter.system()).queue(queue).dlq(dlq);
+                    .recording(store, Meter.system()).queue(queue).dlq(dlq).runs(runs);
         }
 
         /** The runtime with {@code timer} in place of the fake one: a worker built over it schedules there. */

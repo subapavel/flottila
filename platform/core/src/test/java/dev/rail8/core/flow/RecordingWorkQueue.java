@@ -350,6 +350,18 @@ final class RecordingWorkQueue implements WorkQueue {
         return answer;
     }
 
+    /** As {@link #renew}, forced and failed the same way, the delegate's mark passed on; recorded among the renews. */
+    @Override
+    public Future<Renewal> renewRow(long seq, int attempts, Duration lease) {
+        Throwable failure = renewFailure;
+        Boolean forced = renewAnswer;
+        Future<Renewal> answer = failure != null ? Future.failedFuture(failure)
+                : forced != null ? Future.succeededFuture(forced ? Renewal.RENEWED : Renewal.LOST)
+                : delegate.renewRow(seq, attempts, lease);
+        renews.add(new RenewCall(seq, attempts, lease, clock.instant(), answer.succeeded() ? answer.result().renewed() : null));
+        return answer;
+    }
+
     @Override
     public Future<Boolean> hold(long seq, int attempts) {
         onHold.accept(seq);

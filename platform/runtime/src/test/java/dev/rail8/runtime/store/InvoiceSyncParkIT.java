@@ -11,6 +11,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.dlq.ParkedException;
 import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
+import dev.rail8.core.flow.Runs;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
@@ -21,6 +22,7 @@ import dev.rail8.schemas.Schemas;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.FakeRuntime;
+import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.SharedPostgres;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
@@ -116,7 +118,8 @@ class InvoiceSyncParkIT {
 
     FlowBuilder builder() {
         SaxonXml xml = new SaxonXml();
-        return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).dlq(parking);
+        return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).dlq(parking)
+                .runs(new Runs(rt.clock(), new FakeTimer(rt.clock()), Duration.ofSeconds(30)));   // the runs' time limits on a timer of their own over the same clock: the loop that drives the clock fires the retries' waits only
     }
 
     /**

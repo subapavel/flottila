@@ -188,6 +188,17 @@ class FlowDefinitionTest {
         }
     }
 
+    /** {@code delivery.timeout} is at most 24 hours: every limit is finite. */
+    @Test
+    void aDeliveryTimeoutOverADayIsRefused() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "24h"));
+        assertEquals(Duration.ofHours(24), FlowDefinition.from(doc).timeout(), "a day is the most");
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "25h"));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(doc));
+        assertTrue(e.getMessage().contains("delivery.timeout") && e.getMessage().contains("PT24H"), e.getMessage());
+    }
+
     @Test
     void missingOrWrongPartsAreNamed() {
         Map<String, Object> noSteps = new java.util.HashMap<>(demo());

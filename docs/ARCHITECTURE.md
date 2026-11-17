@@ -117,8 +117,8 @@ Each run of a message has the flow's `delivery.timeout` (30 s by default, at mos
 from its admission, an at-most-once run, and each claim of an at-least-once message. When it passes,
 the run stops. The step it is in is interrupted, no later step and no new send starts, and a step
 retry neither waits nor tries again. A send already started has until the same deadline, when its
-producer cuts it, and the run ends only once its sends have settled. A step that returns before it
-notices the stop keeps its result.
+producer cuts it, and the run ends only once its sends have settled; a sync or at-most-once run also
+ends at the node's stop deadline. A step that returns before it notices the stop keeps its result.
 
 - The history has a failed row at the step where the run stopped: `its time limit of PT30S passed`.
 - `at-least-once`: a failed attempt that may get better, so the run retry and the park apply to it as

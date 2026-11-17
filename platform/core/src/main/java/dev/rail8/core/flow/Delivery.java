@@ -154,8 +154,9 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
-     * Sync request/reply: the pipeline on the caller's thread, its result the reply; {@code timer} runs the stop's deadline,
-     * {@code producers} are the pipeline's, closed by {@link #close()}.
+     * Sync request/reply: the pipeline on the caller's thread, its result the reply; a run its time limit stopped answers a
+     * retryable Nack naming the stop. {@code timer} runs the stop's deadline, {@code producers} are the pipeline's, closed by
+     * {@link #close()}.
      */
     static Delivery sync(Admission admission, Pipeline pipeline, Producers producers, Timer timer) {
         Objects.requireNonNull(pipeline, "pipeline");
@@ -182,6 +183,8 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 }
                 if (failure == null) return Future.succeededFuture(new Ack.Reply(reply));   // a real answer beats a retry
                 if (cancel != null) return Future.succeededFuture(cancel);   // whatever the failure's kind
+                if (failure instanceof RunStoppedException stopped) return Future.succeededFuture(new Ack.Nack("message " + e.id() + " of flow " + e.flow()
+                        + " stopped: " + stopped.getMessage(), true));
                 return Future.failedFuture(failure);
             }
         });

@@ -1353,7 +1353,9 @@ class DeploymentsRedeployTest {
      */
     @Test
     void oldWorkerItemsFinishOnOldProducersThenClose() throws Exception {
-        deploy(shop());
+        PackageDraft v1 = shop();
+        v1.flowDoc("audit").getJsonObject("delivery").put("timeout", "5m");   // A runs past its lease, well within its time limit
+        deploy(v1);
         doors.closeFailsSends();
         CountDownLatch release = hold();
         Sent a = send("shop/audit");
