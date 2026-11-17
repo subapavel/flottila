@@ -1,7 +1,7 @@
 package dev.rail8.testkit;
 
 /**
- * The one source of the Postgres image every Testcontainers test runs on (D-129). {@link #NAME} is the pinned default, the
+ * The one source of the Postgres image every Testcontainers test runs on. {@link #NAME} is the pinned default, the
  * newest 18 patch tag (pulled, 2026-11-11); the compose stacks run the same tag. The system property {@value #PROPERTY}
  * names another full image for one run (the CI run on the supported floor, 17).
  *

@@ -46,17 +46,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The cases every component passes, real or mock (ARCHITECTURE §11: "both must pass the same contract suite"). A
+ * The cases every component passes, real or mock: both must pass the same suite. A
  * component's test extends this class and supplies the component and an endpoint that selects it. Every case asserts
  * an observable: the scheme, the config schema's shape, delivery to the running consumer's handler with the body
  * intact (the receiver mints its own message id — a transport carries bytes and headers), a stopped consumer receiving nothing, health, the send completing only after the handler acknowledged, a
  * Nack failing the send, a body above the tree limit streaming through, a second send of the same envelope delivering
- * the same body again (a retry re-opens the body, nothing is consumed), and a consumer stopped mid-delivery (D-056):
+ * the same body again (a retry re-opens the body, nothing is consumed), and a consumer stopped mid-delivery:
  * {@link Consumer#stop()} accepts nothing new, waits for the delivery in flight and lets its answer reach the sender — a
  * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException} — and
- * each delivery calling the handler on a virtual thread of its own, never the sender's (D-057); a handler that throws or
+ * each delivery calling the handler on a virtual thread of its own, never the sender's; a handler that throws or
  * answers null fails the send, and a stop after it completes; a reply to a second attempt is keyed by that attempt, carries
- * it on and leaves the first attempt's reply bytes in place (D-066). P2-15b (D-101 (3), D-113 draft): every send carries the
+ * it on and leaves the first attempt's reply bytes in place. Every send carries the
  * message id to the partner in {@link Envelope#H_MESSAGE_ID} — one value, the envelope's id, whatever was forwarded under that
  * name in any case — through {@code send(e)} and {@code send(e, d)} alike; a {@code send(e, d)} with no time left
  * ({@code d.remaining() <= 0}) fails with a retryable {@link NackException} and reaches no partner; a send still unanswered when
@@ -217,7 +217,7 @@ public abstract class ComponentContract {
             pending.get().complete(new Ack.Reply(sent.withHeader("x-acked", "yes")));
             assertEquals("yes", outcome.await().header("x-acked").orElse(null));
         } finally {
-            if (pending.get() != null) pending.get().tryComplete(new Ack.Nack("contract cleanup", true));   // a stop drains the answers in flight (D-056)
+            if (pending.get() != null) pending.get().tryComplete(new Ack.Nack("contract cleanup", true));   // a stop drains the answers in flight
             producer.close().await();
             consumer.stop().await();
         }
@@ -253,7 +253,7 @@ public abstract class ComponentContract {
 
     /**
      * A handler that {@code what} acknowledged nothing: the send fails — it neither succeeds nor hangs — and the answer the
-     * delivery counted (D-056) counts as answered, so a stop that follows completes.
+     * delivery counted counts as answered, so a stop that follows completes.
      */
     private void aBrokenHandlerFailsTheSendAndStopStillCompletes(String what, Function<Envelope, Future<Ack>> broken) {
         Component component = component();
@@ -320,8 +320,8 @@ public abstract class ComponentContract {
     }
 
     /**
-     * D-066: a reply is the next step's body of the envelope sent, keyed by that envelope's run — a first attempt's under the
-     * plain part as before, the second attempt's under the part suffixed {@code ~2} — so a rerun's reply never overwrites the
+     * A reply is the next step's body of the envelope sent, keyed by that envelope's run — a first attempt's under the
+     * plain part, the second attempt's under the part suffixed {@code ~2} — so a rerun's reply never overwrites the
      * bytes the first run's reply left. The handler answers each delivery with bytes of its own, written the way a step
      * writes the body it hands on ({@link FakeRuntime#store}): a component that re-stores the reply on the sender's side keys
      * it by the attempt itself; one that returns the handler's answer as it is relies on the handler having seen the attempt.
@@ -358,7 +358,7 @@ public abstract class ComponentContract {
     }
 
     /**
-     * Each delivery calls the handler on a virtual thread of its own (D-057): never on the sender's thread — a stop deadline's
+     * Each delivery calls the handler on a virtual thread of its own: never on the sender's thread — a stop deadline's
      * interrupt aimed at the handler's thread then never reaches a sender — and never on one thread shared by the deliveries:
      * two deliveries in flight at once are in their handlers at the same time, on two threads. The senders are virtual
      * threads, the way a flow sends, so a component that calls the handler on the caller's thread fails on the sender check,
@@ -424,7 +424,7 @@ public abstract class ComponentContract {
         }
     }
 
-    /** The reason a delivery cancelled by its flow's stop deadline answers with (D-056: core's {@code Delivery} decides it). */
+    /** The reason a delivery cancelled by its flow's stop deadline answers with; core's {@code Delivery} decides it. */
     static final String CANCELLED = "cancelled: flow contract stopping after PT30S";
 
     @Test
@@ -499,7 +499,7 @@ public abstract class ComponentContract {
     }
 
     /**
-     * D-101 (3): the partner can dedupe on the message id — the envelope its consumer receives carries the sender's id under
+     * The partner can dedupe on the message id — the envelope its consumer receives carries the sender's id under
      * {@link Envelope#H_MESSAGE_ID}, once, replacing one forwarded under that name (in any case), for a plain send and a
      * bounded one. The receiver's own id stays its own business.
      */
@@ -520,7 +520,7 @@ public abstract class ComponentContract {
             assertTrue(second.succeeded(), "the bounded send is answered: " + second.cause());
             assertTrue(soonEquals(seen::size, 2), "both delivered: " + seen);
             // Each delivery is told by its body (its hash: what was sent), not by its place in `seen`: a partner that acknowledges before its handler answered
-            // runs the two handlers on threads of their own, and the order they record in is not what this case is about (FIX-221).
+            // runs the two handlers on threads of their own, and the order they record in is not what this case is about.
             List<Envelope> plainOnes = seen.stream().filter(e -> e.body().hash().equals(plain.body().hash())).toList();
             List<Envelope> boundedOnes = seen.stream().filter(e -> e.body().hash().equals(bounded.body().hash())).toList();
             if (plainOnes.size() == 1 && boundedOnes.size() == 1) {
@@ -540,7 +540,7 @@ public abstract class ComponentContract {
         }
     }
 
-    /** D-113 (draft): a send with no time left — none, or less than none — starts nothing: it fails retryable and no partner sees it. */
+    /** A send with no time left — none, or less than none — starts nothing: it fails retryable and no partner sees it. */
     @Test
     public void aSendWithNoTimeLeftIsNotStarted() {
         Component component = component();
@@ -567,7 +567,7 @@ public abstract class ComponentContract {
     }
 
     /**
-     * D-113 (draft): a send still unanswered when its deadline runs out is cut — a retryable {@link NackException} though the
+     * A send still unanswered when its deadline runs out is cut — a retryable {@link NackException} though the
      * partner never answered — on the component's timer; the deadline is live and re-read when the timer fires, so a send whose
      * deadline was renewed meanwhile is not cut at the instant it was sent with, and its answer comes through.
      */
@@ -610,14 +610,14 @@ public abstract class ComponentContract {
             NackException nack = assertInstanceOf(NackException.class, second.cause(), "a cut send fails with a NackException: " + second.cause());
             assertTrue(nack.retryable(), "retryable: the message may be tried again: " + nack);
         } finally {
-            answers.forEach(a -> a.tryComplete(new Ack.Nack("contract cleanup", true)));   // a stop drains the answers in flight (D-056)
+            answers.forEach(a -> a.tryComplete(new Ack.Nack("contract cleanup", true)));   // a stop drains the answers in flight
             producer.close().await();
             consumer.stop().await();
         }
     }
 
     /**
-     * The target system a producer of an endpoint calls (D-099): {@code scheme://host:port}, lower-cased, the port filled in, no
+     * The target system a producer of an endpoint calls: {@code scheme://host:port}, lower-cased, the port filled in, no
      * userinfo, path, query or fragment — or empty when the component names none. Answered from the config alone: the same
      * answer twice, for an equal copy of the config, from a fresh component, and before, while and after a consumer of the
      * endpoint runs; for the producer's endpoint of a started consumer the same while it runs and after it stopped.
