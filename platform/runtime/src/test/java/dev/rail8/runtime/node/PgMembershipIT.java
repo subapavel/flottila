@@ -1,7 +1,7 @@
 package dev.rail8.runtime.node;
 
 import dev.rail8.core.node.Membership;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgConnection;
@@ -9,7 +9,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * P2-15a: {@code PgMembership} on V14's {@code nodes} table passes the {@link MembershipContract}, each instance on a dedicated,
@@ -20,7 +19,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  */
 class PgMembershipIT extends MembershipContract {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     PgConnection first;
     PgConnection other;

@@ -1,6 +1,6 @@
 package dev.rail8.bench;
 
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.localstack.LocalStackContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
@@ -65,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 class LedgerIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
     static final String BUCKET = "rail8-ledger-it";
     static final AtomicInteger cases = new AtomicInteger();

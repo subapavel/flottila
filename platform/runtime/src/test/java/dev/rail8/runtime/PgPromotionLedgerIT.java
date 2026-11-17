@@ -368,6 +368,7 @@ class PgPromotionLedgerIT {
         env.put("RAIL8_ENV", "ci");
         env.put("RAIL8_NODE_ID", id);
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(id)).toString());
         env.put("RAIL8_PG_HOST", primary.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(primary.getMappedPort(5432)));

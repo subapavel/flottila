@@ -8,7 +8,7 @@ import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.Ports;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -18,7 +18,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -82,7 +81,7 @@ class QuickstartIT {
     /** The node's admin token: deploy.sh sends it from RAIL8_ADMIN_TOKEN, the case's own admin requests carry it too. */
     static final String TOKEN = "quickstart-it-token";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 
@@ -114,6 +113,7 @@ class QuickstartIT {
         env.put("RAIL8_ENV", "dev");   // the quickstart's environment (docker-compose.yml)
         env.put("RAIL8_NODE_ID", "quickstart-it");
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", Files.createDirectories(work.resolve("data")).toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));

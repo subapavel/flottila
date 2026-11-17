@@ -18,7 +18,7 @@ import dev.rail8.runtime.admin.AdminServer;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.testkit.FakeRuntime;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -40,7 +40,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -85,7 +84,7 @@ class LostWorkAdminIT {
     static final Instant LOST_AT = Instant.parse("2026-11-04T10:00:00Z");
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
     static HttpClientAgent client;

@@ -5,7 +5,7 @@ import dev.rail8.api.Hasher;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.journal.TestJournals;
 import dev.rail8.testkit.DurableBlobStoreContract;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,7 +28,7 @@ import java.nio.file.Path;
  */
 class PgTierContractIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final long MIB = 1L << 20;
     static Vertx vertx;
     static Pool pool;

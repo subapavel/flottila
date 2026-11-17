@@ -27,7 +27,7 @@ import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.steps.validate.XsdValidate;
 import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.Ports;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import dev.rail8.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -53,7 +53,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.localstack.LocalStackContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -128,7 +127,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class NodeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
     static Pool observer;
@@ -186,6 +185,7 @@ class NodeIT {
         env.put("RAIL8_ENV", rail8Env);
         env.put("RAIL8_NODE_ID", "node-it");
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));
@@ -407,6 +407,7 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
+            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             NodeConfig config = NodeConfig.from(env);
             Set<String> before = Set.copyOf(vertx.deploymentIDs());
             Exception failed = null;
@@ -1156,6 +1157,7 @@ class NodeIT {
         int admin = freePort();
         Map<String, String> env = env("ci");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(admin));
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         NodeConfig config = NodeConfig.from(env);
         Doors second = new Doors();
         Doors.Gate held = second.holdStartOf("shop/a");
@@ -1244,6 +1246,7 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
+            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             Set<String> before = Set.copyOf(vertx.deploymentIDs());
             Exception failed = null;
             try {
@@ -1281,6 +1284,7 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
+            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             Exception failed = null;
             try {
                 node = startWith(env, second);

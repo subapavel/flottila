@@ -1,7 +1,7 @@
 package dev.rail8.runtime.queue;
 
 import dev.rail8.core.queue.WorkQueue;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -9,7 +9,6 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * P2-16a (D-121 A2): runtime's Postgres queue passes the hand-off contract — its {@code ENQUEUE} with {@code $node, $lease} writes
@@ -18,7 +17,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  */
 class PgWorkQueueContractIT extends WorkQueueContract {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
     static Pool pool;
 

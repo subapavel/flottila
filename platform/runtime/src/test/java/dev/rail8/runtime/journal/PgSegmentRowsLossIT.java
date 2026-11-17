@@ -5,7 +5,7 @@ import dev.rail8.runtime.journal.JournalFixture.Settings;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
@@ -14,7 +14,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgSegmentRowsLossIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Pattern PRINTED = Pattern.compile("RAIL8_JOURNAL_ACCEPT_LOSS=([0-9a-f-]{36}:[0-9a-f]+)");
     static Vertx vertx;
 

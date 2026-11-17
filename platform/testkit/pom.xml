@@ -34,6 +34,13 @@
     </dependency>
     <!-- the contract suite and the blocked-thread extension are JUnit 5 extensions; the testkit's own tests
          run them through the platform test kit to prove they fail on a broken component / a blocked thread -->
+    <!-- optional: only SharedPostgres needs it, and only the modules whose tests start Postgres use that class; they bring
+         Testcontainers and the JDBC driver themselves -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>org.junit.platform</groupId>
       <artifactId>junit-platform-testkit</artifactId>

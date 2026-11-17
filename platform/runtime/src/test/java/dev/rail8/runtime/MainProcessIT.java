@@ -224,6 +224,7 @@ class MainProcessIT {
         env.put("RAIL8_ENV", "ci");
         env.put("RAIL8_NODE_ID", "main-it");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(adminPort));
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", data.toString());
         env.put("RAIL8_PG_HOST", pg.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(pg.getMappedPort(5432)));

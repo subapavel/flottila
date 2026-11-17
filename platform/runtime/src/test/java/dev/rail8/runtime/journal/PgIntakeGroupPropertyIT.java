@@ -8,7 +8,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.store.PgIntake;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -26,7 +26,6 @@ import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.IntRange;
 import net.jqwik.api.lifecycle.AfterContainer;
 import net.jqwik.api.lifecycle.BeforeContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgIntakeGroupPropertyIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final AtomicInteger TRIES = new AtomicInteger();
     static Vertx vertx;
     static CaseDatabase db;

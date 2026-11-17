@@ -135,6 +135,7 @@ class PgTlsIT {
         env.put("RAIL8_ENV", "dev");
         env.put("RAIL8_NODE_ID", NODE);
         env.put("RAIL8_ADMIN_PORT", "0");
+        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         env.put("RAIL8_DATA_DIR", Files.createDirectories(data.resolve(database + "-" + mode)).toString());
         env.put("RAIL8_PG_HOST", server.getHost());
         env.put("RAIL8_PG_PORT", String.valueOf(server.getMappedPort(5432)));

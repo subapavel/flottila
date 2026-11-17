@@ -1,6 +1,7 @@
 package dev.rail8.runtime.journal;
 
 import dev.rail8.runtime.db.Migrations;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -15,40 +16,45 @@ import java.sql.Statement;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A database of its own per case on a class's container (FIX-5's pattern, CORE-4c1 ITs): created by the admin JDBC
- * connection, its JDBC URL (for Flyway) is the container's with the database path segment swapped (Testcontainers 2.0.5's
- * URL ends with {@code ?loggerLevel=OFF}), its pool is the case's observer — never a connection of the node's.
+ * A database of its own per case on a class's Postgres server — the JVM's shared one or a container of the class's own:
+ * created by the admin JDBC connection, its JDBC URL (for Flyway) names the new database on the same host and port, its pool
+ * is the case's observer — never a connection of the node's.
  */
-record CaseDatabase(PostgreSQLContainer pg, String name, String url, Pool pool) implements AutoCloseable {
+record CaseDatabase(String host, int port, String user, String password, String name, String url, Pool pool)
+        implements AutoCloseable {
 
     private static final AtomicInteger CASES = new AtomicInteger();
 
+    static CaseDatabase create(SharedPostgres pg, Vertx vertx, String prefix) throws SQLException {
+        return create(pg.getJdbcUrl(), pg.getHost(), pg.getMappedPort(5432), pg.getUsername(), pg.getPassword(), vertx, prefix);
+    }
+
     static CaseDatabase create(PostgreSQLContainer pg, Vertx vertx, String prefix) throws SQLException {
+        return create(pg.getJdbcUrl(), pg.getHost(), pg.getMappedPort(5432), pg.getUsername(), pg.getPassword(), vertx, prefix);
+    }
+
+    private static CaseDatabase create(String adminUrl, String host, int port, String user, String password, Vertx vertx,
+                                       String prefix) throws SQLException {
         String name = prefix + CASES.incrementAndGet();
-        try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
+        try (Connection admin = DriverManager.getConnection(adminUrl, user, password);
              Statement create = admin.createStatement()) {
             create.execute("CREATE DATABASE \"" + name + "\"");
         }
-        String base = pg.getJdbcUrl();
-        int query = base.indexOf('?');
-        String path = query < 0 ? base : base.substring(0, query);
-        String suffix = "/" + pg.getDatabaseName();
-        if (!path.endsWith(suffix)) throw new AssertionError("the container URL ends with its database: " + base);
-        String url = path.substring(0, path.length() - suffix.length()) + "/" + name + (query < 0 ? "" : base.substring(query));
-        Pool pool = PgBuilder.pool().connectingTo(options(pg, name)).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
-        return new CaseDatabase(pg, name, url, pool);
+        String url = "jdbc:postgresql://" + host + ":" + port + "/" + name;
+        Pool pool = PgBuilder.pool().connectingTo(options(host, port, user, password, name))
+                .with(new PoolOptions().setMaxSize(4)).using(vertx).build();
+        return new CaseDatabase(host, port, user, password, name, url, pool);
     }
 
-    static PgConnectOptions options(PostgreSQLContainer pg, String database) {
-        return new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432)).setDatabase(database)
-                .setUser(pg.getUsername()).setPassword(pg.getPassword());
+    private static PgConnectOptions options(String host, int port, String user, String password, String database) {
+        return new PgConnectOptions().setHost(host).setPort(port).setDatabase(database).setUser(user).setPassword(password);
     }
 
-    PgConnectOptions options() { return options(pg, name); }
+    PgConnectOptions options() { return options(host, port, user, password, name); }
 
     /** Migrates this database to the latest packaged version (V12 and on). */
     CaseDatabase migrated() {
-        Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        Migrations.migrate(url, user, password);
         return this;
     }
 

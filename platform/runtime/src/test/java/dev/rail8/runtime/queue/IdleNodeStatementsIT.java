@@ -20,7 +20,7 @@ import dev.rail8.runtime.node.PgMembership;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.FakeTimer;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -34,7 +34,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -77,7 +76,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class IdleNodeStatementsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final Instant T0 = Instant.parse("2026-11-10T08:00:00Z");
     static final Duration L = Duration.ofSeconds(30);
     static final Duration R = Duration.ofSeconds(5);

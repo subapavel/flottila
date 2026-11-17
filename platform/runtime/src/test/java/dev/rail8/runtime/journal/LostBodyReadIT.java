@@ -12,7 +12,7 @@ import dev.rail8.api.Props;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.runtime.blob.RemoteBodyException;
 import dev.rail8.runtime.blob.TieredBlobStore;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -24,7 +24,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LostBodyReadIT {
 
     static final String LOST = "body lost by ACCEPT_LOSS";
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static Vertx vertx;
 
     @TempDir Path tmp;

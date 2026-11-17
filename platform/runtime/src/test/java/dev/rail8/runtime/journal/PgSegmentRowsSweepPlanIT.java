@@ -3,7 +3,7 @@ package dev.rail8.runtime.journal;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
-import dev.rail8.testkit.PostgresImage;
+import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -70,7 +69,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgSegmentRowsSweepPlanIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
+    static final SharedPostgres pg = SharedPostgres.database();
     static final String NODE = "n1";
     static final String OTHER_NODE = "n2";
     static final String PREP_NODE = "prep";

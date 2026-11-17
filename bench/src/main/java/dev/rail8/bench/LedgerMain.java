@@ -200,6 +200,7 @@ public final class LedgerMain {
                 "RAIL8_DATA_DIR", data.toString(), "RAIL8_PG_HOST", o.host(), "RAIL8_PG_PORT", String.valueOf(o.port()),
                 "RAIL8_PG_DATABASE", o.db(), "RAIL8_PG_USER", o.user(), "RAIL8_PG_PASSWORD", o.password()));
         env.put("RAIL8_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY);   // one key for both nodes: they share journal_keys (D-106)
+        env.put("RAIL8_PEER_PORT", "0");   // the peer link on any free port: two nodes, or two runs, on one host
         if (o.s3().isEmpty()) {
             env.put("RAIL8_ARCHIVE_DIR", archives.toString());
         } else {
