@@ -12,8 +12,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The {@code rail8} command line (D-079): {@code validate}, {@code test} (D-080), {@code lock} (D-089), {@code deploy} and
- * {@code help}.
+ * The {@code rail8} command line: {@code validate}, {@code test}, {@code lock}, {@code deploy} and {@code help}.
  * Exit codes: 0 done, 1 the package has problems, a flow test failed, or the node refused or could not be reached, 2 a usage
  * error (nothing done).
  * Everything a command reports goes to stdout; stderr carries the usage and the tool's own failures.

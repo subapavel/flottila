@@ -34,7 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * valid message goes on untouched; an invalid one, or one that is not well-formed, fails with an
  * {@link XsdValidationException}.
  * Secure processing is on and nothing is fetched over the network: the schema and every file it includes or imports
- * (relative to the including file) lie inside the flow's directory (D-052) — one that leaves it, or a URL, is a build
+ * (relative to the including file) lie inside the flow's directory — one that leaves it, or a URL, is a build
  * error naming the step and the reference — a document's external DTD is never read (it does not validate) and a
  * document's schema hint never replaces the configured schema.
  *
@@ -79,7 +79,7 @@ public final class XsdStepFactory implements StepFactory {
                 validator.setErrorHandler(parsing);
                 validator.validate(new StreamSource(new ByteArrayInputStream(bytes)));
             } catch (SAXException | IOException x) {
-                // a fatal error is the parser's: the body could not be read as XML; any other failure broke the schema (D-049 a)
+                // a fatal error is the parser's: the body could not be read as XML; any other failure broke the schema
                 throw new XsdValidationException(e.id(), name, parsing.fatal ? Fault.Kind.MALFORMED : Fault.Kind.INVALID, x);
             }
             return e;

@@ -10,7 +10,7 @@ import java.util.Objects;
  * {@code validation failed at step '<name>': <the validator's message>}. Not retryable — the same bytes fail
  * again. Its {@link Fault.Kind} is decided at the throw site: {@link Fault.Kind#MALFORMED} when the body could not be
  * parsed (not well-formed XML — the sender's malformed input, whichever step meets it first), {@link Fault.Kind#INVALID}
- * when it was read and broke the schema (D-049 a).
+ * when it was read and broke the schema.
  *
  * @since 0.1
  */

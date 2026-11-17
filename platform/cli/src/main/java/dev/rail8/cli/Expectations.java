@@ -17,7 +17,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
- * A settled case's {@code expect} against what it observed (D-080), one line per failed key in the order {@code expect} lists
+ * A settled case's {@code expect} against what it observed, one line per failed key in the order {@code expect} lists
  * them, {@code expect.<key>: expected X, was Y}:
  * <ul>
  *   <li>{@code status} — the http door's answer to the case's answer ({@link HttpComponent#status});</li>
@@ -26,7 +26,7 @@ import java.util.function.Function;
  *       value the message carries for the name;</li>
  *   <li>{@code dlq} — the DLQ's rows;</li>
  *   <li>{@code retries} — the sends to any mock beyond the first of the same message at the same step (the step the envelope
- *       sent carries, D-080 [A]): two {@code to} steps to one endpoint are no retry;</li>
+ *       sent carries): two {@code to} steps to one endpoint are no retry;</li>
  *   <li>{@code error} — the answer's failure message, or its Nack's reason, contains the text;</li>
  *   <li>{@code sent.<endpoint>} — {@code count}: the endpoint's sends, retries included; {@code equals} or {@code contains}:
  *       holds for every send, on the value of {@code xpath} or, without it, on the body as UTF-8 — one line for the first send

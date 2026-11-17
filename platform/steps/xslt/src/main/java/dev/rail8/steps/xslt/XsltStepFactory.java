@@ -32,10 +32,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * ({@link CompiledFiles}: the same bytes, absences and directory entries at the same places relative to the
  * stylesheet), each other flow compiling its own — and applied to the body's document view; the
  * result is the next step's body, written to the blob store under the envelope's {@link Envelope#nextKey() next key} (the
- * run's own from its second attempt on, D-066) and the flow's body limit, with
+ * run's own from its second attempt on) and the flow's body limit, with
  * {@code content-type} from the stylesheet's output method. The stylesheet and every file it reads while it compiles —
  * a module it includes or imports (relative to the including module), an external entity, a static {@code doc()},
- * {@code unparsed-text()} or {@code collection()} — lie inside the flow's directory (D-052, {@link CompileConfinement}):
+ * {@code unparsed-text()} or {@code collection()} — lie inside the flow's directory ({@link CompileConfinement}):
  * one that leaves it, or a URL, is a build error naming the step and the reference. What the stylesheet reads at run
  * time is not confined here.
  *

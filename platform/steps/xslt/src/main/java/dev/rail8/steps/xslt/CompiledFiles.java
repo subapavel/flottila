@@ -20,8 +20,7 @@ import java.util.stream.Stream;
  * What one compilation read besides its main file — a module it includes or imports, nested ones, an external entity,
  * a static {@code doc()} or {@code unparsed-text()}, a file {@code unparsed-text-available()} probed as absent, a
  * directory {@code uri-collection()} listed — each with what it held then: the bytes' hash, the absence, the entry
- * names. The compile cache serves the compiled stylesheet only to a flow whose files are {@link #sameIn the same}
- * (FIX-17).
+ * names. The compile cache serves the compiled stylesheet only to a flow whose files are {@link #sameIn the same}.
  *
  * <p>A read lies where a compile in another flow would read it: a relative reference from the main file or from a
  * module that moves lies at its path relative to the main file's directory, {@code ..} kept, and is confined there as
@@ -43,7 +42,7 @@ final class CompiledFiles {
 
     /**
      * Whether {@code resources}' flow, compiling the main file {@code main}, would read the same: every read located
-     * against {@code main}'s directory lies inside the flow's directory or the dependency's that holds it (D-052, D-087: one
+     * against {@code main}'s directory lies inside the flow's directory or the dependency's that holds it (one
      * outside means the compile there is refused) and holds what it held. When it does, every located read is reported to the flow's {@code reads} sink, as
      * the compile there would report it; when it does not, none is.
      */

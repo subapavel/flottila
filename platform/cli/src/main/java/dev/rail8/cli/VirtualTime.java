@@ -10,8 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.BooleanSupplier;
 
 /**
- * A case's virtual time (D-080). A platform thread of its own, {@code rail8-clock} — a tool thread, not a node executor
- * (F-16) — is the only one that advances the case's {@link FakeClock}, so the timer's tasks run on it: it waits until the world
+ * A case's virtual time. A platform thread of its own, {@code rail8-clock} — a tool thread, not a node executor
+ * — is the only one that advances the case's {@link FakeClock}, so the timer's tasks run on it: it waits until the world
  * is {@linkplain Quiescence#quiet() quiet}, then stops when the case has settled; else, at the {@link #HORIZON} of flow time, it
  * stops unsettled; else, with nothing scheduled, nothing can ever happen and it stops unsettled at once; else it advances the
  * clock to the timer's next due task (a zero advance runs the tasks due now), never past the horizon, and waits again. A wall

@@ -17,7 +17,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * Every file a stylesheet reads while it compiles lies inside the flow's directory (D-052): {@code xsl:include} /
+ * Every file a stylesheet reads while it compiles lies inside the flow's directory: {@code xsl:include} /
  * {@code xsl:import}, an external entity or DTD, and a static {@code doc()}, {@code unparsed-text()},
  * {@code unparsed-text-available()}, {@code collection()} or {@code uri-collection()} in a static variable or
  * {@code use-when}.

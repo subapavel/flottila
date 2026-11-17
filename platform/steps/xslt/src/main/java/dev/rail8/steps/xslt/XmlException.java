@@ -10,7 +10,7 @@ import java.util.Objects;
  *
  * <p>Its {@link Fault.Kind} is decided where it is thrown, by one rule: {@link Fault.Kind#MALFORMED} where the step could not
  * parse its <em>input</em> (the body is not well-formed XML), {@link Fault.Kind#INTERNAL} everywhere else — a transformation
- * or an XPath that raised an error is the flow's failure, not the sender's (D-049).
+ * or an XPath that raised an error is the flow's failure, not the sender's.
  *
  * @since 0.1
  */

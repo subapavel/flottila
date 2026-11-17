@@ -29,7 +29,7 @@ import java.util.function.Predicate;
  * of the first selected item, empty when nothing is selected; the parts of a split are the selected nodes, each
  * serialized (no XML declaration) and stored as an attachment of the parent under the child's step —
  * {@code split-<i>}, through {@link Envelope#nextKey(String)}, so suffixed with the run's attempt from the
- * second on (D-066) — within the flow's body limit. An atomic item cannot be a part: the message fails.
+ * second on — within the flow's body limit. An atomic item cannot be a part: the message fails.
  *
  * @since 0.1
  */
