@@ -190,7 +190,7 @@ final class Oracle {
                 String got = delivered + " delivered of " + s.calls.size() + " calls, parked "
                         + dlq.get(s.id).await().map(p -> "at step " + p.step()).orElse("nowhere");
                 String expected = delivered > 0 ? "1 delivered of " + s.calls.size() + " calls, parked nowhere"
-                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 1";   // the worker parks a message that failed at its ingress at step 1
+                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 1";   // every call was refused, so the worker parks the message at the flow's first step (step 1, the ingress)
                 if (!got.equals(expected)) fail(Check.ACKED_IS_FINAL, s.id + " was accepted: expected " + expected + ", was " + got);
             }
             if (!s.calls.isEmpty()) {

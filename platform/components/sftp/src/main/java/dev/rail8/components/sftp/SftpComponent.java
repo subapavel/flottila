@@ -91,7 +91,7 @@ public final class SftpComponent implements Component {
     public static final Key<String> PATH = new Key<>("sftp.path");
     /** The file's server mtime, ISO-8601. */
     public static final Key<String> MTIME = new Key<>("sftp.mtime");
-    /** {@code sftp://host:port/path@mtime#bodyHash}: the same file on every node (the save's duplicate check, P2-02D). */
+    /** {@code sftp://host:port/path@mtime#bodyHash}: the same file on every node (the save's duplicate check). */
     public static final Key<String> FILE_KEY = new Key<>("sftp.fileKey");
 
     static final String CONFIG_SCHEMA = """
