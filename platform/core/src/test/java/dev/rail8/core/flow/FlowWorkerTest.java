@@ -1115,7 +1115,7 @@ class FlowWorkerTest {
         assertEquals(List.of(first), w.sentIds(), "nothing sent after the park");
     }
 
-    /** A stop that fails past the bound holds the item: the key stays stopped, for an operator to release. */
+    /** A stop that fails past the bound holds the item: its key waits behind the held row until an operator releases it. */
     @Test
     void aStopThatFailsPastTheBoundHoldsTheItem() throws Exception {
         FlowDefinition def = keyed();

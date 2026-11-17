@@ -1,5 +1,8 @@
 package dev.rail8.runtime.queue;
 
+import dev.rail8.api.BlobKey;
+import dev.rail8.api.BlobNotFoundException;
+import dev.rail8.api.BodyLostException;
 import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.runtime.store.PgDlq;
@@ -11,6 +14,15 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P2-16a (D-121 A2): runtime's Postgres queue passes the hand-off contract — its {@code ENQUEUE} with {@code $node, $lease} writes
@@ -65,5 +77,41 @@ class PgWorkQueueContractIT extends WorkQueueContract {
     @Override
     protected Dlq dlq() {
         return new PgDlq(pool);
+    }
+
+    /**
+     * A stop without a kept ref of the message's ingress body fails {@link BlobNotFoundException} naming {@code <id>/0/body} and
+     * writes neither half: no DLQ row, no stopped row, and the holder still completes its row.
+     */
+    @Test
+    void aStopWithoutAKeptRefFailsBlobNotFoundAndWritesNeitherHalf() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+
+        Throwable failed = assertThrows(Throwable.class, () -> await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "t", k1.attempts(), "K"))));
+
+        assertEquals(BlobKey.body("k1", 0), assertInstanceOf(BlobNotFoundException.class, failed).key(), "it names the ingress body");
+        neitherHalf(k1);
+    }
+
+    /** A stop whose kept ref an accepted loss gave up fails {@link BodyLostException} and writes neither half. */
+    @Test
+    void aStopWhoseKeptRefWasGivenUpFailsBodyLostAndWritesNeitherHalf() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+        kept("k1");
+        pool.preparedQuery("update body_refs set lost_at = now() where message_id = $1").execute(io.vertx.sqlclient.Tuple.of("k1")).await();
+
+        Throwable failed = assertThrows(Throwable.class, () -> await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "t", k1.attempts(), "K"))));
+
+        assertInstanceOf(BodyLostException.class, failed);
+        neitherHalf(k1);
+    }
+
+    /** No DLQ row of {@code item}'s message, no stopped row, and its holder still completes it. */
+    private void neitherHalf(WorkQueue.Item item) {
+        assertEquals(Optional.empty(), await(dlq().get(item.messageId())), "no DLQ row");
+        assertEquals(List.of(), await(queue.stopped(Optional.empty(), 10)).items(), "no stopped row");
+        assertTrue(await(queue.completeRow(item.seq(), item.attempts())).completed(), "the row is still its holder's");
     }
 }
