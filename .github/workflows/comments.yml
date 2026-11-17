@@ -1,7 +1,9 @@
 # A comment cleanup changes comments only. On a pull request whose title starts with "docs(comments)" this job
-# compares every Java, TypeScript, JavaScript and CSS file the pull request touches with the pull request's base
-# and fails when the code, with comments removed and whitespace normalised, is not the same. It runs again when
-# the title is edited, so a pull request cannot gain or lose the check unseen.
+# compares the pull request's merge commit with main (its first parent) and fails when the code of a Java,
+# TypeScript, JavaScript or CSS file, with comments removed and whitespace normalised, is not the same, or when any
+# other file than Markdown changes. It runs main's copy of the check, so a pull request cannot loosen the check it
+# is judged by; only while main has no copy yet, the pull request that adds it is checked with its own copy, on
+# Java files only. The job runs again when the title is edited.
 name: comments
 
 on:
@@ -16,10 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
       - name: The code is unchanged apart from comments
         run: |
           set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          git fetch -q --no-tags --depth=1 origin "$base"
-          python3 ci/comment_only_check.py --base "$base" --head HEAD
+          check="$RUNNER_TEMP/comment_only_check.py"
+          if git show HEAD^1:ci/comment_only_check.py > "$check" 2> /dev/null; then
+            python3 "$check" --base HEAD^1 --head HEAD
+          else
+            git diff --name-only -z HEAD^1 HEAD -- '*.java' | xargs -0 -r python3 ci/comment_only_check.py --base HEAD^1 --head HEAD
+          fi
