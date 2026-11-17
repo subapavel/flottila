@@ -1,10 +1,14 @@
 name: mapping-nightly
 
-# PIT on main over the nine class-C modules, failing below 80 % (ADR-0019), and then (MAP-12b) the fresh result
-# compared with ratchet/mutation.tsv by scripts/ratchet-ci.sh nightly: a survivor count above its row, or a row
-# without a report, is a drop - reported until the date in scripts/ratchet-enforced-from, failing the job from that
-# day. It commits nothing: the mutation ratchet is written by the spec gate (step 1b), not here.
-# Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
+# The mapping engine's nightly report; nothing here blocks a change.
+# mutation: PIT on main over the nine class-C modules, failing below 80 % (ADR-0019), then the fresh result compared
+#   with ratchet/mutation.tsv by scripts/ratchet-ci.sh nightly (a survivor count above its row, or a row without a
+#   report, is a drop).
+# coverage: the build with the coverage floors and the benchmarks, then scripts/ratchet-ci.sh push compares it with
+#   the ratchet of the closest earlier commit whose push run of mapping-ci's backend job was green.
+# windows: the whole reactor compiles on Windows (drive letters and backslashes in paths).
+# A drop is reported until the date in scripts/ratchet-enforced-from and fails the job from that day; either way it
+# only turns the nightly report red. It commits nothing.
 on:
   schedule:
     - cron: '17 2 * * *'
@@ -64,3 +68,81 @@ jobs:
           name: pit-reports
           path: mapping/engine/*/target/pit-reports
           if-no-files-found: ignore
+
+  coverage:
+    name: mapping · coverage
+    runs-on: ubuntu-24.04
+    # actions: read lets the ratchet's lookup read mapping-ci's runs and their jobs
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        working-directory: mapping
+    steps:
+      # the whole history: the ratchet's lookup walks HEAD's ancestors
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - name: Build, test, coverage floors, benchmarks
+        run: ../mvnw -B -Pbench verify
+      # The last step: it reads the build's reports. The lookup finds the baseline through GitHub's API with the
+      # run's own token, then ratchet.java check holds this build against it.
+      - name: Ratchet check against the baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RATCHET_BASELINE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ratchet-ci.sh push
+
+  # The owner builds on Windows (#42): drive letters and backslashes in paths. Ticket-gate row 2.
+  windows:
+    name: mapping · windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mapping
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - name: Whole reactor compiles; Spotless, enforcer, licences
+        run: ../mvnw.cmd -B -q -DskipTests verify

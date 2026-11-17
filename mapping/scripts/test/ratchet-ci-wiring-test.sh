@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# A guard of text, not a test of behaviour (MAP-12b, agent/packets/MAP-12b.md §4 and the row): it reads
+# A guard of text, not a test of behaviour (MAP-12b; since 17. 11. 2026 the ratchet runs only in the nightly
+# coverage job, as a report that blocks nothing): it reads
 # .github/workflows/mapping-ci.yml, .github/workflows/mapping-nightly.yml, scripts/ratchet-enforced-from,
 # MUTATION_MODULES of scripts/ratchet.java and the job name in scripts/ratchet-baseline.sh, and asserts how the ratchet
 # check is wired. It runs nothing. The workflows are read as text in the layout they have (two-space YAML, block
@@ -40,31 +41,39 @@ header() { awk '/^on:/ {exit} /^#/' "$1"; }
 # forbidden <file>: the lines that name a secret, continue-on-error, RATCHET_TODAY or an ISO date
 forbidden() { grep -nE 'secrets\.|continue-on-error|RATCHET_TODAY|[0-9]{4}-[0-9]{2}-[0-9]{2}' "$1"; }
 
-# ---- mapping-ci.yml, the backend job ----
+# ---- mapping-nightly.yml, the coverage job: the ratchet check runs there, once a night ----
 
-backend=$(job "$ci" backend)
-bsteps=$(printf '%s\n' "$backend" | steps)
-last=$(printf '%s\n' "$bsteps" | tail -n 1 | cut -f1)
-rstep=$(printf '%s\n' "$bsteps" | step_no $'\t'' +(- )?run: scripts/ratchet-ci\.sh push *$')
-build=$(printf '%s\n' "$bsteps" | step_no $'\t'' +run: \.\./mvnw -B -Pbench verify *$')
-rtext=$(printf '%s\n' "$bsteps" | step_text "$rstep")
-check "ci: scripts/ratchet-ci.sh push is the backend job's last step" "step ${rstep:-none} of $last" "step $last of $last"
-check "ci: the ratchet step comes after the build step" \
+coverage=$(job "$nightly" coverage)
+csteps=$(printf '%s\n' "$coverage" | steps)
+last=$(printf '%s\n' "$csteps" | tail -n 1 | cut -f1)
+rstep=$(printf '%s\n' "$csteps" | step_no $'\t'' +(- )?run: scripts/ratchet-ci\.sh push *$')
+build=$(printf '%s\n' "$csteps" | step_no $'\t'' +run: \.\./mvnw -B -Pbench verify *$')
+rtext=$(printf '%s\n' "$csteps" | step_text "$rstep")
+check "nightly: scripts/ratchet-ci.sh push is the coverage job's last step" "step ${rstep:-none} of $last" "step $last of $last"
+check "nightly: the ratchet step comes after the build step" \
   "$(if [ -n "$rstep" ] && [ -n "$build" ] && [ "$rstep" -gt "$build" ]; then echo after
      else echo "build step ${build:-none}, ratchet step ${rstep:-none}"; fi)" after
-check "ci: the backend job's permissions are contents: read and actions: read, nothing else" \
-  "$(printf '%s\n' "$backend" | awk '/^    permissions:/ {p = 1; next} p && /^      / {print; next} {p = 0}' \
+check "nightly: the coverage job's permissions are contents: read and actions: read, nothing else" \
+  "$(printf '%s\n' "$coverage" | awk '/^    permissions:/ {p = 1; next} p && /^      / {print; next} {p = 0}' \
      | sed 's/^ *//; s/ *$//' | sort)" "actions: read
 contents: read"
-check "ci: the step carries the run's token and the pull request's base sha" \
+check "nightly: the step carries the run's token and the pull request's base sha" \
   "GH_TOKEN $(printf '%s\n' "$rtext" | count '^ +GH_TOKEN: \$\{\{ github\.token \}\} *$'), RATCHET_BASELINE_SHA \
 $(printf '%s\n' "$rtext" | count '^ +RATCHET_BASELINE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\} *$')" \
   "GH_TOKEN 1, RATCHET_BASELINE_SHA 1"
-check "ci: the ratchet step has no if:" \
+check "nightly: the ratchet step has no if:" \
   "step $(yes_no [ -n "$rstep" ]), if: $(printf '%s\n' "$rtext" | count '^ +(- )?if:')" "step yes, if: 0"
-co=$(printf '%s\n' "$bsteps" | step_no 'uses: actions/checkout@')
-check "ci: the backend job's checkout takes fetch-depth: 0" \
-  "$(printf '%s\n' "$bsteps" | step_text "$co" | count '^ +fetch-depth: 0 *$')" 1
+co=$(printf '%s\n' "$csteps" | step_no 'uses: actions/checkout@')
+check "nightly: the coverage job's checkout takes fetch-depth: 0" \
+  "$(printf '%s\n' "$csteps" | step_text "$co" | count '^ +fetch-depth: 0 *$')" 1
+
+# ---- mapping-ci.yml: the checks on every change ----
+
+backend=$(job "$ci" backend)
+bsteps=$(printf '%s\n' "$backend" | steps)
+check "ci: the backend job builds with coverage skipped and runs no ratchet step" \
+  "build $(printf '%s\n' "$bsteps" | count '^[0-9]+'$'\t'' +run: \.\./mvnw -B -Djacoco\.skip=true verify *$'), \
+ratchet $(printf '%s\n' "$bsteps" | count 'ratchet-ci\.sh (push|nightly)')" "build 1, ratchet 0"
 nojdk=$(printf '%s\n' "$bsteps" | step_no 'name: .*need no JDK')
 check "ci: the three tests of MAP-12b run beside the script tests that need no JDK" \
   "$(for t in ratchet-ci-test.sh ratchet-ci-wiring-test.sh pit-summary-test.sh; do
@@ -74,8 +83,6 @@ name=$(printf '%s\n' "$backend" | sed -n 's/^    name: *//p' | head -n 1)
 check "ci: the backend job's name is the one scripts/ratchet-baseline.sh looks up" \
   "name '$name', in the lookup $(yes_no in_lookup "$name")" "name 'mapping · backend', in the lookup yes"
 
-# ---- mapping-ci.yml, its triggers and the other jobs ----
-
 on=$(block "$ci" on)
 under() { printf '%s\n' "$on" | awk -v k="  $1:" '$0 == k {s = 1; next} /^  [^ ]/ {s = 0} s'; }   # under <trigger>
 nightly_path="^ +- ['\"]?\.github/workflows/mapping-nightly\.yml['\"]? *\$"
@@ -84,20 +91,14 @@ check "ci: both path lists name the nightly workflow" \
   "pull_request 1, push 1"
 check "ci: the header comment says the nightly workflow's file starts it too" \
   "$(header "$ci" | yes_no names 'mapping-nightly\.yml')" yes
-schedule=$(under schedule)
-check "ci: the week's runs: schedule with cron '23 */6 * * *'" \
-  "$(printf '%s\n' "$schedule" | count "^ +- cron: '23 \*/6 \* \* \*' *\$")" 1
+check "ci: mapping-ci.yml has no schedule and no windows job; the nightly has the windows job" \
+  "schedule $(printf '%s\n' "$on" | count '^  schedule:'), ci windows $(job "$ci" windows | count 'runs-on'), \
+nightly windows $(job "$nightly" windows | count '^    runs-on: windows-latest *$')" \
+  "schedule 0, ci windows 0, nightly windows 1"
 check "ci: the concurrency group carries the event's name" \
   "$(block "$ci" concurrency | count '^  group: mapping-ci-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\} *$')" 1
-check "ci: windows, ui and stack do not run on a schedule" \
-  "$(for j in windows ui stack; do
-       printf '%s %s; ' "$j" "$(job "$ci" "$j" | count "^    if: github\.event_name != 'schedule' *\$")"
-     done)" "windows 1; ui 1; stack 1; "
-check "ci: the backend job runs on the schedule too (no job-level if:)" \
-  "schedule $(printf '%s\n' "$schedule" | count 'cron:'), backend if: $(printf '%s\n' "$backend" | count '^    if:')" \
-  "schedule 1, backend if: 0"
 check "ci: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-ci.yml" \
-  "ratchet step $(yes_no [ -n "$rstep" ]); $(forbidden "$ci" || echo none)" "ratchet step yes; none"
+  "$(forbidden "$ci" || echo none)" "none"
 
 # ---- mapping-nightly.yml ----
 
