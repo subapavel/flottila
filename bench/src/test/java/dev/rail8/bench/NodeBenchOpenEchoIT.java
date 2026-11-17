@@ -3,6 +3,7 @@ package dev.rail8.bench;
 import dev.rail8.testkit.Ports;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * pointed at a port nothing listens on) — in real time, short. Its pass is a count within 1 %, not a timing sleep.
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
+@Tag("serial")   // holds a real-time rate: runs alone, never beside the module's other test JVMs
 class NodeBenchOpenEchoIT {
 
     /** Every field of the record's {@code open} object (CORE-15 packet, Scope 2). */

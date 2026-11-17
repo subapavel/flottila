@@ -164,7 +164,7 @@ class NodeIT {
              Statement create = admin.createStatement()) {
             create.execute("CREATE DATABASE \"" + database + "\"");
         }
-        // getJdbcUrl() is jdbc:postgresql://host:port/<db> followed by the container's query string (?loggerLevel=OFF)
+        // getJdbcUrl() is jdbc:postgresql://host:port/<db> followed by its query string, if it has one
         String base = pg.getJdbcUrl();
         int query = base.indexOf('?');
         String path = query < 0 ? base : base.substring(0, query);
@@ -407,7 +407,6 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
-            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             NodeConfig config = NodeConfig.from(env);
             Set<String> before = Set.copyOf(vertx.deploymentIDs());
             Exception failed = null;
@@ -1157,7 +1156,6 @@ class NodeIT {
         int admin = freePort();
         Map<String, String> env = env("ci");
         env.put("RAIL8_ADMIN_PORT", String.valueOf(admin));
-        env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
         NodeConfig config = NodeConfig.from(env);
         Doors second = new Doors();
         Doors.Gate held = second.holdStartOf("shop/a");
@@ -1246,7 +1244,6 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
-            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             Set<String> before = Set.copyOf(vertx.deploymentIDs());
             Exception failed = null;
             try {
@@ -1284,7 +1281,6 @@ class NodeIT {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
             Map<String, String> env = env("ci");
             env.put("RAIL8_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
-            env.put("RAIL8_PEER_PORT", "0");   // any free port: test JVMs run side by side
             Exception failed = null;
             try {
                 node = startWith(env, second);

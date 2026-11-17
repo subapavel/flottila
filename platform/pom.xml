@@ -279,7 +279,8 @@
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${maven-surefire.version}</version>
           <configuration>
-            <argLine>@{argLine}</argLine>
+            <!-- each fork draws test ports from a slice of its own (dev.rail8.testkit.Ports) -->
+            <argLine>@{argLine} -Drail8.test.fork=${surefire.forkNumber}</argLine>
             <forkCount>${rail8.test.forks}</forkCount>
             <trimStackTrace>false</trimStackTrace>
           </configuration>
@@ -289,7 +290,8 @@
           <artifactId>maven-failsafe-plugin</artifactId>
           <version>${maven-surefire.version}</version>
           <configuration>
-            <argLine>@{argLine}</argLine>
+            <!-- each fork draws test ports from a slice of its own (dev.rail8.testkit.Ports) -->
+            <argLine>@{argLine} -Drail8.test.fork=${surefire.forkNumber}</argLine>
             <forkCount>${rail8.test.forks}</forkCount>
             <trimStackTrace>false</trimStackTrace>
           </configuration>
@@ -420,7 +422,6 @@
                 <goals><goal>integration-test</goal></goals>
                 <configuration>
                   <excludedGroups>serial</excludedGroups>
-                  <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary.xml</summaryFile>
                 </configuration>
               </execution>
               <execution>
@@ -436,8 +437,8 @@
                 <id>verify</id>
                 <goals><goal>verify</goal></goals>
                 <configuration>
+                  <!-- read besides the default failsafe-summary.xml of the first run -->
                   <summaryFiles>
-                    <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary.xml</summaryFile>
                     <summaryFile>${project.build.directory}/failsafe-reports/failsafe-summary-serial.xml</summaryFile>
                   </summaryFiles>
                 </configuration>
