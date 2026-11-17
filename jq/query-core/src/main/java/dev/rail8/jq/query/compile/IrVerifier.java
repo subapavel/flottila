@@ -38,7 +38,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Checks the rules of the IR (ADR-0005, ADR-0034, ADR-0038, ADR-0039, ADR-0041, ADR-0043) before a backend sees a tree; a
+ * Checks the rules of the IR before a backend sees a tree; a
  * broken rule is an IllegalStateException. The tree uses no node object twice. A slot is bound by one Bind, by one
  * Binds (one slot per value, two values at least), by one AltBind (its value slot and its group slots), by one Label,
  * by one Reduce or Foreach (its state slot), or is a parameter, which no node binds and every node may read; a Var
@@ -50,7 +50,7 @@ import java.util.Set;
  * Intrinsic's arguments are atomic (Identity, Var or Const), as many as its call form's arity: none for Fn0, one for
  * Fn1, two for Fn2, and any number for an FnN or a Many, which take them as an array.
  *
- * <p>A program (ADR-0045 and its #107 amendment) is its main tree and its functions, each body checked on its own
+ * <p>A program is its main tree and its functions, each body checked on its own
  * slots, with no node object used twice in the whole program. In a function, slots {@code 0 .. values - 1} are its value
  * parameters, which it sees as parameters and no slot of its caller; a Break may also name one of them, a Label's
  * token passed as a value. A ParamCall is only in a function and names one of its closure parameters. A Call names a
@@ -259,10 +259,9 @@ final class IrVerifier {
   }
 
   /**
-   * The Binds {@code b} (ADR-0043), as the chain of nested Bind nodes it means: two values at least and one slot per value,
-   * each slot taken before
-   * its value is walked, and each value sees the slots of the values before it, the body all of them. The walk loops
-   * over the values, so it does not go deeper with their number.
+   * The Binds {@code b}, as the chain of nested Bind nodes it means: two values at least and one slot per value, each
+   * slot taken before its value is walked, and each value sees the slots of the values before it, the body all of them.
+   * The walk loops over the values, so it does not go deeper with their number.
    */
   private void binds(Binds b) {
     List<Node> values = b.values();
@@ -314,7 +313,7 @@ final class IrVerifier {
   }
 
   /**
-   * The leaf of the match {@code match}: the innermost body of its chain of Bind and Binds nodes (ADR-0043: a wide
+   * The leaf of the match {@code match}: the innermost body of its chain of Bind and Binds nodes (a wide
    * match is {@code Binds(steps, Identity)}), where every slot of that chain is in scope; {@code match} itself when it
    * is neither.
    */

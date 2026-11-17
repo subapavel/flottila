@@ -70,10 +70,10 @@ import java.util.Map;
 
 /**
  * Compiles a program: verifies it, specialises it in the optimised compile and verifies it again, freezes it, finds its
- * facts, then builds the interpreter tree (ADR-0018, ADR-0045 #112 and #117).
+ * facts, then builds the interpreter tree.
  *
  * <p>Each body, the main tree's or a function's, runs in a frame of its own: its slots, then a function's closure
- * cells (ADR-0045 #107). A closure argument that binds no slot runs in the frame it was written in, its defining frame,
+ * cells. A closure argument that binds no slot runs in the frame it was written in, its defining frame,
  * and compiles there; one that binds slots runs in a frame of its own, cell 0 the link to its defining frame and its
  * slots from cell 1, so a slot of a frame further out is read through as many links as there are closures between.
  */
@@ -96,16 +96,16 @@ public final class Compiler {
   /** Where a slot or closure parameter is: {@code level} links out from the running frame, at {@code cell}. */
   private record At(int level, int cell) {}
 
-  /** The program's frames: each call's units and each closure argument's leaf-emit depth (ADR-0046 #111). */
+  /** The program's frames: each call's units and each closure argument's leaf-emit depth. */
   private final Nesting nesting;
 
   /** The freeze ids of the program's nodes, by which {@link #facts} are kept. */
   private final Numbering numbering;
 
-  /** The facts each node's run form is read from (ADR-0047 #116). */
+  /** The facts each node's run form is read from. */
   private final Facts facts;
 
-  /** The kind of each Call, by which a tail call is built as a jump (ADR-0047 #118). */
+  /** The kind of each Call, by which a tail call is built as a jump. */
   private final CallKinds kinds;
 
   /** The body the node being built is in: -1 for the main tree, a function's place otherwise. */
@@ -131,7 +131,7 @@ public final class Compiler {
   }
 
   /**
-   * Compiles {@code root} in {@code mode}, with slots {@code 0 .. parameters - 1} its parameter slots (ADR-0038): the
+   * Compiles {@code root} in {@code mode}, with slots {@code 0 .. parameters - 1} its parameter slots: the
    * program of {@code root} and no function, {@link #compile(Program, int, CompileMode)}.
    *
    * @throws IllegalStateException when the tree breaks a rule of the IR
@@ -142,7 +142,7 @@ public final class Compiler {
 
   /**
    * Compiles {@code program} in {@code mode}, with slots {@code 0 .. parameters - 1} of its main tree its parameter
-   * slots (ADR-0038): in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
+   * slots: in scope everywhere in the main tree, bound by no node, and set by each run from its parameters.
    * {@link #compile(Program, int, CompileMode, int)} under {@link Specialiser#SPECIALISE_CAP}.
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
@@ -153,12 +153,12 @@ public final class Compiler {
 
   /**
    * {@link #compile(Program, int, CompileMode)} with the specialisation cap {@code cap}. The order is verify, specialise,
-   * verify, freeze, facts, build (ADR-0045 #112 and #117): {@link CompileMode#OPTIMISED} specialises the program under
+   * verify, freeze, facts, build: {@link CompileMode#OPTIMISED} specialises the program under
    * {@code cap}, verifies the result again and analyses it; {@link CompileMode#CONSERVATIVE} makes no copy and keeps
-   * every fact at its safe value (ADR-0018). The interpreter reads two things from the facts, over the frozen program's
-   * numbering, so a copy's nodes take their own: each node's run form (ADR-0047 #116), value form only where the
-   * optimised facts allow it (ADR-0030), and each Call's kind ({@link CallKinds}), a jump only for a tail kind, which
-   * only the optimised compile stores (ADR-0047 #118). The executable runs the frozen program and carries it
+   * every fact at its safe value. The interpreter reads two things from the facts, over the frozen program's
+   * numbering, so a copy's nodes take their own: each node's run form, value form only where the
+   * optimised facts allow it, and each Call's kind ({@link CallKinds}), a jump only for a tail kind, which
+   * only the optimised compile stores. The executable runs the frozen program and carries it
    * ({@link Frozen}).
    *
    * @throws IllegalStateException when the program breaks a rule of the IR
@@ -191,7 +191,7 @@ public final class Compiler {
     return new Executable(compiler.interpreter(frozen.main()), slots[0], parameters, facts, kinds, nesting, record);
   }
 
-  /** The op of {@code node}, built in its run form (ADR-0047 #116). */
+  /** The op of {@code node}, built in its run form. */
   private Op interpreter(Node node) {
     boolean value = RunForm.of(facts, body, numbering.id(node)) == RunForm.VALUE;
     return switch (node) {
@@ -263,8 +263,8 @@ public final class Compiler {
 
   /**
    * The Call {@code c} of its function's shell, in the run form {@code value}: its values read here, and each closure
-   * written here or, a bare ParamCall, the caller's closure passed on. A tail call, TAIL_SELF or TAIL_GROUP, is a jump
-   * (ADR-0047 #118), whose written closures read no cell here and are bound with no defining frame.
+   * written here or, a bare ParamCall, the caller's closure passed on. A tail call, TAIL_SELF or TAIL_GROUP, is a jump,
+   * whose written closures read no cell here and are bound with no defining frame.
    */
   private Op call(boolean value, Call c) {
     List<Node> nodes = c.values();
@@ -330,9 +330,9 @@ public final class Compiler {
   }
 
   /**
-   * Whether {@code node} is a tail emitter (ADR-0043), decided by its kind alone: an Identity, a Const, a Var, an
+   * Whether {@code node} is a tail emitter, decided by its kind alone: an Identity, a Const, a Var, an
    * Intrinsic of a one-result call form, or a Pipe, If, Bind or Binds whose parts are all tail emitters. Such a node
-   * gives one result at most and holds no Break, so it never breaks out (ADR-0008). Every other kind, a Break and a
+   * gives one result at most and holds no Break, so it never breaks out. Every other kind, a Break and a
    * Call among them, is none.
    */
   static boolean tail(Node node) {

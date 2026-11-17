@@ -1,10 +1,10 @@
 package dev.rail8.jq.query.analysis;
 
 /**
- * How many results a node can give for one input (ADR-0007 and its #112 amendment, F-56, GLOSSARY "Cardinality"). An
- * error or a break is not a result, and {@link #ONE} and {@link #AT_MOST_ONE} also promise that nothing runs after the
- * result. The lattice is {@link #NEVER} below {@link #NONE} and {@link #ONE}, both below {@link #AT_MOST_ONE}, below
- * {@link #MANY}; NONE and ONE are not comparable, so the constants' order is not the lattice's.
+ * How many results a node can give for one input. An error or a break is not a result, and {@link #ONE} and
+ * {@link #AT_MOST_ONE} also promise that nothing runs after the result. The lattice is {@link #NEVER} below
+ * {@link #NONE} and {@link #ONE}, both below {@link #AT_MOST_ONE}, below {@link #MANY}; NONE and ONE are not
+ * comparable, so the constants' order is not the lattice's.
  */
 public enum Cardinality {
   /** No result and no normal end: a Break, or a body that only recurses. The fixpoint's start; a fact keeps it as NONE. */

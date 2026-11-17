@@ -1,8 +1,8 @@
 package dev.rail8.jq.query.analysis;
 
 /**
- * A Call's kind (GLOSSARY "Call kind", ADR-0006, ADR-0047 "Amendment (ticket #118)"): the fact by which the interpreter
- * runs a tail call as a pending jump. The conservative compile stores no tail kind (ADR-0018).
+ * A Call's kind: the fact by which the interpreter runs a tail call as a pending jump. The conservative compile stores
+ * no tail kind.
  */
 public enum CallKind {
   /** A call from main, or from a function into a function outside its recursive group. */

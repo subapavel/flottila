@@ -40,10 +40,9 @@ import java.util.PriorityQueue;
 import java.util.Set;
 
 /**
- * Specialisation (ADR-0006, ADR-0045 "Amendment (ticket #117)", GLOSSARY "Specialisation", "Outside call", "Invariant
- * parameter"): the query-core pass between verify and freeze, which the conservative compile skips (ADR-0018). It makes
- * a copy of a lifted function's recursive group, PLAIN ones included, for each distinct argument tuple an outside call
- * passes to the group's invariant parameters, and the outside call runs the copy, those closures gone.
+ * Specialisation: the query-core pass between verify and freeze, which the conservative compile skips. It makes a copy
+ * of a lifted function's recursive group, PLAIN ones included, for each distinct argument tuple an outside call passes
+ * to the group's invariant parameters, and the outside call runs the copy, those closures gone.
  *
  * <ul>
  *   <li>An invariant parameter's class joins, by union, each closure parameter a Call inside the group passes a bare
@@ -52,14 +51,14 @@ import java.util.Set;
  *   <li>A tuple is the outside call's closure argument for each invariant class, the classes in the order of the
  *       group's first function's parameters. Two tuples are one key when they have one shape: Source ignored, the
  *       slots they bind renamed in the order they are bound, their free slots and free closure parameters numbered by
- *       first occurrence, and their constants, Operations, truths and collectors compared by identity (S3).
+ *       first occurrence, and their constants, Operations, truths and collectors compared by identity.
  *   <li>A copy keeps the closure parameters that are not invariant, renumbered from 0, then takes one trailing closure
  *       per free closure parameter of the tuple; it takes the original's value parameters, then one trailing value per
- *       free slot, a free Break's token among them (S4), its own slots moving up past them. Each ParamCall of an
+ *       free slot, a free Break's token among them, its own slots moving up past them. Each ParamCall of an
  *       invariant parameter becomes a fresh copy of its argument, with fresh slots; a Call inside the group runs the
  *       sibling copy, passing its kept closures and its own trailing closures and values.
  *   <li>Outside calls are taken by Source, start then end, then by the Program's pre-order: main, the functions by
- *       place, then the copies by place, and the freeze id within a body (S2). A key is decided at its first call: it is
+ *       place, then the copies by place, and the freeze id within a body. A key is decided at its first call: it is
  *       built when {@code spent + nodes <= cap}, its nodes those its copies hold, counted before they are built, and
  *       refused otherwise, so every call of a refused key keeps its real closures. The calls in a new copy join the
  *       queue; a Call between copies is no outside call, and copies are not specialised again.
@@ -70,8 +69,8 @@ import java.util.Set;
  */
 public final class Specialiser {
   /**
-   * The specialisation cap (ADR-0045, GLOSSARY "Specialisation cap"): the nodes the copies of one compile may hold. The
-   * #117 census measured the largest demand over the corpus and the prelude below it.
+   * The specialisation cap: the nodes the copies of one compile may hold. A census over the test corpus and the prelude
+   * checks that their largest demand stays below it, apart from the filters that exceed it by design.
    */
   public static final int SPECIALISE_CAP = 16_384;
 
@@ -86,7 +85,7 @@ public final class Specialiser {
   /**
    * Specialises {@code program}, whose main tree has {@code parameters} parameter slots and which the IR verifier
    * accepted with {@code layout}, under the cap {@code cap}. A program in which some call runs a copy is rebuilt, and
-   * the verifier checks the result and lays it out again (ADR-0045); one in which none does is returned as it is, with
+   * the verifier checks the result and lays it out again; one in which none does is returned as it is, with
    * its layout.
    *
    * @throws IllegalStateException when the rebuilt program breaks a rule of the IR
@@ -118,7 +117,7 @@ public final class Specialiser {
    */
   private record Target(int fn, int[] closures, int[] values) {}
 
-  /** The order of the queue: Source start, Source end, then the Program's pre-order (S2). */
+  /** The order of the queue: Source start, Source end, then the Program's pre-order. */
   private static final Comparator<Site> ORDER =
       Comparator.<Site>comparingInt(s -> s.call().source().start())
           .thenComparingInt(s -> s.call().source().end())

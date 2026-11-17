@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * May break out for every node and every function (ADR-0007 and its #115 amendment, GLOSSARY "May break out"): a node
- * may break out when its lowest break target is below its own freeze id. The targets:
+ * May break out for every node and every function: a node may break out when its lowest break target is below its own
+ * freeze id. The targets:
  *
  * <ul>
  *   <li>a Break's is the freeze id of the Label that binds its slot in its body, or -1 when no Label there binds it (a
@@ -19,7 +19,7 @@ import java.util.Map;
  *   <li>a ParamCall's is -1;
  *   <li>a Call's is -1 when its callee may break out, and otherwise the lowest of its closures' and values';
  *   <li>every other kind takes the lowest of its parts, so Identity, Const and Var, which have none, have no target, and
- *       a Try or an AltBind catches no break (ADR-0008).
+ *       a Try or an AltBind catches no break.
  * </ul>
  *
  * <p>The groups run callee-first and the main tree last, as for cardinality; a body is read in descending freeze id, so

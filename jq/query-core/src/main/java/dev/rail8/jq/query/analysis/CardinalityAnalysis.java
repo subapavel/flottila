@@ -39,14 +39,14 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Cardinality for every node and every function (ADR-0007 and its #112 amendment, F-56): a least fixpoint per recursive
- * group, the groups callee-first and the main tree last. Each group starts from NEVER and runs its bodies until no
- * function's value changes; a function's value is its body root's. A body is read in descending freeze id, so each
- * part is done before its node, with no recursion. The rules:
+ * Cardinality for every node and every function: a least fixpoint per recursive group, the groups callee-first and the
+ * main tree last. Each group starts from NEVER and runs its bodies until no function's value changes; a function's
+ * value is its body root's. A body is read in descending freeze id, so each part is done before its node, with no
+ * recursion. The rules:
  *
  * <ul>
  *   <li>Identity, Const and Var are ONE; an Intrinsic is MANY in the Many call form and AT_MOST_ONE in a one-result
- *       form; a Break is NEVER; an AltBind is MANY (a downstream error re-enters it, ADR-0038); a ParamCall is MANY; a
+ *       form; a Break is NEVER; an AltBind is MANY (a downstream error re-enters it); a ParamCall is MANY; a
  *       Call takes its callee's value.
  *   <li>Pipe, Bind and Binds are {@link Cardinality#seq} of their parts in order; If is {@code seq(cond, join(then,
  *       else))}; Foreach is {@code seq(init, each)}; an Advance is its update's.
@@ -141,7 +141,7 @@ final class CardinalityAnalysis {
     };
   }
 
-  /** An Intrinsic's value by its call form (ADR-0045): AT_MOST_ONE for each one-result form, MANY for Many. */
+  /** An Intrinsic's value by its call form: AT_MOST_ONE for each one-result form, MANY for Many. */
   private static Cardinality form(CallForm form) {
     // One arm per form, as for the node kinds above.
     return switch (form) {

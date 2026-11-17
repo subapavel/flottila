@@ -24,17 +24,16 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The kind of every Call of a program (GLOSSARY "Call kind", "Tail call", ADR-0006's four conditions, ADR-0047
- * "Amendment (ticket #118)"), by body and freeze id: one pass per body in ascending freeze id, so a node's tail position
- * is known before its parts are met, with no recursion.
+ * The kind of every Call of a program, by body and freeze id: one pass per body in ascending freeze id, so a node's
+ * tail position is known before its parts are met, with no recursion.
  *
  * <p>Only a function body has tail positions. Its root is one, and from a tail position they pass to the right of a Pipe
  * whose left side is at most one, the right of a Comma or an Alt, the branches of an If whose condition is at most one,
  * and the body of a Bind or Binds whose every value is at most one; to no other part, so never into a closure argument's
  * body. A Call in a tail position into the caller's recursive group is a tail call when each of its closure arguments is
- * a bare ParamCall passed on or holds no free slot, no free Break and no ParamCall (condition 4): TAIL_SELF when it calls
+ * a bare ParamCall passed on or holds no free slot, no free Break and no ParamCall: TAIL_SELF when it calls
  * the caller, TAIL_GROUP otherwise. Any other Call into the caller's group is RECURSIVE, and every other Call, each of
- * main's among them, is PLAIN. The conservative compile stores no tail kind (ADR-0018).
+ * main's among them, is PLAIN. The conservative compile stores no tail kind.
  */
 public final class CallKinds {
   /** The kind of each Call by body, the main tree's first and then each function's by place, and by freeze id; null for any other node. */
@@ -56,7 +55,7 @@ public final class CallKinds {
     return of(numbering, graph, facts);
   }
 
-  /** The kinds of the program {@code numbering} numbers with no tail kind: each Call PLAIN or RECURSIVE (ADR-0018). */
+  /** The kinds of the program {@code numbering} numbers with no tail kind: each Call PLAIN or RECURSIVE. */
   public static CallKinds conservative(Numbering numbering, CallGraph graph) {
     return of(numbering, graph, null);
   }
@@ -126,7 +125,7 @@ public final class CallKinds {
     }
   }
 
-  /** Whether {@code part} of the body {@code body} is at most one: one result at most, and nothing runs after it (F-56). */
+  /** Whether {@code part} of the body {@code body} is at most one: one result at most, and nothing runs after it. */
   private static boolean atMostOne(Facts facts, int body, Numbering numbering, Node part) {
     return facts.cardinality(body, numbering.id(part)) != Cardinality.MANY;
   }
@@ -143,8 +142,9 @@ public final class CallKinds {
   }
 
   /**
-   * Condition 4 for the closure argument {@code closure}: a bare ParamCall passed on, or a body whose slot reads (a Var,
-   * a Break's token, an AltBind's from-slots) are all of slots it binds itself, and which holds no ParamCall.
+   * Whether the closure argument {@code closure} allows a tail call: a bare ParamCall passed on, or a body whose slot
+   * reads (a Var, a Break's token, an AltBind's from-slots) are all of slots it binds itself, and which holds no
+   * ParamCall.
    */
   private static boolean passes(Node closure) {
     if (closure instanceof ParamCall) {
@@ -198,7 +198,7 @@ public final class CallKinds {
 
   /**
    * Whether a Call of the recursive group of the function at {@code place} is TAIL_GROUP: then a call into the group
-   * runs the body of any function of the group in its activation (ADR-0046 #111 amendment).
+   * runs the body of any function of the group in its activation.
    */
   public boolean groupJumps(int place) {
     return groupJumps[place];

@@ -35,10 +35,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The push form's Java frames of a program, fixed from its IR when the tree is built (ADR-0046 and its #111
- * amendment): a stack unit is one frame of the interpreter, lambda and proxy frames included. Each body (main, a
- * function's, a closure argument's) is walked twice from stacks of its own, so a deep tree takes no deep recursion, and
- * no call is followed into its callee.
+ * The push form's Java frames of a program, fixed from its IR when the tree is built: a stack unit is one frame of the
+ * interpreter, lambda and proxy frames included. Each body (main, a function's, a closure argument's) is walked twice
+ * from stacks of its own, so a deep tree takes no deep recursion, and no call is followed into its callee.
  *
  * <ul>
  *   <li>Bottom-up, each node's emit height (the frames from its own up to the one that calls its sink), its leaf-emit
@@ -105,7 +104,7 @@ public final class Nesting {
    * The nesting of {@code program}, whose IR the verifier passed, with {@link StackUnits#STARTER} as {@code T}: its
    * recursive groups {@code graph} and its Call kinds {@code kinds}. A jump keeps the units of its activation, so a
    * Call into a group with a TAIL_GROUP call is charged the largest leaf-emit depth of the group's functions, whose bodies
-   * may all run in that activation (ADR-0046 #111 amendment, ADR-0047 #118).
+   * may all run in that activation.
    */
   static Nesting of(Program program, CallGraph graph, CallKinds kinds) {
     List<Function> functions = program.functions();

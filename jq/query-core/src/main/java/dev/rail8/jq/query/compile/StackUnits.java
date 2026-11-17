@@ -3,23 +3,23 @@ package dev.rail8.jq.query.compile;
 import dev.rail8.jq.query.run.RunState;
 
 /**
- * The stack units of the interpreter (ADR-0046 and its #111 amendment): the release constants {@code b} and the
- * reserve, and the unit limit {@code U_f} a run derives from its declared stack. A stack unit is one Java frame of the
- * push form, lambda and proxy frames included. #113's calibration matrix measured the constants in {@code -Xint} and C1
- * only and proves them in the warm default JIT (ADR-0046 #113, "Rulings on the matrix"); the matrix's record and
- * its measurement are cited in {@code bench/RESULTS.md}.
+ * The stack units of the interpreter: the release constants {@code b} and the reserve, and the unit limit {@code U_f} a
+ * run derives from its declared stack. A stack unit is one Java frame of the push form, lambda and proxy frames
+ * included. The calibration matrix measures the constants in {@code -Xint} and C1 only, whose stack edges
+ * are stable, and checks that they hold in the warm default JIT, where the JIT still compiling during a search makes
+ * the edges unreliable.
  */
 public final class StackUnits {
   /**
    * {@code b}, the bytes per unit: the largest 512 KiB to 1 MiB slope of the matrix's {@code -Xint} and C1 cells, 189 B
-   * (C1, the wide body W, CONSERVATIVE), rounded up to 8 B: 192 (ADR-0046 #113, K2).
+   * (C1, the wide body W, CONSERVATIVE), rounded up to 8 B: 192.
    */
   static final long BYTES_PER_UNIT = 192;
 
   /**
    * The reserve: the largest linked intercept {@code S - b_cell·(U* + D_f)}, 220 832 B ({@code -Xint}, a virtual thread,
    * the nested drivers, OPTIMISED), plus the largest cold-linkage term, 29 988 B ({@code -Xint}, the Collect-heavy
-   * descent), rounded up to 4 KiB, plus 32 KiB for the natives: 280 KiB (ADR-0046 #113, K3). It is above the guard pages
+   * descent), rounded up to 4 KiB, plus 32 KiB for the natives: 280 KiB. It is above the guard pages
    * plus 32 KiB.
    */
   static final long RESERVE = 280 * 1024;
