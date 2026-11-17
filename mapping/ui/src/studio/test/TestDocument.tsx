@@ -17,7 +17,7 @@ export type DocumentMode = (typeof DOCUMENT_MODES)[number];
 const SECTIONS = ['Document', 'Parameters'] as const;
 type Section = (typeof SECTIONS)[number];
 
-/** A row of a pane's parameter tables (a preview, #167): its id among the values, its label and its default. */
+/** A row of a pane's parameter tables (a preview): its id among the values, its label and its default. */
 export interface ParameterRow {
   id: string;
   label: string;
@@ -38,7 +38,7 @@ export interface TestDocumentProps {
   readOnly: boolean;
   /** Whether a stale trace stands behind the result: it shows a mark. */
   stale?: boolean;
-  /** The parameter tables of the Parameters section, each with its rows (a preview, #167). */
+  /** The parameter tables of the Parameters section, each with its rows (a preview). */
   parameters: { title: string; rows: ParameterRow[] }[];
   values: Readonly<Record<string, string>>;
   onParameter?: (id: string, value: string) => void;
@@ -47,7 +47,7 @@ export interface TestDocumentProps {
 }
 
 /**
- * A pane of the Test tab (the prototype's TestDocument): the source document, which the author types, or the result of
+ * A pane of the Test tab: the source document, which the author types, or the result of
  * the last run, each as a tree of fields and values or as text, and a Parameters section, a preview.
  */
 export function TestDocument({
@@ -116,7 +116,7 @@ export function TestDocument({
       setError(`Cannot process this ${format} document. ${(e as Error).message}`);
     }
   };
-  // the prototype's downloadInstance: the document as instance.<format> in schema.zip (#170)
+  // the document as instance.<format> in schema.zip
   const download = () => downloadFile('schema.zip', new Blob([zipInstance(displayed, format)], { type: 'application/zip' }));
   const empty = (
     <div className="result-empty">

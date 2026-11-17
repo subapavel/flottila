@@ -1,4 +1,4 @@
-/** Offers `blob` to the browser as a download named `filename` (the prototype's download.js). */
+/** Offers `blob` to the browser as a download named `filename`. */
 export function downloadFile(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

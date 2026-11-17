@@ -12,7 +12,7 @@ interface ToolProps {
   ref?: Ref<HTMLButtonElement>;
 }
 
-/** An icon button of a toolbar, named by its label (the prototype's Tool). */
+/** An icon button of a toolbar, named by its label. */
 export function Tool({ label, icon: Icon, pressed, onClick, disabled, menu = false, ref }: ToolProps) {
   return (
     <button

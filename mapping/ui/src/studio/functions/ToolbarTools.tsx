@@ -1,7 +1,7 @@
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@patternfly/react-core';
 import type { ComponentType, ReactNode } from 'react';
 
-/** An icon button of a toolbar, named by its label (the prototype's ToolbarTools Tool). */
+/** An icon button of a toolbar, named by its label. */
 export function Tool({ label, icon: Icon, onClick, disabled }: { label: string; icon: ComponentType; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" className="def-tool" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
@@ -10,7 +10,7 @@ export function Tool({ label, icon: Icon, onClick, disabled }: { label: string; 
   );
 }
 
-/** A modal dialog named by its title, with an optional footer (the prototype's Panels Dialog). */
+/** A modal dialog named by its title, with an optional footer. */
 export function Dialog({ title, close, children, footer, wide = false }: { title: string; close: () => void; children: ReactNode; footer: ReactNode; wide?: boolean }) {
   return (
     <Modal isOpen onClose={close} variant={wide ? 'medium' : 'small'} aria-label={title}>

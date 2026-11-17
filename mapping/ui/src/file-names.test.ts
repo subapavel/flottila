@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 
 // On a case-insensitive file system (Windows, macOS) the import './inspector/Inspector' may resolve to
-// 'inspector.ts' before 'Inspector.tsx' (#131). No two files may share a path once case and extension are ignored.
+// 'inspector.ts' before 'Inspector.tsx'. No two files may share a path once case and extension are ignored.
 const src = fileURLToPath(new URL('.', import.meta.url));
 
 test('no two files under src share a path ignoring letter case and extension', () => {

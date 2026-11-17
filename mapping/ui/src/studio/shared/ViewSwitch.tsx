@@ -1,4 +1,4 @@
-/** A pane's view modes as pressed buttons (the prototype's ViewSwitch). */
+/** A pane's view modes as pressed buttons. */
 export function ViewSwitch<M extends string>({ label, value, onChange, modes }: { label: string; value: M; onChange: (mode: M) => void; modes: readonly M[] }) {
   return (
     <div className="switches view-switch" role="group" aria-label={label}>

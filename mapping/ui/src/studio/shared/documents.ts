@@ -7,7 +7,7 @@ export const formatOf = (ref: StructureRef): DocumentFormat => ('json' in ref.ro
 
 const PARSER_ERROR = ['http://www.mozilla.org/newlayout/xml/parsererror.xml', 'http://www.w3.org/1999/xhtml'];
 
-/** Parses a test document (the prototype's parsePayload); throws when the text is not well-formed XML or valid JSON. */
+/** Parses a test document; throws when the text is not well-formed XML or valid JSON. */
 export function parseDocument(text: string, format: 'XML'): XMLDocument;
 export function parseDocument(text: string, format: 'JSON'): unknown;
 export function parseDocument(text: string, format: DocumentFormat): unknown;
@@ -28,7 +28,7 @@ function xmlString(doc: XMLDocument, text: string): string {
 }
 
 /**
- * The text indented two spaces a level (the prototype's Pretty Print): JSON in full, XML between the children of an
+ * The text indented two spaces a level: JSON in full, XML between the children of an
  * element with element-only content, unless it keeps its space (`xml:space="preserve"`). Throws as `parseDocument` does.
  */
 export function prettyText(text: string, format: DocumentFormat): string {
@@ -52,7 +52,7 @@ export function prettyText(text: string, format: DocumentFormat): string {
   return xmlString(doc, text);
 }
 
-/** A row of a document's tree (the prototype's payloadRows, read only): a field or attribute with its value. */
+/** A row of a document's tree, read only: a field or attribute with its value. */
 export interface DocumentRow {
   id: string;
   name: string;

@@ -17,7 +17,7 @@ export function properAncestors(field: FieldPath): FieldPath[] {
 }
 
 /**
- * Sets a source-field box's context (GLOSSARY: Context). A context equal to the parent is left out (ADR-0010). The
+ * Sets a source-field box's context. A context equal to the parent is left out. The
  * command refuses, at the box:
  * - `cross-target-field-reference` or `unknown-box-reference` when the box is not in the target field's mapping;
  * - `context-not-ancestor` when `context` is not a proper ancestor of the box's field, or the box reads no field.

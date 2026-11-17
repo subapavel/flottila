@@ -11,7 +11,7 @@ const structure = {
   root: { element: ORDER },
 };
 const withSides: MappingModel = { formatVersion: 1, source: structure, target: structure };
-/** A mapping created from its id alone: neither source nor target yet (ADR-0029). */
+/** A mapping created from its id alone: neither source nor target yet. */
 const sideless: MappingModel = { formatVersion: 1 };
 
 function store(model: MappingModel = withSides, ports: Partial<WorkingCopyPorts> = {}) {

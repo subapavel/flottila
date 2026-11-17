@@ -4,7 +4,7 @@ import { ArchiveCatalog } from './ArchiveCatalog';
 import { INITIAL_IMPORTS, JAVA_TYPES, moveRow, nameIssue, variable, type Archive, type FunctionsState, type Udf, type Variable, type VariableKind } from '../mock/function-model';
 import { Tool } from './ToolbarTools';
 
-/** Insert, Delete, Move up and Move down for the rows of a table, and any further tools (the prototype's RowTools). */
+/** Insert, Delete, Move up and Move down for the rows of a table, and any further tools. */
 export function RowTools(props: {
   label: string;
   onAdd: () => void;
@@ -31,7 +31,7 @@ export function RowTools(props: {
 
 /**
  * A name field that commits on blur or Enter when the name is a Java identifier not in `taken`, and says why not
- * otherwise; Escape drops the draft (the prototype's NameEditor).
+ * otherwise; Escape drops the draft.
  */
 export function NameEditor({ value, label, taken, onCommit }: { value: string; label: string; taken: readonly string[]; onCommit: (name: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -166,7 +166,7 @@ const DEPENDENCY_VIEWS = ['Import Instructions', 'Archives Used'] as const;
 const EMPTY_ARCHIVE: Archive = { name: '', namespace: '' };
 
 /**
- * The import instructions and archives of the mapping's functions (the prototype's Dependencies): the initial import
+ * The import instructions and archives of the mapping's functions: the initial import
  * instructions are fixed, the ones added after them editable; an archive and its namespace are chosen from the
  * catalogue, and an archive row can be cut, copied and pasted.
  */

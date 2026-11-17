@@ -1,8 +1,7 @@
 /*
- * The Signature tab's styles. Ported from the prototype (branch prototype/mapping-studio,
- * ui/prototype/mapping-studio/src/): first the rules of studio.css the tab uses (section heads, editor tables, role
- * tiles, tool buttons, the copy surface of the processing log), then signature.css, with their values unchanged.
- * Added: `.sig-name-cell` and `.preview-badge` place a preview message's "Preview" badge beside its name.
+ * The Signature tab's styles: first the rules of studio.css the tab uses (section heads, editor tables, role tiles,
+ * tool buttons, the copy surface of the processing log), then signature.css. `.sig-name-cell` and `.preview-badge`
+ * place a preview message's "Preview" badge beside its name.
  */
 .mode-fields {
   min-inline-size: 0;

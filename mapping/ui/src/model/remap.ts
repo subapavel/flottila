@@ -3,19 +3,19 @@ import type { AuthoringId, FieldPath, MappingModel, SourceFieldBox } from '../ge
 import { applied, refused, refusedField, refuseReference, type CommandResult, type FieldRefusal } from './command';
 import { properAncestors } from './set-context';
 
-/** Points source-field box `box` at the source field `field` (GLOSSARY: Remap), by drop or from the inspector. */
+/** Points source-field box `box` at the source field `field`, by drop or from the inspector. */
 export interface RemapCommand {
   targetField: FieldPath;
   box: AuthoringId;
   field: FieldPath;
-  /** The refusal `field` carries in the source tree, when it is a refused field (ADR-0027). */
+  /** The refusal `field` carries in the source tree, when it is a refused field. */
   sourceRefusal?: FieldRefusal;
 }
 
 /**
  * Remaps a source-field box: it reads `field` and keeps its authoring id, and every wire that reads it stays. Its
  * context is kept while it is a proper ancestor of `field` other than the parent; otherwise it is left out, so the box
- * reads in the parent's context (ADR-0010). A refused `field` is refused first, `refused-field` on the source side, as
+ * reads in the parent's context. A refused `field` is refused first, `refused-field` on the source side, as
  * link refuses it; then the command refuses, at the box:
  * - `cross-target-field-reference` or `unknown-box-reference` when the box is not in the target field's mapping;
  * - `not-source-field-box` when the box reads no source field.

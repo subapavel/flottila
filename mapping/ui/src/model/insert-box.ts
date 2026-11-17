@@ -10,7 +10,7 @@ export interface InsertBoxCommand {
   boxId: AuthoringId;
   /** The id of the new target field mapping; used only when the target field has none. */
   mappingId: AuthoringId;
-  /** The refusal the target field carries in the target tree, when it is a refused field (ADR-0027). */
+  /** The refusal the target field carries in the target tree, when it is a refused field. */
   targetRefusal?: FieldRefusal;
 }
 
@@ -19,7 +19,7 @@ export interface InsertBoxCommand {
  * none. The box becomes the mapping's `result` when `result` is `null` or the mapping is new; a mapping that already
  * has a result keeps it, and the new box is an unreachable box.
  *
- * Ids share one space across the mapping (ADR-0010). The command refuses, in this order:
+ * Ids share one space across the mapping. The command refuses, in this order:
  * - `refused-field` when the command carries a `targetRefusal`, whatever the ids;
  * - `cross-target-field-reference` when `boxId` names a box of another target field mapping;
  * - `duplicate-authoring-id` when any other id it would add is already used, or the two new ids are equal.

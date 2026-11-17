@@ -21,7 +21,7 @@ const NUMERIC_TYPES = new Set([
 ]);
 const SYMBOLS: Record<string, string> = { string: 'T', boolean: 'T/F', array: '[ ]', null: '∅', variable: 'V' };
 
-/** A field's type as an icon (the prototype's FieldTypeIcon): a cube for a structure field, else a symbol of its value type. */
+/** A field's type as an icon: a cube for a structure field, else a symbol of its value type. */
 export function FieldTypeIcon({ type }: { type: string }) {
   const symbol = NUMERIC_TYPES.has(type) ? '#' : (SYMBOLS[type] ?? '·');
   return (

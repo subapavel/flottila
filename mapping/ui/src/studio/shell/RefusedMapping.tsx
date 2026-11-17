@@ -8,7 +8,7 @@ export interface RefusedMappingProps {
   onRetry: () => void;
 }
 
-/** A mapping that does not open, read-only: the problem, its diagnostics and Retry, and no edit control (ADR-0027). */
+/** A mapping that does not open, read-only: the problem, its diagnostics and Retry, and no edit control. */
 export function RefusedMapping({ error, retrying, onRetry }: RefusedMappingProps) {
   const failure = describeError(error);
   return (

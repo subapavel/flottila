@@ -47,7 +47,7 @@ interface SplitDividerProps {
 }
 
 /**
- * The prototype's divider: dragged with the primary pointer, or moved by 5 % with the arrow keys, Home and End. The share
+ * The divider: dragged with the primary pointer, or moved by 5 % with the arrow keys, Home and End. The share
  * changes while it moves and is kept when it stops.
  */
 function SplitDivider({ vertical = false, label, controls, share, onChange, onCommit, getTravel }: SplitDividerProps) {

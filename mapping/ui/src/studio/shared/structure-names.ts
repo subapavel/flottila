@@ -1,6 +1,6 @@
 import type { RootSelector } from '../../generated/mapping-model';
 
-/** The kind of a root selector (GLOSSARY: Root selector): an XML element, a JSON document or a WSDL message. */
+/** The kind of a root selector: an XML element, a JSON document or a WSDL message. */
 export type RootKind = 'element' | 'json' | 'wsdl';
 
 /** A message as the Signature tab names it: its bundle and root selector, as a structure reference has them. */
@@ -19,7 +19,7 @@ function splitEQName(name: string): { namespace: string; local: string } {
 }
 
 /**
- * A message's name, as the mapping list names a root (ADR-0029): an element's local name, a WSDL root's operation, the
+ * A message's name, as the mapping list names a root: an element's local name, a WSDL root's operation, the
  * last segment of a JSON root's first file.
  */
 export function messageName({ bundle, root }: MessageChoice): string {

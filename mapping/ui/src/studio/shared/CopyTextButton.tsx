@@ -3,13 +3,13 @@ import { CheckIcon, CopyIcon, ExclamationCircleIcon } from '@patternfly/react-ic
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 const COPIED = 'Copied!';
-/** How long the receipt shows, as in the prototype's CopyTextButton. */
+/** How long the receipt shows. */
 const RECEIPT_MS = 2400;
 
 /**
- * Copies `text` to the clipboard (the prototype's CopyTextButton): its icon, its tooltip and a screen-reader status
+ * Copies `text` to the clipboard: its icon, its tooltip and a screen-reader status
  * say whether it did, for 2.4 s. The tooltip shows while the button is hovered or focused, or a receipt shows; Escape
- * hides it and the receipt. The prototype's `execCommand('copy')` fallback is left out: the browsers the studio
+ * hides it and the receipt. There is no `execCommand('copy')` fallback: the browsers the studio
  * supports all have the asynchronous clipboard.
  */
 export function CopyTextButton({ label, text }: { label: string; text: string }) {
@@ -73,7 +73,7 @@ export function CopyTextButton({ label, text }: { label: string; text: string })
 }
 
 /**
- * A surface with its copy button in the top end corner (the prototype's CopySurface): a document, a log or a path, whose
+ * A surface with its copy button in the top end corner: a document, a log or a path, whose
  * text `text` the button copies.
  */
 export function CopySurface({ label, text, className, children }: { label: string; text: string; className: string; children: ReactNode }) {

@@ -73,7 +73,7 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   history.replaceState(null, '', window.location.pathname);
-  // every test fails on console.error (ADR-0013)
+  // every test fails on console.error
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });
@@ -90,7 +90,7 @@ describe('the Test tab (#158)', () => {
     await runButton().click();
 
     await expect.element(result()).toMatchTextContent(OUTPUT);
-    // only the working copy and the input go to the service: the trace level and parameters are previews (ADR-0028)
+    // only the working copy and the input go to the service: the trace level and parameters are previews
     expect(runTest).toHaveBeenCalledExactlyOnceWith(MAPPING, { model: store.getState().workingCopy, input: INPUT });
     await expect.element(log()).toMatchTextContent(new RegExp(`${TIME}Start of test`));
     await expect.element(log()).toMatchTextContent('Warning unreachable-box: the box is not reached from the result');
@@ -158,7 +158,7 @@ describe('the Test tab (#158)', () => {
     await expect.element(tree.getByRole('row', { name: /OrderId PO-1/ })).toBeVisible();
   });
 
-  // the owner's rule of #177 replaces #158's "Run needs edit mode": a test runs in read mode too, as in SAP PO
+  // a test runs in read mode too, as in SAP PO
   test('in read mode Run runs the source, edited as a throw-away input: never kept, never unsaved, no leave guard', async () => {
     const api = scenario({ test: { [MAPPING]: output } });
     const runTest = vi.spyOn(api, 'runTest');

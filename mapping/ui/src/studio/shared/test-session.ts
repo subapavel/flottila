@@ -21,7 +21,7 @@ export interface LogSection {
   lines: LogLine[];
 }
 
-/** A log line's time as the prototype stamps it: hours, minutes and seconds on a 24-hour clock. */
+/** A log line's time: hours, minutes and seconds on a 24-hour clock. */
 export const stamp = (at: Date) => at.toLocaleTimeString('en-GB', { hour12: false });
 
 const diagnosticLine = ({ severity, code, message }: Diagnostic): LogLine => ({
@@ -52,7 +52,7 @@ function outcome(result: TestResult): LogLine {
   }
 }
 
-/** The log section of a run from `start` to `end` (the prototype's Start and End of test): its diagnostics and outcome. */
+/** The log section of a run from `start` to `end`: its diagnostics and outcome. */
 export function runLines(start: Date, end: Date, answer: RunAnswer): LogLine[] {
   const body = 'failure' in answer ? [{ message: `The test could not run: ${answer.failure}` }] : [...answer.result.diagnostics.map(diagnosticLine), outcome(answer.result)];
   return [{ time: stamp(start), message: 'Start of test' }, ...body, { time: stamp(end), message: 'End of test' }];
@@ -70,7 +70,7 @@ export function logLines(...sections: (LogSection | null)[]): LogLine[] {
 export const logText = (lines: readonly LogLine[]) => lines.map((l) => `${l.detail ? '  ' : ''}${l.time ? `${l.time} ` : ''}${l.message}`).join('\n');
 
 export interface TestSessionState {
-  /** The source document as typed; kept in the browser per mapping in edit mode, a throw-away input in read mode (#177). */
+  /** The source document as typed; kept in the browser per mapping in edit mode, a throw-away input in read mode. */
   source: string;
   /** The latest compile's log section, from when the studio opened. */
   compileLog: LogSection | null;
@@ -83,7 +83,7 @@ export interface TestSessionState {
   /** Loads a test instance: its document as the source, its values as the run's parameters. */
   loadInstance: (instance: TestInstance) => void;
   /**
-   * Runs the working copy on the source document (ADR-0013: the working copy, saved or not) and keeps the answer in the
+   * Runs the working copy on the source document (the working copy, saved or not) and keeps the answer in the
    * working copy's store (its trace for the display queue) and the log; a run under way ignores another.
    */
   runTest: (level: string) => Promise<void>;
@@ -92,7 +92,7 @@ export interface TestSessionState {
 }
 
 /**
- * The Test tab's session of one open mapping (the prototype's useSimulationSession): the source document, the processing
+ * The Test tab's session of one open mapping: the source document, the processing
  * log and the run under way. It outlives the tab, so that the log and the source stay while another tab is open.
  * `run` sends a test run of the mapping to the service.
  */
@@ -112,7 +112,7 @@ export function createTestSession(
     running: false,
     setSource: (source) => {
       set({ source });
-      // read mode never saves the source (#177): the browser keeps none of it
+      // read mode never saves the source: the browser keeps none of it
       if (workingCopy.getState().editing) browserState.write(testSourceKey(mappingId), source);
     },
     loadInstance: (instance) => {
@@ -159,9 +159,9 @@ export function followCompiles(session: TestSession, workingCopy: WorkingCopySto
 const instanceKey = (i: TestInstance | undefined) => (i ? `${i.id}:${i.lastUsed}:${i.revision ?? 0}` : '');
 
 /**
- * Makes the source document follow the test instance library (#170, the prototype's useSimulationSession): a change of
+ * Makes the source document follow the test instance library: a change of
  * the current instance of the source's format, by selection, a save over it, a new one, a delete or a revert, loads its
- * document and values, as do an instance chosen in read mode (#177) and a document the instance tools load from a file.
+ * document and values, as do an instance chosen in read mode and a document the instance tools load from a file.
  * At the start an empty source takes the current instance's document, the latest. Returns the unsubscribe.
  */
 export function followInstances(session: TestSession, workingCopy: WorkingCopyStore, browserState: BrowserStateStore, mappingId: string): () => void {
@@ -190,7 +190,7 @@ export function followInstances(session: TestSession, workingCopy: WorkingCopySt
 
 /**
  * The test session of the open mapping, for as long as the studio is open, following its compiles and test instances;
- * its runs are a TanStack Query mutation (ADR-0013), whose `mutateAsync` stays the same for the life of the hook.
+ * its runs are a TanStack Query mutation, whose `mutateAsync` stays the same for the life of the hook.
  */
 export function useTestSession(workingCopy: WorkingCopyStore, api: ApiClient, mappingId: string, browserState: BrowserStateStore): TestSession {
   const { mutateAsync: run } = useMutation({ mutationFn: (request: TestRequest) => api.runTest(mappingId, request) });

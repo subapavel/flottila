@@ -1,6 +1,5 @@
 /*
- * The Overview tab's styles, ported from the prototype's studio.css (branch prototype/mapping-studio,
- * ui/prototype/mapping-studio/src/studio.css) with its values unchanged.
+ * The Overview tab's styles.
  */
 .mapping-overview {
   display: grid;

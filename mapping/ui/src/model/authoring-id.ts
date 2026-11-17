@@ -4,7 +4,7 @@ import type { AuthoringId } from '../generated/mapping-model';
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
 /**
- * A fresh authoring id: 10 lowercase Crockford base32 characters, drawn with `crypto.getRandomValues` (ADR-0010).
+ * A fresh authoring id: 10 lowercase Crockford base32 characters, drawn with `crypto.getRandomValues`.
  * `fill` is the random source, a port for tests.
  */
 export function newAuthoringId(

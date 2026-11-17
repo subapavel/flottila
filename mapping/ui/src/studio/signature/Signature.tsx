@@ -44,7 +44,7 @@ const PRIMARY = 'message';
 
 const cap = (side: Side) => (side === 'source' ? 'Source' : 'Target');
 
-/** A tool button of a section's toolbar (the prototype's ToolbarTools Tool). */
+/** A tool button of a section's toolbar. */
 function Tool({ label, icon: Icon, disabled, onClick }: { label: string; icon: ComponentType; disabled?: boolean; onClick: () => void }) {
   return (
     <button type="button" className="def-tool" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
@@ -53,7 +53,7 @@ function Tool({ label, icon: Icon, disabled, onClick }: { label: string; icon: C
   );
 }
 
-/** A select of a table cell (the prototype's FieldSelect). */
+/** A select of a table cell. */
 function FieldSelect<T extends string>({
   label,
   value,
@@ -102,10 +102,10 @@ export interface SignatureProps {
 }
 
 /**
- * The Signature tab (the prototype's Signature): the source and target message tables, editable in edit mode. The
- * first row of a side is its message in the mapping file (GLOSSARY: Signature); choosing it loads the structure,
- * sets the side on the working copy and refreshes it (ADR-0027). Further messages and the parameters are preview
- * features (ADR-0028), a draft of the edit session that Save keeps in the browser per mapping, never in the file.
+ * The Signature tab: the source and target message tables, editable in edit mode. The first row of a side is its
+ * message in the mapping file; choosing it loads the structure, sets the side on the working copy and refreshes it.
+ * Further messages and the parameters are preview features, a draft of the edit session that Save keeps in the browser
+ * per mapping, never in the file.
  */
 export function Signature({ mappingId, api, store, browserState }: SignatureProps) {
   const editing = useStore(store, (s) => s.editing);
@@ -210,7 +210,7 @@ interface MessagesProps {
   choose: (row: string, kind?: RootKind) => void;
 }
 
-/** One side's message table (the prototype's Messages): its message in the mapping file, then the preview messages. */
+/** One side's message table: its message in the mapping file, then the preview messages. */
 function Messages({ side, pkg, store, mock, clipboard, setClipboard, choose }: MessagesProps) {
   const primary = useStore(store, (s) => s.workingCopy[side]);
   const previews = useStore(mock, (s) => s.value[side]);
@@ -343,7 +343,7 @@ function Messages({ side, pkg, store, mock, clipboard, setClipboard, choose }: M
 
 const newParameter = (id: string, name = ''): PreviewParameter => ({ id, name, type: 'string', direction: 'Import', description: '' });
 
-/** The parameters table (the prototype's Signature parameters): a preview feature, kept in the browser (#167). */
+/** The parameters table: a preview feature, kept in the browser. */
 function Parameters({ store, mock, editing, onLog }: { store: WorkingCopyStore; mock: SignatureMockStore; editing: boolean; onLog: (log: string) => void }) {
   const parameters = useStore(mock, (s) => s.value.parameters);
   // an Import parameter is typed in the source's words, an Export one in the target's: JSON has no xsd: prefix
@@ -469,7 +469,7 @@ function Parameters({ store, mock, editing, onLog }: { store: WorkingCopyStore; 
   );
 }
 
-/** The processing log of Where Used (the prototype's sig-log panel), with a copy button. */
+/** The processing log of Where Used, with a copy button. */
 function ProcessingLog({ log }: { log: string }) {
   return (
     <div className="panel sig-log">
@@ -484,7 +484,7 @@ function ProcessingLog({ log }: { log: string }) {
   );
 }
 
-/** The Processing Log dialog Where Used opens (the prototype's log Dialog). */
+/** The Processing Log dialog Where Used opens. */
 function LogDialog({ log, onClose }: { log: string; onClose: () => void }) {
   const title = useId();
   return (

@@ -2,7 +2,7 @@ import { produce } from 'immer';
 import type { AuthoringId, Box, FieldPath, MappingModel } from '../generated/mapping-model';
 import { applied, refused, type CommandResult } from './command';
 
-/** Pastes copied boxes into the target field mapping of a target field (ADR-0010, "Authoring ids"). */
+/** Pastes copied boxes into the target field mapping of a target field. */
 export interface PasteCommand {
   targetField: FieldPath;
   /** The fragment: the copied boxes by the ids they had when copied. */

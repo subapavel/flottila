@@ -9,7 +9,7 @@ import { Masthead } from './Masthead';
 import { lastTabKey, openingTab, StudioShell } from './StudioShell';
 
 export interface StudioProps {
-  /** The mapping's id: its workspace path without the file suffix (ADR-0014). */
+  /** The mapping's id: its workspace path without the file suffix. */
   mappingId: string;
   /** The port to the service. */
   api: ApiClient;
@@ -17,13 +17,13 @@ export interface StudioProps {
   browserState: BrowserStateStore;
   /** Where the masthead's brand leads: the start page. */
   listHref: string;
-  /** Opens the mapping in edit mode, as Create does (ADR-0028); otherwise it opens in view mode. */
+  /** Opens the mapping in edit mode, as Create does; otherwise it opens in view mode. */
   startEditing?: boolean;
   /** Told whether the open mapping has unsaved changes, at open and at each change. */
   onUnsavedChange?: (unsaved: boolean) => void;
 }
 
-/** The store of an open mapping (ADR-0013), its ports wired to `api`. */
+/** The store of an open mapping, its ports wired to `api`. */
 export function studioStore(api: ApiClient, mappingId: string, opened: StoredMapping) {
   return createWorkingCopyStore(opened, {
     newId: () => newAuthoringId(),
@@ -34,7 +34,7 @@ export function studioStore(api: ApiClient, mappingId: string, opened: StoredMap
 }
 
 /**
- * The Mapping studio of one mapping (ADR-0028), router-free over injected ports with its own query client (ADR-0013):
+ * The Mapping studio of one mapping, router-free over injected ports with its own query client:
  * it loads the mapping, shows a refusal with Retry, and opens the loaded mapping on the tab `openingTab` names.
  */
 export function Studio(props: StudioProps) {

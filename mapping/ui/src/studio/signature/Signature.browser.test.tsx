@@ -283,7 +283,7 @@ describe('several source or target messages, a preview feature (#168)', () => {
     await expect.element(messages('Source').getByLabelText('Source messages chosen')).toHaveTextContent('2');
     await row('Source', 2).getByRole('combobox', { name: 'Occurrence' }).selectOptions('0..unbounded');
     expect(loadStructure).not.toHaveBeenCalled();
-    // ADR-0028 (owner, 2026-11-10): a preview edit is a draft of the edit session, kept by Save
+    // a preview edit is a draft of the edit session, kept by Save
     expect(browserState.values.has(signatureMockKey('mappings/order-id-copy'))).toBe(false);
     await button('Save').click();
     await expect.element(page.getByRole('heading', { name: /Mapping order-id-copy saved/ })).toBeVisible();
@@ -362,7 +362,7 @@ describe('several source or target messages, a preview feature (#168)', () => {
     await row('Target', 2).getByRole('button', { name: 'Select row 2' }).click();
     await tool('Target', 'Paste Object').click();
     await expect.element(row('Target', 2).getByRole('button', { name: 'Choose message 2' })).toHaveTextContent('Order');
-    // ADR-0028 (owner, 2026-11-10): a preview edit makes the studio unsaved
+    // a preview edit makes the studio unsaved
     await expect.element(button('Save')).toBeEnabled();
   });
 
@@ -376,7 +376,7 @@ describe('several source or target messages, a preview feature (#168)', () => {
     await button('Cancel').click();
     await page.getByRole('dialog', { name: 'Discard changes?' }).getByRole('button', { name: 'Discard changes' }).click();
 
-    // ADR-0028 (owner, 2026-11-10): Discard reverts the preview draft too; #155 kept the preview message
+    // Discard reverts the preview draft too
     await expect.element(table('Source').getByRole('row')).toHaveLength(1);
     await expect.element(button('Add source message')).toBeDisabled();
     await expect.element(button('Edit')).toBeEnabled();
@@ -424,7 +424,7 @@ describe('mapping parameters, a preview feature (#167)', () => {
     await params().getByRole('combobox', { name: 'Parameter direction' }).selectOptions('Export');
     await params().getByRole('textbox', { name: 'Parameter description' }).fill('the order date');
     await names().nth(0).fill('orderDate');
-    // ADR-0028 (owner, 2026-11-10): a draft until Save
+    // a draft until Save
     expect(browserState.values.has(signatureMockKey('mappings/order-id-copy'))).toBe(false);
     await button('Save').click();
     await expect.element(page.getByRole('heading', { name: /Mapping order-id-copy saved/ })).toBeVisible();
@@ -476,7 +476,7 @@ describe('mapping parameters, a preview feature (#167)', () => {
     await paramTool('Delete parameter').click();
     await expect.element(names()).toHaveLength(2);
     await expect.element(names().nth(0)).toHaveValue('date');
-    // ADR-0028 (owner, 2026-11-10): a preview edit makes the studio unsaved
+    // a preview edit makes the studio unsaved
     await expect.element(button('Save')).toBeEnabled();
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Export Source Text and Import Source Text of the Functions tab (the prototype's functionSource.js): one Java class
+ * Export Source Text and Import Source Text of the Functions tab: one Java class
  * whose editable sections sit between marker comments, so that a file edited elsewhere can be read back.
  */
 import { AREAS, ATTRIBUTES, builtIn, declaration, metadata, type AreaName, type FunctionsState, type JavaArea, type Udf } from '../mock/function-model';

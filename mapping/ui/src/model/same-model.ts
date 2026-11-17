@@ -3,7 +3,7 @@ import type { MappingModel } from '../generated/mapping-model';
 /**
  * Whether two mapping models hold the same content: equal JSON values, whatever the key order, with a member that is
  * `undefined` counted as absent (JSON has no `undefined`). "Unsaved" is the working copy not being the same as the
- * baseline (ADR-0013).
+ * baseline.
  */
 export function sameModel(a: MappingModel, b: MappingModel): boolean {
   return sameValue(a, b);

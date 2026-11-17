@@ -33,7 +33,7 @@ import { Masthead } from './Masthead';
 
 export type { StudioTab };
 
-/** The key of the tab a mapping was last left on, kept per mapping (ADR-0028, viewer preferences). */
+/** The key of the tab a mapping was last left on, kept per mapping as a viewer preference. */
 export const lastTabKey = (mappingId: string) => `mapping:${mappingId}:studio-tab`;
 
 export const isStudioTab = (value: unknown): value is StudioTab => (STUDIO_TABS as readonly unknown[]).includes(value);
@@ -48,7 +48,7 @@ export function openingTab(hash: string, kept: unknown): StudioTab {
 const CHECK_PASSED = 'Structures assigned and graph connections complete.';
 
 /**
- * What a check finds in the working copy (the prototype's runCheck, over the real compile): a missing source or target
+ * What a check finds in the working copy, over the real compile: a missing source or target
  * in our words, then the failure of the latest compile, or else each of its errors and warnings but the missing
  * structures already named.
  */
@@ -67,7 +67,7 @@ export interface StudioShellProps {
   /** The mapping's id, its workspace path; its last segment is the mapping's name. */
   mappingId: string;
   api: ApiClient;
-  /** The open mapping's store (ADR-0013), whose UI slice holds the tab and edit mode (ADR-0028). */
+  /** The open mapping's store, whose UI slice holds the tab and edit mode. */
   store: WorkingCopyStore;
   browserState: BrowserStateStore;
   /** Where the masthead's brand leads: the start page. */
@@ -77,13 +77,13 @@ export interface StudioShellProps {
 }
 
 /**
- * The Mapping studio around one open mapping (ADR-0028, the prototype's main.jsx): the masthead, the tab line with the
+ * The Mapping studio around one open mapping: the masthead, the tab line with the
  * mapping's name and Edit, or Cancel and Save in edit mode, and the active tab's body. The tab follows the URL hash
- * both ways. The structures are refreshed once on open (ADR-0027); Save sends `If-Match` and meets a save conflict in
+ * both ways. The structures are refreshed once on open; Save sends `If-Match` and meets a save conflict in
  * its dialog; Cancel with unsaved changes asks before it discards them; the page asks before it unloads while the
  * working copy differs from the baseline, and `onUnsavedChange` hears of it, for leaving within the page. Check and F7
  * check the working copy; Ctrl+S and Cmd+S save it. A command the store refuses, such as a drop, a link or a remap, shows
- * why in an inline warning the author can dismiss (#174).
+ * why in an inline warning the author can dismiss.
  */
 export function StudioShell({ mappingId, api, store, browserState, listHref, onUnsavedChange }: StudioShellProps) {
   const name = mappingId.slice(mappingId.lastIndexOf('/') + 1);
@@ -93,7 +93,7 @@ export function StudioShell({ mappingId, api, store, browserState, listHref, onU
   const hasMessages = useStore(store, (s) => s.workingCopy.source !== undefined && s.workingCopy.target !== undefined);
   const panelRef = useRef<HTMLElement>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
-  // a preview's draft follows the edit session while any tab is open (ADR-0028)
+  // a preview's draft follows the edit session while any tab is open
   const functions = useFunctionsPreview(store, browserState, mappingId);
   // the source document and the processing log outlive the Test tab, and the log hears of every compile
   const testSession = useTestSession(store, api, mappingId, browserState);
@@ -127,7 +127,7 @@ export function StudioShell({ mappingId, api, store, browserState, listHref, onU
     return () => window.removeEventListener('beforeunload', ask);
   }, [unsaved]);
 
-  // Refresh on open (ADR-0027). The answer is taken in mutate's callbacks, which TanStack Query calls only while the
+  // Refresh on open. The answer is taken in mutate's callbacks, which TanStack Query calls only while the
   // studio is open: an answer that comes after it closed leaves the store alone.
   const [notice, setNotice] = useState<string | null>(null);
   const { mutate: refresh } = useMutation(refreshMutation(api, mappingId, store));
@@ -307,7 +307,7 @@ export function StudioShell({ mappingId, api, store, browserState, listHref, onU
   );
 }
 
-/** The result of a check (the prototype's check banner): the issues found or that it passed, to copy and dismiss. */
+/** The result of a check: the issues found or that it passed, to copy and dismiss. */
 function CheckResult({ issues, copyable, onDismiss }: { issues: string[]; copyable: boolean; onDismiss: () => void }) {
   const found = issues.length > 0;
   return (
