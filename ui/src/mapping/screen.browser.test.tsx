@@ -26,7 +26,7 @@ function render(api: ApiClient) {
 
 // the shell's tabs; the studio's own tabs are named Overview and Signature
 const shellTab = (name: string) => page.getByRole('tab', { name, exact: true });
-const shellTabs = () => page.getByRole('tab').filter({ hasNotText: /^(Overview|Definition|Signature)$/ });
+const shellTabs = () => page.getByRole('tab').filter({ hasNotText: /^(Overview|Definition|Test|Signature)$/ });
 const row = (name: string) => page.getByRole('row').filter({ has: page.getByRole('cell', { name, exact: true }) });
 // a role query finds what is shown only: the tabs not shown are hidden
 const description = () => page.getByRole('textbox', { name: 'Description' });

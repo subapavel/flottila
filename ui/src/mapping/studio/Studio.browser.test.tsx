@@ -89,7 +89,7 @@ describe('the studio', () => {
     renderStudio(fakeApiClient(), 'mappings/order-id-copy');
 
     await expect.element(page.getByRole('heading', { level: 1, name: 'order-id-copy' })).toBeVisible();
-    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(3);
+    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(4);
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
     await expect.element(button('Edit')).toBeVisible();
     await expect.element(button('Save')).not.toBeInTheDocument();
@@ -482,8 +482,14 @@ describe('the tabs', () => {
     await expect.element(tab('Definition')).toHaveAttribute('aria-selected', 'true');
     unmount();
 
+    browserState.write(lastTabKey('mappings/order-id-copy'), 'test');
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await expect.element(tab('Test')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('region', { name: 'Test', exact: true })).toBeVisible();
+    unmount();
+
     // a studio tab this studio does not show yet, and a value that is no tab at all
-    for (const kept of ['test', 'nope']) {
+    for (const kept of ['functions', 'nope']) {
       browserState.write(lastTabKey('mappings/order-id-copy'), kept);
       renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
       await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
@@ -497,6 +503,7 @@ describe('the tabs', () => {
     await expect.element(tab('Overview')).toBeVisible();
     await expect.element(tab('Overview')).toHaveAttribute('tabindex', '0');
     await expect.element(tab('Definition')).toHaveAttribute('tabindex', '-1');
+    await expect.element(tab('Test')).toHaveAttribute('tabindex', '-1');
     await expect.element(tab('Signature')).toHaveAttribute('tabindex', '-1');
     (tab('Overview').element() as HTMLElement).focus();
 
@@ -505,6 +512,8 @@ describe('the tabs', () => {
     await expect.element(tab('Definition')).toHaveFocus();
     await expect.element(tab('Definition')).toHaveAttribute('tabindex', '0');
     await expect.element(tab('Overview')).toHaveAttribute('tabindex', '-1');
+    await userEvent.keyboard('{ArrowRight}');
+    await expect.element(tab('Test')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{ArrowRight}');
     await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{ArrowRight}');
@@ -525,6 +534,16 @@ describe('the tabs', () => {
 
     await expect.element(page.getByRole('heading', { name: 'Choose the source and target messages' })).toBeVisible();
     await expect.element(page.getByRole('region', { name: 'Mapping definition' })).not.toBeInTheDocument();
+    await button('Choose them on the Signature tab').click();
+
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('Test asks for both messages while the mapping lacks one, and leads to the Signature tab', async () => {
+    renderStudio(fakeApiClient({ 'mappings/blank': { formatVersion: 1 } }), 'mappings/blank', { openOn: 'test' });
+
+    await expect.element(page.getByRole('heading', { name: 'Choose the source and target messages' })).toBeVisible();
+    await expect.element(page.getByRole('region', { name: 'Test', exact: true })).not.toBeInTheDocument();
     await button('Choose them on the Signature tab').click();
 
     await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');

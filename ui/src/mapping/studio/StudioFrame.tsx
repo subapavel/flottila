@@ -21,7 +21,7 @@ import {
   TabTitleText,
   Title,
 } from '@patternfly/react-core';
-import { CheckCircleIcon, CubesIcon, EditIcon, ExchangeAltIcon, ListAltIcon, ProjectDiagramIcon, SaveIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, CubesIcon, EditIcon, ExchangeAltIcon, FlaskIcon, ListAltIcon, ProjectDiagramIcon, SaveIcon } from '@patternfly/react-icons';
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
@@ -35,6 +35,7 @@ import { MappingOverview } from './overview/MappingOverview';
 import { SaveConflict } from './SaveConflict';
 import { CopyTextButton } from './shared/CopyTextButton';
 import { Signature } from './signature/Signature';
+import { TestTab } from './test/TestTab';
 import { refreshMutation } from './shared/structure-query';
 import { useTestSession } from './shared/test-session';
 import { selectUnsaved, type StudioTab, type WorkingCopyState, type WorkingCopyStore } from './store/working-copy';
@@ -43,6 +44,7 @@ import { selectUnsaved, type StudioTab, type WorkingCopyState, type WorkingCopyS
 const VIEWS = [
   ['overview', 'Overview', ListAltIcon],
   ['definition', 'Definition', ProjectDiagramIcon],
+  ['test', 'Test', FlaskIcon],
   ['signature', 'Signature', ExchangeAltIcon],
 ] as const satisfies readonly (readonly [StudioTab, string, typeof ListAltIcon])[];
 
@@ -369,6 +371,12 @@ export function StudioFrame({ mappingId, api, store, browserState, onSaved, guar
               ) : (
                 <ChooseMessages onChoose={() => changeTab('signature')} />
               ))}
+            {tab === 'test' &&
+              (hasMessages ? (
+                <TestTab mappingId={mappingId} store={store} session={testSession} browserState={browserState} />
+              ) : (
+                <ChooseMessages onChoose={() => changeTab('signature')} />
+              ))}
             {tab === 'signature' && <Signature mappingId={mappingId} api={api} store={store} browserState={browserState} />}
           </TabContent>
         </StackItem>
@@ -421,7 +429,7 @@ function CheckResult({ issues, onDismiss }: { issues: string[]; onDismiss: () =>
   );
 }
 
-/** The body of Definition while the mapping lacks a message: what to do, and the way to the Signature tab. */
+/** The body of Definition and Test while the mapping lacks a message: what to do, and the way to the Signature tab. */
 function ChooseMessages({ onChoose }: { onChoose: () => void }) {
   return (
     <EmptyState titleText="Choose the source and target messages" headingLevel="h2" icon={CubesIcon}>

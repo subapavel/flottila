@@ -7,7 +7,7 @@ import type { ApiClient, TestResult } from '../../../api/client';
 import { fakeApiClient } from '../../../api/fake/fake-api';
 import { testSourceKey, type BrowserStateStore } from '../../browser-state/browser-state';
 import type { StudioTab, WorkingCopyStore } from '../../store/working-copy';
-import { testInput, testInstancesKey, type TestInstance } from '../../mock/test-instances';
+import { testInstancesKey, type TestInstance } from '../../mock/test-instances';
 import { studioStore } from '../../Studio';
 import { StudioFrame } from '../../StudioFrame';
 
@@ -90,6 +90,8 @@ const queueRow = (i: number) => dialog().getByRole('table', { name: 'OrderId que
 const runDiagnostics = () => dialog().getByRole('list', { name: 'Run diagnostics' });
 /** The source document the test session keeps in the browser in edit mode. */
 const keptSource = (browserState: { values: Map<string, unknown> }) => browserState.values.get(testSourceKey(MAPPING));
+const sourceInput = () => page.getByRole('region', { name: 'Source', exact: true }).getByRole('textbox', { name: 'Input XML' });
+const processingLog = () => page.getByRole('region', { name: 'Processing log' });
 const scenario = (result: TestResult) => fakeApiClient(undefined, { test: { [MAPPING]: result } });
 
 async function openQueue(name: RegExp) {
@@ -290,6 +292,9 @@ describe('the Display Queue before a test run', () => {
     await expect.element(runDiagnostics()).not.toBeInTheDocument();
     expect(runTest).toHaveBeenCalledExactlyOnceWith(MAPPING, { model: store.getState().workingCopy, input: INPUT });
     expect(keptSource(browserState)).toBe(INPUT);
+    store.getState().setTab('test');
+    await expect.element(sourceInput()).toHaveValue(INPUT);
+    await expect.element(processingLog()).toMatchTextContent('Executed successfully');
   });
 
   test('with a source document it runs at once, in read mode too, and shows the queue without an upload', async () => {
@@ -308,17 +313,20 @@ describe('the Display Queue before a test run', () => {
     const api = scenario(run);
     const runTest = vi.spyOn(api, 'runTest');
     const browserState = memoryBrowserState({ [testInstancesKey(MAPPING)]: [kept('a', 'First', OTHER, 1), kept('b', 'Second', INPUT, 2)] });
-    const store = await renderDefinition(undefined, { api, browserState });
-    // the studio opened with the latest instance in the source; the author cleared it
-    await expect.poll(() => keptSource(browserState)).toBe(INPUT);
-    testInput(store).getState().load('');
+    const store = await renderDefinition(undefined, { api, browserState, tab: 'test' });
+    // the studio opened with the latest instance in the source; the author cleared it on the Test tab
+    await expect.element(sourceInput()).toHaveValue(INPUT);
+    await sourceInput().fill('');
     expect(keptSource(browserState)).toBe('');
+    store.getState().setTab('definition');
 
     await openQueue(/^Source field OrderId/);
 
     await expect.element(queueRow(1)).toHaveTextContent('PO-1');
     expect(runTest).toHaveBeenCalledExactlyOnceWith(MAPPING, { model: store.getState().workingCopy, input: INPUT });
     expect(keptSource(browserState)).toBe(INPUT);
+    store.getState().setTab('test');
+    await expect.element(sourceInput()).toHaveValue(INPUT);
   });
 
   test('in read mode, with no data, it says a test document can be loaded in edit mode, and offers no upload', async () => {
@@ -334,11 +342,11 @@ describe('the Display Queue before a test run', () => {
     expect(runTest).not.toHaveBeenCalled();
   });
 
-  test('a file that does not parse says why in the dialog and never becomes the source; the dialog stays open', async () => {
+  test('a file that does not parse says why in the dialog and in the processing log, and never becomes the source; the dialog stays open', async () => {
     const api = fakeApiClient();
     const runTest = vi.spyOn(api, 'runTest');
     const browserState = memoryBrowserState();
-    await renderDefinition(undefined, { api, browserState });
+    const store = await renderDefinition(undefined, { api, browserState });
     await openQueue(/^Source field OrderId/);
 
     await testFile().upload(new File(['<broken'], 'broken.xml', { type: 'application/xml' }));
@@ -350,14 +358,17 @@ describe('the Display Queue before a test run', () => {
     expect(runTest).not.toHaveBeenCalled();
     // the file that does not parse never becomes the source
     expect(keptSource(browserState)).toBeUndefined();
+    store.getState().setTab('test');
+    await expect.element(processingLog()).toMatchTextContent(why);
+    await expect.element(sourceInput()).toHaveValue('');
   });
 
-  test('a run the compile refuses shows its diagnostics in the dialog; the dialog stays open', async () => {
+  test('a run the compile refuses shows its diagnostics in the dialog and in the processing log; the dialog stays open', async () => {
     const refused: TestResult = {
       kind: 'refused',
       diagnostics: [{ severity: 'error', code: 'unconnected-target-field', message: 'the result is not connected', location: { kind: 'authoring-id', authoringId: 't1' } }],
     };
-    await renderDefinition(undefined, { api: scenario(refused) });
+    const store = await renderDefinition(undefined, { api: scenario(refused) });
     await openQueue(/^Source field OrderId/);
 
     await testFile().upload(new File([INPUT], 'order.xml', { type: 'application/xml' }));
@@ -366,6 +377,8 @@ describe('the Display Queue before a test run', () => {
     await expect.element(runDiagnostics()).toMatchTextContent('Error unconnected-target-field: the result is not connected');
     await expect.element(runDiagnostics()).toMatchTextContent('Compile refused the working copy: nothing ran.');
     await expect.element(dialog().getByRole('table')).not.toBeInTheDocument();
+    store.getState().setTab('test');
+    await expect.element(processingLog()).toMatchTextContent('Error unconnected-target-field: the result is not connected');
   });
 
   test('a run that cannot reach the service says so in the dialog, in read mode too', async () => {
