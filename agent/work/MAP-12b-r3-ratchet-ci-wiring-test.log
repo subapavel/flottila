@@ -1,0 +1,24 @@
+ok   ci: scripts/ratchet-ci.sh push is the backend job's last step
+ok   ci: the ratchet step comes after the build step
+ok   ci: the backend job's permissions are contents: read and actions: read, nothing else
+ok   ci: the step carries the run's token and the pull request's base sha
+ok   ci: the ratchet step has no if:
+ok   ci: the backend job's checkout takes fetch-depth: 0
+ok   ci: the three tests of MAP-12b run beside the script tests that need no JDK
+ok   ci: the backend job's name is the one scripts/ratchet-baseline.sh looks up
+ok   ci: both path lists name the nightly workflow
+ok   ci: the header comment says the nightly workflow's file starts it too
+ok   ci: the week's runs: schedule with cron '23 */6 * * *'
+ok   ci: the concurrency group carries the event's name
+ok   ci: windows, ui and stack do not run on a schedule
+ok   ci: the backend job runs on the schedule too (no job-level if:)
+ok   ci: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-ci.yml
+ok   nightly: scripts/ratchet-ci.sh nightly runs after the PIT step
+ok   nightly: the ratchet step runs if: always()
+ok   nightly: env PIT_MODULES names MUTATION_MODULES of scripts/ratchet.java, each once
+ok   nightly: the PIT step reads PIT_MODULES and the modules are named once in the file
+ok   nightly: the artefact step stays (if: always(), pit-reports) beside the ratchet step
+ok   nightly: the header comment says the job compares with ratchet/mutation.tsv
+ok   nightly: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-nightly.yml
+ok   date file: scripts/ratchet-enforced-from exists and holds exactly one line, one ISO date
+ok   date file: the packet's date

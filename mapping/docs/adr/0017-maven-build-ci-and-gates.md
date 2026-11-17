@@ -1,6 +1,6 @@
 # One Maven reactor with a wrapper, a separate npm build for `ui/`, three CI jobs and scripted gates
 
-Status: accepted (2026-10-30, grilling #13); refined by ADR-0019 (ratchet commands, floors, PIT scope, ticket-gate budget) and ADR-0018 (`engine/oracle` in ticket-gate step 1, no jqwik)
+Status: accepted (2026-10-30, grilling #13); refined by ADR-0019 (ratchet commands, floors, PIT scope, ticket-gate budget) and ADR-0018 (`engine/oracle` in ticket-gate step 1, no jqwik); the CI table and its notes amended by MAP-12b (2026-11-16, the repository's D-164 (2), (3), (6)): the ratchet step, the nightly comparison, no required check
 
 ADR-0016 fixes the modules. This ADR fixes how they build, where the UI is built and served,
 what CI runs, and the exact commands of the ticket gate and the spec gate (WORKFLOW §6). Nothing
@@ -90,17 +90,19 @@ cache).
 
 | Job | Steps |
 | --- | --- |
-| `backend` | `./mvnw -B -Pbench verify`; `git diff --exit-code contract/` |
+| `backend` | `./mvnw -B -Pbench verify`; `git diff --exit-code contract/`; last, `scripts/ratchet-ci.sh push` - the ratchet check against the last commit it passed on (ADR-0019, "On GitHub") |
 | `windows` (`windows-latest`, #42) | `./mvnw.cmd -B -q -DskipTests verify` (ticket-gate row 2) |
 | `ui` | `npm ci`; `npx playwright install --with-deps chromium` (from the pinned `@playwright/test` 1.63.0); `gen:types` + `git diff --exit-code src/generated`; `typecheck`, `lint`, `test`, `test:browser`, `e2e`; `build` → artefact `ui-dist` |
 | `stack` (needs both) | download `ui-dist`; `./mvnw -B -Pui -pl service -am package -DskipTests`; `npm run e2e:stack` |
 
-- `nightly.yml` (cron and `workflow_dispatch`): PIT on the class-C modules. #14 sets its scope
-  and floors.
+- `mapping-nightly.yml` (cron and `workflow_dispatch`): PIT on the class-C modules, then the
+  comparison of each module's surviving mutants with `ratchet/mutation.tsv` (ADR-0019, "On
+  GitHub"). #14 sets its scope and floors.
 - `bench.yml` (`workflow_dispatch` only): JMH on a runner, for information. It is never a gate,
   because shared runners are too noisy for a regression threshold.
-- Branch protection on `main` requires `backend`, `windows`, `ui` and `stack` (`windows`: owner
-  ruling 2026-11-02, #48).
+- Branch protection: the mapping's own repository required `backend`, `windows`, `ui` and `stack`
+  on `main` (`windows`: owner ruling 2026-11-02, #48). In this repository `mapping-ci` is not a
+  required check (its D-164 (6)); which checks are required is the owner's to set.
 
 ## Gates
 

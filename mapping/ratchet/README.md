@@ -1,8 +1,10 @@
 # Ratchet
 
 What passes, per oracle and per module. Decided in ADR-0019; the oracles are ADR-0018.
-Regenerated and committed only by the verifier, on an integration branch, in spec-gate step 4
-(`docs/WORKFLOW.md` §6). Never edited by hand. A drop fails the gate.
+Regenerated and committed only by the verifier, at every task commit that touches `mapping/`
+(ADR-0019, "On GitHub"; once spec-gate step 4 on an integration branch, `docs/WORKFLOW.md` §6).
+Never edited by hand. A drop fails the push's check on GitHub - from the date in
+`scripts/ratchet-enforced-from`; until then it is reported - and the old gate.
 
 ## Files
 
@@ -60,8 +62,16 @@ still read, compared as a percent, and rewritten by `regen --all`. Module names 
   list that lists a case). Prints `MEASURED coverage <module> lines c/t branches c/t`; exit 2 on a
   wrong command line, an incomplete `<dir>` or a two-column mutation row; writes nothing. ADR-0019
   "Commands".
-- `java scripts/ratchet.java regen --all [<bench result>...]` (spec-gate step 4): requires every
-  report, refuses any drop, writes the files, prints the diff. With bench results it also judges
+- `scripts/ratchet-ci.sh push` (GitHub, the backend job's last step, MAP-12b): finds the baseline with
+  `scripts/ratchet-baseline.sh` - the closest earlier commit of `main` whose push run had the backend job
+  green - and runs `check --baseline` against its `ratchet/`. `scripts/ratchet-ci.sh nightly` (the nightly
+  job, after PIT): each module's surviving mutants against `mutation.tsv`, through `scripts/pit-summary.sh`.
+  Both report until the date in `scripts/ratchet-enforced-from` and fail their job from it. ADR-0019
+  "On GitHub".
+- `java scripts/ratchet.java regen --all [<bench result>...]` (the verifier, at every task commit that
+  touches `mapping/`; once spec-gate step 4): requires every coverage and oracle
+  report (a mutation row without a fresh PIT report stays, `NOT_RUN`), refuses any drop, writes the files,
+  prints the diff. With bench results it also judges
   them like `bench` and writes `bench.tsv`; without them (off the VM) `bench.tsv` is untouched.
 - `java scripts/ratchet.java bench <jmh.json> [<tree.json>] [<jmh-2.json> <jmh-3.json>]` (spec-gate step 5):
   judges the results against `bench.tsv` and the targets, exit 1 on a regression, a missed target,

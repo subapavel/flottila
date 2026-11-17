@@ -1,0 +1,349 @@
+# MAP-12b implementer evidence, 2026-11-16 22:43:58 UTC, at 7484d69f plus the working tree
+# machine: Linux 6.18.44-fc-v470, GNU bash, version 5.2.21(1)-release (x86_64-pc-linux-gnu), jq-1.7, git version 2.43.0, java: java version "25.0.5.0.3" 2026-10-25 LTS
+
+## 1. the three tests of MAP-12b (cwd mapping/)
+scripts/test/ratchet-ci-test.sh: exit 0, ok 174, FAIL 0, PASS 0 (5s)
+scripts/test/ratchet-ci-wiring-test.sh: exit 0, ok 24, FAIL 0, PASS 0 (0s)
+scripts/test/pit-summary-test.sh: exit 0, ok 22, FAIL 0, PASS 0 (0s)
+
+## 2. the step 'Script tests that need no JDK' (in its order; the three above are part of it)
+scripts/test/trailers-test.sh: exit 0, ok 9, FAIL 0, PASS 0 (1s)
+scripts/test/trailers-root-test.sh: exit 0, ok 7, FAIL 0, PASS 0 (1s)
+scripts/test/clean-worktrees-test.sh: exit 0, ok 12, FAIL 0, PASS 0 (0s)
+scripts/test/pit-summary-test.sh: exit 0, ok 22, FAIL 0, PASS 0 (1s)
+scripts/test/gate-spec-default-test.sh: exit 0, ok 3, FAIL 0, PASS 0 (0s)
+scripts/test/gate-log-test.sh: exit 0, ok 14, FAIL 0, PASS 0 (1s)
+scripts/test/push-retry-test.sh: exit 0, ok 9, FAIL 0, PASS 0 (0s)
+scripts/test/handover-test.sh: exit 0, ok 28, FAIL 0, PASS 0 (0s)
+scripts/test/ratchet-ci-test.sh: exit 0, ok 174, FAIL 0, PASS 0 (5s)
+scripts/test/ratchet-ci-wiring-test.sh: exit 0, ok 24, FAIL 0, PASS 0 (1s)
+
+## 2. the step 'Script tests of scripts/function-families.java and scripts/ratchet.java' (JDK 25 above)
+scripts/test/function-families-test.sh: exit 0, ok 67, FAIL 0, PASS 0 (50s)
+scripts/test/function-families-refusals-test.sh: exit 0, ok 82, FAIL 0, PASS 0 (26s)
+scripts/test/ratchet-mutation-test.sh: exit 0, ok 11, FAIL 0, PASS 0 (9s)
+scripts/test/ratchet-moved-test.sh: exit 0, ok 9, FAIL 0, PASS 0 (3s)
+scripts/test/ratchet-bench-test.sh: exit 0, ok 64, FAIL 0, PASS 0 (17s)
+scripts/test/ratchet-baseline-test.sh: exit 0, ok 0, FAIL 0, PASS 47 (116s)
+scripts/test/gate-spec-bench-test.sh: exit 0, ok 60, FAIL 0, PASS 0 (37s)
+(ratchet-baseline-test.sh prints PASS lines and a last line:) ratchet-baseline-test: 47 case(s), 0 failed
+(push-retry-test.sh's last line:) ALL PASS
+
+## 3. bash -n and YAML
+bash -n scripts/ratchet-baseline.sh: exit 0
+bash -n scripts/ratchet-ci.sh: exit 0
+bash -n scripts/pit-summary.sh: exit 0
+yaml.safe_load ../.github/workflows/mapping-ci.yml: exit 0
+yaml.safe_load ../.github/workflows/mapping-nightly.yml: exit 0
+
+## 4. git state of the allowed paths
+ M .github/workflows/mapping-ci.yml
+ M .github/workflows/mapping-nightly.yml
+ M mapping/scripts/pit-summary.sh
+?? mapping/scripts/ratchet-baseline.sh
+?? mapping/scripts/ratchet-ci.sh
+?? mapping/scripts/ratchet-enforced-from
+755 scripts/ratchet-baseline.sh
+755 scripts/ratchet-ci.sh
+755 scripts/pit-summary.sh
+644 scripts/ratchet-enforced-from
+scripts/ratchet-enforced-from:  2 0 2 6 - 1 1 - 2 5 \n
+ .github/workflows/mapping-ci.yml                   | 40 +++++++++++++--
+ .github/workflows/mapping-nightly.yml              | 14 ++++--
+ agent/HANDOFF.md                                   |  4 +-
+ agent/packets/MAP-12b.md                           | 34 ++++++++++++-
+ mapping/scripts/pit-summary.sh                     | 11 ++++
+ mapping/scripts/test/pit-summary-test.sh           | 58 ++++++++++++++++++++++
+ .../runtime/journal/JournalDirForceOrderTest.java  | 23 +++++++++
+ .../java/dev/rail8/testkit/ComponentContract.java  | 35 ++++++++-----
+ .../rail8/testkit/ComponentContractSoonTest.java   | 57 +++++++++++++++++++++
+ 9 files changed, 252 insertions(+), 24 deletions(-)
+
+## outputs of the three tests
+### scripts/test/ratchet-ci-test.sh
+ok   lookup, across a merge: exit 0
+ok   lookup, across a merge: the nearest green ancestor is the merge's second parent
+ok   lookup, across a merge: the walk stops at the baseline
+ok   lookup: <dir> holds the baseline commit's four names with that commit's content, not HEAD's
+ok   lookup: HEAD's own green push run is never the baseline
+ok   lookup: HEAD's own run is never asked for its jobs
+ok   lookup: a red backend job and a cancelled run are skipped
+ok   lookup: LOOKUP pages counts the pages and the runs read
+ok   lookup: LOOKUP run for the red run asked
+ok   lookup: LOOKUP job for the red run's backend job
+ok   lookup: LOOKUP run for the cancelled run asked
+ok   lookup: LOOKUP job for the cancelled run's backend job
+ok   lookup: LOOKUP run for the baseline's run
+ok   lookup: LOOKUP job for the baseline's backend job
+ok   lookup: a run not completed is no candidate, even with a green backend job
+ok   lookup: a run not completed is never asked for its jobs
+ok   lookup: a run red on another job alone is taken (the run's own conclusion is not read)
+ok   lookup: a run of a commit that is no ancestor of HEAD is skipped
+ok   lookup: a run of a commit that is no ancestor is never asked for its jobs
+ok   lookup: the run with GITHUB_RUN_ID's id is no candidate
+ok   lookup: the run with GITHUB_RUN_ID's id is never asked for its jobs
+ok   lookup: page 2 of a list whose page 1 holds 100 runs is read, the nearer green ancestor on it taken
+ok   lookup: LOOKUP pages counts both pages and every run
+ok   lookup: the runs list is asked page by page, no further than the short page
+ok   lookup: a full page is followed by the next one, even when that is empty
+ok   lookup: LOOKUP pages counts the empty page
+ok   lookup: the list's order does not matter (the farther ancestor listed first)
+ok   lookup: the list's order does not matter (the farther ancestor listed last)
+ok   lookup, a renamed job: exit 0
+ok   lookup, a renamed job: the bootstrap line names HEAD's first parent
+ok   lookup, a renamed job: LOOKUP job says none is named mapping · backend
+ok   lookup, a renamed job: the walk goes on to the next ancestor with candidates
+ok   lookup, bootstrap: <dir> holds the first parent's tree
+ok   lookup, no push run at all: exit 0
+ok   lookup, no push run at all: the bootstrap line
+ok   lookup, no push run at all: LOOKUP pages
+ok   lookup, a pull request: exit 0
+ok   lookup, a pull request: its base is the baseline
+ok   lookup, a pull request: gh is never called
+ok   lookup, a pull request: <dir> holds the base's tree
+ok   lookup, gh failing: exit 1
+ok   lookup, gh failing: one LOOKUP FAILED line with its reason
+ok   lookup, a runs page that is not JSON: exit 1
+ok   lookup, a runs page that is not JSON: one LOOKUP FAILED line
+ok   lookup, a jobs response without its jobs list: exit 1
+ok   lookup, a jobs response without its jobs list: one LOOKUP FAILED line
+ok   lookup, a baseline without mapping/ratchet/: exit 1
+ok   lookup, a baseline without mapping/ratchet/: one LOOKUP FAILED line
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: exit 1
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks oracle alone: exit 1
+ok   lookup, a base whose ratchet/ lacks oracle alone: one LOOKUP FAILED line
+ok   lookup, HEAD without a parent: exit 1
+ok   lookup, HEAD without a parent: one LOOKUP FAILED line
+ok   lookup without <dir>: usage on stderr, nothing on stdout, exit 2, no call
+ok   push, the shipped date file: read without a date-file error, exit 0
+ok   push on 2026-11-24, the check OK: exit 0
+ok   push on 2026-11-24, the check OK: no annotation
+ok   push on 2026-11-25, the check OK: exit 0
+ok   push on 2026-11-25, the check OK: no annotation
+ok   push: the lookup's stdout is passed through
+ok   push: the check's stdout is passed through
+ok   push: the check ran with the baseline
+ok   push: the check was given the baseline commit's tree
+ok   push the day before, a failing check: exit 0
+ok   push the day before, a failing check: the would-fail warning
+ok   push the day before, a failing check: no error
+ok   push on the date, a failing check: exit 1
+ok   push on the date, a failing check: the error
+ok   push on the date, a failing check: no would-fail warning
+ok   push a later month, a failing check: exit 1
+ok   push a later month, a failing check: the error
+ok   push the day before, a failed lookup: exit 0
+ok   push, a failed lookup: the lookup's LOOKUP FAILED line is passed through
+ok   push the day before, a failed lookup: its own warning, with the lookup's reason
+ok   push the day before, a failed lookup: never worded as a failing check
+ok   push the day before, a failed lookup: plain check ran, without --baseline
+ok   push on the date, a failed lookup: exit 1
+ok   push on the date, a failed lookup: its own error, with the lookup's reason
+ok   push on the date, a failed lookup: never worded as a failing check
+ok   push on the date, a failed lookup: plain check ran, without --baseline
+ok   push the day before, a failed lookup and a failing plain check: exit 0
+ok   push the day before, a failed lookup and a failing plain check: the lookup's warning
+ok   push the day before, a failed lookup and a failing plain check: the would-fail warning
+ok   push on the date, a failed lookup and a failing plain check: exit 1
+ok   push on the date, a failed lookup and a failing plain check: the lookup's error
+ok   push on the date, a failed lookup and a failing plain check: the check's error
+ok   push on 2026-11-24, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-24, the check refused its command line: no verdict
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: no verdict
+ok   push on 2026-11-25, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-25, the check refused its command line: no verdict
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: no verdict
+ok   push, an OK line with exit 1: exit 2
+ok   push, an OK line with exit 1: no verdict, nothing else reported
+ok   push, a FAIL line with exit 0: exit 2
+ok   push, a FAIL line with exit 0: no verdict, nothing else reported
+ok   push, the check killed (exit 137): exit 2
+ok   push, the check killed: no verdict
+ok   push on 2026-11-24, RISE lines and the check OK: exit 0
+ok   push on 2026-11-24: a RISE line becomes a warning
+ok   push on 2026-11-24: every RISE line becomes a warning
+ok   push on 2026-11-25, RISE lines and the check OK: exit 0
+ok   push on 2026-11-25: a RISE line becomes a warning
+ok   push on 2026-11-25: every RISE line becomes a warning
+ok   push on 2026-11-24, the date file missing: exit 2
+ok   push on 2026-11-24, the date file missing: its error
+ok   push on 2026-11-24, the date file missing: before gh or java is called
+ok   push on 2026-11-25, the date file missing: exit 2
+ok   push on 2026-11-25, the date file missing: its error
+ok   push on 2026-11-25, the date file missing: before gh or java is called
+ok   push on 2026-11-24, the date file empty: exit 2
+ok   push on 2026-11-24, the date file empty: its error
+ok   push on 2026-11-24, the date file empty: before gh or java is called
+ok   push on 2026-11-25, the date file empty: exit 2
+ok   push on 2026-11-25, the date file empty: its error
+ok   push on 2026-11-25, the date file empty: before gh or java is called
+ok   push on 2026-11-24, the date file two-lines: exit 2
+ok   push on 2026-11-24, the date file two-lines: its error
+ok   push on 2026-11-24, the date file two-lines: before gh or java is called
+ok   push on 2026-11-25, the date file two-lines: exit 2
+ok   push on 2026-11-25, the date file two-lines: its error
+ok   push on 2026-11-25, the date file two-lines: before gh or java is called
+ok   push on 2026-11-24, the date file malformed: exit 2
+ok   push on 2026-11-24, the date file malformed: its error
+ok   push on 2026-11-24, the date file malformed: before gh or java is called
+ok   push on 2026-11-25, the date file malformed: exit 2
+ok   push on 2026-11-25, the date file malformed: its error
+ok   push on 2026-11-25, the date file malformed: before gh or java is called
+ok   push, a date with text after it: exit 2
+ok   push, a date with text after it: its error, before gh or java
+ok   an unknown mode: usage on stderr, exit 2, no call
+ok   no mode: usage on stderr, exit 2, no call
+ok   push, the step summary: one fenced block appended after what was there
+ok   push, the step summary: the lookup's and the check's lines are in the block (in any order)
+ok   push, RATCHET_TODAY unset, the date long past: enforced, exit 1
+ok   push, RATCHET_TODAY unset, the date long past: the error
+ok   push, RATCHET_TODAY unset, the date far ahead: the week, exit 0
+ok   push, RATCHET_TODAY unset, the date far ahead: the would-fail warning
+ok   push, a pull request: exit 0
+ok   push, a pull request: its base is the baseline and gh is never called
+ok   push, a pull request: the check was given the base's tree
+ok   nightly on the date, no drop: exit 0
+ok   nightly: pit-summary.sh's lines are passed through
+ok   nightly on the date, no drop: no annotation
+ok   nightly the day before, a count above its row: exit 0
+ok   nightly the day before, a count above its row: the would-fail warning
+ok   nightly the day before, a count above its row: no error
+ok   nightly on the date, a count above its row: exit 1
+ok   nightly on the date, a count above its row: the error
+ok   nightly the day before, a row without a report: exit 0
+ok   nightly the day before, a row without a report: the would-fail warning
+ok   nightly on the date, a row without a report: exit 1
+ok   nightly on the date, a row without a report drops
+ok   nightly on the date, a report without a row: exit 0
+ok   nightly on the date, a report without a row is printed and drops nothing
+ok   nightly: the modules are the rows' and the reports', sorted, each once
+ok   nightly on the date, timed-out mutants within the row: exit 0
+ok   nightly: the timed-out line is passed through, not annotated
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: no verdict
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: no verdict
+ok   nightly, no date file: exit 2
+ok   nightly, no date file: its error, before pit-summary.sh runs
+ok   nightly, the step summary: pit-summary.sh's lines in one fenced block
+### scripts/test/ratchet-ci-wiring-test.sh
+ok   ci: scripts/ratchet-ci.sh push is the backend job's last step
+ok   ci: the ratchet step comes after the build step
+ok   ci: the backend job's permissions are contents: read and actions: read, nothing else
+ok   ci: the step carries the run's token and the pull request's base sha
+ok   ci: the ratchet step has no if:
+ok   ci: the backend job's checkout takes fetch-depth: 0
+ok   ci: the three tests of MAP-12b run beside the script tests that need no JDK
+ok   ci: the backend job's name is the one scripts/ratchet-baseline.sh looks up
+ok   ci: both path lists name the nightly workflow
+ok   ci: the header comment says the nightly workflow's file starts it too
+ok   ci: the week's runs: schedule with cron '23 */6 * * *'
+ok   ci: the concurrency group carries the event's name
+ok   ci: windows, ui and stack do not run on a schedule
+ok   ci: the backend job runs on the schedule too (no job-level if:)
+ok   ci: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-ci.yml
+ok   nightly: scripts/ratchet-ci.sh nightly runs after the PIT step
+ok   nightly: the ratchet step runs if: always()
+ok   nightly: env PIT_MODULES names MUTATION_MODULES of scripts/ratchet.java, each once
+ok   nightly: the PIT step reads PIT_MODULES and the modules are named once in the file
+ok   nightly: the artefact step stays (if: always(), pit-reports) beside the ratchet step
+ok   nightly: the header comment says the job compares with ratchet/mutation.tsv
+ok   nightly: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-nightly.yml
+ok   date file: scripts/ratchet-enforced-from exists and holds exactly one line, one ISO date
+ok   date file: the packet's date
+### scripts/test/pit-summary-test.sh
+ok   below floor: exit
+ok   below floor: line
+ok   at/above floor: exit
+ok   at/above floor: lines
+ok   missing report: exit
+ok   missing report: line
+ok   mixed: exit
+ok   one more survivor: exit
+ok   one more survivor: line
+ok   same or fewer survivors: exit
+ok   same or fewer survivors: lines
+ok   no floor row, no report: exit
+ok   no floor row: line
+ok   run: exit
+ok   run: labelled sections
+ok   run: one module fails, exit
+ok   run: failure does not stop the next module
+ok   timed-out: the line after the module's own, none for a report without, survivors and exit as without
+ok   timed-out: a drop keeps its DROP line and exit 1
+ok   timed-out: also after an old-format row and after a module without a row
+ok   generated: the line when the row's count is higher, none when equal or lower, exit unchanged
+ok   generated: a drop keeps its DROP line and exit 1
+
+round 2
+# 2026-11-16 23:04:56 UTC; only mapping/scripts/ratchet-ci.sh changed (RATCHET_TODAY validated, the comparison fail-closed)
+scripts/test/ratchet-ci-test.sh: exit 0, ok 249, FAIL 0
+scripts/test/ratchet-ci-wiring-test.sh: exit 0, ok 24, FAIL 0
+scripts/test/pit-summary-test.sh: exit 0, ok 22, FAIL 0
+bash -n scripts/ratchet-ci.sh: exit 0
+the other files, sha256 against the copy taken before round 2:
+mapping/scripts/ratchet-baseline.sh: OK
+mapping/scripts/pit-summary.sh: OK
+mapping/scripts/ratchet-enforced-from: OK
+.github/workflows/mapping-ci.yml: OK
+.github/workflows/mapping-nightly.yml: OK
+the other script tests of the two steps: not re-run (only ratchet-ci.sh changed; only ratchet-ci-test.sh runs it)
+
+round 3
+# 2026-11-17 00:10:41 UTC; changed: scripts/ratchet-baseline.sh, scripts/ratchet-ci.sh, the comment of mapping-ci.yml:116-117
+the three test files, sha256 before round 3:
+fa1337978bb9fdc5cd2cd9c842cefe83b104d7e5c6bd5eec8d4fd2291255c9da  ratchet-ci-test.sh
+614bbe06f2ae49f2ee83e0cd33197a9edfd0c71ea3f0e32fc063cec78db874c8  ratchet-ci-wiring-test.sh
+520f76604ea4eb27de40662539e1971ca7cb31012097327eb69bb0e5cf95b703  pit-summary-test.sh
+# final run 2026-11-17 00:14:59 UTC, cwd mapping/ (the scripts as handed back)
+scripts/test/ratchet-ci-test.sh: exit 0, ok 326, FAIL 0 (output: agent/work/MAP-12b-r3-ratchet-ci-test.log)
+scripts/test/ratchet-ci-wiring-test.sh: exit 0, ok 24, FAIL 0 (output: agent/work/MAP-12b-r3-ratchet-ci-wiring-test.log)
+scripts/test/pit-summary-test.sh: exit 0, ok 22, FAIL 0 (output: agent/work/MAP-12b-r3-pit-summary-test.log)
+bash -n scripts/ratchet-baseline.sh: exit 0
+bash -n scripts/ratchet-ci.sh: exit 0
+mode 755 scripts/ratchet-baseline.sh
+mode 755 scripts/ratchet-ci.sh
+lines over 120 characters in the two scripts and mapping-ci.yml: 0
+the other files of the area, sha256 against the copy taken before round 3:
+mapping/scripts/pit-summary.sh: OK
+mapping/scripts/ratchet-enforced-from: OK
+.github/workflows/mapping-nightly.yml: OK
+hand mutants (python: scratch copy of scripts/ + the test, one str.replace, run; real files untouched, sha256 below)
+  m14-jq-word-unjudged (WORD's test -> true): 4 FAIL, e.g. 'a backend job whose conclusion is "failure\nsuccess": exit 1'
+  m14-jobs-no-word (jobs: .conclusion // "null" as before): 4 FAIL, the "failure\nsuccess" and "" cases
+  m14-shell-guard-gone (is_word in the jobs loop deleted): 12 FAIL, e.g. 'conclusion is "success ": exit 1'
+  m15-check-gone (the mutation.tsv check -> false): 12 FAIL, e.g. 'nightly on 2026-11-24, ratchet/mutation.tsv missing:
+    exit 2'
+  m15-f-as-e (-f -> -e): 6 FAIL, the directory cases, e.g. 'ratchet/mutation.tsv directory: its error'
+  m16-no-gh-check: 1 FAIL 'lookup without gh on PATH: LOOKUP FAILED, gh is not installed'
+  m16-no-jq-check: 2 FAIL 'lookup without jq on PATH: LOOKUP FAILED, ...' and '...: no call is made ...'
+  m17-mktemp-silent (|| exit 2 as before): 6 FAIL, the 'TMPDIR a directory that does not exist: its error' cases
+  survivors (326 ok each):
+  m14-jq-anchors-dollar (\A..\z -> ^..$): jq's $ matches before a final newline: "success\n" is taken as success
+    (jq probe: real '-', mutant 'success'); no VALUES entry holds a trailing newline - a gap of the test
+  m14-ifs-default (IFS= read -> read): equivalent, word hands on one word per line
+  m14-runs-no-word (runs page without word): @tsv's escapes and is_word refuse every round-3 value without it
+  m15-r-dropped ([ -r ] deleted): the test runs as root, every file is readable (packet: not tested)
+guards without a case: [ -r ratchet/mutation.tsv ] (root); the cd's error line (nothing reaches it); word on the runs
+  page (a second line: same reason line, only which guard refuses an empty status changes)
+the three test files, sha256 after round 3:
+fa1337978bb9fdc5cd2cd9c842cefe83b104d7e5c6bd5eec8d4fd2291255c9da  ratchet-ci-test.sh
+614bbe06f2ae49f2ee83e0cd33197a9edfd0c71ea3f0e32fc063cec78db874c8  ratchet-ci-wiring-test.sh
+520f76604ea4eb27de40662539e1971ca7cb31012097327eb69bb0e5cf95b703  pit-summary-test.sh
+# after a comment-only edit of ratchet-baseline.sh:46-48 (the runs page's tab-split), 2026-11-17 00:16:15 UTC:
+scripts/test/ratchet-ci-test.sh: exit 0, ok 326, FAIL 0
+bash -n scripts/ratchet-baseline.sh: exit 0
+mode 755 scripts/ratchet-baseline.sh
+lines over 120 characters in scripts/ratchet-baseline.sh: 0
+fa1337978bb9fdc5cd2cd9c842cefe83b104d7e5c6bd5eec8d4fd2291255c9da  ratchet-ci-test.sh
+614bbe06f2ae49f2ee83e0cd33197a9edfd0c71ea3f0e32fc063cec78db874c8  ratchet-ci-wiring-test.sh
+520f76604ea4eb27de40662539e1971ca7cb31012097327eb69bb0e5cf95b703  pit-summary-test.sh

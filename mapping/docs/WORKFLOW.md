@@ -75,30 +75,36 @@ Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1 and 1b, and step 3's 
 (mandatory with `-Pui`, ADR-0017) deletes them. The spec-1 review found this (#21).
 
 **CI** (GitHub Actions, the repository's `.github/workflows/mapping-ci.yml`, every PR and push to
-`main` that touches `mapping/**`, the root `pom.xml`, `.mvn/**`, `mvnw*`, the root `.gitattributes` or the
-workflow; the old repository required its four jobs on `main`, the required checks here are the owner's to
-set). Its steps run in `mapping/` with the repository's wrapper (`../mvnw`). The commits' sign-off is the
+`main` that touches `mapping/**`, the root `pom.xml`, `.mvn/**`, `mvnw*`, the root `.gitattributes`, the
+workflow or the nightly workflow - and, until MAP-12c, four scheduled runs a day of the backend job alone;
+the old repository required its four jobs on `main`, here `mapping-ci` is not a required check (D-164 (6))
+and the required checks are the owner's to set). Its steps run in `mapping/` with the repository's wrapper (`../mvnw`). The commits' sign-off is the
 root `ci.yml`'s `dco` job; the mapping's `trailers` job is gone (BRAND-3):
 
 - `mapping · backend`: every script test in `scripts/test/` (`function-families*-test.sh`, #69;
-  `ratchet-*-test.sh`, `gate-spec-bench-test.sh`, and those that need no JDK: `trailers*-test.sh`,
+  `ratchet-mutation-test.sh`, `ratchet-moved-test.sh`, `ratchet-bench-test.sh`, `ratchet-baseline-test.sh`,
+  `gate-spec-bench-test.sh`, and those that need no JDK: `trailers*-test.sh`,
   `clean-worktrees-test.sh`, `pit-summary-test.sh`, `gate-spec-default-test.sh`, `gate-log-test.sh`,
-  `push-retry-test.sh`, `handover-test.sh`), then `../mvnw -B -Pbench verify`,
-  `git diff --exit-code contract/` and `scripts/check-lf-checkout.sh`;
+  `push-retry-test.sh`, `handover-test.sh`, `ratchet-ci-test.sh`, `ratchet-ci-wiring-test.sh`), then `../mvnw -B -Pbench verify`,
+  `git diff --exit-code contract/`, `scripts/check-lf-checkout.sh` and last `scripts/ratchet-ci.sh push`: the
+  ratchet check against the last commit it passed on (ADR-0019, "On GitHub"; it reports until the date in
+  `scripts/ratchet-enforced-from`, then it fails the job);
 - `mapping · windows`: `../mvnw.cmd -B -q -DskipTests verify` (the whole reactor compiles; Spotless, enforcer, licences);
 - `mapping · ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
   diff, `typecheck`, `lint`, `test`, `test:browser`, `e2e`, `build` → artefact;
 - `mapping · stack` (after both): `-Pui` jar, `npm run e2e:stack`.
 - `mapping-nightly.yml` (`mapping · mutation`): PIT on `main` over the class-C modules `xdm`, `ir`, `runtime`, `serializer`,
-  `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019); it commits nothing. `mapping-bench.yml` (`mapping · jmh`): manual JMH,
+  `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019), then `scripts/ratchet-ci.sh nightly`: each module's surviving mutants against `ratchet/mutation.tsv`; it commits nothing. `mapping-bench.yml` (`mapping · jmh`): manual JMH,
   informative only; benchmark regression is a spec-gate check on the VM, never on CI.
 - Runners use Temurin 25 and Node 22 and fetch Maven artefacts through the Google mirror of
   Central with the Maven cache (ADR-0017).
 
 **Ratchet** (`ratchet/`, ADR-0019, format in `ratchet/README.md`): oracle pass lists, coverage
-and mutation per module, benchmark baselines. Ticket gates check against the integration branch's
-copy, which equals `main`'s during a spec; the spec gate regenerates it and the verifier commits
-it. A drop is a failure; a rise is recorded at regeneration. Writers never touch it.
+and mutation per module, benchmark baselines. Every push is checked on GitHub against the last
+commit the check passed on, and the verifier regenerates the files at every task commit that
+touches `mapping/` (ADR-0019, "On GitHub"; the repository's D-164). The old gates checked against
+the integration branch's copy and regenerated at the spec gate (rows 1b and 5 above; MAP-7 adapts
+or archives them). A drop is a failure; a rise is recorded at regeneration. Writers never touch it.
 
 **Floors** (fixed in the build, ADR-0019): JaCoCo lines ≥ 90 % and branches ≥ 80 % on `xdm`, `ir`,
 `runtime`, `serializer`, `mapping`, `xslt-export`, `api`, `udf-api`, `udf`; lines ≥ 80 % on `structure`,

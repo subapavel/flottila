@@ -6,6 +6,9 @@
 # A row of the old format (`module TAB score %`, until the verifier's `regen --all` migrates it) is compared as
 # before: `<module> <killed>/<generated> <score>% floor <N>% ok|DROP`, score rounded down.
 # Exit 1 if any module is below its floor or has no report. A module without a floor row is only reported.
+# After a module's own line, and only when there is something to say (MAP-12b; neither changes the exit code):
+#   <module> timed-out <T> of <killed> killed      TIMED_OUT mutants, counted as killed (machine-dependent, F-16)
+#   <module> generated <G> below its row's <R>     the row's generated count is higher (a PIT exclusion shows here)
 #
 #   scripts/pit-summary.sh <mutation.tsv> <module>...
 #   scripts/pit-summary.sh --run <log> <module>...    run PIT one module at a time into <log>, each section
@@ -66,6 +69,14 @@ for m in "$@"; do
     rc=1
   else
     echo "$m $killed/$generated survivors $survivors floor $floor ok"
+  fi
+  # MAP-12b: two lines after the module's own, each only when it has something to say; neither changes the exit
+  timed=$(grep '<mutation ' "$xml" | grep "detected=['\"]true['\"]" | grep -c "status=['\"]TIMED_OUT['\"]")
+  if [ "$timed" -gt 0 ]; then
+    echo "$m timed-out $timed of $killed killed"
+  fi
+  if [ -n "${floor_generated:-}" ] && [ "$floor_generated" -gt "$generated" ]; then
+    echo "$m generated $generated below its row's $floor_generated"
   fi
 done
 exit "$rc"

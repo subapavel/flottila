@@ -1,0 +1,759 @@
+=== function-families-test
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: catalogue exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: index exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: catalogue
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper: core's prolog and root start tag begin it
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper: core's content, then each family's
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper: every xsl:function once, in that order
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper: one XML declaration and one root
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: helper: the root's end tag and a final LF end it
+ok   aNewFamilyNeedsOnlyItsOwnFiles: alpha, beta: index
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: catalogue exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: index exit
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: catalogue
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper: core's prolog and root start tag begin it
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper: core's content, then each family's
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper: every xsl:function once, in that order
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper: one XML declaration and one root
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: helper: the root's end tag and a final LF end it
+ok   aNewFamilyNeedsOnlyItsOwnFiles: gamma added: index
+ok   aNewFamilyNeedsOnlyItsOwnFiles: the sources are the fixtures, unchanged
+ok   theMergeIgnoresListingOrder: witness: the modes given their files out of name order
+ok   theMergeIgnoresListingOrder: every exit
+ok   theMergeIgnoresListingOrder: the directory's catalogue is the canonical merge
+ok   theMergeIgnoresListingOrder: the directory's helper: core's prolog and root start tag begin it
+ok   theMergeIgnoresListingOrder: the directory's helper: core's content, then each family's
+ok   theMergeIgnoresListingOrder: the directory's helper: every xsl:function once, in that order
+ok   theMergeIgnoresListingOrder: the directory's helper: one XML declaration and one root
+ok   theMergeIgnoresListingOrder: the directory's helper: the root's end tag and a final LF end it
+ok   theMergeIgnoresListingOrder: the directory's index
+ok   theMergeIgnoresListingOrder: every order's catalogue is the canonical merge
+ok   theMergeIgnoresListingOrder: every order's helper module is the directory's, byte for byte
+ok   theMergeIgnoresListingOrder: every order's index is the directory's, byte for byte
+ok   aNameInTwoFamiliesFailsTheBuild: witness: alpha, beta build
+ok   aNameInTwoFamiliesFailsTheBuild: apple in delta.json too: exit
+ok   aNameInTwoFamiliesFailsTheBuild: apple in delta.json too: the message names it
+ok   aNameInTwoFamiliesFailsTheBuild: witness: alpha, beta build
+ok   aNameInTwoFamiliesFailsTheBuild: zucchini in delta.json too: exit
+ok   aNameInTwoFamiliesFailsTheBuild: zucchini in delta.json too: the message names it
+ok   aFamilyFileNotCanonicalFailsTheBuild: witness: alpha, beta, gamma build
+ok   aFamilyFileNotCanonicalFailsTheBuild: witness: the merge
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json unsortedMembers: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json unsortedMembers: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json unsortedNames: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json unsortedNames: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json emptyArray: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json emptyArray: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json noFinalLf: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json noFinalLf: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json crlf: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json crlf: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json fourSpaces: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json fourSpaces: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json bom: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json bom: the message names the file
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json compact: exit
+ok   aFamilyFileNotCanonicalFailsTheBuild: gamma.json compact: the message names the file
+ok   anotherRootTagFailsTheBuild: witness: alpha, beta build
+ok   anotherRootTagFailsTheBuild: beta.xsl extraNamespace: the module differs
+ok   anotherRootTagFailsTheBuild: beta.xsl extraNamespace: exit
+ok   anotherRootTagFailsTheBuild: beta.xsl extraNamespace: the message names the file
+ok   anotherRootTagFailsTheBuild: beta.xsl otherVersion: the module differs
+ok   anotherRootTagFailsTheBuild: beta.xsl otherVersion: exit
+ok   anotherRootTagFailsTheBuild: beta.xsl otherVersion: the message names the file
+ok   anotherRootTagFailsTheBuild: beta.xsl oneLine: the module differs
+ok   anotherRootTagFailsTheBuild: beta.xsl oneLine: exit
+ok   anotherRootTagFailsTheBuild: beta.xsl oneLine: the message names the file
+--- function-families-test rc=0
+=== function-families-refusals-test
+ok   noColon: exit
+ok   noColon: the message names the file
+ok   noColon: the message names the fault
+ok   noComma: exit
+ok   noComma: the message names the file
+ok   noComma: the message names the fault
+ok   noMemberName: exit
+ok   noMemberName: the message names the file
+ok   noMemberName: the message names the fault
+ok   noArrayComma: exit
+ok   noArrayComma: the message names the file
+ok   noArrayComma: the message names the fault
+ok   controlCharacter: exit
+ok   controlCharacter: the message names the file
+ok   controlCharacter: the message names the fault
+ok   textAfter: exit
+ok   textAfter: the message names the file
+ok   textAfter: the message names the fault
+ok   number: exit
+ok   number: the message names the file
+ok   number: the message names the fault
+ok   array: exit
+ok   array: the message names the file
+ok   array: the message names the fault
+ok   stringEntry: exit
+ok   stringEntry: the message names the file
+ok   stringEntry: the message names the fault
+ok   emptyObject: exit
+ok   emptyObject: the message names the file
+ok   emptyObject: the message names the fault
+ok   emptyArrayDefault: exit
+ok   emptyArrayDefault: the message names the file
+ok   emptyArrayDefault: the message names the fault
+ok   spacedEmptyArrayDefault: exit
+ok   spacedEmptyArrayDefault: the message names the file
+ok   spacedEmptyArrayDefault: the message names the fault
+ok   aNullMemberMergesAsItIs: exit
+ok   aNullMemberMergesAsItIs: the merge
+ok   aHelperModuleWithoutCoreIsRefused: exit
+ok   aHelperModuleWithoutCoreIsRefused: the message
+ok   aHelperModuleWithoutCoreIsRefused: no output
+ok   anUnknownModeIsRefused: exit
+ok   anUnknownModeIsRefused: the message
+ok   aMissingInputIsRefused: catalogue: exit
+ok   aMissingInputIsRefused: catalogue: the message names the input
+ok   aMissingInputIsRefused: catalogue: no output
+ok   aMissingInputIsRefused: helper: exit
+ok   aMissingInputIsRefused: helper: the message names the input
+ok   aMissingInputIsRefused: helper: no output
+ok   aMissingInputIsRefused: index: exit
+ok   aMissingInputIsRefused: index: the message names the input
+ok   aMissingInputIsRefused: index: no output
+ok   tooFewArgumentsPrintTheUsage: no argument: exit
+ok   tooFewArgumentsPrintTheUsage: one argument: exit
+ok   tooFewArgumentsPrintTheUsage: none: the usage
+ok   tooFewArgumentsPrintTheUsage: none: no stack trace
+ok   tooFewArgumentsPrintTheUsage: one: the usage
+ok   tooFewArgumentsPrintTheUsage: one: no stack trace
+ok   aCoreWithoutRootStartTagIsRefused: exit
+ok   aCoreWithoutRootStartTagIsRefused: the message names core.xsl
+ok   aCoreWithoutRootStartTagIsRefused: no stack trace
+ok   aCoreWithoutRootStartTagIsRefused: no output
+ok   aDeclarationInTwoModulesIsRefused: po:apple: exit
+ok   aDeclarationInTwoModulesIsRefused: po:apple: the message names it
+ok   aDeclarationInTwoModulesIsRefused: po:apple: the message names delta.xsl
+ok   aDeclarationInTwoModulesIsRefused: po:apple: no output
+ok   aDeclarationInTwoModulesIsRefused: po:SUPPRESS: exit
+ok   aDeclarationInTwoModulesIsRefused: po:SUPPRESS: the message names it
+ok   aDeclarationInTwoModulesIsRefused: po:SUPPRESS: the message names delta.xsl
+ok   aDeclarationInTwoModulesIsRefused: po:SUPPRESS: no output
+ok   aModuleThatIsNoXmlIsRefused: exit
+ok   aModuleThatIsNoXmlIsRefused: the refusal names beta.xsl
+ok   aModuleThatIsNoXmlIsRefused: no stack trace
+ok   aFamilyGivenTwiceIsRefused: catalogue: exit
+ok   aFamilyGivenTwiceIsRefused: catalogue: the message names both files
+ok   aFamilyGivenTwiceIsRefused: catalogue: no output
+ok   aFamilyGivenTwiceIsRefused: helper: exit
+ok   aFamilyGivenTwiceIsRefused: helper: the message names both files
+ok   aFamilyGivenTwiceIsRefused: helper: no output
+ok   aFamilyGivenTwiceIsRefused: index: exit
+ok   aFamilyGivenTwiceIsRefused: index: the message names both files
+ok   aFamilyGivenTwiceIsRefused: index: no output
+--- function-families-refusals-test rc=0
+=== ratchet-mutation-test
+ok   one more survivor: exit
+ok   one more survivor: message
+ok   same survivors: exit
+ok   fewer survivors: regen exit
+ok   fewer survivors: row
+ok   regen refuses a rise in survivors: exit
+ok   regen refuses a rise in survivors: row kept
+ok   old row at floor: exit
+ok   old row below floor: exit
+ok   old row regen: exit
+ok   old row regen: migrated
+--- ratchet-mutation-test rc=0
+=== ratchet-moved-test
+ok   check at baseline: exit
+ok   check at baseline: moved
+ok   check leaves the file
+ok   regen: exit
+ok   regen: moved
+ok   regen: no NEW row
+ok   regen: row under the new name
+ok   drop: exit
+ok   drop: message
+--- ratchet-moved-test rc=0
+=== ratchet-bench-test
+ok   pass: exit
+ok   pass: median of fork means
+ok   pass: alloc from gc.alloc.rate.norm
+ok   pass: MB/s from inputBytes and avgt
+ok   pass: median of two forks
+ok   pass: tree result
+ok   pass: heap completes
+ok   pass: no re-run
+ok   pass: verdict
+ok   pass: bench writes nothing
+ok   regression: exit
+ok   regression: latency
+ok   regression: alloc
+ok   regression: throughput
+ok   regression: re-run regex
+ok   re-run: exit
+ok   re-run: the later file wins
+ok   re-run: no second re-run
+ok   tree regression: exit
+ok   tree regression: fail
+ok   tree regression: no re-run
+ok   tree regression: verdict
+ok   regression twice: exit
+ok   regression twice: latency
+ok   regression twice: verdict
+ok   median of three: exit
+ok   median of three: the median
+ok   median of three: target met
+ok   median of three: two files, the later wins
+ok   median in the first file: exit
+ok   median in the first file: the median
+ok   median in the last file: exit
+ok   median in the last file: the median
+ok   targets: exit
+ok   targets: latency
+ok   targets: throughput
+ok   targets: compile
+ok   targets: tree
+ok   targets: only these four
+ok   targets: new scenarios
+ok   targets: re-run regex
+ok   missing row: exit
+ok   missing row: wide
+ok   missing row: tree
+ok   missing row: other machine
+ok   missing row: verdict
+ok   units: exit
+ok   units: unknown unit
+ok   units: unknown tree unit
+ok   units: throughput needs a time per op
+ok   units: no inputBytes
+ok   units: row unit
+ok   units: target unit
+ok   units: no scenario name
+ok   units: other package
+ok   units: verdict
+ok   regen: exit
+ok   regen: gain
+ok   regen: bench.tsv
+ok   regen without results: exit
+ok   regen without results: bench.tsv kept
+ok   check ignores bench.tsv
+ok   regen regression: exit
+ok   regen regression: bench.tsv kept
+--- ratchet-bench-test rc=0
+=== ratchet-baseline-test
+PASS a1-coverage-lines-lowered-with-the-report-fail
+PASS a2-coverage-branches-lowered-with-the-report-fail
+PASS characterization-plain-check-on-the-a-tree-is-unchanged
+PASS b1-equal-rows-pass-with-measured-and-verdict-only
+PASS b2-raised-coverage-row-passes
+PASS b3-rows-and-cases-the-commit-adds-pass
+PASS c1-coverage-row-removed-while-measured-fails
+PASS c2-mutation-row-removed-while-reported-fails
+PASS c3-bench-row-removed-fails
+PASS c3-bench-row-only-on-another-machine-is-removed
+PASS c3-bench-scores-are-not-compared
+PASS c4-corpus-case-removed-fails
+PASS c4-differential-case-removed-fails
+PASS c5-oracle-file-removed-fails-once-per-case
+PASS d1-mutation-survivors-raised-0-to-1-fail
+PASS d2-mutation-survivors-lowered-11-to-10-pass
+PASS e1-moved-baseline-key-is-not-a-removal
+PASS e2-moved-pair-lowered-prints-the-new-key
+PASS e3-moved-commit-key-lowered-prints-the-new-key
+PASS e4-moved-row-removed-prints-the-new-key
+PASS f1-oracle-lists-without-surefire-reports-fail-without-not-run
+PASS f1-empty-oracle-lists-without-surefire-reports-pass-silently
+PASS f2-row-without-csv-fails-without-not-run
+PASS f2-row-and-code-without-csv-fail-once
+PASS f3-row-with-header-only-csv-fails-with-no-figures
+PASS f4-code-without-row-or-csv-fails
+PASS f4-service-code-without-csv-fails
+PASS f4-oracle-module-code-is-not-required
+PASS f5-code-without-row-with-header-only-csv-passes-silently
+PASS f6-module-info-only-without-csv-passes-silently
+PASS f7-ui-row-and-mutation-row-without-reports-stay-not-run
+PASS g-measured-lines-carry-the-csv-sums-in-module-order
+PASS order-of-plain-report-measured-baseline-and-verdict-lines
+PASS characterization-plain-check-on-the-order-tree-is-unchanged
+PASS count-plain-and-baseline-problems-together
+PASS h1-baseline-without-dir-is-the-usage-line
+PASS h2-argument-after-dir-is-the-usage-line
+PASS h3-missing-dir-is-not-a-directory
+PASS h3-file-as-dir-is-not-a-directory
+PASS h4-dir-without-coverage-tsv
+PASS h5-dir-without-mutation-tsv
+PASS h6-dir-without-bench-tsv
+PASS h7-dir-without-oracle
+PASS h8-two-column-mutation-row-in-the-baseline
+PASS h9-two-column-mutation-row-in-the-commit
+PASS i1-regen-code-module-with-header-only-csv-is-no-failure
+PASS i2-regen-code-module-without-csv-still-fails
+ratchet-baseline-test: 47 case(s), 0 failed
+--- ratchet-baseline-test rc=0
+=== gate-spec-bench-test
+ok   no label: one JMH run
+ok   no label: fail on error
+ok   no label: measured
+ok   no label: judgement NOT_RUN
+ok   no label: bench.tsv untouched
+ok   no label: no RESULTS.md
+ok   other label: judgement NOT_RUN
+ok   nproc 2: fail
+ok   nproc 2: bench.tsv untouched
+ok   pass: one JMH run
+ok   pass: judged
+ok   pass: written
+ok   re-run: three JMH runs
+ok   re-run: only the regressed
+ok   re-run: and again
+ok   re-run: fail on error
+ok   re-run: both measured
+ok   re-run: first judgement kept
+ok   re-run: judged on three runs
+ok   re-run: the median
+ok   re-run: no failed judgement
+ok   re-run: written
+ok   median regressed: three JMH runs
+ok   median regressed: fail
+ok   median regressed: worse
+ok   median regressed: regen refuses
+ok   median regressed: bench.tsv untouched
+ok   median at an end (130 140 105): three JMH runs
+ok   median at an end (130 140 105): fail
+ok   median at an end (130 140 105): the median
+ok   median at an end (140 125 130): three JMH runs
+ok   median at an end (140 125 130): fail
+ok   median at an end (140 125 130): the median
+ok   target: three JMH runs
+ok   target: only the missed
+ok   target: first judgement kept
+ok   target: judged on three runs
+ok   failed run: one JMH run
+ok   failed run: fail
+ok   failed run: judged
+ok   failed re-run: fail
+ok   failed re-run: judged
+ok   tree, no label: three runs
+ok   tree, no label: own file per run
+ok   tree, no label: runs pass
+ok   tree, no label: median file
+ok   tree, no label: median printed
+ok   tree, no label: bench.tsv untouched
+ok   tree pass: median file
+ok   tree pass: judged
+ok   tree pass: gain
+ok   tree pass: written
+ok   tree regression: no JMH re-run
+ok   tree regression: fail
+ok   tree regression: worse
+ok   tree regression: regen refuses
+ok   tree run fails: reported
+ok   tree run fails: no median file
+ok   tree run fails: no result
+ok   tree run fails: judgement fails
+--- gate-spec-bench-test rc=0
+=== trailers-test
+ok   good commit
+ok   two Signed-off-by
+ok   dup names the trailer
+ok   missing Ticket
+ok   missing Co-authored-by
+ok   missing Signed-off-by
+ok   merge without trailers
+ok   merge with trailers
+ok   GitHub PR merge commit
+--- trailers-test rc=0
+=== trailers-root-test
+ok   other cwd rc
+ok   other cwd counts a's commits
+ok   empty range rc
+ok   empty range says so
+ok   unknown ref rc
+ok   bare ref rc
+ok   bare ref prints usage
+--- trailers-root-test rc=0
+=== clean-worktrees-test
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/agent-clean: removed
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/agent-new: kept, unique paths: new-work.txt 
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/agent-staged: kept, unique paths: staged-only.txt 
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/agent-stale: removed (forced), index and working tree are already in main history
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/agent-unmerged: kept, not merged
+/tmp/tmp.XYKcDrvCpz/repo/.claude/worktrees/verify-locked: removed
+ok   rc
+ok   clean removed
+ok   stale index removed
+ok   locked clean removed
+ok   new work kept
+ok   unmerged kept
+ok   staged-only file kept
+ok   staged-only path printed
+ok   new path printed
+ok   unmerged reported
+ok   stale reports force
+ok   one line per worktree
+--- clean-worktrees-test rc=0
+=== pit-summary-test
+ok   below floor: exit
+ok   below floor: line
+ok   at/above floor: exit
+ok   at/above floor: lines
+ok   missing report: exit
+ok   missing report: line
+ok   mixed: exit
+ok   one more survivor: exit
+ok   one more survivor: line
+ok   same or fewer survivors: exit
+ok   same or fewer survivors: lines
+ok   no floor row, no report: exit
+ok   no floor row: line
+ok   run: exit
+ok   run: labelled sections
+ok   run: one module fails, exit
+ok   run: failure does not stop the next module
+ok   timed-out: the line after the module's own, none for a report without, survivors and exit as without
+ok   timed-out: a drop keeps its DROP line and exit 1
+ok   timed-out: also after an old-format row and after a module without a row
+ok   generated: the line when the row's count is higher, none when equal or lower, exit unchanged
+ok   generated: a drop keeps its DROP line and exit 1
+--- pit-summary-test rc=0
+=== gate-spec-default-test
+ok   default: run call
+ok   default: summary call
+ok   explicit: run call
+--- gate-spec-default-test rc=0
+=== gate-log-test
+ok   ticket: exit
+ok   ticket: evidence lines
+ok   ticket: pit summary
+ok   ticket: log equals console
+ok   ticket: no log in the current directory
+ok   ticket failing: exit
+ok   ticket failing: log equals console
+ok   spec: exit
+ok   spec: evidence lines
+ok   spec: pit summary
+ok   spec: log equals console
+ok   spec: no log in the current directory
+ok   spec failing: exit
+ok   spec failing: log equals console
+--- gate-log-test rc=0
+=== push-retry-test
+ok   first try rc
+ok   first try attempts
+ok   transient then ok rc
+ok   transient then ok attempts
+ok   always rejected rc
+ok   always rejected attempts
+ok   non-fast-forward rc
+ok   non-fast-forward not retried
+ok   non-fast-forward printed
+ALL PASS
+--- push-retry-test rc=0
+=== handover-test
+ok   HANDOVER.md exists
+ok   JDK 25
+ok   Node 22
+ok   dev service
+ok   dev UI
+ok   one-origin jar (-Pui)
+ok   loopback bind
+ok   workspace
+ok   installed mvn
+ok   Windows section
+ok   not verified by the gate
+ok   benchmarks.jar on Windows
+ok   New mapping
+ok   Signature
+ok   Definition
+ok   Test tab
+ok   Display Queue
+ok   ticket gate
+ok   spec gate
+ok   machine label
+ok   -Pbench
+ok   bench results
+ok   open findings
+ok   ADRs to revisit
+ok   next three specs
+ok   JSON output
+ok   bytecode tier
+ok   PO importer
+--- handover-test rc=0
+=== ratchet-ci-test
+ok   lookup, across a merge: exit 0
+ok   lookup, across a merge: the nearest green ancestor is the merge's second parent
+ok   lookup, across a merge: the walk stops at the baseline
+ok   lookup: <dir> holds the baseline commit's four names with that commit's content, not HEAD's
+ok   lookup: HEAD's own green push run is never the baseline
+ok   lookup: HEAD's own run is never asked for its jobs
+ok   lookup: a red backend job and a cancelled run are skipped
+ok   lookup: LOOKUP pages counts the pages and the runs read
+ok   lookup: LOOKUP run for the red run asked
+ok   lookup: LOOKUP job for the red run's backend job
+ok   lookup: LOOKUP run for the cancelled run asked
+ok   lookup: LOOKUP job for the cancelled run's backend job
+ok   lookup: LOOKUP run for the baseline's run
+ok   lookup: LOOKUP job for the baseline's backend job
+ok   lookup: a run not completed is no candidate, even with a green backend job
+ok   lookup: a run not completed is never asked for its jobs
+ok   lookup: a run red on another job alone is taken (the run's own conclusion is not read)
+ok   lookup: a run of a commit that is no ancestor of HEAD is skipped
+ok   lookup: a run of a commit that is no ancestor is never asked for its jobs
+ok   lookup: the run with GITHUB_RUN_ID's id is no candidate
+ok   lookup: the run with GITHUB_RUN_ID's id is never asked for its jobs
+ok   lookup: page 2 of a list whose page 1 holds 100 runs is read, the nearer green ancestor on it taken
+ok   lookup: LOOKUP pages counts both pages and every run
+ok   lookup: the runs list is asked page by page, no further than the short page
+ok   lookup: a full page is followed by the next one, even when that is empty
+ok   lookup: LOOKUP pages counts the empty page
+ok   lookup: the list's order does not matter (the farther ancestor listed first)
+ok   lookup: the list's order does not matter (the farther ancestor listed last)
+ok   lookup, a renamed job: exit 0
+ok   lookup, a renamed job: the bootstrap line names HEAD's first parent
+ok   lookup, a renamed job: LOOKUP job says none is named mapping · backend
+ok   lookup, a renamed job: the walk goes on to the next ancestor with candidates
+ok   lookup, bootstrap: <dir> holds the first parent's tree
+ok   lookup, no push run at all: exit 0
+ok   lookup, no push run at all: the bootstrap line
+ok   lookup, no push run at all: LOOKUP pages
+ok   lookup, a pull request: exit 0
+ok   lookup, a pull request: its base is the baseline
+ok   lookup, a pull request: gh is never called
+ok   lookup, a pull request: <dir> holds the base's tree
+ok   lookup, gh failing: exit 1
+ok   lookup, gh failing: one LOOKUP FAILED line with its reason
+ok   lookup, a runs page that is not JSON: exit 1
+ok   lookup, a runs page that is not JSON: one LOOKUP FAILED line
+ok   lookup, a jobs response without its jobs list: exit 1
+ok   lookup, a jobs response without its jobs list: one LOOKUP FAILED line
+ok   lookup, a baseline without mapping/ratchet/: exit 1
+ok   lookup, a baseline without mapping/ratchet/: one LOOKUP FAILED line
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: exit 1
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks oracle alone: exit 1
+ok   lookup, a base whose ratchet/ lacks oracle alone: one LOOKUP FAILED line
+ok   lookup, HEAD without a parent: exit 1
+ok   lookup, HEAD without a parent: one LOOKUP FAILED line
+ok   lookup without <dir>: usage on stderr, nothing on stdout, exit 2, no call
+ok   lookup, gh exits 1 after a well-formed runs page: exit 1
+ok   lookup, gh exits 1 after a well-formed runs page: one LOOKUP FAILED line, no BASELINE
+ok   lookup, gh exits 1 after a well-formed jobs response: exit 1
+ok   lookup, gh exits 1 after a well-formed jobs response: one LOOKUP FAILED line, no BASELINE
+ok   lookup in a shallow clone (depth 1): exit 1
+ok   lookup in a shallow clone (depth 1): one LOOKUP FAILED line, no BASELINE
+ok   lookup in a shallow clone (depth 2): exit 1
+ok   lookup in a shallow clone (depth 2): one LOOKUP FAILED line, no BASELINE
+ok   lookup, RATCHET_BASELINE_SHA 'main': exit 1
+ok   lookup, RATCHET_BASELINE_SHA 'main': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '--help': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '--help': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '49955ae': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '49955ae': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '49955AEA66B33102EFFCB6EB40BC93539E8EB902': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '49955AEA66B33102EFFCB6EB40BC93539E8EB902': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, a run whose head_sha is 'main': exit 1
+ok   lookup, a run whose head_sha is 'main': LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose head_sha is '--output=x': exit 1
+ok   lookup, a run whose head_sha is '--output=x': LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose id is a string: exit 1
+ok   lookup, a run whose id is a string: LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose id is negative: exit 1
+ok   lookup, a run whose id is negative: LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose status is 'completed; x': exit 1
+ok   lookup, a run whose status is 'completed; x': LOOKUP FAILED, its jobs never asked
+ok   lookup, a backend job whose conclusion is 'suc cess': exit 1
+ok   lookup, a backend job whose conclusion is 'suc cess': one LOOKUP FAILED line, no BASELINE
+ok   lookup, GITHUB_REPOSITORY 'scratch': exit 1
+ok   lookup, GITHUB_REPOSITORY 'scratch': LOOKUP FAILED before any call to gh
+ok   lookup, GITHUB_REPOSITORY 'a/b/c': exit 1
+ok   lookup, GITHUB_REPOSITORY 'a/b/c': LOOKUP FAILED before any call to gh
+ok   lookup, GITHUB_REPOSITORY 'a/b?x=1': exit 1
+ok   lookup, GITHUB_REPOSITORY 'a/b?x=1': LOOKUP FAILED before any call to gh
+ok   lookup, two runs of one ancestor, the older red and the newer green: the newer
+ok   lookup, two runs of one ancestor, the older green and the newer red: the older
+ok   lookup, two green runs of one ancestor: the newer is named
+ok   lookup, 100 full pages: exit 1
+ok   lookup, 100 full pages: one LOOKUP FAILED line
+ok   lookup, 100 full pages: pages 1 to 100 asked, page 101 never, no call without its fixture
+ok   lookup, a green run listed on two pages: its ancestor is the baseline
+ok   lookup, a green run listed on two pages: asked for its jobs once
+ok   lookup, a red run listed on two pages: the walk goes on to c2
+ok   lookup, a red run listed on two pages: asked for its jobs once
+ok   push, the shipped date file: read without a date-file error, exit 0
+ok   push on 2026-11-24, the check OK: exit 0
+ok   push on 2026-11-24, the check OK: no annotation
+ok   push on 2026-11-25, the check OK: exit 0
+ok   push on 2026-11-25, the check OK: no annotation
+ok   push: the lookup's stdout is passed through
+ok   push: the check's stdout is passed through
+ok   push: the check ran with the baseline
+ok   push: the check was given the baseline commit's tree
+ok   push the day before, a failing check: exit 0
+ok   push the day before, a failing check: the would-fail warning
+ok   push the day before, a failing check: no error
+ok   push on the date, a failing check: exit 1
+ok   push on the date, a failing check: the error
+ok   push on the date, a failing check: no would-fail warning
+ok   push a later month, a failing check: exit 1
+ok   push a later month, a failing check: the error
+ok   push the day before, a failed lookup: exit 0
+ok   push, a failed lookup: the lookup's LOOKUP FAILED line is passed through
+ok   push the day before, a failed lookup: its own warning, with the lookup's reason
+ok   push the day before, a failed lookup: never worded as a failing check
+ok   push the day before, a failed lookup: plain check ran, without --baseline
+ok   push on the date, a failed lookup: exit 1
+ok   push on the date, a failed lookup: its own error, with the lookup's reason
+ok   push on the date, a failed lookup: never worded as a failing check
+ok   push on the date, a failed lookup: plain check ran, without --baseline
+ok   push the day before, a failed lookup and a failing plain check: exit 0
+ok   push the day before, a failed lookup and a failing plain check: the lookup's warning
+ok   push the day before, a failed lookup and a failing plain check: the would-fail warning
+ok   push on the date, a failed lookup and a failing plain check: exit 1
+ok   push on the date, a failed lookup and a failing plain check: the lookup's error
+ok   push on the date, a failed lookup and a failing plain check: the check's error
+ok   push on 2026-11-24, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-24, the check refused its command line: no verdict
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: no verdict
+ok   push on 2026-11-25, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-25, the check refused its command line: no verdict
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: no verdict
+ok   push, an OK line with exit 1: exit 2
+ok   push, an OK line with exit 1: no verdict, nothing else reported
+ok   push, a FAIL line with exit 0: exit 2
+ok   push, a FAIL line with exit 0: no verdict, nothing else reported
+ok   push, the check killed (exit 137): exit 2
+ok   push, the check killed: no verdict
+ok   push on 2026-11-24, RISE lines and the check OK: exit 0
+ok   push on 2026-11-24: a RISE line becomes a warning
+ok   push on 2026-11-24: every RISE line becomes a warning
+ok   push on 2026-11-25, RISE lines and the check OK: exit 0
+ok   push on 2026-11-25: a RISE line becomes a warning
+ok   push on 2026-11-25: every RISE line becomes a warning
+ok   push on 2026-11-24, the date file missing: exit 2
+ok   push on 2026-11-24, the date file missing: its error
+ok   push on 2026-11-24, the date file missing: before gh or java is called
+ok   push on 2026-11-25, the date file missing: exit 2
+ok   push on 2026-11-25, the date file missing: its error
+ok   push on 2026-11-25, the date file missing: before gh or java is called
+ok   push on 2026-11-24, the date file empty: exit 2
+ok   push on 2026-11-24, the date file empty: its error
+ok   push on 2026-11-24, the date file empty: before gh or java is called
+ok   push on 2026-11-25, the date file empty: exit 2
+ok   push on 2026-11-25, the date file empty: its error
+ok   push on 2026-11-25, the date file empty: before gh or java is called
+ok   push on 2026-11-24, the date file two-lines: exit 2
+ok   push on 2026-11-24, the date file two-lines: its error
+ok   push on 2026-11-24, the date file two-lines: before gh or java is called
+ok   push on 2026-11-25, the date file two-lines: exit 2
+ok   push on 2026-11-25, the date file two-lines: its error
+ok   push on 2026-11-25, the date file two-lines: before gh or java is called
+ok   push on 2026-11-24, the date file malformed: exit 2
+ok   push on 2026-11-24, the date file malformed: its error
+ok   push on 2026-11-24, the date file malformed: before gh or java is called
+ok   push on 2026-11-25, the date file malformed: exit 2
+ok   push on 2026-11-25, the date file malformed: its error
+ok   push on 2026-11-25, the date file malformed: before gh or java is called
+ok   push, a date with text after it: exit 2
+ok   push, a date with text after it: its error, before gh or java
+ok   an unknown mode: usage on stderr, exit 2, no call
+ok   no mode: usage on stderr, exit 2, no call
+ok   push, the step summary: one fenced block appended after what was there
+ok   push, the step summary: the lookup's and the check's lines are in the block (in any order)
+ok   push, RATCHET_TODAY unset, the date long past: enforced, exit 1
+ok   push, RATCHET_TODAY unset, the date long past: the error
+ok   push, RATCHET_TODAY unset, the date far ahead: the week, exit 0
+ok   push, RATCHET_TODAY unset, the date far ahead: the would-fail warning
+ok   push, a pull request: exit 0
+ok   push, a pull request: its base is the baseline and gh is never called
+ok   push, a pull request: the check was given the base's tree
+ok   push, RATCHET_TODAY 'never': exit 2
+ok   push, RATCHET_TODAY 'never': its error
+ok   push, RATCHET_TODAY 'never': before gh or java is called
+ok   push, RATCHET_TODAY '2026-13-01': exit 2
+ok   push, RATCHET_TODAY '2026-13-01': its error
+ok   push, RATCHET_TODAY '2026-13-01': before gh or java is called
+ok   push, RATCHET_TODAY '20261125': exit 2
+ok   push, RATCHET_TODAY '20261125': its error
+ok   push, RATCHET_TODAY '20261125': before gh or java is called
+ok   push, RATCHET_TODAY empty: today is the clock's, the date long past: exit 1
+ok   push, RATCHET_TODAY empty: the check's error, no RATCHET_TODAY error
+ok   push the day before, a lookup that exits 3 silently: exit 0
+ok   push the day before, a lookup that exits 3 silently: its warning, with a reason
+ok   push the day before, a lookup that exits 3 silently: plain check ran
+ok   push on the date, a lookup that exits 3 silently: exit 1
+ok   push on the date, a lookup that exits 3 silently: its error, with a reason
+ok   push, the date file '2026-02-30\n': exit 2
+ok   push, the date file '2026-02-30\n': its error, before gh or java
+ok   push, the date file '2026-11-25': exit 2
+ok   push, the date file '2026-11-25': its error, before gh or java
+ok   push from another working directory: exit 0
+ok   push from another working directory: the check OK passed through, no annotation
+ok   push from another working directory: the check ran with the baseline
+ok   nightly on the date, no drop: exit 0
+ok   nightly: pit-summary.sh's lines are passed through
+ok   nightly on the date, no drop: no annotation
+ok   nightly the day before, a count above its row: exit 0
+ok   nightly the day before, a count above its row: the would-fail warning
+ok   nightly the day before, a count above its row: no error
+ok   nightly on the date, a count above its row: exit 1
+ok   nightly on the date, a count above its row: the error
+ok   nightly the day before, a row without a report: exit 0
+ok   nightly the day before, a row without a report: the would-fail warning
+ok   nightly on the date, a row without a report: exit 1
+ok   nightly on the date, a row without a report drops
+ok   nightly on the date, a report without a row: exit 0
+ok   nightly on the date, a report without a row is printed and drops nothing
+ok   nightly: the modules are the rows' and the reports', sorted, each once
+ok   nightly on the date, timed-out mutants within the row: exit 0
+ok   nightly: the timed-out line is passed through, not annotated
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: no verdict
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: no verdict
+ok   nightly, no date file: exit 2
+ok   nightly, no date file: its error, before pit-summary.sh runs
+ok   nightly, the step summary: pit-summary.sh's lines in one fenced block
+ok   nightly, RATCHET_TODAY 'never': exit 2
+ok   nightly, RATCHET_TODAY 'never': its error, before pit-summary.sh runs
+ok   nightly, RATCHET_TODAY '2026-13-01': exit 2
+ok   nightly, RATCHET_TODAY '2026-13-01': its error, before pit-summary.sh runs
+ok   nightly, RATCHET_TODAY '20261125': exit 2
+ok   nightly, RATCHET_TODAY '20261125': its error, before pit-summary.sh runs
+ok   nightly from another working directory: exit 0
+ok   nightly from another working directory: pit-summary.sh's line passed through, no annotation
+--- ratchet-ci-test rc=0
+=== ratchet-ci-wiring-test
+ok   ci: scripts/ratchet-ci.sh push is the backend job's last step
+ok   ci: the ratchet step comes after the build step
+ok   ci: the backend job's permissions are contents: read and actions: read, nothing else
+ok   ci: the step carries the run's token and the pull request's base sha
+ok   ci: the ratchet step has no if:
+ok   ci: the backend job's checkout takes fetch-depth: 0
+ok   ci: the three tests of MAP-12b run beside the script tests that need no JDK
+ok   ci: the backend job's name is the one scripts/ratchet-baseline.sh looks up
+ok   ci: both path lists name the nightly workflow
+ok   ci: the header comment says the nightly workflow's file starts it too
+ok   ci: the week's runs: schedule with cron '23 */6 * * *'
+ok   ci: the concurrency group carries the event's name
+ok   ci: windows, ui and stack do not run on a schedule
+ok   ci: the backend job runs on the schedule too (no job-level if:)
+ok   ci: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-ci.yml
+ok   nightly: scripts/ratchet-ci.sh nightly runs after the PIT step
+ok   nightly: the ratchet step runs if: always()
+ok   nightly: env PIT_MODULES names MUTATION_MODULES of scripts/ratchet.java, each once
+ok   nightly: the PIT step reads PIT_MODULES and the modules are named once in the file
+ok   nightly: the artefact step stays (if: always(), pit-reports) beside the ratchet step
+ok   nightly: the header comment says the job compares with ratchet/mutation.tsv
+ok   nightly: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-nightly.yml
+ok   date file: scripts/ratchet-enforced-from exists and holds exactly one line, one ISO date
+ok   date file: the packet's date
+--- ratchet-ci-wiring-test rc=0

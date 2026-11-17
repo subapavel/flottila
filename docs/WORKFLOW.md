@@ -22,8 +22,12 @@ is binding for every session working on Rail8; `CLAUDE.md` summarises it.
    implements. One writer at a time.
 5. Verify through the verifier: `mvn -B -ntp -f platform/pom.xml verify -Pit` green (D-030; the CI
    path), ArchUnit green, coverage not decreased, scoped PIT on the touched classes. A task under
-   `mapping/` is verified by the mapping's own build, `./mvnw -B -ntp -f mapping/pom.xml verify`
-   (D-153). The verifier reports exit codes and the failing
+   `mapping/` is verified by the mapping's own build,
+   `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (D-153). For such a task the verifier also regenerates the mapping's ratchet files (in
+   `mapping/`: `java scripts/ratchet.java regen --all`; the reviewer reads their diff) and, before
+   a commit that touches a mutation-tested mapping module, runs that module's mutation testing
+   and `scripts/pit-summary.sh` against the committed count (D-164 (2), (3); the mapping's
+   ADR-0019, "On GitHub"). The verifier reports exit codes and the failing
    section; the coordinator reads the log tail itself and records each check with its evidence
    state.
 6. Review by the reviewer agent (Opus 5.5, effort by the row's class), the diff handed over as

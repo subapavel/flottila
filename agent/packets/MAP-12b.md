@@ -238,6 +238,69 @@ Each sentence below is contract and gets its case in `ratchet-ci-test.sh` (secon
 12. `ratchet-ci.sh` does the same from any working directory (it changes to the mapping's root itself).
 A case that is green on arrival shows its red against a hand mutant of a scratch copy of the script, as 12a's
 and FIX-280's did; the real scripts are not edited by the test-author.
+Round 2 as it went (2026-11-16): 75 assertions added (249 in the file); against the first scripts only
+sentence 1's 15 failed; every other case killed its mutant (`agent/work/MAP-12b-red2.log`); the implementer then
+changed `ratchet-ci.sh` alone (249 green, `agent/work/MAP-12b-green.log`, "round 2"). Guards left without a case,
+each because no input reaches it or it only words a reason: the run's own `conclusion` being a word (it is only
+printed), the clock's date being an ISO date, the comparison's exit-2 branch (both dates are checked before it),
+the reasons of `git archive` failing, of a HEAD without a parent and of a base that is no commit (a later check
+gives `LOOKUP FAILED` all the same), `PIT_ROOT`, the date file's "is missing" wording.
+
+### Round 3: the review's FAIL of 2026-11-16 (round 1), each with its case - red first again
+
+The reviewer [C] found two guards that no case holds, one false sentence of the contract and two false sentences
+of the documents. The contract gains 13 to 18; 5 is restated by 14.
+13. An answer that `gh` returns with exit 0 and that is not exactly one JSON value of the shape expected is a
+    failed lookup, never "no runs" and never the bootstrap: for a runs page an empty answer, two JSON values, an
+    object without `workflow_runs` (`{"total_count": 0}`), `workflow_runs` that is no array -
+    `LOOKUP FAILED: runs page <n> is not the JSON expected`; for a run's jobs an empty answer and two JSON values -
+    `LOOKUP FAILED: the jobs of run <id> are not the JSON expected`. (`ratchet-baseline.sh`:39, :42, :48-52: the
+    mutants `error("no workflow_runs")` to `empty` and `one` to `[inputs] | .[]` keep all 249 assertions green.)
+14. A job's conclusion is judged as the one JSON string it is, before any line is split: a conclusion that is not
+    null and not exactly `^[a-z_]+$` - `"success "`, `" success"`, `"failure\nsuccess"`, `"success\tx"`, `""` - is
+    `LOOKUP FAILED: the jobs of run <id> hold a conclusion that is not the JSON expected`. It is never trimmed into
+    `success` and never split into two conclusions (:51 with :135-136 does both today: red on the scripts as
+    they are). The same holds for a run's `status` and `conclusion` on a runs page (they pass through `@tsv` and a
+    tab-split `read`: show which of these values are refused today and which are not).
+15. The nightly mode without `ratchet/mutation.tsv` (missing, or not a readable file):
+    `::error::ratchet: ratchet/mutation.tsv is missing`, exit 2 on any day, before `pit-summary.sh` is called.
+    (Today every module prints "floor none ok" and the step exits 0.)
+16. The lookup's own tools: where it is about to call the API (not on the pull-request path, which calls
+    neither), `gh` or `jq` not on PATH is `LOOKUP FAILED: gh is not installed` / `LOOKUP FAILED: jq is not
+    installed` and no call is made. (Today a missing `jq` reads "runs page 1 is not the JSON expected".)
+17. `ratchet-ci.sh` cannot make its temporary directory (`TMPDIR` names a directory that does not exist):
+    `::error::ratchet: cannot create a temporary directory`, exit 2 on any day, before `gh` or `java` is called.
+    Its failing `cd` gets `::error::ratchet: cannot change to the mapping's root` (no case: nothing reaches it).
+    The header's exit-2 list names both, and says that GNU `date` is assumed and not checked.
+18. The token is never printed: with `GH_TOKEN` set to a value the test chooses, that value appears in neither
+    stdout nor stderr of a push-mode run with a lookup that succeeds, nor of one whose `gh` fails.
+The wiring test keeps `date file: the packet's date` (:146): the date is the gate's off-switch, and a commit that
+moves it then also edits a test - the ADR says so instead of calling the file the only place.
+Steps: the test-author [C] adds the cases (allowed path: `mapping/scripts/test/ratchet-ci-test.sh`; red to
+`agent/work/MAP-12b-red3.log`, a green-on-arrival case against its hand mutant on a scratch copy; the log ends
+with the sha256 of the three test files). The architect reads them. The implementer [C]: `ratchet-baseline.sh`,
+`ratchet-ci.sh`, and the comment of `mapping-ci.yml`:116-117 ("it reports and cannot fail the job" is false: the
+date file, `RATCHET_TODAY`, a check without a verdict fail it on any day - "a failing check or a failed lookup
+cannot fail it"); its log repeats the three sha256. The architect: ADR-0019 (:123-125), `mapping/docs/WORKFLOW.md`
+§6 (:85: the two new tests need no JDK), root `docs/WORKFLOW.md` §1 step 5 (the build is `-Pbench clean verify`,
+as ADR-0019 says). The verifier: the script tests again. The reviewer [C], round 2.
+Round 3's tests, read and approved 2026-11-17: 77 assertions added (326 in the file); on the scripts as they
+were 29 failed - 14's jobs cases (8: trimmed, split, an empty conclusion read as "no job named"), 15's twelve, 16's
+three, 17's line in both modes (6) - and every case green on arrival killed its hand mutant, among them the three
+mutants of the review's first finding and the guard on a run's conclusion (:101), unpinned since round 2
+(`agent/work/MAP-12b-red3.log`, which ends with the three test files' sha256). Not tested, each for a reason: "no
+call" with `gh` absent (nothing on that PATH counts calls), an unreadable file (the test runs as root: a directory
+stands in), the failing `cd`.
+Round 3's scripts (2026-11-17): 326 green (`agent/work/MAP-12b-green.log`, "round 3"); the implementer named one
+more value that 14 must hold and no case had: `"success\n"` - jq's `$` also matches before a final newline, so
+a check written `^[a-z_]+$` takes it for `success`; the script uses `\A[a-z_]+\z`. 14's list gains that value
+(test-author, green on arrival, red against the `^..$` mutant on a scratch copy). Guards without a case: the
+`-r` term of 15's check (the test runs as root), the failing `cd`, `word` on a runs page (the tab-split and
+`is_word` refuse every such value already; only which check refuses an empty status changes).
+Review [C], round 2 (2026-11-17): PASS. Taken from its notes: ADR-0019's "What cannot be decided" names its
+cases "among them" and points at the script's header for the whole list; `word` stays on the runs page (under a
+UTF-8 collation bash's `[a-z]` may take other letters). Regen ran at 6b23ddc1 (round 1); round 3 changed no
+input of it. Open after the push: acceptance 4.
 
 ## Not this part's
 

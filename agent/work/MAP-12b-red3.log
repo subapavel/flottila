@@ -1,0 +1,288 @@
+MAP-12b round 3: scripts/test/ratchet-ci-test.sh against the real scripts, then hand mutants of scratch copies
+scratch trees: /tmp/claude-0/-home-user-flottila/c273a2ff-2165-53cc-97ae-ec99f977618a/scratchpad/m3/<mutant>/mapping/scripts
+(the real scripts only read; each tree holds the file before round 3 and the new one)
+sha256 before:
+fdbdece4490956bf218c11966406b38044840e2a5d761505933ed749199d190a  mapping/scripts/ratchet-baseline.sh
+3ecb96fc3daf8d51635237d7ee8fb104d3e894fa34009a4463f3c7acd7ec7473  mapping/scripts/ratchet-ci.sh
+43e9e85a053442645130a13d597d93b2dc6854fd7f6dd3a9bfe804ade4355999  mapping/scripts/pit-summary.sh
+16a63ff94e85362f8797ff93d4d93b52d1c09d31499e1cde7a4bf2bf4c8cc59d  mapping/scripts/ratchet-enforced-from
+sha256 after:
+fdbdece4490956bf218c11966406b38044840e2a5d761505933ed749199d190a  mapping/scripts/ratchet-baseline.sh
+3ecb96fc3daf8d51635237d7ee8fb104d3e894fa34009a4463f3c7acd7ec7473  mapping/scripts/ratchet-ci.sh
+43e9e85a053442645130a13d597d93b2dc6854fd7f6dd3a9bfe804ade4355999  mapping/scripts/pit-summary.sh
+16a63ff94e85362f8797ff93d4d93b52d1c09d31499e1cde7a4bf2bf4c8cc59d  mapping/scripts/ratchet-enforced-from
+
+=== the mutants that survive today's 249 assertions (the file before round 3, run on each mutant)
+=== m13-no-workflow_runs (ratchet-baseline.sh): RUNS_JQ: error("no workflow_runs") -> empty
+  old file (249): exit 0, ok 249, FAIL 0
+=== m13-runs-one (ratchet-baseline.sh): RUNS_JQ: one -> [inputs] | .[]
+  old file (249): exit 0, ok 249, FAIL 0
+=== m13-jobs-one (ratchet-baseline.sh): JOBS_JQ: one -> [inputs] | .[]
+  old file (249): exit 0, ok 249, FAIL 0
+=== m14-run-conclusion (ratchet-baseline.sh): runs page: the guard on a run's conclusion removed (:101)
+  old file (249): exit 0, ok 249, FAIL 0
+=== m16-tools-first (ratchet-baseline.sh): gh and jq checked before the pull-request path (after :36)
+  old file (249): exit 0, ok 249, FAIL 0
+=== m18-token-stderr (ratchet-baseline.sh): echo "$GH_TOKEN" >&2 after set -uo pipefail (:21)
+  old file (249): exit 0, ok 249, FAIL 0
+=== m17-fallback (ratchet-ci.sh): a TMPDIR that does not exist falls back to /tmp (:64)
+  old file (249): exit 0, ok 249, FAIL 0
+=== m18-token-stdout (ratchet-baseline.sh): echo "$GH_TOKEN" after set -uo pipefail (:21)
+  old file (249): exit 1, ok 248, FAIL 1
+    249 FAIL lookup without <dir>: usage on stderr, nothing on stdout, exit 2, no call
+=== m14-run-status (ratchet-baseline.sh): runs page: the guard on a run's status removed (:101)
+  old file (249): exit 1, ok 247, FAIL 2
+    249 FAIL lookup, a run whose status is 'completed; x': exit 1
+    249 FAIL lookup, a run whose status is 'completed; x': LOOKUP FAILED, its jobs never asked
+=== m14-job-word (ratchet-baseline.sh): jobs: the guard on a job's conclusion removed (:136)
+  old file (249): exit 1, ok 247, FAIL 2
+    249 FAIL lookup, a backend job whose conclusion is 'suc cess': exit 1
+    249 FAIL lookup, a backend job whose conclusion is 'suc cess': one LOOKUP FAILED line, no BASELINE
+  -> survive the 249: the three of sentence 13, m14-run-conclusion (the run's conclusion guard, unpinned in
+     round 2), m16-tools-first, m17-fallback, m18-token-stderr; m18-token-stdout fails one old case only by accident (the
+     usage case: its stdout is no longer empty); m14-run-status and m14-job-word die on round 2's cases
+
+=== the real scripts: exit 1, ok 297, FAIL 29 (326 assertions: 249 before round 3, 77 new; every FAIL is new)
+    FAIL among the new assertions: 29, among the 249: 0
+
+=== sentence 13 (14 assertions): all green on arrival; each kills a mutant that survives the 249
+  ok   lookup, an empty runs page with exit 0: exit 1
+  ok   lookup, an empty runs page with exit 0: LOOKUP FAILED, never no runs
+  ok   lookup, a runs page of two JSON values with exit 0: exit 1
+  ok   lookup, a runs page of two JSON values with exit 0: LOOKUP FAILED, never no runs
+  ok   lookup, a runs page {"total_count": 0} with exit 0: exit 1
+  ok   lookup, a runs page {"total_count": 0} with exit 0: LOOKUP FAILED, never no runs
+  ok   lookup, a runs page {"workflow_runs": 7} with exit 0: exit 1
+  ok   lookup, a runs page {"workflow_runs": 7} with exit 0: LOOKUP FAILED, never no runs
+  ok   lookup, page 2 empty with exit 0 after a full page 1: exit 1
+  ok   lookup, page 2 empty with exit 0 after a full page 1: LOOKUP FAILED names page 2
+  ok   lookup, a run's jobs answered empty with exit 0: exit 1
+  ok   lookup, a run's jobs answered empty with exit 0: LOOKUP FAILED, never no jobs
+  ok   lookup, a run's jobs answered two JSON values with exit 0: exit 1
+  ok   lookup, a run's jobs answered two JSON values with exit 0: LOOKUP FAILED, never no jobs
+  mutants (FAIL lines beyond the 29 of the real scripts):
+=== m13-no-workflow_runs (ratchet-baseline.sh): RUNS_JQ: error("no workflow_runs") -> empty
+    new FAIL lookup, a runs page {"total_count": 0} with exit 0: LOOKUP FAILED, never no runs
+    new FAIL lookup, a runs page {"total_count": 0} with exit 0: exit 1
+    new FAIL lookup, a runs page {"workflow_runs": 7} with exit 0: LOOKUP FAILED, never no runs
+    new FAIL lookup, a runs page {"workflow_runs": 7} with exit 0: exit 1
+=== m13-runs-one (ratchet-baseline.sh): RUNS_JQ: one -> [inputs] | .[]
+    new FAIL lookup, a runs page of two JSON values with exit 0: LOOKUP FAILED, never no runs
+    new FAIL lookup, a runs page of two JSON values with exit 0: exit 1
+    new FAIL lookup, an empty runs page with exit 0: LOOKUP FAILED, never no runs
+    new FAIL lookup, an empty runs page with exit 0: exit 1
+    new FAIL lookup, page 2 empty with exit 0 after a full page 1: LOOKUP FAILED names page 2
+    new FAIL lookup, page 2 empty with exit 0 after a full page 1: exit 1
+=== m13-jobs-one (ratchet-baseline.sh): JOBS_JQ: one -> [inputs] | .[]
+    new FAIL lookup, a run's jobs answered empty with exit 0: LOOKUP FAILED, never no jobs
+    new FAIL lookup, a run's jobs answered empty with exit 0: exit 1
+    new FAIL lookup, a run's jobs answered two JSON values with exit 0: LOOKUP FAILED, never no jobs
+    new FAIL lookup, a run's jobs answered two JSON values with exit 0: exit 1
+
+=== sentence 14 (30 assertions). Jobs (10): red for "success ", " success", "failure\nsuccess", ""; green for
+    "success\tx". Run 43900000421 is m's (bad job), 43900000420 c2's (green).
+  FAIL lookup, a backend job whose conclusion is "success ": exit 1
+       today: exit 0, stdout 'LOOKUP pages 1 runs 2\nLOOKUP run 43900000421 sha 435d712cb2ecd74335dd896c2ae6109d72ed42e6 stat
+  FAIL lookup, a backend job whose conclusion is "success ": LOOKUP FAILED, never trimmed or split
+       got 'last 'BASELINE 435d712cb2ecd74335dd896c2ae6109d72ed42e6 run 43900000421', LOOKUP FAILED lines 0, BASELINE lines 1
+  FAIL lookup, a backend job whose conclusion is " success": exit 1
+       today: exit 0, stdout 'LOOKUP pages 1 runs 2\nLOOKUP run 43900000421 sha 435d712cb2ecd74335dd896c2ae6109d72ed42e6 stat
+  FAIL lookup, a backend job whose conclusion is " success": LOOKUP FAILED, never trimmed or split
+       got 'last 'BASELINE 435d712cb2ecd74335dd896c2ae6109d72ed42e6 run 43900000421', LOOKUP FAILED lines 0, BASELINE lines 1
+  FAIL lookup, a backend job whose conclusion is "failure\nsuccess": exit 1
+       today: exit 0, stdout 'LOOKUP pages 1 runs 2\nLOOKUP run 43900000421 sha 435d712cb2ecd74335dd896c2ae6109d72ed42e6 stat
+  FAIL lookup, a backend job whose conclusion is "failure\nsuccess": LOOKUP FAILED, never trimmed or split
+       got 'last 'BASELINE 435d712cb2ecd74335dd896c2ae6109d72ed42e6 run 43900000421', LOOKUP FAILED lines 0, BASELINE lines 1
+  ok   lookup, a backend job whose conclusion is "success\tx": exit 1
+  ok   lookup, a backend job whose conclusion is "success\tx": LOOKUP FAILED, never trimmed or split
+  FAIL lookup, a backend job whose conclusion is "": exit 1
+       today: exit 0, stdout 'LOOKUP pages 1 runs 2\nLOOKUP run 43900000421 sha 435d712cb2ecd74335dd896c2ae6109d72ed42e6 stat
+  FAIL lookup, a backend job whose conclusion is "": LOOKUP FAILED, never trimmed or split
+       got 'last 'BASELINE b5d39ef93f6759cf70bc93c6a54c4441109b7fb4 run 43900000420', LOOKUP FAILED lines 0, BASELINE lines 1
+  today, what the script does: "success " and " success": read -r trims into success, m named; "failure\nsuccess":
+  jq -r prints two lines, the second is success, m named; "": an empty line is "no job named", the walk goes on to
+  c2 (run ...420); "success\tx": refused (a tab inside one read field is kept, is_word fails)
+=== m14-job-word (ratchet-baseline.sh): jobs: the guard on a job's conclusion removed (:136)
+    new FAIL lookup, a backend job whose conclusion is "success\tx": LOOKUP FAILED, never trimmed or split
+    new FAIL lookup, a backend job whose conclusion is "success\tx": exit 1
+    new FAIL lookup, a backend job whose conclusion is 'suc cess': exit 1
+    new FAIL lookup, a backend job whose conclusion is 'suc cess': one LOOKUP FAILED line, no BASELINE
+  Runs page (20): every value refused today, in status and in conclusion: @tsv escapes \n and \t to two
+  characters, spaces are no IFS character in the tab-split read. Status "" is refused through the conclusion
+  guard only: tab is IFS whitespace, the empty field collapses, status reads "success", conclusion reads empty
+  (probe: status "" -> status [success] conclusion []); m14-run-status leaves it refused, m14-run-conclusion not.
+  ok   lookup, a run on a runs page whose status is "success ": exit 1
+  ok   lookup, a run on a runs page whose status is "success ": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is "success ": exit 1
+  ok   lookup, a run on a runs page whose conclusion is "success ": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose status is " success": exit 1
+  ok   lookup, a run on a runs page whose status is " success": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is " success": exit 1
+  ok   lookup, a run on a runs page whose conclusion is " success": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose status is "failure\nsuccess": exit 1
+  ok   lookup, a run on a runs page whose status is "failure\nsuccess": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is "failure\nsuccess": exit 1
+  ok   lookup, a run on a runs page whose conclusion is "failure\nsuccess": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose status is "success\tx": exit 1
+  ok   lookup, a run on a runs page whose status is "success\tx": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is "success\tx": exit 1
+  ok   lookup, a run on a runs page whose conclusion is "success\tx": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose status is "": exit 1
+  ok   lookup, a run on a runs page whose status is "": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is "": exit 1
+  ok   lookup, a run on a runs page whose conclusion is "": LOOKUP FAILED, the run refused
+=== m14-run-conclusion (ratchet-baseline.sh): runs page: the guard on a run's conclusion removed (:101)
+    new FAIL lookup, a run on a runs page whose conclusion is " success": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose conclusion is " success": exit 1
+    new FAIL lookup, a run on a runs page whose conclusion is "": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose conclusion is "": exit 1
+    new FAIL lookup, a run on a runs page whose conclusion is "failure\nsuccess": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose conclusion is "failure\nsuccess": exit 1
+    new FAIL lookup, a run on a runs page whose conclusion is "success ": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose conclusion is "success ": exit 1
+    new FAIL lookup, a run on a runs page whose conclusion is "success\tx": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose conclusion is "success\tx": exit 1
+    new FAIL lookup, a run on a runs page whose status is "": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose status is "": exit 1
+=== m14-run-status (ratchet-baseline.sh): runs page: the guard on a run's status removed (:101)
+    new FAIL lookup, a run on a runs page whose status is " success": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose status is " success": exit 1
+    new FAIL lookup, a run on a runs page whose status is "failure\nsuccess": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose status is "failure\nsuccess": exit 1
+    new FAIL lookup, a run on a runs page whose status is "success ": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose status is "success ": exit 1
+    new FAIL lookup, a run on a runs page whose status is "success\tx": LOOKUP FAILED, the run refused
+    new FAIL lookup, a run on a runs page whose status is "success\tx": exit 1
+    new FAIL lookup, a run whose status is 'completed; x': LOOKUP FAILED, its jobs never asked
+    new FAIL lookup, a run whose status is 'completed; x': exit 1
+
+=== sentence 16 (8 assertions): red 3 - the reason differs: without jq gh is called first (1 log line) and
+    the lookup says runs page 1; without gh it says 'gh api <path> exited 127'. The exit 1 is right today.
+    The pull-request path without both: green on arrival, killed by m16-tools-first.
+  ok   lookup without jq on PATH: exit 1
+  FAIL lookup without jq on PATH: LOOKUP FAILED, jq is not installed
+       got 'last 'LOOKUP FAILED: runs page 1 is not the JSON expected', LOOKUP FAILED lines 1, BASELINE lines 0'
+  FAIL lookup without jq on PATH: no call is made (the stub gh on that PATH logs nothing)
+       got 'gh log lines 1, the line 0'
+  ok   lookup without gh on PATH: exit 1
+  FAIL lookup without gh on PATH: LOOKUP FAILED, gh is not installed
+       got 'last 'LOOKUP FAILED: gh api repos/example/scratch/actions/workflows/mapping-ci.yml/runs?branch=main&event=push&pe
+  ok   lookup, a pull request without gh and jq on PATH: exit 0
+  ok   lookup, a pull request without gh and jq on PATH: its base is the baseline
+  ok   lookup, a pull request without gh and jq on PATH: <dir> holds the base's tree
+=== m16-tools-first (ratchet-baseline.sh): gh and jq checked before the pull-request path (after :36)
+    new FAIL lookup, a pull request without gh and jq on PATH: <dir> holds the base's tree
+    new FAIL lookup, a pull request without gh and jq on PATH: exit 0
+    new FAIL lookup, a pull request without gh and jq on PATH: its base is the baseline
+  (the harness checks first that each PATH holds what its name says and that the stub gh is reached on it)
+
+=== sentence 17, push (6 assertions): red 4. The exit code is already 2 today (mktemp -d fails, 'exit 2'),
+    neither stub is called today; the annotation line is missing (stderr holds mktemp's own message)
+  ok   push on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+  FAIL push on 2026-11-24, TMPDIR a directory that does not exist: its error
+       today: exit 2, stdout '', stderr 'mktemp: failed to create directory via template '/tmp/tmp.YwPpmPSHnk/no-such-directo
+  FAIL push on 2026-11-24, TMPDIR a directory that does not exist: before gh or java is called
+       got 'gh calls 0, java calls 0, anchor 0'
+  ok   push on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+  FAIL push on 2026-11-25, TMPDIR a directory that does not exist: its error
+       today: exit 2, stdout '', stderr 'mktemp: failed to create directory via template '/tmp/tmp.YwPpmPSHnk/no-such-directo
+  FAIL push on 2026-11-25, TMPDIR a directory that does not exist: before gh or java is called
+       got 'gh calls 0, java calls 0, anchor 0'
+=== m17-fallback (ratchet-ci.sh): a TMPDIR that does not exist falls back to /tmp (:64)
+    new FAIL nightly on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+    new FAIL nightly on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+    new FAIL push on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+    new FAIL push on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+  under m17-fallback the cases already red also fail on their witness: push 'gh calls 2, java calls 1, anchor 0',
+  nightly 'the error 0, pit-summary.sh calls 1' - the calls part is not vacuous
+
+=== sentence 18 (2 assertions): green on arrival; killed by an echo of GH_TOKEN in a scratch copy
+  ok   push, GH_TOKEN set and the lookup green: the token in neither stdout nor stderr
+  ok   push, GH_TOKEN set and gh failing: the token in neither stdout nor stderr
+=== m18-token-stdout (ratchet-baseline.sh): echo "$GH_TOKEN" after set -uo pipefail (:21)
+    new FAIL lookup without <dir>: usage on stderr, nothing on stdout, exit 2, no call
+    new FAIL push, GH_TOKEN set and gh failing: the token in neither stdout nor stderr
+    new FAIL push, GH_TOKEN set and the lookup green: the token in neither stdout nor stderr
+=== m18-token-stderr (ratchet-baseline.sh): echo "$GH_TOKEN" >&2 after set -uo pipefail (:21)
+    new FAIL push, GH_TOKEN set and gh failing: the token in neither stdout nor stderr
+    new FAIL push, GH_TOKEN set and the lookup green: the token in neither stdout nor stderr
+
+=== §3 round 3, the pit-summary.sh wrapper's own check (1 assertion, green): with the rows there it is called once
+  ok   nightly, pit-summary.sh wrapped: called once, its line passed through
+
+=== sentence 15 (12 assertions): red 12 - today the module prints 'floor none ok' and the step exits 0
+    (missing: awk cannot open the file; directory: awk read error), pit-summary.sh called once
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv missing: exit 2
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: cannot open "ratchet/mutation.tsv" (No 
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv missing: its error
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: cannot open "ratchet/mutation.tsv" (No 
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv missing: before pit-summary.sh is called
+       got 'pit-summary.sh calls 1, engine lines 1, the error 0'
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv missing: exit 2
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: cannot open "ratchet/mutation.tsv" (No 
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv missing: its error
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: cannot open "ratchet/mutation.tsv" (No 
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv missing: before pit-summary.sh is called
+       got 'pit-summary.sh calls 1, engine lines 1, the error 0'
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv directory: exit 2
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: read error (Is a directory)\nawk: read 
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv directory: its error
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: read error (Is a directory)\nawk: read 
+  FAIL nightly on 2026-11-24, ratchet/mutation.tsv directory: before pit-summary.sh is called
+       got 'pit-summary.sh calls 1, engine lines 1, the error 0'
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv directory: exit 2
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: read error (Is a directory)\nawk: read 
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv directory: its error
+       today: exit 0, stdout 'engine/ir 9/10 survivors 1 floor none ok', stderr 'awk: read error (Is a directory)\nawk: read 
+  FAIL nightly on 2026-11-25, ratchet/mutation.tsv directory: before pit-summary.sh is called
+       got 'pit-summary.sh calls 1, engine lines 1, the error 0'
+
+=== sentence 17, nightly (4 assertions): red 2 - exit 2 and no call of pit-summary.sh already today, the line
+    missing
+  ok   nightly on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+  FAIL nightly on 2026-11-24, TMPDIR a directory that does not exist: its error, before pit-summary.sh is called
+       got 'the error 0, pit-summary.sh calls 0, engine lines 0'
+  ok   nightly on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+  FAIL nightly on 2026-11-25, TMPDIR a directory that does not exist: its error, before pit-summary.sh is called
+       got 'the error 0, pit-summary.sh calls 0, engine lines 0'
+  m17-fallback: see sentence 17, push (its two nightly exit cases die there too)
+
+=== totals: 326 assertions in the file (249 + 77); on the real scripts 29 FAIL, all new:
+    13: 0 of 14, 14: 8 of 30, 16: 3 of 8, 17: 4 of 6 (push) + 2 of 4 (nightly), 18: 0 of 2, 15: 12 of 12,
+    the wrapper's check: 0 of 1
+    bash -n scripts/test/ratchet-ci-test.sh: ok
+    lines starting with '::' in the output of the real run: 0
+fa1337978bb9fdc5cd2cd9c842cefe83b104d7e5c6bd5eec8d4fd2291255c9da  mapping/scripts/test/ratchet-ci-test.sh
+614bbe06f2ae49f2ee83e0cd33197a9edfd0c71ea3f0e32fc063cec78db874c8  mapping/scripts/test/ratchet-ci-wiring-test.sh
+520f76604ea4eb27de40662539e1971ca7cb31012097327eb69bb0e5cf95b703  mapping/scripts/test/pit-summary-test.sh
+
+=== round 3, addition: "success\n" (a JSON string ending with an escaped newline) added to sentence 14's VALUES
+    (jobs loop +2, runs-page loop status and conclusion +4: 332 assertions in the file)
+sha256 of the two real scripts before (as the implementer left them):
+ee39a7854ec341e6ffca33ac425cd38f5b785d025f160bce3cc9d983be28e37d  ratchet-baseline.sh
+3325106a33e84b31e8cf816d31fa134871952c170c9b86a110b18526dde56a28  ratchet-ci.sh
+the real scripts: exit 0, ok 332, FAIL 0; the six new ones:
+  ok   lookup, a backend job whose conclusion is "success\n": exit 1
+  ok   lookup, a backend job whose conclusion is "success\n": LOOKUP FAILED, never trimmed or split
+  ok   lookup, a run on a runs page whose status is "success\n": exit 1
+  ok   lookup, a run on a runs page whose status is "success\n": LOOKUP FAILED, the run refused
+  ok   lookup, a run on a runs page whose conclusion is "success\n": exit 1
+  ok   lookup, a run on a runs page whose conclusion is "success\n": LOOKUP FAILED, the run refused
+hand mutant (scratch copy /tmp/claude-0/-home-user-flottila/c273a2ff-2165-53cc-97ae-ec99f977618a/scratchpad/m3/add-word-ancho
+    diff: 45c45
+    diff: < WORD='def word: if . == null then "null" elif test("\\A[a-z_]+\\z") then . else "-" end;'
+    diff: ---
+    diff: > WORD='def word: if . == null then "null" elif test("^[a-z_]+$") then . else "-" end;'
+  run: exit 1, ok 330, FAIL 2
+  FAIL lookup, a backend job whose conclusion is "success\n": exit 1
+  FAIL lookup, a backend job whose conclusion is "success\n": LOOKUP FAILED, never trimmed or split
+       got: exit 0, the last line 'BASELINE <m> run 43900000421' (m's run, the bad job's): "success\n" taken for success
+  the four runs-page cases stay ok under this mutant: word hands "success\n" on, @tsv escapes the newline to
+  the two characters \n, and the shell's is_word (:114) refuses the run; only the jobs path relies on word alone
+sha256 of the two real scripts after:
+ee39a7854ec341e6ffca33ac425cd38f5b785d025f160bce3cc9d983be28e37d  mapping/scripts/ratchet-baseline.sh
+3325106a33e84b31e8cf816d31fa134871952c170c9b86a110b18526dde56a28  mapping/scripts/ratchet-ci.sh
+    bash -n scripts/test/ratchet-ci-test.sh: ok
+771dda10cca32324dcbda67adca4fb01ff50e2eee08d4ad4cdaf85c115990010  mapping/scripts/test/ratchet-ci-test.sh
+614bbe06f2ae49f2ee83e0cd33197a9edfd0c71ea3f0e32fc063cec78db874c8  mapping/scripts/test/ratchet-ci-wiring-test.sh
+520f76604ea4eb27de40662539e1971ca7cb31012097327eb69bb0e5cf95b703  mapping/scripts/test/pit-summary-test.sh

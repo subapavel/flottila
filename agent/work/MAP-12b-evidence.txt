@@ -1,0 +1,45 @@
+MAP-12b acceptance 3, verifier evidence. HEAD 6b23ddc10bca9bfe594708d3f4bd9b3c328e3a83, 2026-11-16, 4 cores.
+git status: mapping/ratchet/README.md already modified before the run; the 5 new files untracked; platform/ edits not mine.
+A. VERIFIED_PASS scripts (all rc 0), log agent/work/MAP-12b-v-scripts.log; marker "ok" (ratchet-baseline-test: "PASS").
+ ratchet-ci-test 249 ok / 0 FAIL lines; ratchet-ci-wiring-test 24 / 0; pit-summary-test 22 / 0
+ function-families 67; refusals 82; ratchet-mutation 11; moved 9; bench 64; baseline 47 PASS; gate-spec-bench 60
+ trailers 9; trailers-root 7; clean-worktrees 12; gate-spec-default 3; gate-log 14; push-retry 9; handover 28. No FAIL line.
+B. VERIFIED_PASS bash -n x3 rc 0; both workflows load as YAML (ok); modes 755 and 755; date file "2026-11-25\n" (11 bytes).
+C1. VERIFIED_PASS build exit 0, 2m30s, reactor all SUCCESS; surefire/failsafe sums: tests 17822, fail 0, err 0, skipped 0.
+    log agent/work/MAP-12b-v-build.log
+C2. VERIFIED_PASS check exit 0 "RATCHET CHECK OK" (7 NOT_RUN mutation engine/* lines); regen --all exit 0 "RATCHET REGEN OK".
+    logs agent/work/MAP-12b-v-check.log, MAP-12b-v-regen.log
+C3. regen moved no row: git diff --stat mapping/ratchet = README.md only (12+/3-, pre-existing edit). UI step not needed.
+D. NOT_RUN GitHub API lookup (needs token, full clone). git rev-parse --is-shallow-repository: true
+Architect's notes on C2/C3 (2026-11-16, read, not run):
+ regen asked for no UI run because mapping/ui/coverage/coverage-summary.json was there from an earlier run of the
+ same day (ls: Nov 16 15:55); this task touches no file under mapping/ui/. scripts/ratchet.java :488-497: regen
+ refuses without a module's JaCoCo csv and without the UI summary; :199-206: a mutation row without a fresh PIT
+ report prints NOT_RUN and stays, in check and in regen alike. The documents now say so (ADR-0019 "Regeneration"
+ and "The verifier's two duties"; ratchet/README.md).
+D stays NOT_RUN until the push: acceptance 4 is read from the first real mapping-ci run and written below.
+
+Round 3 (2026-11-17, HEAD 77b2c587af1e83f3fb34bc9580c533445e64e2d6)
+A. VERIFIED_PASS all 17 listed script tests exit 0, 0 FAIL (workflow lists 17, not 18) - agent/work/MAP-12b-v3-scripts.log
+   ok counts: ratchet-ci 332, ratchet-ci-wiring 24, pit-summary 22, function-families 67, refusals 82, ratchet-mutation 11,
+   moved 9, bench 64, baseline 47 PASS, gate-spec-bench 60, trailers 9, trailers-root 7, clean-worktrees 12,
+   gate-spec-default 3, gate-log 14, push-retry 9, handover 28. No count differs from expected.
+B. VERIFIED_PASS bash -n ok on ratchet-baseline.sh, ratchet-ci.sh, pit-summary.sh, ratchet-ci-test.sh; both workflows load YAML (ok)
+   modes 755 on the 2 scripts and 3 test files; date file bytes "2026-11-25\n"
+   sha256 tests equal expected (771dda10.., 614bbe06.., 520f7660..)
+   scripts: ratchet-baseline.sh ee39a785...e37d, ratchet-ci.sh 3325106a...6a28 (no expected given)
+   git status --short mapping/ratchet: only " M mapping/ratchet/README.md"
+C. NOT_RUN build, ratchet.java check, regen --all: git diff --stat HEAD lists only workflows, mapping docs/ADRs,
+   ratchet/README.md, scripts/*.sh, ratchet-enforced-from, scripts/test/*.sh; no pom, java or ratchet data file.
+Architect's notes on round 3 (2026-11-17, read, not run):
+ Whether the implementer left the tests alone. Round 2: ratchet-ci-test.sh's mtime (2026-11-16 23:01:59) is before
+ the implementer's edit of ratchet-ci.sh (23:03:41), and the test-author's scratch copy (scratchpad m2) differs
+ from that file by the header's last sentence only (the test-author's own last edit); the two other test files'
+ mtimes are of round 1 (22:12, 22:13). Round 3: the three test files' sha256 at the end of MAP-12b-red3.log
+ (first fa133797.., after the added value 771dda10..) are the ones the implementer's log (MAP-12b-green.log,
+ "round 3": fa133797.. before and after its work) and the verifier's B above (771dda10..) repeat; the value
+ was added by the test-author after the implementer had finished, and the scripts' hashes did not move for it.
+ C of round 1 stands for the reason the verifier gives; D waits for the push (acceptance 4).
+Review [C] round 2 (2026-11-17): PASS, read from the logs (the reviewer ran nothing). After it the architect changed
+ one sentence of ADR-0019 ("What cannot be decided ... among them ..."; the review's own note) - no script, no
+ test, no workflow; agent/work/MAP-12b.diff is the reviewed state and lacks that sentence.

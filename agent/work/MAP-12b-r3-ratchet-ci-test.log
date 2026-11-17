@@ -1,0 +1,326 @@
+ok   lookup, across a merge: exit 0
+ok   lookup, across a merge: the nearest green ancestor is the merge's second parent
+ok   lookup, across a merge: the walk stops at the baseline
+ok   lookup: <dir> holds the baseline commit's four names with that commit's content, not HEAD's
+ok   lookup: HEAD's own green push run is never the baseline
+ok   lookup: HEAD's own run is never asked for its jobs
+ok   lookup: a red backend job and a cancelled run are skipped
+ok   lookup: LOOKUP pages counts the pages and the runs read
+ok   lookup: LOOKUP run for the red run asked
+ok   lookup: LOOKUP job for the red run's backend job
+ok   lookup: LOOKUP run for the cancelled run asked
+ok   lookup: LOOKUP job for the cancelled run's backend job
+ok   lookup: LOOKUP run for the baseline's run
+ok   lookup: LOOKUP job for the baseline's backend job
+ok   lookup: a run not completed is no candidate, even with a green backend job
+ok   lookup: a run not completed is never asked for its jobs
+ok   lookup: a run red on another job alone is taken (the run's own conclusion is not read)
+ok   lookup: a run of a commit that is no ancestor of HEAD is skipped
+ok   lookup: a run of a commit that is no ancestor is never asked for its jobs
+ok   lookup: the run with GITHUB_RUN_ID's id is no candidate
+ok   lookup: the run with GITHUB_RUN_ID's id is never asked for its jobs
+ok   lookup: page 2 of a list whose page 1 holds 100 runs is read, the nearer green ancestor on it taken
+ok   lookup: LOOKUP pages counts both pages and every run
+ok   lookup: the runs list is asked page by page, no further than the short page
+ok   lookup: a full page is followed by the next one, even when that is empty
+ok   lookup: LOOKUP pages counts the empty page
+ok   lookup: the list's order does not matter (the farther ancestor listed first)
+ok   lookup: the list's order does not matter (the farther ancestor listed last)
+ok   lookup, a renamed job: exit 0
+ok   lookup, a renamed job: the bootstrap line names HEAD's first parent
+ok   lookup, a renamed job: LOOKUP job says none is named mapping · backend
+ok   lookup, a renamed job: the walk goes on to the next ancestor with candidates
+ok   lookup, bootstrap: <dir> holds the first parent's tree
+ok   lookup, no push run at all: exit 0
+ok   lookup, no push run at all: the bootstrap line
+ok   lookup, no push run at all: LOOKUP pages
+ok   lookup, a pull request: exit 0
+ok   lookup, a pull request: its base is the baseline
+ok   lookup, a pull request: gh is never called
+ok   lookup, a pull request: <dir> holds the base's tree
+ok   lookup, gh failing: exit 1
+ok   lookup, gh failing: one LOOKUP FAILED line with its reason
+ok   lookup, a runs page that is not JSON: exit 1
+ok   lookup, a runs page that is not JSON: one LOOKUP FAILED line
+ok   lookup, a jobs response without its jobs list: exit 1
+ok   lookup, a jobs response without its jobs list: one LOOKUP FAILED line
+ok   lookup, a baseline without mapping/ratchet/: exit 1
+ok   lookup, a baseline without mapping/ratchet/: one LOOKUP FAILED line
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: exit 1
+ok   lookup, a baseline whose ratchet/ lacks bench.tsv and oracle/: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks coverage.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks mutation.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: exit 1
+ok   lookup, a base whose ratchet/ lacks bench.tsv alone: one LOOKUP FAILED line
+ok   lookup, a base whose ratchet/ lacks oracle alone: exit 1
+ok   lookup, a base whose ratchet/ lacks oracle alone: one LOOKUP FAILED line
+ok   lookup, HEAD without a parent: exit 1
+ok   lookup, HEAD without a parent: one LOOKUP FAILED line
+ok   lookup without <dir>: usage on stderr, nothing on stdout, exit 2, no call
+ok   lookup, gh exits 1 after a well-formed runs page: exit 1
+ok   lookup, gh exits 1 after a well-formed runs page: one LOOKUP FAILED line, no BASELINE
+ok   lookup, gh exits 1 after a well-formed jobs response: exit 1
+ok   lookup, gh exits 1 after a well-formed jobs response: one LOOKUP FAILED line, no BASELINE
+ok   lookup in a shallow clone (depth 1): exit 1
+ok   lookup in a shallow clone (depth 1): one LOOKUP FAILED line, no BASELINE
+ok   lookup in a shallow clone (depth 2): exit 1
+ok   lookup in a shallow clone (depth 2): one LOOKUP FAILED line, no BASELINE
+ok   lookup, RATCHET_BASELINE_SHA 'main': exit 1
+ok   lookup, RATCHET_BASELINE_SHA 'main': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '--help': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '--help': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '124a6e1': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '124a6e1': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, RATCHET_BASELINE_SHA '124A6E136878F4AFE285188F1C1DFB42229F857C': exit 1
+ok   lookup, RATCHET_BASELINE_SHA '124A6E136878F4AFE285188F1C1DFB42229F857C': LOOKUP FAILED, no call to gh, nothing in <dir>
+ok   lookup, a run whose head_sha is 'main': exit 1
+ok   lookup, a run whose head_sha is 'main': LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose head_sha is '--output=x': exit 1
+ok   lookup, a run whose head_sha is '--output=x': LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose id is a string: exit 1
+ok   lookup, a run whose id is a string: LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose id is negative: exit 1
+ok   lookup, a run whose id is negative: LOOKUP FAILED, its jobs never asked
+ok   lookup, a run whose status is 'completed; x': exit 1
+ok   lookup, a run whose status is 'completed; x': LOOKUP FAILED, its jobs never asked
+ok   lookup, a backend job whose conclusion is 'suc cess': exit 1
+ok   lookup, a backend job whose conclusion is 'suc cess': one LOOKUP FAILED line, no BASELINE
+ok   lookup, GITHUB_REPOSITORY 'scratch': exit 1
+ok   lookup, GITHUB_REPOSITORY 'scratch': LOOKUP FAILED before any call to gh
+ok   lookup, GITHUB_REPOSITORY 'a/b/c': exit 1
+ok   lookup, GITHUB_REPOSITORY 'a/b/c': LOOKUP FAILED before any call to gh
+ok   lookup, GITHUB_REPOSITORY 'a/b?x=1': exit 1
+ok   lookup, GITHUB_REPOSITORY 'a/b?x=1': LOOKUP FAILED before any call to gh
+ok   lookup, two runs of one ancestor, the older red and the newer green: the newer
+ok   lookup, two runs of one ancestor, the older green and the newer red: the older
+ok   lookup, two green runs of one ancestor: the newer is named
+ok   lookup, 100 full pages: exit 1
+ok   lookup, 100 full pages: one LOOKUP FAILED line
+ok   lookup, 100 full pages: pages 1 to 100 asked, page 101 never, no call without its fixture
+ok   lookup, a green run listed on two pages: its ancestor is the baseline
+ok   lookup, a green run listed on two pages: asked for its jobs once
+ok   lookup, a red run listed on two pages: the walk goes on to c2
+ok   lookup, a red run listed on two pages: asked for its jobs once
+ok   lookup, an empty runs page with exit 0: exit 1
+ok   lookup, an empty runs page with exit 0: LOOKUP FAILED, never no runs
+ok   lookup, a runs page of two JSON values with exit 0: exit 1
+ok   lookup, a runs page of two JSON values with exit 0: LOOKUP FAILED, never no runs
+ok   lookup, a runs page {"total_count": 0} with exit 0: exit 1
+ok   lookup, a runs page {"total_count": 0} with exit 0: LOOKUP FAILED, never no runs
+ok   lookup, a runs page {"workflow_runs": 7} with exit 0: exit 1
+ok   lookup, a runs page {"workflow_runs": 7} with exit 0: LOOKUP FAILED, never no runs
+ok   lookup, page 2 empty with exit 0 after a full page 1: exit 1
+ok   lookup, page 2 empty with exit 0 after a full page 1: LOOKUP FAILED names page 2
+ok   lookup, a run's jobs answered empty with exit 0: exit 1
+ok   lookup, a run's jobs answered empty with exit 0: LOOKUP FAILED, never no jobs
+ok   lookup, a run's jobs answered two JSON values with exit 0: exit 1
+ok   lookup, a run's jobs answered two JSON values with exit 0: LOOKUP FAILED, never no jobs
+ok   lookup, a backend job whose conclusion is "success ": exit 1
+ok   lookup, a backend job whose conclusion is "success ": LOOKUP FAILED, never trimmed or split
+ok   lookup, a backend job whose conclusion is " success": exit 1
+ok   lookup, a backend job whose conclusion is " success": LOOKUP FAILED, never trimmed or split
+ok   lookup, a backend job whose conclusion is "failure\nsuccess": exit 1
+ok   lookup, a backend job whose conclusion is "failure\nsuccess": LOOKUP FAILED, never trimmed or split
+ok   lookup, a backend job whose conclusion is "success\tx": exit 1
+ok   lookup, a backend job whose conclusion is "success\tx": LOOKUP FAILED, never trimmed or split
+ok   lookup, a backend job whose conclusion is "": exit 1
+ok   lookup, a backend job whose conclusion is "": LOOKUP FAILED, never trimmed or split
+ok   lookup, a run on a runs page whose status is "success ": exit 1
+ok   lookup, a run on a runs page whose status is "success ": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose conclusion is "success ": exit 1
+ok   lookup, a run on a runs page whose conclusion is "success ": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose status is " success": exit 1
+ok   lookup, a run on a runs page whose status is " success": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose conclusion is " success": exit 1
+ok   lookup, a run on a runs page whose conclusion is " success": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose status is "failure\nsuccess": exit 1
+ok   lookup, a run on a runs page whose status is "failure\nsuccess": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose conclusion is "failure\nsuccess": exit 1
+ok   lookup, a run on a runs page whose conclusion is "failure\nsuccess": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose status is "success\tx": exit 1
+ok   lookup, a run on a runs page whose status is "success\tx": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose conclusion is "success\tx": exit 1
+ok   lookup, a run on a runs page whose conclusion is "success\tx": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose status is "": exit 1
+ok   lookup, a run on a runs page whose status is "": LOOKUP FAILED, the run refused
+ok   lookup, a run on a runs page whose conclusion is "": exit 1
+ok   lookup, a run on a runs page whose conclusion is "": LOOKUP FAILED, the run refused
+ok   lookup without jq on PATH: exit 1
+ok   lookup without jq on PATH: LOOKUP FAILED, jq is not installed
+ok   lookup without jq on PATH: no call is made (the stub gh on that PATH logs nothing)
+ok   lookup without gh on PATH: exit 1
+ok   lookup without gh on PATH: LOOKUP FAILED, gh is not installed
+ok   lookup, a pull request without gh and jq on PATH: exit 0
+ok   lookup, a pull request without gh and jq on PATH: its base is the baseline
+ok   lookup, a pull request without gh and jq on PATH: <dir> holds the base's tree
+ok   push, the shipped date file: read without a date-file error, exit 0
+ok   push on 2026-11-24, the check OK: exit 0
+ok   push on 2026-11-24, the check OK: no annotation
+ok   push on 2026-11-25, the check OK: exit 0
+ok   push on 2026-11-25, the check OK: no annotation
+ok   push: the lookup's stdout is passed through
+ok   push: the check's stdout is passed through
+ok   push: the check ran with the baseline
+ok   push: the check was given the baseline commit's tree
+ok   push the day before, a failing check: exit 0
+ok   push the day before, a failing check: the would-fail warning
+ok   push the day before, a failing check: no error
+ok   push on the date, a failing check: exit 1
+ok   push on the date, a failing check: the error
+ok   push on the date, a failing check: no would-fail warning
+ok   push a later month, a failing check: exit 1
+ok   push a later month, a failing check: the error
+ok   push the day before, a failed lookup: exit 0
+ok   push, a failed lookup: the lookup's LOOKUP FAILED line is passed through
+ok   push the day before, a failed lookup: its own warning, with the lookup's reason
+ok   push the day before, a failed lookup: never worded as a failing check
+ok   push the day before, a failed lookup: plain check ran, without --baseline
+ok   push on the date, a failed lookup: exit 1
+ok   push on the date, a failed lookup: its own error, with the lookup's reason
+ok   push on the date, a failed lookup: never worded as a failing check
+ok   push on the date, a failed lookup: plain check ran, without --baseline
+ok   push the day before, a failed lookup and a failing plain check: exit 0
+ok   push the day before, a failed lookup and a failing plain check: the lookup's warning
+ok   push the day before, a failed lookup and a failing plain check: the would-fail warning
+ok   push on the date, a failed lookup and a failing plain check: exit 1
+ok   push on the date, a failed lookup and a failing plain check: the lookup's error
+ok   push on the date, a failed lookup and a failing plain check: the check's error
+ok   push on 2026-11-24, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-24, the check refused its command line: no verdict
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-24, the check's exit 1 without a verdict line: no verdict
+ok   push on 2026-11-25, the check refused its command line (exit 2): exit 2
+ok   push on 2026-11-25, the check refused its command line: no verdict
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: exit 2
+ok   push on 2026-11-25, the check's exit 1 without a verdict line: no verdict
+ok   push, an OK line with exit 1: exit 2
+ok   push, an OK line with exit 1: no verdict, nothing else reported
+ok   push, a FAIL line with exit 0: exit 2
+ok   push, a FAIL line with exit 0: no verdict, nothing else reported
+ok   push, the check killed (exit 137): exit 2
+ok   push, the check killed: no verdict
+ok   push on 2026-11-24, RISE lines and the check OK: exit 0
+ok   push on 2026-11-24: a RISE line becomes a warning
+ok   push on 2026-11-24: every RISE line becomes a warning
+ok   push on 2026-11-25, RISE lines and the check OK: exit 0
+ok   push on 2026-11-25: a RISE line becomes a warning
+ok   push on 2026-11-25: every RISE line becomes a warning
+ok   push on 2026-11-24, the date file missing: exit 2
+ok   push on 2026-11-24, the date file missing: its error
+ok   push on 2026-11-24, the date file missing: before gh or java is called
+ok   push on 2026-11-25, the date file missing: exit 2
+ok   push on 2026-11-25, the date file missing: its error
+ok   push on 2026-11-25, the date file missing: before gh or java is called
+ok   push on 2026-11-24, the date file empty: exit 2
+ok   push on 2026-11-24, the date file empty: its error
+ok   push on 2026-11-24, the date file empty: before gh or java is called
+ok   push on 2026-11-25, the date file empty: exit 2
+ok   push on 2026-11-25, the date file empty: its error
+ok   push on 2026-11-25, the date file empty: before gh or java is called
+ok   push on 2026-11-24, the date file two-lines: exit 2
+ok   push on 2026-11-24, the date file two-lines: its error
+ok   push on 2026-11-24, the date file two-lines: before gh or java is called
+ok   push on 2026-11-25, the date file two-lines: exit 2
+ok   push on 2026-11-25, the date file two-lines: its error
+ok   push on 2026-11-25, the date file two-lines: before gh or java is called
+ok   push on 2026-11-24, the date file malformed: exit 2
+ok   push on 2026-11-24, the date file malformed: its error
+ok   push on 2026-11-24, the date file malformed: before gh or java is called
+ok   push on 2026-11-25, the date file malformed: exit 2
+ok   push on 2026-11-25, the date file malformed: its error
+ok   push on 2026-11-25, the date file malformed: before gh or java is called
+ok   push, a date with text after it: exit 2
+ok   push, a date with text after it: its error, before gh or java
+ok   an unknown mode: usage on stderr, exit 2, no call
+ok   no mode: usage on stderr, exit 2, no call
+ok   push, the step summary: one fenced block appended after what was there
+ok   push, the step summary: the lookup's and the check's lines are in the block (in any order)
+ok   push, RATCHET_TODAY unset, the date long past: enforced, exit 1
+ok   push, RATCHET_TODAY unset, the date long past: the error
+ok   push, RATCHET_TODAY unset, the date far ahead: the week, exit 0
+ok   push, RATCHET_TODAY unset, the date far ahead: the would-fail warning
+ok   push, a pull request: exit 0
+ok   push, a pull request: its base is the baseline and gh is never called
+ok   push, a pull request: the check was given the base's tree
+ok   push, RATCHET_TODAY 'never': exit 2
+ok   push, RATCHET_TODAY 'never': its error
+ok   push, RATCHET_TODAY 'never': before gh or java is called
+ok   push, RATCHET_TODAY '2026-13-01': exit 2
+ok   push, RATCHET_TODAY '2026-13-01': its error
+ok   push, RATCHET_TODAY '2026-13-01': before gh or java is called
+ok   push, RATCHET_TODAY '20261125': exit 2
+ok   push, RATCHET_TODAY '20261125': its error
+ok   push, RATCHET_TODAY '20261125': before gh or java is called
+ok   push, RATCHET_TODAY empty: today is the clock's, the date long past: exit 1
+ok   push, RATCHET_TODAY empty: the check's error, no RATCHET_TODAY error
+ok   push the day before, a lookup that exits 3 silently: exit 0
+ok   push the day before, a lookup that exits 3 silently: its warning, with a reason
+ok   push the day before, a lookup that exits 3 silently: plain check ran
+ok   push on the date, a lookup that exits 3 silently: exit 1
+ok   push on the date, a lookup that exits 3 silently: its error, with a reason
+ok   push, the date file '2026-02-30\n': exit 2
+ok   push, the date file '2026-02-30\n': its error, before gh or java
+ok   push, the date file '2026-11-25': exit 2
+ok   push, the date file '2026-11-25': its error, before gh or java
+ok   push from another working directory: exit 0
+ok   push from another working directory: the check OK passed through, no annotation
+ok   push from another working directory: the check ran with the baseline
+ok   push on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+ok   push on 2026-11-24, TMPDIR a directory that does not exist: its error
+ok   push on 2026-11-24, TMPDIR a directory that does not exist: before gh or java is called
+ok   push on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+ok   push on 2026-11-25, TMPDIR a directory that does not exist: its error
+ok   push on 2026-11-25, TMPDIR a directory that does not exist: before gh or java is called
+ok   push, GH_TOKEN set and the lookup green: the token in neither stdout nor stderr
+ok   push, GH_TOKEN set and gh failing: the token in neither stdout nor stderr
+ok   nightly on the date, no drop: exit 0
+ok   nightly: pit-summary.sh's lines are passed through
+ok   nightly on the date, no drop: no annotation
+ok   nightly the day before, a count above its row: exit 0
+ok   nightly the day before, a count above its row: the would-fail warning
+ok   nightly the day before, a count above its row: no error
+ok   nightly on the date, a count above its row: exit 1
+ok   nightly on the date, a count above its row: the error
+ok   nightly the day before, a row without a report: exit 0
+ok   nightly the day before, a row without a report: the would-fail warning
+ok   nightly on the date, a row without a report: exit 1
+ok   nightly on the date, a row without a report drops
+ok   nightly on the date, a report without a row: exit 0
+ok   nightly on the date, a report without a row is printed and drops nothing
+ok   nightly: the modules are the rows' and the reports', sorted, each once
+ok   nightly on the date, timed-out mutants within the row: exit 0
+ok   nightly: the timed-out line is passed through, not annotated
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-24, pit-summary.sh exiting 2: no verdict
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: exit 2
+ok   nightly on 2026-11-25, pit-summary.sh exiting 2: no verdict
+ok   nightly, no date file: exit 2
+ok   nightly, no date file: its error, before pit-summary.sh runs
+ok   nightly, the step summary: pit-summary.sh's lines in one fenced block
+ok   nightly, RATCHET_TODAY 'never': exit 2
+ok   nightly, RATCHET_TODAY 'never': its error, before pit-summary.sh runs
+ok   nightly, RATCHET_TODAY '2026-13-01': exit 2
+ok   nightly, RATCHET_TODAY '2026-13-01': its error, before pit-summary.sh runs
+ok   nightly, RATCHET_TODAY '20261125': exit 2
+ok   nightly, RATCHET_TODAY '20261125': its error, before pit-summary.sh runs
+ok   nightly from another working directory: exit 0
+ok   nightly from another working directory: pit-summary.sh's line passed through, no annotation
+ok   nightly, pit-summary.sh wrapped: called once, its line passed through
+ok   nightly on 2026-11-24, ratchet/mutation.tsv missing: exit 2
+ok   nightly on 2026-11-24, ratchet/mutation.tsv missing: its error
+ok   nightly on 2026-11-24, ratchet/mutation.tsv missing: before pit-summary.sh is called
+ok   nightly on 2026-11-25, ratchet/mutation.tsv missing: exit 2
+ok   nightly on 2026-11-25, ratchet/mutation.tsv missing: its error
+ok   nightly on 2026-11-25, ratchet/mutation.tsv missing: before pit-summary.sh is called
+ok   nightly on 2026-11-24, ratchet/mutation.tsv directory: exit 2
+ok   nightly on 2026-11-24, ratchet/mutation.tsv directory: its error
+ok   nightly on 2026-11-24, ratchet/mutation.tsv directory: before pit-summary.sh is called
+ok   nightly on 2026-11-25, ratchet/mutation.tsv directory: exit 2
+ok   nightly on 2026-11-25, ratchet/mutation.tsv directory: its error
+ok   nightly on 2026-11-25, ratchet/mutation.tsv directory: before pit-summary.sh is called
+ok   nightly on 2026-11-24, TMPDIR a directory that does not exist: exit 2
+ok   nightly on 2026-11-24, TMPDIR a directory that does not exist: its error, before pit-summary.sh is called
+ok   nightly on 2026-11-25, TMPDIR a directory that does not exist: exit 2
+ok   nightly on 2026-11-25, TMPDIR a directory that does not exist: its error, before pit-summary.sh is called

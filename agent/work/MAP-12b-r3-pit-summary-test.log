@@ -1,0 +1,22 @@
+ok   below floor: exit
+ok   below floor: line
+ok   at/above floor: exit
+ok   at/above floor: lines
+ok   missing report: exit
+ok   missing report: line
+ok   mixed: exit
+ok   one more survivor: exit
+ok   one more survivor: line
+ok   same or fewer survivors: exit
+ok   same or fewer survivors: lines
+ok   no floor row, no report: exit
+ok   no floor row: line
+ok   run: exit
+ok   run: labelled sections
+ok   run: one module fails, exit
+ok   run: failure does not stop the next module
+ok   timed-out: the line after the module's own, none for a report without, survivors and exit as without
+ok   timed-out: a drop keeps its DROP line and exit 1
+ok   timed-out: also after an old-format row and after a module without a row
+ok   generated: the line when the row's count is higher, none when equal or lower, exit unchanged
+ok   generated: a drop keeps its DROP line and exit 1

@@ -2,10 +2,10 @@ name: mapping-ci
 
 # The mapping engine's CI (mapping/, ADR-0017), ported from its repository by BRAND-3 (D-150): every step runs in
 # mapping/ with the repository's wrapper (../mvnw). The old repository required backend, windows, ui and stack on
-# main (windows: owner ruling 2026-11-02, #48); the required checks of this repository are the owner's to set. It
-# runs only when the mapping, the root pom, the wrapper, the root .gitattributes or this file changes; the platform's
-# ci.yml builds -f platform/pom.xml, and its dco job checks the sign-off of every push (the mapping's trailers job is
-# gone).
+# main (windows: owner ruling #48); the required checks of this repository are the owner's to set. It runs when
+# the mapping, the root pom, the wrapper, the root .gitattributes, this file or mapping-nightly.yml (which the
+# ratchet's wiring test reads) changes, and on the schedule below; the platform's ci.yml builds -f platform/pom.xml,
+# and its dco job checks the sign-off of every push (the mapping's trailers job is gone).
 on:
   pull_request:
     paths:
@@ -15,6 +15,7 @@ on:
       - 'mvnw*'
       - '.gitattributes'
       - '.github/workflows/mapping-ci.yml'
+      - '.github/workflows/mapping-nightly.yml'
   push:
     branches: [main]
     paths:
@@ -24,9 +25,15 @@ on:
       - 'mvnw*'
       - '.gitattributes'
       - '.github/workflows/mapping-ci.yml'
+      - '.github/workflows/mapping-nightly.yml'
+  # The ratchet's week (MAP-12b): the backend job reports every six hours while mapping/ stands still. A scheduled
+  # run is never a baseline (the lookup reads push runs). MAP-12c removes the schedule.
+  schedule:
+    - cron: '23 */6 * * *'
 
 concurrency:
-  group: mapping-ci-${{ github.ref }}
+  # the event's name in the group: a scheduled run and a push run never cancel each other
+  group: mapping-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -38,13 +45,21 @@ env:
 
 jobs:
   backend:
+    # scripts/ratchet-baseline.sh finds the baseline by this name: renaming the job renames the key
     name: mapping · backend
     runs-on: ubuntu-24.04
+    # actions: read lets the ratchet's lookup read this workflow's runs and their jobs
+    permissions:
+      contents: read
+      actions: read
     defaults:
       run:
         working-directory: mapping
     steps:
+      # the whole history: the ratchet's lookup walks HEAD's ancestors
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -78,6 +93,7 @@ jobs:
           scripts/test/gate-spec-bench-test.sh
       # From the dropped trailers job (BRAND-3): the script tests that need no JDK, every one the old CI ran. The
       # old-process scripts (check-trailers.sh, clean-worktrees.sh, push-retry.sh) are adapted or archived by MAP-7.
+      # The ratchet's CI scripts and their wiring (MAP-12b) join them: their test stubs java and gh.
       - name: Script tests that need no JDK (gate scripts, old-process scripts, HANDOVER.md)
         run: |
           scripts/test/trailers-test.sh
@@ -88,16 +104,30 @@ jobs:
           scripts/test/gate-log-test.sh
           scripts/test/push-retry-test.sh
           scripts/test/handover-test.sh
+          scripts/test/ratchet-ci-test.sh
+          scripts/test/ratchet-ci-wiring-test.sh
       - name: Build, test, floors, licences, bans
         run: ../mvnw -B -Pbench verify
       - name: contract/ is up to date
         run: git diff --exit-code contract/
       - name: Every file checks out byte-identical on Windows (#49)
         run: scripts/check-lf-checkout.sh
+      # The ratchet check (MAP-12b, D-164): the lookup finds the baseline through GitHub's API with the run's own
+      # token, then ratchet.java check holds this build against it. Before the date in scripts/ratchet-enforced-from
+      # a failing check or a failed lookup is reported and cannot fail the job; from that day they fail it. What the
+      # script refuses (its header's exit 2: the date file, a check without a verdict) fails the job on any day.
+      # The last step: it reads the build's reports.
+      - name: Ratchet check against the baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RATCHET_BASELINE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/ratchet-ci.sh push
 
   # The owner builds on Windows (#42): drive letters and backslashes in paths. Ticket-gate row 2.
   windows:
     name: mapping · windows
+    # the ratchet's week schedules the backend job alone (MAP-12c removes this line with the schedule)
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     defaults:
       run:
@@ -130,6 +160,7 @@ jobs:
 
   ui:
     name: mapping · ui
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -164,6 +195,7 @@ jobs:
 
   stack:
     name: mapping · stack
+    if: github.event_name != 'schedule'
     needs: [backend, ui]
     runs-on: ubuntu-24.04
     defaults:

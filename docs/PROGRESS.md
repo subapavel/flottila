@@ -1,4 +1,19 @@
 
+## 2026-11-17 — MAP-12b the mapping's ratchet check runs on GitHub against a baseline — on main, review PASS [C] r2; acceptance 4 open
+
+- New under `mapping/scripts/`: `ratchet-baseline.sh` (the closest strict ancestor of HEAD whose push run of `mapping-ci` on `main`
+  has the backend job green - GitHub's API with the run's own token), `ratchet-ci.sh push|nightly`, `ratchet-enforced-from`
+  (`2026-11-25`); both workflows call them; `pit-summary.sh` prints a timed-out line. Names, lines, exit codes, date: draft.
+- Until the date a failing check and a failed lookup warn; from it they fail the job. What the script refuses fails it on any day.
+- Red first in three rounds (test-author): `ratchet-ci-test.sh` 332 assertions, the wiring test 24, `pit-summary-test.sh` 22
+  (`agent/work/MAP-12b-red.log`, `-red2.log`, `-red3.log`); each new case shown red against a named mutant of the script.
+- VERIFIED_PASS (`agent/work/MAP-12b-evidence.txt`): 17 script tests, 0 FAIL, on 77b2c587; the build, `check` and `regen --all`
+  at 6b23ddc1 (round 1: no ratchet data file moved). Round 3 touched scripts and documents only: its part C is NOT_RUN, reason given.
+- Review [C]: FAIL r1 (two unpinned jq guards; a job's conclusion trimmed by `read`; two document sentences that were false),
+  PASS r2. Fail-closed since: an answer that is not the JSON expected, a conclusion that is not one word, a missing `gh` or `jq`.
+- Open: acceptance 4 - the first real `mapping-ci` run read by job name; then the row is `done`. MAP-7's row notes the comment
+  of `gate-ticket.sh`:13-15. Context compacted during this task; tree and log re-verified before the commit.
+
 ## 2026-11-17 — FIX-265 the last of replay leaves the code: `Envelope.REPLAY_OF` and the two guards — done, review PASS [B]
 
 - Removed: the public constant `Envelope.REPLAY_OF` of `rail8-api` and its Javadoc mentions, the clause `props->'replayOf' is null`

@@ -1,7 +1,9 @@
 name: mapping-nightly
 
-# PIT on main over the nine class-C modules, failing below 80 % (ADR-0019). It commits nothing:
-# the mutation ratchet is written by the spec gate (step 1b), not here.
+# PIT on main over the nine class-C modules, failing below 80 % (ADR-0019), and then (MAP-12b) the fresh result
+# compared with ratchet/mutation.tsv by scripts/ratchet-ci.sh nightly: a survivor count above its row, or a row
+# without a report, is a drop - reported until the date in scripts/ratchet-enforced-from, failing the job from that
+# day. It commits nothing: the mutation ratchet is written by the spec gate (step 1b), not here.
 # Ported from the mapping's repository by BRAND-3 (D-150): its steps run in mapping/ with the repository's wrapper.
 on:
   schedule:
@@ -13,6 +15,8 @@ permissions:
 
 env:
   MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+  # MUTATION_MODULES of scripts/ratchet.java, named once (scripts/test/ratchet-ci-wiring-test.sh compares the two)
+  PIT_MODULES: engine/xdm,engine/ir,engine/runtime,engine/serializer,engine/mapping,engine/xslt-export,engine/api,engine/udf-api,engine/udf
 
 jobs:
   mutation:
@@ -48,8 +52,12 @@ jobs:
       - name: PIT
         run: >
           ../mvnw -B
-          -pl engine/xdm,engine/ir,engine/runtime,engine/serializer,engine/mapping,engine/xslt-export,engine/api,engine/udf-api,engine/udf
+          -pl "$PIT_MODULES"
           -am test-compile org.pitest:pitest-maven:mutationCoverage
+      # also after a failed PIT step: a module without its report is a drop
+      - name: Mutation ratchet against ratchet/mutation.tsv
+        if: always()
+        run: scripts/ratchet-ci.sh nightly
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,0 +1,111 @@
+MAP-12b second round: scripts/test/ratchet-ci-test.sh against the real scripts, then hand mutants of scratch copies
+sha256 before:
+fdbdece4490956bf218c11966406b38044840e2a5d761505933ed749199d190a  mapping/scripts/ratchet-baseline.sh
+24a1b47db7b72f6f4879a0bb733b004b71727d86a7b3fac27e21fecc4f7c8b0f  mapping/scripts/ratchet-ci.sh
+sha256 after:
+fdbdece4490956bf218c11966406b38044840e2a5d761505933ed749199d190a  mapping/scripts/ratchet-baseline.sh
+24a1b47db7b72f6f4879a0bb733b004b71727d86a7b3fac27e21fecc4f7c8b0f  mapping/scripts/ratchet-ci.sh
+
+=== the real scripts: exit 1, ok 234, FAIL 15 (249 assertions: 174 first round, 75 second)
+FAIL lines (all of sentence 1):
+FAIL push, RATCHET_TODAY 'never': exit 2: expected exit 2; exit 0, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha 979dcbd62a0df7db01bfc73199cd1b28a4030ec3 status completed conclusion succes
+FAIL push, RATCHET_TODAY 'never': its error: expected the line '::error::ratchet: RATCHET_TODAY is not an ISO date' once, seen 0; exit 0, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha 979d
+FAIL push, RATCHET_TODAY 'never': before gh or java is called: expected 'gh calls 0, java calls 0, anchor 1' got 'gh calls 2, java calls 1, anchor 0'
+FAIL push, RATCHET_TODAY '2026-13-01': exit 2: expected exit 2; exit 1, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha 979dcbd62a0df7db01bfc73199cd1b28a4030ec3 status completed conclusion s
+FAIL push, RATCHET_TODAY '2026-13-01': its error: expected the line '::error::ratchet: RATCHET_TODAY is not an ISO date' once, seen 0; exit 1, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha
+FAIL push, RATCHET_TODAY '2026-13-01': before gh or java is called: expected 'gh calls 0, java calls 0, anchor 1' got 'gh calls 2, java calls 1, anchor 0'
+FAIL push, RATCHET_TODAY '20261125': exit 2: expected exit 2; exit 1, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha 979dcbd62a0df7db01bfc73199cd1b28a4030ec3 status completed conclusion suc
+FAIL push, RATCHET_TODAY '20261125': its error: expected the line '::error::ratchet: RATCHET_TODAY is not an ISO date' once, seen 0; exit 1, stdout 'LOOKUP pages 1 runs 1\nLOOKUP run 43900000201 sha 9
+FAIL push, RATCHET_TODAY '20261125': before gh or java is called: expected 'gh calls 0, java calls 0, anchor 1' got 'gh calls 2, java calls 1, anchor 0'
+FAIL nightly, RATCHET_TODAY 'never': exit 2: expected exit 2; exit 0, stdout 'engine/ir 8/10 survivors 2 floor 1 DROP\n::warning::mutation ratchet would fail from 2026-11-25: engine/ir 8/10 survivors 
+FAIL nightly, RATCHET_TODAY 'never': its error, before pit-summary.sh runs: expected no line matching '^engine/' beside one matching '^::error::ratchet: RATCHET_TODAY is not an ISO date$'; seen 1 and 
+FAIL nightly, RATCHET_TODAY '2026-13-01': exit 2: expected exit 2; exit 1, stdout 'engine/ir 8/10 survivors 2 floor 1 DROP\n::error::mutation ratchet failed: engine/ir 8/10 survivors 2 floor 1 DROP', 
+FAIL nightly, RATCHET_TODAY '2026-13-01': its error, before pit-summary.sh runs: expected no line matching '^engine/' beside one matching '^::error::ratchet: RATCHET_TODAY is not an ISO date$'; seen 1
+FAIL nightly, RATCHET_TODAY '20261125': exit 2: expected exit 2; exit 1, stdout 'engine/ir 8/10 survivors 2 floor 1 DROP\n::error::mutation ratchet failed: engine/ir 8/10 survivors 2 floor 1 DROP', st
+FAIL nightly, RATCHET_TODAY '20261125': its error, before pit-summary.sh runs: expected no line matching '^engine/' beside one matching '^::error::ratchet: RATCHET_TODAY is not an ISO date$'; seen 1 a
+
+=== sentence 1 (red against the real script): RATCHET_TODAY=never with a failing check, the push run's stdout
+  ::warning::ratchet would fail from 2026-11-25: RATCHET FAIL: 1 problem(s)', stderr 'scripts/ratchet-ci.sh: line 49: [: never: integer expression expected', gh 'gh api repos/example/scratch/actions/workflows/mapping-ci.yml/runs?branch=main&event=push&per_page=100&page=1
+  -> exit 0 and the would-fail warning: a value that is no number compared as before the date
+  nightly, RATCHET_TODAY=never: exit 0, stdout 'engine/ir 8/10 survivors 2 floor 1 DROP\n::warning::mutation ratchet would fail from 2026-11-25
+
+=== hand mutants (scratch copy /tmp/claude-0/-home-user-flottila/c273a2ff-2165-53cc-97ae-ec99f977618a/scratchpad/m2/mapping/scripts, the real scripts untouched); each FAIL count includes
+    the 15 FAILs of sentence 1, the lines listed are the others
+=== sentence 2
+  [2] mutant ratchet-baseline.sh: runs call: gh's exit not read -> FAIL 17
+    FAIL lookup, gh exits 1 after a well-formed runs page: exit 1
+    FAIL lookup, gh exits 1 after a well-formed runs page: one LOOKUP FAILED line, no BASELINE
+  [2] mutant ratchet-baseline.sh: jobs call: gh's exit not read -> FAIL 17
+    FAIL lookup, gh exits 1 after a well-formed jobs response: exit 1
+    FAIL lookup, gh exits 1 after a well-formed jobs response: one LOOKUP FAILED line, no BASELINE
+=== sentence 3
+  [3] mutant ratchet-baseline.sh: shallow guard removed -> FAIL 17
+    FAIL lookup in a shallow clone (depth 2): exit 1
+    FAIL lookup in a shallow clone (depth 2): one LOOKUP FAILED line, no BASELINE
+=== sentence 4
+  [4] mutant ratchet-baseline.sh: full-sha guard on RATCHET_BASELINE_SHA removed -> FAIL 21
+    FAIL lookup, RATCHET_BASELINE_SHA 'main': exit 1
+    FAIL lookup, RATCHET_BASELINE_SHA 'main': LOOKUP FAILED, no call to gh, nothing in <dir>
+    FAIL lookup, RATCHET_BASELINE_SHA '1d522f8': exit 1
+    FAIL lookup, RATCHET_BASELINE_SHA '1d522f8': LOOKUP FAILED, no call to gh, nothing in <dir>
+    FAIL lookup, RATCHET_BASELINE_SHA '1D522F883D9995D9EAD5BBDCA3DE8CB1EED6FCE4': exit 1
+    FAIL lookup, RATCHET_BASELINE_SHA '1D522F883D9995D9EAD5BBDCA3DE8CB1EED6FCE4': LOOKUP FAILED, no call to gh, nothing in <dir>
+=== sentence 5
+  [5] mutant ratchet-baseline.sh: head_sha guard removed -> FAIL 19
+    FAIL lookup, a run whose head_sha is 'main': exit 1
+    FAIL lookup, a run whose head_sha is 'main': LOOKUP FAILED, its jobs never asked
+    FAIL lookup, a run whose head_sha is '--output=x': exit 1
+    FAIL lookup, a run whose head_sha is '--output=x': LOOKUP FAILED, its jobs never asked
+  [5] mutant ratchet-baseline.sh: id type (jq) guard removed -> FAIL 17
+    FAIL lookup, a run whose id is a string: exit 1
+    FAIL lookup, a run whose id is a string: LOOKUP FAILED, its jobs never asked
+  [5] mutant ratchet-baseline.sh: id digits guard removed -> FAIL 17
+    FAIL lookup, a run whose id is negative: exit 1
+    FAIL lookup, a run whose id is negative: LOOKUP FAILED, its jobs never asked
+  [5] mutant ratchet-baseline.sh: status guard removed -> FAIL 17
+    FAIL lookup, a run whose status is 'completed; x': exit 1
+    FAIL lookup, a run whose status is 'completed; x': LOOKUP FAILED, its jobs never asked
+  [5] mutant ratchet-baseline.sh: job conclusion guard removed -> FAIL 17
+    FAIL lookup, a backend job whose conclusion is 'suc cess': exit 1
+    FAIL lookup, a backend job whose conclusion is 'suc cess': one LOOKUP FAILED line, no BASELINE
+=== sentence 6
+  [6] mutant ratchet-baseline.sh: GITHUB_REPOSITORY guard removed -> FAIL 18
+    FAIL lookup, GITHUB_REPOSITORY 'scratch': LOOKUP FAILED before any call to gh
+    FAIL lookup, GITHUB_REPOSITORY 'a/b/c': LOOKUP FAILED before any call to gh
+    FAIL lookup, GITHUB_REPOSITORY 'a/b?x=1': LOOKUP FAILED before any call to gh
+=== sentence 9
+  [9] mutant ratchet-baseline.sh: oldest run first -> FAIL 16
+    FAIL lookup, two green runs of one ancestor: the newer is named
+  [9] mutant ratchet-baseline.sh: only the newest run asked -> FAIL 16
+    FAIL lookup, two runs of one ancestor, the older green and the newer red: the older
+=== sentence 10
+  [10] mutant ratchet-baseline.sh: page cap removed -> FAIL 16
+    FAIL lookup, 100 full pages: pages 1 to 100 asked, page 101 never, no call without its fixture
+  [10] mutant ratchet-baseline.sh: page cap off by one (99) -> FAIL 16
+    FAIL lookup, 100 full pages: pages 1 to 100 asked, page 101 never, no call without its fixture
+=== sentence 11
+  [11] mutant ratchet-baseline.sh: a run listed twice kept twice -> FAIL 16
+    FAIL lookup, a red run listed on two pages: asked for its jobs once
+=== sentence 7
+  [7] mutant ratchet-ci.sh: no reason when the lookup printed none -> FAIL 17
+    FAIL push the day before, a lookup that exits 3 silently: its warning, with a reason
+    FAIL push on the date, a lookup that exits 3 silently: its error, with a reason
+  [7] mutant ratchet-ci.sh: only exit 1 is a failed lookup -> FAIL 19
+    FAIL push the day before, a lookup that exits 3 silently: its warning, with a reason
+    FAIL push the day before, a lookup that exits 3 silently: plain check ran
+    FAIL push on the date, a lookup that exits 3 silently: exit 1
+    FAIL push on the date, a lookup that exits 3 silently: its error, with a reason
+=== sentence 8
+  [8] mutant ratchet-ci.sh: iso() without the calendar check -> FAIL 17
+    FAIL push, the date file '2026-02-30\n': exit 2
+    FAIL push, the date file '2026-02-30\n': its error, before gh or java
+  [8] mutant ratchet-ci.sh: final newline not required -> FAIL 17
+    FAIL push, the date file '2026-11-25': exit 2
+    FAIL push, the date file '2026-11-25': its error, before gh or java
+=== sentence 12
+  [12] mutant ratchet-ci.sh: no cd to the mapping's root -> FAIL 20
+    FAIL push from another working directory: exit 0
+    FAIL push from another working directory: the check OK passed through, no annotation
+    FAIL push from another working directory: the check ran with the baseline
+    FAIL nightly from another working directory: exit 0
+    FAIL nightly from another working directory: pit-summary.sh's line passed through, no annotation
