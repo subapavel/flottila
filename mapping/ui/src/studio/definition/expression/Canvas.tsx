@@ -129,9 +129,9 @@ function ViewFit({ nodeIds, host }: { nodeIds: string; host: RefObject<HTMLEleme
 export interface CanvasProps {
   mappingId: string;
   store: WorkingCopyStore;
-  /** The open mapping's test session, which the Display Queue runs when there is no trace yet (#177). */
+  /** The open mapping's test session, which the Display Queue runs when there is no trace yet. */
   session: TestSession;
-  /** The target field, or a preview variable (#163), whose expression shows. */
+  /** The target field, or a preview variable, whose expression shows. */
   targetField: FieldPath;
   catalogue: Catalogue;
   browserState: BrowserStateStore;
@@ -139,11 +139,11 @@ export interface CanvasProps {
   fieldTypes: Record<Side, ReadonlyMap<FieldPath, string>>;
   /** Selects a field in its pane (the node menu's Find Field). */
   findField: (side: Side, path: FieldPath) => void;
-  /** The orphaned source-field boxes (GLOSSARY: Orphaned reference), found against the loaded source structure. */
+  /** The orphaned source-field boxes, found against the loaded source structure. */
   orphaned: ReadonlySet<AuthoringId>;
   /** The source fields an orphaned box can be remapped to, in tree order. */
   sourceFields: readonly FieldPath[];
-  /** Points orphaned box `box` of this target field mapping at source field `field` (GLOSSARY: Remap): the dialog's or a drop's. */
+  /** Points orphaned box `box` of this target field mapping at source field `field`: the dialog's or a drop's. */
   remap: (box: AuthoringId, field: FieldPath) => void;
 }
 
@@ -178,7 +178,7 @@ function Drawing({ mappingId, store, session, targetField, catalogue, browserSta
   const edgeById = useMemo(() => new Map(graph.edges.map((e) => [e.id, e])), [graph]);
   const [moving, setMoving] = useState<Positions>({});
   const [measured, setMeasured] = useState<Record<string, { width: number; height: number }>>({});
-  // the selection and the open dialog are the store's UI slice (ADR-0028)
+  // the selection and the open dialog are the store's UI slice
   const selectedIds = useStore(store, (s) => s.selected);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const dialog = useStore(store, (s) => s.canvasDialog);
@@ -202,7 +202,7 @@ function Drawing({ mappingId, store, session, targetField, catalogue, browserSta
     actions.selectBoxes([...next]);
   };
 
-  /** Whether a wire is a preview wire (ADR-0028): on a variable's canvas, from or into a preview node, or one moved. */
+  /** Whether a wire is a preview wire: on a variable's canvas, from or into a preview node, or one moved. */
   const previewWire = (source: string, target: string, moving?: ExpressionEdge) => variable || isPreviewId(source) || isPreviewId(target) || moving?.preview === true;
   const slotOf = (target: string, handle: string | null | undefined) => (target === TARGET ? 0 : Number((handle ?? portId(0)).slice(2)));
   const canConnect = (source: string, target: string, handle: string | null | undefined, moving?: ExpressionEdge) => {
@@ -268,7 +268,7 @@ function Drawing({ mappingId, store, session, targetField, catalogue, browserSta
   };
   const paste = () => actions.paste(targetField, layoutOf(modelOnly(shown)));
   const scope = availableVariables(preview.variables, targetField);
-  /** The preview function a node stands for: Value mapping or a lookup (#166, #165). */
+  /** The preview function a node stands for: Value mapping or a lookup. */
   const previewFn = (id: string) => {
     const own = previewNodes.get(id);
     return own?.kind === 'function' ? previewFunction(own.ref) : undefined;
@@ -296,7 +296,7 @@ function Drawing({ mappingId, store, session, targetField, catalogue, browserSta
       else actions.disconnectBox(targetField, id);
     };
     items.push(action('Disconnect', disconnectAll, { disabled: !editing || !wired }), deleteAction('Delete', () => remove([id]), { disabled: !editing || n.kind === 'target' }));
-    // another target field of a grouped expression (#164) leaves the canvas
+    // another target field of a grouped expression leaves the canvas
     if (own?.kind === 'target') items.push(action('Ungroup', () => remove([id]), { disabled: !editing }));
     // a variable is found in the target tree
     if (n.kind !== 'function') items.push(action('Find Field', () => findField(n.kind === 'source' && !n.role ? 'source' : 'target', n.path!)));

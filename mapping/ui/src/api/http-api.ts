@@ -15,7 +15,7 @@ import {
   type TestResult,
 } from './client';
 
-/** The `ApiClient` over the service's HTTP API (ADR-0015). `baseUrl` is `''` when the editor shares the origin. */
+/** The `ApiClient` over the service's HTTP API. `baseUrl` is `''` when the editor shares the origin. */
 export function httpApiClient(baseUrl = '', fetchPort: typeof fetch = (input, init) => fetch(input, init)): ApiClient {
   const mapping = (id: string) => `${baseUrl}/api/mappings/${id.split('/').map(encodeURIComponent).join('/')}`;
 
@@ -53,7 +53,7 @@ export function httpApiClient(baseUrl = '', fetchPort: typeof fetch = (input, in
   };
 }
 
-/** A model answer: the canonical model and its ETag, which a later save sends back (ADR-0024, ADR-0027). */
+/** A model answer: the canonical model and its ETag, which a later save sends back. */
 async function storedOf(response: Response): Promise<StoredMapping> {
   const etag = response.headers.get('etag');
   if (etag === null) throw new Error('the service answered a mapping with no ETag');
@@ -64,6 +64,6 @@ async function problemOf(response: Response): Promise<Problem> {
   if (response.headers.get('content-type')?.startsWith('application/problem+json')) {
     return (await response.json()) as Problem;
   }
-  // Vert.x answers some errors without problem+json, such as 413 above 10 MB in spec 1 (ADR-0024).
+  // Vert.x answers some errors without problem+json, such as 413 above 10 MB.
   return { type: 'about:blank', title: response.statusText, status: response.status, detail: '' };
 }

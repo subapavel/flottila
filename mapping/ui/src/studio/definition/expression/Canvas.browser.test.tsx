@@ -76,7 +76,7 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   history.replaceState(null, '', window.location.pathname);
-  // every test fails on console.error (ADR-0013)
+  // every test fails on console.error
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });
@@ -371,7 +371,7 @@ describe('the mapping expression canvas (#157)', () => {
     await expect.element(parent).toHaveAttribute('aria-checked', 'true');
     await parent.click();
 
-    // a context equal to the parent is left out (ADR-0010): the model stays as it is
+    // a context equal to the parent is left out: the model stays as it is
     expect(mappingOf(store).boxes.a1).toEqual({ kind: 'source', field: ORDER_ID });
     expect(store.getState().past).toHaveLength(0);
   });
@@ -392,7 +392,7 @@ describe('the functions drilldown (#157)', () => {
     const sender = catalogue().getByRole('button', { name: /^sender/ });
     await expect.element(sender).toHaveAttribute('aria-disabled', 'true');
     await expect.element(sender).toHaveAccessibleDescription('Not available yet (#172)');
-    // Value mapping is a preview function since #160 (PreviewFeatures.browser.test)
+    // Value mapping is a preview function
     await catalogue().getByRole('button', { name: /^Conversions/ }).click();
     await expect.element(catalogue().getByRole('button', { name: /Value mapping/ })).not.toHaveAttribute('aria-disabled');
   });
@@ -410,7 +410,7 @@ describe('the functions drilldown (#157)', () => {
 });
 
 describe("a function's deviation as a neutral note, its fidelity level otherwise internal (GLOSSARY: Fidelity, ADR-0026, #207)", () => {
-  /** The deviation note of `divide`, the function the ticket names: plain behaviour first, the SAP PO difference last. */
+  /** The deviation note of `divide`, a function with a deviation: plain behaviour first, the SAP PO difference last. */
   const DIVIDE = 'Divides with a fixed number of decimal places (as in XPath), so a very small quotient can become 0. SAP PO keeps 17 significant digits.';
 
   test('the served catalogue carries the reworded note of divide', async () => {
@@ -620,7 +620,7 @@ describe('an orphaned reference and its remap (GLOSSARY: Orphaned reference, Rem
   });
 
   test('a refused source field refuses the remap as it refuses a link, and the box stays orphaned', async () => {
-    // the same-step structure of #116: Doc's two Note fields are refused (ambiguous-field-path), Code is not
+    // the same-step structure: Doc's two Note fields are refused (ambiguous-field-path), Code is not
     const { model } = await fakeApiClient().getMapping(MAPPING);
     model.source = { bundle: ['../structures/refused/same-step.xsd'], fingerprint: 'sha256:d26971c5a6f2df7fa0bf9f7287ae22f1e93ef12dd6ea4ac8ce748990ba0ec32e', root: { element: 'Doc' } };
     model.targetFieldMappings![ORDER_ID]!.boxes.a1 = { kind: 'source', field: '/Doc/Gone' };
@@ -708,7 +708,7 @@ describe('drag-to-remap: a source row dropped on an orphaned box (GLOSSARY: Rema
   });
 
   test('a refused source field refuses the drop as it refuses a link: the alert says why, and the box stays orphaned', async () => {
-    // the same-step structure of #116: Doc's two Note fields are refused (ambiguous-field-path), Code is not
+    // the same-step structure: Doc's two Note fields are refused (ambiguous-field-path), Code is not
     const { model } = await fakeApiClient().getMapping(MAPPING);
     model.source = { bundle: ['../structures/refused/same-step.xsd'], fingerprint: 'sha256:d26971c5a6f2df7fa0bf9f7287ae22f1e93ef12dd6ea4ac8ce748990ba0ec32e', root: { element: 'Doc' } };
     model.targetFieldMappings![ORDER_ID]!.boxes.a1 = { kind: 'source', field: '/Doc/Gone' };

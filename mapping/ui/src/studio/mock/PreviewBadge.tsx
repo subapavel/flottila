@@ -2,15 +2,15 @@ import { Label, Tooltip } from '@patternfly/react-core';
 import { useRef } from 'react';
 
 export interface PreviewBadgeProps {
-  /** The preview feature, in the words of spec #152's table. */
+  /** The preview feature's name. */
   feature: string;
-  /** Its follow-up issue under #162. */
+  /** Its follow-up issue. */
   issue: number;
 }
 
 /**
- * The "Preview" badge of a preview feature (GLOSSARY, ADR-0028): its tooltip names the feature and its follow-up issue,
- * on hover and on keyboard focus.
+ * The "Preview" badge of a preview feature, one the studio shows but does not store in the mapping: its tooltip names
+ * the feature and its follow-up issue, on hover and on keyboard focus.
  */
 export function PreviewBadge({ feature, issue }: PreviewBadgeProps) {
   const badge = useRef<HTMLSpanElement>(null);

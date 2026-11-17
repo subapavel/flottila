@@ -70,7 +70,7 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   history.replaceState(null, '', window.location.pathname);
-  // every test fails on console.error (ADR-0013)
+  // every test fails on console.error
   expect(consoleError).not.toHaveBeenCalled();
   consoleError.mockRestore();
 });
@@ -543,7 +543,7 @@ describe('the orphaned target field mappings (GLOSSARY: Orphaned target field ma
 
 describe('the store refusals (#174)', () => {
   const refused = { code: 'unsupported-construct', side: 'target' as const, file: 'order.xsd', line: 3, column: 1 };
-  /** The fake ApiClient with the order structure's Note refused, on both sides, as a field refusal marks it (ADR-0027). */
+  /** The fake ApiClient with the order structure's Note refused, on both sides, as a field refusal marks it. */
   async function refusedNoteApi(): Promise<ApiClient> {
     const fake = fakeApiClient();
     const structure = await fake.loadStructure({ base: 'mappings', bundle: ['../structures/skeleton/order.xsd'], root: { element: ORDER } });

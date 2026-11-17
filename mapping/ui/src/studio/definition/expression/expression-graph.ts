@@ -3,7 +3,7 @@ import type { AuthoringId, Box, FieldPath, Params, TargetFieldMapping, Udfs } fr
 import { stepName } from '../../../model/field-path';
 import type { WireEnd } from '../../../model/rewire';
 
-/** The node id of the target field itself; no authoring id has a `:` (ADR-0010). */
+/** The node id of the target field itself; no authoring id has a `:`. */
 export const TARGET = ':target';
 
 /** A box's width and the height of one row of up to three ports (the prototype's `nodeWidth`, `nodeHeight`). */
@@ -34,7 +34,7 @@ export interface ExpressionNode {
   inputs: Port[];
   /** Whether the node has an output port: every box has one, the target none. */
   output: boolean;
-  /** A preview node (ADR-0028), which the model does not hold: its feature and follow-up issue. */
+  /** A preview node, which the model does not hold: its feature and follow-up issue. */
   preview?: { feature: string; issue: number };
   /** What the node is in words, when its kind does not say it: a mapping variable. */
   role?: string;
@@ -150,7 +150,7 @@ export function inspectExpression({ nodes, edges }: ExpressionGraph): { states: 
     states.set(id, state);
     return state;
   };
-  // the target, and the other target fields a grouped expression shows (a preview, #164)
+  // the target, and the other target fields a grouped expression shows (a preview)
   for (const n of nodes) if (n.kind === 'target') visit(n.id);
   const floating: AuthoringId[] = [];
   for (const n of nodes) {

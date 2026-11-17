@@ -1,7 +1,7 @@
 import type { MappingModel, StructureRef, TargetFieldMapping } from '../../generated/mapping-model';
 import type { FieldDto, StructureLoaded } from '../client';
 
-/** The size of the `ui/tree-20128/scroll` scenario's tree, fully expanded (ADR-0012, GATE 7). */
+/** The size of the `ui/tree-20128/scroll` scenario's tree, fully expanded. */
 export const TREE_FIELDS = 20_128;
 /** The seed of that tree. */
 export const TREE_SEED = 20_128;
@@ -29,7 +29,7 @@ function seeded(seed: number): () => number {
 }
 
 /**
- * A synthetic structure of exactly `fields` fields when fully expanded (ADR-0013: generated, never committed). Each
+ * A synthetic structure of exactly `fields` fields when fully expanded (generated, never committed). Each
  * structure field has a type of its own, so a fully expanded tree has one row per field. Breadth first: each structure
  * field gets up to two attributes, then elements, about four in ten of them structure fields themselves.
  */

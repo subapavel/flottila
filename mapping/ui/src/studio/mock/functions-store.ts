@@ -4,7 +4,7 @@ import type { BrowserStateStore } from '../browser-state/browser-state';
 import type { WorkingCopyStore } from '../store/working-copy';
 import { readFunctions, type FunctionsState } from './function-model';
 
-/** The key of a mapping's saved Functions tab state in the browser (ADR-0028: mock state per mapping id). */
+/** The key of a mapping's saved Functions tab state in the browser. */
 export const functionsKey = (mappingId: string) => `mapping:${mappingId}:functions-preview`;
 
 /** The name of the Functions tab's draft among the working copy's preview drafts. */
@@ -20,7 +20,7 @@ export interface FunctionsStoreState {
 }
 
 /**
- * The Functions tab's mock store of one mapping (ADR-0028, ADR-0030, #169): its user-defined functions, Java areas,
+ * The Functions tab's mock store of one mapping: its user-defined functions, Java areas,
  * imports and archives. The saved state is read from `BrowserStateStore` under the mapping's id; an edit is a draft of
  * the edit session, one of the working copy's preview drafts. Nothing here is written to the mapping model or sent to
  * the `ApiClient`.

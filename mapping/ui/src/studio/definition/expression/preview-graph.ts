@@ -54,7 +54,7 @@ export function previewPositions(graph: ExpressionGraph, positions: Positions, c
 }
 
 /**
- * The canvas with its preview nodes and wires (ADR-0028): the model's nodes and wires, then the preview nodes, then each
+ * The canvas with its preview nodes and wires: the model's nodes and wires, then the preview nodes, then each
  * preview wire whose ends both show.
  */
 export function withPreview(graph: ExpressionGraph, canvas: PreviewCanvas, catalogue: FunctionCatalogue): ExpressionGraph {

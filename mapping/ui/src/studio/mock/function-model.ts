@@ -1,9 +1,9 @@
 /**
- * The model of the Functions tab, a preview feature (ADR-0028, ADR-0030, #169): the user-defined functions, Java areas,
- * import instructions and archives of one mapping, kept in the browser only and never in the mapping file. Ported from
- * the prototype's functionModel.js (branch prototype/mapping-studio) in our terms: the method shape is ADR-0020's
- * (`MappingRun`, `Context`, `Queue`, `ContextOut`, `@Parameter`), the execution kinds are GLOSSARY's, the class name
- * comes from the mapping's name and the Java package from its mapping package.
+ * The model of the Functions tab, a preview feature until the engine runs user-defined functions: the user-defined
+ * functions, Java areas, import instructions and archives of one mapping, kept in the browser only and never in the
+ * mapping file. It follows the prototype's functionModel.js in our terms: the method shape is the UDF API's
+ * (`MappingRun`, `Context`, `Queue`, `ContextOut`, `@Parameter`), the execution kinds are `EXECUTION_KINDS`, the class
+ * name comes from the mapping's name and the Java package from its mapping package.
  */
 
 /** The Java areas every mapping has, before its functions: shared members, then the two lifecycle methods. */
@@ -12,11 +12,11 @@ export type AreaName = (typeof AREAS)[number];
 /** The area of class attributes and shared methods, which has no method declaration. */
 export const ATTRIBUTES: AreaName = AREAS[0];
 
-/** What one call of a function sees (GLOSSARY: Execution kind). */
+/** What one call of a function sees: one value, one context or the whole queue. */
 export const EXECUTION_KINDS = ['Single value', 'Context', 'Queue'] as const;
 export type ExecutionKind = (typeof EXECUTION_KINDS)[number];
 
-/** The import instructions every source starts with: the UDF API (ADR-0020) and the allow-listed JDK packages. */
+/** The import instructions every source starts with: the UDF API and the allow-listed JDK packages. */
 export const INITIAL_IMPORTS: readonly string[] = [
   'dev.rail8.mapping.udf.*',
   'java.math.*',
@@ -26,7 +26,7 @@ export const INITIAL_IMPORTS: readonly string[] = [
   'java.util.regex.*',
 ];
 
-/** The Java types of a signature variable by its kind: arguments are strings, box parameters strings or ints (ADR-0020). */
+/** The Java types of a signature variable by its kind: arguments are strings, box parameters strings or ints. */
 export const JAVA_TYPES = { Argument: ['String'], Parameter: ['String', 'int'] } as const;
 export type VariableKind = keyof typeof JAVA_TYPES;
 
@@ -56,7 +56,7 @@ export interface Variable {
   description?: string;
 }
 
-/** A user-defined function of the mapping (GLOSSARY: User-defined function). */
+/** A user-defined function of the mapping. */
 export interface Udf {
   id: string;
   name: string;
@@ -128,7 +128,7 @@ export function metadata(mappingId: string): { className: string; packageName: s
   return { className: javaIdentifier(name), packageName: folders.map(javaIdentifier).join('.') };
 }
 
-/** The opening line of a function's or lifecycle area's method, in ADR-0020's shape. */
+/** The opening line of a function's or lifecycle area's method, in the UDF API's shape. */
 export function declaration(fn: { name: string; variables: readonly Variable[]; execution?: ExecutionKind }): string {
   const lifecycle = fn.name === 'init' || fn.name === 'cleanUp';
   const execution = lifecycle ? 'Single value' : (fn.execution ?? 'Single value');

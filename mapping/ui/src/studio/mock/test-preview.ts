@@ -3,10 +3,10 @@ import type { BrowserStateStore } from '../browser-state/browser-state';
 import type { WorkingCopyStore } from '../store/working-copy';
 import { perWorkingCopy } from './preview-draft';
 
-/** The follow-up issue of the trace level in test runs (spec #152, preview features). */
+/** The follow-up issue of the trace level in test runs, a preview feature. */
 export const TRACE_LEVEL_ISSUE = 171;
 
-/** The prototype's trace levels; the engine's trace has no levels yet (#171). */
+/** The prototype's trace levels; the engine's trace has no levels. */
 export const TRACE_LEVELS = ['No trace', 'Warning', 'Info', 'Debug', 'All'] as const;
 export type TraceLevel = (typeof TRACE_LEVELS)[number];
 
@@ -32,7 +32,7 @@ export interface TestPreviewState extends TestPreviewData {
   setValue: (id: string, value: string) => void;
 }
 
-/** The key of a mapping's test previews in the browser state (ADR-0028: mock state per mapping id). */
+/** The key of a mapping's test previews in the browser state. */
 export const testPreviewKey = (mappingId: string) => `mapping:${mappingId}:preview:test`;
 
 function isData(value: unknown): value is TestPreviewData {
@@ -48,8 +48,8 @@ function isData(value: unknown): value is TestPreviewData {
 }
 
 /**
- * The Test tab's preview features of one mapping (ADR-0028): the trace level (#171) and the parameter values of a test
- * run (#167), read from and written to the browser state under the mapping's id. Nothing here reaches the working copy
+ * The Test tab's preview features of one mapping: the trace level and the parameter values of a test run,
+ * read from and written to the browser state under the mapping's id. Nothing here reaches the working copy
  * or the `ApiClient`: a run sends the working copy and the source document only.
  */
 export function createTestPreview(browserState: BrowserStateStore, mappingId: string) {

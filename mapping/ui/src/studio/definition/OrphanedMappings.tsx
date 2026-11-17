@@ -16,8 +16,9 @@ export interface OrphanedMappingsProps {
 }
 
 /**
- * The orphaned target field mappings (GLOSSARY, story 47) in a group of their own below the target tree, as they have
- * no row in it: each with Open, which shows its expression on the canvas, and Delete, enabled in edit mode only.
+ * The orphaned target field mappings (those for a field the target structure lacks) in a group of their own below the
+ * target tree, as they have no row in it: each with Open, which shows its expression on the canvas, and Delete, enabled
+ * in edit mode only.
  */
 export function OrphanedMappings({ paths, selected, editing, onOpen, onDelete }: OrphanedMappingsProps) {
   return (

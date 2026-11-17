@@ -8,7 +8,7 @@ export interface PreviewFunctionParameter {
   initial: PreviewParam;
 }
 
-/** A function the catalogue lacks that the drilldown offers as a preview (spec #152): the prototype's entry. */
+/** A function the catalogue lacks that the drilldown offers as a preview: the prototype's entry. */
 export interface PreviewFunction {
   key: 'valuemap' | 'tableLookup' | 'rfclookup';
   name: string;
@@ -28,7 +28,7 @@ export const PREVIEW_FUNCTIONS: readonly PreviewFunction[] = [
     output: true,
     issue: VALUE_MAPPING_ISSUE,
     parameters: [
-      // the prototype's http://sap.com/xi/XI goes: the studio has no namespace (ADR-0028, Terms)
+      // the prototype's http://sap.com/xi/XI goes: the studio has no namespace
       { key: 'context', label: 'Value-Mapping Context', type: 'String', initial: '' },
       { key: 'agency1', label: 'Source Agency', type: 'vmsagency', initial: 'SenderParty' },
       { key: 'schema1', label: 'Source Schema', type: 'String', initial: '' },

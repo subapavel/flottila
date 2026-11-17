@@ -1,8 +1,8 @@
 /*
- * The Definition tab's message panes, their tools and the split around them. Ported from the prototype's studio.css
- * (branch prototype/mapping-studio, ui/prototype/mapping-studio/src/studio.css) with its values unchanged; the rules of
- * the mapping expression (#157) and of the other tabs are left out. Added: the spacer rows of the virtualised tree and
- * table take no padding, and a pane's tool menus take the prototype's def-menu font size.
+ * The Definition tab's message panes, their tools and the split around them, with the values of the prototype's
+ * studio.css; the rules of the mapping expression and of the other tabs are not here. Beyond the prototype: the spacer
+ * rows of the virtualised tree and table take no padding, and a pane's tool menus take the prototype's def-menu font
+ * size.
  */
 .switches {
   display: inline-flex;
@@ -436,7 +436,7 @@
   display: block;
   overflow-x: auto;
 }
-/* the orphaned target field mappings below the target tree (#174): kept short, so the tree keeps its rows */
+/* the orphaned target field mappings below the target tree: kept short, so the tree keeps its rows */
 .orphaned-mappings {
   flex: none;
   max-height: 9rem;

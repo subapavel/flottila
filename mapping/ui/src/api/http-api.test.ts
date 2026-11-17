@@ -98,7 +98,7 @@ describe('the HTTP ApiClient', () => {
   });
 
   test('lists the workspace mappings by GET on /api/mappings, with their package, description and root names', async () => {
-    // a summary leaves out a description or a side that is not there (ADR-0029)
+    // a summary leaves out a description or a side that is not there
     const list: MappingSummary[] = [
       { id: 'drafts/new', name: 'new', package: 'drafts', description: 'Bestellungen zu Rechnungen' },
       { id: 'mappings/order-id-copy', name: 'order-id-copy', package: 'mappings', source: 'Order', target: 'Order' },
@@ -228,7 +228,7 @@ describe('the HTTP ApiClient', () => {
   });
 
   test('an error answer without problem+json still becomes an ApiProblem with its status', async () => {
-    // Vert.x answers a body above 10 MB with a bare 413 in spec 1 (ADR-0024)
+    // Vert.x answers a body above 10 MB with a bare 413
     const port = fakeFetch(() => new Response('', { status: 413, statusText: 'Request Entity Too Large' }));
 
     const error = await httpApiClient('', port.fetch).runTest('m/one', { model, input: '<a/>' }).catch((e: unknown) => e);

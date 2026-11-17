@@ -17,7 +17,7 @@ const field = (step: string, min: number, max: number | undefined, extra: Partia
   ...extra,
 });
 
-/** Order holds @channel, OrderId and Item; Item holds Sku and another Item (a recursive type, ADR-0008). */
+/** Order holds @channel, OrderId and Item; Item holds Sku and another Item (a recursive type). */
 const structure: StructureLoaded = {
   kind: 'loaded',
   fingerprint: 'sha256:00',

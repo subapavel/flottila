@@ -1,7 +1,7 @@
 /*
- * The test instance tools' own styles (the prototype's InstanceTools, a preview, #170), moved from the Test tab's
- * test.css with the tools (#152 review), values unchanged: the gap after their "Preview" badge in either host, the Test
- * tab's instance bar and the Definition tab's queue test input, their separator and their notice.
+ * The test instance tools' own styles (the prototype's InstanceTools, a preview), with the prototype's values: the gap
+ * after their "Preview" badge in either host, the Test tab's instance bar and the Definition tab's queue test input,
+ * their separator and their notice.
  */
 .test-instance-bar .preview-badge,
 .expression-input-tools .preview-badge {

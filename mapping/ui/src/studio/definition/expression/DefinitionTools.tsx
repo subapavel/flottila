@@ -87,7 +87,7 @@ export function DefinitionBar({ editing, dataFlow, onDataFlow, view, onView, onC
 
 /**
  * The Mapping expression header: its title and target field, the queue test input (the prototype's QueueInputTools: the
- * test instance tools, a preview, #170, without Generate; a file must parse), its pane size tools.
+ * test instance tools, a preview, without Generate; a file must parse), its pane size tools.
  */
 export function ExpressionHeader({ targetField, view, onView, instances }: { targetField: FieldPath | null; view: SplitView; onView: (view: SplitView) => void; instances: Omit<InstanceToolsProps, 'validateFile' | 'selectLabel'> }) {
   const path = targetField === null ? '' : `/${localPath(targetField)}`;

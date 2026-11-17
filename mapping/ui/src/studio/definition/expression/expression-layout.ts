@@ -10,7 +10,7 @@ const GAP = 24;
 const COLUMN = NODE_WIDTH + 64;
 
 /**
- * Lay Out Mapping (ADR-0029): dagre from left to right into the target, the nodes and wires added in the graph's order
+ * Lay Out Mapping: dagre from left to right into the target, the nodes and wires added in the graph's order
  * (sorted authoring ids, input slots in order), so that the same graph always gets the same layout. Rounded.
  */
 export function arrange(graph: ExpressionGraph): Positions {
@@ -40,7 +40,7 @@ export function layoutOf(positions: Positions): Layout {
 }
 
 /**
- * Where each node shows (ADR-0029). A mapping without a layout is laid out with dagre in memory, which never changes the
+ * Where each node shows. A mapping without a layout is laid out with dagre in memory, which never changes the
  * working copy. Otherwise each node the layout places stays there, and a node it does not place goes next to its
  * neighbour: left of the first placed node it feeds, else right of the first placed node that feeds it, else below all
  * placed nodes at their left edge; a spot another node's card covers moves it down below that card.

@@ -3,7 +3,7 @@ import type { WorkingCopyStore } from '../store/working-copy';
 import type { BoxPosition, FieldPath, ParamValue } from '../../generated/mapping-model';
 import { previewDraft, type PreviewDraftStore } from './preview-draft';
 
-/** The follow-up issues of the Definition tab's preview features (spec #152, #162). */
+/** The follow-up issues of the Definition tab's preview features. */
 export const VARIABLES_ISSUE = 163;
 export const GROUPED_ISSUE = 164;
 export const LOOKUPS_ISSUE = 165;
@@ -51,7 +51,7 @@ export interface DefinitionPreviewData {
   canvases: Record<FieldPath, PreviewCanvas>;
 }
 
-/** The id prefix of a preview node; no authoring id has a `:` (ADR-0010). */
+/** The id prefix of a preview node; no authoring id has a `:`. */
 export const PREVIEW_PREFIX = 'preview:';
 export const isPreviewId = (id: string) => id.startsWith(PREVIEW_PREFIX);
 export const newPreviewId = () => `${PREVIEW_PREFIX}${crypto.randomUUID()}`;
@@ -123,7 +123,7 @@ export function setParams(data: DefinitionPreviewData, key: FieldPath, id: strin
   return change(data, key, (c) => ({ ...c, nodes: c.nodes.map((n) => (n.id === id ? { ...n, params } : n)) }));
 }
 
-/** The key of a mapping's Definition previews in the browser state (ADR-0028: mock state per mapping id). */
+/** The key of a mapping's Definition previews in the browser state. */
 export const definitionPreviewKey = (mappingId: string) => `mapping:${mappingId}:preview:definition`;
 
 /** The name of the Definition previews' draft among the working copy's preview drafts. */
@@ -145,9 +145,9 @@ const isData = (value: unknown): value is DefinitionPreviewData => {
 export type DefinitionPreviewStore = PreviewDraftStore<DefinitionPreviewData>;
 
 /**
- * The Definition tab's previews of the open mapping (ADR-0028): variables (#163), grouped targets (#164), lookups and
- * value mapping (#165, #166), and every node and wire of theirs, a draft of the edit session whose saved state the
- * browser keeps under the mapping's id. Nothing here reaches the working copy or the `ApiClient`.
+ * The Definition tab's previews of the open mapping: variables, grouped targets, lookups and value mapping, and every
+ * node and wire of theirs, a draft of the edit session whose saved state the browser keeps under the mapping's id.
+ * Nothing here reaches the working copy or the `ApiClient`.
  */
 export function definitionPreview(workingCopy: WorkingCopyStore, browserState: BrowserStateStore, mappingId: string): DefinitionPreviewStore {
   return previewDraft(workingCopy, browserState, {

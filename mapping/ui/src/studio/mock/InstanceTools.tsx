@@ -25,7 +25,7 @@ export interface InstanceToolsProps {
   resource: () => InstanceResource;
   /** Loads a document read from a file as the source document. */
   onLoad: (text: string) => void;
-  /** Whether the studio is in edit mode: Load, Add, Save and Delete are edit-only; the select chooses in read mode too (#177). */
+  /** Whether the studio is in edit mode: Load, Add, Save and Delete are edit-only; the select chooses in read mode too. */
   editing: boolean;
   /** Whether every tool, the select too, is disabled, as while a run is under way. */
   disabled: boolean;
@@ -37,11 +37,11 @@ export interface InstanceToolsProps {
 type Dialog = 'add' | 'delete' | null;
 
 /**
- * The test instance tools (the prototype's InstanceTools, a preview, #170): Load Test Instance reads a file or the
+ * The test instance tools (the prototype's InstanceTools, a preview): Load Test Instance reads a file or the
  * `instance.<format>` of a zip into the source document; Add, Save and Delete Test Instance and the select change the
- * mapping's test instance library, a draft of the edit session (ADR-0028), in edit mode. The test session follows the
+ * mapping's test instance library, a draft of the edit session, in edit mode. The test session follows the
  * current instance. In read mode only the select works: it shows the instance chosen in read mode, else the current one,
- * and a choice loads it into the source without changing the library (#177).
+ * and a choice loads it into the source without changing the library.
  */
 export function InstanceTools({ library, format, resource, onLoad, editing, disabled, validateFile = false, selectLabel = 'Select test instance' }: InstanceToolsProps) {
   const list = useStore(library, (s) => s.value);

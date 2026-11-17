@@ -1,5 +1,5 @@
 /*
- * The Display Queue dialog's styles, moved from the Test tab's test.css with the dialog (#152 review): `.queue-*` lay out
+ * The Display Queue dialog's styles: `.queue-*` lay out
  * the traced queue (the prototype's .q-* cells), with their values unchanged.
  */
 .queue-bar {
@@ -33,7 +33,7 @@
 .queue-occurrences {
   margin-top: 12px;
 }
-/* a dialog without test data in edit mode: the test file to load (#177) */
+/* a dialog without test data in edit mode: the test file to load */
 .queue-load {
   display: flex;
   flex-direction: column;
