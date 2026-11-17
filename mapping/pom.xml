@@ -35,6 +35,8 @@
 
     <!-- plugins (tools, not dependencies) -->
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <!-- Apache-2.0: Error Prone, the static analysis javac runs; a tool on the processor path, not a dependency -->
+    <errorprone.version>2.52.0</errorprone.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <spotless-maven-plugin.version>3.10.4</spotless-maven-plugin.version>
     <!-- gjf 1.37.0 breaks Spotless's glue (NoSuchMethodError ... Style.valueOf): keep 1.36.1 -->
@@ -171,10 +173,24 @@
         <configuration>
           <release>${maven.compiler.release}</release>
           <parameters>true</parameters>
+          <!-- Error Prone runs inside javac on main and test sources and fails the build on a check of severity
+               ERROR. Its warning checks are off here: -Werror would turn each of them into a failure. It needs the
+               javac internals opened in the root .mvn/jvm.config. -->
           <compilerArgs>
             <arg>-Xlint:all</arg>
             <arg>-Werror</arg>
+            <arg>-XDcompilePolicy=simple</arg>
+            <arg>--should-stop=ifError=FLOW</arg>
+            <arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+            <arg>-Xplugin:ErrorProne -XepDisableAllWarnings</arg>
           </compilerArgs>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.google.errorprone</groupId>
+              <artifactId>error_prone_core</artifactId>
+              <version>${errorprone.version}</version>
+            </path>
+          </annotationProcessorPaths>
         </configuration>
       </plugin>
 

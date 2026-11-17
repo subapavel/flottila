@@ -110,8 +110,10 @@ class MockComponentTest {
         http.bind("partner-domestic", Behaviour.from(Map.of("fail", 503, "after", 3), DEMO));
         Producer p = http.producer(domestic);
         Envelope in = invoice();
-        assertTrue(p.send(in).succeeded() && p.send(in).succeeded(), "sends 1 and 2 go through");
-        assertTrue(p.send(in).failed() && p.send(in).failed(), "from the 3rd on, every send fails");
+        assertTrue(p.send(in).succeeded(), "send 1 goes through");
+        assertTrue(p.send(in).succeeded(), "send 2 goes through");
+        assertTrue(p.send(in).failed(), "from the 3rd on, every send fails: the 3rd");
+        assertTrue(p.send(in).failed(), "from the 3rd on, every send fails: the 4th");
         http.bind("partner-foreign", Behaviour.from(Map.of("fail", "reset", "every", 2), DEMO));
         Producer q = http.producer(foreign);
         assertEquals(List.of(true, false, true, false, true), List.of(q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded()),
@@ -123,7 +125,9 @@ class MockComponentTest {
         assertEquals(List.of(true, true, true, false, true), List.of(r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded()),
                 "after 2 every 3: of the sends from the 2nd on, every 3rd fails — the 4th");
         assertTrue(r.send(in).succeeded() && r.send(in).failed(), "… and the 7th");
-        assertTrue(http.producer(third).send(in).succeeded() && http.producer(third).send(in).succeeded() && http.producer(third).send(in).failed(),
+        assertTrue(http.producer(third).send(in).succeeded(), "the count is the endpoint's, across producers: the 8th");
+        assertTrue(http.producer(third).send(in).succeeded(), "the count is the endpoint's, across producers: the 9th");
+        assertTrue(http.producer(third).send(in).failed(),
                 "the count is the endpoint's, across producers (a replay builds a new one): the 10th fails");
     }
 
