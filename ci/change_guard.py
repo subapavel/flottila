@@ -32,12 +32,20 @@ import subprocess
 import sys
 
 JAVA_ROOTS = ("platform/", "mapping/")
-# Folders whose comments have been cleaned of references: every comment in every file under them is checked, not
-# only the lines a change touches. A cleanup adds its folders to this list.
+# Folders (and two single files) whose comments have been cleaned of references: every comment in every file under
+# them is checked, not only the lines a change touches. A cleanup adds its folders to this list.
 CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtime/src/main/", "platform/testkit/src/main/",
            "platform/sim/src/main/", "platform/cli/src/main/", "platform/schemas/src/main/",
            "platform/components/http/src/main/", "platform/components/mock/src/main/",
-           "platform/components/sftp/src/main/", "platform/steps/validate/src/main/", "platform/steps/xslt/src/main/")
+           "platform/components/sftp/src/main/", "platform/steps/validate/src/main/", "platform/steps/xslt/src/main/",
+           "mapping/engine/api/src/main/", "mapping/engine/ir/src/main/", "mapping/engine/mapping/src/main/",
+           "mapping/engine/runtime/src/main/", "mapping/engine/serializer/src/main/",
+           "mapping/engine/structure/src/main/", "mapping/engine/structure-import/src/main/",
+           "mapping/engine/udf/src/main/", "mapping/engine/udf-api/src/main/", "mapping/engine/xdm/src/main/",
+           "mapping/engine/xslt-export/src/main/", "mapping/service/src/main/",
+           # the UI's sources except src/generated, whose comments come from the contract's schemas
+           "mapping/ui/src/api/", "mapping/ui/src/app/", "mapping/ui/src/model/", "mapping/ui/src/studio/",
+           "mapping/ui/src/file-names.test.ts", "mapping/ui/src/import-boundaries.test.ts")
 UI_ROOT = "mapping/ui/"
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")
