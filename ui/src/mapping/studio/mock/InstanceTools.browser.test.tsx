@@ -115,9 +115,7 @@ describe('the test instance library, a preview feature', () => {
     expect(browserState.values.get(KEY)).toMatchObject([{ name: 'Order PO-1', format: 'XML', text: INPUT }]);
     await expect.poll(() => compile.mock.calls.length).toBeGreaterThan(0);
     // the library never reaches the service: Save, compile and test requests carry no trace of it
-    expect(JSON.stringify([saveMapping.mock.calls, compile.mock.calls.map(([, model]) => model), runTest.mock.calls.map(([, request]) => request.model)])).not.toMatch(
-      /PO-1"|Order PO-1|instance/,
-    );
+    expect(JSON.stringify([saveMapping.mock.calls, compile.mock.calls.map(([, model]) => model), runTest.mock.calls])).not.toMatch(/PO-1"|Order PO-1|instance/);
   });
 
   test('a name the mapping has already is refused in the dialog', async () => {

@@ -80,7 +80,8 @@ function Flyout({ label, items, close }: { label: string; items: ActionMenuItem[
 
 /**
  * An action menu, a PatternFly menu below its anchor or at the point it was opened at: it takes the focus as it
- * opens; a choice, Escape or a click outside it closes it, and a choice or Escape gives the focus back to its anchor.
+ * opens; a choice, Escape, a pointer down outside it or a resize closes it, and a choice or Escape gives the focus back
+ * to its anchor.
  * An item with children opens them in a flyout, by the pointer or the Right arrow.
  */
 export function ActionMenu({ menu, onClose }: { menu: OpenActionMenu; onClose: () => void }) {
@@ -93,6 +94,19 @@ export function ActionMenu({ menu, onClose }: { menu: OpenActionMenu; onClose: (
   useEffect(() => {
     requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true }));
   }, [menu]);
+  // a right click fires no click: a pointer down outside closes the menu, as another menu opens
+  useEffect(() => {
+    const outside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
+    };
+    const resize = () => onClose();
+    document.addEventListener('pointerdown', outside, true);
+    window.addEventListener('resize', resize);
+    return () => {
+      document.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('resize', resize);
+    };
+  }, [onClose]);
   const flyouts = menu.groups.some((group) => group.items.some((item) => item.children));
   return (
     <>
@@ -102,9 +116,6 @@ export function ActionMenu({ menu, onClose }: { menu: OpenActionMenu; onClose: (
         isVisible
         placement="bottom-start"
         appendTo={() => document.body}
-        onDocumentClick={(event) => {
-          if (!menuRef.current?.contains(event?.target as Node)) close(false);
-        }}
         onDocumentKeyDown={(event) => {
           if (event?.key === 'Escape') close(true);
         }}
