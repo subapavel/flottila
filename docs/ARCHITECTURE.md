@@ -373,7 +373,9 @@ public final class Mapping {                  // immutable; any number of concur
 }
 public sealed interface BundleReference {     // the engine parses the two spellings of a reference
   String spelling();                          // as the mapping file writes it
-  record Relative(String spelling, String path) implements BundleReference {}  // ../structures/a.xsd
+  record Relative(String path) implements BundleReference {    // ../structures/a.xsd, as written
+    public String spelling() { return path; }
+  }
   record Packaged(String spelling, String name, String version, String path)   // common@1.4.0:/a.xsd,
       implements BundleReference {}                                            //   path "a.xsd"
 }
@@ -404,10 +406,12 @@ public final class RunFailure extends Exception {
   with `InterruptedException`. Anything else it throws is an engine bug.
 - Memory: the host holds the input, the output is at most `maxOutputBytes`, and the engine's working
   memory grows with the input and the mapping, with no limit of its own until one is measured.
-- A new `Reason` breaks hosts on purpose: a host maps reasons with a `switch` that has no `default`,
-  so a recompiled host does not compile and an old one fails with `MatchException`, which is retried.
-- The module's contract suite is abstract and lives in its test jar, so a later bytecode tier passes
-  the same tests. There is no mock: the engine is code in the process, not a way out of it.
+- A new `Reason` breaks hosts on purpose: a host maps reasons with a `switch` expression that has no
+  `default`, so a recompiled host does not compile and an old one fails with `MatchException`, which
+  is retried.
+- The contract suite is the tests of `Mapping` in `engine/embed`, so a later bytecode tier behind
+  `Mapping.compile` passes the same tests. There is no mock: the engine is code in the process, not a
+  way out of it.
 
 The contract of the mapping step, platform side. A step module `platform/steps/mapping`
 (`dev.rail8:rail8-step-mapping`) registers the step type `mapping`. It depends on `rail8-api` and
@@ -426,9 +430,9 @@ steps:
   `<dependency>:<path>`, read with `StepResources.file`. The step reads the whole body.
 - A mapping is a file of the package that a step names, as a stylesheet is; it has no `kind`. The
   studio's layout is the convention: `mappings/<name>.mapping.json`, its schemas in `structures/`.
-- The mapping file keeps the engine's spelling of its references. A `Relative` reference resolves
-  against the mapping file through `StepResources.resolve`, inside the package or dependency that
-  holds the mapping. A `Packaged` reference is a build error naming the step and the reference,
+- The mapping file keeps the engine's spelling of its references. A `Relative` reference's `path`
+  resolves against the mapping file through `StepResources.resolve`, inside the package or
+  dependency that holds the mapping. A `Packaged` reference is a build error naming the step and the reference,
   until its version can be compared and the studio can refresh such a mapping.
 - The flow's hash covers the mapping file and every schema file it read, since both are read
   through `StepResources`. The engine's version is not in it, as Saxon's is not. A refusal, a
