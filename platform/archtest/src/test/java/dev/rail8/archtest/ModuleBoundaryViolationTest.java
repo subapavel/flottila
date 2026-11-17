@@ -89,10 +89,12 @@ class ModuleBoundaryViolationTest {
         assertFails(Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API, "MappingStepUsesTheEngineFacade");
     }
     @Test void theMappingStepUsingTheEmbeddingApiIsAllowed() {
+        AssertionError others = assertThrows(AssertionError.class,
+                () -> Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(fixtures));
+        assertFalse(others.getMessage().contains("MappingStepUsesTheEmbeddingApi"), "the step may depend on the engine");
         JavaClasses stepOnly = new ClassFileImporter()
                 .withImportOption(new ImportOption.OnlyIncludeTests())
                 .importClasses(dev.rail8.steps.mapping.violation.MappingStepUsesTheEmbeddingApi.class);
-        assertDoesNotThrow(() -> Rules.ONLY_THE_MAPPING_STEP_DEPENDS_ON_THE_MAPPING_ENGINE.check(stepOnly), "the step may depend on the engine");
         assertDoesNotThrow(() -> Rules.THE_MAPPING_STEP_USES_ONLY_THE_EMBEDDING_API.check(stepOnly), "through its embedding API");
     }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
