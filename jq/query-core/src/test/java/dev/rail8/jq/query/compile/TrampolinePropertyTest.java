@@ -28,7 +28,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class TrampolinePropertyTest {
   /**
    * The push run's declared stack: the roots hold no call, so they never reach its unit limit. It is above the reserve,
-   * 280 KiB since #113, or the push run would start on the trampoline too.
+   * {@code StackUnits.RESERVE}, or the push run would start on the trampoline too.
    */
   private static final long PUSH = 512 * 1024;
 

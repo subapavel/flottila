@@ -69,10 +69,10 @@ step clean-verify 0 ../mvnw -B clean verify -Pbench,compile-oracle
 recordings=()
 while IFS= read -r path; do recordings+=("$path"); done < <(git ls-files -- 'oracle/src/test/resources/**/*.rec')
 step record 0 scripts/oracle-record.sh --verify "${recordings[@]}"
-# The matrix's cells: 3 tiers × 3 threads × 2 modes × the 13 shapes of CalibrationCell.SHAPES (ADR-0046 #113). Step 1's
-# clean leaves no earlier tsv. The coverage comes from step 1, so this run goes without the JaCoCo agent.
+# The matrix's cell count lives in scripts/calibration-cells.sh alone. Step 1's clean leaves no earlier tsv. The
+# coverage comes from step 1, so this run goes without the JaCoCo agent.
 step calibration 0 ../mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true
-step calibration-cells 1 scripts/calibration-cells.sh jq-core/target/calibration.tsv cell 234
+step calibration-cells 1 scripts/calibration-cells.sh jq-core/target/calibration.tsv matrix
 # The crossModule runs of oracle and of jq-cli (which -am pulls in) mutate the class-C classes under their tests;
 # ratchet.java combines both reports (ADR-0014, #47). Each module keeps its PIT test exclusions in its own POM: a
 # list passed here as a property would replace every module's list (observed with -X, #45).

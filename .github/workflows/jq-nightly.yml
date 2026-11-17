@@ -99,9 +99,9 @@ jobs:
       # Its children run without -Xmx or ulimit: they need their own stack and heap.
       - name: Calibration matrix
         run: ../mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true
-      # 3 tiers x 3 threads x 2 modes x the 13 shapes of CalibrationCell.SHAPES, and the run's time
+      # The matrix's cells, counted by scripts/calibration-cells.sh, which alone holds the count, and the run's time
       - name: Cells that ran
-        run: scripts/calibration-cells.sh jq-core/target/calibration.tsv cell 234
+        run: scripts/calibration-cells.sh jq-core/target/calibration.tsv matrix
       - uses: actions/upload-artifact@v4
         if: always()
         with:

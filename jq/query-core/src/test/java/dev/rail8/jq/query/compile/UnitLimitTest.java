@@ -154,8 +154,8 @@ class UnitLimitTest {
   void aStackUnderTheReserveRoundsDown() {
     Executable e = callOf(units());
     assertThat(StackUnits.unitLimit(e, StackUnits.reserve() - 1)).as("U_f one byte under the reserve").isEqualTo(-1 - StackUnits.callFreeDepth(e));
-    // -286 720 / 192 is -1 493.33 at #113's constants: floorDiv gives -1 494, plain division -1 493.
-    assertThat(StackUnits.unitLimit(e, 0)).as("U_f of 0 bytes").isEqualTo(-1494 - StackUnits.callFreeDepth(e));
+    // b + 1 bytes under the reserve, whatever the constants: floorDiv(-b - 1, b) is -2, plain division -1.
+    assertThat(StackUnits.unitLimit(e, StackUnits.reserve() - StackUnits.bytesPerUnit() - 1)).as("U_f b + 1 bytes under the reserve").isEqualTo(-2 - StackUnits.callFreeDepth(e));
   }
 
   /** Units are given back however a call ends: an error leaving a pushed call and a starter both leave none. */

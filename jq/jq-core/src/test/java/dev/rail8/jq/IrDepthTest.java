@@ -69,9 +69,10 @@ class IrDepthTest {
    * Reference jq 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
    * 20 022 bytes, 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets and an LF, sha256 7abcf37e…, the bytes
    * of DeepBuiltArrayTest's oracle; {@code JqValue.toJson} is that text without its LF (F-54, diff/over-cap.rec {@code
-   * over-cap/depth-30001}).
+   * over-cap/depth-30001}). Package-private: CalibrationTest compares the calibration's {@code plain-descent} result
+   * with it.
    */
-  private static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
+  static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
 
   /** Reference jq 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
   private static final String VALUE_PARAMETERS_500 = "[".repeat(500) + "null" + "]".repeat(500);
@@ -853,8 +854,10 @@ class IrDepthTest {
   /**
    * {@code levels} - 1 brackets around {@code .}, through definitions: {@code def f1: [[…[.]…]]; def f2: [[…[f1]…]];
    * …} and the main filter's rest of brackets around the last call, so its IR has {@code levels} levels.
+   * Package-private: CalibrationTest compares the calibration's {@code plain-descent} filter with {@code
+   * nested(30_001)}.
    */
-  private static String nested(int levels) {
+  static String nested(int levels) {
     return definitions("f", levels) + call("f", levels);
   }
 

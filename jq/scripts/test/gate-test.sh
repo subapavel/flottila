@@ -4,8 +4,10 @@
 # the JMH jar. STUB_FAIL=<word>:<rc> makes the stub mvnw or check script whose arguments contain <word> exit <rc>.
 # STUB_COMPILE_REPORT=<printf rows> makes the stub mvnw, when called with the compile-oracle profile, write them as
 # oracle/target/oracle-reports/compile-conservative.tsv. The stub mvnw of the ticket gate's step 1 writes
-# STUB_COLUMN (default 26) check rows to jq-core/target/calibration-column.tsv, none for STUB_COLUMN=none; with the
-# calibration-matrix profile it writes STUB_MATRIX (default 234) cell rows to jq-core/target/calibration.tsv.
+# STUB_COLUMN (default 28) check rows to jq-core/target/calibration-column.tsv, none for STUB_COLUMN=none; with the
+# calibration-matrix profile it writes STUB_MATRIX (default 308) cell rows to jq-core/target/calibration.tsv.
+# scripts/calibration-cells.sh alone holds those counts: the short-by-one cases take them from its
+# --expected.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
@@ -35,10 +37,10 @@ case "$(basename "$0") $*" in
       mkdir -p oracle/target/oracle-reports; printf "$STUB_COMPILE_REPORT" > oracle/target/oracle-reports/compile-conservative.tsv; fi ;;
 esac
 case "$(basename "$0") $*" in
-  "mvnw -B -Pbench"*" verify") if [ "${STUB_COLUMN:-26}" != none ]; then mkdir -p jq-core/target
-      { echo "# check"; for i in $(seq "${STUB_COLUMN:-26}"); do printf "check\txint\t$i\n"; done; printf "time-ms\t4200\n"; } > jq-core/target/calibration-column.tsv; fi ;;
+  "mvnw -B -Pbench"*" verify") if [ "${STUB_COLUMN:-28}" != none ]; then mkdir -p jq-core/target
+      { echo "# check"; for i in $(seq "${STUB_COLUMN:-28}"); do printf "check\txint\t$i\n"; done; printf "time-ms\t4200\n"; } > jq-core/target/calibration-column.tsv; fi ;;
   "mvnw "*calibration-matrix*) mkdir -p jq-core/target
-      { echo "# cell"; for i in $(seq "${STUB_MATRIX:-234}"); do printf "cell\txint\t$i\n"; done; printf "time-ms\t9000000\n"; } > jq-core/target/calibration.tsv ;;
+      { echo "# cell"; for i in $(seq "${STUB_MATRIX:-308}"); do printf "cell\txint\t$i\n"; done; printf "time-ms\t9000000\n"; } > jq-core/target/calibration.tsv ;;
 esac
 exit 0'
 printf '%s\n' "$stub" > "$repo/../mvnw"
@@ -75,6 +77,21 @@ export PATH=$repo/stubbin:$PATH
 export RATCHET_MACHINE=m1
 unset STUB_FAIL
 
+# Only scripts/calibration-cells.sh holds the cell counts. Each caller passes the name alone, so a
+# caller's call that ends in anything else (a number, a variable) holds a count.
+lastarg() { grep -v '^[[:space:]]*#' "$1" | grep 'calibration-cells\.sh ' | awk '{ print $NF }' | tr '\n' ' '; }
+check "no caller holds a count: gate-ticket.sh passes the column's name" "$(lastarg "$here/../gate-ticket.sh")" "column "
+check "no caller holds a count: gate-spec.sh passes the matrix's name" "$(lastarg "$here/../gate-spec.sh")" "matrix "
+check "no caller holds a count: jq-nightly.yml passes the matrix's name" "$(lastarg "$here/../../../.github/workflows/jq-nightly.yml")" "matrix "
+cells() { (cd "$repo" && scripts/calibration-cells.sh "$@" > "$tmp/cells" 2>&1; echo $?); }
+check "calibration-cells: --expected column" "$(cells --expected column)" 0
+check "calibration-cells: the column has 28 cells, 2 modes x 14 shapes" "$(cat "$tmp/cells")" 28
+check "calibration-cells: --expected matrix" "$(cells --expected matrix)" 0
+check "calibration-cells: the matrix has 308 cells, 224 measured and 84 warm" "$(cat "$tmp/cells")" 308
+check "calibration-cells: --expected of another name is a usage error" "$(cells --expected other)" 2
+column_cells=$(cd "$repo" && scripts/calibration-cells.sh --expected column)
+matrix_cells=$(cd "$repo" && scripts/calibration-cells.sh --expected matrix)
+
 ticket() { : > "$STUB_CALLS"; rm -rf "$repo/.logs"; (cd "$repo" && scripts/gate-ticket.sh "$@" > "$tmp/out" 2>&1; echo $?); }
 
 check "ticket: usage" "$(ticket 25)" 2
@@ -101,23 +118,23 @@ check "green: a result line per step, name and rc (#84)" "$results" "-- verify: 
 check "green: passed is the last line (#84)" "$(tail -n 1 "$tmp/out")" "gate-ticket: 25 passed"
 has "no require file is visible in the log (F-38, #84)" "^== require: none (ORACLE_REQUIRE unset)$" "$tmp/out"
 # ADR-0046 #113, F-91: step 1 runs the -Xint 512 KiB calibration column; the gate counts its cells and shows its time
-has "the column's cells are counted and its time shown (F-91)" "^calibration: 26 of 26 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
+has "the column's cells are counted and its time shown (F-91)" "^calibration: 28 of 28 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
 export STUB_COLUMN=none
 check "ticket: step 1 wrote no column, a fork that died (F-91)" "$(ticket 25 query-core base)" 1
 has "no column: the file is named" "^calibration: no jq-core/target/calibration-column.tsv: the cells did not run (F-91)$" "$tmp/out"
 check "no column: the last line names the step" "$(tail -n 1 "$tmp/out")" \
   "gate-ticket: 25 step column failed with exit code 1 (log .logs/25-column.log)"
 mkdir -p "$repo/jq-core/target"
-printf 'check\txint\n%.0s' $(seq 26) > "$repo/jq-core/target/calibration-column.tsv"
+printf 'check\txint\n%.0s' $(seq 28) > "$repo/jq-core/target/calibration-column.tsv"
 check "ticket: an earlier run's column does not count (F-91)" "$(ticket 25 query-core base)" 1
-cells() { (cd "$repo" && scripts/calibration-cells.sh "$@" > "$tmp/cells" 2>&1; echo $?); }
 check "calibration-cells: usage" "$(cells a b)" 2
-printf 'check\txint\n' > "$tmp/notime.tsv"
-check "calibration-cells: a tsv without its time-ms row, all cells" "$(cells "$tmp/notime.tsv" check 1)" 0
-check "calibration-cells: no time-ms row is said" "$(cat "$tmp/cells")" "calibration: 1 of 1 check rows in $tmp/notime.tsv, no time-ms row"
-export STUB_COLUMN=25
+printf 'check\txint\n%.0s' $(seq 28) > "$tmp/notime.tsv"
+check "calibration-cells: a count in the call is a usage error" "$(cells "$tmp/notime.tsv" check 28)" 2
+check "calibration-cells: a tsv without its time-ms row, all cells" "$(cells "$tmp/notime.tsv" column)" 0
+check "calibration-cells: no time-ms row is said" "$(cat "$tmp/cells")" "calibration: 28 of 28 check rows in $tmp/notime.tsv, no time-ms row"
+export STUB_COLUMN=$((${column_cells:-0} - 1))
 check "ticket: a column short of a cell fails (F-91)" "$(ticket 25 query-core base)" 1
-has "a short column: the count is shown" "^calibration: 25 of 26 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
+has "a short column: the count is shown" "^calibration: 27 of 28 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
 unset STUB_COLUMN
 
 printf 'jq.test#a\n' > "$tmp/req.txt"
@@ -251,7 +268,7 @@ order=$(grep -o 'clean verify\|oracle-record\|-Pcalibration-matrix\|mutationCove
 check "spec record step after clean-verify, then the calibration matrix, before PIT" "$order" "clean verify oracle-record -Pcalibration-matrix mutationCoverage "
 # ADR-0046 #113: the calibration-matrix tag and profile, its cells counted and its time shown (F-91)
 has "spec runs the calibration-matrix tag and profile (ADR-0046 #113)" "^mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true$" "$STUB_CALLS"
-has "spec counts the matrix cells and shows its time (F-91)" "^calibration: 234 of 234 cell rows in jq-core/target/calibration.tsv, 9000000 ms$" "$tmp/out"
+has "spec counts the matrix cells and shows its time (F-91)" "^calibration: 308 of 308 cell rows in jq-core/target/calibration.tsv, 9000000 ms$" "$tmp/out"
 has "spec step 3 JMH" "java -jar bench/jmh/target/benchmarks.jar -prof gc -rf json" "$STUB_CALLS"
 # JMH matches the include regex anywhere in <class>.<method> (observed with -l, #102): only Gates reaches bench.tsv.
 gates='java -jar bench/jmh/target/benchmarks.jar -prof gc -rf json -rff .logs/spec22-jmh.json \.Gates\.'
@@ -289,8 +306,9 @@ export STUB_FAIL=calibration-matrix:8
 check "spec: the calibration matrix fails, its exit code" "$(spec 22)" 8
 hasnt "spec stops after the calibration matrix" "pitest" "$STUB_CALLS"
 unset STUB_FAIL
-export STUB_MATRIX=233
+export STUB_MATRIX=$((${matrix_cells:-0} - 1))
 check "spec: a matrix short of a cell fails (F-91)" "$(spec 22)" 1
+has "a short matrix: the count is shown" "^calibration: 307 of 308 cell rows in jq-core/target/calibration.tsv, 9000000 ms$" "$tmp/out"
 has "a short matrix: the failing step is named" "step calibration-cells failed" "$tmp/out"
 hasnt "a short matrix: PIT not reached" "pitest" "$STUB_CALLS"
 unset STUB_MATRIX

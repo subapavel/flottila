@@ -11,18 +11,19 @@ import dev.rail8.jq.query.run.RunState;
  */
 public final class StackUnits {
   /**
-   * {@code b}, the bytes per unit: the largest 512 KiB to 1 MiB slope of the matrix's {@code -Xint} and C1 cells, 189 B
-   * (C1, the wide body W, CONSERVATIVE), rounded up to 8 B: 192.
+   * {@code b}, the bytes per unit: the largest slope of the matrix's {@code -Xint} and C1 cells between two adjacent
+   * thread sizes, 189 B (C1, the wide body W, CONSERVATIVE, and the plain descent), rounded up to 8 B: 192.
    */
   static final long BYTES_PER_UNIT = 192;
 
   /**
-   * The reserve: the largest linked intercept {@code S - b_cell·(U* + D_f)}, 220 832 B ({@code -Xint}, a virtual thread,
-   * the nested drivers, OPTIMISED), plus the largest cold-linkage term, 29 988 B ({@code -Xint}, the Collect-heavy
-   * descent), rounded up to 4 KiB, plus 32 KiB for the natives: 280 KiB. It is above the guard pages
-   * plus 32 KiB.
+   * The reserve: the largest linked intercept {@code S - s_low·(U*linked + D_f)}, where {@code s_low} is the shape's
+   * slope between its two lowest platform threads, taken on those two threads and the virtual one, 118 064 B (C1, a
+   * virtual thread, the wide body W, CONSERVATIVE), plus the largest cold-linkage term, 30 996 B ({@code -Xint},
+   * 256 KiB, the Collect-heavy descent, CONSERVATIVE), rounded up to 4 KiB, plus 32 KiB for the natives: 180 KiB. It
+   * is above the guard pages plus 32 KiB.
    */
-  static final long RESERVE = 280 * 1024;
+  static final long RESERVE = 180 * 1024;
 
   /**
    * {@code T}, the starter units: the most frames the driver holds above a starter's own frames, Trampoline.run, its
