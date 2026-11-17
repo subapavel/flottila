@@ -17,22 +17,35 @@ import {
   TabTitleText,
   Title,
 } from '@patternfly/react-core';
-import { CheckCircleIcon, EditIcon, ListAltIcon, SaveIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, EditIcon, ExchangeAltIcon, ListAltIcon, SaveIcon } from '@patternfly/react-icons';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 import { describeError, type ApiClient } from '../api/client';
 import { describeRefusal, type Refusal } from '../model/command';
 import { AboutStudio } from './AboutStudio';
+import type { BrowserStateStore } from './browser-state/browser-state';
 import { DiscardDialog } from './DiscardDialog';
 import { MappingOverview } from './overview/MappingOverview';
 import { SaveConflict } from './SaveConflict';
 import { CopyTextButton } from './shared/CopyTextButton';
+import { Signature } from './signature/Signature';
 import { refreshMutation } from './shared/structure-query';
 import { selectUnsaved, type StudioTab, type WorkingCopyState, type WorkingCopyStore } from './store/working-copy';
 
 /** The tabs the studio shows, in their order, each with its title and icon. */
-const VIEWS = [['overview', 'Overview', ListAltIcon]] as const satisfies readonly (readonly [StudioTab, string, typeof ListAltIcon])[];
+const VIEWS = [
+  ['overview', 'Overview', ListAltIcon],
+  ['signature', 'Signature', ExchangeAltIcon],
+] as const satisfies readonly (readonly [StudioTab, string, typeof ListAltIcon])[];
+
+/** The key of the tab a mapping was last left on, kept per mapping as a viewer preference. */
+export const lastTabKey = (mappingId: string) => `mapping:${mappingId}:studio-tab`;
+
+/** The tab a mapping opens on: the one it was last left on when the studio shows it, else Overview. */
+export function openingTab(kept: unknown): StudioTab {
+  return VIEWS.find(([tab]) => tab === kept)?.[0] ?? 'overview';
+}
 
 /** The question asked before a mapping's tab closes: it calls `close` when the tab may close. */
 export type CloseGuard = (close: () => void) => void;
@@ -54,12 +67,42 @@ function checkIssues({ workingCopy, compileFailure, diagnostics }: WorkingCopySt
   return issues;
 }
 
+/** The keys that move between the tabs, to the index they move to from `index` of `count`. */
+function movedTo(key: string, index: number, count: number): number | undefined {
+  switch (key) {
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    case 'ArrowLeft':
+      return (index + count - 1) % count;
+    case 'ArrowRight':
+      return (index + 1) % count;
+    default:
+      return undefined;
+  }
+}
+
+/** Arrow keys, Home and End move the focus to another tab and choose it: only the active tab is in the tab order. */
+function navigateTabs(event: KeyboardEvent<HTMLElement>) {
+  const target = event.target as HTMLElement;
+  if (target.getAttribute('role') !== 'tab') return;
+  const tabs = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')];
+  const next = movedTo(event.key, tabs.indexOf(target), tabs.length);
+  if (next === undefined) return;
+  event.preventDefault();
+  tabs[next]!.focus();
+  tabs[next]!.click();
+}
+
 export interface StudioFrameProps {
   /** The mapping's id, its workspace path; its last segment is the mapping's name. */
   mappingId: string;
   api: ApiClient;
   /** The open mapping's store, whose UI slice holds the tab and edit mode. */
   store: WorkingCopyStore;
+  /** The port for viewer preferences: the tab chosen is kept there per mapping, and the Signature tab's previews. */
+  browserState: BrowserStateStore;
   /** Told after each save the service accepted. */
   onSaved?: () => void;
   /** Given the question to ask before the mapping's tab closes while it has unsaved changes, and null when it has none. */
@@ -71,13 +114,14 @@ type Discarding = { then: 'return to view mode' } | { then: 'close its tab'; clo
 
 /**
  * The Mapping studio around one open mapping: a line with the studio's tabs, the mapping's name, and Edit, or Cancel,
- * Check and Save in edit mode, then the active tab's body. The structures are refreshed once on open; Save sends
+ * Check and Save in edit mode, then the active tab's body. Arrow keys, Home and End move between the tabs; the tab
+ * chosen is kept in the browser state for the mapping's next open. The structures are refreshed once on open; Save sends
  * `If-Match` and meets a save conflict in its dialog; Cancel, or closing the mapping's tab, with unsaved changes asks
  * before it discards them; the page asks before it unloads while the working copy differs from the baseline. While
  * the studio is shown, Check and F7 check the working copy, and Ctrl+S and Cmd+S save it. A command the store
  * refuses shows why in an inline warning the author can dismiss.
  */
-export function StudioFrame({ mappingId, api, store, onSaved, guardClose }: StudioFrameProps) {
+export function StudioFrame({ mappingId, api, store, browserState, onSaved, guardClose }: StudioFrameProps) {
   const name = mappingId.slice(mappingId.lastIndexOf('/') + 1);
   const tab = useStore(store, (s) => s.tab);
   const editing = useStore(store, (s) => s.editing);
@@ -86,6 +130,14 @@ export function StudioFrame({ mappingId, api, store, onSaved, guardClose }: Stud
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const labelId = (view: StudioTab) => `${panelId}-${view}`;
+
+  const changeTab = useCallback(
+    (next: StudioTab) => {
+      store.getState().setTab(next);
+      browserState.write(lastTabKey(mappingId), next);
+    },
+    [store, browserState, mappingId],
+  );
 
   useEffect(() => {
     if (!unsaved) return undefined;
@@ -215,8 +267,9 @@ export function StudioFrame({ mappingId, api, store, onSaved, guardClose }: Stud
               <Tabs
                 isSubtab
                 activeKey={tab}
-                onSelect={(_, key) => store.getState().setTab(key as StudioTab)}
+                onSelect={(_, key) => changeTab(key as StudioTab)}
                 tabListAriaLabel="Editor views"
+                onKeyDown={navigateTabs}
               >
                 {VIEWS.map(([key, label, Icon]) => (
                   <Tab
@@ -230,6 +283,7 @@ export function StudioFrame({ mappingId, api, store, onSaved, guardClose }: Stud
                         <TabTitleText id={labelId(key)}>{label}</TabTitleText>
                       </>
                     }
+                    tabIndex={tab === key ? 0 : -1}
                     tabContentRef={panelRef}
                     tabContentId={panelId}
                   />
@@ -300,6 +354,7 @@ export function StudioFrame({ mappingId, api, store, onSaved, guardClose }: Stud
         <StackItem isFilled>
           <TabContent id={panelId} ref={panelRef} aria-labelledby={labelId(tab)}>
             {tab === 'overview' && <MappingOverview mappingId={mappingId} store={store} />}
+            {tab === 'signature' && <Signature mappingId={mappingId} api={api} store={store} browserState={browserState} />}
           </TabContent>
         </StackItem>
       </Stack>

@@ -6,21 +6,27 @@ import { Shell } from '../Shell';
 import type { ApiClient } from './api/client';
 import { fakeApiClient } from './api/fake/fake-api';
 import { mappingsScreen } from './screen';
+import type { BrowserStateStore } from './studio/browser-state/browser-state';
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 let consoleError: ReturnType<typeof vi.spyOn>;
 
+function memoryBrowserState(): BrowserStateStore {
+  const values = new Map<string, unknown>();
+  return { read: (key) => values.get(key), write: (key, value) => void values.set(key, value) };
+}
+
 function render(api: ApiClient) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  root.render(<Shell screens={[mappingsScreen(api)]} start="mappings" />);
+  root.render(<Shell screens={[mappingsScreen(api, memoryBrowserState())]} start="mappings" />);
 }
 
-// the shell's tabs; the studio's own tabs are named Overview and the like
+// the shell's tabs; the studio's own tabs are named Overview and Signature
 const shellTab = (name: string) => page.getByRole('tab', { name, exact: true });
-const shellTabs = () => page.getByRole('tab').filter({ hasNotText: 'Overview' });
+const shellTabs = () => page.getByRole('tab').filter({ hasNotText: /^(Overview|Signature)$/ });
 const row = (name: string) => page.getByRole('row').filter({ has: page.getByRole('cell', { name, exact: true }) });
 // a role query finds what is shown only: the tabs not shown are hidden
 const description = () => page.getByRole('textbox', { name: 'Description' });
@@ -68,7 +74,7 @@ describe('the Mappings screen in the shell', () => {
     expect(shellTabs().elements()).toHaveLength(3);
   });
 
-  test('a mapping just created opens in its tab in edit mode', async () => {
+  test('a mapping just created opens in its tab in edit mode, on the Signature tab', async () => {
     render(fakeApiClient());
     await page.getByRole('button', { name: 'New mapping' }).click();
     await page.getByRole('dialog', { name: 'New mapping' }).getByRole('textbox', { name: 'Name' }).fill('fresh');
@@ -77,6 +83,8 @@ describe('the Mappings screen in the shell', () => {
     await expect.element(shellTab('fresh')).toHaveAttribute('aria-selected', 'true');
     await expect.element(button('Save')).toBeDisabled();
     await expect.element(button('Cancel')).toBeVisible();
+    await expect.element(shellTab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(button('Add source message')).toBeEnabled();
   });
 
   test('closing the tab of a mapping with unsaved changes asks; Keep editing keeps it, Discard changes closes it', async () => {

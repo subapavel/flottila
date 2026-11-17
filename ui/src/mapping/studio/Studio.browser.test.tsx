@@ -6,14 +6,20 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { ApiProblem, type ApiClient } from '../api/client';
 import { fakeApiClient } from '../api/fake/fake-api';
-import { selectUnsaved } from './store/working-copy';
+import type { BrowserStateStore } from './browser-state/browser-state';
+import { selectUnsaved, type StudioTab } from './store/working-copy';
 import type { MappingModel } from '../generated/mapping-model';
 import { Studio, studioStore } from './Studio';
-import { StudioFrame } from './StudioFrame';
+import { lastTabKey, StudioFrame } from './StudioFrame';
 
 const ORDER = 'Q{urn:rail8:corpus:skeleton}Order';
 const ORDER_ID = `/${ORDER}/OrderId`;
 const NOTE = `/${ORDER}/Note`;
+
+function memoryBrowserState(): BrowserStateStore {
+  const values = new Map<string, unknown>();
+  return { read: (key) => values.get(key), write: (key, value) => void values.set(key, value) };
+}
 
 let root: Root | undefined;
 let host: HTMLElement | undefined;
@@ -32,11 +38,13 @@ function unmount() {
   root = undefined;
 }
 
-function renderStudio(api: ApiClient, mappingId: string, options: { startEditing?: boolean } = {}) {
+function renderStudio(api: ApiClient, mappingId: string, options: { browserState?: BrowserStateStore; startEditing?: boolean; openOn?: StudioTab } = {}) {
   render(
     <Studio
       mappingId={mappingId}
       api={api}
+      browserState={options.browserState ?? memoryBrowserState()}
+      openOn={options.openOn}
       startEditing={options.startEditing}
     />,
   );
@@ -48,7 +56,7 @@ async function renderFrame(api: ApiClient, mappingId: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <StudioFrame mappingId={mappingId} api={api} store={store} />
+      <StudioFrame mappingId={mappingId} api={api} store={store} browserState={memoryBrowserState()} />
     </QueryClientProvider>,
   );
   return store;
@@ -81,7 +89,7 @@ describe('the studio', () => {
     renderStudio(fakeApiClient(), 'mappings/order-id-copy');
 
     await expect.element(page.getByRole('heading', { level: 1, name: 'order-id-copy' })).toBeVisible();
-    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(1);
+    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(2);
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
     await expect.element(button('Edit')).toBeVisible();
     await expect.element(button('Save')).not.toBeInTheDocument();
@@ -444,6 +452,69 @@ describe('Ctrl+S and Cmd+S', () => {
     answer();
     await expect.element(page.getByRole('heading', { name: /Mapping order-unmapped saved/ })).toBeVisible();
     expect(saveMapping).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the tabs', () => {
+  test('a mapping opens on the tab it was last left on, a tab named to open on wins, and a kept tab not shown is Overview', async () => {
+    const browserState = memoryBrowserState();
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await tab('Signature').click();
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    unmount();
+
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    unmount();
+
+    // each mapping keeps its own tab
+    renderStudio(fakeApiClient(), 'mappings/order-unmapped', { browserState });
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    unmount();
+
+    browserState.write(lastTabKey('mappings/order-id-copy'), 'overview');
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState, openOn: 'signature' });
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    unmount();
+
+    browserState.write(lastTabKey('mappings/order-id-copy'), 'nope');
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('arrow keys, Home and End move between the tabs and choose them, only the active tab is focusable; another key does nothing', async () => {
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy');
+    await expect.element(tab('Overview')).toBeVisible();
+    await expect.element(tab('Overview')).toHaveAttribute('tabindex', '0');
+    await expect.element(tab('Signature')).toHaveAttribute('tabindex', '-1');
+    (tab('Overview').element() as HTMLElement).focus();
+
+    await userEvent.keyboard('{ArrowRight}');
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(tab('Signature')).toHaveFocus();
+    await expect.element(tab('Signature')).toHaveAttribute('tabindex', '0');
+    await expect.element(tab('Overview')).toHaveAttribute('tabindex', '-1');
+    await userEvent.keyboard('{ArrowRight}');
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{ArrowLeft}');
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{Home}');
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{End}');
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{ArrowDown}');
+    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(tab('Signature')).toHaveFocus();
+  });
+
+  test('a key on the tab bar outside a tab moves nothing', async () => {
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy');
+    const tabList = page.getByRole('tablist', { name: 'Editor views' });
+    await expect.element(tabList).toBeVisible();
+
+    tabList.element().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
   });
 });
 
