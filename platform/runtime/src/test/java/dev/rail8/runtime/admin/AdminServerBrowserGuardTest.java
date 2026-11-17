@@ -4,6 +4,9 @@ import dev.rail8.api.Runtime;
 import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
+import dev.rail8.core.flow.WorkSignals;
+import dev.rail8.core.flow.Workers;
+import dev.rail8.core.queue.InMemoryFailedMessages;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -120,7 +123,8 @@ class AdminServerBrowserGuardTest {
     /** A server on loopback with {@code token} (empty: an open loopback server) over the recording stores and the deployments. */
     int serve(Optional<String> token) throws Exception {
         AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, token), messages, dlq, rt.blobs(),
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue);
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new InMemoryFailedMessages(rows), Optional.empty(),
+                new Workers(), WorkSignals.NONE);
         int port = server.start(vertx).await(10, TimeUnit.SECONDS);
         started.add(server);
         return port;

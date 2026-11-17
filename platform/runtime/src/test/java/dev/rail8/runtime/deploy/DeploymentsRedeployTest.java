@@ -875,7 +875,7 @@ class DeploymentsRedeployTest {
     }
 
     /**
-     * A row of the at-least-once {@code audit} is in the queue — queued, leased or held — and v2 removes the flow: 422 naming it,
+     * A row of the at-least-once {@code audit} is in the queue — queued, leased, held or stopped — and v2 removes the flow: 422 naming it,
      * before anything stops; v1 keeps serving. Witness: once the row is gone the same archive deploys and removes audit.
      */
     @ParameterizedTest(name = "{0}")

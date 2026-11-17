@@ -9,11 +9,11 @@ import dev.rail8.api.Hash;
 import dev.rail8.api.Health;
 import dev.rail8.core.admission.TargetLimit;
 import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.Workers;
-import dev.rail8.core.queue.UnsettledException;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.record.Page;
@@ -40,11 +40,14 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RequestBody;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.BodyHandler;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -84,8 +87,8 @@ import java.util.function.Supplier;
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
  * pool closed by a stopping node: retryable), whether a statement on the pool was refused or a transaction's
- * acquire ({@link dev.rail8.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the same-id DLQ
- * {@code /retry}'s read and restart with a fixed text as {@code error}, a deploy's work-queue question or record write and an
+ * acquire ({@link dev.rail8.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the DLQ
+ * {@code /retry}'s read and act and {@code /cancel}'s act with a fixed text as {@code error}, a deploy's work-queue question or record write and an
  * undeploy's work-queue question or record delete with the refusal's own line (below); 500 for anything else: a store that
  * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
  * response is reset).
@@ -129,7 +132,10 @@ import java.util.function.Supplier;
  * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
  * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown);
  * built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
- * key behind it. {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
+ * key behind it. A row that stops its key — a message of an ordered flow that failed for good, parked, the rows of its key
+ * waiting behind it until an operator retries or cancels it — is not among the held rows: {@code GET /admin/work/stopped?limit&after}
+ * pages those the same way ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, stoppedAt, blocks, error|null}],
+ * next|null}}, {@code error} the parked failure's text), and {@code /release} does not release one (404). {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
  * {@code RAIL8_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
  * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
  * answering 200 {@code {seq, auditId}}, 404 for a seq unknown or not lost, 400 for a seq that is not a long or an
@@ -137,12 +143,15 @@ import java.util.function.Supplier;
  * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
  * queue these routes do not exist (404).
  *
- * <p>With a {@link Deployments} and a queue, {@code POST /admin/dlq/{id}/retry} runs a
- * message its flow's worker parked once more under its own id (a message keeps one id): the DLQ row out and the work
- * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
- * not deployed here, a work row of the message not settled yet, its ingress body no longer kept), 422 saying why (a flow
- * that is not at-least-once, a row its worker did not park, or a keyed flow's row parked before its key was kept). There is no
- * {@code /restart} route (404).
+ * <p>With a {@link FailedMessages}, the operator acts on a parked message, each act audited with the actor as {@code /discard}
+ * reads it. With a {@link Deployments} too, {@code POST /admin/dlq/{id}/retry} runs a message its flow's worker parked once more
+ * under its own id (a message keeps one id), as attempt k + 1 of the row's own bound: in place when it stops its key, else at
+ * the tail of its key; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow not deployed here, a work row of the message not
+ * settled yet or its body lost, its ingress body no longer kept), 422 saying why (a flow that is not at-least-once, a row its
+ * worker did not park, or a keyed flow's row parked before its key was kept). {@code POST /admin/dlq/{id}/cancel} ends a parked
+ * message on any node, deployed or not, and so frees its key: 200 {@code {id, auditId, cancelledAt}}, 404 (no DLQ row), 409 (a
+ * work row of the message not settled yet), 400 (a body other than none or {@code {"reason"}}), 413 (a body above
+ * {@link #CANCEL_BODY_MAX} bytes). There is no {@code /restart} route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token: what a browser sends, never the CLI.
@@ -159,11 +168,14 @@ public final class AdminServer {
     /** The header an admin request declares its actor in, for the audit row; and its length at most. */
     static final String ACTOR = "X-Rail8-Actor";
     static final int ACTOR_MAX = 128;
+    /** The largest body {@code POST /admin/dlq/{id}/cancel} reads, in bytes: a larger one is 413. */
+    static final int CANCEL_BODY_MAX = 8 * 1024;
     private static final String JSON = "application/json";
     private static final String OCTETS = "application/octet-stream";
     private static final String BEARER = "Bearer ";
     /** What the router answers itself: no route, a method the route does not take, a request it cannot read, a handler that threw. */
-    private static final Map<Integer, String> ROUTER_ERRORS = Map.of(400, "bad request", 404, "no such route", 405, "method not allowed", 500, "internal error");
+    private static final Map<Integer, String> ROUTER_ERRORS = Map.of(400, "bad request", 404, "no such route", 405, "method not allowed",
+            413, "the request body is above " + CANCEL_BODY_MAX + " bytes", 500, "internal error");
 
     /**
      * Where the API listens and the token {@code /admin/**} needs. A blank token is no token; a host that is not a loopback
@@ -271,6 +283,7 @@ public final class AdminServer {
     private final HealthProbe health;
     private final Optional<Deployments> deployments;
     private final Optional<WorkQueue> work;
+    private final Optional<FailedMessages> failed;
     private final Optional<Sampling> sampling;
     private final Workers workers;
     private final WorkSignals signals;
@@ -283,27 +296,27 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
-    /** The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work}. */
+    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no operator's acts. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
         this(config, messages, dlq, blobs, health, deployments, work, new Workers(), WorkSignals.NONE);
     }
 
     /**
-     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work},
-     * a release waking its flow in {@code workers} and announcing it through {@code signals}.
+     * The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}, a release waking its
+     * flow in {@code workers} and announcing it through {@code signals}; no operator's acts.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), workers, signals);
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes, the same-id DLQ retry
-     * and the flows' CPU, sampled when {@code sampling} is there.
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes and the flows' CPU,
+     * sampled when {@code sampling} is there; no operator's acts.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Optional<Sampling> sampling) {
@@ -312,15 +325,25 @@ public final class AdminServer {
 
     /**
      * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, Optional)}, a release waking its
-     * flow in {@code workers} and announcing it through {@code signals}: the node's.
+     * flow in {@code workers} and announcing it through {@code signals}; no operator's acts.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), sampling, workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), sampling, workers, signals);
+    }
+
+    /**
+     * The node's server: {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, Optional, Workers,
+     * WorkSignals)} and the operator's acts on a parked message over {@code failed} — the cancel, and with {@code deployments} the
+     * retry — each waking its flow in {@code workers} and announcing it through {@code signals}.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, FailedMessages failed, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, workers, signals);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+                        Optional<WorkQueue> work, Optional<FailedMessages> failed, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -328,6 +351,7 @@ public final class AdminServer {
         this.health = Objects.requireNonNull(health, "health");
         this.deployments = Objects.requireNonNull(deployments, "deployments");
         this.work = work;
+        this.failed = failed;
         this.sampling = Objects.requireNonNull(sampling, "sampling");
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
@@ -375,11 +399,16 @@ public final class AdminServer {
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
             });
             work.ifPresent(q -> {
-                deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, q))));
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
+                router.get("/admin/work/stopped").handler(offload(c -> stopped(c, q)));
                 router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
                 router.get("/admin/work/lost").handler(offload(c -> lost(c, q)));
                 router.post("/admin/work/:seq/discard").handler(offload(c -> discard(c, q, workers, signals)));
+            });
+            failed.ifPresent(f -> {
+                deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, f))));
+                // the only route that reads a body into memory: bounded, nothing written to disk
+                router.post("/admin/dlq/:id/cancel").handler(BodyHandler.create(false).setBodyLimit(CANCEL_BODY_MAX)).handler(offload(c -> cancel(c, f)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -630,6 +659,10 @@ public final class AdminServer {
         return Json.of(200, page(refusable(() -> work.held(after(ctx), limit(ctx)).await()), AdminServer::held));
     }
 
+    private static Reply stopped(RoutingContext ctx, WorkQueue work) {
+        return Json.of(200, page(refusable(() -> work.stopped(after(ctx), limit(ctx)).await()), AdminServer::stopped));
+    }
+
     /**
      * 200 {@code {seq}} for a held row, released: its flow woken here (every flow when untold) and announced to its body's node ({@code
      * *} when untold), the release committed; 404 for any other seq the queue does not release; a seq that is not a long never reaches it.
@@ -684,18 +717,20 @@ public final class AdminServer {
     }
 
     /**
-     * {@code POST /admin/dlq/{id}/retry}: the parked message runs once more under its own id,
-     * from step 1, as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its
-     * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, one
-     * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
-     * before V17, O7); nothing written for any of them; each 422 says why and names no other route. Then {@link WorkQueue#restart}: the DLQ row
-     * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, a work row of the
-     * message still there ({@link UnsettledException}: its park has not settled) 409 naming that work item, an ingress body no
-     * longer kept 409, nothing changed, nothing woken or announced. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken
-     * here and announced to every node (the row's body node claims it).
+     * {@code POST /admin/dlq/{id}/retry}: the parked message runs once more under its own id, from step 1, as attempt k + 1 of its
+     * own bound. An actor over {@link #ACTOR_MAX} characters is 400; 404 without a DLQ row; 409 when its flow is not deployed
+     * here; 422 when its flow is not at-least-once, when its worker did not park it — a row at a step other than 1, one without an
+     * {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked before V17);
+     * nothing written for any of them; each 422 says why and names no other route. Then {@link FailedMessages#retry}, audited: a
+     * message that stops its key runs in place, ahead of the rows behind it, any other at the tail of its key. The row gone
+     * meanwhile is 404, a work row of the message there and not stopped, or a stopped row whose body is lost, 409 naming that work
+     * item, an ingress body no longer kept 409; nothing changed, nothing woken or announced. 202 {@code {id, attempt: k + 1}} once
+     * it committed: the flow woken here and announced to the node of the row's body (every node when the act names none). A body
+     * sent to it is not read.
      */
-    private Reply retry(RoutingContext ctx, Deployments deployments, WorkQueue work) {
+    private Reply retry(RoutingContext ctx, Deployments deployments, FailedMessages failed) {
         String id = ctx.pathParam("id");
+        FailedMessages.Actor by = by(ctx.request());
         Optional<Parked> found = dlq.get(id).await();
         if (found.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
         Parked row = found.get();
@@ -714,18 +749,71 @@ public final class AdminServer {
         if (def.get().partitionBy().isPresent() && row.partitionKey().isEmpty()) {
             return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept"));
         }
-        boolean restarted;
+        FailedMessages.Act act;
         try {
-            restarted = work.restart(id, flow, row.partitionKey().orElse(null), k).await();
-        } catch (UnsettledException unsettled) {
-            return Json.of(409, error("message " + id + " is not restarted: its work item " + unsettled.seq() + " is not settled yet"));
+            act = failed.retry(id, flow, row.partitionKey().orElse(null), k, by).await();
         } catch (BlobNotFoundException | BodyLostException gone) {
             return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));
         }
-        if (!restarted) return Json.of(404, error("no DLQ row for message " + id + " any more"));
-        workers.wake(flow);
-        announce(signals, null, flow, "restarted message " + id);
-        return Json.of(202, new JsonObject().put("id", id).put("attempt", k + 1));
+        return switch (act) {
+            case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not restarted: its work item " + u.seq()
+                    + " is not settled yet, or its body is lost"));
+            case FailedMessages.NotParked n -> Json.of(404, error("no DLQ row for message " + id + " any more"));
+            case FailedMessages.Done done -> {
+                workers.wake(flow);
+                announce(signals, done.node().orElse(null), flow, "restarted message " + id);
+                yield Json.of(202, new JsonObject().put("id", id).put("attempt", k + 1));
+            }
+        };
+    }
+
+    /**
+     * {@code POST /admin/dlq/{id}/cancel}: the parked message ends — its DLQ row deleted and, when it stops its key, its stopped
+     * work row too, so the key's next row runs — and one audit row records it, in one transaction ({@link FailedMessages#cancel}).
+     * It reads no deployed flow: every parked message can be cancelled. The body is the reason: none, or {@code {"reason": "..."}}
+     * of 1 to {@link FailedMessages#REASON_MAX} characters after stripping and nothing else, else 400; above
+     * {@link #CANCEL_BODY_MAX} bytes 413; an actor over {@link #ACTOR_MAX} characters 400 — each before anything is read. 404
+     * without a DLQ row; 409 while a work row of the message is there and not stopped, naming it; nothing written. 200
+     * {@code {id, auditId, cancelledAt}} once it committed: the flow woken here and announced to the node of its key's next row
+     * when there is one.
+     */
+    private Reply cancel(RoutingContext ctx, FailedMessages failed) {
+        String id = ctx.pathParam("id");
+        FailedMessages.Actor by = by(ctx.request());
+        Optional<String> reason = reason(ctx.body());
+        FailedMessages.Act act = failed.cancel(id, by, reason).await();
+        return switch (act) {
+            case FailedMessages.Unsettled u -> Json.of(409, error("message " + id + " is not cancelled: its work item " + u.seq() + " is not settled yet"));
+            case FailedMessages.NotParked n -> Json.of(404, error("no DLQ row for message " + id));
+            case FailedMessages.Done done -> {
+                FailedMessages.Event e = done.event();
+                workers.wake(e.flow());
+                done.node().ifPresent(node -> announce(signals, node, e.flow(), "the key's next row after cancelled message " + id));
+                yield Json.of(200, new JsonObject().put("id", id).put("auditId", e.id()).put("cancelledAt", e.at().toString()));
+            }
+        };
+    }
+
+    /**
+     * A cancel's reason: no body is none; any other body is {@code {"reason": "<text>"}} with no other member, the text 1 to
+     * {@link FailedMessages#REASON_MAX} characters after stripping, else a 400 — an empty object and a null reason among them.
+     */
+    private static Optional<String> reason(RequestBody body) {
+        if (body.isEmpty()) return Optional.empty();
+        String shape = "the body is none or {\"reason\": \"<1 to " + FailedMessages.REASON_MAX + " characters>\"}";
+        Object json;
+        try {
+            json = io.vertx.core.json.Json.decodeValue(body.buffer());
+        } catch (DecodeException notJson) {
+            throw new Refused(shape + ": it is not JSON");
+        }
+        if (!(json instanceof JsonObject o) || o.size() != 1 || !(o.getValue("reason") instanceof String text)) throw new Refused(shape);
+        return refusable(() -> FailedMessages.reason(Optional.of(text)));
+    }
+
+    /** The actor of an act: {@link #actor} and the client's address. */
+    private static FailedMessages.Actor by(HttpServerRequest req) {
+        return new FailedMessages.Actor(actor(req), req.remoteAddress().hostAddress());
     }
 
     /** The {@code attempt} parameter: empty when missing, else an int of at least 1, else (not an int, below 1) a 400. */
@@ -907,6 +995,20 @@ public final class AdminServer {
                 .put("attempts", i.attempts())
                 .put("heldAt", h.heldAt().toString())
                 .put("blocks", h.blocks());
+    }
+
+    private static JsonObject stopped(WorkQueue.Stopped s) {
+        WorkQueue.Item i = s.item();
+        return new JsonObject()
+                .put("seq", i.seq())
+                .put("messageId", i.messageId())
+                .put("flow", i.flow())
+                .put("step", i.step())
+                .put("partitionKey", i.partitionKey())
+                .put("attempts", i.attempts())
+                .put("stoppedAt", s.stoppedAt().toString())
+                .put("blocks", s.blocks())
+                .put("error", s.error().orElse(null));
     }
 
     private static JsonObject lost(WorkQueue.Lost l) {

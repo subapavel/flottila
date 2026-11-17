@@ -56,11 +56,11 @@ class SchemasTest {
     }
 
     /**
-     * FIX-143 O1 (F-32): a keyed flow states its failure behaviour, {@code onFailure}, one of {@code park} and {@code block}; the
-     * schema admits both (core refuses {@code block} until FIX-141) and nothing else, at the key's own path.
+     * A keyed flow states nothing about failures: it always stops behind a message that failed for good. A flow that still sets
+     * {@code onFailure}, to any value, is refused at the key's own path.
      */
     @Test
-    void aKeyedFlowStatesItsFailureBehaviourAsParkOrBlock() {
+    void aFlowThatSetsOnFailureIsRefusedAtTheKey() {
         String flow = """
                 schemaVersion: 1
                 kind: flow
@@ -70,18 +70,16 @@ class SchemasTest {
                 delivery: { mode: at-least-once }
                 limits: { maxBodyBytes: 1024 }
                 partitionBy: orderId
-                onFailure: %s
+                %s
                 steps:
                   - { type: extractKey, name: key, language: header, key: orderId, xpath: x-order }
                   - { type: to, name: out, endpoint: echo }
                 """;
-        for (String value : List.of("park", "block")) {
-            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml(flow.formatted(value)));
-            assertTrue(r.valid(), value + ": " + r);
-        }
-        for (String value : List.of("stop", "Park", "\"\"")) {
-            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml(flow.formatted(value)));
-            assertFalse(r.valid(), value + " is no failure behaviour");
+        Schemas.Report keyed = Schemas.FLOW.validate(Documents.yaml(flow.formatted("")));
+        assertTrue(keyed.valid(), "a keyed flow without onFailure: " + keyed);
+        for (String value : List.of("park", "block", "stop")) {
+            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml(flow.formatted("onFailure: " + value)));
+            assertFalse(r.valid(), value + ": onFailure is gone");
             assertTrue(r.problems().stream().anyMatch(p -> p.path().equals("/onFailure")), value + ": refused at /onFailure: " + r);
         }
     }

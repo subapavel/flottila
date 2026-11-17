@@ -82,7 +82,8 @@ class FlowWorkerLifecycleTest {
             return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
-        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return delegate.restart(messageId, flow, partitionKey, attempt); }
+        @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return delegate.stop(seq, attempts, failure); }
+        @Override public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return delegate.stopped(after, limit); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<dev.rail8.core.record.Page<Held>> held(Optional<String> after, int limit) { return delegate.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return delegate.release(seq); }

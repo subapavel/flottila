@@ -58,6 +58,10 @@ public final class Package {
     /** A dependency reference's prefix: a package name, then a colon, before the first {@code /}. */
     private static final Pattern DEPENDENCY = Pattern.compile("([a-z][a-z0-9-]{0,63}):");
     private static final Set<Schemas> ARTIFACTS = Set.of(Schemas.ENDPOINT, Schemas.FLOW, Schemas.TEST);
+
+    /** What a flow that still sets {@code onFailure} is told: the choice of what a failure does to an ordered flow is gone. */
+    static final String ON_FAILURE_GONE = "onFailure is gone: an ordered flow (partitionBy) always stops behind a message that failed"
+            + " for good, until an operator retries or cancels it; remove onFailure";
     /** A mock behaviour's keys that feed a consumer: its fixtures, polled at the consumer's start. */
     private static final List<String> FEEDS = List.of("files", "messages");
     /** The {@code expect} keys that read the answer to a send, each as its problem line names it. */
@@ -445,7 +449,8 @@ public final class Package {
     /**
      * Everything wrong with the package, empty when nothing is: first the layout — a folder name that is no slug, a folder more than
      * four deep (one line on the shallowest) — in path order; then every document against its kind's schema, each problem as
-     * {@code <file> at '<JSON pointer>': <message>} with the file relative to the package directory; then a {@code package.yaml} or
+     * {@code <file> at '<JSON pointer>': <message>} with the file relative to the package directory (a flow that still sets
+     * {@code onFailure} is told {@link #ON_FAILURE_GONE} there, not that the key is unknown); then a {@code package.yaml} or
      * {@code folder.yaml} out of its place and a YAML of no known kind that no flow or test names ({@code <file> at '/kind': …});
      * then each endpoint or flow id, or folder namespace, that a second file declares again (only the later file is kept); then
      * {@link #crossCheck()}.
@@ -454,7 +459,8 @@ public final class Package {
         List<String> problems = new ArrayList<>(layout);
         for (Read r : documents) {
             for (Schemas.Problem p : r.report().problems()) {
-                problems.add(r.path() + " at '" + p.path() + "': " + p.message());
+                boolean gone = r.schema() == Schemas.FLOW && p.path().equals("/onFailure");
+                problems.add(r.path() + " at '" + p.path() + "': " + (gone ? ON_FAILURE_GONE : p.message()));
             }
         }
         problems.addAll(misplaced);

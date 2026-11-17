@@ -1,5 +1,9 @@
 package dev.rail8.core.queue;
 
+import dev.rail8.api.Envelope;
+import dev.rail8.core.dlq.FailedMessages;
+import dev.rail8.core.dlq.InMemoryDlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.node.InMemoryMembership;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
@@ -11,14 +15,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.TreeMap;
 
 /**
  * In-memory {@link WorkQueue} with the same eligibility rule as the Postgres claim (not held, due, oldest row of its
  * key, no live lease on the key; another node's row only once its holder has no live row in the
  * {@link InMemoryMembership}, a restarted node's own rows only after its old lease's end), the same attempts, doubts and
- * fencing, and leases timed by an injected {@link Clock}. Single process only and meant for tests: state whose loss
- * loses messages belongs in Postgres.
+ * fencing, and leases timed by an injected {@link Clock}. Its parked rows live in an {@link InMemoryDlq}, so a
+ * {@linkplain #stop stop} writes the parked row and holds the work row in one step, as the Postgres queue does in one
+ * statement; {@link InMemoryFailedMessages} retries and cancels over the two. Single process only and meant for tests:
+ * state whose loss loses messages belongs in Postgres.
  *
  * @since 0.1
  */
@@ -30,24 +37,38 @@ public final class InMemoryWorkQueue implements WorkQueue {
         long lockedEpoch;     // the holder's epoch in the membership at the hand-out
         Instant lockedUntil;
         Instant heldAt;       // null: not held
+        Instant stoppedAt;    // null: not stopped; else held too
         Instant availableAt;  // null: due; else not claimed before this instant (a deferred row)
         Row(Item item) { this.item = item; }
     }
 
     private final Clock clock;
     private final InMemoryMembership members;
+    private final InMemoryDlq dlq;
     private final TreeMap<Long, Row> rows = new TreeMap<>();
     private long nextSeq = 1;
+    private long nextAudit = 1;
 
-    /** A queue whose holders are members of none: every holder counts as gone once its row's lease ran out. */
+    /** A queue whose holders are members of none (every holder counts as gone once its row's lease ran out), parking in a DLQ of its own. */
     public InMemoryWorkQueue(Clock clock) {
-        this(clock, new InMemoryMembership(clock));
+        this(clock, new InMemoryDlq());
     }
 
-    /** A queue whose holders' liveness is their row in {@code members} (a worker id is its node id). */
+    /** A queue whose holders are members of none, parking in {@code dlq}: the DLQ its flows' unkeyed parks write too. */
+    public InMemoryWorkQueue(Clock clock, InMemoryDlq dlq) {
+        this(clock, new InMemoryMembership(clock), dlq);
+    }
+
+    /** A queue whose holders' liveness is their row in {@code members} (a worker id is its node id), parking in a DLQ of its own. */
     public InMemoryWorkQueue(Clock clock, InMemoryMembership members) {
+        this(clock, members, new InMemoryDlq());
+    }
+
+    /** A queue whose holders' liveness is their row in {@code members}, parking in {@code dlq}. */
+    public InMemoryWorkQueue(Clock clock, InMemoryMembership members, InMemoryDlq dlq) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.members = Objects.requireNonNull(members, "members");
+        this.dlq = Objects.requireNonNull(dlq, "dlq");
     }
 
     @Override public synchronized Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
@@ -120,24 +141,6 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
-    /**
-     * Appends the row whatever was parked, since this queue has no dead-letter table (the Postgres one deletes its
-     * row in the same transaction), unless a row of {@code messageId} in {@code flow} is still there, held or not, whatever its key: then {@link UnsettledException}
-     * naming the oldest such row, nothing appended. The check and the append are one step under this queue's monitor.
-     */
-    @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-        Objects.requireNonNull(messageId, "messageId");
-        Objects.requireNonNull(flow, "flow");
-        for (Row r : rows.values()) {   // seq order: the first match is the oldest
-            if (r.item.messageId().equals(messageId) && r.item.flow().equals(flow)) {
-                return Future.failedFuture(new UnsettledException(messageId, r.item.seq()));
-            }
-        }
-        long seq = nextSeq++;
-        rows.put(seq, new Row(new Item(seq, messageId, flow, 1, partitionKey, attempt, 0, attempt + 1)));
-        return Future.succeededFuture(true);
-    }
-
     @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
         Row r = rows.get(seq);
         if (!current(r, attempts)) return Future.succeededFuture(false);
@@ -145,15 +148,43 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
-    /** Seq order over every flow; the cursor is the last seq handed out, as in the Postgres queue. */
+    /** The parked row into the DLQ (the first park wins) and the work row held and stopped, under this queue's monitor. */
+    @Override public synchronized Future<Boolean> stop(long seq, int attempts, Parked failure) {
+        Objects.requireNonNull(failure, "failure");
+        Row r = rows.get(seq);
+        if (!current(r, attempts) || r.item.partitionKey() == null || !r.item.messageId().equals(failure.messageId()) || !r.item.flow().equals(failure.flow())) {
+            return Future.succeededFuture(false);
+        }
+        dlq.park(failure);
+        r.heldAt = clock.instant();
+        r.stoppedAt = r.heldAt;
+        return Future.succeededFuture(true);
+    }
+
+    /** Seq order over every flow; the cursor is the last seq handed out, as in the Postgres queue. A stopped row is not listed. */
     @Override public synchronized Future<Page<Held>> held(Optional<String> after, int limit) {
         Page.requireLimit(limit);
         long from = after.map(InMemoryWorkQueue::seqOf).orElse(Long.MIN_VALUE);
         List<Held> page = new ArrayList<>();
         for (Row r : rows.tailMap(from, false).values()) {
-            if (r.heldAt == null) continue;
-            if (page.size() == limit) return Future.succeededFuture(new Page<>(page, Optional.of(cursorOf(page.getLast()))));
+            if (r.heldAt == null || r.stoppedAt != null) continue;
+            if (page.size() == limit) return Future.succeededFuture(new Page<>(page, Optional.of(cursorOf(page.getLast().item()))));
             page.add(new Held(r.item, r.heldAt));
+        }
+        return Future.succeededFuture(new Page<>(page, Optional.empty()));
+    }
+
+    /** Seq order over every flow, the cursor a seq as for {@link #held}; each with the rows of its key behind it and its DLQ row's error. */
+    @Override public synchronized Future<Page<Stopped>> stopped(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        long from = after.map(InMemoryWorkQueue::seqOf).orElse(Long.MIN_VALUE);
+        List<Stopped> page = new ArrayList<>();
+        for (Row r : rows.tailMap(from, false).values()) {
+            if (r.stoppedAt == null) continue;
+            if (page.size() == limit) return Future.succeededFuture(new Page<>(page, Optional.of(cursorOf(page.getLast().item()))));
+            long blocks = rows.tailMap(r.item.seq(), false).values().stream()
+                    .filter(o -> o.item.flow().equals(r.item.flow()) && r.item.partitionKey().equals(o.item.partitionKey())).count();
+            page.add(new Stopped(r.item, r.stoppedAt, blocks, parked(r.item.messageId()).map(Parked::error)));
         }
         return Future.succeededFuture(new Page<>(page, Optional.empty()));
     }
@@ -165,7 +196,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
     /** The released row's flow; no body node: this queue holds no bodies. */
     @Override public synchronized Future<Optional<Released>> releaseRow(long seq) {
         Row r = rows.get(seq);
-        if (r == null || r.heldAt == null) return Future.succeededFuture(Optional.empty());
+        if (r == null || r.heldAt == null || r.stoppedAt != null) return Future.succeededFuture(Optional.empty());
         r.heldAt = null;
         r.lockedBy = null;      // the holder cleared with the lease: the next hand-out is in no doubt
         r.lockedUntil = null;
@@ -180,6 +211,72 @@ public final class InMemoryWorkQueue implements WorkQueue {
     /** Rows currently queued (leased, held or neither). */
     public synchronized int size() { return rows.size(); }
 
+    /**
+     * The rows that can still run without an operator: every row but a held one (a stopped one among them) and the rows of its
+     * key behind it.
+     */
+    public synchronized int moving() {
+        int moving = 0;
+        for (Row r : rows.values()) if (!waits(r)) moving++;
+        return moving;
+    }
+
+    /**
+     * {@link FailedMessages#retry} under this queue's monitor: the parked row in the DLQ, the stopped row resumed in place or a
+     * new row at the tail of its key (no body is checked: this queue holds none), one event.
+     */
+    synchronized FailedMessages.Act retry(String messageId, String flow, String partitionKey, int attempt, FailedMessages.Actor by) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(flow, "flow");
+        Objects.requireNonNull(by, "by");
+        Optional<Parked> parked = parked(messageId).filter(p -> p.flow().equals(flow) && p.step() == 1
+                && Integer.valueOf(attempt).equals(p.props().asMap().get(Envelope.ATTEMPT.name())));
+        if (parked.isEmpty()) return FailedMessages.NotParked.INSTANCE;
+        Row mine = null;
+        for (Row r : rows.values()) {   // seq order: the first match is the oldest
+            if (!r.item.messageId().equals(messageId) || !r.item.flow().equals(flow)) continue;
+            if (r.stoppedAt == null || mine != null) return new FailedMessages.Unsettled(mine != null ? mine.item.seq() : r.item.seq());
+            mine = r;
+        }
+        if (mine != null) {   // in place: the same seq, still the oldest of its key, handed out next in no doubt
+            Item i = mine.item;
+            mine.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts(), i.doubts(), i.attempts() + 1);
+            mine.heldAt = null;
+            mine.stoppedAt = null;
+            mine.lockedBy = null;
+            mine.lockedUntil = null;
+            mine.availableAt = null;
+        } else {
+            long seq = nextSeq++;
+            rows.put(seq, new Row(new Item(seq, messageId, flow, 1, partitionKey, attempt, 0, attempt + 1)));
+        }
+        dlq.remove(messageId);
+        FailedMessages.Event event = new FailedMessages.Event(nextAudit++, clock.instant(), messageId, flow, by.name(), FailedMessages.Kind.RETRY,
+                OptionalInt.of(attempt + 1), Optional.empty(), Optional.empty());
+        return new FailedMessages.Done(event, Optional.empty());
+    }
+
+    /** {@link FailedMessages#cancel} under this queue's monitor: the parked row out of the DLQ with the stopped row, if any, one event. */
+    synchronized FailedMessages.Act cancel(String messageId, FailedMessages.Actor by, Optional<String> reason) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(by, "by");
+        Optional<String> given = FailedMessages.reason(reason);
+        Optional<Parked> parked = parked(messageId);
+        if (parked.isEmpty()) return FailedMessages.NotParked.INSTANCE;
+        String flow = parked.get().flow();
+        List<Row> stopped = new ArrayList<>();
+        for (Row r : rows.values()) {
+            if (!r.item.messageId().equals(messageId) || !r.item.flow().equals(flow)) continue;
+            if (r.stoppedAt == null) return new FailedMessages.Unsettled(r.item.seq());
+            stopped.add(r);
+        }
+        stopped.forEach(r -> rows.remove(r.item.seq()));
+        dlq.remove(messageId);
+        FailedMessages.Event event = new FailedMessages.Event(nextAudit++, clock.instant(), messageId, flow, by.name(), FailedMessages.Kind.CANCEL,
+                OptionalInt.empty(), given, Optional.of(FailedMessages.cut(parked.get().error())));
+        return new FailedMessages.Done(event, Optional.empty());
+    }
+
     /** The worker holding a live lease on {@code seq}, if any. */
     public synchronized Optional<String> leaseHolder(long seq) {
         Row r = rows.get(seq);
@@ -189,6 +286,22 @@ public final class InMemoryWorkQueue implements WorkQueue {
     /** All rows in seq order (tests). */
     public synchronized List<Item> snapshot() {
         return rows.values().stream().map(r -> r.item).toList();
+    }
+
+    /** The DLQ row of {@code messageId}: the in-memory DLQ answers at once. */
+    private Optional<Parked> parked(String messageId) {
+        return dlq.get(messageId).result();
+    }
+
+    /** {@code r} is held, or a held row of its key in its flow is older: it cannot run until an operator acts. */
+    private boolean waits(Row r) {
+        if (r.heldAt != null) return true;
+        String key = r.item.partitionKey();
+        if (key == null) return false;
+        for (Row other : rows.headMap(r.item.seq(), false).values()) {
+            if (other.heldAt != null && other.item.flow().equals(r.item.flow()) && key.equals(other.item.partitionKey())) return true;
+        }
+        return false;
     }
 
     /** Deferred past {@code now}. */
@@ -224,8 +337,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     /** The cursor after {@code last}: its seq. */
-    private static String cursorOf(Held last) {
-        return Page.cursor(Long.toString(last.item().seq()));
+    private static String cursorOf(Item last) {
+        return Page.cursor(Long.toString(last.seq()));
     }
 
     /** The seq inside a cursor; {@link IllegalArgumentException} (a {@link NumberFormatException} included) when it holds none. */

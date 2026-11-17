@@ -1,5 +1,6 @@
 package dev.rail8.sim;
 
+import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.queue.WorkQueue.Item;
@@ -31,6 +32,6 @@ class ReorderingFastPathTest {
     void theFastPathTakesTheNewestDueRowOfTheKeyAndNothingElseMoves() {
         FakeClock clock = FakeClock.at(Instant.parse("2026-11-03T10:00:00Z"));
         assertEquals(List.of("m-1", "m-2", "0", "m-3"), script(new InMemoryWorkQueue(clock)), "the in-memory queue's order");
-        assertEquals(List.of("m-1", "m-3", "0", "m-2"), script(new ReorderingFastPath.NewestFirstQueue(clock)), "the variant's order");
+        assertEquals(List.of("m-1", "m-3", "0", "m-2"), script(new ReorderingFastPath.NewestFirstQueue(clock, new InMemoryDlq())), "the variant's order");
     }
 }

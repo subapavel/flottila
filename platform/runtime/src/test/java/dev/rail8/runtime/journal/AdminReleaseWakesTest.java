@@ -121,7 +121,8 @@ class AdminReleaseWakesTest {
         }
         @Override public io.vertx.core.Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
         @Override public io.vertx.core.Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
-        @Override public io.vertx.core.Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return rows.restart(messageId, flow, partitionKey, attempt); }
+        @Override public io.vertx.core.Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return rows.stop(seq, attempts, failure); }
+        @Override public io.vertx.core.Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return rows.stopped(after, limit); }
         @Override public io.vertx.core.Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public io.vertx.core.Future<dev.rail8.core.record.Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public io.vertx.core.Future<Boolean> release(long seq) { return rows.release(seq); }

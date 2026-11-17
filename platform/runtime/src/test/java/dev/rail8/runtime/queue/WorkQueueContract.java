@@ -1,7 +1,9 @@
 package dev.rail8.runtime.queue;
 
-import dev.rail8.core.queue.UnsettledException;
+import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.WorkQueue;
+import dev.rail8.core.record.Page;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -13,9 +15,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -34,13 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the caller no longer holds it, nothing changed. A deferred row still heads its key; its next hand-out counts one more attempt and
  * no doubt.
  *
- * <p>CORE-14b P8 (D-135): {@code Future<Boolean> WorkQueue.restart(String messageId, String flow, String partitionKey, int attempt)} and
- * {@code int WorkQueue.Item.maxAttempts()} (0 = the flow's bound; Postgres: V17 {@code work.max_attempts}, null = 0). The Postgres
- * queue restarts only a message with a DLQ row, deleting it in the same transaction ({@code DlqRestartIT}).
- *
- * <p>FIX-275 (F-57, D-162 (5)): a restart while a work row of the id and the flow is there — with the key when one is given, by id and
- * flow only when none is — fails {@code dev.rail8.core.queue.UnsettledException} ({@code extends RuntimeException}, {@code String
- * messageId()}, {@code long seq()}: that row's) and writes nothing, on every queue.
+ * <p>{@code Future<Boolean> WorkQueue.stop(long seq, int attempts, Parked failure)}: the row's current holder parks a keyed message
+ * and holds its row, both or neither; {@code stopped(after, limit)} lists such rows. What an operator does with them is
+ * {@code FailedMessagesContract}'s.
  */
 @Timeout(60)
 public abstract class WorkQueueContract {
@@ -61,11 +56,13 @@ public abstract class WorkQueueContract {
     protected abstract void passTime(Duration d);
 
     /**
-     * CORE-14b: {@code messageId} of {@code flow} is parked by its worker after {@code attempt} attempts — Postgres: its DLQ row and its
-     * ingress body's kept ref on {@link #NODE} ({@link ParkedRows}), which the Postgres restart deletes and copies; the in-memory queue
-     * has no DLQ: nothing.
+     * {@code messageId}'s ingress body is kept on {@link #NODE} — Postgres: its {@code body_refs} row ({@link ParkedRows#keepRef}),
+     * without which a park is refused; the in-memory queue keeps no bodies: nothing.
      */
-    protected abstract void parked(String messageId, String flow, int attempt);
+    protected abstract void kept(String messageId);
+
+    /** The DLQ the queue's stop parks in. */
+    protected abstract Dlq dlq();
 
     protected WorkQueue queue;
 
@@ -258,143 +255,113 @@ public abstract class WorkQueueContract {
         assertEquals(1, l1Again.doubts(), "its doubt kept, none added");
     }
 
-    // --- CORE-14b P8: restart
+    // --- a stop: the park of a keyed message holds its key
 
-    /**
-     * {@code restart(id, flow, key, k)} of a message parked after k attempts appends its row at step 1, due at once and unleased, as
-     * handed out k times with its own bound k + 1: its next hand-out is attempt k + 1, maxAttempts k + 1, no doubt; a takeover after
-     * that hand-out is attempt k + 2, past its bound (the worker parks it unsent). A plain row's maxAttempts is 0: the flow's bound.
-     */
-    @Test
-    void restartedRowRunsOnceThenExhausted() {
-        await(queue.enqueue("p1", "t", 1, null));
-        parked("r1", "t", 3);
-        assertTrue(await(queue.restart("r1", "t", null, 3)), "the parked message is restarted");
+    /** {@code id}'s failure as its worker parks it after {@code attempt} hand-outs, under {@code key}. */
+    static Parked failure(String id, String flow, int attempt, String key) {
+        return ParkedRows.byTheWorker(id, flow, attempt, Optional.ofNullable(key));
+    }
 
-        List<WorkQueue.Item> taken = await(queue.claim(NODE, "t", 10, LEASE));
-        assertEquals(List.of("p1", "r1"), taken.stream().map(WorkQueue.Item::messageId).toList(), "both due at once, in seq order");
-        WorkQueue.Item plain = taken.get(0);
-        WorkQueue.Item once = taken.get(1);
-        assertEquals(List.of(1, 0), List.of(plain.attempts(), plain.maxAttempts()), "a plain row: no bound of its own (0 = the flow's)");
-        assertEquals(1, once.step(), "restarted at step 1");
-        assertEquals(List.of(4, 4, 0), List.of(once.attempts(), once.maxAttempts(), once.doubts()),
-                "handed out once more as attempt k + 1 = 4 of its bound 4, in no doubt");
-        assertTrue(await(queue.complete(plain.seq(), 1)), "fixture: p1 done");
-
-        expireLeases();
-        WorkQueue.Item again = claimedOne("n2", "t");
-        assertEquals(once.seq(), again.seq(), "the same row");
-        assertEquals(List.of(5, 4, 1), List.of(again.attempts(), again.maxAttempts(), again.doubts()),
-                "its takeover: attempt 5, past its bound 4 — exhausted —, in doubt");
+    static List<String> ids(List<WorkQueue.Item> items) {
+        return items.stream().map(WorkQueue.Item::messageId).toList();
     }
 
     /**
-     * O7: a keyed restart enqueues under the kept key at the tail of that key — a new seq behind the key's rows queued meanwhile —
-     * and is handed out only once they are done, still keyed, as attempt k + 1 of its bound k + 1.
+     * {@code stop(seq, attempts, failure)} by the row's holder parks the message and holds its row: the row stays the oldest of its
+     * key, so the key's later rows wait while other keys run; it is not claimed, renewed, deferred, completed, released or stopped
+     * again, is not among the held rows and is listed as stopped with the rows it blocks and the parked failure; its flow has items.
      */
     @Test
-    void aKeyedRestartJoinsTheTailOfItsKey() {
+    void aStopParksTheMessageAndHoldsItsKey() {
         await(queue.enqueue("k1", "t", 1, "K"));
         WorkQueue.Item k1 = claimedOne(NODE, "t");
         await(queue.enqueue("k2", "t", 1, "K"));
-        parked("r1", "t", 1);
-        assertTrue(await(queue.restart("r1", "t", "K", 1)), "the parked message is restarted under its key");
+        await(queue.enqueue("k3", "t", 1, "K"));
+        await(queue.enqueue("o1", "t", 1, "O"));
+        kept("k1");
 
-        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "K is busy with k1: nothing of K, the restart included");
-        assertTrue(await(queue.complete(k1.seq(), k1.attempts())), "fixture: k1 done");
-        WorkQueue.Item k2 = claimedOne("n2", "t");
-        assertEquals("k2", k2.messageId(), "k2, queued before the restart, goes first: the restart joined the tail of K");
-        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "the restart waits behind k2");
-        assertTrue(await(queue.complete(k2.seq(), k2.attempts())), "fixture: k2 done");
+        assertTrue(await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "t", k1.attempts(), "K"))), "its holder stops k1");
+        Parked parked = await(dlq().get("k1")).orElseThrow(() -> new AssertionError("k1 is parked"));
+        assertEquals(List.of("t", 1, Optional.of("K")), List.of(parked.flow(), parked.step(), parked.partitionKey()), "as its worker parked it");
 
-        WorkQueue.Item r1 = claimedOne("n2", "t");
-        assertEquals("r1", r1.messageId());
-        assertTrue(r1.seq() > k2.seq(), "a new seq behind k2: " + r1.seq() + " vs " + k2.seq());
-        assertEquals("K", r1.partitionKey(), "it keeps its key");
-        assertEquals(List.of(2, 2), List.of(r1.attempts(), r1.maxAttempts()), "attempt k + 1 = 2 of its bound 2");
-    }
+        expireLeases();
+        assertEquals(List.of("o1"), ids(await(queue.claim("n2", "t", 10, LEASE))), "K waits behind k1, never claimed; key O runs");
+        assertFalse(await(queue.renew(k1.seq(), k1.attempts(), LEASE)), "a stopped row is not renewed");
+        assertFalse(await(queue.defer(k1.seq(), k1.attempts(), Duration.ofSeconds(1))), "nor deferred");
+        assertFalse(await(queue.complete(k1.seq(), k1.attempts())), "nor completed");
+        assertFalse(await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "t", k1.attempts(), "K"))), "nor stopped again");
+        assertFalse(await(queue.release(k1.seq())), "nor released: only an operator's retry or cancel ends a stop");
+        assertEquals(List.of(), await(queue.held(Optional.empty(), 10)).items(), "not among the held rows");
+        assertTrue(await(queue.hasItems("t")), "its flow has items");
 
-    // --- FIX-275 (F-57, D-162 (5)): a restart beside a work row of its id
-
-    /** {@code restart} fails as unsettled: its refusal. */
-    static UnsettledException refusedAsUnsettled(io.vertx.core.Future<Boolean> restart, String what) {
-        Throwable failed = assertThrows(Throwable.class, () -> restart.await(20, TimeUnit.SECONDS), what + ": refused, not restarted");
-        return assertInstanceOf(UnsettledException.class, failed, what + ": refused as unsettled: " + failed);
-    }
-
-    static List<Long> seqs(List<WorkQueue.Item> items) {
-        return items.stream().map(WorkQueue.Item::seq).toList();
+        Page<WorkQueue.Stopped> page = await(queue.stopped(Optional.empty(), 10));
+        assertEquals(1, page.items().size(), "one stopped row: " + page.items());
+        WorkQueue.Stopped stopped = page.items().get(0);
+        assertEquals(k1, stopped.item(), "k1 as handed out");
+        assertEquals(2, stopped.blocks(), "k2 and k3 wait behind it; o1 is another key's");
+        assertEquals(Optional.of(parked.error()), stopped.error(), "the parked failure");
+        assertEquals(Optional.empty(), page.next(), "the last page");
     }
 
     /**
-     * FIX-275: {@code restart(id, flow, key, k)} while a work row of {@code id} and {@code flow} is there — the park's settle has not
-     * landed, its row still leased — fails {@link UnsettledException} naming the message and that row's seq, and writes nothing: the
-     * id keeps its one row, and (Postgres) its DLQ row, which the restart finds once that row settled. A row of the id in another
-     * flow refuses nothing.
+     * A stop writes nothing — no park, no hold — and answers false unless the row's current holder stops a keyed row with a failure
+     * of that row's message and flow: another token, an unkeyed row, another message's or another flow's failure.
      */
     @Test
-    void aRestartBesideAWorkRowOfItsIdIsRefusedAsUnsettledAndWritesNothing() {
-        await(queue.enqueue("r1", "t", 1, null));
-        WorkQueue.Item w1 = claimedOne(NODE, "t");
-        parked("r1", "t", 1);
+    void aStopWritesNothingUnlessItsHolderStopsAKeyedRowWithItsOwnFailure() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+        await(queue.enqueue("u1", "t", 1, null));
+        WorkQueue.Item u1 = claimedOne(NODE, "t");
+        kept("k1");
+        kept("u1");
+        kept("other");
 
-        UnsettledException refused = refusedAsUnsettled(queue.restart("r1", "t", null, 1), "a restart beside W1");
-        assertEquals("r1", refused.messageId(), "it names the message");
-        assertEquals(w1.seq(), refused.seq(), "it names the unsettled row");
-        expireLeases();
-        List<WorkQueue.Item> again = await(queue.claim(NODE, "t", 10, LEASE));
-        assertEquals(List.of(w1.seq()), seqs(again), "nothing written: the id's one row, W1, and no restarted row beside it");
-        assertTrue(await(queue.complete(w1.seq(), again.get(0).attempts())), "fixture: W1 settles");
+        assertFalse(await(queue.stop(k1.seq(), k1.attempts() + 1, failure("k1", "t", k1.attempts(), "K"))), "another token: stale");
+        assertFalse(await(queue.stop(u1.seq(), u1.attempts(), failure("u1", "t", u1.attempts(), null))), "an unkeyed row stops no key");
+        assertFalse(await(queue.stop(k1.seq(), k1.attempts(), failure("other", "t", k1.attempts(), "K"))), "another message's failure");
+        assertFalse(await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "g", k1.attempts(), "K"))), "another flow's failure");
 
-        await(queue.enqueue("r1", "u", 1, null));
-        assertTrue(await(queue.restart("r1", "t", null, 1)), "no row of r1 in flow t left (one in flow u): restarted — Postgres: its DLQ row was kept");
-        List<WorkQueue.Item> restarted = await(queue.claim(NODE, "t", 10, LEASE));
-        assertEquals(1, restarted.size(), "one row: the restart's: " + restarted);
-        assertEquals(List.of(2, 2), List.of(restarted.get(0).attempts(), restarted.get(0).maxAttempts()), "attempt k + 1 = 2 of its bound 2");
+        for (String id : List.of("k1", "u1", "other")) assertEquals(Optional.empty(), await(dlq().get(id)), "nothing parked: " + id);
+        assertEquals(List.of(), await(queue.stopped(Optional.empty(), 10)).items(), "nothing stopped");
+        assertTrue(await(queue.complete(k1.seq(), k1.attempts())), "k1 is still its holder's");
+        assertTrue(await(queue.complete(u1.seq(), u1.attempts())), "u1 too");
     }
 
-    /**
-     * FIX-275: given no key — a DLQ row parked before its key was kept (V17) — the restart probes by id and flow only, never for a row
-     * without a key: beside a keyed work row of the id, whose lease ran out (its holder gone; the row is there all the same), it is
-     * refused as unsettled naming that row; so is the restart under that row's key. Nothing written by either.
-     */
+    /** The first park wins: a stop beside a DLQ row of its message keeps that row and still holds the key. */
     @Test
-    void aRestartWithoutAKeyBesideAKeyedWorkRowOfItsIdIsRefusedAsUnsettled() {
-        await(queue.enqueue("r1", "t", 1, "K"));
-        WorkQueue.Item w1 = claimedOne(NODE, "t");
-        expireLeases();
-        parked("r1", "t", 1);
+    void aStopKeepsAnEarlierParkOfItsMessage() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+        kept("k1");
+        Parked earlier = ParkedRows.row("k1", "t", 2, dev.rail8.api.Props.empty(), Optional.of("K"));
+        await(dlq().park(earlier));
 
-        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "given no key").seq(), "it names the keyed row");
-        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", "K", 1), "under the row's key").seq(), "it names the keyed row");
-        List<WorkQueue.Item> again = await(queue.claim(NODE, "t", 10, LEASE));
-        assertEquals(List.of(w1.seq()), seqs(again), "nothing written beside it: W1 alone, claimed again");
-        assertTrue(await(queue.complete(w1.seq(), again.get(0).attempts())), "fixture: W1 settles");
-
-        assertTrue(await(queue.restart("r1", "t", null, 1)), "then restarted — Postgres: its DLQ row was kept");
-        List<WorkQueue.Item> restarted = await(queue.claim(NODE, "t", 10, LEASE));
-        assertEquals(1, restarted.size(), "one row of r1, the restart's: none under K from the refusals: " + restarted);
-        assertNull(restarted.get(0).partitionKey(), "the restart's row, given no key");
+        assertTrue(await(queue.stop(k1.seq(), k1.attempts(), failure("k1", "t", k1.attempts(), "K"))), "stopped");
+        assertEquals(Optional.of(2), await(dlq().get("k1")).map(Parked::step), "the earlier park is kept");
+        assertEquals(List.of(k1.seq()), await(queue.stopped(Optional.empty(), 10)).items().stream().map(x -> x.item().seq()).toList(),
+                "and the key is stopped");
     }
 
-    /**
-     * FIX-275 (M9): beside two work rows of the id in the flow — W1 handed out, then W2 enqueued and handed out beside it — the
-     * refusal names the older, W1; once W1 settled, the one left, W2. Neither refusal writes anything: W2 alone is claimed again.
-     */
+    /** The stopped rows in seq order over every flow, a page at a time; each counts the rows of its own key behind it. */
     @Test
-    void besideTwoWorkRowsOfItsIdInItsFlowTheRefusalNamesTheOlder() {
-        await(queue.enqueue("r1", "t", 1, null));
-        WorkQueue.Item w1 = claimedOne(NODE, "t");
-        await(queue.enqueue("r1", "t", 1, null));
-        WorkQueue.Item w2 = claimedOne(NODE, "t");
-        assertEquals(List.of("r1", "r1"), List.of(w1.messageId(), w2.messageId()), "fixture: two work rows of r1 in flow t, W1 enqueued first");
-        parked("r1", "t", 1);
+    void stoppedPagesInSeqOrder() {
+        List<Long> seqs = new java.util.ArrayList<>();
+        for (String[] row : new String[][] {{"a1", "t", "A"}, {"b1", "g", "B"}, {"c1", "t", "C"}}) {
+            await(queue.enqueue(row[0], row[1], 1, row[2]));
+            WorkQueue.Item item = claimedOne(NODE, row[1]);
+            kept(row[0]);
+            assertTrue(await(queue.stop(item.seq(), item.attempts(), failure(row[0], row[1], item.attempts(), row[2]))), "fixture: " + row[0] + " stopped");
+            seqs.add(item.seq());
+        }
+        await(queue.enqueue("a2", "t", 1, "A"));
+        await(queue.enqueue("a2", "g", 1, "A"));
 
-        assertEquals(w1.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "beside W1 and W2").seq(),
-                "it names the older, W1 (" + w1.seq() + "), not W2 (" + w2.seq() + ")");
-        assertTrue(await(queue.complete(w1.seq(), w1.attempts())), "fixture: W1 settles");
-        assertEquals(w2.seq(), refusedAsUnsettled(queue.restart("r1", "t", null, 1), "beside W2").seq(), "then the one left, W2");
-        expireLeases();
-        assertEquals(List.of(w2.seq()), seqs(await(queue.claim(NODE, "t", 10, LEASE))), "nothing written by either refusal: W2 alone, claimed again");
+        Page<WorkQueue.Stopped> first = await(queue.stopped(Optional.empty(), 2));
+        assertEquals(seqs.subList(0, 2), first.items().stream().map(x -> x.item().seq()).toList(), "a1 and b1 first");
+        assertEquals(List.of(1L, 0L), first.items().stream().map(WorkQueue.Stopped::blocks).toList(), "a1 blocks a2 of flow t, not flow g's");
+        Page<WorkQueue.Stopped> second = await(queue.stopped(first.next(), 2));
+        assertEquals(seqs.subList(2, 3), second.items().stream().map(x -> x.item().seq()).toList(), "then c1");
+        assertEquals(Optional.empty(), second.next(), "the last page");
     }
 }

@@ -67,8 +67,9 @@ import java.util.stream.Stream;
  * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
  * a case that neither sends nor is fed). The case settles on virtual time ({@link VirtualTime}: settled = the answer
- * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and the
- * work queue empty, on a quiet world) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
+ * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and no
+ * work-queue row that can still run, on a quiet world: a stopped key's rows wait for an operator, who never comes in a test) and
+ * its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
  * read the first message the from endpoint delivered); then the node is closed, on virtual time too.
  *
  * <p>The report, on stdout: {@code PASS|FAIL <flow>: <case> (flow time <d>)} per case, after a FAIL what failed, each on an
@@ -253,7 +254,7 @@ final class FlowTests {
 
         InMemoryMessageStore messages = new InMemoryMessageStore();
         InMemoryDlq dlq = new InMemoryDlq();
-        InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
+        InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock(), dlq);   // a keyed message parks where an unkeyed one does
         Map<String, Component> components = new LinkedHashMap<>(mocks);
         Path data = Files.createTempDirectory("rail8-test-");
         try {
@@ -268,10 +269,10 @@ final class FlowTests {
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
                 VirtualTime.Outcome outcome = new VirtualTime(rt.clock(), rt.timer(),
                         Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, mocks.values(), answered)), WALL_GUARD)
-                        .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.size() == 0);
+                        .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.moving() == 0);
                 if (!outcome.settled()) {
                     return Verdict.failed(outcome.flowTime(), "did not settle: " + outcome.reason() + " (answer complete: " + answered.getAsBoolean()
-                            + ", undelivered files: " + door.undelivered(from).size() + ", work queue items: " + queue.size() + ")");
+                            + ", undelivered files: " + door.undelivered(from).size() + ", work queue items that can still run: " + queue.moving() + ")");
                 }
                 List<Envelope> taken = door.delivered(from);
                 if (answer.failed() && taken.isEmpty()) return Verdict.failed(outcome.flowTime(), "send refused: " + Cli.oneLine(answer.cause().getMessage()));

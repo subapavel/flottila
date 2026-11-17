@@ -8,10 +8,12 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepFactory;
+import dev.rail8.core.dlq.FailedMessages;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.node.FencedException;
 import dev.rail8.core.node.InMemoryMembership;
+import dev.rail8.core.queue.InMemoryFailedMessages;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -47,6 +49,7 @@ import static dev.rail8.core.flow.FlowWorkerTest.until;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -67,11 +70,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code WorkerPolicy(Duration lease, Duration pollInterval)} (maxAttempts gone, maxChain 32); {@code FlowBuilder retries(RetryPolicy
  * nodeDefault)}, the node's default for a flow naming no {@code delivery.retries} — without a call 3 × PT5M, multiplier 1 (O1).
  *
- * <p>The API assumed (CORE-14b P8, test-author): {@code int WorkQueue.Item.maxAttempts()} — the row's own bound on its hand-outs,
- * 0 = the flow's (count + 1); {@code Future<Boolean> WorkQueue.restart(String messageId, String flow, String partitionKey, int attempt)}
- * — appends a row of step 1 as handed out {@code attempt} (k) times, unleased, no doubt, maxAttempts k + 1, so its next hand-out is
- * attempt k + 1; the worker's bound for an item is its maxAttempts when not 0. O7: {@code Optional<String> Parked.partitionKey()} —
- * the worker's park keeps the item's key, empty for an unkeyed item.
+ * <p>An operator's retry ({@code FailedMessages.retry}) of a message parked after k hand-outs gives it a row of step 1 as handed out
+ * k times, unleased, no doubt, maxAttempts k + 1 ({@code WorkQueue.Item.maxAttempts()}, the row's own bound on its hand-outs, 0 = the
+ * flow's count + 1), so its next hand-out is attempt k + 1; the worker's bound for an item is its maxAttempts when not 0. The
+ * worker's park keeps the item's key ({@code Parked.partitionKey()}), empty for an unkeyed item.
  */
 @Timeout(60)
 class FlowWorkerRetryTest {
@@ -125,9 +127,9 @@ class FlowWorkerRetryTest {
         final Instant t0 = rt.clock().instant();
         final RecordingComponent partner = new RecordingComponent("mock");
         final InMemoryMembership members = new InMemoryMembership(rt.clock());
-        final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock(), members);
-        final RecordingWorkQueue queue = new RecordingWorkQueue(rows, rt.clock());
         final InMemoryDlq parked = new InMemoryDlq();
+        final InMemoryWorkQueue rows = new InMemoryWorkQueue(rt.clock(), members, parked);
+        final RecordingWorkQueue queue = new RecordingWorkQueue(rows, rt.clock());
         final InMemoryMessageStore store = new InMemoryMessageStore();
         /** What the next runs of the {@code fail} step throw, one each; empty: it hands on. */
         final ConcurrentLinkedDeque<Supplier<Throwable>> failures = new ConcurrentLinkedDeque<>();
@@ -653,23 +655,24 @@ class FlowWorkerRetryTest {
         parkedIngress(in, 4);
     }
 
-    // --- CORE-14b P8: the same-id manual restart
+    // --- the operator's retry, under the same id
+
+    static final FailedMessages.Actor BY = new FailedMessages.Actor("ops", "127.0.0.1");
 
     /**
-     * The in-memory half of {@code POST /admin/dlq/{id}/retry}: {@code in}'s DLQ row (attempt {@code k}) out, its work row in —
-     * {@code WorkQueue.restart(id, flow, key, k)}: step 1, as handed out k times, its bound k + 1 (Postgres does both in one
-     * transaction: DlqRestartIT).
+     * The in-memory half of {@code POST /admin/dlq/{id}/retry}: {@code in}, parked after k hand-outs, retried — its DLQ row out and
+     * its work row at step 1, in place when it stopped its key, as handed out k times with its own bound k + 1.
      */
     void restart(Envelope in, int k) {
         restart(in, k, null);
     }
 
-    /** {@link #restart(Envelope, int)} under the key {@code partitionKey} the DLQ row kept (O7). */
+    /** {@link #restart(Envelope, int)} under the key {@code partitionKey} the DLQ row kept. */
     void restart(Envelope in, int k, String partitionKey) {
         assertTrue(w.parked.get(in.id()).await().isPresent(), "fixture: " + in.id() + " is parked");
-        w.parked.remove(in.id()).await();
-        assertTrue(w.rows.restart(in.id(), "orders", partitionKey, k).await(), "the in-memory queue appends the restarted row");
-        assertEquals(1, w.rows.size(), "fixture: one row, the restarted one");
+        assertInstanceOf(FailedMessages.Done.class, new InMemoryFailedMessages(w.rows).retry(in.id(), "orders", partitionKey, k, BY).await(), "retried");
+        assertEquals(Optional.empty(), w.parked.get(in.id()).await(), "its DLQ row is gone");
+        assertEquals(1, w.rows.size(), "fixture: one row, the retried one");
     }
 
     /** The last item {@code worker} was handed out by a claim. */
@@ -773,8 +776,8 @@ class FlowWorkerRetryTest {
     }
 
     /**
-     * O7: a keyed item's park keeps its key on the DLQ row ({@code Parked.partitionKey()}); restarted under it, the row runs under that
-     * key, once, as attempt 2.
+     * A keyed item's park keeps its key on the DLQ row ({@code Parked.partitionKey()}) and stops the key; retried, the row runs in
+     * place under that key, once, as attempt 2.
      */
     @Test
     void aKeyedParkKeepsItsKeyAndItsRestartRunsUnderIt() throws Exception {
@@ -783,7 +786,6 @@ class FlowWorkerRetryTest {
         Map<String, Object> doc = flow(retries(0, "1m"), List.of(
                 Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), REWRITE, TO_PARTNER));
         doc.put("partitionBy", "customer");
-        doc.put("onFailure", "park");
         FlowDefinition def = FlowDefinition.from(doc);
         FlowWorker worker = w.started(b, def, "n1");
         Envelope in = w.rt.ingress("orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml").with("x-customer", "c1"),

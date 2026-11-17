@@ -1,5 +1,6 @@
 package dev.rail8.sim;
 
+import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Page;
 import io.vertx.core.Future;
@@ -20,7 +21,7 @@ final class OverClaim implements World {
 
     @Override public String name() { return NAME; }
 
-    @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
+    @Override public WorkQueue queue(WorkQueue sim, Clock clock, Dlq dlq) {
         return new WorkQueue() {
             @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
                 return sim.enqueue(messageId, flow, step, partitionKey);
@@ -34,9 +35,8 @@ final class OverClaim implements World {
             }
             @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return sim.renew(seq, attempts, lease); }
             @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return sim.defer(seq, attempts, delay); }
-            @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-                return sim.restart(messageId, flow, partitionKey, attempt);
-            }
+            @Override public Future<Boolean> stop(long seq, int attempts, dev.rail8.core.dlq.Parked failure) { return sim.stop(seq, attempts, failure); }
+            @Override public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) { return sim.stopped(after, limit); }
             @Override public Future<Boolean> hold(long seq, int attempts) { return sim.hold(seq, attempts); }
             @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return sim.held(after, limit); }
             @Override public Future<Boolean> release(long seq) { return sim.release(seq); }

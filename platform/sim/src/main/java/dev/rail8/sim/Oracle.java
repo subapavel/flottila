@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
@@ -27,10 +28,11 @@ import java.util.stream.Collectors;
  * bytes, and no worker runs more than its limit.</li>
  * <li>KEY_ORDER: at most one message of a key is at the partner at a time (from its first call to its last), and the first
  * receipts of a key come in the order its messages were sent.</li>
- * <li>after the drain — ACKED_IS_FINAL: every Accepted message was delivered once, or parked at the flow's first step
- * (step 1, the ingress) after every call was refused; SNAPSHOT_PER_STEP: every message that ran has one snapshot per
- * step, the last FAILED when it was refused throughout; DRAINED: no run, no held call, no wake, no item left, every send
- * answered.</li>
+ * <li>after the drain — ACKED_IS_FINAL: every Accepted message was delivered once, or, after every call of each of its runs
+ * was refused, is parked at the flow's first step (step 1, the ingress) or was cancelled by the operator while parked there;
+ * each retry by the operator is one run more; SNAPSHOT_PER_STEP: every message that ran has one snapshot per step of its
+ * first run, the last FAILED when that run was refused throughout (as the run of a message later retried was); DRAINED: no
+ * run, no held call, no wake, no item left, every send answered.</li>
  * </ul>
  * Each check keeps its first {@value #KEPT_PER_CHECK} failures. Called from the driver and from the message threads, one at a time.
  */
@@ -51,6 +53,8 @@ final class Oracle {
         AsyncResult<Ack> answer;
         boolean accepted;
         final List<Boolean> calls = new ArrayList<>();   // per partner call in order: delivered
+        int retried;                                     // the operator's retries of it
+        String cancelled;                                // "cancelled at step <n>", the step it was parked at; null while not cancelled
 
         Send(String id, String flow, String key, Buffer payload, int seq, boolean storeRefused, String atLimit) {
             this.id = id;
@@ -150,6 +154,16 @@ final class Oracle {
         if (key != null && (delivered || ordinal == config.retries())) open.remove(key, id);
     }
 
+    /** The operator retried {@code id}: it runs once more. */
+    synchronized void retried(String id) {
+        sends.get(id).retried++;
+    }
+
+    /** The operator cancelled {@code id}, parked at {@code step} (empty: no parked row was read before): it never runs again. */
+    synchronized void cancelled(String id, Optional<Integer> step) {
+        sends.get(id).cancelled = "cancelled at step " + step.map(String::valueOf).orElse("none");
+    }
+
     /** After a unit: no flow and no worker holds more than its limit; counted only at the limit. */
     synchronized void bounds(Runs runs) {
         for (String flow : List.of(SimRun.SYNC, SimRun.ALO)) {
@@ -187,10 +201,11 @@ final class Oracle {
             if (s.accepted) {
                 count(Check.ACKED_IS_FINAL, 1);
                 long delivered = s.calls.stream().filter(d -> d).count();
-                String got = delivered + " delivered of " + s.calls.size() + " calls, parked "
-                        + dlq.get(s.id).await().map(p -> "at step " + p.step()).orElse("nowhere");
+                String where = dlq.get(s.id).await().map(p -> "parked at step " + p.step()).orElse(s.cancelled == null ? "parked nowhere" : s.cancelled);
+                String got = delivered + " delivered of " + s.calls.size() + " calls, " + where;
+                // every call of every run was refused, so the worker parks the message at the flow's first step (step 1, the ingress)
                 String expected = delivered > 0 ? "1 delivered of " + s.calls.size() + " calls, parked nowhere"
-                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 1";   // every call was refused, so the worker parks the message at the flow's first step (step 1, the ingress)
+                        : "0 delivered of " + (config.retries() + 1) * (s.retried + 1) + " calls, " + (s.cancelled == null ? "parked" : "cancelled") + " at step 1";
                 if (!got.equals(expected)) fail(Check.ACKED_IS_FINAL, s.id + " was accepted: expected " + expected + ", was " + got);
             }
             if (!s.calls.isEmpty()) {
@@ -223,10 +238,13 @@ final class Oracle {
         return "Failed NackException after " + (config.retries() + 1) + " calls";
     }
 
-    /** The timeline a message that ran leaves: a snapshot per step, the last FAILED when no call delivered. */
+    /**
+     * The timeline a message that ran leaves, its first run's, as the store keeps it: a snapshot per step, the last FAILED when
+     * no call of that run delivered — as none of a message did that the operator later retried.
+     */
     private String timeline(Send s) {
         String steps = SimRun.SYNC.equals(s.flow) ? "0:ingress:OK,1:transform:OK,2:partner:" : "0:ingress:OK,1:key:OK,2:transform:OK,3:partner:";
-        return steps + (s.calls.contains(true) ? "OK" : "FAILED");
+        return steps + (s.retried == 0 && s.calls.contains(true) ? "OK" : "FAILED");
     }
 
     /** The send's answer as the checks compare it; a failure names its cause's type and how many partner calls were made. */

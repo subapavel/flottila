@@ -105,6 +105,18 @@ class PackageTest {
         assertEquals(crossCheck, problems.subList(expected.size() + 1, problems.size()), "crossCheck() comes last, as it is");
     }
 
+    /** A flow that still sets {@code onFailure} is told, at the key, that an ordered flow always stops: one line, nothing else. */
+    @Test
+    void aFlowThatSetsOnFailureIsToldAnOrderedFlowAlwaysStops(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner").replace("delivery: { mode: sync }", "delivery: { mode: sync }\nonFailure: park"));
+        List<String> problems = Package.load(dir).problems();
+        assertEquals(List.of("flows/orders.yaml at '/onFailure': " + Package.ON_FAILURE_GONE), problems);
+        assertTrue(Package.ON_FAILURE_GONE.contains("always stops"), Package.ON_FAILURE_GONE);
+    }
+
     @Test
     void aDuplicateFlowIdIsAProblem(@TempDir Path dir) throws IOException {
         write(dir, "package.yaml", PACKAGE);

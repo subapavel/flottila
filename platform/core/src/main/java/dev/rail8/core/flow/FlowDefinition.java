@@ -17,14 +17,14 @@ import java.util.Set;
  * A flow file as core sees it: a plain map in (the YAML as {@code rail8-schemas} parsed and validated it), a typed definition
  * out. Core does not depend on the schema module, so the parts it needs are checked again here with the same paths in the
  * messages ({@code steps[2]}); a file that passed the schema never fails here, except for a zero {@code saveTimeout} or
- * {@code timeout} and for {@code onFailure: block}, which the schema admits. {@code recording} is the flow's policy (default:
+ * {@code timeout}, which the schema admits. {@code recording} is the flow's policy (default:
  * all, keep); a step's own {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds
  * an at-least-once flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); {@code timeout} is
  * the time each run of a message has, in any delivery mode: its deadline is the run's start plus it ({@code delivery.timeout},
  * default {@link #DEFAULT_TIMEOUT}). A body limit above the in-flight byte limit is refused, since such a body could never be
- * admitted. {@code onFailure} is what a keyed flow does with an item that failed for good: a {@code partitionBy} flow must
- * state it and nothing else may; {@code park} parks the item and lets its key's next item run, {@code block} is refused because
- * it needs a barrier that survives a restart, which does not exist yet. {@code retries} is an at-least-once flow's own schedule
+ * admitted. A {@code partitionBy} flow keeps its order through a failure: an item that failed for good is parked and stops its
+ * key until an operator retries or cancels it; there is no choice to state, and a document that still sets {@code onFailure}
+ * is refused with {@link #ON_FAILURE_GONE}. {@code retries} is an at-least-once flow's own schedule
  * of retries ({@code delivery.retries}, refused for any other mode); empty, its worker runs under the node's default
  * ({@link FlowBuilder#retries}). {@code retry} is the in-thread retry of the steps marked {@code retryable}, a key of its own.
  *
@@ -32,7 +32,7 @@ import java.util.Set;
  */
 public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, Duration timeout,
                              long maxBodyBytes, Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
-                             Optional<String> onFailure, List<String> forwardHeaders, RetryPolicy retry, Optional<RetryPolicy> retries, RecordingPolicy recording,
+                             List<String> forwardHeaders, RetryPolicy retry, Optional<RetryPolicy> retries, RecordingPolicy recording,
                              List<StepConfig> steps) {
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
@@ -44,11 +44,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     /** The time each run of a message has when the flow names none. */
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
-    /** {@code onFailure: park}: an item parked past its attempts lets its key's next item run. */
-    public static final String PARK = "park";
-
-    /** {@code onFailure: block}: the key waits for its parked item; refused for now, as it needs a barrier that survives a restart. */
-    public static final String BLOCK = "block";
+    /** Why a flow document that sets {@code onFailure} is refused. */
+    public static final String ON_FAILURE_GONE = "onFailure is gone: an ordered flow (partitionBy) always stops behind a message that"
+            + " failed for good, until an operator retries or cancels it; remove onFailure";
 
     /** The most retries {@code delivery.retries.count} may schedule. */
     public static final int MAX_RETRIES = 100;
@@ -81,23 +79,23 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
             throw new IllegalArgumentException("limits.maxBodyBytes " + maxBodyBytes + " exceeds limits.maxInFlightBytes " + maxInFlightBytes.get()
                     + ": such a body could never be admitted");
         }
-        onFailure(partitionBy, onFailure);
         forwardHeaders = List.copyOf(forwardHeaders);
         steps = List.copyOf(steps);
         if (steps.isEmpty()) throw new IllegalArgumentException("steps must name at least one step");
     }
 
-    /** A definition whose messages have the {@link #DEFAULT_TIMEOUT} per run and that states no {@code onFailure} (so it has no {@code partitionBy}). */
+    /** A definition whose messages have the {@link #DEFAULT_TIMEOUT} per run and that schedules no retries of its own. */
     public FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, long maxBodyBytes,
                           Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
                           List<String> forwardHeaders, RetryPolicy retry, RecordingPolicy recording, List<StepConfig> steps) {
         this(id, version, fromEndpoint, deliveryMode, saveTimeout, DEFAULT_TIMEOUT, maxBodyBytes, maxInFlight, maxInFlightBytes, partitionBy,
-                Optional.empty(), forwardHeaders, retry, Optional.empty(), recording, steps);
+                forwardHeaders, retry, Optional.empty(), recording, steps);
     }
 
     /** Builds the definition from the parsed flow document. */
     public static FlowDefinition from(Map<String, Object> doc) {
         Objects.requireNonNull(doc, "flow document");
+        if (doc.containsKey("onFailure")) throw new IllegalArgumentException(ON_FAILURE_GONE);
         Map<String, Object> from = section(doc, "from");
         Map<String, Object> delivery = section(doc, "delivery");
         Map<String, Object> limits = section(doc, "limits");
@@ -107,29 +105,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
                 delivery.get("timeout") == null ? DEFAULT_TIMEOUT : duration(delivery, "delivery.timeout", "timeout"),
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
-                Optional.ofNullable(doc.get("partitionBy")).map(Object::toString), Optional.ofNullable(doc.get("onFailure")).map(Object::toString),
+                Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),
                 strings(doc.get("forwardHeaders")), retry(doc.get("retry")), retries(delivery.get("retries")), RecordingPolicy.from(doc.get("recording"), RecordingPolicy.DEFAULT), steps(doc.get("steps")));
-    }
-
-    /**
-     * Checks that a keyed flow states what a failed item does to its key, and that only a keyed flow does. {@code park} is the
-     * one value that loads; {@code block} is refused, never taken for park, as it needs a barrier that survives a restart.
-     */
-    private static void onFailure(Optional<String> partitionBy, Optional<String> onFailure) {
-        if (onFailure.isEmpty()) {
-            if (partitionBy.isPresent()) {
-                throw new IllegalArgumentException("partitionBy '" + partitionBy.get() + "' needs onFailure: park (an item parked past its attempts"
-                        + " lets the key's next item run); block (the key waits for the parked item) is not available yet (FIX-141)");
-            }
-            return;
-        }
-        String value = onFailure.get();
-        if (!value.equals(PARK) && !value.equals(BLOCK)) throw new IllegalArgumentException("onFailure must be park or block, was '" + value + "'");
-        if (partitionBy.isEmpty()) throw new IllegalArgumentException("onFailure needs partitionBy: a flow without a key has no key to park or block");
-        if (value.equals(BLOCK)) {
-            throw new IllegalArgumentException("onFailure: block on partitionBy '" + partitionBy.get() + "' is not available yet: it needs the durable"
-                    + " barrier with release and discard of FIX-141; use onFailure: park");
-        }
     }
 
     /** Endpoints the steps send to, in order, each once: {@code to.endpoint} and the values of {@code to.endpoints}. The {@code from} endpoint is a consumer and not listed. */

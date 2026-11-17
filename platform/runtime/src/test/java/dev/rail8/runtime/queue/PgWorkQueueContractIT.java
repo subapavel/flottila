@@ -1,6 +1,8 @@
 package dev.rail8.runtime.queue;
 
+import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.queue.WorkQueue;
+import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.testkit.SharedPostgres;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -40,7 +42,7 @@ class PgWorkQueueContractIT extends WorkQueueContract {
 
     @Override
     protected WorkQueue emptyQueue() {
-        pool.query("truncate work").execute().await();
+        pool.query("truncate work, dlq, body_refs, journal_segments").execute().await();
         return new PgWorkQueue(pool);
     }
 
@@ -56,8 +58,12 @@ class PgWorkQueueContractIT extends WorkQueueContract {
     }
 
     @Override
-    protected void parked(String messageId, String flow, int attempt) {
-        pool.query("truncate dlq, body_refs, journal_segments").execute().await();
-        ParkedRows.park(pool, ParkedRows.byTheWorker(messageId, flow, attempt), NODE);
+    protected void kept(String messageId) {
+        ParkedRows.keepRef(pool, messageId, NODE);
+    }
+
+    @Override
+    protected Dlq dlq() {
+        return new PgDlq(pool);
     }
 }

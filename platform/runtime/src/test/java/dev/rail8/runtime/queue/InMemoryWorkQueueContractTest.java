@@ -1,5 +1,7 @@
 package dev.rail8.runtime.queue;
 
+import dev.rail8.core.dlq.Dlq;
+import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.testkit.FakeClock;
@@ -11,11 +13,13 @@ import java.time.Instant;
 class InMemoryWorkQueueContractTest extends WorkQueueContract {
 
     private FakeClock clock;
+    private InMemoryDlq dlq;
 
     @Override
     protected WorkQueue emptyQueue() {
         clock = FakeClock.at(Instant.parse("2026-11-10T10:00:00Z"));
-        return new InMemoryWorkQueue(clock);
+        dlq = new InMemoryDlq();
+        return new InMemoryWorkQueue(clock, dlq);
     }
 
     @Override
@@ -29,7 +33,12 @@ class InMemoryWorkQueueContractTest extends WorkQueueContract {
     }
 
     @Override
-    protected void parked(String messageId, String flow, int attempt) {
-        // the in-memory queue has no DLQ: its restart appends the row whatever the caller parked
+    protected void kept(String messageId) {
+        // the in-memory queue keeps no bodies: a park needs no ref
+    }
+
+    @Override
+    protected Dlq dlq() {
+        return dlq;
     }
 }

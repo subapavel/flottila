@@ -100,7 +100,13 @@ When the retries run out, the message is **parked**: a row in the `dlq` table re
 arrival (the body itself stays where it is; a row is only written once that body is durable). This is
 the list of failed messages, like messages in error status in PO's message monitor.
 
-- `GET /admin/dlq` lists them; `POST /admin/dlq/{id}/retry` runs one again as a new attempt.
+- `GET /admin/dlq` lists them.
+- `POST /admin/dlq/{id}/retry` runs one once more under the same id, as its last attempt.
+- `POST /admin/dlq/{id}/cancel` ends one, with an optional reason (`{"reason": "…"}`, at most 1024
+  characters). Its records and bodies stay until retention removes them.
+- Each retry and cancel writes an audit row in the same transaction, naming the actor the caller gives
+  in the `X-Rail8-Actor` header (`unknown` without it), the caller's address and, for a cancel, the
+  reason and the error.
 - A message that cannot even be parked is **held**: it stays in `work`, is never claimed again and,
   for an ordered flow, stops its key. An operator lists held items and releases them.
 - A row whose body was lost with a node's disk can be discarded by an operator; the act is audited.
@@ -112,9 +118,17 @@ were accepted, like EOIO with a queue name in PO. The key comes from a business 
 A row is claimed only when no older row of the same key exists and no other worker holds the key.
 
 - While a message waits for its next retry, its key waits too.
-- When the retries run out and the flow says `onFailure: park`, the message is parked and **the next
-  message of the key goes on**.
-- `onFailure: block` is accepted by the schema but refused when the flow is built.
+- When the retries run out, the message is parked and **the key's queue stops behind it**, like a
+  stopped EOIO queue in PO: its work row stays, and the key's later messages wait in order. Other keys
+  go on. The park and the stop are one write, so a crash cannot leave one without the other.
+- `GET /admin/work/stopped` lists the stopped keys, each with its message, the error and how many
+  messages wait behind it.
+- An operator retries the message, which runs again in its place before the messages behind it, or
+  cancels it, which lets the key's next message go on. Nothing else ends a stop; a release of held
+  items does not.
+- A flow file that still sets `onFailure` is refused: there is no choice to make.
+- A package that would stop running a flow at-least-once is refused while that flow has items in the
+  work queue, a stopped key's included.
 
 ### Duplicates
 
@@ -126,10 +140,14 @@ HTTP has no deduplication.
 When a node dies after sending but before recording the send, the next worker sends again: partners
 see a second delivery with the same `x-message-id`, by which they can drop it.
 
+**Upgrading to the stop.** The migration adds the column `work.stopped_at`. While nodes of the
+earlier version still run, they keep parking a failed message of an ordered flow and going on with its
+key; they list a stopped key among the held items, and Postgres refuses their release of it. A package
+cannot be valid for both versions when it has an ordered flow: the earlier version needs `onFailure`
+with `partitionBy`, this one refuses it. Upgrade every node, then deploy such packages again without
+`onFailure`; until then this version lists them as failed.
+
 **Planned**
-- In order, an error stops the key's queue until an operator retries or cancels the message, like a
-  stopped EOIO queue in PO; parking and going on stops being the behaviour of an ordered flow.
-- Cancelling a failed message, and what a cancel covers.
 - Deduplication only where the flow's author asks for it, by a key the author chooses; `sftp` only
   avoids reading the same file twice and drops its built-in deduplication.
 - What happens when a step fails, defined by the flow's author: an error message to a partner, a
@@ -145,7 +163,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 
 | Table | Holds |
 | --- | --- |
-| `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, and where the body is in the journal |
+| `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held or stops its key, and where the body is in the journal |
 | `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size), and the business keys for search |
 | `dlq` | parked messages, by reference |
 | `processed_ids` | the delivery identities used against duplicates |
@@ -219,7 +237,6 @@ delivery: { mode: at-least-once, retries: { count: 1, interval: 1s } }
 recording: { level: all, payload: keep }
 limits: { maxBodyBytes: 1048576 }
 partitionBy: invoiceId
-onFailure: park
 steps:
   - { type: xsd, schema: flows/invoice.xsd }
   - { type: extractKey, key: invoiceId, xpath: /Invoice/Id }
@@ -538,7 +555,8 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/messages?key=…` | find messages by business key |
 | `GET /admin/messages/{id}` | a message's steps with their times |
 | `GET /admin/messages/{id}/steps/{n}/body` | the body after step `n` |
-| `GET /admin/dlq`, `POST /admin/dlq/{id}/retry` | failed messages, and running one again |
+| `GET /admin/dlq`, `POST /admin/dlq/{id}/retry`, `POST /admin/dlq/{id}/cancel` | failed messages, running one again, ending one |
+| `GET /admin/work/stopped` | keys of ordered flows stopped behind a failed message |
 | `GET /admin/work/held`, `POST /admin/work/{seq}/release` | held items |
 | `GET /admin/work/lost`, `POST /admin/work/{seq}/discard` | items whose body was lost |
 | `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs |

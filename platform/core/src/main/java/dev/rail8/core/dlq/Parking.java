@@ -86,9 +86,18 @@ public final class Parking {
 
     /** {@link #park(Envelope, StepConfig, Throwable)} keeping {@code partitionKey} on the row: a worker's park of a keyed item. */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure, Optional<String> partitionKey) {
+        return prepare(e, step, failure, partitionKey).compose(parked -> dlq.park(parked).map(parked));
+    }
+
+    /**
+     * The row {@link #park(Envelope, StepConfig, Throwable, Optional)} would write, not written: {@code e}'s body made durable as a
+     * park makes it — a persist that fails, or throws, fails this with its cause —, the run's {@link Trail} told, and the row built
+     * on this Parking's clock. For a caller that writes the row together with another change, as a keyed item's stop does.
+     */
+    public Future<Parked> prepare(Envelope e, StepConfig step, Throwable failure, Optional<String> partitionKey) {
         Parked parked = Parked.of(e, step, failure, clock.instant(), versions, partitionKey);
         Optional<Trail> run = Trail.current();   // read here, on the run's thread: the persist answers on another
-        return persist(e.body()).onSuccess(durable -> run.ifPresent(t -> t.durable(e.body().key()))).compose(durable -> dlq.park(parked)).map(parked);
+        return persist(e.body()).onSuccess(durable -> run.ifPresent(t -> t.durable(e.body().key()))).map(parked);
     }
 
     /** {@code body} made durable in its own store; what the store throws becomes the failed future's cause. */

@@ -19,7 +19,9 @@ import dev.rail8.core.flow.FlowBuilder;
 import dev.rail8.core.flow.FlowDefinition;
 import dev.rail8.core.flow.FlowWorker;
 import dev.rail8.core.flow.RetryPolicy;
+import dev.rail8.core.flow.WorkSignals;
 import dev.rail8.core.flow.WorkerPolicy;
+import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.blob.TieredBlobStore;
@@ -29,6 +31,7 @@ import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.runtime.journal.TestJournals;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
+import dev.rail8.runtime.queue.PgFailedMessages;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgMessageStore;
@@ -124,7 +127,8 @@ final class AdminPgFixture implements AutoCloseable {
                 .flow("orders", "1.0.0", "at-least-once", "orders-in", 65_536, new JsonArray().add(new JsonObject().put("type", "probe").put("name", "probe")));
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("archives"))));
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue);
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new PgFailedMessages(pool, queue), Optional.empty(),
+                new Workers(), WorkSignals.NONE);
         port = server.start(vertx).await(10, TimeUnit.SECONDS);
     }
 

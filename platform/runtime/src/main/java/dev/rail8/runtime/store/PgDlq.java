@@ -47,22 +47,31 @@ import java.util.regex.Pattern;
  */
 public final class PgDlq implements Dlq {
 
-    private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions,"
+    /** The columns of a DLQ row, in the order of {@link #parkParams}' first fifteen values. */
+    public static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions,"
             + " partition_key";
+
     /**
-     * The park, one statement: {@code b} holds the {@code body_refs} row {@code body_key} names
-     * ({@code $16..$18}) and its segment row for key share — retention's batch and the sweeper's hold the rows they select for
-     * update, so the park either waits for that batch and, after a delete, finds no row, or holds the rows first and the batch
-     * passes them — and {@code ins} writes the DLQ row only from them ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
-     * unread, as every data-modifying CTE does.
+     * The park's two CTEs, for a statement that parks as part of more: {@code b} holds the {@code body_refs} row {@code body_key}
+     * names ({@code $16..$18}) and its segment row for key share — retention's batch and the sweeper's hold the rows they select
+     * for update, so the park either waits for that batch and, after a delete, finds no row, or holds the rows first and the batch
+     * passes them — and {@code ins} writes the DLQ row ({@code $1..$15}) only from them and only while {@code gate}, an SQL
+     * condition, holds ({@code on conflict} skips an id parked already: the first park wins). {@code ins} runs to completion
+     * unread, as every data-modifying CTE does. The parameters are {@link #parkParams}.
      */
-    private static final String PARK = """
-            with b as materialized (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
-                                     where r.message_id = $16 and r.step = $17 and r.part = $18 and r.lost_at is null for key share),
-            ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15 from b
-                    on conflict (id) do nothing)
-            select (select count(*) from b),
-                   exists (select 1 from body_refs where message_id = $16 and step = $17 and part = $18 and lost_at is not null)""".formatted(COLUMNS);
+    public static String parking(String gate) {
+        return """
+                b as materialized (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
+                                    where r.message_id = $16 and r.step = $17 and r.part = $18 and r.lost_at is null for key share),
+                ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15 from b where %s
+                        on conflict (id) do nothing)""".formatted(COLUMNS, gate);
+    }
+
+    /** Whether an accepted loss gave up the kept ref a {@link #parking} statement names ({@code lost_at}). */
+    public static final String REF_LOST = "exists (select 1 from body_refs where message_id = $16 and step = $17 and part = $18 and lost_at is not null)";
+
+    /** The park, one statement ({@link #parking} with no gate): answers the rows {@code b} found and {@link #REF_LOST}. */
+    private static final String PARK = "with " + parking("true") + "\nselect (select count(*) from b), " + REF_LOST;
     private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id limit $1";
     private static final String LIST_AFTER = "select " + COLUMNS + " from dlq where (parked_at, id) > ($1, $2) order by parked_at, id limit $3";
     private static final Pattern CURSOR = Pattern.compile("(-?\\d+):(.+)");
@@ -91,11 +100,7 @@ public final class PgDlq implements Dlq {
     public Future<Void> park(Parked p) {
         Objects.requireNonNull(p, "parked");
         BlobKey body = p.bodyKey();
-        return pool.preparedQuery(PARK).execute(Tuple.wrap(new Object[] {
-                p.messageId(), p.flow(), p.stepName(), p.step(), p.error(), p.parkedAt().atOffset(ZoneOffset.UTC),
-                new JsonObject(new HashMap<>(p.headers().asMap())), json(p.props().asMap()), new JsonObject(new HashMap<>(p.keys().asMap())),
-                PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(body), new JsonObject(new HashMap<>(p.versions())),
-                p.partitionKey().orElse(null), body.messageId(), body.step(), body.part()}))
+        return pool.preparedQuery(PARK).execute(Tuple.wrap(parkParams(p)))
                 .map(rows -> {
                     Row r = rows.iterator().next();
                     if (r.getLong(0) == 0) throw r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body);
@@ -137,6 +142,16 @@ public final class PgDlq implements Dlq {
         return Tuple.of(Instant.EPOCH.plus(micros, ChronoUnit.MICROS).atOffset(ZoneOffset.UTC), m.group(2), fetch);
     }
 
+    /** The parameters {@code $1..$18} of a {@link #parking} statement for {@code p}: its row's {@link #COLUMNS}, then its body's key. */
+    public static Object[] parkParams(Parked p) {
+        BlobKey body = p.bodyKey();
+        return new Object[] {
+                p.messageId(), p.flow(), p.stepName(), p.step(), p.error(), p.parkedAt().atOffset(ZoneOffset.UTC),
+                new JsonObject(new HashMap<>(p.headers().asMap())), json(p.props().asMap()), new JsonObject(new HashMap<>(p.keys().asMap())),
+                PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(body), new JsonObject(new HashMap<>(p.versions())),
+                p.partitionKey().orElse(null), body.messageId(), body.step(), body.part()};
+    }
+
     @Override
     public Future<Optional<Parked>> get(String messageId) {
         return pool.preparedQuery(GET).execute(Tuple.of(messageId)).map(rows -> {
@@ -150,7 +165,8 @@ public final class PgDlq implements Dlq {
         return pool.preparedQuery(REMOVE).execute(Tuple.of(messageId)).mapEmpty();
     }
 
-    private static Parked parked(Row r) {
+    /** The parked row in {@code r}, read with {@link #COLUMNS}. */
+    public static Parked parked(Row r) {
         return new Parked(r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("stage"), r.getString("error"),
                 r.getOffsetDateTime("parked_at").toInstant(), new Headers(strings(r.getJsonObject("headers"))), new Props(r.getJsonObject("props").getMap()),
                 new Keys(strings(r.getJsonObject("keys"))), new Hash(r.getString("hash_algorithm"), r.getBuffer("body_hash").getLong(0)), r.getLong("body_size"),

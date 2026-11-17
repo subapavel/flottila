@@ -10,6 +10,7 @@ import dev.rail8.api.Props;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.Timer;
 import dev.rail8.api.Views;
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.dlq.Parking;
 import dev.rail8.core.node.FencedException;
 import dev.rail8.core.queue.WorkQueue;
@@ -65,22 +66,24 @@ import java.util.function.BooleanSupplier;
  * or an {@link Error}; those leave the item to its lease. A failed attempt is parked when its failure is final (the
  * first {@link Fault} in its cause chain is a {@link NackException} that is not retryable, or a fault of kind MALFORMED
  * or INVALID) or when it was the last hand-out the bound allows: the ingress envelope is parked at step 1 with the
- * {@link Envelope#ATTEMPT} it failed at, the item's partition key is kept on the DLQ row, and the item is completed.
- * Any other failed attempt is deferred ({@link WorkQueue#defer}) by the wait before the next retry,
+ * {@link Envelope#ATTEMPT} it failed at. An item without a partition key is then completed. A keyed item is parked and
+ * stopped in one step ({@link WorkQueue#stop}), its partition key kept on the DLQ row: its row stays, held, the oldest of its
+ * key, so the key's later items wait behind it in order until an operator retries or cancels the message, and one WARNING
+ * names the message, the key and the work item. Any other failed attempt is deferred ({@link WorkQueue#defer}) by the wait before the next retry,
  * {@code delayBefore(attempt)}, and logged at WARNING. No thread waits across the interval: the row becomes claimable at
  * its due by any node allowed to claim it, with the same message id. A defer that fails leaves the item to its lease
  * and fails the round; one that answers false is stale, like a stale complete. The worker wakes itself at the earliest
  * due it set, with one timer task, and its wake claims. It keeps at most {@value #MAX_DUES} dues; a due dropped past them
  * waits for the periodic reconciliation claim.
  *
- * <p><b>When an item is completed.</b> Only when its message is done with: the pipeline succeeded; the message was parked
- * (the DLQ row is its record, nothing is logged); or the timeline was read and holds no ingress snapshot, a message that
+ * <p><b>When an item is completed.</b> Only when its message is done with: the pipeline succeeded; the message of an
+ * unkeyed item was parked (the DLQ row is its record, nothing is logged); or the timeline was read and holds no ingress snapshot, a message that
  * can never be rebuilt, which is logged at WARNING and completed so that it never loops. A park that fails, a failed
  * store read, a failed rebuild or an {@link Error} leaves the item to its lease, logged at WARNING with the message id
  * and the cause: the sender holds a 202 for it, so it runs again once the lease runs out. An item handed out more often
  * than its bound allows does not run again: its ingress envelope is parked at step 1 with an
- * {@link AttemptsExhaustedException} and the item is completed. If the timeline cannot be read, the envelope cannot be
- * rebuilt or the park fails, the item is held instead (never claimed again, so it blocks its key), and one ERROR line
+ * {@link AttemptsExhaustedException} and the item is completed, or, keyed, stopped. If the timeline cannot be read, the
+ * envelope cannot be rebuilt or the park fails (a keyed item's stop among them), the item is held instead (never claimed again, so it blocks its key), and one ERROR line
  * names the message, the flow, the attempts and the cause, whatever the hold answers; a hold that fails is named in it
  * too and leaves the item to its lease. A message without an ingress snapshot is completed as above.
  *
@@ -92,7 +95,7 @@ import java.util.function.BooleanSupplier;
  * <p><b>Stale settles.</b> The queue completes or holds an item only for its current holder. A complete that answers
  * false (the item was claimed again, held or completed meanwhile) leaves the row to its holder as it is; it is logged
  * once at WARNING with the message, the flow, the work item, the attempt and the worker, and counted by
- * {@link #staleSettles()}. The round succeeds and the complete is never tried again. A defer that answers false is
+ * {@link #staleSettles()}. The round succeeds and the complete is never tried again. A defer or a stop that answers false is
  * treated the same way. A hold that answers false is counted the same way, and its ERROR says the item was not held.
  *
  * <p><b>Same-key fast path.</b> An item to complete that has a partition key is settled by
@@ -102,13 +105,13 @@ import java.util.function.BooleanSupplier;
  * lease of its own, on a virtual thread of its own, one further along the chain (the claimed item is 0). A stale answer
  * is counted and logged like a stale complete and takes nothing; a failed one fails the round. Any other item (no key,
  * left to its lease or held, the worker stopped, the chain at its bound) is settled as above and ends its chain, and the
- * key goes back to the claim ordered by seq; a deferred item also ends its chain and still heads its key. A next item
- * past its bound is parked like a claimed one, and its key goes on.
+ * key goes back to the claim ordered by seq; a deferred item also ends its chain and still heads its key, and a stopped
+ * one ends its chain and stops its key. A next item past its bound is parked and stopped like a claimed one.
  *
  * <p><b>The node's fence</b> ({@link FlowBuilder#fence}) is checked before every claim (closed, a round claims nothing
  * and answers 0), before every complete, fast path, defer and hold, and before every park. While it is closed the node
  * cannot prove that its lease is live and another node may take its items over, so a finished item is not settled at
- * all: no complete, no fast path, no defer, no hold. It is left unsettled, its run's outcome to whoever runs it next,
+ * all: no complete, no fast path, no defer, no hold, no stop. It is left unsettled, its run's outcome to whoever runs it next,
  * with one WARNING per item: the run's own when the run left the item to its lease (a fenced, interrupted or crashed
  * run, or a final failure not parked), else the settle's. A message is not parked, so no later holder can write a second
  * DLQ row, and an item past its bound is not held but left to its lease. The at-least-once {@code to} checks the same
@@ -671,7 +674,9 @@ public final class FlowWorker {
                     throw new FencedException("message " + id + " of flow " + flow + " is past its " + bound(item) + " hand-outs and not parked: the node's"
                             + " fence is closed; left unsettled for whoever runs it next");
                 }
-                parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), bound(item)), Optional.ofNullable(item.partitionKey())).await();
+                AttemptsExhaustedException past = new AttemptsExhaustedException(id, item.attempts(), bound(item));
+                if (item.partitionKey() != null) return Verdict.stop(parking.prepare(ingress, firstStep, past, Optional.of(item.partitionKey())).await());
+                parking.park(ingress, firstStep, past, Optional.empty()).await();
                 return Verdict.COMPLETE;
             }
         } catch (Throwable failure) {
@@ -706,8 +711,9 @@ public final class FlowWorker {
      * What a run that failed with {@code failure} does with its item: a {@link FencedException}, an interrupt or an
      * {@link Error} is no failed attempt — left to its lease; a failure that is final ({@link #isFinal}) or that of the last hand-out
      * the bound allows parks {@code ingress} at the flow's first step with the {@link Envelope#ATTEMPT} it failed at — only while the
-     * node's fence is open, and a park that fails leaves the item to its lease —; any other is deferred by the wait before the
-     * next retry, {@link RetryPolicy#delayBefore delayBefore(attempt)}.
+     * node's fence is open, and a park that fails leaves the item to its lease —, an unkeyed item's park written here and its item
+     * completed, a keyed item's row prepared here and written with its stop by the settle; any other is deferred by the wait before
+     * the next retry, {@link RetryPolicy#delayBefore delayBefore(attempt)}.
      */
     private Verdict failed(WorkQueue.Item item, Envelope ingress, Throwable failure) {
         String run = "message " + item.messageId() + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts() + " of " + bound(item) + ")";
@@ -725,7 +731,9 @@ public final class FlowWorker {
             return Verdict.LEAVE;
         }
         try {
-            parking.park(ingress.with(Envelope.ATTEMPT, item.attempts()), firstStep, failure, Optional.ofNullable(item.partitionKey())).await();
+            Envelope failed = ingress.with(Envelope.ATTEMPT, item.attempts());
+            if (item.partitionKey() != null) return Verdict.stop(parking.prepare(failed, firstStep, failure, Optional.of(item.partitionKey())).await());
+            parking.park(failed, firstStep, failure, Optional.empty()).await();
             return Verdict.COMPLETE;   // the DLQ row is the failure's record
         } catch (Throwable parkFailure) {   // an interrupted await too: the park may still land, the rerun parks again
             failure.addSuppressed(parkFailure);
@@ -763,12 +771,14 @@ public final class FlowWorker {
     }
 
     /**
-     * Completes, defers, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
-     * claim of it; an item without a partition key completes by {@link WorkQueue#completeUnkeyed} (batched), a keyed one
-     * by {@link WorkQueue#completeRow}; a complete, defer or hold answering false is stale and counted; a deferred one's due goes to the
-     * retry wake. A complete naming the node of its key's next row
-     * announces it there ({@link WorkSignals}) once the delete is committed. An unparkable item raises one ERROR whatever its hold
-     * answers. An item left — by the run, or by a complete, defer or hold that failed — is left to its lease.
+     * Completes, defers, stops, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's
+     * newest claim of it; an item without a partition key completes by {@link WorkQueue#completeUnkeyed} (batched), a keyed one
+     * by {@link WorkQueue#completeRow}; a complete, defer, stop or hold answering false is stale and counted; a deferred one's due goes to
+     * the retry wake. A complete naming the node of its key's next row
+     * announces it there ({@link WorkSignals}) once the delete is committed. A stop writes the item's DLQ row and stops its key in one
+     * call and logs one WARNING; one that fails holds an item past its bound as unparkable and leaves any other to its lease, as a
+     * failed park does. An unparkable item raises one ERROR whatever its hold answers. An item left — by the run, or by a complete,
+     * defer, stop or hold that failed — is left to its lease.
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
@@ -791,6 +801,23 @@ public final class FlowWorker {
             }
             if (deferred.result()) deferredUntil(clock.instant().plus(wait), wait);   // the queue's due is no later: its now() came first
             else stale(item, token, "deferred");
+            return Future.succeededFuture();
+        });
+        Parked parked = verdict.stop();
+        if (parked != null) return queue.stop(item.seq(), token, parked).transform(stopped -> {
+            if (stopped.failed()) {
+                if (item.attempts() > bound(item)) return settle(lease, Verdict.hold(stopped.cause()));   // past its bound: held, never run again
+                LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt " + token
+                        + ") could not be parked and is left to its lease (" + policy.lease() + "): " + stopped.cause(), stopped.cause());
+                leftToLease();
+                return Future.failedFuture(stopped.cause());
+            }
+            if (stopped.result()) {
+                LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " is parked and stops its key " + item.partitionKey()
+                        + " (work item " + item.seq() + ", attempt " + token + "): the key's later messages wait until an operator retries or cancels it");
+            } else {
+                stale(item, token, "stopped");
+            }
             return Future.succeededFuture();
         });
         Throwable unparkable = verdict.unparkable();
@@ -852,15 +879,18 @@ public final class FlowWorker {
 
     /**
      * What a run decided for its item: complete it, leave it to its lease, hold it ({@code unparkable}: past the bound, the park
-     * failed) or defer it by {@code delay} (a failed attempt with retries left).
+     * failed), defer it by {@code delay} (a failed attempt with retries left) or stop its key with the DLQ row {@code stop} (a keyed
+     * item parked).
      */
-    private record Verdict(boolean complete, Throwable unparkable, Duration delay) {
-        static final Verdict COMPLETE = new Verdict(true, null, null);
-        static final Verdict LEAVE = new Verdict(false, null, null);
+    private record Verdict(boolean complete, Throwable unparkable, Duration delay, Parked stop) {
+        static final Verdict COMPLETE = new Verdict(true, null, null, null);
+        static final Verdict LEAVE = new Verdict(false, null, null, null);
 
-        static Verdict hold(Throwable unparkable) { return new Verdict(false, unparkable, null); }
+        static Verdict hold(Throwable unparkable) { return new Verdict(false, unparkable, null, null); }
 
-        static Verdict defer(Duration delay) { return new Verdict(false, null, delay); }
+        static Verdict defer(Duration delay) { return new Verdict(false, null, delay, null); }
+
+        static Verdict stop(Parked parked) { return new Verdict(false, null, null, parked); }
     }
 
     /** Where the renewals of a lease stand: one scheduled or in flight, stopped as lost, or ended with the run. */

@@ -55,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * does not delay an at-least-once save: the ACK path touches the intake pool only.
  *
  * <p>The flow: {@code invoice-async} over the demo package ({@link InvoiceAsyncIT}); a body that is not XML is accepted (202,
- * unkeyed) and its xsd step's failure parks it at once ({@code onFailure: park}, no retry) — a park is one statement on the work
+ * unkeyed) and its xsd step's failure parks it at once (no retry) — a park is one statement on the work
  * pool ({@code PgDlq}) that a session holding {@code dlq} in access exclusive mode keeps waiting on a Lock. Every case runs on a
  * database of its own; the test's own sessions name themselves {@code test-observer} and {@code test-locker}.
  */

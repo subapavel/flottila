@@ -137,7 +137,6 @@ class FlowBuilderPartitionTest {
         doc.put("limits", Map.of("maxBodyBytes", maxBodyBytes, "maxInFlight", 4));
         if (partitionBy != null) {
             doc.put("partitionBy", partitionBy);
-            doc.put("onFailure", "park");   // O6 (FIX-143): a partitionBy flow states its failure behaviour
         }
         doc.put("steps", steps);
         return FlowDefinition.from(doc);

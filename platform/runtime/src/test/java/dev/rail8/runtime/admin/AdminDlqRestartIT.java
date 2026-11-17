@@ -35,6 +35,7 @@ import dev.rail8.core.record.Recorder;
 import dev.rail8.core.record.RecordingPolicy;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.queue.ParkedRows;
+import dev.rail8.runtime.queue.PgFailedMessages;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.testkit.FakeRuntime;
@@ -167,8 +168,10 @@ class AdminDlqRestartIT {
         deployments = new Deployments(NodeConfig.from(env), rt.runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(probe), List.of(HEADER),
                 store, new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L);
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop().zipTo(tmp.resolve("archives"))));
+        PgWorkQueue queue = new PgWorkQueue(pool, "node-b");
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), store, new PgDlq(pool), rt.blobs(),
-                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), new PgWorkQueue(pool, "node-b"), new Workers(), WorkSignals.NONE);
+                new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new PgFailedMessages(pool, queue), Optional.empty(), new Workers(),
+                WorkSignals.NONE);
         port = server.start(vertx).await(10, TimeUnit.SECONDS);
     }
 
@@ -201,7 +204,7 @@ class AdminDlqRestartIT {
         p.endpoint("keyed-in", "in", new JsonObject().put("path", "/keyed")).flow("keyed", "1.0.0", "at-least-once", "keyed-in", 65_536, new JsonArray()
                 .add(new JsonObject().put("type", "extractKey").put("name", "key").put("language", "header").put("key", "customer").put("xpath", "x-customer"))
                 .add(new JsonObject().put("type", "probe").put("name", "probe")));
-        p.flowDoc("keyed").put("partitionBy", "customer").put("onFailure", "park");
+        p.flowDoc("keyed").put("partitionBy", "customer");
         return p;
     }
 

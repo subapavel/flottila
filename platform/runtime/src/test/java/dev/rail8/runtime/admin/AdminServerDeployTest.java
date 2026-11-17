@@ -886,7 +886,7 @@ class AdminServerDeployTest {
             Answer a = delete("/admin/packages/shop");
 
             assertError(409, a, "audit's item is in the work queue");
-            assertEquals("flow 'audit' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once they are done",
+            assertEquals("flow 'audit' runs at-least-once and the work queue holds items of it (queued, leased, held or stopped): undeploy it once they are done",
                     a.json().getString("error"));
             assertEquals(List.of("shop"), names(get("/admin/packages")), "shop stays listed");
             assertTrue(!doors.door("shop/audit").stopped() && !doors.door("shop/orders").stopped(), "shop runs on: " + doors.events());

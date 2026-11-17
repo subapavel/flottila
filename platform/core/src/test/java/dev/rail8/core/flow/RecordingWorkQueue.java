@@ -1,5 +1,6 @@
 package dev.rail8.core.flow;
 
+import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.queue.WorkQueue;
 import io.vertx.core.Future;
@@ -65,6 +66,9 @@ final class RecordingWorkQueue implements WorkQueue {
 
     record HoldCall(long seq, int attempts, Boolean answer) {}
 
+    /** One stop: the token it was fenced by and its answer ({@code null}: it failed). */
+    record StopCall(long seq, int attempts, Boolean answer) {}
+
     /** One complete or fast path: the attempts it was fenced by, and whether it removed the row ({@code null}: it failed). */
     record CompleteCall(long seq, int attempts, Boolean answer) {}
 
@@ -81,6 +85,8 @@ final class RecordingWorkQueue implements WorkQueue {
     private final List<ClaimCall> claims = new CopyOnWriteArrayList<>();
     private final List<RenewCall> renews = new CopyOnWriteArrayList<>();
     private final List<HoldCall> holds = new CopyOnWriteArrayList<>();
+    private final List<StopCall> stops = new CopyOnWriteArrayList<>();
+    private final Deque<Throwable> stopFailures = new ConcurrentLinkedDeque<>();
     private final List<Long> completes = new CopyOnWriteArrayList<>();
     private final List<CompleteCall> completeCalls = new CopyOnWriteArrayList<>();
     private final List<DeferCall> deferCalls = new CopyOnWriteArrayList<>();
@@ -148,6 +154,12 @@ final class RecordingWorkQueue implements WorkQueue {
         for (int i = 0; i < times; i++) holdFailures.addLast(cause);
     }
 
+    /** The next {@code times} stops fail with {@code cause} without reaching the delegate (nothing is parked or stopped). */
+    void failStops(int times, Throwable cause) {
+        Objects.requireNonNull(cause, "cause");
+        for (int i = 0; i < times; i++) stopFailures.addLast(cause);
+    }
+
     /** From now on every hold answers {@code answer} without reaching the delegate; {@code null}: the delegate answers again. */
     void answerHolds(Boolean answer) { holdAnswer = answer; }
 
@@ -180,6 +192,8 @@ final class RecordingWorkQueue implements WorkQueue {
     List<RenewCall> renews() { return List.copyOf(renews); }
 
     List<HoldCall> holds() { return List.copyOf(holds); }
+
+    List<StopCall> stops() { return List.copyOf(stops); }
 
     List<Long> completes() { return List.copyOf(completes); }
 
@@ -300,10 +314,19 @@ final class RecordingWorkQueue implements WorkQueue {
         return done;
     }
 
-    /** The delegate's restart (CORE-14b P8), not recorded. */
+    /** The delegate's stop, recorded with its answer; a staged failure reaches no delegate. */
     @Override
-    public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
-        return delegate.restart(messageId, flow, partitionKey, attempt);
+    public Future<Boolean> stop(long seq, int attempts, Parked failure) {
+        Throwable staged = stopFailures.pollFirst();
+        Future<Boolean> answer = staged != null ? Future.failedFuture(staged) : delegate.stop(seq, attempts, failure);
+        stops.add(new StopCall(seq, attempts, answer.succeeded() ? answer.result() : null));
+        return answer;
+    }
+
+    /** The delegate's stopped rows, not recorded. */
+    @Override
+    public Future<dev.rail8.core.record.Page<Stopped>> stopped(Optional<String> after, int limit) {
+        return delegate.stopped(after, limit);
     }
 
     /** The delegate's defer (CORE-14a P3), recorded with the clock at the call and its answer; a staged failure reaches no delegate. */
