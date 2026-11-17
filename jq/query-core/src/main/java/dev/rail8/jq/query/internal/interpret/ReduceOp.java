@@ -5,10 +5,10 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code reduce} (ADR-0041): for each result of the init, the state slot takes it and {@code each} runs on the input,
- * its results dropped; then the slot's value is emitted, the slot nulled first, so the run holds the state no longer.
- * A false from {@code each} is a break, since the sink it gets never stops: it passes at once, with no emit
- * (ADR-0039). No step of its own.
+ * {@code reduce}: for each result of the init, the state slot takes it and {@code each} runs on the input, its
+ * results dropped; then the slot's value is emitted, the slot nulled first, so the run holds the state no longer. A
+ * false from {@code each} is a break, since the sink it gets never stops: it passes at once, with no emit. No step of
+ * its own.
  */
 public final class ReduceOp extends Op {
   /** The heap form of {@link Op#DROP}, the sink of {@code each}: each result is answered to go on. */
@@ -57,7 +57,7 @@ public final class ReduceOp extends Op {
 
   /**
    * The slot's value after {@code each} ran on the init's value. A push init of a value-form Reduce is many, so
-   * {@code each} ends no run normally (ADR-0007 #112): each result of the init runs the step, and the Reduce gives none.
+   * {@code each} ends no run normally: each result of the init runs the step, and the Reduce gives none.
    * A push {@code each} breaks only inside itself, so its run's answer is true.
    */
   @Override

@@ -33,8 +33,8 @@ public final class PipeOp extends Op {
   }
 
   /**
-   * The right side's value on the left side's. A push left side of a value-form Pipe is many, so the right side gives no
-   * result (ADR-0007 #112): each result of the left runs it, for its ticks and writes, and the Pipe gives none.
+   * The right side's value on the left side's. A push left side of a value-form Pipe is many, so the right side gives
+   * no result: each result of the left runs it, for its ticks and writes, and the Pipe gives none.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

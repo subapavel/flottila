@@ -1,9 +1,9 @@
 package dev.rail8.jq.query.internal.interpret;
 
 /**
- * A closure argument of a call (ADR-0045 #107): one written at the call, whose closure each activation makes with the
- * running frame as its defining frame; one written at a jump, which reads no cell of the running frame and so is bound
- * once, with no defining frame (ADR-0047 #118); or a closure parameter of the caller passed on as it is, not wrapped.
+ * A closure argument of a call: one written at the call, whose closure each activation makes with the running frame
+ * as its defining frame; one written at a jump, which reads no cell of the running frame and so is bound once, with
+ * no defining frame; or a closure parameter of the caller passed on as it is, not wrapped.
  */
 public final class ClosureArgument {
   /** The body of a written closure; null for a passed-on one. */
@@ -15,7 +15,7 @@ public final class ClosureArgument {
   /** The links from the running frame to the frame holding a passed-on closure; 0 for a written one. */
   private final int level;
 
-  /** A written closure's leaf-emit depth (ADR-0046 #111 amendment); a passed-on one's closure carries its own. */
+  /** A written closure's leaf-emit depth; a passed-on one's closure carries its own. */
   private final long emitDepth;
 
   /** The one closure of a closure written at a jump, with no defining frame; null for any other. */
@@ -38,9 +38,9 @@ public final class ClosureArgument {
   }
 
   /**
-   * A closure written at a jump (ADR-0047 #118): as {@link #written}, but its body reads no cell of the frame it is
-   * written in, no slot, Break token or closure parameter, so every jump binds the same closure, built here with no
-   * defining frame, and a chain of jumps keeps no earlier frame alive.
+   * A closure written at a jump: as {@link #written}, but its body reads no cell of the frame it is written in, no
+   * slot, Break token or closure parameter, so every jump binds the same closure, built here with no defining frame,
+   * and a chain of jumps keeps no earlier frame alive.
    */
   public static ClosureArgument closed(Op body, int cells, long emitDepth) {
     return new ClosureArgument(body, cells, 0, emitDepth, true);

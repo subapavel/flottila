@@ -6,10 +6,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code value as p1 ?// p2 ... | body} (ADR-0038, ADR-0008 and its F-32 amendment): each result of the value sets its
- * slot, then the alternatives run in order on the chain's input. At each result of an alternative's match, each group
- * slot is set from that alternative's own slot, or null for a from entry of -1 (a constant null argument), and the body
- * runs on the chain's input.
+ * {@code value as p1 ?// p2 ... | body}: each result of the value sets its slot, then the alternatives run in order
+ * on the chain's input. At each result of an alternative's match, each group slot is set from that alternative's own
+ * slot, or null for a from entry of -1 (a constant null argument), and the body runs on the chain's input.
  * A FilterException from the match, the body or downstream starts the next alternative, after one step, while one
  * remains; the last alternative runs outside any catch, so its error propagates, and so does an error from the value,
  * which runs outside the catch too. A stop returns false at once, and a Termination is no FilterException.
@@ -35,7 +34,7 @@ public final class AltBindOp extends Op {
     this.body = body;
   }
 
-  /** Each part in its run form: a value-form part's value runs what comes after it once it returned (ADR-0047 #116). */
+  /** Each part in its run form: a value-form part's value runs what comes after it once it returned. */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     if (value.valueForm) {
@@ -63,7 +62,7 @@ public final class AltBindOp extends Op {
       try {
         return alternative(k, state, slots, in, out);
       } catch (FilterException _) {
-        // ADR-0038: the next alternative starts, and entering it is a step.
+        // The next alternative starts, and entering it is a step.
         state.tick();
       }
     }
@@ -98,7 +97,7 @@ public final class AltBindOp extends Op {
     }
   }
 
-  /** Never called: an AltBind is never eligible for the value form (ADR-0047 #116). */
+  /** Never called: an AltBind is never eligible for the value form. */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
     throw new IllegalStateException("An AltBind has no value form");
@@ -142,7 +141,7 @@ public final class AltBindOp extends Op {
 
   /**
    * The heap form of alternative {@code k} while one remains after it: an error from its match, the body or downstream
-   * starts the next alternative after one step (ADR-0038, F-32), and its run's answer is the value's result's.
+   * starts the next alternative after one step, and its run's answer is the value's result's.
    */
   private final class Alternatives extends HeapForm {
     private final int k;

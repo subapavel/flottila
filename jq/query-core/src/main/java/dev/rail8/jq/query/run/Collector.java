@@ -1,9 +1,9 @@
 package dev.rail8.jq.query.run;
 
 /**
- * What a {@code Collect} node makes of the results its body gave (ADR-0034 amendment): the node gathers them, charging
- * {@link Charges#CONTAINER} once and {@link Charges#ELEMENT} per result before it stores one (ADR-0035), and hands
- * them over here once its body has run out.
+ * What a {@code Collect} node makes of the results its body gave: the node gathers them, charging
+ * {@link Charges#CONTAINER} once and {@link Charges#ELEMENT} per result before it stores one, and hands them over
+ * here once its body has run out.
  */
 @FunctionalInterface
 public interface Collector {

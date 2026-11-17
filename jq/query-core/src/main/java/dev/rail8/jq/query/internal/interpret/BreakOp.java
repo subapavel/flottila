@@ -4,9 +4,9 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code break $name} (ADR-0008, ADR-0039, ADR-0045 #107): marks the token its Label's run put in the cell, or that a
- * call passed as a value parameter, and returns false, with no result and no step. The cell is in the frame {@code
- * level} links out from the running one.
+ * {@code break $name}: marks the token its Label's run put in the cell, or that a call passed as a value parameter,
+ * and returns false, with no result and no step. The cell is in the frame {@code level} links out from the running
+ * one.
  */
 public final class BreakOp extends Op {
   private final int level;
@@ -30,7 +30,7 @@ public final class BreakOp extends Op {
     return false;
   }
 
-  /** Never called: a Break is never eligible for the value form (ADR-0047 #116). */
+  /** Never called: a Break is never eligible for the value form. */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
     throw new IllegalStateException("A Break has no value form");

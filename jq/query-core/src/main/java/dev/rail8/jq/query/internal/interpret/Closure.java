@@ -5,10 +5,10 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * A closure argument of one call activation (GLOSSARY "Closure", ADR-0045 #107): its body and the frame it was written
- * in, its defining frame. A body that binds slots runs in a fresh frame of {@code cells} cells whose cell 0 links the
- * defining frame; one that binds none, {@code cells} 0, runs in the defining frame itself. It carries its body's
- * leaf-emit depth, which a ParamCall that runs it holds as stack units (ADR-0046 #111 amendment).
+ * A closure argument of one call activation: its body and the frame it was written in, its defining frame. A body
+ * that binds slots runs in a fresh frame of {@code cells} cells whose cell 0 links the defining frame; one that binds
+ * none, {@code cells} 0, runs in the defining frame itself. It carries its body's
+ * leaf-emit depth, which a ParamCall that runs it holds as stack units.
  */
 final class Closure {
   private final Op body;
@@ -25,7 +25,7 @@ final class Closure {
 
   /**
    * Pushes the body's results for {@code in} into {@code out}: true when they ran out, false when out stopped. A
-   * value-form body (ADR-0047 #116) returns its value, emitted here.
+   * value-form body returns its value, emitted here.
    */
   boolean run(RunState state, Object in, Sink out) {
     if (!body.valueForm) {
@@ -35,7 +35,7 @@ final class Closure {
     return v == CallForm.NONE || out.emit(v);
   }
 
-  /** {@link #run} with this frame as the starter: the body runs on a new trampoline (ADR-0046 #111 amendment). */
+  /** {@link #run} with this frame as the starter: the body runs on a new trampoline. */
   boolean drive(RunState state, Object in, Sink out) {
     return Trampoline.run(state, body, frame(), in, out);
   }

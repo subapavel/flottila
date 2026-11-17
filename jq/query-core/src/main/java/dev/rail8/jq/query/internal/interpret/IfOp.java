@@ -6,18 +6,18 @@ import dev.rail8.jq.query.run.Sink;
 import dev.rail8.jq.query.run.Truth;
 
 /**
- * {@code if c then t else e end} (ADR-0037): each result of the condition runs one branch on the If's input, {@code t}
- * when the truth holds for it and {@code e} when it does not, and a stop in a branch ends the condition too. A
- * value-form condition (ADR-0047 #116) returns its value, which runs the branch after the condition returned; in the
- * conservative compile a tail condition (ADR-0043) runs into a {@link Holder} first to the same end; any other
- * condition runs the branch inside its emit. Each branch runs in its run form. No step of its own.
+ * {@code if c then t else e end}: each result of the condition runs one branch on the If's input, {@code t} when the
+ * truth holds for it and {@code e} when it does not, and a stop in a branch ends the condition too. A value-form
+ * condition returns its value, which runs the branch after the condition returned; in the conservative compile a tail
+ * condition runs into a {@link Holder} first to the same end; any other condition runs the branch inside its emit. Each
+ * branch runs in its run form. No step of its own.
  */
 public final class IfOp extends Op {
   private final Op cond;
 
   /**
-   * Whether the condition is a tail emitter: one result at most, and it never breaks out (ADR-0043). A value-form
-   * condition runs by its value form first (ADR-0047 #116), so only the conservative compile reads this.
+   * Whether the condition is a tail emitter: one result at most, and it never breaks out. A value-form condition runs
+   * by its value form first, so only the conservative compile reads this.
    */
   private final boolean tail;
 
@@ -73,7 +73,7 @@ public final class IfOp extends Op {
   }
 
   /**
-   * The branch's value. A push condition of a value-form If is many, so neither branch gives a result (ADR-0007 #112):
+   * The branch's value. A push condition of a value-form If is many, so neither branch gives a result:
    * each result of the condition runs its branch, for its ticks and writes, and the If gives none.
    */
   @Override

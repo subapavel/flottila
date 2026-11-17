@@ -1,12 +1,12 @@
 package dev.rail8.jq.query.run;
 
 /**
- * The call form of an operation with any number of results (ADR-0009, ADR-0034, ADR-0041): a resumable cursor, so the
- * caller runs it as a loop and charges one step per result before it emits it. A cursor is a {@code long} the operation
- * chooses, {@link #END} after the last result. The arguments come as an array, as many as the call has and then
- * {@link #loopSlots} more, the same array at each call of one loop and a new one for each loop; {@link #first} may
- * replace an argument with one the later calls read more cheaply, and may set the loop slots to what the later calls of
- * that loop read (ADR-0034 as amended by ADR-0044); no other call writes the array.
+ * The call form of an operation with any number of results: a resumable cursor, so the caller runs it as a loop and
+ * charges one step per result before it emits it. A cursor is a {@code long} the operation chooses, {@link #END} after
+ * the last result. The arguments come as an array, as many as the call has and then {@link #loopSlots} more, the same
+ * array at each call of one loop and a new one for each loop; {@link #first} may replace an argument with one the later
+ * calls read more cheaply, and may set the loop slots to what the later calls of that loop read; no other call writes
+ * the array.
  */
 public non-sealed interface Many extends CallForm {
   /** The cursor after the last result. */

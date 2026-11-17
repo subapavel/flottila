@@ -1,6 +1,6 @@
 package dev.rail8.jq.query.run;
 
-/** The call form of an operation with at most one result and two arguments (ADR-0009, ADR-0034). */
+/** The call form of an operation with at most one result and two arguments. */
 @FunctionalInterface
 public non-sealed interface Fn2 extends CallForm {
   /**

@@ -1,8 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 /**
- * A function of a program as the interpreter runs it (GLOSSARY "Lifted function", ADR-0045 #107): its frame is its
- * slots followed by its closure cells, under one count. The compiler makes every function's shell first, so a call
+ * A function of a program as the interpreter runs it: its frame is its slots followed by its closure cells, under one
+ * count. The compiler makes every function's shell first, so a call
  * links to it before its body is built, then defines each body once, before the executable is published.
  */
 public final class LiftedFunction {

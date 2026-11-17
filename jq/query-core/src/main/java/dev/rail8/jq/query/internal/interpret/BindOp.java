@@ -5,8 +5,8 @@ import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.query.run.Sink;
 
 /**
- * {@code value as $slot | body} (ADR-0034): each result of the value side sets the slot and runs the body on the Bind's
- * own input; a stop in the body ends the value side too.
+ * {@code value as $slot | body}: each result of the value side sets the slot and runs the body on the Bind's own
+ * input; a stop in the body ends the value side too.
  */
 public final class BindOp extends Op {
   private final Op value;
@@ -42,9 +42,8 @@ public final class BindOp extends Op {
   }
 
   /**
-   * The body's value with the slot set. A push value side of a value-form Bind is many, so the body gives no result
-   * (ADR-0007 #112): each result of the value side sets the slot and runs it, for its ticks and writes, and the Bind
-   * gives none.
+   * The body's value with the slot set. A push value side of a value-form Bind is many, so the body gives no result:
+   * each result of the value side sets the slot and runs it, for its ticks and writes, and the Bind gives none.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {

@@ -1,8 +1,8 @@
 package dev.rail8.jq.query.internal.interpret;
 
 /**
- * The links between frames (GLOSSARY "Frame", "Defining frame", ADR-0045 #107): a closure's call activation that binds
- * slots runs in a frame whose cell 0 links the frame the closure was written in.
+ * The links between frames: a closure's call activation that binds slots runs in a frame whose cell 0 links the frame
+ * the closure was written in, its defining frame.
  */
 final class Frames {
   private Frames() {}
