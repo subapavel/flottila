@@ -1,8 +1,8 @@
 # Rail8 — rules for agents
 
 Rules for every agent in this repository (Claude Code, Codex, any other). Rail8 is an open-source
-integration platform where monitoring is the product: every message, step and payload is captured,
-searchable and replayable. Java 25, Vert.x 5.1, PostgreSQL, ClickHouse, Valkey, S3; Apache 2.0.
+integration platform whose goal is "find anything, fast": what it stores about messages is set for
+each flow, and it has no replay. Java 25, Vert.x 5.1, PostgreSQL, ClickHouse, Valkey, S3; Apache 2.0.
 `docs/ARCHITECTURE.md` is the binding design: read the sections your change touches, never the
 whole file. Everything in the repository is in English.
 
