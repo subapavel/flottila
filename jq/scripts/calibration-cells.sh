@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Counts the cells a calibration run wrote (ADR-0046 #113, F-91): a forked test JVM can die without failing the
-# Maven build, so the gates and nightly count the rows of the run's tsv instead of trusting the exit code.
+# Counts the cells a calibration run wrote. Maven's exit code says that no test failed, not that the cells ran (a run
+# whose tag filter leaves them out passes too), so the gates and nightly count the rows of the run's tsv.
 #
 #   scripts/calibration-cells.sh <tsv> <row> <expected>
 #

@@ -4,7 +4,8 @@
 # These block a merge.
 # Once a night and on demand, as a report that blocks nothing: the whole stack in Docker with the demo deployed,
 # the same tests on the oldest supported Postgres, the coverage floors and the "coverage must not fall"
-# comparison, the benchmark and mutation testing.
+# comparison, the benchmark, mutation testing, and the check that a test JVM which dies fails the build in every
+# module of the platform, the jq engine and the mapping.
 name: ci
 
 on:
@@ -91,11 +92,12 @@ jobs:
         run: bin/rail8 validate examples/demo
       - name: The demo package's flow tests pass through the launcher
         run: bin/rail8 test examples/demo
-      - name: Script tests (coverage check, name guard, comment-only check, site checks) and the name guard itself
+      - name: Script tests (coverage check, name guard, comment-only check, fork kill check, site checks) and the name guard itself
         run: |
           set -euo pipefail
           python3 -m unittest ci.test_coverage_check
           python3 -m unittest ci.test_comment_only_check
+          python3 -m unittest ci.test_fork_kill_check
           python3 -m unittest ci.test_name_guard
           python3 ci/name_guard.py
           python3 -m unittest ci.test_site
@@ -202,6 +204,34 @@ jobs:
         if: always()
         working-directory: deploy/compose
         run: docker compose --profile history --profile kafka down -v
+
+  fork-kill:
+    name: "nightly · a test JVM that dies fails the build, in every module (ci/fork_kill_check.py)"
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Install the jq engine the jq step depends on
+        run: bin/install-jq
+      # Each reactor is checked even when an earlier one has a finding.
+      - name: The platform's unit test JVMs
+        if: ${{ !cancelled() }}
+        run: python3 ci/fork_kill_check.py platform/pom.xml
+      # A module stops at its first failed goal, so the integration test JVMs are killed with the unit tests deselected.
+      - name: The platform's integration test JVMs (-Pit)
+        if: ${{ !cancelled() }}
+        run: python3 ci/fork_kill_check.py platform/pom.xml -Pit -Dtest=NoUnitTest -Dsurefire.failIfNoSpecifiedTests=false
+      - name: The jq engine's test JVMs
+        if: ${{ !cancelled() }}
+        run: python3 ci/fork_kill_check.py jq/pom.xml
+      - name: The mapping's test JVMs
+        if: ${{ !cancelled() }}
+        run: python3 ci/fork_kill_check.py mapping/pom.xml
 
   bench:
     name: bench (native Postgres on the runner)
