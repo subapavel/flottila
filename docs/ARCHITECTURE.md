@@ -367,13 +367,19 @@ The platform does not use the engine yet: there is no jq step.
 
 ## 9. UI
 
-The platform has no web UI; the admin API answers JSON and refuses browsers. The only UI is the
-mapping studio in `mapping/ui`: React with PatternFly 6, the expression canvas on React Flow. Its
-screens are a list of mappings and a studio with overview, definition, test, signature and functions
-tabs. `site/` is the project's public web page.
+The Rail8 web application in `ui/` is React with PatternFly 6, built from PatternFly components
+and design tokens only. Its shell has a masthead, a navigation listing every screen and the tabs of
+the open screens: choosing a screen opens it in a tab, or shows the tab it already has, and each tab
+closes on its own. The tabs live in the page's memory; a reload starts again with the Home screen,
+the only screen so far. Screens are registered in one list (`ui/src/screens.tsx`). The application
+talks to no server yet, and no node serves it; `npm run dev` runs it.
+
+The admin API answers JSON and refuses browsers. The mapping studio in `mapping/ui` is a separate
+application: React with PatternFly 6, the expression canvas on React Flow. Its screens are a list of
+mappings and a studio with overview, definition, test, signature and functions tabs. `site/` is the
+project's public web page.
 
 **Planned**
-- One Rail8 web application on PatternFly with a shell in which screens open as tabs.
 - First screen: find a message (by id, business key, flow, time) and see its progress step by step;
   fast.
 - The mapping studio rebuilt inside it.

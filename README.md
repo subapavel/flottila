@@ -21,7 +21,7 @@ Where to look:
 - `docs/archive/` — earlier documents: the old architecture, the briefs, findings and reviews
 - `agent/cloud/` — the cloud environment the autonomous session runs in
 
-Build at the current state, JDK 25. The repository holds two areas, each built on its own:
+Build at the current state, JDK 25. The repository holds three areas, each built on its own:
 
 - the platform, `platform/` and `bench/` — Maven 3.9: `mvn -B -ntp -f platform/pom.xml verify` for
   the unit tests, with `-Pit` to include the Testcontainers tests (Docker required). Modules:
@@ -30,6 +30,8 @@ Build at the current state, JDK 25. The repository holds two areas, each built o
 - the mapping engine, `mapping/` — imported with its history, with its own parent pom, rules and
   decisions (`mapping/README.md`, `mapping/CLAUDE.md`, `mapping/docs/adr/`):
   `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify`.
+- the web application, `ui/` — Node.js 22: `npm ci`, then `npm run dev` to run it, `npm run test`
+  and `npm run test:browser` for its tests (Chromium), `npm run build` for the production build.
 
 The milestone-1 prototype survives as tag `proto-m1` and in the history of the files that moved;
 the demo flow it ran lives in `examples/demo/` until P0-12 converts it.
