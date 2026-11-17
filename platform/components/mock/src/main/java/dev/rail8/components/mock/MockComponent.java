@@ -41,22 +41,22 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
- * The in-process mock of any scheme (ARCHITECTURE §7 "records what it was sent, replies from fixtures; selected per
- * environment"; §11): bound to the scheme it stands in for, so the flow file stays byte-identical, with one
+ * The in-process mock of any scheme: it records what it was sent and replies from fixtures. It is bound to the scheme it
+ * stands in for, so the flow file stays byte-identical, with one
  * {@link Behaviour} per endpoint from the flow's {@code *.test.yaml}. A producer records every envelope per endpoint and
  * answers with the reply of the consumer running on that same endpoint when there is one, else per behaviour: the fixture as
  * the next body (or the request echoed), after the delay through the injected timer, or a failure — a status or fault
  * as {@link NackException}, retryable as HTTP would be. Each delivery calls a consumer's handler on a virtual thread of its
- * own (D-057), with the envelope's {@link Envelope#H_MESSAGE_ID} ({@link Envelope#withOutboundId()}); {@link #sent} records
- * the envelope as it was given. A bounded send ({@code send(e, d)}, D-113 draft) with no time left fails with a retryable
+ * own, with the envelope's {@link Envelope#H_MESSAGE_ID} ({@link Envelope#withOutboundId()}); {@link #sent} records
+ * the envelope as it was given. A bounded send ({@code send(e, d)}) with no time left fails with a retryable
  * {@link NackException} and is neither recorded nor counted; one still unanswered (a delay, a held handler) is cut on the
- * injected timer — the same failure — once its deadline, re-read at each firing, has run out. Standing in for a polling component such as {@code sftp} (D-076), a consumer also polls: every second on the
+ * injected timer — the same failure — once its deadline, re-read at each firing, has run out. Standing in for a polling component such as {@code sftp}, a consumer also polls: every second on the
  * injected timer it delivers the files {@link #drop dropped} on its endpoint — and the behaviour's {@code files} fixtures,
  * fed at its start in name order — oldest first, one at a time, by the rules of the real one: Accepted or Reply removes
  * the file, a retryable Nack or a failed answer keeps it and ends the round, a final Nack (or a body above the endpoint's
  * {@code maxBodyBytes}) keeps it and never delivers it again to that consumer; {@link #undelivered} names the files still
  * pending. {@link #ingest} hands a running consumer a message as the real one would take it from its sender
- * ({@code rail8 test}'s {@code send}, D-080); {@link #delivered} records what each consumer's handler was given, whoever gave
+ * ({@code rail8 test}'s {@code send}); {@link #delivered} records what each consumer's handler was given, whoever gave
  * it. Development and CI only: a deployed node refuses a mock binding by its scheme and by this package (the node's start).
  *
  * @since 0.1
@@ -89,7 +89,7 @@ public final class MockComponent implements Component {
         this(scheme, blobs, timer, counting("mock-" + UUID.randomUUID() + "-"));
     }
 
-    /** A mock whose consumers take the ids of the deliveries they poll from {@code ids} (the runtime's, D-076). */
+    /** A mock whose consumers take the ids of the deliveries they poll from {@code ids} (the runtime's). */
     public MockComponent(String scheme, BlobStore blobs, Timer timer, IdGenerator ids) {
         this.scheme = Objects.requireNonNull(scheme, "scheme");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
@@ -112,7 +112,7 @@ public final class MockComponent implements Component {
 
     /**
      * The names of the files still on the endpoint named {@code endpoint}, oldest first. Takes no lock (a sampler of a world in
-     * which virtual threads take the inbox's monitor must hold none, F-17): a read of the inbox map and of the inbox's current
+     * which virtual threads take the inbox's monitor must hold none): a read of the inbox map and of the inbox's current
      * list, which a drop or a removal replaces whole.
      */
     public Collection<String> remaining(String endpoint) {
@@ -122,7 +122,7 @@ public final class MockComponent implements Component {
     /**
      * The names of the files on the endpoint named {@code endpoint} still to be delivered, oldest first: those
      * {@linkplain #remaining remaining} minus those the consumer started last on it refused finally — a final Nack, a body above
-     * its {@code maxBodyBytes} — which it never delivers again: settled, not pending ({@code rail8 test}'s feed cases, D-080).
+     * its {@code maxBodyBytes} — which it never delivers again: settled, not pending ({@code rail8 test}'s feed cases).
      * A file dropped again under a refused one's name is a new file, pending. Takes no lock, as {@link #remaining} takes none.
      */
     public Collection<String> undelivered(String endpoint) {
@@ -146,7 +146,7 @@ public final class MockComponent implements Component {
         return this;
     }
 
-    /** Binds every entry of a {@code mocks} section ({@code endpoint → behaviour}), fixture paths against {@code baseDir} (the package root, D-078). */
+    /** Binds every entry of a {@code mocks} section ({@code endpoint → behaviour}), fixture paths against {@code baseDir} (the package root). */
     public MockComponent bindAll(Map<String, Object> mocks, Path baseDir) {
         mocks.forEach((endpoint, node) -> {
             if (!(node instanceof Map<?, ?> m)) throw new IllegalArgumentException("mocks." + endpoint + " must be an object");
@@ -163,10 +163,10 @@ public final class MockComponent implements Component {
 
     /**
      * Hands {@code bytes} with {@code headers} to the consumer running on the endpoint named {@code endpoint} as that consumer
-     * takes in what its sender sends (D-080): stored under {@code BlobKey.body(id, 0)} within the {@code maxBodyBytes} of the
+     * takes in what its sender sends: stored under {@code BlobKey.body(id, 0)} within the {@code maxBodyBytes} of the
      * consumer's config, an id from this mock's generator and the config's {@code flow} ({@code Envelope.ingress}); an http
      * mock's envelope carries the props {@code http.method} {@code POST} and {@code http.path} the config's {@code path}. It goes
-     * through the consumer's own handler — on a virtual thread of its own, counted for the consumer's stop (D-056, D-057) — and
+     * through the consumer's own handler — on a virtual thread of its own, counted for the consumer's stop — and
      * is {@link #delivered}, never {@link #sent}.
      *
      * @return the handler's answer; failed with {@code BodyTooLargeException} when the bytes are above the consumer's
@@ -187,8 +187,8 @@ public final class MockComponent implements Component {
     public List<Envelope> delivered(String endpoint) { return List.copyOf(delivered.getOrDefault(endpoint, List.of())); }
 
     /**
-     * A consumer running on its endpoint: the {@code flow} and {@code maxBodyBytes} its config carries (the deploy sets both,
-     * D-059), the config's {@code path} (an http consumer's; {@code /} without one) and its tracked handler.
+     * A consumer running on its endpoint: the {@code flow} and {@code maxBodyBytes} its config carries (the deploy sets both),
+     * the config's {@code path} (an http consumer's; {@code /} without one) and its tracked handler.
      */
     private record Running(String flow, Object maxBody, String path, Function<Envelope, Future<Ack>> handler) {
         Running(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
@@ -232,7 +232,7 @@ public final class MockComponent implements Component {
             }
             /**
              * Unregisters the handler and cancels the next round at once; completes once every answer it handed out has
-             * completed and the round in flight has removed its file (D-056).
+             * completed and the round in flight has removed its file.
              */
             @Override public Future<Void> stop() { handlers.remove(cfg.name(), running); poller.stop(); return drain.stop(); }
         };
@@ -404,7 +404,7 @@ public final class MockComponent implements Component {
     }
 
     /**
-     * The answers a consumer's handler handed out and that are still outstanding (D-056): the consumer itself holds one more
+     * The answers a consumer's handler handed out and that are still outstanding: the consumer itself holds one more
      * until {@link #stop}, so the count reaches zero — and the drain completes — only after the stop and the last answer.
      */
     private static final class Drain {
@@ -417,7 +417,7 @@ public final class MockComponent implements Component {
         }
 
         /**
-         * Calls {@code handler} with {@code e} on a virtual thread of its own — one per delivery, never the sender's (D-057) —
+         * Calls {@code handler} with {@code e} on a virtual thread of its own — one per delivery, never the sender's —
          * and returns its answer, counted until it completes before the handler runs: a stop issued meanwhile waits for it.
          * A handler that throws or answers null fails the answer ({@link Future#future} catches what its handler throws).
          */
@@ -484,7 +484,7 @@ public final class MockComponent implements Component {
         });
     }
 
-    /** The fixture as the next step's body, under {@link Envelope#nextKey()} (the run's own from its second attempt on, D-066); the content type from the file's extension. */
+    /** The fixture as the next step's body, under {@link Envelope#nextKey()} (the run's own from its second attempt on); the content type from the file's extension. */
     private Future<Envelope> reply(Envelope e, Path fixture) {
         byte[] bytes;
         try {

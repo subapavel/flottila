@@ -48,8 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 /**
- * The {@code http} component over the Vert.x server and client (ARCHITECTURE §4 delivery modes, §7 Component SPI):
- * the one place that opens an HTTP socket.
+ * The {@code http} component over the Vert.x server and client: the one place that opens an HTTP socket.
  *
  * <p><b>Consumer</b> (endpoint options {@code host}, {@code port} — 0 for an ephemeral one, see {@link HttpConsumer#port()} —,
  * {@code path}, {@code flow}, {@code maxBodyBytes}, {@code shutdownTimeoutMs} — default 30 000, positive): the server verticle owns the socket and never runs a pipeline. A request
@@ -57,7 +56,7 @@ import java.util.function.Function;
  * (new id, the request headers, {@link #METHOD} / {@link #PATH} props) and is handed to the handler on its own virtual thread;
  * the answer follows the {@link Ack}: {@code Reply} → 200 with the reply's headers and its body streamed, {@code Accepted} →
  * 202 with {@code x-message-id}, a retryable {@code Nack} → 503 + {@code Retry-After}, a final one → 400. A failed handler (a
- * sync flow's error reaches the caller) is answered by the failure's {@link Fault.Kind} (D-049): {@code MALFORMED} 400,
+ * sync flow's error reaches the caller) is answered by the failure's {@link Fault.Kind}: {@code MALFORMED} 400,
  * {@code INVALID} 422, {@code DOWNSTREAM} 503 + {@code Retry-After} when retryable ({@link NackException},
  * {@link HttpStatusException}) else 502, {@code INTERNAL} and any failure that is no {@link Fault} 500 — the body is the
  * failure's message as {@code text/plain}. Other paths are 404, other methods 405.
@@ -65,10 +64,10 @@ import java.util.function.Function;
  * <p><b>Producer</b> (options {@code url}, {@code maxBodyBytes} for the reply, optional {@code timeoutMs}, {@code poolSize}):
  * one client per endpoint with its connection pool; POSTs the envelope's body — streamed from {@link Body#open()}, so a retry
  * re-opens it — with the envelope's headers (hop-by-hop ones aside) and its message id as {@code x-message-id}, a forwarded one
- * replaced ({@link Envelope#withOutboundId()}); a bounded send ({@code send(e, d)}, D-113 draft) is cut at its deadline on the
+ * replaced ({@link Envelope#withOutboundId()}); a bounded send ({@code send(e, d)}) is cut at its deadline on the
  * component's {@link Timer} — the request reset — and a {@code timeoutMs} expiry fails as a cut does, a retryable
  * {@link NackException}; a 2xx response is the reply envelope (its body the next
- * step's, stored under {@link Envelope#nextKey()} of the envelope sent — the run's own key from its second attempt on, D-066 —
+ * step's, stored under {@link Envelope#nextKey()} of the envelope sent — the run's own key from its second attempt on —
  * {@link #STATUS} prop, the response headers), 503 and 429 fail with a retryable {@link NackException}, any other
  * non-2xx with {@link HttpStatusException} carrying the first {@value #ERROR_BODY_BYTES} bytes of the response (the rest drained). Limits are never defaulted: both {@code maxBodyBytes} are required.
  *
@@ -143,14 +142,14 @@ public final class HttpComponent implements Component {
         return Future.succeededFuture(running.isEmpty() ? Health.down("no consumer listening") : Health.up());
     }
 
-    /** Where a consumer of {@code cfg} binds ({@link #bindsTo}): every http consumer accepts connections (D-072). */
+    /** Where a consumer of {@code cfg} binds ({@link #bindsTo}): every http consumer accepts connections. */
     @Override
     public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
         return Optional.of(bindsTo(cfg));
     }
 
     /**
-     * The partner a producer of {@code cfg} calls (D-099): {@code scheme://host:port} of its {@code url} option, else of the
+     * The partner a producer of {@code cfg} calls: {@code scheme://host:port} of its {@code url} option, else of the
      * endpoint URI, read as the producer reads it — Vert.x {@link RequestOptions#setAbsoluteURI(String)}, i.e. {@code java.net.URL},
      * which takes a host {@code java.net.URI} reads none from (an underscore) and an unencoded space or {@code |} — lower-cased,
      * the scheme's default port filled in (443 for https, else 80), no userinfo, path, query or fragment. A url the producer
@@ -214,7 +213,7 @@ public final class HttpComponent implements Component {
     }
 
     /**
-     * The status the consumer answers its sender with (D-049), also {@code rail8 test}'s {@code expect.status} (D-080): a
+     * The status the consumer answers its sender with, also {@code rail8 test}'s {@code expect.status}: a
      * handler that failed by its failure's {@link Fault.Kind} — {@code MALFORMED} 400, {@code INVALID} 422, {@code DOWNSTREAM}
      * 503 when the failure says the sender may try again ({@link NackException}, {@link HttpStatusException}) else 502,
      * {@code INTERNAL} and a failure that is no {@link Fault} 500; else its {@link Ack}: {@code Accepted} 202, a retryable
@@ -285,7 +284,7 @@ public final class HttpComponent implements Component {
         }
 
         /**
-         * Stops (D-056): health DOWN at once; a request whose body completes from now on is answered 503 + {@code retry-after}
+         * Stops: health DOWN at once; a request whose body completes from now on is answered 503 + {@code retry-after}
          * without calling the handler; the server stops listening and its connections close once their requests are answered
          * — the deliveries in flight answer their senders — or, the transport's backstop, after {@code shutdownTimeoutMs}.
          */
@@ -382,7 +381,7 @@ public final class HttpComponent implements Component {
         }
 
         /**
-         * {@link #send(Envelope)} bounded by {@code d} (D-113 draft): no time left — no request, not counted, a retryable Nack;
+         * {@link #send(Envelope)} bounded by {@code d}: no time left — no request, not counted, a retryable Nack;
          * else the request's connect timeout is the earlier of what is left and {@code timeoutMs}, and a timer at what is left
          * re-reads {@code d}: time left again (renewed), it is re-armed; none, the send is cut — the request reset (one not yet
          * obtained is reset unsent), no reply stored once the cut fires while the reply is still streaming (a reply already
@@ -418,7 +417,7 @@ public final class HttpComponent implements Component {
                 req.putHeader("content-length", String.valueOf(e.body().size()));
                 // Registered before the send, so it runs in the event-loop callback that delivers the response: nothing flows
                 // until reply() attached its handlers (the store resumes a 2xx reply, head() any other), which runs a deferred
-                // task later (FIX-21: a small reply could end unheard in between, "Response already ended", and a retry sent twice).
+                // task later; otherwise a small reply could end unheard in between ("Response already ended") and be sent again by a retry.
                 req.response().onSuccess(HttpClientResponse::pause);
                 return req.send(e.body().open());
             }).compose(res -> reply(e, res));   // a cut resets the request: a reply still streaming fails its store write
