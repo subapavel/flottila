@@ -165,14 +165,15 @@ class CliEdgeCasesTest {
 
     // --- P2-02b2 (D-089): the lock command and the --deps option
 
-    /** help names lock and the --deps option of lock, validate and test, one usage line each. */
+    /** help names lock, the --deps option of lock, validate and test, and the --plugins option of validate and test, one usage line each. */
     @Test
     void theUsageNamesLockAndTheDepsOption() {
         Ran ran = run("help");
 
         List<String> lines = ran.outLines().stream().map(String::strip).toList();
         assertEquals(0, ran.exit(), ran.toString());
-        for (String usage : List.of("lock <dir> [--deps <dir>]", "validate <dir> [--env <env>] [--deps <dir>]", "test <dir> [--deps <dir>]")) {
+        for (String usage : List.of("lock <dir> [--deps <dir>]", "validate <dir> [--env <env>] [--deps <dir>] [--plugins <dir>]",
+                "test <dir> [--deps <dir>] [--plugins <dir>]")) {
             assertTrue(lines.contains(usage), "a usage line '" + usage + "': " + ran);
         }
     }

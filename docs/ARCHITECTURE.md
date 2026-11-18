@@ -302,7 +302,8 @@ whole value is `secret://<name>` is a secret; a node reads it from the environme
 
 `rail8 validate` checks a package against the schemas and builds every flow. `rail8 test` runs the
 `*.test.yaml` cases of each flow in process, with mock endpoints and a virtual clock, so a case with
-retries five minutes apart finishes in milliseconds. `rail8 lock` writes `package.lock`.
+retries five minutes apart finishes in milliseconds. Both load plugins as a node does, from
+`--plugins <dir>` or `RAIL8_PLUGINS`. `rail8 lock` writes `package.lock`.
 `rail8 deploy` zips the package and sends it to a node's admin API.
 
 ### Deployment
@@ -352,7 +353,35 @@ reads the whole body or streams it. It is built once at deploy time from the ste
 resources it may keep (clock, timer, ids, blob store, files of its own package). An expression
 language (XPath today) is registered the same way.
 
-Components and step modules are wired into the node in code; there is no plugin loading yet.
+The node wires its shipped components and step modules in code, at start.
+
+### Plugins
+
+A plugin adds components, step factories and expression languages to what the node ships. It is a
+jar, or a folder of jars, in the folder that `RAIL8_PLUGINS` names; the node loads every entry, in
+name order, at start, and logs each plugin's name, version, api version and the SHA-256 of its jars.
+A plugin implements `dev.rail8.api.plugin.Plugin`, named in its own
+`META-INF/services/dev.rail8.api.plugin.Plugin`: a name, the api version it was built against, and
+what it adds. Its components are built over the node's `ComponentContext` (Vert.x, blob store, ids,
+timer, clock), inside the node's start; building them opens nothing.
+
+- **Isolation.** Each plugin has a class loader of its own. It sees the JDK, its own jars, and from
+  the node only `dev.rail8.api`, `io.vertx.core`, Netty and SLF4J, so two plugins may bring two
+  versions of one library. The thread's context class loader is the plugin's during each call into
+  it.
+- **Add, never replace.** A scheme, step type or language the node already has (shipped, built in,
+  or another plugin's) refuses the start and names both owners; so does the scheme `mock`. A plugin
+  brings no mock: `rail8 test` stands the platform's mock in for its schemes.
+- **Acknowledgement and back-pressure** are a consumer's `Future<Ack>`: accepted, reply, or refused
+  (retryable or for good). A sealed type such as `Ack` never gains a variant a plugin did not opt
+  into.
+- **Compatibility.** In 0.x a node loads plugins of its own api major.minor only; from 1.0 on, of its
+  major and a minor up to its own.
+- **Limits.** At most 64 plugins, 512 jars per plugin and 256 contributions of each kind per plugin.
+
+A refused plugin, step type or language stops the node with exit 2 before Vert.x starts; a refused
+component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
+`RAIL8_PLUGINS`.
 
 ### Mocks and contract suites
 
@@ -363,8 +392,11 @@ component stands in for any scheme in `rail8 test`, replying from fixtures with 
 a file to poll; a deployed node refuses it.
 
 **Planned**
-- Plugins: adapters, steps, custom mapping code and custom services are loaded as plugins.
-- A development kit for adapters: the interface, the contract suite and a mock to test against.
+- Plugins for custom mapping code and custom services, and a plugin that replaces a shipped
+  component or step.
+- A development kit for adapter plugins: `rail8-api`, the contract suites of `rail8-testkit` and a
+  mock to test against, with a sample adapter that a running node loads.
+- The admin API lists the loaded plugins.
 - The adapter contract carries back-pressure and acknowledgement explicitly, and later a deferred
   acknowledgement: system and application acknowledgements as in SAP XI.
 - An API for custom code: secrets, cache, the envelope and the message's log.

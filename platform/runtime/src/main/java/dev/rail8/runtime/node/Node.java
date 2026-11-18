@@ -8,6 +8,7 @@ import dev.rail8.api.IdGenerator;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.Timer;
+import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.core.admission.Targets;
 import dev.rail8.core.batch.BatchingWriter;
 import dev.rail8.core.flow.Workers;

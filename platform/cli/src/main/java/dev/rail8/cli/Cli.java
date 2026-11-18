@@ -1,11 +1,16 @@
 package dev.rail8.cli;
 
+import dev.rail8.runtime.Main;
+import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.runtime.plugin.Plugins;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -14,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * The {@code rail8} command line: {@code validate}, {@code test}, {@code lock}, {@code deploy} and {@code help}.
  * Exit codes: 0 done, 1 the package has problems, a flow test failed, or the node refused or could not be reached, 2 a usage
- * error (nothing done).
+ * error or refused plugins (nothing done).
  * Everything a command reports goes to stdout; stderr carries the usage and the tool's own failures.
  *
  * @since 0.1
@@ -23,15 +28,17 @@ public final class Cli {
 
     static final String USAGE = """
             usage: rail8 <command> [arguments]
-              validate <dir> [--env <env>] [--deps <dir>]
+              validate <dir> [--env <env>] [--deps <dir>] [--plugins <dir>]
                   check the package in <dir> as a node would deploy it (schemas, component configs, a dry build of every
                   flow) and print its tree and its problems (environment: dev unless --env); its dependencies, resolved
-                  as lock finds them, are held for the dry build, never deployed; nothing is started or stored
-              test <dir> [--deps <dir>]
+                  as lock finds them, are held for the dry build, never deployed; nothing is started or stored; the node
+                  has the plugins of --plugins, else of $RAIL8_PLUGINS, else none
+              test <dir> [--deps <dir>] [--plugins <dir>]
                   run the package's flow tests (*.test.yaml) as a node of environment ci would, each case on mocks and
                   in-memory stores of its own and on virtual time; print PASS or FAIL per case and what failed (a problem
                   validate would print runs no case); each case's node deploys the package's dependencies, resolved as
-                  lock finds them, on the same mocks
+                  lock finds them, on the same mocks; the plugins as for validate, their steps run and a mock stands in
+                  for their schemes
               lock <dir> [--deps <dir>]
                   write <dir>/package.lock pinning each dependency package.yaml declares with its candidate's content digest:
                   candidates are the folders of --deps, else of the package folder's parent, whose package.yaml loads (the
@@ -41,7 +48,7 @@ public final class Cli {
                   url: --admin, else $RAIL8_ADMIN, else http://localhost:8081; bearer token: $RAIL8_ADMIN_TOKEN only)
               help
                   print this text
-            exit codes: 0 done, 1 problems / a failed case / refused / unreachable, 2 usage
+            exit codes: 0 done, 1 problems / a failed case / refused / unreachable, 2 usage / plugins refused
             """;
 
     private Cli() {}
@@ -55,7 +62,8 @@ public final class Cli {
      * Runs the command {@code args} names, on a virtual thread of its own (the node's deploy code blocks on Vert.x futures), and
      * returns its exit code; never exits the JVM.
      *
-     * @param env the environment the command reads ({@code RAIL8_ADMIN}, {@code RAIL8_ADMIN_TOKEN}); validate and test read none
+     * @param env the environment the command reads: deploy {@code RAIL8_ADMIN} and {@code RAIL8_ADMIN_TOKEN}, validate and test
+     *            {@code RAIL8_PLUGINS}
      */
     static int run(String[] args, Map<String, String> env, PrintStream out, PrintStream err) {
         return CompletableFuture.supplyAsync(() -> command(args, env, out, err), task -> Thread.ofVirtual().name("rail8").start(task)).join();
@@ -65,13 +73,19 @@ public final class Cli {
         try {
             String command = args.length == 0 ? "" : args[0];
             return switch (command) {
-                case "validate" -> Validate.run(options("validate", args, Set.of("--env", "--deps")), out);
+                case "validate" -> {
+                    Options options = options("validate", args, Set.of("--env", "--deps", "--plugins"));
+                    yield withPlugins(options, env, err, shipped -> Validate.run(options, shipped, out));
+                }
                 case "deploy" -> Deploy.run(options("deploy", args, Set.of("--name", "--revision", "--admin")), env, out, err);
                 case "help" -> {
                     out.print(USAGE);
                     yield 0;
                 }
-                case "test" -> FlowTests.run(options("test", args, Set.of("--deps")), out);
+                case "test" -> {
+                    Options options = options("test", args, Set.of("--deps", "--plugins"));
+                    yield withPlugins(options, env, err, shipped -> FlowTests.run(options, shipped, out));
+                }
                 case "lock" -> Lock.run(options("lock", args, Set.of("--deps")), out);
                 default -> throw new Usage(command.isEmpty() ? "no command" : "unknown command '" + command + "'");
             };
@@ -85,6 +99,37 @@ public final class Cli {
         }
     }
 
+    /** A command that runs over what a node ships with its plugins. */
+    @FunctionalInterface
+    private interface OverShipped {
+        int run(Main.Shipped shipped) throws IOException;
+    }
+
+    /**
+     * Runs {@code command} over what a node ships with the plugins of {@code --plugins}, else of {@code RAIL8_PLUGINS} in
+     * {@code env}, else none ({@link Plugins#load}, {@link Main#shipped(int, Plugins)}), and closes the plugins after it. Plugins,
+     * or a step type or language of theirs, that a node would refuse are one line on {@code err} and 2, nothing run.
+     */
+    private static int withPlugins(Options options, Map<String, String> env, PrintStream err, OverShipped command) throws IOException {
+        Plugins plugins;
+        try {
+            plugins = options.value("--plugins").map(dir -> Plugins.load(Path.of(dir))).orElseGet(() -> Plugins.fromEnv(env));
+        } catch (IllegalArgumentException refused) {
+            err.println("rail8: plugins refused: " + oneLine(refused.getMessage()));
+            return 2;
+        }
+        try (plugins) {
+            Main.Shipped shipped;
+            try {
+                shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT, plugins);
+            } catch (IllegalArgumentException refused) {
+                err.println("rail8: plugins refused: " + oneLine(refused.getMessage()));
+                return 2;
+            }
+            return command.run(shipped);
+        }
+    }
+
     /** A usage error: printed with the usage, exit 2, nothing done. */
     static final class Usage extends RuntimeException {
         Usage(String message) {
@@ -94,7 +139,7 @@ public final class Cli {
 
     /**
      * A command's arguments: one package directory, which exists, and each option at most once with a value that is not blank;
-     * {@code --deps} names a directory.
+     * {@code --deps} and {@code --plugins} name a directory.
      *
      * @param dir the package directory
      * @param values the options given, by name ({@code --env}, ...)
@@ -123,8 +168,10 @@ public final class Cli {
         }
         if (dir == null) throw new Usage(command + ": the package directory is missing");
         if (!Files.isDirectory(dir)) throw new Usage(command + ": no package directory at " + dir);
-        String deps = values.get("--deps");
-        if (deps != null && !Files.isDirectory(Path.of(deps))) throw new Usage(command + ": --deps names no directory: " + deps);
+        for (String option : List.of("--deps", "--plugins")) {
+            String value = values.get(option);
+            if (value != null && !Files.isDirectory(Path.of(value))) throw new Usage(command + ": " + option + " names no directory: " + value);
+        }
         return new Options(dir, Map.copyOf(values));
     }
 

@@ -9,7 +9,7 @@ import dev.rail8.core.record.Meter;
 import dev.rail8.runtime.Main;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Secrets;
-import dev.rail8.runtime.node.ComponentContext;
+import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.schemas.Package;
 import dev.rail8.testkit.FakeRuntime;
@@ -31,9 +31,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * {@code rail8 validate <dir> [--env <env>] [--deps <dir>]}: {@link Package#problems()}, then its dependencies'
+ * {@code rail8 validate <dir> [--env <env>] [--deps <dir>] [--plugins <dir>]}: {@link Package#problems()}, then its dependencies'
  * closure resolved from the candidates ({@link Dependencies#resolve}), then — when that found no problem — the node's dry
- * build ({@link Deployments#validate}) over what a node ships ({@link Main#shipped(int)}) in the environment {@code --env} (dev
+ * build ({@link Deployments#validate}) over what a node ships with the plugins of {@code --plugins}
+ * ({@link Main#shipped(int, dev.rail8.runtime.plugin.Plugins)}) in the environment {@code --env} (dev
  * unless given, whatever {@code RAIL8_ENV} says), with in-memory stores on one Vert.x, the closure held for that call so that
  * the node's own resolution runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
  * then one {@code problem: } line per problem, each once; exit 0 without a problem, 1 with one.
@@ -45,8 +46,8 @@ final class Validate {
 
     private Validate() {}
 
-    static int run(Cli.Options options, PrintStream out) throws IOException {
-        Checked checked = check(options.dir(), options.value("--env").orElse("dev"), Dependencies.of(options));
+    static int run(Cli.Options options, Main.Shipped shipped, PrintStream out) throws IOException {
+        Checked checked = check(options.dir(), options.value("--env").orElse("dev"), Dependencies.of(options), shipped);
         checked.pkg().ifPresent(pkg -> tree(pkg, out));
         checked.problems().forEach(p -> out.println("problem: " + p));
         return checked.problems().isEmpty() ? 0 : 1;
@@ -57,16 +58,16 @@ final class Validate {
      *
      * @param pkg the package as loaded; empty when a file of it does not parse
      * @param problems each on one line, each once, in order: the load's, else {@link Package#problems()} and the dry build's
-     * @param schemes the schemes of the components the dry build ran over ({@link Main#shipped(int)}); empty when it did not run
+     * @param schemes the schemes of the components the dry build ran over, the plugins' included; empty when it did not run
      * @param dependencies the closure the dry build held, leaves first; empty when it did not run
      */
     record Checked(Optional<Package> pkg, List<String> problems, Set<String> schemes, List<Dependencies.Found> dependencies) {}
 
     /**
-     * {@link Package#problems()} of {@code dir}, then its closure's from {@code deps}, then the dry build's in the environment
-     * {@code env} (see the class comment).
+     * {@link Package#problems()} of {@code dir}, then its closure's from {@code deps}, then the dry build's over {@code shipped} in
+     * the environment {@code env} (see the class comment).
      */
-    static Checked check(Path dir, String env, Dependencies deps) throws IOException {
+    static Checked check(Path dir, String env, Dependencies deps, Main.Shipped shipped) throws IOException {
         Package pkg;
         try {
             pkg = Package.load(dir);
@@ -82,7 +83,7 @@ final class Validate {
             List<Dependencies.Found> resolved = deps.resolve(name, pkg.lock(), unresolved);
             unresolved.forEach(p -> problems.add(Cli.oneLine(p)));
             if (unresolved.isEmpty()) {   // else the node would only say again that they are not deployed on it
-                DryBuild built = dryBuild(name, dir, env, resolved);
+                DryBuild built = dryBuild(name, dir, env, resolved, shipped);
                 built.problems().forEach(p -> problems.add(Cli.oneLine(p)));
                 schemes = built.schemes();
                 closure = resolved;
@@ -124,22 +125,27 @@ final class Validate {
 
     /**
      * {@link Deployments#validate(String, Path, List)} of {@code dir} as {@code name}, {@code closure}'s folders held, on a
-     * node of the environment {@code env} that runs nothing: the shipped components on a Vert.x of the run's own (closed after
-     * it), the shipped steps and languages, a fake clock, timer and ids, in-memory blobs and stores, and an empty data directory
+     * node of the environment {@code env} that runs nothing: {@code shipped}'s components on a Vert.x of the run's own (closed
+     * after it), its steps and languages, a fake clock, timer and ids, in-memory blobs and stores, and an empty data directory
      * of the run's own (deleted after it). Nothing of the closure is deployed or started, so no component of it listens or
-     * connects, in every environment. The node is closed after the build.
+     * connects, in every environment. The node is closed after the build. A plugin's component that is refused, as it would
+     * stop a node's start, is the one problem.
      */
-    private static DryBuild dryBuild(String name, Path dir, String env, List<Dependencies.Found> closure) throws IOException {
+    private static DryBuild dryBuild(String name, Path dir, String env, List<Dependencies.Found> closure, Main.Shipped shipped) throws IOException {
         Path data = Files.createTempDirectory("rail8-validate-");
         try {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", env, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
                     .withSecrets(Secrets.placeholder());   // no secret off the node: references are syntax-checked, resolved to the placeholder
             FakeRuntime rt = FakeRuntime.create();
-            Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
             Vertx vertx = Vertx.vertx();
             try {
-                Map<String, Component> components = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()))
-                        .stream().collect(Collectors.toMap(Component::scheme, c -> c));
+                List<Component> built;
+                try {
+                    built = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), rt.timer(), rt.clock()));
+                } catch (IllegalStateException refused) {
+                    return new DryBuild(List.of(String.valueOf(refused.getMessage())), Set.of());
+                }
+                Map<String, Component> components = built.stream().collect(Collectors.toMap(Component::scheme, c -> c));
                 Set<String> schemes = Set.copyOf(components.keySet());
                 Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
                 Deployments node = new Deployments(config, runtime, components, rt.clock(), rt.timer(), shipped.steps(), shipped.languages(),

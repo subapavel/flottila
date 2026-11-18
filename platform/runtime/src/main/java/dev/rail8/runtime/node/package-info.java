@@ -1,7 +1,7 @@
 /**
  * The node: {@link dev.rail8.runtime.node.NodeConfig} read from the environment,
  * {@link dev.rail8.runtime.node.Node} over the Postgres stores, the blob store, the components and the admin API, and the
- * {@link dev.rail8.runtime.node.ComponentContext} its components are built from.
+ * {@link dev.rail8.api.plugin.ComponentContext} its components are built from.
  *
  * @since 0.1
  */

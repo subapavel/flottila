@@ -128,6 +128,9 @@ public final class FlowBuilder {
     /** The expression language a step uses when it names none. */
     public static final String DEFAULT_LANGUAGE = "xpath";
 
+    /** The step types this builder builds itself; no {@link StepFactory} may register one of them. */
+    public static final Set<String> BUILT_INS = Set.of("to", "route", "filter", "extractKey", "validate", "split");
+
     /** The fence of an unfenced run: always open. */
     private static final BooleanSupplier OPEN = () -> true;
 
@@ -157,6 +160,7 @@ public final class FlowBuilder {
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         for (StepFactory f : factories) {
+            if (BUILT_INS.contains(f.type())) throw new IllegalArgumentException("a step factory for type '" + f.type() + "', which is built in");
             if (this.factories.putIfAbsent(f.type(), f) != null) throw new IllegalArgumentException("two step factories for type '" + f.type() + "'");
         }
         for (Expressions l : languages) {

@@ -5,6 +5,9 @@ import dev.rail8.api.Expressions;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Key;
 import dev.rail8.api.Pipeline;
+import dev.rail8.api.Stage;
+import dev.rail8.api.StepConfig;
+import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.buffer.Buffer;
@@ -13,10 +16,12 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -107,5 +112,27 @@ class BuiltInStepsTest {
         assertTrue(assertThrows(IllegalArgumentException.class, () -> build(Map.of("type", "route", "name", "r", "language", "header", "prop", "P",
                 "routes", List.of("currency=CZK")))).getMessage().contains("routes[0]"));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> new FlowBuilder(rt.runtime(), List.of(), List.of(HEADERS, HEADERS), Map.of())).getMessage().contains("'header'"));
+    }
+
+    /**
+     * {@link FlowBuilder#BUILT_INS} are the types the builder builds itself: a step of each, with no factory registered and none
+     * of its keys, fails for a missing key and never as an unknown type, while a type not listed is unknown; and a factory for a
+     * built-in type, which would never be called, is refused.
+     */
+    @Test
+    void theBuiltInTypesNeedNoFactoryAndTakeNone() {
+        assertEquals(Set.of("to", "route", "filter", "extractKey", "validate", "split"), FlowBuilder.BUILT_INS);
+        for (String type : FlowBuilder.BUILT_INS) {
+            RuntimeException failed = assertThrows(RuntimeException.class, () -> build(Map.of("type", type, "name", "s", "language", "header")));
+            assertFalse(String.valueOf(failed.getMessage()).contains("unknown step type"), type + " is built in: " + failed.getMessage());
+        }
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> build(Map.of("type", "sign", "name", "s"))).getMessage().contains("unknown step type 'sign'"));
+        StepFactory route = new StepFactory() {
+            @Override public String type() { return "route"; }
+            @Override public String configSchema() { return "{}"; }
+            @Override public Stage create(StepConfig step, StepResources resources) { return (e, rest) -> rest.apply(e); }
+        };
+        String refused = assertThrows(IllegalArgumentException.class, () -> new FlowBuilder(rt.runtime(), List.of(route), List.of(HEADERS), Map.of())).getMessage();
+        assertTrue(refused.contains("'route'") && refused.contains("built in"), refused);
     }
 }

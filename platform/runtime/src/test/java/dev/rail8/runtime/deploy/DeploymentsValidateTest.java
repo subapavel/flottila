@@ -5,7 +5,7 @@ import dev.rail8.api.Runtime;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.Main;
-import dev.rail8.runtime.node.ComponentContext;
+import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.pg.PoolRefusedException;

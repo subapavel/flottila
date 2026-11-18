@@ -28,6 +28,15 @@ class ModuleBoundaryTest {
 
     @Test void apiDependsOnNoOtherRail8Module() { Rules.API_DEPENDS_ON_NO_OTHER_MODULE.check(tree); }
     @Test void apiUsesOnlyTheJdkAndTheVertxAllowlist() { Rules.API_SURFACE.check(tree); }
+    @Test void thePluginContractUsesOnlyTheJdkApiVertxAndTheAllowlist() { Rules.PLUGIN_SURFACE.check(tree); }
+    @Test void noOtherApiPackageAndNoCoreClassNamesThePluginContract() { Rules.NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT.check(tree); }
+
+    /** The two plugin rules check the contract, not an empty set. */
+    @Test void thePluginContractIsOnTheArchtestClasspath() {
+        for (String c : List.of("dev.rail8.api.plugin.Plugin", "dev.rail8.api.plugin.ComponentContext")) {
+            assertTrue(tree.contain(c), "the production tree holds " + c);
+        }
+    }
     @Test void coreDependsOnApiOnly() { Rules.CORE_DEPENDS_ON_API_ONLY.check(tree); }
     @Test void coreUsesOnlyTheJdkApiAndTheVertxAllowlist() { Rules.CORE_SURFACE.check(tree); }
     @Test void componentsDependOnApiOnly() { Rules.COMPONENTS_DEPEND_ON_API_ONLY.check(tree); }

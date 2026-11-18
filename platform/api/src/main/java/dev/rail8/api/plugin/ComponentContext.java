@@ -1,4 +1,4 @@
-package dev.rail8.runtime.node;
+package dev.rail8.api.plugin;
 
 import dev.rail8.api.BlobStore;
 import dev.rail8.api.IdGenerator;
@@ -9,8 +9,9 @@ import java.time.Clock;
 import java.util.Objects;
 
 /**
- * What a node gives the factory of its components: the caller's Vert.x and the node's own blob store, ids,
- * timer and clock — the node builds its components once, from this, before it touches Postgres.
+ * What a node gives the factory of its components, the shipped ones and every plugin's alike: the caller's Vert.x and the
+ * node's own blob store, ids, timer and clock. The node builds its components once, from this, before it touches Postgres;
+ * a component keeps what it needs of it and opens nothing until a consumer or producer of it starts.
  *
  * @param vertx the Vert.x the node runs on (its caller's)
  * @param blobs the node's blob store

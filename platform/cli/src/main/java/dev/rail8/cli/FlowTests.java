@@ -52,14 +52,14 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * {@code rail8 test <dir> [--deps <dir>]}. First what {@code rail8 validate} checks, in the environment {@code ci}
- * — the package's problems, its dependencies' closure and the dry build over what a node ships — and what only a test
+ * {@code rail8 test <dir> [--deps <dir>] [--plugins <dir>]}. First what {@code rail8 validate} checks, in the environment {@code ci}
+ * — the package's problems, its dependencies' closure and the dry build over what a node ships with its plugins — and what only a test
  * run asks of its test documents: a {@code recorded}
  * or {@code script} behaviour (not implemented yet), {@code expect.status} on a flow whose from endpoint is not http, an
  * {@code xpath} that does not compile; any problem is printed as validate prints it and no case runs (exit 1).
  *
  * <p>Then every {@code kind: test} document in path order, its cases in order, one at a time, each on a world of its own: a
- * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per shipped scheme bound to the document's
+ * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per scheme, a plugin's included, bound to the document's
  * {@code mocks} — a case's entry for an endpoint replaces the document's whole — in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
  * dependencies' closure validate resolved is deployed leaves first, then the package, each as its deterministic zip
@@ -125,12 +125,12 @@ final class FlowTests {
         }
     }
 
-    static int run(Cli.Options options, PrintStream out) throws IOException {
+    static int run(Cli.Options options, Main.Shipped shipped, PrintStream out) throws IOException {
         Path dir = options.dir();
-        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options));
+        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options), shipped);
         if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
         Package pkg = checked.pkg().orElseThrow();
-        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT));
+        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), shipped);
         List<Doc> docs = run.docs(dir);
         List<String> problems = run.problems(docs);
         if (!problems.isEmpty()) return problems(problems, out);

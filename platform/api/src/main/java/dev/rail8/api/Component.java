@@ -7,9 +7,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * The only way the platform touches the outside world. One implementation per scheme; the node's
- * {@code Main} wires the shipped components explicitly, because a component needs the node's Vert.x
- * instance, which the api module may not name. Every component ships with its mock and
+ * The only way the platform touches the outside world. One implementation per scheme: the node ships some and a
+ * {@link dev.rail8.api.plugin.Plugin} adds others, each built from the node's
+ * {@link dev.rail8.api.plugin.ComponentContext}. Every component ships with its mock and
  * both pass the same contract suite.
  *
  * @since 0.1
