@@ -682,13 +682,28 @@ and Functions. Closing the tab of a mapping with unsaved changes asks first. The
 generated from the mapping service's contract (`mapping/contract/`, `npm run gen:types`), and CI
 fails when they differ from it.
 
+The Endpoints screen lists the endpoint files of a working folder (`RAIL8_WORKSPACE`, a folder of packages; files
+are found by their `kind`, hidden folders, `node_modules` and `target` passed over) and opens each one in a tab of its
+own: the endpoint's settings form, drawn from its component's settings description (`GET /admin/components`), the same
+for a shipped component and a plugin's. It shows the platform's tabs around the component's own, the fields that serve
+the endpoint's direction and are visible, with their help texts, defaults and required marks, the environments that
+override settings, and the problems the check finds, judged in the browser by the rules the deploy uses (one file of
+cases runs against both). A component that describes nothing, and a field type the form does not know, get a raw JSON
+editor. The form opens read-only; Edit, Cancel, Check and Save as in the mapping studio. Save sends only `config`, with
+`If-Match`, and the development server rewrites only the lines of the settings that changed, keeping comments and
+order, through a temporary file, and refuses (writing nothing) a file whose `config` it cannot edit line by line or that
+would not read back as sent. With `RAIL8_READ_ONLY=true`, as on a server, the files are shown and every save is refused.
+Without the description the form shows the file's settings read-only and says why. The UI never changes the running
+node: an edited package is deployed as any other.
+
 No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
 passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
 `http://127.0.0.1:8081`), as the node answers no browser: it takes only GET and POST from its own
 pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops every header but
 `Accept` and `Content-Type`, and adds the token from `RAIL8_ADMIN_TOKEN` itself, so the browser
 never holds it. The mapping studio's `/api` requests go to the mapping service on the same machine
-(port `QUARKUS_HTTP_PORT`, default 8080).
+(port `QUARKUS_HTTP_PORT`, default 8080). The endpoint forms' `/files/endpoints` requests are answered by the
+development server itself, under the same same-origin rule.
 
 The UI's end-to-end scenarios (`ui/e2e/`, Playwright) run nightly: the 20,128-field tree scrolled
 over a fake mapping service on a development-only page, and the `@stack` scenarios against the
@@ -698,9 +713,8 @@ public web page.
 **Planned**
 - Finding messages by flow and time, which the admin API cannot search by yet.
 - A server for the UI outside development, holding the token and talking to the node the same way.
-- An endpoint's settings form drawn from its component's settings description (`GET
-  /admin/components`), the same for a shipped component and a plugin's; helper actions on a field
-  later. No screens of a plugin's own.
+- Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
+- Editing endpoint files on a shared server, written to git with an author, with deploy from git and sign-in.
 - Writing a view of a payload (how a body is shown), later and simply.
 
 ## 10. Operations
