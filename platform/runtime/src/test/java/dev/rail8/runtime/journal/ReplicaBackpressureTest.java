@@ -458,13 +458,16 @@ class ReplicaBackpressureTest {
         return counted - q[0] - q[1];
     }
 
-    /** node-a does not read: its socket holds unread bytes that stay unread, with nothing more sent, across three loop tasks. */
+    /**
+     * node-a does not read: its socket holds unread bytes, and across three loop tasks nothing more is counted as sent and
+     * neither queue changes. Both queues are compared: while node-a reads, the kernel can refill its receive queue to the same
+     * length from the owner's send queue, so an unchanged receive queue alone is no witness.
+     */
     boolean notReading(Owner o, AtomicLong written) throws Exception {
         long before = written.get();
         long[] q = o.queues();
         if (q[1] == 0) return false;
         for (int i = 0; i < 3; i++) world.onLoop();
-        long[] after = o.queues();
-        return after[1] == q[1] && written.get() == before;
+        return java.util.Arrays.equals(o.queues(), q) && written.get() == before;
     }
 }
