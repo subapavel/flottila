@@ -242,6 +242,26 @@ describe('the Definition tab panes', () => {
     expect(document.querySelectorAll('#target-message-pane tbody tr').length).toBeLessThan(50);
   });
 
+  test('the 20,128-field tree keeps its scroll height as rows scroll into view: each row is estimated at its rendered height', async () => {
+    await renderDefinition({ mappingId: TREE_MAPPING });
+
+    await viewButton('source', 'Tree').click();
+    await expect.element(field('source', 'Tree')).toBeVisible();
+    const scroll = document.querySelector<HTMLElement>('#source-message-pane [data-fields-scroll]')!;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const scrollTo = async (share: number) => {
+      scroll.scrollTop = share * scroll.scrollHeight;
+      await frame();
+      await frame();
+    };
+    // past the first row, whose half-pixel shorter height the scroll height rounds
+    await scrollTo(0.1);
+    const height = scroll.scrollHeight;
+    for (const share of [0.25, 0.5, 0.75]) await scrollTo(share);
+    // a row measured taller or shorter than its estimate would change the total height
+    expect(scroll.scrollHeight).toBe(height);
+  });
+
   test('Expand Tree and Collapse Tree, and a row caret, open and close the tree', async () => {
     await renderDefinition();
 
