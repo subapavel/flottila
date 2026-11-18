@@ -595,6 +595,7 @@ class NodeIT {
      */
     static boolean addedByP206(String path) {
         return path.equals("endpoints/http-in-async.yaml") || path.equals("endpoints/sftp-inbox.yaml")
+                || path.equals("endpoints/http-in-order.yaml") || path.startsWith("flows/order-jq.") || path.equals("fixtures/sample-order.json")
                 || path.startsWith("flows/invoice-async.") || path.startsWith("flows/sftp-invoice.") || path.startsWith("fixtures/inbox/");
     }
 

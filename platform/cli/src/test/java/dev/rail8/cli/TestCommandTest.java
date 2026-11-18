@@ -56,9 +56,10 @@ class TestCommandTest {
             "PASS invoice-async: partner down (flow time 2400ms)",
             "PASS invoice-sync: domestic invoice (flow time 20ms)",
             "PASS invoice-sync: partner down (flow time 700ms)",
+            "PASS order-jq: order picked and renamed (flow time 0ms)",
             "PASS sftp-invoice: invoice file (flow time 20ms)",
             "PASS sftp-invoice: partner down (flow time 2400ms)",
-            "6 cases: 6 passed, 0 failed");
+            "7 cases: 7 passed, 0 failed");
 
     /** The {@code flowtest} fixture: test documents in path order (async-order before sync-order), cases in order. */
     static final List<String> FLOWTEST_REPORT = List.of(
@@ -167,10 +168,11 @@ class TestCommandTest {
                 "  expect.dlq: expected 0, was 1",
                 "PASS invoice-sync: domestic invoice (flow time 20ms)",
                 "PASS invoice-sync: partner down (flow time 700ms)",
+                "PASS order-jq: order picked and renamed (flow time 0ms)",
                 "PASS sftp-invoice: invoice file (flow time 20ms)",
                 "FAIL sftp-invoice: partner down (flow time 2400ms)",
                 "  expect.dlq: expected 0, was 1",
-                "6 cases: 4 passed, 2 failed"), ran.outLines(), ran.toString());
+                "7 cases: 5 passed, 2 failed"), ran.outLines(), ran.toString());
         assertEquals(1, ran.exit(), ran.toString());
     }
 

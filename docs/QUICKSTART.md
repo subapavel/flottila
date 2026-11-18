@@ -99,6 +99,18 @@ curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payl
 
 A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
 
+The `demo/order-jq` flow turns a JSON order with a jq filter: it keeps the order's id and customer as `orderId` and
+`customer`, adds up the items into `total`, and sends the result to the partner.
+
+```sh
+curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8083/order
+```
+
+The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. A JSON message
+has no key to search by, so find it by step: `curl -H "$auth" 'localhost:8081/admin/messages?flow=demo/order-jq&step=pick'`
+gives its `<id>`. In the UI open **Messages**, search by message id, and open the message: its timeline lists the steps
+`ingress`, `pick` and `partner`, and the payload `pick` recorded is that JSON.
+
 ## Stop
 
 ```sh

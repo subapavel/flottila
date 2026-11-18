@@ -1,0 +1,22 @@
+# Picks a few fields of a JSON order with a jq filter, renames them and sends the result to the partner.
+schemaVersion: 1
+kind: flow
+id: order-jq
+version: 0.1.0
+description: Pick and rename the fields of an order with jq and send them on.
+from:
+  endpoint: http-in-order
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+steps:
+  - type: jq
+    name: pick
+    filter: '{orderId: .order.id, customer: .order.customer, total: (.items | map(.price * .qty) | add)}'
+  - type: to
+    name: partner
+    endpoint: partner-domestic
