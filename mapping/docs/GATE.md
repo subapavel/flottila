@@ -26,7 +26,7 @@ the command and the evidence it needs. A change to a check after this point need
    on the unsaved working copy; shown by the `@stack` Playwright suite (ADR-0013). A runtime
    error (`po:MINOCCURS`) returns its QName, the `AuthoringId` and the trace up to the error,
    and diagnostics carry their stable codes (ADR-0015). `openapi.json` and the generated
-   `ui/src/generated/` types have an empty diff.
+   `../ui/src/mapping/generated/` types have an empty diff.
 4. **Semantics.** The milestone-1 functions of issue #3 (ADR-0002, ADR-0003) pass their
    golden-corpus cases: all PO 7.5 node functions (`removeContexts`, `splitByValue` in all three
    modes, `collapseContexts`, `useOneAsMany`, `createIf`, `exists`, `mapWithDefault`,
@@ -57,7 +57,7 @@ the command and the evidence it needs. A change to a check after this point need
    20,128-field tree scenario has a p95 frame time below 33.3 ms (no dropped frame at p95; F-26, 2026-11-10). The optional PO observation
    request (`po-owner-local`) is informative only.
 8. **Quality.** The CI run of the gate commit is green in all three required jobs, `backend`,
-   `ui` and `stack` (ADR-0017). That covers the build with `-Xlint:all -Werror`, Spotless, the
+   the repository's `ui-ci` and the nightly `stack` (ADR-0017). That covers the build with `-Xlint:all -Werror`, Spotless, the
    enforcer bans, the licence check with only the per-artifact exceptions of ADR-0017, the
    ArchUnit rules A–C (ADR-0016) and an empty `contract/` diff. The spec gate
    (`scripts/gate-spec.sh`) passes on the VM. Floors on the gate commit (ADR-0019): JaCoCo lines
@@ -65,15 +65,15 @@ the command and the evidence it needs. A change to a check after this point need
    `api`, lines ≥ 80 % on `structure`, `structure-import`, `service` (CI `backend`), and PIT
    ≥ 80 % on the class-C modules (the nightly run of the gate commit). The ratchet is green
    (`java scripts/ratchet.java check` on the gate commit). The drift tests (ADR-0011, ADR-0015),
-   the workspace-escape test (ADR-0014) and the diagnostic-catalogue test (ADR-0018) are green. Every spec of the milestone was merged through `/run-spec` with its review. `ui/` (ADR-0013): typecheck, lint with the import-boundary rules, Vitest
+   the workspace-escape test (ADR-0014) and the diagnostic-catalogue test (ADR-0018) are green. Every spec of the milestone was merged through `/run-spec` with its review. The studio in the Rail8 UI, the repository's `ui/` (ADR-0013; moved there with #119, #152): typecheck, lint, Vitest
    (node and browser), Playwright e2e on the fake API and the `@stack` suite green; line
-   coverage of `ui/src/model/` and `ui/src/studio/store/` ≥ 90 % each (per-glob Vitest
+   coverage of `../ui/src/mapping/model/` and `../ui/src/mapping/studio/store/` ≥ 90 % each (per-glob Vitest
    thresholds, ADR-0019); generated types with an empty diff; the 20,128-field tree scenario within its
    check-7 target. No mutation testing on `ui/` in milestone 1.
 9. **Hand-over.** `HANDOVER.md` covers:
    - starting the stack from a clean clone with only JDK 25 and Node 22 installed:
-     `../mvnw -pl service -am quarkus:dev` with `npm run dev` for development, and the `-Pui` jar
-     for one origin (ADR-0017). The Quarkus service runs over a workspace and is bound to
+     `../mvnw -pl service -am quarkus:dev` with `npm run dev` in `../ui` for development, and the
+     service's jar with the same UI. The Quarkus service runs over a workspace and is bound to
      `127.0.0.1` (ADR-0014);
    - how to draw and run a mapping;
    - how to run the ticket gate, the spec gate and the benchmarks (`-Pbench`);
@@ -81,7 +81,7 @@ the command and the evidence it needs. A change to a check after this point need
      if a finding moved them).
 
    The verifier follows the start instructions on a fresh worktree of the gate commit, both
-   development and `-Pui`, into `.logs/gate-9.log`; the gate-reviewer judges that log (F-41).
+   development and the jar, into `.logs/gate-9.log`; the gate-reviewer judges that log (F-41).
 
 ## Specs in build order
 

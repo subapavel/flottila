@@ -15,7 +15,7 @@ All files are line-based, sorted, UTF-8, LF. Columns are separated by one tab.
 | `oracle/corpus.txt` | golden-corpus case passing in all metamorphic variants | case id (`fn/removeContexts/001`) |
 | `oracle/differential.txt` | case where our runtime agrees with Saxon-HE 12.5 on the exported XSLT | case id |
 | `oracle/w3c-<suite>.txt` | passing W3C case (later milestones) | `<suite>:<test-set>/<test-case>` |
-| `coverage.tsv` | engine module, `service`, `ui/src/model`, `ui/src/studio/store` | `module`, `lines %`, `branches %` |
+| `coverage.tsv` | engine module, `service`, `../ui/src/mapping/model`, `../ui/src/mapping/studio/store` (the Rail8 UI beside `mapping/`) | `module`, `lines %`, `branches %` |
 | `mutation.tsv` | class-C module | `module`, `surviving mutants`, `generated mutants` |
 | `bench.tsv` | benchmark scenario (ADR-0021) | `scenario`, `machine label`, `score`, `unit` |
 
@@ -58,7 +58,7 @@ still read, compared as a percent, and rewritten by `regen --all`. Module names 
 - `java scripts/ratchet.java check --baseline <dir>` (MAP-12a): `check`, then the commit's rows held
   against a copy of an earlier commit's `ratchet/` in `<dir>`. Exit 1 also if a row or a listed case
   of the baseline is gone, a percentage is lower, a survivor count is higher, or a report the commit
-  must have is missing (a module with a row, except a `ui/` row, or with production code; an oracle
+  must have is missing (a module with a row, except a `../ui/` row, or with production code; an oracle
   list that lists a case). Prints `MEASURED coverage <module> lines c/t branches c/t`; exit 2 on a
   wrong command line, an incomplete `<dir>` or a two-column mutation row; writes nothing. ADR-0019
   "Commands".
@@ -82,7 +82,7 @@ still read, compared as a percent, and rewritten by `regen --all`. Module names 
 
 Inputs: `engine/oracle/target/surefire-reports/TEST-*.xml` (test name = case id),
 `*/target/site/jacoco/jacoco.csv`, `*/target/pit-reports/mutations.xml` (the gate log `.logs/<t>-pit.log` has one section per module, each preceded by `=== PIT <module> ===`),
-`ui/coverage/coverage-summary.json` (summed per directory), and for `bench` and `regen` the spec
+`../ui/coverage/coverage-summary.json` (`npm run test:coverage` in `../ui`, summed per directory), and for `bench` and `regen` the spec
 gate's `.logs/<spec>-jmh.json`, `.logs/<spec>-jmh-2.json` and `-jmh-3.json` (the re-runs) and the tree-scenario result.
 
 Floors below the ratchet are fixed in the build (ADR-0019): JaCoCo, PIT, Vitest thresholds.

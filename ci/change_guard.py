@@ -6,7 +6,7 @@ folders whose comments have been cleaned (CLEANED below), references in comments
 every line, whether the change touches it or not.
 
 1. References in comments. A comment or Javadoc in a Java file under platform/, mapping/ or jq/, or a comment in a
-   TypeScript, JavaScript or CSS file under mapping/ui/, must explain; it must not point at a task or a decision.
+   TypeScript, JavaScript or CSS file under ui/, must explain; it must not point at a task or a decision.
    A reference is an upper-case tag, a hyphen and a number, such as D-164, FIX-268, MAP-12b, P2-02D, P0-10 or ADR-0019,
    or a `#` followed by a number, such as #123. Names of standards (UTF-8, SHA-256, ISO-8601 and the like) are not
    references.
@@ -32,7 +32,7 @@ import subprocess
 import sys
 
 JAVA_ROOTS = ("platform/", "mapping/", "jq/")
-# Folders (and two single files) whose comments have been cleaned of references: every comment in every file under
+# Folders whose comments have been cleaned of references: every comment in every file under
 # them is checked, not only the lines a change touches. A cleanup adds its folders to this list.
 CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtime/src/main/", "platform/testkit/src/main/",
            "platform/sim/src/main/", "platform/cli/src/main/", "platform/schemas/src/main/",
@@ -43,12 +43,11 @@ CLEANED = ("platform/api/src/main/", "platform/core/src/main/", "platform/runtim
            "mapping/engine/structure/src/main/", "mapping/engine/structure-import/src/main/",
            "mapping/engine/udf/src/main/", "mapping/engine/udf-api/src/main/", "mapping/engine/xdm/src/main/",
            "mapping/engine/xslt-export/src/main/", "mapping/service/src/main/",
-           # the UI's sources except src/generated, whose comments come from the contract's schemas
-           "mapping/ui/src/api/", "mapping/ui/src/app/", "mapping/ui/src/model/", "mapping/ui/src/studio/",
-           "mapping/ui/src/file-names.test.ts", "mapping/ui/src/import-boundaries.test.ts",
+           # the mapping studio's sources except src/mapping/generated, whose comments come from the contract's schemas
+           "ui/src/mapping/api/", "ui/src/mapping/list/", "ui/src/mapping/model/", "ui/src/mapping/studio/",
            "jq/jq-core/src/main/", "jq/query-core/src/main/", "jq/jq-cli/src/main/", "jq/oracle/src/main/",
            "jq/pit-filter/src/main/", "jq/bench/jmh/src/main/")
-UI_ROOT = "mapping/ui/"
+UI_ROOT = "ui/"
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 STYLE_SUFFIXES = (".css", ".scss")
 COLOUR_SKIPPED = re.compile(r"^site/|(^|/)e2e/|(^|/)generated/|\.(test|spec)\.[a-z]+$")

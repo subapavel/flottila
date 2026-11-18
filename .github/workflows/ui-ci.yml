@@ -1,15 +1,12 @@
 name: ui-ci
 
-# The Rail8 web application (ui/) on every change to it: licences of every npm package, type check, lint, unit tests,
-# component tests in Chromium and the production build.
+# The Rail8 web application (ui/) on every change to it: licences of every npm package, the generated types, type
+# check, lint, unit tests, component tests in Chromium and the production build.
 on:
   pull_request:
     paths:
       - 'ui/**'
-      - 'mapping/ui/scripts/check-licences.mjs'
-      - 'mapping/ui/scripts/licence-exceptions.json'
-      # the mapping studio's types are a copy of these, and its fake service reads the corpus and the contract
-      - 'mapping/ui/src/generated/**'
+      # the mapping studio's types are generated from the contract, and its fake service reads the corpus and the contract
       - 'mapping/corpus/**'
       - 'mapping/contract/**'
       - '.github/workflows/ui-ci.yml'
@@ -17,10 +14,7 @@ on:
     branches: [main]
     paths:
       - 'ui/**'
-      - 'mapping/ui/scripts/check-licences.mjs'
-      - 'mapping/ui/scripts/licence-exceptions.json'
-      # the mapping studio's types are a copy of these, and its fake service reads the corpus and the contract
-      - 'mapping/ui/src/generated/**'
+      # the mapping studio's types are generated from the contract, and its fake service reads the corpus and the contract
       - 'mapping/corpus/**'
       - 'mapping/contract/**'
       - '.github/workflows/ui-ci.yml'
@@ -53,8 +47,18 @@ jobs:
         run: npm run licences
       # The pinned playwright devDependency decides the Chromium build.
       - run: npx playwright install --with-deps chromium
+      # The mapping studio's types are generated from the mapping contract and committed; they must match it.
+      - name: Generated types are up to date
+        run: |
+          npm run gen:types
+          git diff --exit-code src/mapping/generated
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
       - run: npm run test:browser
       - run: npm run build
+      # The page under e2e/fake/ serves the end-to-end scenarios on the development server only.
+      - name: The production build leaves out the development-only page
+        run: |
+          test ! -e dist/e2e
+          ! grep -rqF 'fake mapping service' dist

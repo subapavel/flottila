@@ -1,5 +1,5 @@
 // Licence check over every entry of package-lock.json (dev and transitive included).
-// Allowed list: CLAUDE.md. Exceptions by package name: licence-exceptions.json (ADR-0017); an
+// Allowed list: ALLOWED below, the repository's licence list. Exceptions by package name: licence-exceptions.json; an
 // exception covers an entry only if the lockfile marks it dev: true (dev-only build tools).
 // Usage: node scripts/check-licences.mjs [lockfile] [exceptions-file]
 import { readFileSync } from 'node:fs';
@@ -62,7 +62,7 @@ for (const [path, pkg] of Object.entries(lock.packages ?? {})) {
   if (typeof licence !== 'string' || licence === '') {
     failures.push(`${name} (${path}): no license field${why}`);
   } else if (!allowed(licence)) {
-    failures.push(`${name} (${path}): licence "${licence}" is not on the CLAUDE.md list${why}`);
+    failures.push(`${name} (${path}): licence "${licence}" is not on the allowed list${why}`);
   }
 }
 if (failures.length > 0) {

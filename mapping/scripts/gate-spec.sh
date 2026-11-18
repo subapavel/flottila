@@ -11,9 +11,10 @@
 # MACHINE_LABEL  the machine the verifier runs on; only claude-cloud-4vcpu (with nproc = 4) judges the benchmarks
 #                and lets step 4 write ratchet/bench.tsv (ADR-0021). Unset elsewhere: step 5 only measures.
 #
+# The UI is the repository's ui/, beside this root: steps 2, 3 and 5 run its checks and scenarios there.
+#
 # Order: 1, 1b, 2, 5, 4, 3. Step 5 writes the JMH JSON that step 4 reads. Step 4 reads the reports of steps 1, 1b
-# and 2, and step 3 must run after it: -Pui needs clean (ADR-0017), and that clean deletes the JaCoCo and PIT
-# reports of service and its upstream modules. Every step runs even if an earlier one failed; each prints an
+# and 2, step 2's the UI's coverage. Every step runs even if an earlier one failed; each prints an
 # evidence word and its log. Exit 1 if any step failed. The script leaves ratchet/ modified; the verifier
 # commits it. The last lines are the PIT summary, one per module (scripts/pit-summary.sh:
 # `module killed/generated survivors S floor N ok|DROP`, or against a ratchet row of the old format
@@ -29,7 +30,7 @@ spec=$1
 cd "$(dirname "$0")/.."
 # the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
 mvnw=${MVNW:-../mvnw}
-mkdir -p .logs ui/.logs
+mkdir -p .logs
 # the console output, stderr included, also goes to .logs/<spec>-spec-gate.log under this root, whatever the caller's
 # directory (#125). On exit, close it and wait for tee, so the log is complete when the script returns.
 exec > >(tee ".logs/${spec}-spec-gate.log") 2>&1
@@ -86,17 +87,18 @@ oracle_count() {
 oracle_summary="corpus: $(oracle_count Corpus)
 differential: $(oracle_count Differential)"
 
-# 2: ui/
-if [ -f ui/package.json ]; then
-  step "2 ui npm ci" "ui/.logs/${spec}-npm-ci.log" bash -c 'cd ui && npm ci'
-  for check in licences typecheck lint test test:browser e2e; do
-    step "2 ui $check" "ui/.logs/${spec}-${check/:/-}.log" bash -c "cd ui && npm run $check"
+# 2: ../ui, its logs in ../ui/.logs; test:coverage writes the coverage step 4 reads
+if [ -f ../ui/package.json ]; then
+  mkdir -p ../ui/.logs
+  step "2 ui npm ci" "../ui/.logs/${spec}-npm-ci.log" bash -c 'cd ../ui && npm ci'
+  for check in licences typecheck lint test:coverage test:browser e2e; do
+    step "2 ui $check" "../ui/.logs/${spec}-${check/:/-}.log" bash -c "cd ../ui && npm run $check"
   done
-  step "2 ui gen:types diff" "ui/.logs/${spec}-gen-types.log" \
-    bash -c 'cd ui && npm run gen:types && git diff --exit-code src/generated'
-  step "2 ui build" "ui/.logs/${spec}-build.log" bash -c 'cd ui && npm run build'
+  step "2 ui gen:types diff" "../ui/.logs/${spec}-gen-types.log" \
+    bash -c 'cd ../ui && npm run gen:types && git diff --exit-code src/mapping/generated'
+  step "2 ui build" "../ui/.logs/${spec}-build.log" bash -c 'cd ../ui && npm run build'
 else
-  skipped "2 ui" "no ui/"
+  skipped "2 ui" "no ../ui/"
 fi
 
 # 5: JMH (ADR-0021), before step 4. Judged (scripts/ratchet.java bench) only when the verifier names the machine:
@@ -106,25 +108,25 @@ fi
 # judges again on all three files, a scenario in three of them on its median (#193); step 4 reads the same files. A
 # clean first judgement stays one run. Any JMH run that fails (a heap fork, -foe true) fails the gate.
 bench_results=()
-# The tree scenario (#188): three runs of ui/e2e/tree-20128.spec.ts against the fake API. TREE_P95_FILE names the
-# file the spec writes its result to; the median of the three goes to ui/.logs/<spec>-tree-20128.json, the shape
+# The tree scenario (#188): three runs of ../ui/e2e/tree-20128.spec.ts against the fake API. TREE_P95_FILE names the
+# file the spec writes its result to; the median of the three goes to ../ui/.logs/<spec>-tree-20128.json, the shape
 # scripts/ratchet.java bench reads. A run that fails or writes nothing leaves no median file (the judgement then
-# finds no result). Printed whatever the label; judged below only on the labelled machine. Without ui/ step 2
+# finds no result). Printed whatever the label; judged below only on the labelled machine. Without ../ui step 2
 # already says NOT_RUN.
 tree_file=
-if [ -f ui/package.json ]; then
+if [ -f ../ui/package.json ]; then
   tree_scores=()
   for run in 1 2 3; do
-    run_file="$PWD/ui/.logs/${spec}-tree-20128-${run}.json"
+    run_file="$(cd ../ui && pwd)/.logs/${spec}-tree-20128-${run}.json"
     rm -f "$run_file"
-    step "5 tree-20128 run $run" "ui/.logs/${spec}-tree-20128-${run}.log" \
-      bash -c "cd ui && TREE_P95_FILE='$run_file' npm run e2e -- tree-20128"
+    step "5 tree-20128 run $run" "../ui/.logs/${spec}-tree-20128-${run}.log" \
+      bash -c "cd ../ui && TREE_P95_FILE='$run_file' npm run e2e -- tree-20128"
     score=$(sed -n 's/.*"score": *\([0-9.]*\).*/\1/p' "$run_file" 2> /dev/null)
     [ -n "$score" ] && tree_scores+=("$score")
   done
   if [ "${#tree_scores[@]}" = 3 ]; then
     median=$(printf '%s\n' "${tree_scores[@]}" | sort -n | sed -n 2p)
-    tree_file="ui/.logs/${spec}-tree-20128.json"
+    tree_file="../ui/.logs/${spec}-tree-20128.json"
     printf '{"scenario":"ui/tree-20128/scroll","score":%s,"unit":"ms"}\n' "$median" > "$tree_file"
     echo "tree-20128 p95 median $median ms (runs ${tree_scores[*]})"
   fi
@@ -166,11 +168,11 @@ fi
 step "4 ratchet regen" ".logs/${spec}-ratchet.log" \
   java scripts/ratchet.java regen --all "${bench_results[@]}"
 
-# 3: the stack, one jar serving UI and /api. Last: its clean deletes the reports step 4 read.
-step "3 stack package -Pui" ".logs/${spec}-stack-package.log" \
-  "$mvnw" -B -Pui -pl service -am clean package -DskipTests
-if [ -f ui/package.json ]; then
-  step "3 stack e2e" "ui/.logs/${spec}-e2e-stack.log" bash -c 'cd ui && npm run e2e:stack'
+# 3: the stack, the service's jar and the UI's @stack scenarios against it
+step "3 stack package" ".logs/${spec}-stack-package.log" \
+  "$mvnw" -B -pl service -am package -DskipTests
+if [ -f ../ui/package.json ]; then
+  step "3 stack e2e" "../ui/.logs/${spec}-e2e-stack.log" bash -c 'cd ../ui && npm run e2e:stack'
 fi
 
 echo "$pit_summary"

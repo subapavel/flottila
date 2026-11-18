@@ -80,6 +80,13 @@ and this ADR is its specification.
   editor and `/api` from one origin. `clean` is mandatory with `-Pui`: otherwise the UI stays
   in `target/classes` and lands in the next jar. `npm run e2e:stack` starts this jar over
   `corpus/`.
+- **Note of 2026-11-18**: the editor moved into the Rail8 UI, the repository's `ui/` (#16, #119,
+  #152). The `ui` profile and `ui/dist` are gone: the service's jar serves `/api` only, and the
+  `@stack` scenarios run from `../ui` against it through the UI's development server. The npm
+  licence check with its three exceptions and the type generation with its diff moved with the
+  editor (#146). The `ui` job is the repository's `ui-ci.yml`; the end-to-end scenarios and the
+  stack run nightly in `mapping-nightly.yml`. The paths in this ADR that start with `ui/` name
+  the old editor.
 
 ## CI (GitHub Actions)
 
