@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The plugin loader over plugin jars a test writes from {@link PluginFixtures}: each plugin in a class loader of its own that
@@ -216,11 +217,24 @@ class PluginsTest {
     }
 
     @Test
+    void aPluginWhoseJarCannotBeReadIsRefusedNamingIt() throws IOException {
+        Path mem = Path.of("/proc/self/mem");
+        assumeTrue(Files.isReadable(mem), "a file every read of which fails from its first byte: Linux's /proc/self/mem");
+        Path acme = Files.createDirectory(dir.resolve("acme"));
+        PluginJars.write(acme.resolve("a.jar"), "1", List.of(PluginFixtures.Acme.class.getName()), PluginFixtures.classes());
+        Files.createSymbolicLink(acme.resolve("b.jar"), mem);
+        assertRefused("plugin acme: its jars cannot be read: ", () -> Plugins.load(dir));
+    }
+
+    @Test
     void aNameIsALowerCaseLabelNoOtherPluginHasAndNotRail8() throws IOException {
         Path bad = jar("bad.jar", PluginFixtures.BadName.class);
         assertRefused("plugin bad.jar: the name 'Acme' is not a lower-case letter followed by at most 63 lower-case letters, digits or dashes",
                 () -> Plugins.load(dir));
         Files.delete(bad);
+        Path none = jar("none.jar", PluginFixtures.NullName.class);
+        assertRefused("plugin none.jar: the name 'null' is not a lower-case letter", () -> Plugins.load(dir));
+        Files.delete(none);
         Path rail8 = jar("rail8.jar", PluginFixtures.NamedRail8.class);
         assertRefused("plugin rail8.jar: the name rail8 stands for what the node ships", () -> Plugins.load(dir));
         Files.delete(rail8);
@@ -299,6 +313,17 @@ class PluginsTest {
         try (Plugins plugins = Plugins.load(dir)) {
             String refused = assertThrows(IllegalStateException.class, () -> plugins.components(NOTHING_SHIPPED).apply(context())).getMessage();
             assertEquals("plugin mock-scheme: the scheme mock is the platform's mock", refused);
+        }
+    }
+
+    @Test
+    void aNullSchemeOrLanguageIsRefusedNamingThePlugin() throws IOException {
+        jar("null.jar", PluginFixtures.NullKeys.class);
+        try (Plugins plugins = Plugins.load(dir)) {
+            String refused = assertThrows(IllegalStateException.class, () -> plugins.components(NOTHING_SHIPPED).apply(context())).getMessage();
+            assertEquals("plugin null-keys: the scheme of " + PluginFixtures.Named.class.getName() + " is null", refused);
+            assertRefused("plugin null-keys: the expression language of " + PluginFixtures.Language.class.getName() + " is null",
+                    () -> plugins.languages(List.of()));
         }
     }
 

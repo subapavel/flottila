@@ -1,5 +1,5 @@
-# A package over the component and the step of the fixture plugin acme (PluginsCommandTest): without the plugin, no component
-# serves the partner's scheme and no factory builds the drop step.
+# A package over the component and the step of a test plugin named acme: without the plugin, no component serves the
+# partner's scheme and no factory builds the drop step.
 schemaVersion: 1
 kind: package
 name: plugin

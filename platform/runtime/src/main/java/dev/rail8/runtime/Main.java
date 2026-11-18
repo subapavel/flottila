@@ -67,6 +67,8 @@ public final class Main {
      *
      * @param jqMaxRecursionDepth the recursion depth of a jq step whose flow sets none: the node's
      *                            {@link NodeConfig#jqMaxRecursionDepth()}, the CLI's {@link NodeConfig#JQ_MAX_RECURSION_DEPTH_DEFAULT}
+     * @param plugins             the loaded plugins whose components, steps and languages follow the shipped ones;
+     *                            {@link Plugins#none()} for none
      * @throws IllegalArgumentException a plugin's step type or language is refused ({@link Plugins#steps}, {@link Plugins#languages})
      */
     public static Shipped shipped(int jqMaxRecursionDepth, Plugins plugins) {
