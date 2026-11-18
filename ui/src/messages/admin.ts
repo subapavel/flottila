@@ -48,6 +48,13 @@ export interface Restarted {
 export interface AdminApi {
   /** The ids of the messages whose business key `name` has `value`, a page at a time from `after`. */
   findByKey(name: string, value: string, after?: string): Promise<Page<string>>;
+  /**
+   * The ids of the messages of flow `flow` that passed the step named `step`, newest first, a page at a time from
+   * `after`. The arrival is `ingress`, and a step of a local process is `<call>/<step>`.
+   */
+  findByStep(flow: string, step: string, after?: string): Promise<Page<string>>;
+  /** The ids of the flows deployed on the node, sorted by id. */
+  flows(): Promise<string[]>;
   /** The message's recorded steps, or null when the node recorded no message with that id. */
   timeline(id: string): Promise<Timeline | null>;
   /** The payload after step `step` of attempt `attempt`, its first {@link PAYLOAD_SHOWN} bytes at most. */
@@ -119,6 +126,17 @@ export function httpAdminApi(send: typeof fetch = (input, init) => fetch(input, 
       const query = new URLSearchParams({ key: `${name}:${value}` });
       if (after !== undefined) query.set('after', after);
       return json<Page<string>>(`/admin/messages?${query}`);
+    },
+
+    findByStep(flow, step, after) {
+      const query = new URLSearchParams({ flow, step });
+      if (after !== undefined) query.set('after', after);
+      return json<Page<string>>(`/admin/messages?${query}`);
+    },
+
+    async flows() {
+      const listed = await json<{ items: { id: string }[] }>('/admin/flows');
+      return listed.items.map((flow) => flow.id);
     },
 
     async timeline(id) {

@@ -107,9 +107,10 @@ curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content
 ```
 
 The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. A JSON message
-has no key to search by, so find it by step: `curl -H "$auth" 'localhost:8081/admin/messages?flow=demo/order-jq&step=pick'`
-gives its `<id>`. In the UI open **Messages**, search by message id, and open the message: its timeline lists the steps
-`ingress`, `pick` and `partner`, and the payload `pick` recorded is that JSON.
+has no key to search by, so find it by step: in the UI open **Messages**, search by **Flow and step**, choose the flow
+`demo/order-jq`, type the step name `pick`, and open the message found: its timeline lists the steps `ingress`, `pick`
+and `partner`, and the payload `pick` recorded is that JSON. The same through the admin API:
+`curl -H "$auth" 'localhost:8081/admin/messages?flow=demo/order-jq&step=pick'` gives its `<id>`.
 
 ## Stop
 

@@ -41,6 +41,10 @@ function fakeApi(overrides: Partial<AdminApi> = {}): AdminApi {
     findByKey: vi.fn(async (_name: string, _value: string, after?: string) =>
       after === undefined ? { items: ['m-1'], next: 'page-2' } : { items: ['m-2'], next: null },
     ),
+    findByStep: vi.fn(async (_flow: string, _step: string, after?: string) =>
+      after === undefined ? { items: ['m-2'], next: 'step-page-2' } : { items: ['m-1'], next: null },
+    ),
+    flows: vi.fn(async () => ['demo/invoices', 'demo/orders']),
     timeline: vi.fn(async (id: string) => byId.get(id) ?? null),
     payload: vi.fn(async () => ({ contentType: 'application/json', text: '{"order":7}', complete: true })),
     restart: vi.fn(async (id: string) => ({ id, attempt: 3 })),
@@ -68,6 +72,13 @@ const tab = (name: string) => page.getByRole('tab', { name });
 async function searchByKey(name: string, value: string) {
   await page.getByRole('textbox', { name: 'Key name' }).fill(name);
   await page.getByRole('textbox', { name: 'Key value' }).fill(value);
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+}
+
+async function searchByStep(flow: string, step: string) {
+  await page.getByRole('button', { name: 'Flow and step' }).click();
+  await page.getByRole('combobox', { name: 'Flow' }).selectOptions(flow);
+  await page.getByRole('textbox', { name: 'Step name' }).fill(step);
   await page.getByRole('button', { name: 'Search', exact: true }).click();
 }
 
@@ -110,6 +121,40 @@ describe('Messages', () => {
     await page.getByRole('textbox', { name: 'Message id' }).fill('nothing');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect.element(page.getByRole('heading', { name: 'No messages found' })).toBeVisible();
+  });
+
+  test('finds the messages of a deployed flow that passed a step a page at a time, and opens each one in a tab', async () => {
+    const api = fakeApi();
+    render(api);
+    await searchByStep('demo/orders', 'send');
+    await expect.element(page.getByRole('button', { name: 'm-2' })).toBeVisible();
+    expect(api.flows).toHaveBeenCalledOnce();
+    expect(api.findByStep).toHaveBeenCalledWith('demo/orders', 'send');
+
+    await page.getByRole('button', { name: 'Load more' }).click();
+    await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
+    expect(api.findByStep).toHaveBeenLastCalledWith('demo/orders', 'send', 'step-page-2');
+    await expect.element(page.getByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+
+    await page.getByRole('button', { name: 'm-2' }).click();
+    await expect.element(tab('m-2')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('heading', { name: 'Message m-2' })).toBeVisible();
+  });
+
+  test('says that no recorded row of the step was found, and why a step may leave none', async () => {
+    render(fakeApi({ findByStep: async () => ({ items: [], next: null }) }));
+    await searchByStep('demo/invoices', 'ingress');
+    await expect.element(page.getByRole('heading', { name: 'No messages found' })).toBeVisible();
+    await expect.element(page.getByText('No recorded row of the step ingress of the flow demo/invoices was found.', { exact: false })).toBeVisible();
+    await expect.element(page.getByText('(ends, errors or off)', { exact: false })).toBeVisible();
+  });
+
+  test("shows the node's error when the flows cannot be listed", async () => {
+    render(fakeApi({ flows: async () => Promise.reject(new AdminError(503, 'the node is stopping')) }));
+    await page.getByRole('button', { name: 'Flow and step' }).click();
+    await expect.element(page.getByText('The deployed flows could not be listed', { exact: false })).toBeVisible();
+    await expect.element(page.getByText('the node is stopping')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Search', exact: true })).toBeDisabled();
   });
 
   test("shows the node's error when a search is refused", async () => {
