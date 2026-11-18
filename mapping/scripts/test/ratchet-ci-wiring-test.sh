@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A guard of text, not a test of behaviour (MAP-12b; since 17. 11. 2026 the ratchet runs only in the nightly
-# coverage job, as a report that blocks nothing): it reads
+# A guard of text, not a test of behaviour (MAP-12b; since 17. 11. 2026 the ratchet runs only in the
+# nightly workflow's coverage job, on demand, as a report that blocks nothing): it reads
 # .github/workflows/mapping-ci.yml, .github/workflows/mapping-nightly.yml, scripts/ratchet-enforced-from,
 # MUTATION_MODULES of scripts/ratchet.java and the job name in scripts/ratchet-baseline.sh, and asserts how the ratchet
 # check is wired. It runs nothing. The workflows are read as text in the layout they have (two-space YAML, block
