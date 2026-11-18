@@ -4530,6 +4530,8 @@ search/contains-strings	9efd27fb5ccc	interpreter
 search/depth-after-a-miss	8b11fb095753	interpreter
 search/depth-arrays	20ceb5118915	interpreter
 search/depth-before-kinds	ef7c0d700d1a	interpreter
+search/depth-missing-key	deb12115259e	interpreter
+search/depth-missing-key-read	6d5fe00ad0f8	interpreter
 search/depth-objects	bec3a4b06cd9	interpreter
 search/inside	ab8971cafae2	interpreter
 slice/array-1.2-1.2	5ee9e8c67609	interpreter
