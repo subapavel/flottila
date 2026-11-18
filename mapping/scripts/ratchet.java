@@ -11,7 +11,7 @@
 //   java scripts/ratchet.java bench <jmh.json> [<tree.json>] [<jmh-2.json> <jmh-3.json>]
 //                                          spec-gate step 5: judge the bench results, write nothing
 //
-// Run from the repository root (or the root of a scratch copy; the working directory is the root).
+// Run from mapping/ (or the root of a scratch copy; the working directory is the root).
 //
 // Inputs (all relative to the root):
 //   engine/oracle/target/surefire-reports/TEST-*.xml   a test case's name is its case id. With the

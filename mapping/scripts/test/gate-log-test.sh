@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Script test for the top-level gate logs (#125): scripts/gate-spec.sh, started by absolute path from another
-# directory, writes .logs/<spec>-spec-gate.log under its own repository root, equal to the console output. Scratch root with stubbed mvnw, java, git and helper scripts: the real
+# directory, writes .logs/<spec>-spec-gate.log under its own mapping/ directory, equal to the console output. Scratch root with stubbed mvnw, java, git and helper scripts: the real
 # gate is never run.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -16,7 +16,6 @@ cp "$here/../gate-spec.sh" "$root/scripts/"
 ok='#!/usr/bin/env bash\nexit 0\n'
 printf "$ok" > "$root/bin/java"
 printf "$ok" > "$root/bin/git"
-printf "$ok" > "$root/scripts/check-lf-checkout.sh"
 # MVNW_EXIT sets the exit code of every Maven step: MVNW points the gates at this stub
 printf '#!/usr/bin/env bash\nexit "${MVNW_EXIT:-0}"\n' > "$root/mvnw"
 export MVNW="$root/mvnw"   # the gate's wrapper
