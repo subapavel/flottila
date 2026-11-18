@@ -105,7 +105,8 @@ class FunctionFamiliesTest {
 
   /**
    * A name no family binds is a compiler bug, as before the split: lowering calls only functions of
-   * the catalogue. A name of the other kind's map is no exception.
+   * the catalogue. A name of the other kind's map is no exception, unless its family binds it in
+   * both: removeContexts over a single value is that value.
    */
   @Test
   void anUnknownNameStaysAnIllegalArgument() {
@@ -138,8 +139,9 @@ class FunctionFamiliesTest {
             () -> QueueLibrary.bind("replaceString", box, List.of(queue), List.of("", "")))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("replaceString");
-    assertThatThrownBy(() -> SingleValueLibrary.bind("removeContexts", box, List.of(value)))
+    assertThatThrownBy(() -> SingleValueLibrary.bind("sort", box, List.of(value)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("removeContexts");
+        .hasMessageContaining("sort");
+    assertThat(SingleValueLibrary.bind("removeContexts", box, List.of(value))).isSameAs(value);
   }
 }

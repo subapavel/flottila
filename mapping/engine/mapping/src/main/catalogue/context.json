@@ -79,6 +79,7 @@
         "name": "queue"
       }
     ],
+    "keepsSingleValue": true,
     "portable": true
   },
   "replaceValue": {

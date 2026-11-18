@@ -1,6 +1,6 @@
 # IR shape and queue lowering: sealed `Expr`, explicit `Lift`, target slots
 
-Status: accepted (2026-10-30, grilling #5); refined by ADR-0008 (unmapped rules use effective occurrence); refined by #26: the IR entry is `TargetDocument(prefix, root, rootSlot, content)`, which creates the root once with slot number 1 and has no origin; constructors carry the prefix lowering assigns (ADR-0022); `FunCall` and its binding by name: ADR-0025; `ifWithoutElse` is built in spec 3 (#48 Q1); `SourceQueue` names its field by element steps and its context by depth; refined by #51: `Lift(queues, slotVars, body, origin)`; refined by #52: `TargetSlots(queue, parentSlot, min, max, slotVar, valueVar, body, origin)`; refined by #63: `TargetRepeat(copies, parentSlot, slotVar, body, origin)` for unmapped n..n fields; refined by #83: generating functions, `AtomicToQueue`, `TargetRepeat(copies, parentSlot, slotVar, value, body, origin)`; amended by the spec-4 grilling (2026-11-05): no `ContentType` in milestone 1; refined by #102: `AttributeConstructor(prefix, name, value, origin)`, `SourceQueue(field, contextDepth, structureField, attribute, origin)`; refined by #98: `TargetDocument(prefix, root, rootSlot, content, input)` and `SourceQueue(field, contextDepth, structureField, attribute, arrays, origin)`; amended by F-37 (#133): `createIf` casts its input as PO does, `po:CREATEIF`; F-38 marks the `min` check of a missing context contradicted (#134); amended by F-44 (#215): the boolean family casts as `createIf` does, `err:FORG0001`, and `ifWithoutElse` follows the observed SUPPRESS and context model; refined by #217 (F-46): generating blocks, `TargetRepeat(copies, parentSlot, slotVar, value, valueVar, body, origin)`; amended by F-47 (#218): SUPPRESS is the greatest `sort` / `sortByKey` key, `collapseContexts` keeps a SUPPRESS first slot and gives no value for an empty queue; amended by F-45 (#216): `replaceValue` is a context function, because it reads SUPPRESS, and SUPPRESS passes a `Lift` as observed for `toUpperCase` and `concat`; amended by F-48 (#219): `exists` gives `true` per slot and counts SUPPRESS, `mapWithDefault` keeps a context of SUPPRESS only
+Status: accepted (2026-10-30, grilling #5); refined by ADR-0008 (unmapped rules use effective occurrence); refined by #26: the IR entry is `TargetDocument(prefix, root, rootSlot, content)`, which creates the root once with slot number 1 and has no origin; constructors carry the prefix lowering assigns (ADR-0022); `FunCall` and its binding by name: ADR-0025; `ifWithoutElse` is built in spec 3 (#48 Q1); `SourceQueue` names its field by element steps and its context by depth; refined by #51: `Lift(queues, slotVars, body, origin)`; refined by #52: `TargetSlots(queue, parentSlot, min, max, slotVar, valueVar, body, origin)`; refined by #63: `TargetRepeat(copies, parentSlot, slotVar, body, origin)` for unmapped n..n fields; refined by #83: generating functions, `AtomicToQueue`, `TargetRepeat(copies, parentSlot, slotVar, value, body, origin)`; amended by the spec-4 grilling (2026-11-05): no `ContentType` in milestone 1; refined by #102: `AttributeConstructor(prefix, name, value, origin)`, `SourceQueue(field, contextDepth, structureField, attribute, origin)`; refined by #98: `TargetDocument(prefix, root, rootSlot, content, input)` and `SourceQueue(field, contextDepth, structureField, attribute, arrays, origin)`; amended by F-37 (#133): `createIf` casts its input as PO does, `po:CREATEIF`; F-38 marks the `min` check of a missing context contradicted (#134); amended by F-44 (#215): the boolean family casts as `createIf` does, `err:FORG0001`, and `ifWithoutElse` follows the observed SUPPRESS and context model; refined by #217 (F-46): generating blocks, `TargetRepeat(copies, parentSlot, slotVar, value, valueVar, body, origin)`; amended by F-47 (#218): SUPPRESS is the greatest `sort` / `sortByKey` key, `collapseContexts` keeps a SUPPRESS first slot and gives no value for an empty queue; amended by F-45 (#216): `replaceValue` is a context function, because it reads SUPPRESS, and SUPPRESS passes a `Lift` as observed for `toUpperCase` and `concat`; amended by F-48 (#219): `exists` gives `true` per slot and counts SUPPRESS, `mapWithDefault` keeps a context of SUPPRESS only; amended by F-51 (subapavel/rail8#56): a context or queue function the catalogue marks `keepsSingleValue`, today only `removeContexts`, is an atomic `FunCall` over single values only
 
 This ADR records `docs/FOUNDING-ARCHITECTURE.md` §4 and §6 for milestone 1 and fills its gaps.
 Every front end lowers to records of `sealed interface Expr`. The records are `Literal`,
@@ -23,7 +23,8 @@ The IR is pure data: records, enums, strings, ints, `Optional` and `List` of tho
   milestone 1), where constructors of two output formats need a type.
 - The front end emits well-typed IR. It inserts `Cast` where a signature needs a typed value
   (a failed cast raises `FORG0001`, ADR-0005) and `AtomicToQueue` where a context or queue
-  function gets an atomic input.
+  function gets an atomic input, unless the function keeps a single value single and all its
+  inputs are atomic (below).
 - User errors are design-time errors raised by lowering with their `origin`: an unresolved
   function, a wrong arity, a parameter that cannot be cast, an untranslatable pattern
   (ADR-0003), a target leaf with `minOccurs > 0` and no mapping.
@@ -66,6 +67,12 @@ only through `Lift` and `AtomicToQueue`.
   At a context or queue function's input it is the queue it is. At a single-value function's
   input, of a `Lift` or of an atomic call, lowering refuses it with `unsupported-generating-input`
   at the consuming box; SAP PO accepts that graph, so it is `copyValue`'s deviation.
+- Since subapavel/rail8#56 (F-51) a context or queue function the catalogue marks
+  `keepsSingleValue` (ADR-0026), today only `removeContexts`, is over inputs that are all single
+  values the atomic `FunCall` over them, a single value as a constant's is: its family binds that
+  call under the same name among its single-value functions (ADR-0025), and `removeContexts`
+  passes the value on. Over any queue input, a generating block included, it is the `FunCall`
+  over queue blocks above, each single value as `AtomicToQueue`.
 
 ## Target fields
 
@@ -224,6 +231,17 @@ for-each over the source context".
   - a missing first slot traces like SUPPRESS: every copy suppressed;
   - a SUPPRESS or missing first slot on a field with `minOccurs > 0` writes no copy and raises no
     `po:MINOCCURS`: a `TargetRepeat` has no min check.
+- `removeContexts` of a constant is the constant's single value (observed, `obs-lift-reuse`
+  lift-4, PO 7.50 and CPI, F-51; amended with subapavel/rail8#56, replacing ADR-0004's reading
+  that a constant fed into it is a queue of one context): W gets `k` in every Item
+  (`fn/removeContexts/004`). Assumed, pinned by lowering tests and `KeepsSingleValueAgreementTest`
+  on both back ends only, until the observation request subapavel/rail8#57 answers:
+  - `removeContexts` over its own call on a constant, and `concat` over it and a second constant,
+    are single values, so they go into every Item;
+  - at a context or queue function's input it is `AtomicToQueue`, so `count` over it gives one
+    context and a V in the first Item only, as `count` of a constant does (`fn/constant/006`);
+  - over `copyValue`'s generating block it is the context call over the block's queue, one
+    context, so only the first Item gets the value.
 - `createIf` casts each value as PO's `Bool.toBoolean` does (observed, #31 spec-2 part, F-37;
   amended with #133, replacing the assumed reading of #51): `true` in any case and `1` give `""`,
   `false` and `0` give SUPPRESS; any other value, `""` included, raises `po:CREATEIF` at the

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-remove-contexts.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-lift-reuse lift-4, run 2026-11-11: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-lift-reuse/po75/l4-lift-4.xml and corpus/observations/obs-lift-reuse/cpi/l4-lift-4.xml; the display queues of R1 and N1: po75/lift-4-queues.txt and cpi/l4-lift-4-queue.txt",
+  "expect": "output",
+  "note": "removeContexts(Constant{k}) on W: removeContexts passes the constant on, so W is k in every Item, as Constant{k} alone is. count(Constant{k}) on V stays one context with one value, so only Item 1 gets a V (fn/constant/006)."
+}

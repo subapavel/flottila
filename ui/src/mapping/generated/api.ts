@@ -884,6 +884,11 @@ export interface components {
              * @constant
              */
             generating?: true;
+            /**
+             * @description Present on a context or queue function whose call over single values only is itself a single value, which its family computes under the same name; absent on every other function.
+             * @constant
+             */
+            keepsSingleValue?: true;
             inputs?: components["schemas"]["catalogueInput"][];
             params?: components["schemas"]["catalogueParam"][];
             /** @description Whether the function's export runs on any conforming XSLT 3.0 processor. */
@@ -911,6 +916,11 @@ export interface components {
                      * @constant
                      */
                     generating?: true;
+                    /**
+                     * @description Present on a context or queue function whose call over single values only is itself a single value, which its family computes under the same name; absent on every other function.
+                     * @constant
+                     */
+                    keepsSingleValue?: true;
                     inputs?: components["schemas"]["catalogueInput"][];
                     params?: components["schemas"]["catalogueParam"][];
                     /** @description Whether the function's export runs on any conforming XSLT 3.0 processor. */

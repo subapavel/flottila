@@ -860,6 +860,7 @@
         "name": "queue"
       }
     ],
+    "keepsSingleValue": true,
     "portable": true
   },
   "replaceString": {

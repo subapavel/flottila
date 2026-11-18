@@ -20,9 +20,10 @@ import java.util.function.UnaryOperator;
 /**
  * The function catalogue: {@code function-catalogue.json}, a resource of this package, read once
  * and published as it is packed, through {@link #bytes()}. Only lowering reads its entries, and
- * only what lowering needs: a function's execution kind, whether it is generating, the names of its
- * inputs and its params, in order, with each param's default and the values or the syntax it takes;
- * {@code family}, {@code portable} and {@code fidelity} are read past.
+ * only what lowering needs: a function's execution kind, whether it is generating, whether it keeps
+ * a single value single, the names of its inputs and its params, in order, with each param's
+ * default and the values or the syntax it takes; {@code family}, {@code portable} and {@code
+ * fidelity} are read past.
  *
  * <p>A param is a string param or a table param, by its {@code type}, and lowering makes either a
  * {@code Literal}. A string param with {@code values} takes only those, one with a {@code syntax}
@@ -87,13 +88,22 @@ public final class FunctionCatalogue {
    * @param params the params, in order
    * @param generating whether its result is a generating block, a queue function's one value that
    *     every occurrence of a target field takes, as a constant's
+   * @param keepsSingleValue whether its call over single values only is itself a single value, a
+   *     context or queue function's that its family computes under the same name
    */
   record Entry(
-      ExecutionKind executionKind, List<String> inputs, List<Param> params, boolean generating) {
+      ExecutionKind executionKind,
+      List<String> inputs,
+      List<Param> params,
+      boolean generating,
+      boolean keepsSingleValue) {
 
-    /** The entry of a function whose result is no generating block. */
+    /**
+     * The entry of a function whose result is no generating block and whose call over single values
+     * is a queue.
+     */
     Entry(ExecutionKind executionKind, List<String> inputs, List<Param> params) {
-      this(executionKind, inputs, params, false);
+      this(executionKind, inputs, params, false, false);
     }
 
     /** The param {@code name}, or empty when the function has no such one. */
@@ -153,10 +163,11 @@ public final class FunctionCatalogue {
   }
 
   /**
-   * {@code entry}'s execution kind, inputs, params and whether it is generating; a function without
-   * inputs, as {@code constant}, or without params leaves the member out, a string param that takes
-   * any string leaves {@code values} out, and a function that is not generating leaves {@code
-   * generating} out, which the schema allows only as {@code true}.
+   * {@code entry}'s execution kind, inputs, params, whether it is generating and whether it keeps a
+   * single value single; a function without inputs, as {@code constant}, or without params leaves
+   * the member out, a string param that takes any string leaves {@code values} out, and a function
+   * that is not generating, or does not keep a single value single, leaves {@code generating}, or
+   * {@code keepsSingleValue}, out, which the schema allows only as {@code true}.
    */
   private static Entry entry(IJsonObject entry) {
     ExecutionKind kind =
@@ -180,7 +191,11 @@ public final class FunctionCatalogue {
       }
     }
     return new Entry(
-        kind, List.copyOf(inputs), List.copyOf(params), entry.get("generating") != null);
+        kind,
+        List.copyOf(inputs),
+        List.copyOf(params),
+        entry.get("generating") != null,
+        entry.get("keepsSingleValue") != null);
   }
 
   /** The {@code default} of {@code param}: a table for a table param, else a string. */

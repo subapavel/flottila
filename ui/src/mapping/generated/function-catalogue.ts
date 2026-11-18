@@ -35,6 +35,10 @@ export interface CatalogueEntry {
    */
   generating?: true;
   /**
+   * Present on a context or queue function whose call over single values only is itself a single value, which its family computes under the same name; absent on every other function.
+   */
+  keepsSingleValue?: true;
+  /**
    * @minItems 1
    */
   inputs?: [CatalogueInput, ...CatalogueInput[]];

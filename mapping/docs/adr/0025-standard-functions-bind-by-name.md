@@ -1,6 +1,6 @@
 # Standard functions bind by name: an engine catalogue as data, a total FunCall, po:<name> in the helper module
 
-Status: accepted (2026-11-02, #50 design, spec #48); amended by F-48 (#219): useOneAsMany's error conditions are the observed ones of PO 7.5 and CPI
+Status: accepted (2026-11-02, #50 design, spec #48); amended by F-48 (#219): useOneAsMany's error conditions are the observed ones of PO 7.5 and CPI; amended by F-51 (subapavel/rail8#56): a family binds a function that keeps a single value single in both its maps
 
 ## Decision
 
@@ -21,6 +21,7 @@ Status: accepted (2026-11-02, #50 design, spec #48); amended by F-48 (#219): use
   - The algebra over `QueueBlock` lives in `engine/xdm` (`ContextFunctions`). This is where ADR-0004's sharing rules hold.
   - `engine/runtime` binds a name once per call site at closure compile and parses the params into the closure. This refines ADR-0021's "queue-operation library": the binding is in `runtime`, the algebra in `xdm`.
   - The bytecode tier calls the same binding.
+  - A family may bind one name both as a queue function and as a single-value function, when the catalogue marks that function `keepsSingleValue` (ADR-0026): `removeContexts` over a single value is that value (F-51, subapavel/rail8#56). Two families never bind one name in the same map.
 - **Export.**
   - A queue is `array(item()*)`, one member per context; a value is an `xs:string` or `$po:SUPPRESS`, ADR-0004's marker (since #51).
   - A `Lift` exports as `po:lift((queues), function($in as xs:string*) as xs:string {…})`. The runtime binds a single-value function by name to a string node.

@@ -132,6 +132,40 @@ class SingleValueInterpreterTest {
   }
 
   /**
+   * removeContexts over the constant c1, as lowering gives it over a single value: the atomic call
+   * at r1, which passes k on, so V holds k; the trace holds c1's and r1's values, and no queue.
+   */
+  @Test
+  void removeContextsOverAConstantIsTracedAsASingleValueAtItsBox() throws Exception {
+    TargetDocument document =
+        new TargetDocument(
+            "",
+            local("Doc"),
+            "root",
+            List.of(
+                new TargetRepeat(
+                    1,
+                    new VarRef("root", AtomicType.INTEGER, id("t1")),
+                    "slot2",
+                    leaf(
+                        "V",
+                        new FunCall(
+                            new FunctionRef(
+                                "removeContexts", List.of(AtomicType.STRING), AtomicType.STRING),
+                            List.of(constant("k", "c1")),
+                            id("r1")),
+                        "t1"),
+                    id("t1"))));
+    Tracer tracer = new Tracer();
+
+    assertThat(run(document, true, tracer)).isEqualTo(DECLARATION + "<Doc><V>k</V></Doc>");
+    assertThat(tracer.reports())
+        .filteredOn(Tracer.Atomic.class::isInstance)
+        .containsExactly(new Tracer.Atomic(id("c1"), "k"), new Tracer.Atomic(id("r1"), "k"));
+    assertThat(tracer.values()).isEmpty();
+  }
+
+  /**
    * In a Lift's body the constant applies to every slot, and is computed and traced per slot; the
    * body's own call is the Lift's box, traced as its queue only.
    */

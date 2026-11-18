@@ -1,13 +1,14 @@
 # The published function catalogue: a closed schema, fidelity as a level with a text, the box id by the helper's signature
 
-Status: accepted (2026-11-03, #71 design, spec #70); amended 2026-11-04 (#74, pattern params; #83, table params); amended 2026-11-06 (F-39, #133: a helper that starts to raise re-pins its block); amended 2026-11-13 (F-46, #217: `generating`). Refines ADR-0011 (catalogue members) and ADR-0025.
+Status: accepted (2026-11-03, #71 design, spec #70); amended 2026-11-04 (#74, pattern params; #83, table params); amended 2026-11-06 (F-39, #133: a helper that starts to raise re-pins its block); amended 2026-11-13 (F-46, #217: `generating`); amended 2026-11-18 (F-51, subapavel/rail8#56: `keepsSingleValue`, and a helper whose signature an observed rule changes re-pins its block). Refines ADR-0011 (catalogue members) and ADR-0025.
 
 ## Decision
 
 - **Schema.** `contract/function-catalogue.schema.json` is the catalogue's contract (JSON Schema 2020-12, closed as in ADR-0011).
   - The root is keyed by function id, `^[a-z][A-Za-z0-9]{0,63}$`, a subset of the model's names. Input, param and family names use the same pattern.
-  - An entry has `family`, `executionKind`, `generating?`, `inputs?`, `params?`, `portable` and `fidelity`. `inputs` and `params` have at least one item when present; `constant` has no inputs.
+  - An entry has `family`, `executionKind`, `generating?`, `keepsSingleValue?`, `inputs?`, `params?`, `portable` and `fidelity`. `inputs` and `params` have at least one item when present; `constant` has no inputs.
   - `generating` is `true` or absent (#217, F-46). It marks a queue function whose result is a generating block, one value for every occurrence of a target field under every parent occurrence (ADR-0006), today `copyValue`; lowering reads it, and a test in `engine/mapping` refuses it on any other execution kind. It is a contract member: the wire and `ui/src/generated` carry it.
+  - `keepsSingleValue` is `true` or absent (subapavel/rail8#56, F-51). It marks a context or queue function whose call over single values only is itself a single value, which its family computes under the same name (ADR-0025), today `removeContexts`; lowering reads it and gives that call the atomic `FunCall` (ADR-0006). A test in `engine/mapping` refuses it on a single-value function and beside `generating`. It is a contract member: the wire and `ui/src/generated` carry it.
   - A param is `{name, type: "string", default, values?, syntax?}` or `{name, type: "table", default: {key: value}}`.
   - `syntax` is `"numberPattern"` (#74) or `"datePattern"` (#80). It cannot be combined with `values`.
   - Adding a member is a schema change.
@@ -54,5 +55,5 @@ Status: accepted (2026-11-03, #71 design, spec #70); amended 2026-11-04 (#74, pa
 ## Consequences
 
 - The exports, the wire and the UI types carry these shapes. Renaming `box`, a level or the message prefix is a contract change.
-- #71 re-pins the two byte fixtures of #69 once, with this ADR as the reason: the context family gains `fidelity`, and five helper declarations gain `box`. The family tickets that follow keep the new pins green. Amended by F-39 (#133): a ticket whose observed rule makes an existing helper raise re-pins that helper's block alone (it gains `box`), names the reason in the fixture's javadoc, and keeps every other byte and every assertion.
+- #71 re-pins the two byte fixtures of #69 once, with this ADR as the reason: the context family gains `fidelity`, and five helper declarations gain `box`. The family tickets that follow keep the new pins green. Amended by F-39 (#133): a ticket whose observed rule makes an existing helper raise re-pins that helper's block alone (it gains `box`), names the reason in the fixture's javadoc, and keeps every other byte and every assertion. Amended by F-51 (subapavel/rail8#56): so does a ticket whose observed rule changes an existing helper's signature: `po:removeContexts` takes and gives a queue or a single value, and the catalogue fixture re-pins that function's entry alone (it gains `keepsSingleValue`).
 - Every context function starts as `assumed`. It becomes `exact` when its last assumed case is observed, or `deviation` when the engine still differs from PO where no case shows it: `copyValue`'s result cannot feed a single-value input, which PO accepts (F-46, #217).

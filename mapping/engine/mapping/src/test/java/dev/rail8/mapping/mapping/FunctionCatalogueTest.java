@@ -267,6 +267,8 @@ class FunctionCatalogueTest {
    * re-pins the fidelity of exists, mapWithDefault and useOneAsMany, to {@code exact}, alone: their
    * last assumed cases are observed (F-48). #214 re-pins formatByExample and removeContexts, and
    * #221 re-pins createIf, to {@code exact}, alone each. The assertions below are #69's, unchanged.
+   * The removeContexts entry is re-pinned alone: it gains {@code keepsSingleValue}, as PO 7.50 and
+   * CPI pass a constant through removeContexts on unchanged; its fidelity stays {@code exact}.
    */
   static final String MAIN_CATALOGUE =
       "engine/mapping/src/test/resources/pinned-71/function-catalogue.json";
@@ -450,5 +452,76 @@ class FunctionCatalogueTest {
     }
     assertThat(FunctionCatalogue.entry("copyValue").orElseThrow().generating()).isTrue();
     assertThat(FunctionCatalogue.entry("constant").orElseThrow().generating()).isFalse();
+  }
+
+  // --- functions that keep a single value single: a context or queue function whose call over
+  // single values only, such as a constant, is itself a single value
+
+  /**
+   * What is wrong with each function's {@code keepsSingleValue}: anything but {@code true}, or
+   * {@code true} on a single-value function, which keeps a single value single by its kind, or on a
+   * generating function, whose result is a generating block.
+   */
+  static List<String> keepsSingleValueProblems(JsonTree catalogue) {
+    List<String> problems = new ArrayList<>();
+    functions(catalogue, "the catalogue")
+        .forEach(
+            (name, entry) -> {
+              Map<String, JsonTree> members = members(entry, name);
+              JsonTree keeps = members.get("keepsSingleValue");
+              if (keeps == null) {
+                return;
+              }
+              if (!keeps.equals(new Bool(true))) {
+                problems.add(name + ": keepsSingleValue is not true");
+              }
+              if (new Str("single").equals(members.get("executionKind"))) {
+                problems.add(name + ": keepsSingleValue on a single-value function");
+              }
+              if (members.containsKey("generating")) {
+                problems.add(name + ": keepsSingleValue and generating");
+              }
+            });
+    return problems;
+  }
+
+  @Test
+  void onlyAContextOrQueueFunctionKeepsASingleValueSingle() throws Exception {
+    // witness: the check reports each defect in a catalogue that has them
+    JsonTree broken =
+        JsonTree.parse(
+            """
+            {"f": {"executionKind": "single", "keepsSingleValue": true},
+             "g": {"executionKind": "queue", "keepsSingleValue": false},
+             "h": {"executionKind": "queue", "generating": true, "keepsSingleValue": true},
+             "k": {"executionKind": "context", "keepsSingleValue": true},
+             "m": {"executionKind": "queue", "keepsSingleValue": true},
+             "n": {"executionKind": "queue"}}
+            """);
+    assertThat(keepsSingleValueProblems(broken))
+        .containsExactlyInAnyOrder(
+            "f: keepsSingleValue on a single-value function",
+            "g: keepsSingleValue is not true",
+            "h: keepsSingleValue and generating");
+
+    Map<String, JsonTree> packed =
+        functions(JsonTree.parse(Fixtures.strictUtf8(catalogue())), "the packed catalogue");
+    assertThat(keepsSingleValueProblems(new Obj(packed))).isEmpty();
+    // PO 7.50 and CPI pass a constant through removeContexts on unchanged
+    assertThat(members(packed.get("removeContexts"), "removeContexts"))
+        .containsEntry("executionKind", new Str("queue"))
+        .containsEntry("keepsSingleValue", new Bool(true));
+
+    // lowering reads it as the catalogue holds it; count of a constant stays a queue
+    for (Map.Entry<String, JsonTree> function : packed.entrySet()) {
+      boolean keeps =
+          new Bool(true)
+              .equals(members(function.getValue(), function.getKey()).get("keepsSingleValue"));
+      assertThat(FunctionCatalogue.entry(function.getKey()).orElseThrow().keepsSingleValue())
+          .as(function.getKey())
+          .isEqualTo(keeps);
+    }
+    assertThat(FunctionCatalogue.entry("removeContexts").orElseThrow().keepsSingleValue()).isTrue();
+    assertThat(FunctionCatalogue.entry("count").orElseThrow().keepsSingleValue()).isFalse();
   }
 }
