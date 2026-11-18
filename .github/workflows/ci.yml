@@ -4,8 +4,8 @@
 # These block a merge.
 # Once a night and on demand, as a report that blocks nothing: the whole stack in Docker with the demo deployed,
 # the same tests on the oldest supported Postgres, the coverage floors and the "coverage must not fall"
-# comparison, the benchmark, mutation testing, and the check that a test JVM which dies fails the build in every
-# module of the platform, the jq engine and the mapping.
+# comparison with the previous night, the benchmark, mutation testing, and the check that a test JVM which dies
+# fails the build in every module of the platform, the jq engine and the mapping.
 name: ci
 
 on:
@@ -138,7 +138,7 @@ jobs:
         run: mvn -B -ntp -f platform/pom.xml verify -Pit -Djacoco.skip=true -Drail8.it.postgres=postgres:17.11
 
   coverage:
-    name: "nightly · coverage floors and the comparison with ci/coverage-baseline.json"
+    name: "nightly · coverage floors and the comparison with the previous night's coverage"
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -154,11 +154,31 @@ jobs:
         run: bin/install-mapping
       # The floors of platform/pom.xml (90 % for api and core, 75 % elsewhere) fail this job when missed.
       - name: Verify with the coverage floors
+        id: floors
         run: mvn -B -ntp -f platform/pom.xml verify -Pit
-      # Compares this night's coverage with the committed ci/coverage-baseline.json and reports any fall.
-      - name: Coverage compared with the committed baseline
+      # The newest coverage a night of this branch measured whole (none on the first night: nothing is compared).
+      - name: The previous night's coverage
         if: always()
-        run: python3 ci/coverage_check.py --baseline-ref HEAD
+        uses: actions/cache/restore@v4
+        with:
+          path: coverage-night/coverage.json
+          key: coverage-night-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: coverage-night-
+      # Compares this night's coverage with the previous night's and reports any fall beyond the noise band.
+      - name: Coverage compared with the previous night's
+        if: always()
+        run: python3 ci/coverage_check.py --baseline-file coverage-night/coverage.json
+      # Only a whole measurement (every module tested) is kept for the next night, a fall included: a fall is
+      # reported on the night it happens.
+      - name: This night's coverage, for the next night
+        if: always() && steps.floors.outcome == 'success'
+        run: python3 ci/coverage_check.py --baseline-file coverage-night/coverage.json --write
+      - name: Keep this night's coverage
+        if: always() && steps.floors.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: coverage-night/coverage.json
+          key: coverage-night-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Coverage reports
         if: always()
         uses: actions/upload-artifact@v4

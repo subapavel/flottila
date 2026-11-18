@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""JaCoCo no-decrease gate: no module's line or branch coverage falls on a push.
+"""JaCoCo no-decrease check: no module's line or branch coverage falls against a baseline.
 
 Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates, or under examples/, the
 samples for plugin authors, which have none), computes line and branch coverage in percent
-rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
-previous main commit in CI, HEAD locally). A module whose coverage dropped by more than TOLERANCE
-percentage points (a noise band; the JaCoCo floors in the poms stay exact) fails the check; a
-module that has compiled classes (other than package-info) but no report fails too, because
-jacoco:check silently skips a module in which no test ran. New modules without a baseline pass.
-`--write` writes every value as measured (no high-water mark): the committed baseline describes
-the tree it is committed with; TOLERANCE is the tolerance of the comparison, never of the file.
+rounded to one decimal, and compares with a baseline file: the nightly CI job gives the previous
+night's measurement, which it keeps in the Actions cache. A module whose coverage dropped by more
+than TOLERANCE percentage points (a noise band; the JaCoCo floors in the poms stay exact) fails the
+check; a module that has compiled classes (other than package-info) but no report fails too,
+because jacoco:check silently skips a module in which no test ran. New modules without a baseline
+pass, and so does every module when the baseline file is not there (the first night), which the
+output says. `--write` writes every value as measured (no high-water mark): a baseline describes
+the tree it was measured on; TOLERANCE is the tolerance of the comparison, never of the file.
 
 Usage:
-  python3 ci/coverage_check.py                       # compare against HEAD's baseline file
-  python3 ci/coverage_check.py --baseline-ref <sha>  # compare against that commit's baseline file
-  python3 ci/coverage_check.py --write               # rewrite ci/coverage-baseline.json as measured (task commits)
-  python3 ci/coverage_check.py --check-baseline      # CI: the committed file describes this tree (±TOLERANCE)
+  python3 ci/coverage_check.py --baseline-file <file>          # compare against that file (CI: the previous night's)
+  python3 ci/coverage_check.py --baseline-file <file> --write  # write this measurement to that file (CI: for the next night)
+  python3 ci/coverage_check.py --baseline-ref <sha>            # compare against the baseline file as committed at that commit
+  python3 ci/coverage_check.py --check-baseline                # the baseline file describes this tree (±TOLERANCE)
 """
 from __future__ import annotations
 
@@ -117,9 +118,10 @@ def check_baseline(current: dict[str, dict[str, float]], committed: dict[str, di
 
 
 def write_baseline(current: dict[str, dict[str, float]], path: Path) -> None:
-    """Writes the measurement as measured, always: the committed file describes the tree it is
-    committed with, nothing remembered from earlier trees. TOLERANCE is the check's band, never the
+    """Writes the measurement as measured, always: the file describes the tree it was measured on,
+    nothing remembered from earlier trees. TOLERANCE is the check's band, never the
     file's. Modules no longer measured are dropped."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
 
 
@@ -174,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     except BaselineError as e:
         print(f"COVERAGE BASELINE ERROR: {e}", file=sys.stderr)
         return 2
+    if not args.baseline_ref and not path.exists():
+        print(f"no baseline at {path}: nothing compared")
     problems = compare(current, baseline, root, ignore)
     for p in problems:
         print(f"COVERAGE DECREASE: {p}", file=sys.stderr)

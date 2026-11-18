@@ -272,6 +272,22 @@ class CoverageCheckTest(unittest.TestCase):
         with self.assertRaises(cc.BaselineError):
             cc._load_baseline("no-such-ref", self.root / "ci" / "coverage-baseline.json", self.root)
 
+    def test_a_baseline_file_that_is_not_there_compares_nothing_and_says_so(self):
+        # the nightly's first run has no previous night's numbers: it passes, and its output says nothing was compared
+        module(self.root, "rail8-api", report=(20, 80, 5, 15))
+        path = self.root / "previous" / "coverage.json"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(0, cc.main(["--root", str(self.root), "--baseline-file", str(path)]))
+        self.assertIn(f"no baseline at {path}: nothing compared", out.getvalue())
+
+    def test_write_creates_the_baseline_files_folder(self):
+        module(self.root, "rail8-api", report=(10, 90, 5, 15))
+        path = self.root / "tonight" / "coverage.json"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, cc.main(["--root", str(self.root), "--baseline-file", str(path), "--write"]))
+        self.assertEqual({"rail8-api": {"line": 90.0, "branch": 75.0}}, json.loads(path.read_text()))
+
     def test_main_exit_code_reports_problems(self):
         module(self.root, "rail8-api", report=(20, 80, 5, 15))
         path = self.root / "ci" / "coverage-baseline.json"

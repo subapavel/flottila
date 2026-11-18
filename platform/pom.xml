@@ -403,6 +403,10 @@
             <outputFormats><param>XML</param><param>HTML</param></outputFormats>
             <timestampedReports>false</timestampedReports>
             <threads>4</threads>
+            <!-- surefire's argLine names the test fork as ${surefire.forkNumber}, which only surefire fills in: a PIT
+                 minion would be given the text itself, and dev.rail8.testkit.Ports refuses it. A minion is no surefire
+                 fork, so it draws from the whole pool. -->
+            <parseSurefireArgLine>false</parseSurefireArgLine>
           </configuration>
         </plugin>
       </plugins>
