@@ -144,6 +144,12 @@ class FormatsTest {
   }
 
   @Test
+  void base64dTicksForItsOutputWhenBadBytesMakeItLonger() {
+    // Each "////" decodes to three bytes FF, and each FF becomes the three bytes of U+FFFD: 1024 bytes in, 2304 out.
+    assertSteps("\"////\" * 256 | @base64d", 3);
+  }
+
+  @Test
   void aRowFormatTicksOncePerStartedKibOfItsOutput() {
     // The quotes make 1022 bytes 1024 for csv and sh; tsv adds none.
     assertSteps("[\"a\" * 1022] | @csv", 1);

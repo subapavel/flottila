@@ -320,6 +320,9 @@ public final class Formats {
       throw Arithmetic.cannot(state, text, "trailing base64 byte found");
     }
     byte[] out = JsonStrings.replaceBad(decoded, 0, length);
+    // Each bad byte becomes the three bytes of U+FFFD, so the result can be longer than the text: tick the rest of
+    // the larger of the two.
+    state.tick(Math.max(0, Built.kibibytes(out.length) - Built.kibibytes(n)));
     state.chargeBuilt(Charges.STRING + out.length);
     return BuiltString.of(out);
   }
