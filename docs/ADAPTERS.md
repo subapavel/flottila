@@ -53,6 +53,11 @@ your protocol goes; the rest (the body streamed through the blob store, the hand
 stop) is what every adapter keeps. Then change the settings description to your options, and the package's endpoint
 files with it.
 
+A consumer that loses its connection after its start fails `broken()` with the cause; leave the waiting and the next
+attempt to the node, which stops the consumer and starts a fresh one of the same endpoint after a delay that grows with
+each failure in a row. A consumer that cannot break once started, such as a listener whose bind is its start, as in the
+sample, keeps the default.
+
 ## Test it
 
 ```sh

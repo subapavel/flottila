@@ -59,11 +59,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -578,7 +580,7 @@ class AdminServerDeployTest {
     }
 
     /**
-     * P1-09d2c: a redeploy whose start fails and whose rollback cannot start {@code orders} again either answers 500 naming
+     * A redeploy whose start fails and whose rollback cannot build {@code orders}' consumer again answers 500 naming
      * "flows [shop/orders] FAILED"; GET /admin/flows lists orders as before but in state FAILED, ping RUNNING; the package record
      * is v1's and still names orders.
      */
@@ -588,7 +590,10 @@ class AdminServerDeployTest {
         JsonObject flowsBefore = get("/admin/flows").json();
         JsonObject packagesBefore = get("/admin/packages").json();
         doors.failStartOf("shop/orders", "address in use");
-        doors.failStartOf("shop/orders", "still in use");
+        AtomicInteger builds = new AtomicInteger();
+        doors.onConsumer(cfg -> {   // the second: v2 builds the first
+            if ("shop/orders".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("orders cannot be built again");
+        });
 
         Answer a = put("/admin/packages/shop?revision=r2", ordersAndPing("1.1.0", "v2").zip());
 
@@ -602,6 +607,43 @@ class AdminServerDeployTest {
         }
         assertEquals(expected, get("/admin/flows").json(), "orders is listed as before, FAILED; ping RUNNING");
         assertEquals(packagesBefore, get("/admin/packages").json(), "the package record is v1's, naming orders");
+    }
+
+    /**
+     * A redeploy whose start fails and whose rollback cannot start {@code orders} again answers 500 naming no FAILED flow;
+     * GET /admin/flows lists orders as before but RESTARTING, with its {@code restart}: one failure, the next attempt a second
+     * later, the cause; ping RUNNING. Once a fresh consumer of orders started, it is listed as before.
+     */
+    @Test
+    void aFlowWhoseConsumerIsTriedAgainShowsRESTARTINGInGetFlows() throws Exception {
+        assertJson(200, put("/admin/packages/shop?revision=r1", ordersAndPing("1.0.0", "v1").zip()), "fixture: v1");
+        JsonObject flowsBefore = get("/admin/flows").json();
+        doors.failStartOf("shop/orders", "address in use");
+        doors.failStartOf("shop/orders", "still in use");
+
+        Answer a = put("/admin/packages/shop?revision=r2", ordersAndPing("1.1.0", "v2").zip());
+
+        assertJson(500, a, "a redeploy that rolled back");
+        assertFalse(a.json().getString("error").contains("FAILED"), "no flow is FAILED: " + a.json());
+        JsonObject expected = flowsBefore.copy();
+        for (Object o : expected.getJsonArray("items")) {
+            JsonObject item = (JsonObject) o;
+            if (item.getString("id").equals("shop/orders")) {
+                item.put("state", "RESTARTING").put("restart", new JsonObject().put("failures", 1).put("next", rt.clock().instant().plusSeconds(1).toString())
+                        .put("cause", "still in use"));
+            }
+        }
+        assertEquals(expected, get("/admin/flows").json(), "orders is listed as before, RESTARTING with its restart; ping RUNNING");
+
+        rt.clock().advance(Duration.ofSeconds(1));
+
+        until(() -> {
+            try {
+                return flowsBefore.equals(get("/admin/flows").json());
+            } catch (Exception unanswered) {
+                throw new IllegalStateException(unanswered);
+            }
+        }, "orders is listed as before once its fresh consumer started");
     }
 
     @Test

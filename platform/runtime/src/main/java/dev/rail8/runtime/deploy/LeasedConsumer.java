@@ -26,9 +26,14 @@ import java.util.function.Supplier;
  * once. Failed or no answer within the bound: the inner consumer polls on while now &lt; the validity, else stops; that is a
  * WARNING on the change of state only — the first failure since an answer, its stack trace only while a consumer runs — and FINE
  * on every tick that fails again. After an inner start the clock is read again: a start that outlasted the validity stops the
- * consumer at once. An inner start that fails is a WARNING; that consumer is stopped, once its stop settled the lease is released,
- * and the next tick tries again. The next tick comes after the renew period, while a consumer runs no later than its validity's
- * end, both measured from the last clock read.
+ * consumer at once. The next tick comes after the renew period, while a consumer runs no later than its validity's end, both
+ * measured from the last clock read.
+ *
+ * <p>{@link #broken} fails, and no tick follows, when an inner start fails — that consumer is stopped and, once its stop settled,
+ * the lease is released, then it fails with the start's cause — or when the inner consumer that runs breaks (its own
+ * {@link Consumer#broken}, read once its start succeeded), with that cause: the node then stops this instance, which stops that
+ * inner and releases the lease, and later starts a fresh one, with an owner of its own. A lease lost to another owner is no
+ * break: the instance waits on standby and asks again at its next tick.
  *
  * <p>{@link #stop} cancels the next tick, waits for a tick in flight, stops the inner consumer that runs (its stop awaits the file
  * in flight), then releases the lease — a failed release is a WARNING, the lease lapses after its ttl — and completes as
@@ -50,6 +55,7 @@ final class LeasedConsumer implements Consumer {
     private final Timer timer;
     private final Clock clock;
     private final Supplier<Consumer> fresh;
+    private final Promise<Void> broken = Promise.promise();
 
     // written by the ticks, which run one at a time, and by stop() once the tick in flight ended
     /** The consumer given, until its first start. */
@@ -63,6 +69,8 @@ final class LeasedConsumer implements Consumer {
 
     // guarded by this
     private boolean stopping;
+    /** {@link #broken} failed: no further tick. */
+    private boolean broke;
     private Timer.Cancellable next = () -> false;
     /** Completes once the tick in flight ended; complete when none runs. */
     private Future<Void> ticking = Future.succeededFuture();
@@ -85,6 +93,11 @@ final class LeasedConsumer implements Consumer {
     public synchronized Future<Void> start() {
         next = timer.schedule(Duration.ZERO, this::fire);
         return Future.succeededFuture();
+    }
+
+    @Override
+    public Future<Void> broken() {
+        return broken.future();
     }
 
     @Override
@@ -132,7 +145,7 @@ final class LeasedConsumer implements Consumer {
                 delay = upTo(now);
             } finally {
                 synchronized (this) {
-                    if (!stopping) next = timer.schedule(delay, this::fire);
+                    if (!stopping && !broke) next = timer.schedule(delay, this::fire);
                 }
             }
         } finally {
@@ -170,24 +183,39 @@ final class LeasedConsumer implements Consumer {
     }
 
     /**
-     * Starts the consumer given, or a fresh one once that was used; one that does not start is a WARNING, it is stopped, and once
-     * that stop settled the lease is released.
+     * Starts the consumer given, or a fresh one once that was used, and reads its break from then on; one that does not start is
+     * stopped, once that stop settled the lease is released, and {@link #broken} fails with the start's cause.
      */
     private void startInner() {
         Future<Consumer> taken = Future.future(done -> done.complete(take()));   // the supplier's throw fails it
         Future<Void> started = taken.compose(c -> call(c::start));
         started.otherwiseEmpty().await();
         if (started.succeeded()) {
-            inner = taken.result();
+            Consumer c = taken.result();
+            inner = c;
+            // a break that completed during the start is read at once; one of an inner stopped since (lost, lapsed) is ignored
+            Future.<Void>future(listened -> c.broken().onComplete(listened)).onComplete(done -> {
+                if (inner == c) end(done.failed() ? done.cause() : new IllegalStateException("its consumer reported a break without a cause"));
+            });
             return;
         }
-        LOG.log(System.Logger.Level.WARNING, "the consumer under the poller lease " + key + " of " + owner + " did not start (" + started.cause()
-                + "); it is stopped, the lease is released and the next tick tries again", started.cause());
+        LOG.log(System.Logger.Level.DEBUG, "the consumer under the poller lease " + key + " of " + owner + " did not start (" + started.cause()
+                + "); it is stopped and the lease is released");
         // a consumer whose start failed may hold a session half open; none was taken if the supplier threw
         taken.compose(c -> settled(call(c::stop), "the consumer under the poller lease " + key + " of " + owner + " that did not start "
                 + "did not stop cleanly")).otherwiseEmpty().await();
         release().await();
         validUntil = NONE;
+        end(started.cause());
+    }
+
+    /** Fails {@link #broken} with {@code cause}, once, and asks for no further tick. */
+    private void end(Throwable cause) {
+        synchronized (this) {
+            broke = true;
+            next.cancel();
+        }
+        broken.tryFail(cause);
     }
 
     /** Releases the lease; completes once that settled, never failed: a failure is a WARNING, the lease lapses after its ttl. */

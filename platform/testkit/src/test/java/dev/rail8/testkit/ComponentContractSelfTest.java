@@ -128,6 +128,13 @@ class ComponentContractSelfTest {
         boolean neverCut;
         /** Broken (P2-15b): cut at the deadline the send started with, never re-read — a renewal is ignored. */
         boolean cutWithoutRereading;
+        /** Broken: {@code broken()} fails on {@code stop()}. */
+        boolean stopBreaks;
+        /** Broken: {@code broken()} fails once the handler refused a message. */
+        boolean nackBreaks;
+        /** Broken: a consumer built with the handler of an earlier one starts but takes nothing. */
+        boolean handlerServedOnce;
+        private final Set<Function<Envelope, Future<Ack>>> served = ConcurrentHashMap.newKeySet();
         /** How a cut fails the send; the correct variant: a retryable {@link NackException}. */
         java.util.function.Supplier<Throwable> cutAs = () -> new NackException("deadline passed: the send was cut", true);
 
@@ -146,6 +153,10 @@ class ComponentContractSelfTest {
 
         /** {@link #target} answers {@code targetOf}. */
         static Variant targeting(Function<EndpointConfig, java.util.Optional<String>> targetOf) { Variant v = correct(); v.targetOf = targetOf; return v; }
+
+        static Variant stopBreaks() { Variant v = correct(); v.stopBreaks = true; return v; }
+        static Variant nackBreaks() { Variant v = correct(); v.nackBreaks = true; return v; }
+        static Variant handlerServedOnce() { Variant v = correct(); v.handlerServedOnce = true; return v; }
 
         static Variant messageIdNotCarried() { Variant v = correct(); v.messageIdNotCarried = true; return v; }
         static Variant forwardedMessageIdKept() { Variant v = correct(); v.forwardedMessageIdKept = true; return v; }
@@ -276,10 +287,22 @@ class ComponentContractSelfTest {
         @Override public String scheme() { return scheme; }
         @Override public String configSchema() { return schema; }
         @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> h) {
-            Running mine = new Running(h, new ConsumerDrain());
+            Promise<Void> broken = Promise.promise();
+            Function<Envelope, Future<Ack>> told = !nackBreaks ? h : e -> {
+                Future<Ack> answer = h.apply(e);
+                if (answer != null) answer.onSuccess(a -> { if (a instanceof Ack.Nack) broken.tryFail(new IllegalStateException("a message was refused")); });
+                return answer;
+            };
+            Running mine = new Running(told, new ConsumerDrain());
             return new Consumer() {
-                @Override public Future<Void> start() { handler = mine; return Future.succeededFuture(); }
+                @Override public Future<Void> start() {
+                    if (handlerServedOnce && !served.add(h)) return Future.succeededFuture();   // registers nothing
+                    handler = mine;
+                    return Future.succeededFuture();
+                }
+                @Override public Future<Void> broken() { return broken.future(); }
                 @Override public Future<Void> stop() {
+                    if (stopBreaks) broken.tryFail(new IllegalStateException("stopped"));
                     if (!handlerSurvivesStop) handler = null;
                     if (!stopDropsPendingAnswers) return mine.drain().stop();
                     waiting.forEach(p -> p.tryFail(new IllegalStateException("consumer stopped: answer dropped")));
@@ -393,7 +416,8 @@ class ComponentContractSelfTest {
     /** The cases a component that acknowledges before its handler answered fails — wherever its handler runs land. */
     static Set<String> ackFirstFails() {
         return Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT);
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT,
+                        FRESH);
     }
 
     @Test
@@ -422,7 +446,7 @@ class ComponentContractSelfTest {
                 failing(new Variant("loopback", ok.schema, true, false, false, false, e -> e, e -> e)), "the handler survives stop: delivers after stop and reports up");
         assertEquals(Set.of("healthIsUpWhileAConsumerRunsAndDownAfterItStopped"), failing(new Variant("loopback", ok.schema, false, true, false, false, e -> e, e -> e)), "health always up");
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender"),
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", FRESH),
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e,
                         e -> e.withHeader("x-seen", "dropped").withHeader("x-acked", "dropped").withHeader("x-answer", "dropped"))), "reply dropped (headers replaced)");
         assertEquals(ackFirstFails(),
@@ -432,7 +456,8 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("aNackFromTheHandlerFailsTheSendWithItsReason", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
                 failing(new Variant("loopback", ok.schema, false, false, false, true, e -> e, e -> e)), "a NACK treated as success");
         Body truncated = Body.of(FakeRuntime.create().blobs(), dev.rail8.api.BlobKey.body("t", 0), new Hash("sha256-64", 0), 0);
-        assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain"),
+        assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain",
+                        FRESH),
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.next(truncated), e -> e)), "the body does not arrive intact");
         current = Variant.correct();
     }
@@ -453,6 +478,22 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
                 failing(Variant.nackReportedAs(n -> new NackException("nack: " + n.reason().replace("cancelled", "canceled"), n.retryable()))),
                 "the reason does not travel intact (the existing NACK case only looks for its own marker)");
+        current = Variant.correct();
+    }
+
+    static final String FRESH = "aFreshConsumerOfTheSameEndpointServesOnceTheLastStopped";
+    static final String BROKEN = "brokenStaysPendingWhileTheConsumerWorksAndThroughItsStop";
+
+    @Test
+    void aConsumerThatBreaksOnItsStopOrOnARefusalFailsOnlyTheBrokenCase() {
+        assertEquals(Set.of(BROKEN), failing(Variant.stopBreaks()), "a stop is not a break");
+        assertEquals(Set.of(BROKEN), failing(Variant.nackBreaks()), "a refused message is that message's failure, not a break");
+        current = Variant.correct();
+    }
+
+    @Test
+    void aHandlerServedOnlyOnceFailsOnlyTheFreshConsumerCase() {
+        assertEquals(Set.of(FRESH), failing(Variant.handlerServedOnce()), "the node builds a fresh consumer with the same handler after a break");
         current = Variant.correct();
     }
 
@@ -517,7 +558,7 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
                         "aNackFromTheHandlerFailsTheSendWithItsReason", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain",
                         "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", OWN_THREAD,
-                        THROWS, NULL_ANSWER, ATTEMPT_REPLY, MESSAGE_ID, NO_TIME_LEFT, CUT),
+                        THROWS, NULL_ANSWER, ATTEMPT_REPLY, MESSAGE_ID, NO_TIME_LEFT, CUT, FRESH, BROKEN),
                 failing(EphemeralWithoutOverrideContractTest.class),
                 "without producerEndpoint the producer has no address: every case that needs a delivery fails, the component delivers only to the address named");
     }

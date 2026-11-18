@@ -146,10 +146,12 @@ import java.util.stream.Stream;
  * refusal "flow '&lt;id&gt;' did not start: ..." and the cleanup below. On a redeploy the deploy rolls back ({@link #rollBack}): every flow of the new version stops — one that started
  * within the stop deadline, the others at once — and closes (one whose start was still pending at the deadline stops only once
  * that start completes, maybe after the old flow started again); then every changed and removed flow is built again from
- * the directory it was built from, with its stamps, and started through the same phase B; one that does not build or start again is
- * {@link DeployedFlow.State#FAILED}: listed, with nothing of it running. The refusal (500) is "version X did not start; Y runs
+ * the directory it was built from, with its stamps, and started through the same phase B; one that does not build again, or whose
+ * worker does not start again, is {@link DeployedFlow.State#FAILED}: listed, with nothing of it running; one whose consumer does
+ * not start again runs, its consumer tried again (below). The refusal (500) is "version X did not start; Y runs
  * again" ("was not recorded" for a failed save, 503 when the pool refused it; "; flows [..] FAILED" when the package lists FAILED flows) with a problem line
- * per flow that did not start, build or start again; the package's listing and record are unchanged. An Error a component or a step factory throws in the rollback breaks it off:
+ * per flow that did not start, build or start again (for a consumer tried again: "...; its consumer is tried again"); the
+ * package's listing and record are unchanged. An Error a component or a step factory throws in the rollback breaks it off:
  * what it built is stopped as below, every flow phase A stopped is listed FAILED, and the Error is a problem line and is added to
  * the refusal as suppressed.
  *
@@ -162,11 +164,20 @@ import java.util.stream.Stream;
  *
  * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's archive
  * is fetched into {@code .incoming} and installed in restore mode — the record's SHA-256, revision and {@code deployedAt}; no
- * put, no record, no deployed-environment refusal; a flow that does not start is FAILED and the others run; a pin of the record
+ * put, no record, no deployed-environment refusal; a flow whose consumer does not start runs, its consumer tried again (below),
+ * one whose worker's start throws is FAILED, and the others run; a pin of the record
  * whose directory is absent is fetched from the archive store by its SHA-256 and unpacked under its package's name first, one
  * that cannot be fetched refusing the package — and a package refused
  * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does,
- * included). {@link #health} is DOWN while anything is listed FAILED.
+ * included). {@link #health} is DOWN while anything is listed FAILED, else DEGRADED while a flow is listed RESTARTING.
+ *
+ * <p>Every consumer runs in a {@link RestartingConsumer}. Once its flow started, a consumer that breaks
+ * ({@code Consumer.broken}) — or, at a restore or a rollback's start again, one that did not start — is stopped, and a fresh
+ * one of the same endpoint is built and started after a delay that grows with each failure in a row (1 s, doubling, at most
+ * 30 s; a run of 30 s starts the count again), with no limit on the attempts, until the flow stops: no operator is needed, and
+ * nothing else stops. Meanwhile the flow is listed {@link DeployedFlow.State#RESTARTING}, read live and never stored, and
+ * {@link #restarting} gives its failures, its next attempt and the last cause. A fresh consumer starts only once the one before
+ * it stopped: a polling one without a bound, any other within the node's stop deadline.
  *
  * <p>{@link #undeploy} blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
  * ({@link Kind#FORBIDDEN}: manual undeploy is non-production only); the node's lock held by a deploy, an undeploy or a restore
@@ -191,9 +202,10 @@ import java.util.stream.Stream;
  * is that flow's problem line) runs under the endpoint's poller lease ({@link LeasedConsumer}): the key
  * {@code <package>/<flow>/<endpoint uri as the component gets it>}, the owner {@code <nodeId>#<n>} (n counted here: every leased
  * consumer its own owner), the ttl and renew period of {@code RAIL8_POLLER_LEASE_*}. Its start completes at once and its
- * consumer polls only once the lease is held, so a leased consumer whose start fails after the deploy is a WARNING and a retry
- * at its next tick, never the deploy's {@link Kind#FAILED}. Its stop — phase A, a rollback, {@link #close} — stops the consumer,
- * then releases the lease: the flow that replaces it takes the lease at its first tick, not a ttl later.
+ * consumer polls only once the lease is held, so a consumer whose start fails after the deploy is never the deploy's
+ * {@link Kind#FAILED}: the leased consumer breaks, and a fresh one, with an owner of its own, is tried again as above. Its stop
+ * — phase A, a rollback, {@link #close}, a restart — stops the consumer, then releases the lease: the flow that replaces it, or
+ * another node, takes the lease at its first tick, not a ttl later.
  *
  * <p>{@link #close} refuses deploys from then on, waits for a running one, then stops every
  * flow that runs at once: its worker first, then its delivery (within the node's stop deadline) and its consumer (bounded by the
@@ -393,7 +405,7 @@ public final class Deployments {
      * it ({@link #with}). A {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker or consumer.
      */
     private record Flow(DeployedFlow flow, String archive, Recipe recipe, Delivery delivery, FlowWorker worker, EndpointConfig from,
-                        Consumer consumer) {
+                        RestartingConsumer consumer) {
         String id() {
             return flow.id();
         }
@@ -403,8 +415,15 @@ public final class Deployments {
             return flow.state() == DeployedFlow.State.RUNNING;
         }
 
-        Flow with(Consumer built) {
+        Flow with(RestartingConsumer built) {
             return new Flow(flow, archive, recipe, delivery, worker, from, built);
+        }
+
+        /** Its record as listed now: {@link DeployedFlow.State#RESTARTING} while its consumer waits for its next attempt. */
+        DeployedFlow listed() {
+            if (consumer == null || consumer.waiting().isEmpty()) return flow;
+            DeployedFlow f = flow;
+            return new DeployedFlow(f.id(), f.pkg(), f.packageVersion(), f.revision(), f.flowVersion(), f.delivery(), f.hash(), DeployedFlow.State.RESTARTING);
         }
 
         /** This flow as a failed redeploy lists it when it cannot run it again: its record, FAILED; nothing of it built. */
@@ -454,8 +473,11 @@ public final class Deployments {
     private record Deployed(DeployedPackage pkg, List<Flow> flows, Map<String, List<DeployedPackage.PackageFile>> kept, String previous,
                             List<DeploymentRecord.Pin> pins) {}
 
-    /** A flow phase B started ({@code failure} null) or did not, as it is to be stopped from here on ({@link #start}). */
-    private record Start(Flow flow, Throwable failure) {}
+    /**
+     * A flow phase B started ({@code failure} null) or did not ({@link #start}); {@code retried} is its consumer's failed start
+     * when that consumer is tried again, else null.
+     */
+    private record Start(Flow flow, Throwable failure, Throwable retried) {}
 
     /**
      * What the checks hand the build: each valid endpoint's scheme and config (environment laid over) as written and with its
@@ -497,9 +519,29 @@ public final class Deployments {
         return targets.gauges();
     }
 
-    /** Every flow of every package deployed, RUNNING or FAILED, sorted by its qualified id; during a deploy as before it. */
+    /**
+     * Every flow of every package deployed, RUNNING, RESTARTING or FAILED, sorted by its qualified id; during a deploy as before
+     * it, each RESTARTING while its consumer waits for its next attempt.
+     */
     public List<DeployedFlow> flows() {
-        return deployed.values().stream().flatMap(d -> d.flows().stream()).map(Flow::flow).sorted(Comparator.comparing(DeployedFlow::id)).toList();
+        return deployed.values().stream().flatMap(d -> d.flows().stream()).map(Flow::listed).sorted(Comparator.comparing(DeployedFlow::id)).toList();
+    }
+
+    /**
+     * A flow whose consumer waits for its next attempt, listed {@link DeployedFlow.State#RESTARTING}.
+     *
+     * @param failures the failures in a row so far
+     * @param next when the next attempt is due
+     * @param cause the last failure: its start's, or its break's
+     */
+    public record Restarting(int failures, Instant next, String cause) {}
+
+    /** The flows whose consumer waits for its next attempt now, by qualified id, sorted; during a deploy as before it. */
+    public SortedMap<String, Restarting> restarting() {
+        SortedMap<String, Restarting> all = new TreeMap<>();
+        deployed.values().stream().flatMap(d -> d.flows().stream()).filter(f -> f.consumer() != null).forEach(f -> f.consumer().waiting()
+                .ifPresent(w -> all.put(f.id(), new Restarting(w.failures(), w.next(), reason(w.cause())))));
+        return Collections.unmodifiableSortedMap(all);
     }
 
     /** Every package deployed, sorted by name; during a deploy as before it. */
@@ -717,13 +759,17 @@ public final class Deployments {
 
     /**
      * The {@code deployments} check of the node's {@code /health}: DOWN while a package or a flow is listed FAILED, its
-     * detail naming each (the wire shows the status only); UP otherwise.
+     * detail naming each (the wire shows the status only); else DEGRADED while a flow's consumer waits for its next attempt,
+     * the detail naming each with its failures in a row and when the next attempt is due, never the cause; UP otherwise.
      */
     public Health health() {
         List<String> failed = new ArrayList<>();
         packages().stream().filter(p -> p.state() == DeployedPackage.State.FAILED).forEach(p -> failed.add("package " + p.name()));
         flows().stream().filter(f -> f.state() == DeployedFlow.State.FAILED).forEach(f -> failed.add("flow " + f.id()));
-        return failed.isEmpty() ? Health.up() : Health.down("FAILED: " + String.join(", ", failed));
+        if (!failed.isEmpty()) return Health.down("FAILED: " + String.join(", ", failed));
+        List<String> waiting = restarting().entrySet().stream()
+                .map(e -> "flow " + e.getKey() + " (failure " + e.getValue().failures() + ", next attempt at " + e.getValue().next() + ")").toList();
+        return waiting.isEmpty() ? Health.up() : Health.degraded("RESTARTING: " + String.join(", ", waiting));
     }
 
     /** One record of {@link #restore()}: installed, or listed FAILED when refused; only an IOException of the data directory throws. */
@@ -884,9 +930,7 @@ public final class Deployments {
             stopped = retiring;
             built.clear();
             built.addAll(starting);   // phase B calls every start: from here on a refusal stops their consumers too
-            List<Start> started = start(starting);
-            built.clear();
-            started.forEach(s -> built.add(s.flow()));   // as each is to be stopped: one whose start is pending stops on its own
+            List<Start> started = start(starting, restoring != null);   // a restore tries a consumer that did not start again
             List<Start> failed = started.stream().filter(s -> s.failure() != null).toList();
             if (!failed.isEmpty()) {
                 if (restoring == null && running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
@@ -932,8 +976,9 @@ public final class Deployments {
     }
 
     /**
-     * The flows of a restore that did not start ({@code failed}): each is stopped at once and closed ({@link #discard}) and replaced
-     * in {@code now} by itself {@link DeployedFlow.State#FAILED} ({@link Flow#failed}: nothing of it runs), with an ERROR log naming it.
+     * The flows of a restore that did not start ({@code failed}: a worker's start threw; a consumer that did not start is tried
+     * again instead): each is stopped at once and closed ({@link #discard}) and replaced in {@code now} by itself
+     * {@link DeployedFlow.State#FAILED} ({@link Flow#failed}: nothing of it runs), with an ERROR log naming it.
      */
     private void unstarted(String name, List<Start> failed, List<Flow> now) {
         Set<String> ids = new HashSet<>();
@@ -953,8 +998,9 @@ public final class Deployments {
      * the new version ({@code phaseB}) stops — one that started within the node's stop deadline, the others at once — and closes
      * (its delivery's producers awaited; a consumer whose start was still pending at the deadline stops only once that
      * start completes); only then is each flow phase A stopped ({@code retired}: changed or removed) built again, from the
-     * directory it was built from and with its stamps, and started through phase B ({@link #start}). One that does not build or
-     * start again is stopped and closed in turn. Once the whole restart settled, the ones that started again are added to
+     * directory it was built from and with its stamps, and started through phase B ({@link #start}), a consumer that does not start
+     * again tried again. One that does not build again, or whose worker does not start again, is stopped and closed in turn. Once
+     * the whole restart settled, the ones that started again (a consumer tried again included) are added to
      * {@code again} — the one object of each, so a later stop stops each consumer once — and {@link #afterFailure} lists every
      * other retired flow {@link DeployedFlow.State#FAILED}. An unchecked failure that breaks the rollback off (an Error a component
      * or a step factory throws) leaves {@code again} empty — every retired flow FAILED — and what {@code built} holds to the
@@ -995,7 +1041,7 @@ public final class Deployments {
             unstopped.add(discard(List.of(), built.stream().filter(f -> !withConsumer.contains(f.id())).toList()));   // its consumer did not build
             built.clear();
             built.addAll(starting);
-            List<Start> restarted = start(starting);
+            List<Start> restarted = start(starting, true);   // a consumer that does not start again is tried again
             built.clear();
             List<Flow> back = new ArrayList<>();   // the retired flows that started again
             List<Flow> failedAgain = new ArrayList<>();
@@ -1003,6 +1049,7 @@ public final class Deployments {
                 built.add(s.flow());
                 if (s.failure() == null) {
                     back.add(s.flow());
+                    if (s.retried() != null) problems.add("flow '" + s.flow().id() + "' did not start again: " + reason(s.retried()) + "; its consumer is tried again");
                 } else {
                     failedAgain.add(s.flow());
                     problems.add(problem(s, "did not start again"));
@@ -1579,9 +1626,10 @@ public final class Deployments {
 
     /**
      * Builds the consumer of each of {@code flows} (the added and changed ones) and returns their copies with it, in order; one the
-     * component refuses, or whose {@code polls} throws, is one line added to {@code problems}. The consumer of a polling endpoint
-     * is wrapped in its {@link LeasedConsumer}, whose later consumers the component builds from the same endpoint and handler.
-     * Nothing is started: a consumer never started is never stopped.
+     * component refuses, or whose {@code polls} throws, is one line added to {@code problems}. Each consumer runs in its
+     * {@link RestartingConsumer}, which builds every later one from the same endpoint and handler, its start and its wait for the
+     * stop of the one before bounded by the node's stop deadline; the consumer of a polling endpoint, each later one included, is
+     * wrapped in a {@link LeasedConsumer} of its own first. Nothing is started: a consumer never started is never stopped.
      */
     private List<Flow> consumers(List<Flow> flows, List<String> problems) {
         List<Flow> with = new ArrayList<>(flows.size());
@@ -1592,7 +1640,11 @@ public final class Deployments {
             try {
                 boolean polls = component.polls(from);
                 Consumer consumer = component.consumer(from, handler);
-                with.add(f.with(polls ? leased(f.id() + "/" + from.uri(), consumer, () -> component.consumer(from, handler)) : consumer));
+                Supplier<Consumer> build = () -> component.consumer(from, handler);
+                String key = f.id() + "/" + from.uri();
+                Consumer first = polls ? leased(key, consumer, build) : consumer;
+                Supplier<Consumer> fresh = polls ? () -> leased(key, build.get(), build) : build;
+                with.add(f.with(new RestartingConsumer(f.id(), first, fresh, polls, config.stopDeadline(), timer, clock)));
             } catch (RuntimeException refused) {
                 problems.add("flow '" + local(f.flow()) + "' does not build: " + reason(refused));
             }
@@ -1646,13 +1698,14 @@ public final class Deployments {
 
     /**
      * Phase B: starts {@code flows} at once — each consumer, its start bounded by the node's stop deadline on the node's timer
-     * ({@link #bounded}), then, once it started, its worker (as worker {@code nodeId}) — and returns once every start settled, each
-     * flow with its outcome, in order: a consumer start that failed, threw or had not completed at the deadline is a failure, and
-     * so is a worker start that threw (it runs inside the flow's start future, never in a listener). A flow whose
-     * start is still pending then comes back without its consumer, which is stopped once that start completes (a late success is
-     * followed by a stop): no stop of the flow meets a consumer still starting.
+     * ({@link RestartingConsumer#start}), then, once it started, its worker (as worker {@code nodeId}) — and returns once every
+     * start settled, each flow with its outcome, in order: a consumer start that failed, threw or had not completed at the deadline
+     * is a failure, and so is a worker start that threw (it runs inside the flow's start future, never in a listener). With
+     * {@code retry} a consumer start that failed is no failure of the flow: its consumer is tried again
+     * ({@link RestartingConsumer#retry}; the flow is listed RESTARTING meanwhile) and its worker starts all the same. A consumer
+     * whose start had not completed at the deadline is stopped once that start completes: no stop meets a consumer still starting.
      */
-    private List<Start> start(List<Flow> flows) {
+    private List<Start> start(List<Flow> flows, boolean retry) {
         List<Future<Void>> calls = new ArrayList<>(flows.size());
         List<Future<Void>> started = new ArrayList<>(flows.size());
         for (Flow f : flows) {
@@ -1660,7 +1713,9 @@ public final class Deployments {
             calls.add(call);
             // the worker starts inside the flow's start future: a throw fails it, the flow's failed start, where a
             // listener's throw would be lost
-            started.add(bounded(call, "its consumer's start").compose(v -> {
+            started.add(call.transform(consumer -> {
+                if (consumer.failed() && !retry) return Future.failedFuture(consumer.cause());
+                if (consumer.failed()) f.consumer().retry(consumer.cause());
                 if (f.worker() != null) f.worker().start();
                 return Future.succeededFuture();
             }));
@@ -1668,15 +1723,8 @@ public final class Deployments {
         Future.join(started).otherwiseEmpty().await();
         List<Start> outcome = new ArrayList<>(flows.size());
         for (int i = 0; i < flows.size(); i++) {
-            Flow f = flows.get(i);
             Future<Void> call = calls.get(i);
-            if (call.isComplete()) {   // started, or failed with it: a stop of the flow stops its consumer
-                outcome.add(new Start(f, started.get(i).cause()));
-            } else {   // the deadline came first
-                call.onComplete(late -> stopConsumer(f).onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id()
-                        + "': its consumer, stopped once its late start completed, did not stop: " + failed, failed)));
-                outcome.add(new Start(f.with(null), started.get(i).cause()));
-            }
+            outcome.add(new Start(flows.get(i), started.get(i).cause(), retry && call.failed() ? call.cause() : null));
         }
         return outcome;
     }

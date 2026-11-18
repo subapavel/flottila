@@ -80,7 +80,9 @@ import java.util.function.Function;
  * before: a file whose delete or move failed after it was accepted is delivered again in a later round as a new message,
  * and so is a file uploaded again. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses).
  * A final Nack, or a body above the limit, moves the file to {@code errorDir} if set, else leaves it and never takes it
- * again in this consumer's life. Any I/O failure ends the round and drops the session; the file stays.
+ * again in this consumer's life. Any I/O failure ends the round and drops the session; the file stays. A round that cannot
+ * connect, log in or list the directory also breaks the consumer ({@link Consumer#broken()}): it schedules no further round,
+ * and the node starts a fresh consumer after its delay, longer with each failure in a row.
  *
  * <p>One SSH session per consumer, reused across rounds; one MINA client per consumer, its NIO2 pool sized to one thread
  * (transport-internal). Health is up while at least one consumer runs and none's last round failed to connect or list.
@@ -248,6 +250,7 @@ public final class SftpComponent implements Component {
         private final SshClient client;
         private final Set<String> refused = ConcurrentHashMap.newKeySet();
         private final Promise<Void> stopped = Promise.promise();
+        private final Promise<Void> broken = Promise.promise();
         // the round's thread only, and close() once the last round ended (ordered by the monitor)
         private ClientSession session;
         private SftpClient sftp;
@@ -319,6 +322,12 @@ public final class SftpComponent implements Component {
             return stopped.future();
         }
 
+        /** Fails once a round could not connect, log in or list the directory before a stop; no round follows it. */
+        @Override
+        public Future<Void> broken() {
+            return broken.future();
+        }
+
         /** The timer's task: starts the round on a virtual thread of its own, never on the timer's thread. */
         private void fire() {
             synchronized (this) {
@@ -330,7 +339,19 @@ public final class SftpComponent implements Component {
 
         private void round() {
             try {
-                for (Remote file : due()) {
+                List<Remote> files;
+                try {
+                    files = due();
+                } catch (IOException | RuntimeException unreachable) {
+                    drop();
+                    boolean tell;
+                    synchronized (this) {
+                        tell = !stopping;   // a stop is not a break
+                    }
+                    if (tell) broken.tryFail(unreachable);   // the node stops this consumer and starts a fresh one after its delay
+                    return;
+                }
+                for (Remote file : files) {
                     synchronized (this) {
                         if (stopping) break;   // stop takes no new file
                     }
@@ -343,12 +364,13 @@ public final class SftpComponent implements Component {
             }
         }
 
+        /** The round ended: the next is scheduled {@code intervalMs} later, unless the consumer stops or broke. */
         private void ended() {
             boolean close;
             synchronized (this) {
                 roundInFlight = false;
                 close = stopping;
-                if (!stopping) next = timer.schedule(interval, this::fire);
+                if (!stopping && !broken.future().isComplete()) next = timer.schedule(interval, this::fire);
             }
             if (close) close();
         }
@@ -362,7 +384,7 @@ public final class SftpComponent implements Component {
             }
         }
 
-        /** The files this round takes, oldest first; a failure to connect or list turns health down until a round lists again. */
+        /** The files this round takes, oldest first; a failure to connect or list turns health down while this consumer is not stopped. */
         private List<Remote> due() throws IOException {
             List<Remote> listed = new ArrayList<>();
             try {

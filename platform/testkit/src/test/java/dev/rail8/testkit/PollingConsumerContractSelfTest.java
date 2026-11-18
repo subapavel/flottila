@@ -51,7 +51,8 @@ class PollingConsumerContractSelfTest {
             "aFinalNackIsNotDeliveredAgain", "filesAreDeliveredOldestFirst", "aReplyFinishesTheFileAsAcceptedDoes",
             "aBodyAboveTheTreeLimitStreamsThroughIntact", "eachDeliveryRunsOnAVirtualThreadOfItsOwn",
             "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval", "aStoppedConsumerDeliversNothing", "healthIsUpWhileRunningAndDownAfterStop",
-            "settingsAreTheSameOnEveryCall", "settingsAreDescribedOrTheComponentDeclaresItsOwnSchema", "theEndpointPassesTheDescription");
+            "settingsAreTheSameOnEveryCall", "settingsAreDescribedOrTheComponentDeclaresItsOwnSchema", "theEndpointPassesTheDescription",
+            "aPartnerOutOfReachBreaksTheConsumerAndAFreshOneDeliversTheFile");
 
     static final String DROPPED = "aDroppedFileIsDeliveredIntactAndRemovedAfterAccepted";
     static final String PENDING = "theFileStaysWhileTheAnswerIsPending";
@@ -66,6 +67,7 @@ class PollingConsumerContractSelfTest {
     static final String STOP_WAITS = "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval";
     static final String STOPPED = "aStoppedConsumerDeliversNothing";
     static final String HEALTH = "healthIsUpWhileRunningAndDownAfterStop";
+    static final String PARTNER_DOWN = "aPartnerOutOfReachBreaksTheConsumerAndAFreshOneDeliversTheFile";
 
     /**
      * A polling component over an in-memory directory, its own fake clock and timer and a BlobStore with a 4 KiB tree limit.
@@ -73,8 +75,8 @@ class PollingConsumerContractSelfTest {
      * round takes the files by (drop order, name), one at a time, writes each body by streaming, calls the handler on a
      * virtual thread of its own and waits for the answer; Accepted or Reply removes the file; a retryable Nack or a failure
      * keeps it and ends the round; a final Nack keeps it and skips it from then on; the next round is scheduled when a
-     * round ends. {@code stop()} cancels the next round, takes no new file and completes when the round in flight is over.
-     * Each flag breaks one of these.
+     * round ends. A round while the partner is down breaks the consumer, which schedules no further round. {@code stop()}
+     * cancels the next round, takes no new file and completes when the round in flight is over. Each flag breaks one of these.
      */
     static final class Variant implements Component {
         static final Duration INTERVAL = Duration.ofSeconds(10);
@@ -127,6 +129,12 @@ class PollingConsumerContractSelfTest {
         boolean stopTakesTheNextFile;
         /** Broken: a Reply is taken for a retryable Nack: the file stays and the round ends. */
         boolean replyKeepsTheFile;
+        /** Whether the partner is down: a round then cannot list the directory. */
+        volatile boolean partnerDown;
+        /** Broken: a round that cannot reach the partner ends as any other does; the consumer never breaks and polls on. */
+        boolean neverBreaks;
+        /** Broken: stop() breaks the consumer. */
+        boolean stopBreaks;
         /** What the handler sees of a file's bytes; the correct one sees them all. */
         UnaryOperator<Buffer> delivered = b -> b;
 
@@ -169,6 +177,7 @@ class PollingConsumerContractSelfTest {
             private final Function<Envelope, Future<Ack>> handler;
             private final Set<String> refused = ConcurrentHashMap.newKeySet();
             private final Promise<Void> stopped = Promise.promise();
+            private final Promise<Void> broken = Promise.promise();
             private Timer.Cancellable next;        // guarded by this
             private boolean stopping;              // guarded by this
             private Promise<Void> round;           // the round in flight, guarded by this
@@ -183,8 +192,10 @@ class PollingConsumerContractSelfTest {
             }
 
             private synchronized void schedule(Duration delay) {
-                if (!stopping) next = timer.schedule(delay, this::fire);
+                if (!stopping && !broken.future().isComplete()) next = timer.schedule(delay, this::fire);
             }
+
+            @Override public Future<Void> broken() { return broken.future(); }
 
             private void fire() {
                 if (roundOnTheTimersThread) round();
@@ -200,6 +211,10 @@ class PollingConsumerContractSelfTest {
                     round = mine;
                 }
                 try {
+                    if (partnerDown) {
+                        if (!neverBreaks && !stopping()) broken.tryFail(new IllegalStateException("the partner is down"));
+                        return;
+                    }
                     Comparator<File> order = byName ? Comparator.comparing(File::name)
                             : Comparator.comparingLong(File::mtime).thenComparing(File::name);
                     for (File f : dir.values().stream().sorted(order).toList()) {
@@ -277,6 +292,7 @@ class PollingConsumerContractSelfTest {
 
             @Override public Future<Void> stop() {
                 Promise<Void> inFlight;
+                if (stopBreaks) broken.tryFail(new IllegalStateException("stopped"));
                 synchronized (this) {
                     running.remove(this);
                     if (stopLeavesTheRounds) return Future.succeededFuture();
@@ -321,6 +337,7 @@ class PollingConsumerContractSelfTest {
         @Override protected void drop(String name, ReadStream<Buffer> bytes) { variant().drop(name, bytesOf(bytes)); }
         @Override protected Set<String> remaining() { return variant().remaining(); }
         @Override protected void tick() { advanceToNextRound(variant().clock, variant().timer); }
+        @Override protected void partnerDown(boolean down) { variant().partnerDown = down; }
         @Override protected Duration patience() { return Duration.ofSeconds(2); }
     }
 
@@ -453,6 +470,20 @@ class PollingConsumerContractSelfTest {
         Map<String, Throwable> f = failures(Variant.broken(v -> v.stopLeavesTheRounds = true));
         assertEquals(Set.of(STOPPED, STOP_WAITS), f.keySet());
         ContractRun.caughtBy(f, STOP_WAITS, "stop waits for the delivery in flight");
+    }
+
+    @Test
+    void aConsumerThatNeverBreaksFailsOnlyThePartnerCase() {
+        Map<String, Throwable> f = failures(Variant.broken(v -> v.neverBreaks = true));
+        assertEquals(Set.of(PARTNER_DOWN), f.keySet());
+        ContractRun.caughtBy(f, PARTNER_DOWN, "a round that cannot reach the partner breaks the consumer");
+    }
+
+    @Test
+    void aStopThatBreaksTheConsumerFailsOnlyThePartnerCase() {
+        Map<String, Throwable> f = failures(Variant.broken(v -> v.stopBreaks = true));
+        assertEquals(Set.of(PARTNER_DOWN), f.keySet());
+        ContractRun.caughtBy(f, PARTNER_DOWN, "a consumer that delivered and stopped has not broken");
     }
 
     @Test

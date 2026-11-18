@@ -3,6 +3,7 @@ package dev.rail8.runtime.deploy;
 import dev.rail8.api.Ack;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
+import dev.rail8.api.Health;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
@@ -221,21 +222,27 @@ class DeploymentsRollbackEdgeTest {
     }
 
     /**
-     * v1 runs a and b; v2 changes b, whose start fails in v2 and again in the rollback: b is FAILED. v3 has no b: b is removed,
-     * nothing stops or starts (a is unchanged, b has nothing running), only a is listed; close then stops every consumer once.
+     * v1 runs a and b; v2 changes b, whose start fails in v2; the rollback cannot build its consumer again: b is FAILED, and the
+     * health is DOWN naming it. v3 has no b: b is removed, nothing stops or starts (a is unchanged, b has nothing running), only
+     * a is listed and the health is UP; close then stops every consumer once.
      */
     @Test
     void aFailedFlowTheNextVersionRemovesIsRemovedWithNothingToStop() throws Exception {
         deploy(syncFlows("a", "b"), "r1");
         doors.failStartOf("shop/b", "address in use");
-        doors.failStartOf("shop/b", "still in use");
+        AtomicInteger builds = new AtomicInteger();
+        doors.onConsumer(cfg -> {   // the second: v2 builds the first
+            if ("shop/b".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("b cannot be built again");
+        });
         DeployRefusedException refused = joinRefused(deploying(version(changed(syncFlows("a", "b"), "b", "v2"), "2.0.0"), "r2"), "v2, whose b does not start");
         assertEquals(DeployedFlow.State.FAILED, byId(deployments.flows()).get("shop/b").state(), "fixture: b is FAILED: " + refused.error());
+        assertEquals(Health.down("FAILED: flow shop/b"), deployments.health(), "the health names the FAILED flow, not what runs");
         int mark = doors.events().size();
 
         DeployResult r = deploy(version(syncFlows("a"), "3.0.0"), "r3");
 
         assertResult(List.of(), List.of(), List.of("shop/b"), r);
+        assertEquals(Health.up(), deployments.health(), "nothing is FAILED");
         assertEquals(List.of(), consumerEvents(doors.events().subList(mark, doors.events().size())), "nothing is built, stopped or started");
         assertEquals(List.of("shop/a"), deployments.flows().stream().map(DeployedFlow::id).toList());
         assertEquals(List.of("shop/a"), r.pkg().flows());

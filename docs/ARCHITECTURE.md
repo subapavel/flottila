@@ -410,7 +410,10 @@ skeleton of a new adapter (part 5).
 A node unpacks and checks the archive, builds every flow and computes each flow's hash over its
 file, every file it read and its endpoints' options. The archive is stored by its hash (in S3, or a
 local folder in development), then the flows whose hash changed are stopped and started again; the
-others keep running. The commit point is a row in `deployments`. A failed start rolls back.
+others keep running. The commit point is a row in `deployments`. A failed start rolls back. A
+consumer that does not start again in the rollback, or when a node starts and picks up the deployed
+packages, is tried again by the node on its own (part 5); its flow is listed `FAILED` only when its
+consumer cannot be built at all, until the next deploy.
 
 Manual deploy is allowed only in the `dev` and `ci` environments. Other nodes pick up the deployed
 packages from `deployments` and the archive store when they start; a running node does not learn of a
@@ -455,9 +458,19 @@ system a producer calls.
 - **Back-pressure**: a flow with no room answers "try again" before anything runs; an HTTP consumer
   turns that into 503, a poller ends its round and tries later. Sends to one target system are
   limited in number (`RAIL8_TARGET_*`).
+- **Restart.** A consumer whose start fails, or that breaks after it (`Consumer.broken()`: its
+  connection dropped, its listener closed), is stopped, and a fresh consumer of the same endpoint is
+  started after 1, 2, 4, 8, 16 and then every 30 seconds, with no operator; the count starts again
+  once a consumer ran for 30 seconds. The node and its other flows keep running. A polling
+  consumer's next one starts only once the one before it stopped; any other's waits at most the stop
+  deadline. Meanwhile the flow is listed `RESTARTING` (worked out on the spot, never stored), the
+  `deployments` health check is DEGRADED, naming the flow, its failures in a row and the next
+  attempt, and `GET /admin/flows` adds the cause. The first failure in a row is logged as a WARNING,
+  those after it as DEBUG, and a consumer that runs again as INFO.
 
 Components today: `http` (consumer and producer), `sftp` (polling consumer; deletes or moves a file
-only after the flow's answer; no producer), and `mock`.
+only after the flow's answer; a round that cannot connect, log in or list breaks the consumer; no
+producer), and `mock`.
 
 ### Steps
 
@@ -521,7 +534,12 @@ What a component promises the node:
   the same bytes again; it sends the message id as `x-message-id`; a bounded send is cut, failing
   with a retryable `NackException`, when its deadline runs out, and never starts with none left.
 - **Stopping.** A consumer's `stop()` takes no new message, waits for the deliveries in flight
-  and lets their answers reach the senders.
+  and lets their answers reach the senders. The node starts and stops each consumer once.
+- **Breaking.** A consumer that stops working on its own after its start fails `broken()` with
+  the cause; the node then stops it and builds a fresh one with the same endpoint and handler. A
+  stop is not a break, and a failed answer of the handler is that message's failure. A consumer that
+  cannot break once started, such as a listener whose bind is its start, keeps the default, which
+  never completes.
 - **Settings.** `settings()` describes every option an endpoint may set, the same on every call;
   the node checks endpoint files against it and the UI draws the form from it. `flow` and
   `maxBodyBytes` on an in endpoint are the node's and are no field of it.
@@ -597,8 +615,10 @@ script in SAP Integration Suite works with security material.
 
 Every component ships with a mock that passes the same contract suite as the real one. The testkit
 holds the suites: one for every component (delivery, stop, acknowledgement, retry, streaming of large
-bodies, deadlines, message id, and the settings description its endpoints pass), one for polling
-consumers, and one for blob stores. The `mock`
+bodies, deadlines, message id, the settings description its endpoints pass, a fresh consumer of an
+endpoint once the last one stopped, and no break while a consumer works or stops), one for polling
+consumers (a partner out of reach breaks the consumer and the file waits for a fresh one), and one
+for blob stores. The `mock`
 component stands in for any scheme in `rail8 test`, replying from fixtures with a delay, a failure or
 a file to poll; a deployed node refuses it.
 
@@ -854,7 +874,9 @@ run's records are written in groups, after the bodies they refer to are durable.
   their own logger. The lines a step's code logs are also kept in its record (§5).
 - There is no metrics endpoint. Each record has wall and CPU time per step, and an optional CPU
   sampler (`RAIL8_CPU_SAMPLING`) reports CPU by step.
-- `/live`, `/ready` and `/health` (Postgres, deployments, journal) answer without a token.
+- `/live`, `/ready` and `/health` (Postgres, deployments, journal) answer without a token. The
+  deployments check is DOWN while a package or a flow is listed `FAILED` and DEGRADED while a flow
+  is `RESTARTING`; the node stays ready while it is DEGRADED.
 
 ### Admin API
 
@@ -872,7 +894,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/work/stopped` | keys of ordered flows stopped behind a failed message |
 | `GET /admin/work/held`, `POST /admin/work/{seq}/release` | held items |
 | `GET /admin/work/lost`, `POST /admin/work/{seq}/discard` | items whose body was lost |
-| `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs |
+| `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs (a `RESTARTING` flow with its failures, next attempt and cause) |
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
 

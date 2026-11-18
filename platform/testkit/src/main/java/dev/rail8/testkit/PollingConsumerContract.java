@@ -47,7 +47,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * failed answer, a handler that throws or answers null keep the file and end the round: the next round delivers it again.
  * A final Nack keeps the file (this endpoint names no error directory) but never delivers it again to the same consumer.
  * {@link Consumer#stop()} takes no new file, waits for the answer in flight and for its removal; a stopped consumer
- * delivers nothing. Health is up only while a consumer runs. The settings description is the same on every call; it is
+ * delivers nothing. A round that cannot reach the partner breaks the consumer ({@link Consumer#broken()}) and keeps the
+ * files for a fresh consumer of the endpoint, which delivers them once the partner is back; a stop is not a break.
+ * Health is up only while a consumer runs. The settings description is the same on every call; it is
  * given, unless the component declares a configSchema() of its own; and {@link #endpoint()} passes it as an in endpoint.
  *
  * @since 0.1
@@ -81,6 +83,12 @@ public abstract class PollingConsumerContract {
      * consumer's own. The rounds are the consumer's only use of the timer.
      */
     protected abstract void tick();
+
+    /**
+     * Takes the place the consumer of {@link #endpoint()} polls out of reach ({@code true}) or brings it back ({@code false}):
+     * while it is out of reach, a round cannot connect or list it. The files dropped there stay.
+     */
+    protected abstract void partnerDown(boolean down);
 
     /** How long a case waits for something asynchronous before it fails (a real transport needs a moment). */
     protected Duration patience() { return Duration.ofSeconds(10); }
@@ -514,6 +522,39 @@ public abstract class PollingConsumerContract {
         } finally {
             consumer.stop().await();
         }
+    }
+
+    @Test
+    public void aPartnerOutOfReachBreaksTheConsumerAndAFreshOneDeliversTheFile() {
+        Component component = component();
+        Seen seen = new Seen();
+        Consumer consumer = component.consumer(endpoint(), seen.answering(ACCEPT));
+        drop("kept.txt", text("kept"));
+        consumer.start().await();
+        try {
+            assertFalse(consumer.broken().isComplete(), "a consumer that started has not broken: " + consumer.broken());
+            partnerDown(true);
+            fire();
+            assertTrue(soon(() -> consumer.broken().isComplete()), "a round that cannot reach the partner breaks the consumer: " + consumer.broken());
+            assertTrue(consumer.broken().failed(), "a break fails, it never succeeds: " + consumer.broken());
+            assertNotNull(consumer.broken().cause(), "a break carries its cause");
+        } finally {
+            consumer.stop().await();
+            partnerDown(false);
+        }
+        assertEquals(0, seen.count(), "nothing was delivered while the partner was out of reach: " + seen.files);
+        assertEquals(Set.of("kept.txt"), remaining(), "the file stays where it was");
+        Seen again = new Seen();
+        Consumer fresh = component.consumer(endpoint(), again.answering(ACCEPT));   // what the node starts after its delay
+        fresh.start().await();
+        try {
+            fire();
+            assertTrue(soon(() -> again.count() == 1), "a fresh consumer of the endpoint delivers the file once the partner is back: " + again.files);
+            assertTrue(soon(() -> remaining().isEmpty()), "accepted: removed: " + remaining());
+        } finally {
+            fresh.stop().await();
+        }
+        assertFalse(fresh.broken().isComplete(), "a consumer that delivered and stopped has not broken: " + fresh.broken());
     }
 
     @Test

@@ -55,7 +55,8 @@ import java.util.stream.Stream;
  * fed at its start in name order — oldest first, one at a time, by the rules of the real one: Accepted or Reply removes
  * the file, a retryable Nack or a failed answer keeps it and ends the round, a final Nack (or a body above the endpoint's
  * {@code maxBodyBytes}) keeps it and never delivers it again to that consumer; {@link #undelivered} names the files still
- * pending. {@link #ingest} hands a running consumer a message as the real one would take it from its sender
+ * pending. While {@link #partnerDown} plays the partner of an endpoint down, a round there breaks its consumer
+ * ({@link Consumer#broken()}), which polls no more; the files stay. {@link #ingest} hands a running consumer a message as the real one would take it from its sender
  * ({@code rail8 test}'s {@code send}); {@link #delivered} records what each consumer's handler was given, whoever gave
  * it. Development and CI only: a deployed node refuses a mock binding by its scheme and by this package (the node's start).
  *
@@ -83,6 +84,7 @@ public final class MockComponent implements Component {
     private final Map<String, List<Envelope>> sentTo = new ConcurrentHashMap<>();
     private final Map<String, Running> handlers = new ConcurrentHashMap<>();   // by endpoint name: a consumer answers its own endpoint only
     private final Map<String, List<Envelope>> delivered = new ConcurrentHashMap<>();
+    private final Set<String> down = ConcurrentHashMap.newKeySet();   // the endpoints whose partner is down
 
     /** A mock whose consumers number their deliveries with ids of a random prefix of its own. */
     public MockComponent(String scheme, BlobStore blobs, Timer timer) {
@@ -108,6 +110,15 @@ public final class MockComponent implements Component {
      */
     public void drop(String endpoint, String name, Buffer bytes) {
         inbox(endpoint).drop(new Dropped(Objects.requireNonNull(name, "name"), bytes.copy()));
+    }
+
+    /**
+     * Plays the partner of the endpoint named {@code endpoint} down ({@code true}) or back ({@code false}). While it is down, a
+     * round of a consumer there cannot list it: that consumer breaks and polls no more. The files dropped there stay.
+     */
+    public void partnerDown(String endpoint, boolean isDown) {
+        if (isDown) down.add(Objects.requireNonNull(endpoint, "endpoint"));
+        else down.remove(endpoint);
     }
 
     /**
@@ -235,6 +246,8 @@ public final class MockComponent implements Component {
              * completed and the round in flight has removed its file.
              */
             @Override public Future<Void> stop() { handlers.remove(cfg.name(), running); poller.stop(); return drain.stop(); }
+            /** Fails once a round found the partner down before a stop. */
+            @Override public Future<Void> broken() { return poller.broken.future(); }
         };
     }
 
@@ -285,6 +298,7 @@ public final class MockComponent implements Component {
         private final Running running;
         private final Drain drain;
         private final Set<Dropped> refused = ConcurrentHashMap.newKeySet();
+        private final Promise<Void> broken = Promise.promise();
         private Timer.Cancellable next;   // guarded by this
         private boolean stopped;          // guarded by this
 
@@ -330,6 +344,10 @@ public final class MockComponent implements Component {
 
         private void round() {
             try {
+                if (down.contains(endpoint)) {
+                    if (!stopped()) broken.tryFail(new IllegalStateException("the partner of endpoint '" + endpoint + "' is down"));
+                    return;
+                }
                 for (Dropped file : inbox(endpoint).files()) {
                     if (stopped()) break;   // stop takes no new file
                     if (refused.contains(file)) continue;
@@ -337,7 +355,7 @@ public final class MockComponent implements Component {
                 }
             } finally {
                 drain.release();
-                schedule();
+                if (!broken.future().isComplete()) schedule();   // a broken consumer polls no more
             }
         }
 

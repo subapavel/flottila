@@ -397,6 +397,7 @@ public final class Doors implements Component {
         private final Function<Envelope, Future<Ack>> handler;
         private final Promise<Void> drained = Promise.promise();
         private final Promise<Void> stopping = Promise.promise();
+        private final Promise<Void> broken = Promise.promise();
         private int open = 1;                 // guarded by this: the door's own hold until stop, plus each outstanding answer
         private volatile boolean started;     // its start() succeeded
         private volatile boolean stopped;     // its stop() was called
@@ -436,6 +437,12 @@ public final class Doors implements Component {
             for (Mark m : history) if (m.kind().equals(kind)) found = m.seq();
             return found;
         }
+
+        /** Breaks this consumer as a dropped connection would: {@link #broken()} fails with {@code message}. */
+        public void breakOff(String message) { broken.tryFail(new IllegalStateException(message)); }
+
+        @Override
+        public Future<Void> broken() { return broken.future(); }
 
         /** Its stop() calls so far. */
         public int stops() { return (int) history.stream().filter(m -> m.kind().equals("stop")).count(); }

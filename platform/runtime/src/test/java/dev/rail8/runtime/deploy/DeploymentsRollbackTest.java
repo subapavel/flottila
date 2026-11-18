@@ -3,6 +3,7 @@ package dev.rail8.runtime.deploy;
 import dev.rail8.api.Ack;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
+import dev.rail8.api.Health;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.Timer;
 import dev.rail8.core.dlq.InMemoryDlq;
@@ -205,6 +206,14 @@ class DeploymentsRollbackTest {
         Matcher m = FAILED_FLOWS.matcher(error);
         if (!m.find()) fail("the error names no 'flows [..] FAILED': " + error);
         return Arrays.stream(m.group(1).split(",")).map(String::trim).sorted().toList();
+    }
+
+    /** From now on the {@code nth} build of a consumer of {@code flow} throws: that flow's consumer cannot be built again. */
+    void unbuildableOnce(String flow, int nth) {
+        AtomicInteger builds = new AtomicInteger();
+        doors.onConsumer(cfg -> {
+            if (flow.equals(cfg.options().get("flow")) && builds.incrementAndGet() == nth) throw new IllegalArgumentException(flow + " cannot be built again");
+        });
     }
 
     static void assertProblem(DeployRefusedException refused, String... words) {
@@ -505,8 +514,8 @@ class DeploymentsRollbackTest {
     // --- FAILED flows
 
     /**
-     * v2 (2.0.0) changes orders and audit and removes ping; v2's orders does not start. The rollback restarts orders, but audit's
-     * start fails again and ping's consumer cannot be built again: audit and ping are FAILED. The deploy is FAILED (500), its
+     * v2 (2.0.0) changes orders and audit and removes ping; v2's orders does not start. The rollback restarts orders, but neither
+     * audit's consumer nor ping's can be built again: audit and ping are FAILED. The deploy is FAILED (500), its
      * error naming the version and "flows [shop/audit, shop/ping] FAILED", its problems naming each failure. audit and ping are
      * listed as before but FAILED, orders as before; the package record is v1's and still names all three. Nothing of a FAILED
      * flow runs: every consumer of it is stopped and refuses, none of its producers is open, audit's worker never polls; orders
@@ -523,10 +532,12 @@ class DeploymentsRollbackTest {
         byte[] zip2 = v2.zip();
         doors.failStartOf("shop/orders", "address in use");          // v2's orders
         doors.holdStartOf("shop/audit").release();                   // v2's audit starts
-        doors.failStartOf("shop/audit", "still in use");             // the rollback's audit
         AtomicInteger pingBuilds = new AtomicInteger();
+        AtomicInteger auditBuilds = new AtomicInteger();
         doors.onConsumer(cfg -> {
             if ("shop/ping".equals(cfg.options().get("flow")) && pingBuilds.incrementAndGet() == 1) throw new IllegalArgumentException("ping cannot be built again");
+            // the second: v2 builds the first
+            if ("shop/audit".equals(cfg.options().get("flow")) && auditBuilds.incrementAndGet() == 2) throw new IllegalArgumentException("audit cannot be built again");
         });
 
         DeployRefusedException refused = joinRefused(deploying(zip2, "r2"), "v2, whose orders does not start");
@@ -535,9 +546,10 @@ class DeploymentsRollbackTest {
         assertTrue(refused.error().contains("version 2.0.0 did not start"), refused.error());
         assertEquals(List.of("shop/audit", "shop/ping"), failedIn(refused.error()), "the error names the FAILED flows: " + refused.error());
         assertProblem(refused, "orders", "address in use");
-        assertProblem(refused, "audit", "still in use");
+        assertProblem(refused, "audit", "audit cannot be built again");
         assertProblem(refused, "ping", "ping cannot be built again");
         assertEquals(1, pingBuilds.get(), "fixture: the rollback tried to build ping's consumer once");
+        assertEquals(2, auditBuilds.get(), "fixture: v2 built audit's consumer, the rollback tried once");
 
         Map<String, DeployedFlow> after = byId(deployments.flows());
         assertEquals(failed(before.get("shop/audit")), after.get("shop/audit"), "audit is listed under the running record, FAILED");
@@ -566,7 +578,47 @@ class DeploymentsRollbackTest {
     }
 
     /**
-     * v2 changes orders, whose start fails in v2 and again in the rollback: orders is FAILED. v1's archive deployed again (r3)
+     * v2 changes orders, whose start fails in v2 and again in the rollback: orders runs on, its consumer tried again. The 500
+     * names no FAILED flow, and a problem line for each failed start, the rollback's saying its consumer is tried again; orders
+     * is listed RESTARTING under its v1 record and the health is DEGRADED, naming it without the cause, which the admin's
+     * listing carries. A second later a fresh consumer of orders starts: orders is listed as before, the health is UP, and
+     * orders serves with v1's stamps.
+     */
+    @Test
+    void aConsumerThatDoesNotStartAgainInTheRollbackIsTriedAgain() throws Exception {
+        deploy(shop(), "r1");
+        DeployedFlow o = byId(deployments.flows()).get("shop/orders");
+        PackageDraft v2 = changed(shop(), "orders", "v2");
+        v2.manifest().put("version", "2.0.0");
+        doors.failStartOf("shop/orders", "address in use");   // v2's orders
+        doors.failStartOf("shop/orders", "still in use");     // the rollback's orders
+
+        DeployRefusedException refused = refused(v2, "r2");
+
+        assertEquals(Kind.FAILED, refused.kind(), refused.error() + " " + refused.problems());
+        assertEquals("version 2.0.0 did not start; 1.0.0 runs again", refused.error(), "no flow is FAILED");
+        assertProblem(refused, "orders", "did not start:", "address in use");
+        assertProblem(refused, "orders", "did not start again", "still in use", "its consumer is tried again");
+        assertEquals(new DeployedFlow(o.id(), o.pkg(), o.packageVersion(), o.revision(), o.flowVersion(), o.delivery(), o.hash(), DeployedFlow.State.RESTARTING),
+                byId(deployments.flows()).get("shop/orders"), "orders is listed under its v1 record, RESTARTING");
+        Health waiting = deployments.health();
+        assertEquals(new Health(Health.Status.DEGRADED, "RESTARTING: flow shop/orders (failure 1, next attempt at " + rt.clock().instant().plusSeconds(1) + ")"),
+                waiting, "the health names the flow, never the cause");
+        assertEquals(new Deployments.Restarting(1, rt.clock().instant().plusSeconds(1), "still in use"), deployments.restarting().get("shop/orders"));
+        assertEquals(List.of(), live("shop/orders"), "no consumer of orders runs: " + doors.events());
+
+        rt.clock().advance(Duration.ofSeconds(1));
+
+        until(() -> live("shop/orders").size() == 1 && deployments.restarting().isEmpty(), "a fresh consumer of orders runs: " + doors.events());
+        assertEquals(o, byId(deployments.flows()).get("shop/orders"), "orders is listed as before");
+        assertEquals(Health.up(), deployments.health());
+        Sent sync = send("shop/orders");
+        assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"));
+        assertEquals("r1", versions(sync.id()).get("revision"), "orders runs v1's build again");
+    }
+
+    /**
+     * v2 changes orders, whose start fails in v2; the rollback cannot build its consumer again: orders is FAILED. v1's archive deployed again (r3)
      * treats it as added: only orders is built and started — nothing else is built, stopped or started — from v1's kept
      * directory, reused; the package record carries r3 and the new time; orders runs RUNNING with r3, audit and ping as they
      * were.
@@ -582,7 +634,7 @@ class DeploymentsRollbackTest {
         PackageDraft v2 = changed(shop(), "orders", "v2");
         v2.manifest().put("version", "2.0.0");
         doors.failStartOf("shop/orders", "address in use");
-        doors.failStartOf("shop/orders", "still in use");
+        unbuildableOnce("shop/orders", 2);   // the rollback's: v2 builds the first
         DeployRefusedException refused = refused(v2, "r2");
         assertEquals(List.of("shop/orders"), failedIn(refused.error()), "fixture: orders is FAILED: " + refused.error());
         assertEquals(DeployedFlow.State.FAILED, byId(deployments.flows()).get("shop/orders").state(), "fixture");
@@ -618,7 +670,7 @@ class DeploymentsRollbackTest {
 
     /**
      * v2 (2.0.0) changes orders and audit and removes ping; v2's orders does not start. {@code rolled back}: the rollback runs v1's
-     * three flows again. {@code FAILED}: audit's restart fails and ping's consumer cannot be built again. Either way, the result of
+     * three flows again. {@code FAILED}: neither audit's consumer nor ping's can be built again. Either way, the result of
      * the failed v2 is that nothing is half-done: before close, a node has every flow either running or FAILED.
      */
     void failV2(String outcome) throws Exception {
@@ -627,10 +679,12 @@ class DeploymentsRollbackTest {
         doors.failStartOf("shop/orders", "address in use");
         if (outcome.equals("FAILED")) {
             doors.holdStartOf("shop/audit").release();
-            doors.failStartOf("shop/audit", "still in use");
             AtomicInteger pingBuilds = new AtomicInteger();
+            AtomicInteger auditBuilds = new AtomicInteger();
             doors.onConsumer(cfg -> {
                 if ("shop/ping".equals(cfg.options().get("flow")) && pingBuilds.incrementAndGet() == 1) throw new IllegalArgumentException("ping cannot be built again");
+                // the second: v2 builds the first
+                if ("shop/audit".equals(cfg.options().get("flow")) && auditBuilds.incrementAndGet() == 2) throw new IllegalArgumentException("audit cannot be built again");
             });
         }
         DeployRefusedException refused = refused(v2, "r2");
@@ -792,7 +846,7 @@ class DeploymentsRollbackTest {
     }
 
     /**
-     * v1 runs a and b; v2 changes b, whose start fails in v2 and again in the rollback: b is FAILED. v3 (3.0.0) changes a and
+     * v1 runs a and b; v2 changes b, whose start fails in v2; the rollback cannot build its consumer again: b is FAILED. v3 (3.0.0) changes a and
      * still has b, which it adds (nothing of the FAILED b runs); v3's b starts, v3's a does not. The rollback stops v3's a and b
      * and starts v1's a again: the 500 names b — FAILED before v3 — among the FAILED flows of the package, and the listing is the
      * one before v3: a RUNNING under v1's record, b still FAILED under its v1 record, the package record v1's. Nothing of b runs;
@@ -804,7 +858,7 @@ class DeploymentsRollbackTest {
         PackageDraft v2 = changed(syncFlows("a", "b"), "b", "v2");
         v2.manifest().put("version", "2.0.0");
         doors.failStartOf("shop/b", "address in use");   // v2's b
-        doors.failStartOf("shop/b", "still in use");     // the rollback's b
+        unbuildableOnce("shop/b", 2);                    // the rollback's b: v2 builds the first
         DeployRefusedException first = refused(v2, "r2");
         assertEquals(List.of("shop/b"), failedIn(first.error()), "fixture: b is FAILED: " + first.error());
         List<DeployedFlow> flowsBefore = deployments.flows();
@@ -1105,8 +1159,8 @@ class DeploymentsRollbackTest {
     }
 
     /**
-     * v1 runs {@code a}; v2 changes it: v1's directory is the previous one. v3 changes it again; v3's a does not start, nor does
-     * v2's a in the rollback: a is FAILED. The record the rollback leaves keeps v2's previous directory, so v2's archive deployed
+     * v1 runs {@code a}; v2 changes it: v1's directory is the previous one. v3 changes it again; v3's a does not start, and the
+     * rollback cannot build v2's a's consumer again: a is FAILED. The record the rollback leaves keeps v2's previous directory, so v2's archive deployed
      * again (the running one) adds a and still keeps v1's as the previous one — the same directory, not pruned — and v1's archive
      * deployed next reuses it as it is.
      */
@@ -1124,7 +1178,7 @@ class DeploymentsRollbackTest {
         PackageDraft v3 = changed(syncFlows("a"), "a", "v3");
         v3.manifest().put("version", "3.0.0");
         doors.failStartOf("shop/a", "address in use");   // v3's a
-        doors.failStartOf("shop/a", "still in use");     // v2's a, in the rollback
+        unbuildableOnce("shop/a", 2);                    // v2's a, in the rollback: v3 builds the first
         DeployRefusedException refused = refused(v3, "r3");
         assertEquals(List.of("shop/a"), failedIn(refused.error()), "fixture: a is FAILED: " + refused.error());
         assertEquals(sorted(sha1, sha2), children(shopDir()), "fixture: v3's directory is deleted");

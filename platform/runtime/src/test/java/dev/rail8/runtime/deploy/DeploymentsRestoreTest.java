@@ -431,16 +431,18 @@ class DeploymentsRestoreTest {
     }
 
     /**
-     * A flow whose consumer does not start on node 2 is listed FAILED — nothing of it runs — and the others
-     * run, the other flows of its package included; the package itself was not refused: it is listed RUNNING with both flows,
-     * and the restore returns.
+     * A flow whose consumer does not start on node 2 runs on, listed RESTARTING — its failed consumer stopped, nothing of it
+     * serving — and the others run, the other flows of its package included; the package itself was not refused: it is listed
+     * RUNNING with both flows, and the restore returns. A second later a fresh consumer of it starts: it is listed as recorded and
+     * serves. RESTARTING is never stored: the rows are the ones node 1 wrote, and node 3 restoring them lists b RUNNING.
      */
     @Test
-    void aFlowThatDoesNotStartOnRestoreIsFailedTheOthersRun() throws Exception {
+    void aFlowWhoseConsumerDoesNotStartOnRestoreIsTriedAgainTheOthersRun() throws Exception {
         Peer first = first();
         first.deploy("shop", pkg("shop", "a", "b").zip(), Optional.of("r1"));
         first.deploy("store", pkg("store", "c").zip(), Optional.empty());
         Map<String, DeployedFlow> before = byId(first.deployments.flows());
+        List<DeploymentRecord> rows = records.rows();
         first.close();
 
         Peer second = new Peer("node-2", "dev", records, fetches());
@@ -449,18 +451,30 @@ class DeploymentsRestoreTest {
 
         Map<String, DeployedFlow> flows = byId(second.deployments.flows());
         DeployedFlow b = before.get("shop/b");
-        assertEquals(new DeployedFlow(b.id(), b.pkg(), b.packageVersion(), b.revision(), b.flowVersion(), b.delivery(), b.hash(), DeployedFlow.State.FAILED),
-                flows.get("shop/b"), "b is listed as recorded, FAILED: " + flows);
+        assertEquals(new DeployedFlow(b.id(), b.pkg(), b.packageVersion(), b.revision(), b.flowVersion(), b.delivery(), b.hash(), DeployedFlow.State.RESTARTING),
+                flows.get("shop/b"), "b is listed as recorded, RESTARTING: " + flows);
         assertEquals(before.get("shop/a"), flows.get("shop/a"), "a runs");
         assertEquals(before.get("store/c"), flows.get("store/c"), "c runs");
         DeployedPackage shop = second.pkg("shop");
         assertEquals("RUNNING", state(shop), "a flow's start does not refuse its package: " + shop);
         assertEquals(List.of("shop/a", "shop/b"), shop.flows(), "the package lists both flows");
         Doors.Door door = second.doors.door("shop/b");
-        assertTrue(door.history().contains("start failed"), "fixture: the restore called b's start, which failed: " + door.history());
-        assertEquals(List.of(), second.live("shop/b"), "nothing of b runs: " + second.doors.events());
+        assertTrue(door.history().contains("start failed") && door.stopped(), "fixture: the restore called b's start, which failed, and stopped it: " + door.history());
+        assertEquals(List.of(), second.live("shop/b"), "nothing of b serves: " + second.doors.events());
         assertInstanceOf(Ack.Reply.class, second.send("shop/a"), "a serves");
         assertInstanceOf(Ack.Reply.class, second.send("store/c"), "c serves");
+        assertEquals(rows, records.rows(), "the restore stored nothing: the rows are node 1's");
+
+        rt.clock().advance(Duration.ofSeconds(1));
+
+        DeploymentsTest.until(() -> second.live("shop/b").size() == 1, "a fresh consumer of b runs: " + second.doors.events());
+        DeploymentsTest.until(() -> before.get("shop/b").equals(byId(second.deployments.flows()).get("shop/b")), "b is listed as recorded: " + second.deployments.flows());
+        assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");
+        second.close();
+        assertEquals(rows, records.rows(), "nothing of b's restart is stored");
+        Peer third = new Peer("node-3", "dev", records, fetches());
+        third.restore();
+        assertEquals(before, byId(third.deployments.flows()), "node 3 lists every flow as recorded, b RUNNING");
     }
 
     // --- a package refused whole is FAILED, the others run
@@ -690,11 +704,12 @@ class DeploymentsRestoreTest {
     // --- a PUT after a restore
 
     /**
-     * Node 2 restored shop with b FAILED (its start failed). A PUT of the recorded archive is a redeploy over that package: b, FAILED,
-     * counts as added and starts; a, unchanged, runs on untouched; the deploy writes its row.
+     * Node 2 restored shop with b RESTARTING (its consumer's start failed). A PUT of the recorded archive is a redeploy that
+     * changes no flow: b, stored RUNNING with the same hash, is unchanged and its consumer is tried on; a runs on untouched;
+     * the deploy writes its row. A second later a fresh consumer of b starts and b serves.
      */
     @Test
-    void aPutAfterAFailedRestoreRestartsTheFailedFlows() throws Exception {
+    void aPutAfterARestoreLeavesARestartingFlowToItsRestart() throws Exception {
         Peer first = first();
         byte[] shop = pkg("shop", "a", "b").zip();
         first.deploy("shop", shop, Optional.of("r1"));
@@ -702,22 +717,26 @@ class DeploymentsRestoreTest {
         Peer second = new Peer("node-2", "dev", records, fetches());
         second.doors.failStartOf("shop/b", "address in use");
         second.restore();
-        assertEquals(DeployedFlow.State.FAILED, byId(second.deployments.flows()).get("shop/b").state(), "fixture: b is FAILED after the restore");
+        assertEquals(DeployedFlow.State.RESTARTING, byId(second.deployments.flows()).get("shop/b").state(), "fixture: b is RESTARTING after the restore");
         Doors.Door a = second.live("shop/a").getFirst();
         int saves = records.saves().size();
+        int built = second.doors.doors().size();
 
         DeployResult put = second.deploy("shop", shop, Optional.of("r2"));
 
-        assertResult(List.of("shop/b"), List.of(), List.of(), put);
-        Map<String, DeployedFlow> flows = byId(second.deployments.flows());
-        assertEquals(DeployedFlow.State.RUNNING, flows.get("shop/b").state(), "b runs: " + flows);
-        assertEquals(DeployedFlow.State.RUNNING, flows.get("shop/a").state(), "a runs: " + flows);
+        assertResult(List.of(), List.of(), List.of(), put);
+        assertEquals(built, second.doors.doors().size(), "the PUT builds no consumer: " + second.doors.events());
         assertFalse(a.stopped(), "a, unchanged, was not touched: " + a.history());
         assertEquals(List.of(a), second.live("shop/a"), "a's restored door serves on");
-        assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");
-        assertRunning(second.pkg("shop"), "the package after the PUT");
+        assertEquals(DeployedFlow.State.RESTARTING, byId(second.deployments.flows()).get("shop/b").state(), "b's consumer is still tried again");
         assertEquals(saves + 1, records.saves().size(), "the PUT writes the package's row");
         assertEquals(Optional.of("r2"), records.rows().getFirst().revision(), "the row is the PUT's");
+
+        rt.clock().advance(Duration.ofSeconds(1));
+
+        DeploymentsTest.until(() -> second.live("shop/b").size() == 1, "a fresh consumer of b runs: " + second.doors.events());
+        assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");
+        assertRunning(second.pkg("shop"), "the package after the PUT");
     }
 
     /**

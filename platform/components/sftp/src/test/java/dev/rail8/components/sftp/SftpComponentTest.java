@@ -130,6 +130,22 @@ class SftpComponentTest {
         assertTrue(soon(() -> on.timer().pending() > 0), "the round ended: the next one is scheduled");
     }
 
+    /** Fires the next round and waits until it broke {@code consumer}: it could not connect or list, and no round follows it. */
+    static Throwable brokenRound(FakeRuntime on, Consumer consumer) {
+        fire(on);
+        assertTrue(soon(() -> consumer.broken().isComplete()), "the round broke the consumer");
+        assertTrue(consumer.broken().failed(), "a break fails, it never succeeds");
+        assertTrue(soon(() -> on.timer().pending() == 0), "no round follows a break");
+        return consumer.broken().cause();
+    }
+
+    /** What the node does after a break: stops the consumer, then starts a fresh one of the same endpoint. */
+    Consumer fresh(SftpComponent component, Consumer broken, EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) throws Exception {
+        consumers.remove(broken);
+        broken.stop().await(10, TimeUnit.SECONDS);
+        return started(component, cfg, handler);
+    }
+
     /** The server recorded {@code first}, and before the first event that starts with {@code then}. */
     static void assertBefore(List<String> events, String first, String then, String why) {
         List<String> seen = List.copyOf(events);
@@ -409,9 +425,9 @@ class SftpComponentTest {
         sftp.drop("/inbox", "secret.xml", Buffer.buffer("<secret/>"));
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         SftpComponent component = component(rt);
-        started(component, inbox(Map.of("hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.OTHER_KEY))), accepting(seen));
+        Consumer refused = started(component, inbox(Map.of("hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.OTHER_KEY))), accepting(seen));
         assertEquals(Health.Status.UP, health(component), "running, and no round has failed yet");
-        round(rt);
+        brokenRound(rt, refused);
         assertEquals(Health.Status.DOWN, health(component), "the round could not connect: down");
         assertTrue(sftp.sessionsCreated() >= 1, "the consumer did connect: the refusal is the host key's");
         assertEquals(0, sftp.passwordChecks(), "the server was refused before the login: the password never left the node");
@@ -428,22 +444,24 @@ class SftpComponentTest {
     }
 
     @Test
-    void aServerRestartIsSurvived() throws IOException {
+    void aServerRestartBreaksTheConsumerAndAFreshOneServesOnceItIsBack() throws Exception {
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         SftpComponent component = component(rt);
-        started(component, inbox(Map.of()), accepting(seen));
+        EndpointConfig in = inbox(Map.of());
+        Consumer first = started(component, in, accepting(seen));
         sftp.drop("/inbox", "before.xml", Buffer.buffer("<before/>"));
         round(rt);
         assertEquals(List.of("before.xml"), files(seen));
         assertEquals(Health.Status.UP, health(component));
         int port = sftp.port();
         sftp.close();   // the partner goes down
-        round(rt);
-        assertEquals(Health.Status.DOWN, health(component), "the last round could not connect");
+        brokenRound(rt, first);
+        assertEquals(Health.Status.DOWN, health(component), "the broken consumer's last round could not connect");
         sftp = EmbeddedSftp.start(root, port, EmbeddedSftp.HOST_KEY);   // back: same address, same key, same files
         sftp.drop("/inbox", "after.xml", Buffer.buffer("<after/>"));
+        fresh(component, first, in, accepting(seen));
         round(rt);
-        assertEquals(List.of("before.xml", "after.xml"), files(seen), "the consumer reconnected by itself");
+        assertEquals(List.of("before.xml", "after.xml"), files(seen), "a fresh consumer of the same endpoint connects again");
         assertEquals(Health.Status.UP, health(component), "up again once a round succeeded");
         assertEquals(Set.of(), sftp.files("/inbox"));
     }
@@ -457,19 +475,22 @@ class SftpComponentTest {
         consumers.add(consumer);
         Future<Void> start = consumer.start();
         assertTrue(start.succeeded(), "start schedules round 0 and completes at once: a partner down never fails a deploy: " + start);
-        round(rt);
+        brokenRound(rt, consumer);
         assertEquals(Health.Status.DOWN, health(component), "the round could not connect");
     }
 
     @Test
-    void aDirectoryThatCannotBeListedTurnsHealthDown() {
+    void aDirectoryThatCannotBeListedBreaksTheConsumerAndTurnsHealthDown() throws Exception {
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         SftpComponent component = component(rt);
-        started(component, sftp.endpoint("sftp-in", "/missing", Map.of()), accepting(seen));
-        round(rt);
+        EndpointConfig missing = sftp.endpoint("sftp-in", "/missing", Map.of());
+        Consumer first = started(component, missing, accepting(seen));
+        brokenRound(rt, first);
         assertEquals(Health.Status.DOWN, health(component), "the last round could not list its directory");
+        assertTrue(soon(() -> sftp.sessionsClosed() == sftp.sessionsCreated()), "the break dropped the session");
         sftp.mkdir("/missing");
         sftp.drop("/missing", "late.xml", Buffer.buffer("<late/>"));
+        fresh(component, first, missing, accepting(seen));
         round(rt);
         assertEquals(List.of("late.xml"), files(seen));
         assertEquals(Health.Status.UP, health(component), "listed and delivered: up again");
@@ -642,7 +663,9 @@ class SftpComponentTest {
         FakeRuntime other = FakeRuntime.create();   // and a URI naming a host that is not there reaches nothing: the URI's host is the one dialled
         sftp.drop("/inbox", "kept.xml", Buffer.buffer("<kept/>"));
         SftpComponent unreachable = component(other);
-        assertEquals(List.of(), deliveredBy(other, under("sftp://no-such-host.invalid:" + sftp.port() + "/inbox", Map.of()), unreachable));
+        List<Envelope> none = new CopyOnWriteArrayList<>();
+        brokenRound(other, started(unreachable, under("sftp://no-such-host.invalid:" + sftp.port() + "/inbox", Map.of()), accepting(none)));
+        assertEquals(List.of(), files(none));
         assertEquals(Health.Status.DOWN, health(unreachable), "the round could not connect");
         assertEquals(Set.of("kept.xml"), sftp.files("/inbox"));
     }
