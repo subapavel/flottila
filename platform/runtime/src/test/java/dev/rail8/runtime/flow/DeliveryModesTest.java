@@ -22,6 +22,7 @@ import dev.rail8.steps.xslt.SaxonXml;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.NoBlockedPlatformThreads;
 import dev.rail8.testkit.RecordingComponent;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -83,6 +84,7 @@ class DeliveryModesTest {
 
     static Vertx vertx;
     static HttpClientAgent caller;
+    static Context callerContext;
     static Buffer invoice;
 
     final FakeRuntime rt = FakeRuntime.create();
@@ -100,6 +102,7 @@ class DeliveryModesTest {
     static void start() throws IOException {
         vertx = Vertx.vertx();
         caller = vertx.createHttpClient();
+        callerContext = vertx.getOrCreateContext();
         invoice = Buffer.buffer(Files.readAllBytes(Path.of("../../examples/demo/fixtures/sample-invoice.xml")));
     }
 
@@ -210,10 +213,19 @@ class DeliveryModesTest {
 
     record Answer(int status, MultiMap headers, String body) {}
 
+    /**
+     * Posts {@code body} with {@code headers} to the flow's listener and gives the answer. Every call runs on one
+     * Vert.x context: a request started on a thread outside Vert.x gets a context of its own, and when its pooled
+     * connection's events arrive on another event loop the response's body can be dropped before the body handler
+     * is set, so the answer would come back with an empty body.
+     */
     Future<Answer> send(Buffer body, Map<String, String> headers) {
-        return caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"))
+        Promise<Answer> answer = Promise.promise();
+        callerContext.runOnContext(v -> caller.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"))
                 .compose(req -> { headers.forEach(req::putHeader); return req.send(body); })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())));
+                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())))
+                .onComplete(answer));
+        return answer.future();
     }
 
     Answer post(Buffer body) {
