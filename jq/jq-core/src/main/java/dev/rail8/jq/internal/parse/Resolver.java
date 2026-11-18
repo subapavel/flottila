@@ -5,6 +5,7 @@ import dev.rail8.jq.internal.Stub;
 import dev.rail8.jq.internal.op.Arithmetic;
 import dev.rail8.jq.internal.op.Basics;
 import dev.rail8.jq.internal.op.BuildObject;
+import dev.rail8.jq.internal.op.Builtins;
 import dev.rail8.jq.internal.op.Empty;
 import dev.rail8.jq.internal.op.Field;
 import dev.rail8.jq.internal.op.Flatten;
@@ -20,6 +21,7 @@ import dev.rail8.jq.internal.op.NumberTests;
 import dev.rail8.jq.internal.op.ObjectKey;
 import dev.rail8.jq.internal.op.Raise;
 import dev.rail8.jq.internal.op.Range;
+import dev.rail8.jq.internal.op.Search;
 import dev.rail8.jq.internal.op.Slice;
 import dev.rail8.jq.internal.op.Sort;
 import dev.rail8.jq.internal.op.StepRun;
@@ -677,6 +679,9 @@ public final class Resolver {
       case IMPLODE -> new Intrinsic(at, StringNatives.IMPLODE, List.of());
       case SPLIT -> withArgument(c, StringNatives.SPLIT);
       case STRINDICES -> withArgument(c, StringNatives.STRINDICES);
+      case CONTAINS -> withArgument(c, Search.CONTAINS);
+      case BSEARCH -> withArgument(c, Search.BSEARCH);
+      case BUILTINS -> new Intrinsic(at, Builtins.BUILTINS, List.of());
     };
   }
 
