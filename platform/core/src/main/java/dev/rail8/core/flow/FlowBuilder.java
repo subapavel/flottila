@@ -1,6 +1,7 @@
 package dev.rail8.core.flow;
 
 import dev.rail8.api.BodyKind;
+import dev.rail8.api.Cache;
 import dev.rail8.api.Component;
 import dev.rail8.api.Deadline;
 import dev.rail8.api.EndpointConfig;
@@ -12,6 +13,7 @@ import dev.rail8.api.NackException;
 import dev.rail8.api.Pipeline;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Runtime;
+import dev.rail8.api.Services;
 import dev.rail8.api.Stage;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
@@ -133,6 +135,9 @@ public final class FlowBuilder {
 
     /** The fence of an unfenced run: always open. */
     private static final BooleanSupplier OPEN = () -> true;
+    private static final Function<String, String> NO_SECRETS = reference -> {
+        throw new IllegalArgumentException("secret '" + reference + "' is not set: this build has no secrets");
+    };
 
     /** The node's default schedule of retries when none is configured: 3 retries 5 minutes apart, no growth. */
     public static final RetryPolicy DEFAULT_RETRIES = new RetryPolicy(3, Duration.ofMinutes(5), Duration.ofMinutes(5), 1.0);
@@ -149,6 +154,8 @@ public final class FlowBuilder {
     private Map<String, String> extraVersions = Map.of();
     private Consumer<Path> reads = path -> { };
     private Map<String, Path> dependencies = Map.of();
+    private Function<String, String> secrets = NO_SECRETS;
+    private Function<String, Cache> caches = stepType -> Services.NONE.cache();
     private boolean stepEvents;   // false: no step is marked
     private Targets targets;
     private BooleanSupplier fence = OPEN;
@@ -242,6 +249,29 @@ public final class FlowBuilder {
      */
     public FlowBuilder dependencies(Map<String, Path> dependencies) {
         this.dependencies = Map.copyOf(Objects.requireNonNull(dependencies, "dependencies"));
+        return this;
+    }
+
+    /**
+     * Resolves the secrets of the steps of the flows built from now on through {@code source}: a reference
+     * ({@code secret://<name>}) to its value, or an {@link IllegalArgumentException} naming the reference and where it was
+     * looked for, never a value. Every whole string {@code secret://...} in a step's config, at any depth, is resolved while
+     * the flow builds, so one that is not set is a build error naming the step; a factory takes the secrets its options name
+     * through {@link StepResources#services()}, and the failures of every step a factory built in a flow that took one leave
+     * with each value replaced by its reference. It replaces the source of an earlier call. Without a call every reference is
+     * refused.
+     */
+    public FlowBuilder secrets(Function<String, String> source) {
+        this.secrets = Objects.requireNonNull(source, "source");
+        return this;
+    }
+
+    /**
+     * Gives the steps a factory builds in the flows built from now on the cache {@code byStepType} returns for their type, as
+     * {@link Services#cache()}. It replaces the caches of an earlier call. Without a call a step's cache keeps nothing.
+     */
+    public FlowBuilder caches(Function<String, Cache> byStepType) {
+        this.caches = Objects.requireNonNull(byStepType, "byStepType");
         return this;
     }
 
@@ -378,7 +408,7 @@ public final class FlowBuilder {
             throw new IllegalArgumentException(refused + ": " + source + " needs the whole body (" + BodyKind.WHOLE + ") but the flow's maxBodyBytes "
                     + flow.maxBodyBytes() + " exceeds the store's tree limit " + treeLimit + " (ARCHITECTURE §5)");
         }
-        return language.value(source.requireString("xpath"), resources(flow, baseDir));
+        return language.value(source.requireString("xpath"), resources(flow, baseDir, Services.NONE));
     }
 
     /** {@link #worker(FlowDefinition, Path, String, WorkerPolicy)} under {@link WorkerPolicy#DEFAULT}. */
@@ -484,7 +514,8 @@ public final class FlowBuilder {
         boolean parks = parking && "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
         Parking parker = parks ? new Parking(dlq, runtime.clock(), versions) : null;
-        StepResources resources = resources(flow, baseDir);
+        StepResources resources = resources(flow, baseDir, Services.NONE);
+        FlowSecrets flowSecrets = new FlowSecrets(secrets);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
         List<Stage> stages = new ArrayList<>(flow.steps().size());
@@ -495,6 +526,7 @@ public final class FlowBuilder {
         boolean done = false;
         try {
             for (StepConfig step : flow.steps()) {
+                flowSecrets.check(step);
                 BodyKind kind = switch (step.type()) {
                     case "to" -> BodyKind.STREAM;
                     case "split" -> language(step).bodyKind() == BodyKind.WHOLE ? BodyKind.WHOLE : BodyKind.SPLIT_ASSEMBLE;   // a splitter over the tree is itself a whole-body step
@@ -513,7 +545,8 @@ public final class FlowBuilder {
                     case "extractKey" -> extractKey(step, resources);
                     case "validate" -> validate(step, resources);
                     case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources));
-                    default -> factoryFor(step).create(step, resources);
+                    default -> flowSecrets.scrubbing(factoryFor(step).create(step,
+                            resources(flow, baseDir, flowSecrets.services(step, caches.apply(step.type())))));
                 };
                 if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
                 stage = Runs.guard(numbered(stage, step), step);
@@ -523,14 +556,16 @@ public final class FlowBuilder {
             }
             done = true;
         } finally {
+            flowSecrets.built();
             if (!done) Producers.closeAll(flow.id(), opened);   // the flow does not build: nothing it created is left open
         }
         return new Built(flow, runs.head(flow.timeout()), List.copyOf(stages), recorder, new Producers(flow.id(), opened));
     }
 
     /** What a step of {@code flow} is built with; the paths it reads go to the {@link #reads} sink. */
-    private StepResources resources(FlowDefinition flow, Path baseDir) {
-        return new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads, dependencies);
+    private StepResources resources(FlowDefinition flow, Path baseDir, Services services) {
+        return new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads,
+                dependencies, services);
     }
 
     private StepFactory factoryFor(StepConfig step) {

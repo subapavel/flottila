@@ -13,6 +13,7 @@ import dev.rail8.api.StepFactory;
 import dev.rail8.api.Timer;
 import dev.rail8.core.admission.TargetLimit;
 import dev.rail8.core.admission.Targets;
+import dev.rail8.core.cache.InMemoryCache;
 import dev.rail8.core.dlq.Dlq;
 import dev.rail8.core.flow.Delivery;
 import dev.rail8.core.flow.FlowBuilder;
@@ -27,6 +28,7 @@ import dev.rail8.core.flow.Workers;
 import dev.rail8.core.queue.WorkQueue;
 import dev.rail8.core.record.Meter;
 import dev.rail8.core.record.MessageStore;
+import dev.rail8.core.scope.MessageContext;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
 import dev.rail8.runtime.lease.InMemoryPollerLeases;
 import dev.rail8.runtime.lease.PollerLeases;
@@ -230,6 +232,7 @@ public final class Deployments {
     private final PollerLeases leases;
     private final Targets targets;
     private final Runs runs;   // every run of every flow deployed here, on the node's clock and timer
+    private final InMemoryCache caches;   // the cache of custom code, one for the node, kept across redeploys
     private final BooleanSupplier fence;
     private final Workers workers;
     private final WorkSignals signals;
@@ -367,6 +370,7 @@ public final class Deployments {
         this.targets = Objects.requireNonNull(targets, "targets");
         this.fence = Objects.requireNonNull(fence, "fence");
         this.runs = new Runs(clock, timer, WorkerPolicy.DEFAULT.lease());
+        this.caches = new InMemoryCache(clock, InMemoryCache.MAX_ENTRIES, InMemoryCache.MAX_BYTES);
     }
 
     /**
@@ -1477,7 +1481,9 @@ public final class Deployments {
      * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
      * it marks the steps with StepEvents only when the node samples CPU time, and its {@code to}
      * steps send under the node's {@link Targets}; its at-least-once workers retry under the node's default schedule
-     * ({@code RAIL8_RETRIES_*}) when a flow names no {@code delivery.retries}.
+     * ({@code RAIL8_RETRIES_*}) when a flow names no {@code delivery.retries}. Its steps' secrets are the node's
+     * ({@link NodeConfig#secrets()}), and the steps of one type share the node's cache with that type's steps in the package's
+     * other flows and versions.
      */
     private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
         Map<String, String> versions = new HashMap<>();
@@ -1485,7 +1491,17 @@ public final class Deployments {
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
                 .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals).retries(config.retries())
-                .runs(runs);
+                .runs(runs).secrets(this::secret).caches(stepType -> caches.scope(MessageContext.DEFAULT_TENANT, name, stepType));
+    }
+
+    /**
+     * The node's value of {@code reference}.
+     *
+     * @throws IllegalArgumentException naming the reference when it is malformed, and its variable when that is not set
+     */
+    private String secret(String reference) {
+        return config.secrets().resolve(reference)
+                .orElseThrow(() -> new IllegalArgumentException("secret '" + reference + "' is not set (" + Secrets.variable(reference) + ")"));
     }
 
     /**

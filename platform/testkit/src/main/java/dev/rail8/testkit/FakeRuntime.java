@@ -7,8 +7,11 @@ import dev.rail8.api.Envelope;
 import dev.rail8.api.Hasher;
 import dev.rail8.api.Headers;
 import dev.rail8.api.Runtime;
+import dev.rail8.api.Services;
+import dev.rail8.api.StepResources;
 import io.vertx.core.buffer.Buffer;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -75,6 +78,14 @@ public final class FakeRuntime {
 
     /** The api {@link Runtime} over exactly these instances. */
     public Runtime runtime() { return new Runtime(clock, timer, ids, blobs, hasher, components); }
+
+    /**
+     * What a step's factory gets, over these instances: the store's tree limit as the body limit, {@code baseDir} as the package
+     * directory, no dependencies, and {@code services} (a {@link FakeServices}, typically).
+     */
+    public StepResources stepResources(Path baseDir, Services services) {
+        return new StepResources(clock, timer, ids, blobs, hasher, blobs.treeLimit(), baseDir, path -> { }, Map.of(), services);
+    }
 
     /** A stage-0 envelope for {@code flow} whose body holds {@code bytes}, stored under a fresh id. */
     public Envelope ingress(String flow, Headers headers, Buffer bytes) {

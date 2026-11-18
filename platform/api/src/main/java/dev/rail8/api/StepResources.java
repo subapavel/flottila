@@ -11,8 +11,8 @@ import java.util.regex.Pattern;
 /**
  * What a {@link StepFactory} or {@link Expressions} may hold on to at build time: the injected clock, timer,
  * ids, blob store and hasher, the flow's body limit, the directory its relative file references resolve
- * against (the package's: a reference is a path from the package root) and the sink told each file read through
- * {@link #file} and {@link #resolve}. Not the {@link Runtime}: that is used inside the flow builder and nowhere else;
+ * against (the package's: a reference is a path from the package root), the sink told each file read through
+ * {@link #file} and {@link #resolve}, and the {@link Services} the node offers the step's own code. Not the {@link Runtime}: that is used inside the flow builder and nowhere else;
  * components are reached only through the builder's {@code to} step.
  *
  * @param baseDir where a step's relative file reference (a stylesheet, a schema) resolves, and the directory every
@@ -23,10 +23,12 @@ import java.util.regex.Pattern;
  * @param dependencies the package's declared dependencies, each name to the directory its resolved version is unpacked in:
  *                {@code file("<name>:<path>")} reads {@code <path>} from that directory and stays inside it; empty
  *                for a package without dependencies
+ * @param services what the node offers the step's own code: its secrets and its cache; {@link Services#NONE} for resources
+ *                 built without a node
  * @since 0.1
  */
 public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore blobs, Hasher hasher, long maxBodyBytes, Path baseDir,
-                            java.util.function.Consumer<Path> reads, Map<String, Path> dependencies) {
+                            java.util.function.Consumer<Path> reads, Map<String, Path> dependencies, Services services) {
 
     /**
      * A dependency reference: a package name before the first {@code /}. Anything else is a path from the package root;
@@ -43,6 +45,7 @@ public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore
         Objects.requireNonNull(baseDir, "baseDir");
         Objects.requireNonNull(reads, "reads");
         dependencies = Map.copyOf(Objects.requireNonNull(dependencies, "dependencies"));
+        Objects.requireNonNull(services, "services");
         if (maxBodyBytes <= 0) throw new IllegalArgumentException("maxBodyBytes must be positive, was " + maxBodyBytes);
     }
 
@@ -55,6 +58,12 @@ public record StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore
     public StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore blobs, Hasher hasher, long maxBodyBytes, Path baseDir,
                          java.util.function.Consumer<Path> reads) {
         this(clock, timer, ids, blobs, hasher, maxBodyBytes, baseDir, reads, Map.of());
+    }
+
+    /** Resources built without a node: {@link Services#NONE}. */
+    public StepResources(Clock clock, Timer timer, IdGenerator ids, BlobStore blobs, Hasher hasher, long maxBodyBytes, Path baseDir,
+                         java.util.function.Consumer<Path> reads, Map<String, Path> dependencies) {
+        this(clock, timer, ids, blobs, hasher, maxBodyBytes, baseDir, reads, dependencies, Services.NONE);
     }
 
     /**
