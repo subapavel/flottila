@@ -42,8 +42,11 @@ const isViewMode = (value: unknown): value is ViewMode => VIEW_MODES.includes(va
 const loaded = (data: unknown) => data as StructureLoaded;
 /** The last step of a variable's path (the Add Variable dialog's names). */
 const VARIABLE_STEP = /\/\$[A-Za-z_][A-Za-z0-9_]*$/;
-/** The height of the tab's split, the message panes above the mapping expression. */
-const SPLIT_HEIGHT = '42rem';
+/**
+ * The height of the tab's split, the message panes above the mapping expression: under the shell, the studio's header
+ * and the Definition bar it fits a 1440 x 900 window, the canvas's footer included.
+ */
+const SPLIT_HEIGHT = '40rem';
 
 /**
  * The Definition tab: the source and target message panes above the mapping expression of the selected target field,

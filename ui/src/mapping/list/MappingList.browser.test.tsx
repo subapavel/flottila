@@ -134,6 +134,18 @@ describe('the Mappings screen', () => {
     await expect.element(page.getByRole('button', { name: 'New mapping' })).toBeVisible();
   });
 
+  test('the Mappings heading is unique while the list is still loading, and the list follows', async () => {
+    let answer: () => void = () => undefined;
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    const fake = fakeApiClient();
+    render({ ...fake, listMappings: () => answered.then(() => fake.listMappings()) });
+
+    await expect.element(page.getByRole('heading', { name: 'Loading the mappings' })).toBeVisible();
+    expect(page.getByRole('heading', { name: 'Mappings', exact: true }).elements()).toHaveLength(1);
+    answer();
+    await expect.element(table().getByRole('button', { name: 'Open in studio' }).first()).toBeVisible();
+  });
+
   test('shows that the list is loading, then a list the service refuses with its problem', async () => {
     const problem = new ApiProblem({ type: 'about:blank', title: 'Service Unavailable', status: 503, detail: 'the workspace is offline' });
     let answer: () => void = () => undefined;

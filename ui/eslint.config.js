@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  globalIgnores(['dist', 'src/mapping/generated']),
+  globalIgnores(['dist', 'e2e/fake/dist', 'src/mapping/generated']),
   js.configs.recommended,
   tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
