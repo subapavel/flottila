@@ -54,7 +54,8 @@ import java.util.stream.Stream;
  * entry order, each call into a plugin with the thread's context class loader set to the plugin's own for that call. A plugin
  * adds and never replaces: a scheme, step type or expression language that is already the node's or another plugin's is refused,
  * naming both owners, and so are a built-in step type ({@link FlowBuilder#BUILT_INS}) and the scheme {@code mock}. So are a call
- * that throws, a null scheme, step type or language, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
+ * that throws — a component's {@code settings()} is called once as it is loaded, so a description that cannot be built is one —,
+ * a null scheme, step type or language, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
  *
  * <p>{@link #close} closes the plugins' class loaders: call it once nothing of theirs runs any more, after the node and its
  * Vert.x have stopped.
@@ -191,19 +192,20 @@ public final class Plugins implements AutoCloseable {
     public Function<ComponentContext, List<Component>> components(Function<ComponentContext, List<Component>> shipped) {
         Objects.requireNonNull(shipped, "shipped");
         return context -> merge(shipped.apply(context), "components()", p -> p.components(context), Component::scheme, "scheme",
-                Map.of("mock", "is the platform's mock"), IllegalStateException::new);
+                Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new);
     }
 
     /** {@code shipped}, then each plugin's step factories; an {@link IllegalArgumentException} for a refusal (see the class comment). */
     public List<StepFactory> steps(List<StepFactory> shipped) {
         Map<String, String> builtIn = new HashMap<>();
         FlowBuilder.BUILT_INS.forEach(type -> builtIn.put(type, "is built in"));
-        return merge(shipped, "steps()", Plugin::steps, StepFactory::type, "step type", builtIn, IllegalArgumentException::new);
+        return merge(shipped, "steps()", Plugin::steps, StepFactory::type, "step type", builtIn, null, null, IllegalArgumentException::new);
     }
 
     /** {@code shipped}, then each plugin's expression languages; an {@link IllegalArgumentException} for a refusal (see the class comment). */
     public List<Expressions> languages(List<Expressions> shipped) {
-        return merge(shipped, "languages()", Plugin::languages, Expressions::language, "expression language", Map.of(), IllegalArgumentException::new);
+        return merge(shipped, "languages()", Plugin::languages, Expressions::language, "expression language", Map.of(), null, null,
+                IllegalArgumentException::new);
     }
 
     /**
@@ -234,10 +236,11 @@ public final class Plugins implements AutoCloseable {
 
     /**
      * {@code shipped}, then what each plugin's {@code method} ({@code contributions}) brings, keyed by {@code key}: a key that is
-     * {@code reserved} is refused with the reason it maps to, and one that is already taken names its owner.
+     * {@code reserved} is refused with the reason it maps to, and one that is already taken names its owner. When {@code check}
+     * is not null it is called on each contribution, as {@code checked}: what it throws refuses the plugin.
      */
     private <T> List<T> merge(List<T> shipped, String method, Function<Plugin, List<T>> contributions, Function<T, String> key, String keyName,
-                              Map<String, String> reserved, BiFunction<String, Throwable, RuntimeException> refusal) {
+                              Map<String, String> reserved, String checked, Function<T, ?> check, BiFunction<String, Throwable, RuntimeException> refusal) {
         List<T> all = new ArrayList<>(shipped);
         Map<String, String> owners = new HashMap<>();
         shipped.forEach(t -> owners.putIfAbsent(key.apply(t), SHIPPED));
@@ -255,6 +258,7 @@ public final class Plugins implements AutoCloseable {
                 if (owner != null) {
                     throw refusal.apply("plugin " + p.name() + ": the " + keyName + " " + k + " is " + owner + "'s already; a plugin adds and never replaces", null);
                 }
+                if (check != null) call(who, p.loader(), checked + " of " + t.getClass().getName(), () -> check.apply(t), refusal);
                 all.add(t);
             }
         }

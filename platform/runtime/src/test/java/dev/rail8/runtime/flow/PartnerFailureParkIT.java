@@ -242,6 +242,7 @@ class PartnerFailureParkIT {
 
         @Override public String scheme() { return inner.scheme(); }
         @Override public String configSchema() { return inner.configSchema(); }
+        @Override public dev.rail8.api.settings.Settings settings() { return inner.settings(); }
         @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return inner.consumer(cfg, handler); }
         @Override public Future<Health> health() { return inner.health(); }
 

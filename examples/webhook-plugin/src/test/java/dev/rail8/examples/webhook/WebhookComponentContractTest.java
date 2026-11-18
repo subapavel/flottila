@@ -33,16 +33,15 @@ class WebhookComponentContractTest extends ComponentContract {
         return new WebhookComponent(vertx, rt.blobs(), rt.ids(), timer);
     }
 
-    /** Port 0: the consumer listens on a port the system picks. */
-    @Override protected EndpointConfig endpoint() { return at(0); }
+    /** Port 0: the consumer listens on a port the system picks. {@code flow} and {@code maxBodyBytes} are what the node sets. */
+    @Override protected EndpointConfig endpoint() {
+        return new EndpointConfig("in", URI.create("webhook://in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in",
+                "maxBodyBytes", 1_000_000, "flow", "contract"));
+    }
 
     /** The producer sends to the port the started consumer listens on. */
     @Override protected EndpointConfig producerEndpoint(Consumer started) {
-        return at(((WebhookComponent.WebhookConsumer) started).port());
-    }
-
-    static EndpointConfig at(int port) {
-        return new EndpointConfig("in", URI.create("webhook://in"), Map.of("host", "127.0.0.1", "port", port, "path", "/in",
-                "url", "http://127.0.0.1:" + port + "/in", "maxBodyBytes", 1_000_000, "flow", "contract"));
+        int port = ((WebhookComponent.WebhookConsumer) started).port();
+        return new EndpointConfig("out", URI.create("webhook://out"), Map.of("url", "http://127.0.0.1:" + port + "/in", "maxBodyBytes", 1_000_000));
     }
 }

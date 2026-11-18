@@ -18,6 +18,8 @@ import dev.rail8.api.Key;
 import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -84,13 +86,20 @@ public final class HttpComponent implements Component {
     /** The header carrying the message id on a 202, and on every request a producer sends ({@link Envelope#H_MESSAGE_ID}). */
     public static final String H_MESSAGE_ID = Envelope.H_MESSAGE_ID;
 
-    static final String CONFIG_SCHEMA = """
-            {"type":"object","properties":{"host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"path":{"type":"string"},
-             "flow":{"type":"string"},"url":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},"timeoutMs":{"type":"integer","minimum":1},
-             "poolSize":{"type":"integer","minimum":1},"shutdownTimeoutMs":{"type":"integer","minimum":1}}}""";
-    private static final Set<String> HOP_BY_HOP = Set.of("content-length", "transfer-encoding", "connection", "host", "keep-alive", "upgrade", "expect", "te", "trailer", "proxy-authorization", "proxy-authenticate");
     /** The consumer's {@code shutdownTimeoutMs} when the endpoint sets none: how long a stop waits for the requests in flight. */
     static final long DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
+    /** What an http endpoint may set: the consumer's address and stop, the producer's target, reply limit, timeout and pool. */
+    static final Settings SETTINGS = Settings.of(
+            Field.text("host", "The address the server listens on.").byDefault("127.0.0.1").in(),
+            Field.integer("port", "The port the server listens on; 0, or none, for any free port.").range(0, 65535).in(),
+            Field.text("path", "The path requests are taken at; others get 404.").byDefault("/").in(),
+            Field.integer("shutdownTimeoutMs", "How long a stop waits for the requests in flight, in milliseconds.")
+                    .min(1).byDefault(DEFAULT_SHUTDOWN_TIMEOUT_MS).in(),
+            Field.text("url", "The http or https URL requests are posted to; none: the endpoint's URI.").out(),
+            Field.integer("maxBodyBytes", "The largest reply body taken, in bytes.").required().min(1).out(),
+            Field.integer("timeoutMs", "How long a request may take, in milliseconds.").range(1, Integer.MAX_VALUE).byDefault(30_000).out(),
+            Field.integer("poolSize", "How many connections the endpoint keeps open at most.").range(1, Integer.MAX_VALUE).byDefault(8).out());
+    private static final Set<String> HOP_BY_HOP = Set.of("content-length", "transfer-encoding", "connection", "host", "keep-alive", "upgrade", "expect", "te", "trailer", "proxy-authorization", "proxy-authenticate");
     /** How much of a non-2xx response body travels in the failure's message; the rest is read and dropped. */
     static final int ERROR_BODY_BYTES = 512;
 
@@ -125,7 +134,7 @@ public final class HttpComponent implements Component {
 
     @Override public String scheme() { return "http"; }
 
-    @Override public String configSchema() { return CONFIG_SCHEMA; }
+    @Override public Settings settings() { return SETTINGS; }
 
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {

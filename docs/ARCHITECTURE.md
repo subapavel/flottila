@@ -330,10 +330,22 @@ deploy made on another node.
 
 ### The component contract
 
-A component has a scheme, a JSON Schema for its endpoint options, a consumer, a producer and a health
+A component has a scheme, a description of its endpoint settings, a consumer, a producer and a health
 check. It may also say which host and port its consumer listens on (two endpoints may not share one),
 whether it polls something other nodes could poll too, what identifies a delivery, and which target
 system a producer calls.
+
+- The **settings description** (`Component.settings()`, types in `dev.rail8.api.settings`) lists
+  each option an endpoint may set: its name, type (text, secret, whole number, true or false, one of
+  a list), whether it is required, its default, a help text, its tab, whether it serves in or out
+  endpoints, and the choice or switch it is shown by. A rule may require exactly one of a few
+  options. The platform supplies the tabs general, retry, recording and security; a component adds
+  only its own. One description serves three readers: the deploy and `rail8 validate` check every
+  endpoint file against it (an unknown option, or one of the other direction, is refused), the admin
+  API serves it, and the UI draws the endpoint's form from it. A hidden option is never required, and
+  the empty string is no value. `http`, `sftp` and a plugin's component describe themselves the same
+  way; a description that cannot be built refuses the node's start, naming its owner. A component
+  that describes nothing is checked against its `configSchema()`, a JSON Schema.
 
 - A **consumer** calls the flow's handler for every message and finishes its protocol from the
   answer: *accepted* (the message is durable; the sender may let go), *reply* (sync), or *refused*,
@@ -410,6 +422,9 @@ What a component promises the node:
   with a retryable `NackException`, when its deadline runs out, and never starts with none left.
 - **Stopping.** A consumer's `stop()` takes no new message, waits for the deliveries in flight
   and lets their answers reach the senders.
+- **Settings.** `settings()` describes every option an endpoint may set, the same on every call;
+  the node checks endpoint files against it and the UI draws the form from it. `flow` and
+  `maxBodyBytes` on an in endpoint are the node's and are no field of it.
 
 Build, test and install:
 
@@ -466,7 +481,8 @@ script in SAP Integration Suite works with security material.
 
 Every component ships with a mock that passes the same contract suite as the real one. The testkit
 holds the suites: one for every component (delivery, stop, acknowledgement, retry, streaming of large
-bodies, deadlines, message id), one for polling consumers, and one for blob stores. The `mock`
+bodies, deadlines, message id, and the settings description its endpoints pass), one for polling
+consumers, and one for blob stores. The `mock`
 component stands in for any scheme in `rail8 test`, replying from fixtures with a delay, a failure or
 a file to poll; a deployed node refuses it.
 
@@ -682,7 +698,9 @@ public web page.
 **Planned**
 - Finding messages by flow and time, which the admin API cannot search by yet.
 - A server for the UI outside development, holding the token and talking to the node the same way.
-- Plugins add their screens through a form generated from their JSON Schema.
+- An endpoint's settings form drawn from its component's settings description (`GET
+  /admin/components`), the same for a shipped component and a plugin's; helper actions on a field
+  later. No screens of a plugin's own.
 - Writing a view of a payload (how a body is shown), later and simply.
 
 ## 10. Operations
@@ -725,6 +743,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `GET /admin/work/lost`, `POST /admin/work/{seq}/discard` | items whose body was lost |
 | `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs |
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
+| `GET /admin/components` | the components the node serves and their settings descriptions |
 
 Configuration is by environment variables `RAIL8_*`; `RAIL8_ENV` is required, and any value other
 than `dev` or `ci` is a deployed environment with stricter rules (no manual deploy, no mock

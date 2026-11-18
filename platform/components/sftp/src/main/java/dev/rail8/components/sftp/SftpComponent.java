@@ -15,6 +15,9 @@ import dev.rail8.api.IdGenerator;
 import dev.rail8.api.Key;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
+import dev.rail8.api.settings.Tab;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import org.apache.sshd.client.SshClient;
@@ -56,12 +59,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /**
- * The {@code sftp} component: a polling consumer on the Apache MINA SSHD client; no producer yet. URI {@code sftp://host[:port, default 22]/dir}; options (validated against {@link #configSchema()}): optional
+ * The {@code sftp} component: a polling consumer on the Apache MINA SSHD client; no producer yet. URI {@code sftp://host[:port, default 22]/dir}; options (checked against {@link #settings()}): optional
  * {@code host}, {@code port} (1–65535) and {@code dir}, each of which wins over the URI's own part (a deployed endpoint's URI is
  * only {@code sftp://<id>}; absent, the URI decides), {@code user},
  * exactly one of {@code password} / {@code privateKey}, {@code hostKey} (the server key's {@code SHA256:} fingerprint — a
  * mismatch refuses the session, there is no accept-all; in a packaged endpoint as written, a {@code secret://<name>}
- * reference, which the schema lets pass because the deploy checks the config before it resolves secrets), {@code maxBodyBytes} (set by the deploy, never unlimited), and
+ * reference, which the check lets pass because the deploy checks the config before it resolves secrets), {@code maxBodyBytes} (set by the deploy, never unlimited), and
  * {@code glob} ({@code *}), {@code intervalMs} (10 000), {@code maxFilesPerPoll} (100), {@code minAgeMs} (0),
  * {@code afterSuccess} ({@code delete} | {@code move}, then {@code moveTo}), {@code connectTimeoutMs} (10 000),
  * {@code ioTimeoutMs} (30 000), optional {@code errorDir} and {@code flow}.
@@ -93,18 +96,32 @@ public final class SftpComponent implements Component {
     /** The file's server mtime, ISO-8601. */
     public static final Key<String> MTIME = new Key<>("sftp.mtime");
 
-    static final String CONFIG_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "properties":{"user":{"type":"string","minLength":1},"password":{"type":"string"},"privateKey":{"type":"string"},
-              "hostKey":{"type":"string","pattern":"^(SHA256:[A-Za-z0-9+/]+=*|secret://[a-z0-9][a-z0-9._-]*)$"},
-              "host":{"type":"string","minLength":1},"port":{"type":"integer","minimum":1,"maximum":65535},"dir":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},
-              "flow":{"type":"string"},"glob":{"type":"string","minLength":1},"intervalMs":{"type":"integer","minimum":1},
-              "maxFilesPerPoll":{"type":"integer","minimum":1},"minAgeMs":{"type":"integer","minimum":0},
-              "afterSuccess":{"enum":["delete","move"]},"moveTo":{"type":"string","minLength":1},"errorDir":{"type":"string","minLength":1},
-              "connectTimeoutMs":{"type":"integer","minimum":1},"ioTimeoutMs":{"type":"integer","minimum":1}},
-             "required":["user","hostKey"],
-             "oneOf":[{"required":["password"]},{"required":["privateKey"]}],
-             "if":{"properties":{"afterSuccess":{"const":"move"}},"required":["afterSuccess"]},"then":{"required":["moveTo"]}}""";
+    /** The tab of the options that say which files a round takes and what becomes of them. */
+    static final Tab POLLING = Tab.of("polling", "Polling");
+    /**
+     * What an sftp endpoint may set, all of it for in endpoints: the server and the login, which files a round takes and
+     * what becomes of them, and the timeouts. A {@code secret://} reference stands in for any text, the hostKey included.
+     */
+    static final Settings SETTINGS = Settings.of(
+            Field.text("host", "The server's name or address; none: the URI's host.").in(),
+            Field.integer("port", "The server's port; none: the URI's, else 22.").range(1, 65535).in(),
+            Field.text("dir", "The directory polled; none: the URI's path.").in(),
+            Field.text("user", "The user to log in as.").required().tab(Tab.SECURITY).in(),
+            Field.secret("password", "The user's password; or set privateKey.").tab(Tab.SECURITY).in(),
+            Field.secret("privateKey", "The user's private key in OpenSSH form; or set password.").tab(Tab.SECURITY).in(),
+            Field.text("hostKey", "The server key's SHA256 fingerprint; a session with any other key is refused.")
+                    .required().pattern("SHA256:[A-Za-z0-9+/]+=*").tab(Tab.SECURITY).in(),
+            Field.text("glob", "Which file names a round takes.").byDefault("*").tab(POLLING).in(),
+            Field.integer("intervalMs", "How long after a round the next one starts, in milliseconds.").min(1).byDefault(10_000).tab(POLLING).in(),
+            Field.integer("maxFilesPerPoll", "The most files one round takes.").min(1).byDefault(100).tab(POLLING).in(),
+            Field.integer("minAgeMs", "How old a file must be before it is taken, in milliseconds: one still being written is left.")
+                    .min(0).byDefault(0).tab(POLLING).in(),
+            Field.choice("afterSuccess", "What becomes of a file once it is taken in.", "delete", "move").byDefault("delete").tab(POLLING).in(),
+            Field.text("moveTo", "The directory a file taken in is moved to.").required().visibleWhen("afterSuccess", "move").tab(POLLING).in(),
+            Field.text("errorDir", "The directory a refused file is moved to; none: it stays and is not taken again.").tab(POLLING).in(),
+            Field.integer("connectTimeoutMs", "How long connecting and logging in may take, in milliseconds.").min(1).byDefault(10_000).in(),
+            Field.integer("ioTimeoutMs", "How long the session may sit idle, in milliseconds.").min(1).byDefault(30_000).in())
+        .exactlyOne("password", "privateKey");
 
     /** The MINA client's NIO2 I/O threads: the minimum; a consumer's round blocks on its own virtual thread. */
     static final int NIO_WORKERS = 1;
@@ -126,7 +143,7 @@ public final class SftpComponent implements Component {
 
     @Override public String scheme() { return "sftp"; }
 
-    @Override public String configSchema() { return CONFIG_SCHEMA; }
+    @Override public Settings settings() { return SETTINGS; }
 
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {

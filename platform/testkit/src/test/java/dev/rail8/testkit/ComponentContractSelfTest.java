@@ -17,6 +17,8 @@ import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
 import dev.rail8.api.Props;
 import dev.rail8.api.Views;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -133,6 +135,14 @@ class ComponentContractSelfTest {
         Function<EndpointConfig, java.util.Optional<String>> targetOf = cfg -> java.util.Optional.empty();
 
         @Override public java.util.Optional<String> target(EndpointConfig cfg) { return targetOf.apply(cfg); }
+
+        /** What {@link #settings} answers on each call; the correct variant describes nothing and declares its schema. */
+        java.util.function.Supplier<Settings> settings = () -> Settings.NONE;
+
+        @Override public Settings settings() { return settings.get(); }
+
+        /** {@link #settings} answers {@code settings} on every call. */
+        static Variant describedAs(Settings settings) { Variant v = correct(); v.settings = () -> settings; return v; }
 
         /** {@link #target} answers {@code targetOf}. */
         static Variant targeting(Function<EndpointConfig, java.util.Optional<String>> targetOf) { Variant v = correct(); v.targetOf = targetOf; return v; }
@@ -312,10 +322,21 @@ class ComponentContractSelfTest {
     /** The engine instantiates the suite itself; the variant under test is handed over through this slot. */
     static volatile Component current = Variant.correct();
 
+    /** A correct loopback that describes nothing and takes the default configSchema(): its options would be anything at all. */
+    static final class Undeclared implements Component {
+        final Variant inner = Variant.correct();
+
+        @Override public String scheme() { return inner.scheme(); }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> h) { return inner.consumer(cfg, h); }
+        @Override public Producer producer(EndpointConfig cfg) { return inner.producer(cfg); }
+        @Override public Future<Health> health() { return inner.health(); }
+    }
+
     static class VariantContractTest extends ComponentContract {
         @Override protected Component component() { return current; }
         @Override protected Component component(Timer timer) {
             if (current instanceof Variant v) v.timer = timer;
+            if (current instanceof Undeclared u) u.inner.timer = timer;
             return current;
         }
         @Override protected EndpointConfig endpoint() { return LOOP; }
@@ -373,6 +394,20 @@ class ComponentContractSelfTest {
     static Set<String> ackFirstFails() {
         return Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
                         "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT);
+    }
+
+    @Test
+    void aSettingsDescriptionThatIsWrongFailsOnlyItsCase() {
+        assertEquals(Set.of("settingsAreDescribedOrTheComponentDeclaresItsOwnSchema"), failing(new Undeclared()), "neither described nor a schema of its own");
+        assertEquals(Set.of(), failing(Variant.describedAs(Settings.of(Field.text("dir", "Where files go.")))), "described, and the endpoints pass");
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        Variant unstable = Variant.correct();
+        unstable.settings = () -> Settings.of(Field.text("f" + calls.incrementAndGet(), "Another field on every call."));
+        assertEquals(Set.of("settingsAreTheSameOnEveryCall"), failing(unstable), "a new description on every call");
+        assertEquals(Set.of("theEndpointsPassTheDescription"), failing(Variant.describedAs(Settings.of(Field.text("dir", "Where files go.").required().in()))),
+                "the consumer's endpoint lacks a required setting");
+        assertEquals(Set.of("theEndpointsPassTheDescription"), failing(Variant.describedAs(Settings.of(Field.text("url", "Where to send.").required().out()))),
+                "the producer's endpoint lacks a required setting");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package dev.rail8.api;
 
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
 
 import java.net.InetSocketAddress;
@@ -19,8 +20,25 @@ public interface Component {
     /** {@code "http"}, {@code "sftp"}, {@code "mock"} … */
     String scheme();
 
-    /** JSON Schema (as text) the endpoint options are validated against at deploy time. */
-    String configSchema();
+    /**
+     * What an endpoint of this scheme may set in its {@code options}: the node checks every endpoint file against it, the
+     * admin API serves it and the UI draws its form from it. A component that describes nothing returns
+     * {@link Settings#NONE}, the default, and is checked against {@link #configSchema()} instead. Called once when the
+     * node loads the component; a throw refuses the node's start.
+     *
+     * @since 0.1
+     */
+    default Settings settings() {
+        return Settings.NONE;
+    }
+
+    /**
+     * JSON Schema (as text) the endpoint options are validated against at deploy time, consulted only while
+     * {@link #settings()} describes nothing. The default accepts any object.
+     */
+    default String configSchema() {
+        return "{\"type\":\"object\"}";
+    }
 
     /** A consumer that calls {@code handler} for every message and completes its protocol from the returned {@link Ack}. */
     Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler);
@@ -31,7 +49,7 @@ public interface Component {
 
     /**
      * The local host and port a consumer of {@code cfg} binds, if it accepts connections; empty if it polls, subscribes or
-     * connects out. Answered from {@code cfg} alone — already valid against {@link #configSchema()} — as an unresolved address
+     * connects out. Answered from {@code cfg} alone — already checked against {@link #settings()} — as an unresolved address
      * ({@link InetSocketAddress#createUnresolved}, the host as configured): nothing is bound and no name is resolved. Port 0
      * (any free port) is never compared. The node calls it at deploy and at restore, on a virtual thread, to refuse two
      * listeners on one host:port; a throw is a problem line of that deploy.
@@ -44,7 +62,7 @@ public interface Component {
 
     /**
      * Whether a consumer of {@code cfg} polls what another node may poll as well (a remote directory, a mailbox): answered from
-     * {@code cfg} alone — already valid against {@link #configSchema()} — nothing is opened. When true, the node runs a consumer
+     * {@code cfg} alone — already checked against {@link #settings()} — nothing is opened. When true, the node runs a consumer
      * of {@code cfg} only while it holds the endpoint's lease, so {@link #consumer} may be called again for {@code cfg}
      * after the previous consumer stopped: a stopped consumer is never started again. The node calls it at deploy and at
      * restore, on a virtual thread; a throw is a problem line of that deploy.
@@ -59,7 +77,7 @@ public interface Component {
      * The target system a producer of {@code cfg} calls, the key its sends are limited by: {@code scheme://host:port},
      * lower-cased, the scheme's default port filled in, never userinfo, path, query or fragment — two endpoints on paths of one
      * partner name one target, and flows naming it share its limit. Empty: the component names none, and each {@code to} on it
-     * gets a finite limit of its own. Answered from {@code cfg} alone — already valid against {@link #configSchema()} — nothing
+     * gets a finite limit of its own. Answered from {@code cfg} alone — already checked against {@link #settings()} — nothing
      * is opened and no name is resolved. The node calls it when it builds a flow's {@code to}, after {@link #producer}; a throw
      * fails that build.
      *

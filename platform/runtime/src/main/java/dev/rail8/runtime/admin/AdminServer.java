@@ -120,7 +120,9 @@ import java.util.function.Supplier;
  * question only when no other question failed otherwise and no flow holds items — those are 500 and 409) — and 404 for a package the node does not list; a record
  * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system, sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
- * component that names no target is not listed. Without one these routes do not exist (404).
+ * component that names no target is not listed. {@code GET /admin/components} lists every component the node serves, sorted by
+ * scheme: 200 {@code {items:[{scheme, settings}]}}, {@code settings} the component's settings description as the UI draws its
+ * form from it. Without one these routes do not exist (404).
  *
  * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step: {@code GET /admin/flows/{flow}/cpu} — the flow's
  * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
@@ -402,6 +404,7 @@ public final class AdminServer {
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
                 router.get("/admin/targets").handler(offload(c -> targets(d)));
+                router.get("/admin/components").handler(offload(c -> components(d)));
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
             });
             work.ifPresent(q -> {
@@ -924,6 +927,14 @@ public final class AdminServer {
                 .put("unattributed", t.unattributed()).put("platform", t.platform()).put("lost", t.lost()).put("dropped", t.dropped());
         return Json.of(200, answer.put("sampling", sampling.get().failed().getAsBoolean() ? "failed" : "on").put("period", sampling.get().period().toString()).put("since", sampling.get().since().toString())
                 .put("items", items).put("totals", totals));
+    }
+
+    /** {@code GET /admin/components}: every component the node serves, sorted by scheme, with its settings description. */
+    private static Reply components(Deployments deployments) {
+        JsonArray items = new JsonArray();
+        deployments.settings().forEach((scheme, settings) ->
+                items.add(new JsonObject().put("scheme", scheme).put("settings", new JsonObject(settings.toJson()))));
+        return Json.of(200, new JsonObject().put("items", items));
     }
 
     /** {@code GET /admin/targets}: the gauge of every target the deployed flows named, sorted by target. */

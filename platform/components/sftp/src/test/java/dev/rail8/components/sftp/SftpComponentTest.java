@@ -8,12 +8,12 @@ import dev.rail8.api.Consumer;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
-import dev.rail8.schemas.Schemas;
+import dev.rail8.api.settings.Direction;
+import dev.rail8.api.settings.Settings;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -540,9 +540,9 @@ class SftpComponentTest {
     }
 
     @Test
-    void optionsOutsideTheSchemaAreRefused() {
+    void optionsOutsideTheDescriptionAreRefused() {
         assertEquals("sftp", component(rt).scheme());
-        String schema = component(rt).configSchema();
+        Settings schema = component(rt).settings();
         // what the deploy checks: the endpoint's own config, before it sets flow and maxBodyBytes on an in endpoint
         Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         assertValid(schema, base, "user, password and hostKey");
@@ -553,6 +553,7 @@ class SftpComponentTest {
                 "connectTimeoutMs", 5_000, "ioTimeoutMs", 10_000, "errorDir", "/error"));
         every.putAll(Map.of("flow", "orders/sftp-intake", "maxBodyBytes", 1_000_000));
         assertValid(schema, every, "every option the component knows, the two the deploy sets included");
+        assertValid(schema, with(base, "maxBodyBytes", 0), "maxBodyBytes is the node's on an in endpoint: the consumer refuses a bad one");
         assertValid(schema, with(base, "afterSuccess", "delete"), "afterSuccess delete");
         assertRefused(schema, without(base, "hostKey"), "no hostKey: never accept-all");
         assertRefused(schema, with(base, "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----"), "both password and privateKey");
@@ -560,12 +561,15 @@ class SftpComponentTest {
         assertRefused(schema, without(base, "user"), "no user");
         assertRefused(schema, with(base, "afterSuccess", "move"), "move without moveTo");
         assertRefused(schema, with(base, "afterSuccess", "copy"), "afterSuccess is delete or move");
-        assertRefused(schema, with(base, "maxBodyBytes", 0), "maxBodyBytes below 1");
         assertRefused(schema, with(base, "pasword", "typo"), "strict: an option the component does not know");
         EndpointConfig noLimit = new EndpointConfig("sftp-in", inbox(Map.of()).uri(), without(inbox(Map.of()).options(), "maxBodyBytes"));
         IllegalArgumentException unlimited = assertThrows(IllegalArgumentException.class,
                 () -> component(rt).consumer(noLimit, e -> Future.succeededFuture(new Ack.Accepted(e.id()))));
         assertTrue(String.valueOf(unlimited.getMessage()).contains("maxBodyBytes"), "a consumer without maxBodyBytes is refused, never unlimited: " + unlimited.getMessage());
+        EndpointConfig zero = new EndpointConfig("sftp-in", inbox(Map.of()).uri(), with(inbox(Map.of()).options(), "maxBodyBytes", 0));
+        IllegalArgumentException belowOne = assertThrows(IllegalArgumentException.class,
+                () -> component(rt).consumer(zero, e -> Future.succeededFuture(new Ack.Accepted(e.id()))));
+        assertTrue(String.valueOf(belowOne.getMessage()).contains("maxBodyBytes"), "maxBodyBytes below 1 is refused: " + belowOne.getMessage());
     }
 
     // ---- P2-06 (D-086): host, port and dir as options, for a deployed endpoint whose URI is only <scheme>://<id> ------------
@@ -644,8 +648,8 @@ class SftpComponentTest {
     }
 
     @Test
-    void theConfigSchemaAcceptsHostPortAndDirAndRefusesBadPorts() {
-        String schema = component(rt).configSchema();
+    void theDescriptionAcceptsHostPortAndDirAndRefusesBadPorts() {
+        Settings schema = component(rt).settings();
         Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         assertValid(schema, with(with(with(base, "host", "sftp"), "port", 22), "dir", "inbox"), "host, port and dir together");
         assertValid(schema, with(base, "host", "sftp"), "host alone");
@@ -661,9 +665,9 @@ class SftpComponentTest {
     }
 
     @Test
-    void anEmptyHostOptionIsRefusedByTheConfigSchema() {
+    void anEmptyHostOptionIsRefusedByTheDescription() {
         Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
-        assertRefused(component(rt).configSchema(), with(base, "host", ""), "an empty host names no server (the URI's would silently not be used)");
+        assertRefused(component(rt).settings(), with(base, "host", ""), "an empty host names no server (the URI's would silently not be used)");
     }
 
     /**
@@ -673,7 +677,7 @@ class SftpComponentTest {
      */
     @Test
     void theHostKeyMayBeASecretReferenceButNothingElseThatIsNotAFingerprint() {
-        String schema = component(rt).configSchema();
+        Settings schema = component(rt).settings();
         Map<String, Object> base = Map.of("user", "demo", "password", "secret://sftp-password", "hostKey", "secret://sftp-host-key");
         assertValid(schema, base, "password and hostKey as secret references, as the demo's endpoint is written");
         assertValid(schema, with(base, "hostKey", "secret://sftp.host-key_2"), "a reference name with . and -");
@@ -697,13 +701,13 @@ class SftpComponentTest {
         return m;
     }
 
-    static void assertValid(String schema, Map<String, Object> options, String what) {
-        Schemas.Report report = Schemas.check(schema, new JsonObject(options));
-        assertTrue(report.valid(), what + ": valid, but refused with " + report.problems());
+    static void assertValid(Settings settings, Map<String, Object> options, String what) {
+        List<Settings.Problem> problems = settings.check(options, Direction.IN);
+        assertTrue(problems.isEmpty(), what + ": valid, but refused with " + problems);
     }
 
-    static void assertRefused(String schema, Map<String, Object> options, String what) {
-        assertFalse(Schemas.check(schema, new JsonObject(options)).valid(), what + ": refused by configSchema(), but valid: " + options);
+    static void assertRefused(Settings settings, Map<String, Object> options, String what) {
+        assertFalse(settings.check(options, Direction.IN).isEmpty(), what + ": refused by settings(), but valid: " + options);
     }
 
     // ---- P2-02L (D-083): the node holds the endpoint's lease ----------------------------------------------------------

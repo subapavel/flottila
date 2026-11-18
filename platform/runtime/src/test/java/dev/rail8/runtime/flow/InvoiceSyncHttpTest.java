@@ -120,6 +120,7 @@ class InvoiceSyncHttpTest {
         return new Component() {
             @Override public String scheme() { return real.scheme(); }
             @Override public String configSchema() { return real.configSchema(); }
+            @Override public dev.rail8.api.settings.Settings settings() { return real.settings(); }
             @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return real.consumer(cfg, handler); }
             @Override public Future<Health> health() { return real.health(); }
             @Override public Producer producer(EndpointConfig cfg) {

@@ -102,6 +102,7 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(50, publicTypes, "41 top-level + 9 nested public types, the API for custom code's Secret, Services, Cache and its Loader and Entry the last five; update this number with every api change");
+        assertEquals(55, publicTypes, "45 top-level + 10 nested public types, the API for custom code's Secret, Services, Cache and its Loader and Entry, "
+                + "then the settings description's Direction, Tab, Field, Settings and its Problem; update this number with every api change");
     }
 }

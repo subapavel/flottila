@@ -3,6 +3,8 @@ package dev.rail8.api;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.Test;
 
+import dev.rail8.api.settings.Settings;
+
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
@@ -13,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * The defaults of {@link Component}: a component that does not say where its consumers listen holds no port, one that does
- * not say its consumers poll is never run under a lease, and one that names no target gets a limit per {@code to}.
+ * not say its consumers poll is never run under a lease, one that names no target gets a limit per {@code to}, and one that
+ * describes no settings is judged by its {@code configSchema()}, which takes any object unless it says more.
  */
 class ComponentTest {
 
@@ -55,5 +58,26 @@ class ComponentTest {
         EndpointConfig cfg = new EndpointConfig("partner", URI.create("https://partner.example:443/orders"), Map.of("url", "https://partner.example/orders"));
 
         assertEquals(Optional.empty(), BARE.target(cfg), "by default no target: the builder gives its sends a limit of their own");
+    }
+
+    @Test
+    void aComponentDescribesNoSettingsByDefault() {
+        assertEquals(Settings.NONE, BARE.settings(), "undescribed: the deploy judges its options by configSchema()");
+    }
+
+    @Test
+    void theConfigSchemaTakesAnyObjectByDefault() {
+        Component described = new Component() {
+            @Override public String scheme() { return "described"; }
+
+            @Override public Settings settings() { return Settings.of(); }
+
+            @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { throw new UnsupportedOperationException(); }
+
+            @Override public Producer producer(EndpointConfig cfg) { throw new UnsupportedOperationException(); }
+
+            @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
+        };
+        assertEquals("{\"type\":\"object\"}", described.configSchema(), "a described component needs no schema of its own");
     }
 }
