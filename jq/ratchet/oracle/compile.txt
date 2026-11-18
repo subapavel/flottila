@@ -10260,6 +10260,10 @@ search/depth-arrays	20ceb5118915	conservative
 search/depth-arrays	20ceb5118915	trampoline
 search/depth-before-kinds	ef7c0d700d1a	conservative
 search/depth-before-kinds	ef7c0d700d1a	trampoline
+search/depth-missing-key	deb12115259e	conservative
+search/depth-missing-key	deb12115259e	trampoline
+search/depth-missing-key-read	6d5fe00ad0f8	conservative
+search/depth-missing-key-read	6d5fe00ad0f8	trampoline
 search/depth-objects	bec3a4b06cd9	conservative
 search/depth-objects	bec3a4b06cd9	trampoline
 search/inside	ab8971cafae2	conservative
