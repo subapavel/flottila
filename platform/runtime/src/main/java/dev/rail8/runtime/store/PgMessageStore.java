@@ -156,16 +156,14 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     @Override
     public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
         Page.requireLimit(limit);
-        Future<RowSet<Row>> rows;
-        if (after.isPresent()) {
-            String position = Page.position(after.get());
-            int colon = position.indexOf(':');
-            if (colon < 0) throw new IllegalArgumentException("not a cursor of a search by step");
-            OffsetDateTime started = startedAt(Long.parseLong(position.substring(0, colon)));
-            rows = pool.preparedQuery(FIND_BY_STEP_AFTER).execute(Tuple.of(flow, step, started, position.substring(colon + 1), limit + 1));
-        } else {
-            rows = pool.preparedQuery(FIND_BY_STEP).execute(Tuple.of(flow, step, limit + 1));
-        }
+        String position = after.map(Page::position).orElse(null);
+        int colon = position == null ? -1 : position.indexOf(':');
+        if (position != null && (colon < 0 || position.indexOf('\0') >= 0)) throw new IllegalArgumentException("not a cursor of a search by step");
+        OffsetDateTime started = position == null ? null : startedAt(Long.parseLong(position.substring(0, colon)));
+        // a Postgres text holds no NUL: no row has such a flow or step name
+        if (flow.indexOf('\0') >= 0 || step.indexOf('\0') >= 0) return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
+        Future<RowSet<Row>> rows = position == null ? pool.preparedQuery(FIND_BY_STEP).execute(Tuple.of(flow, step, limit + 1))
+                : pool.preparedQuery(FIND_BY_STEP_AFTER).execute(Tuple.of(flow, step, started, position.substring(colon + 1), limit + 1));
         return rows.map(found -> {
             List<String> ids = new ArrayList<>();
             String last = null;

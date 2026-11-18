@@ -157,7 +157,8 @@ public abstract class FindByStepContract {
         record(row("m-1", FLOW, 1, 1, "toPartner", 1));
 
         for (Page<String> page : List.of(find("nobody", "toPartner", Optional.empty(), 10), find(FLOW, "nothing", Optional.empty(), 10),
-                find(FLOW, "toPartne", Optional.empty(), 10), find(FLOW, "TOPARTNER", Optional.empty(), 10))) {
+                find(FLOW, "toPartne", Optional.empty(), 10), find(FLOW, "TOPARTNER", Optional.empty(), 10),
+                find(FLOW, "toPartner\u0000", Optional.empty(), 10), find(FLOW + "\u0000", "toPartner", Optional.empty(), 10))) {
             assertEquals(new Page<>(List.of(), Optional.empty()), page, "names match exactly");
         }
     }
@@ -180,7 +181,8 @@ public abstract class FindByStepContract {
         String keyCursor = store.findByKey("orderNo", "o-1", Optional.empty(), 1).await().next().orElseThrow();
         String stepCursor = find(FLOW, "toPartner", Optional.empty(), 1).next().orElseThrow();
 
-        for (String cursor : List.of("!!!", Page.cursor(""), Page.cursor("garbage"), Page.cursor("99999999999999999999:m-1"), keyCursor)) {
+        for (String cursor : List.of("!!!", Page.cursor(""), Page.cursor("garbage"), Page.cursor("99999999999999999999:m-1"),
+                Page.cursor(Long.MIN_VALUE + ":m-1"), Page.cursor(Long.MAX_VALUE + ":m-1"), Page.cursor("0:\u0000"), keyCursor)) {
             refused(() -> store.findByStep(FLOW, "toPartner", Optional.of(cursor), 10), "cursor " + cursor);
         }
         refused(() -> store.findByKey("orderNo", "o-1", Optional.of(stepCursor), 10), "a cursor of the search by step, given to the key search");
