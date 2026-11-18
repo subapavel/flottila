@@ -312,10 +312,9 @@ public final class Package {
             for (Read r : documents) {
                 if (!r.report().valid()) continue;
                 if (r.schema() == Schemas.FLOW) {
-                    JsonArray steps = r.document().getJsonArray("steps", new JsonArray());
-                    for (int i = 0; i < steps.size(); i++) {
-                        named.file(steps.getJsonObject(i).getValue("stylesheet"));
-                        named.file(steps.getJsonObject(i).getValue("schema"));
+                    for (WrittenStep step : writtenSteps(r.document())) {
+                        named.file(step.entry().getValue("stylesheet"));
+                        named.file(step.entry().getValue("schema"));
                     }
                 } else if (r.schema() == Schemas.TEST) {
                     named.mocks(r.document().getJsonObject("mocks", new JsonObject()));
@@ -566,10 +565,9 @@ public final class Package {
         String flow = id(document, file);
         JsonObject from = document.getJsonObject("from", new JsonObject());
         requireEndpoint(problems, "flow '" + flow + "' from", from.getString("endpoint"));
-        JsonArray steps = document.getJsonArray("steps", new JsonArray());
-        for (int i = 0; i < steps.size(); i++) {
-            JsonObject step = steps.getJsonObject(i);
-            String where = "flow '" + flow + "' step '" + step.getString("name") + "'";
+        for (WrittenStep written : writtenSteps(document)) {
+            JsonObject step = written.entry();
+            String where = "flow '" + flow + "' " + written.label();
             // a step's fields beyond its type's requirements are untyped in the flow schema: each is read through a type guard
             requireEndpoint(problems, where, string(problems, file, where + " endpoint", step.getValue("endpoint")));
             requireStepFile(problems, file, where + " stylesheet", string(problems, file, where + " stylesheet", step.getValue("stylesheet")));
@@ -583,6 +581,39 @@ public final class Package {
             } else if (endpoints != null) {
                 problems.add(relative(file) + ": " + where + " endpoints must map property values to endpoint ids, was " + endpoints);
             }
+        }
+    }
+
+    /** A step entry of a flow document as written, with the process it is a step of (empty: one of the flow's own {@code steps}). */
+    public record WrittenStep(Optional<String> process, JsonObject entry) {
+
+        /** {@code step '<name>'}, or {@code process '<process>' step '<name>'}: how a problem line names the step. */
+        public String label() {
+            String step = "step '" + entry.getValue("name") + "'";
+            return process.map(p -> "process '" + p + "' " + step).orElse(step);
+        }
+    }
+
+    /**
+     * The step entries of the flow document {@code flow} as written, each once: its {@code steps}, then the steps of each process
+     * under {@code processes}, in file order, whether a step calls the process or not. An entry that is not an object is left out
+     * (the flow schema refuses it).
+     */
+    public static List<WrittenStep> writtenSteps(JsonObject flow) {
+        List<WrittenStep> written = new ArrayList<>();
+        add(written, Optional.empty(), flow.getValue("steps"));
+        if (flow.getValue("processes") instanceof JsonObject processes) {
+            for (String name : processes.fieldNames()) {
+                if (processes.getValue(name) instanceof JsonObject process) add(written, Optional.of(name), process.getValue("steps"));
+            }
+        }
+        return List.copyOf(written);
+    }
+
+    private static void add(List<WrittenStep> written, Optional<String> process, Object steps) {
+        if (!(steps instanceof JsonArray list)) return;
+        for (Object entry : list) {
+            if (entry instanceof JsonObject step) written.add(new WrittenStep(process, step));
         }
     }
 

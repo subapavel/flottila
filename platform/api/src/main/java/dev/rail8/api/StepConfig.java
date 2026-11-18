@@ -7,9 +7,10 @@ import java.util.Optional;
 /**
  * One entry of a flow's {@code steps} as a {@link StepFactory} sees it.
  *
- * @param index the step's number in the flow: ingress is 0, the n-th configured step is n
+ * @param index the step's number in the flow: ingress is 0, the n-th step in run order is n (the steps of a local process
+ *              count where it is called)
  * @param type step type, resolved to a {@link StepFactory} or a built-in of the builder
- * @param name step name, unique in the flow; the label of the timeline
+ * @param name step name, unique in the flow ({@code <call>/<step>} for a step of a local process); the label of the timeline
  * @param retryable whether the flow's retry policy applies to this step
  * @param config the step's own keys, everything but {@code type}, {@code name} and {@code retryable}
  * @since 0.1

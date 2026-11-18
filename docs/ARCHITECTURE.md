@@ -24,6 +24,7 @@ Valkey (optional), S3 (package archives). Licence Apache 2.0.
 | **Step** | `Envelope apply(Envelope)`: one change to a message. | an iFlow step |
 | **Stage** | `Envelope apply(Envelope, Pipeline rest)`: a step that decides how often the rest runs (zero, once, many times). Route, filter, split and retry are stages. | router, filter, splitter |
 | **Flow** | One file: where messages come from, how they are delivered, and the steps they pass. | iFlow; integrated configuration in PO |
+| **Process** | A named block of steps in a flow file, run inside the same message where a `process` step calls it. | Local Process Call in CPI |
 | **Endpoint** | One file: a named inbound or outbound connection (scheme, direction, options). | communication channel |
 | **Component** | The code for one scheme (`http`, `sftp`, `mock`): a consumer for inbound endpoints and a producer for outbound ones. All contact with the outside world goes through a component. | adapter |
 | **Package** | A folder of flows, endpoints and their files, deployed together under one name and version. | integration package in CPI; software component version in PO |
@@ -38,7 +39,7 @@ test. Components and steps depend on `rail8-api` only; only `rail8-runtime` talk
 Valkey. `rail8-cli` sits on top and may use every module.
 
 **Planned**
-- Calls between flows (subflows, a hand-over without waiting) are an open question for the owner.
+- Calls between flows through an internal adapter, `direct` (part 4).
 
 ## 2. The path of a message
 
@@ -290,14 +291,89 @@ steps:
   - { type: to, byProp: PARTNER, endpoints: { domestic: partner-domestic, foreign: partner-foreign } }
 ```
 
-Built-in step types: `to`, `route`, `filter`, `extractKey`, `validate`, `split`. Shipped step
-modules: `xslt` (Saxon-HE), `xsd`, `jq` and `mapping`. Conditions are XPath by default.
+Built-in step types: `to`, `route`, `filter`, `extractKey`, `validate`, `split`, `process`. Shipped
+step modules: `xslt` (Saxon-HE), `xsd`, `jq` and `mapping`. Conditions are XPath by default.
 
 An endpoint names its scheme, direction and options, with an optional overlay per environment
 (`environments.<env>.config`), so one flow file is the same in every environment. An option whose
 whole value is `secret://<name>` is a secret; a node reads it from the environment variable
 `RAIL8_SECRET_<NAME>`, and tests and validation use a placeholder. A step's option is a secret in the
 same way; its code takes it through the API for custom code (part 5).
+
+### Local processes
+
+A flow file may name blocks of steps under `processes`. A step of type `process` runs one where it
+stands, inside the same message and under the same id (like a Local Process Call in CPI):
+
+```yaml
+steps:
+  - { type: process, name: enrich, process: enrichOrder }
+  - { type: to, name: dispatch, endpoint: partner }
+processes:
+  enrichOrder:
+    steps:
+      - { type: extractKey, name: orderId, key: orderId, xpath: /Order/Id }
+      - { type: xslt, name: map, stylesheet: flows/enrich.xsl }
+```
+
+When the flow is loaded, each call is replaced by the steps of its process. The message's history
+shows those steps, numbered in the order they run and named after the call: `1 enrich/orderId`,
+`2 enrich/map`, `3 dispatch`. The call itself has no row. A step inside a process behaves as if it
+were written at the call: a `filter` ends the message, a `route` sets its prop for the rest of the
+flow, a `split` runs the rest of the flow once per part, and an `extractKey` may set the key that
+`partitionBy` reads. `retryable` and `recording` belong to each inner step.
+
+- A `process` step takes only `type`, `name` and `process`.
+- A process may call another process. A process that calls itself, directly or through others, is
+  refused.
+- A flow with more than 1024 steps once its processes are expanded is refused.
+- A process that no step calls is allowed.
+- A process's name follows the pattern of step names. A problem inside a process names its step as
+  `processes.<process>.steps[<i>]`.
+
+### Calls between flows
+
+**Planned**
+
+One flow calls another through an internal adapter, scheme `direct` (like ProcessDirect in CPI). A
+call needs no network, and the body is not copied on its way in.
+
+- **Endpoints.** An inbound endpoint `{ scheme: direct, direction: in, config: { address: /orders } }`
+  feeds the flow that receives. An outbound endpoint with the same address is the `to` of the flow
+  that calls. Addresses are matched exactly, and an address has at most one flow on a node, across
+  packages.
+- **What the caller gets.** The receiving flow's own `delivery.mode` decides:
+  - `sync`: the caller waits for the callee's whole run and goes on with its reply. The reply's
+    headers replace the caller's, and its body is written under the caller's next step: one copy,
+    on the reply side only.
+  - `at-least-once`: the arrival is saved, then the caller goes on with its message as it sent it.
+    The callee has its own retries, failed list and order, and survives a node crash. The saved
+    arrival refers to the body the caller holds and stores no second copy.
+  - `at-most-once`: the caller goes on at once, and nothing is saved.
+- **Ids.** A callee's message has its own id and history. Every message of one chain carries the
+  business key `rail8.ref`, the id of the first caller's message, so `?key=rail8.ref:<id>` finds
+  them all. The callee's `x-message-id` header is its caller's id.
+- **Failures.** A sync callee's failure is the failure of the caller's step, with its fault kind:
+  invalid input in the callee parks the caller or answers the caller's sender 422, and the caller's
+  failed row names the callee's message id.
+- **Duplicates.** A caller's retry hands the message over again: the callee gets it twice, under the
+  same `rail8.ref`.
+- **Refusals.** When no flow serves the address, the call is refused with "try again". A body over
+  the callee's `limits.maxBodyBytes` is refused for good.
+- **No cycles.** The deploy check refuses a package whose flows, together with those already running
+  on the node, would call each other in a cycle (a flow calling itself included). The problem names
+  the path. A call to an address that no flow serves is only a warning in the node's log, so
+  packages deploy in any order.
+- **Depth.** At run time a chain of calls is at most 8 deep. The depth travels as the prop
+  `rail8.depth`, and a call past the cap is refused for good. A flow file may not name a key, a prop
+  or `partitionBy` that starts with `rail8.`.
+- **Contract.** A component says which node-local address an endpoint serves or calls
+  (`Component.internalAddress`, empty by default), and the deploy checks use that address. The mock
+  of `direct` is the `mock` component, which passes the same contract suite.
+- **Storage.** For a body whose key names another message, the save writes the body's kept
+  reference in the same transaction. Retention keeps that reference while any work row points at the
+  same place in the journal.
+- **Tests.** `rail8 test` runs the flows a package calls, as well as the flow under test.
 
 ### The command line
 

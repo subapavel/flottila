@@ -131,8 +131,11 @@ public final class FlowBuilder {
     /** The expression language a step uses when it names none. */
     public static final String DEFAULT_LANGUAGE = "xpath";
 
-    /** The step types this builder builds itself; no {@link StepFactory} may register one of them. */
-    public static final Set<String> BUILT_INS = Set.of("to", "route", "filter", "extractKey", "validate", "split");
+    /**
+     * The step types the platform handles itself, so no {@link StepFactory} may register one of them: this builder builds each,
+     * except {@value FlowDefinition#PROCESS}, which never reaches it (the flow's definition replaces it by its process's steps).
+     */
+    public static final Set<String> BUILT_INS = Set.of("to", "route", "filter", "extractKey", "validate", "split", FlowDefinition.PROCESS);
 
     /** The fence of an unfenced run: always open. */
     private static final BooleanSupplier OPEN = () -> true;
