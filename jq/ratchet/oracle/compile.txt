@@ -10594,6 +10594,8 @@ regex/lookahead	c02d28be1c11	conservative
 regex/lookahead	c02d28be1c11	trampoline
 regex/lookbehind	e1da3c559371	conservative
 regex/lookbehind	e1da3c559371	trampoline
+regex/loop-alternative-after-empty-match	5ef96732dcea	conservative
+regex/loop-alternative-after-empty-match	5ef96732dcea	trampoline
 regex/loop-captures-reset	ad44f93599f3	conservative
 regex/loop-captures-reset	ad44f93599f3	trampoline
 regex/loop-empty-alternative	e065c1776547	conservative
@@ -10606,6 +10608,8 @@ regex/loop-four-byte	b2de0c20d301	conservative
 regex/loop-four-byte	b2de0c20d301	trampoline
 regex/loop-lookahead-once	f26bddbc52eb	conservative
 regex/loop-lookahead-once	f26bddbc52eb	trampoline
+regex/loop-lookbehind-after-empty-match	ae8ec8631d09	conservative
+regex/loop-lookbehind-after-empty-match	ae8ec8631d09	trampoline
 regex/loop-lookbehind-capture	f60d805bc6f6	conservative
 regex/loop-lookbehind-capture	f60d805bc6f6	trampoline
 regex/modifier-empty	f5bb43dd1295	conservative
@@ -10748,6 +10752,8 @@ regex/prelude-split-regex	60a0b24b23df	conservative
 regex/prelude-split-regex	60a0b24b23df	trampoline
 regex/prelude-splits	811e4336fb3c	conservative
 regex/prelude-splits	811e4336fb3c	trampoline
+regex/prelude-splits-after-empty-match	a276ca10fde9	conservative
+regex/prelude-splits-after-empty-match	a276ca10fde9	trampoline
 regex/prelude-splits-flags	21c29e6a74f8	conservative
 regex/prelude-splits-flags	21c29e6a74f8	trampoline
 regex/prelude-test	fbb2f95a45f1	conservative
