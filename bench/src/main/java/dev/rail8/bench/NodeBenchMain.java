@@ -71,18 +71,23 @@ import java.util.zip.ZipOutputStream;
  *   <li>{@code worker}: the same flow's items, queued through the ingress and run by its worker: the distribution is each
  *       item's claim → complete, from triggers on {@code work} into an unlogged {@code bench_work_log}; the window runs from
  *       the first request until the queue is empty, and the record adds the ingress' own distribution ({@code ingress}) and
- *       {@code drainTailMs} (the last 202 → the queue empty).</li>
+ *       {@code drainTailMs} (the last 202 → the queue empty);</li>
+ *   <li>{@code at-most-once}: the at-most-once flow's 202s and the runs behind them: the distribution is the 202's, the
+ *       window runs from the first request until every accepted message was recorded, so its throughput is the runs'; the
+ *       record adds {@code drainTailMs} (the last 202 → the last message recorded) and {@code commitsPerMessage} and
+ *       {@code walSyncsPerMessage} as an ack record does.</li>
  * </ul>
  * The flow is {@code [xslt?, to partner]} ({@code --step}; xslt sends a ~100 KB generated invoice, passthrough a one-line one)
  * under {@code --recording}. Its {@code maxInFlight} is {@code --max-in-flight}, by default {@code --concurrency} for
  * at-least-once (the ingress permit is back when the 202 is decided, and the worker runs at most that many items) and
- * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync: a sync message holds its permit until its recording closed, after the
- * reply (D-064), so a client's next request comes while earlier ones still hold theirs. A window counts its 503s
+ * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync and at-most-once: a sync message holds its permit until its recording
+ * closed, after the reply, and an at-most-once message until its run's recording closed, after the 202, so a client's next
+ * request comes while earlier ones still hold theirs. A window counts its 503s
  * ({@code refused}, the flow's admission) apart from its {@code errors} (any other status, a failed request); {@code failed} is
  * both, and the record adds the warm-up's ({@code warmupFailed}). A sync window's wait for its rows fails at once when the
  * node's /health {@code snapshotWriteFailures} rises above its value before the load. The partner's pool has
  * {@code --concurrency} connections, and its target limit (D-099) as many calls as the run sends at once: {@code --concurrency}
- * for sync, the flow's {@code maxInFlight} for at-least-once. Every record carries
+ * for sync, the flow's {@code maxInFlight} for at-least-once and at-most-once. Every record carries
  * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code journalBytesPerSecond} (the delta of the node's journal
  * segment files, {@code <journal>/segments}: the bodies are journal records since CORE-4c2, D-105) — both taken once what the
  * window accepted landed (recorded, the work queue empty) and divided by the window's {@code elapsedMs} — and
@@ -110,6 +115,10 @@ import java.util.zip.ZipOutputStream;
  * node's {@code GET /admin/flows/bench%2Fbench/cpu} answer once the window settled (cumulative since the node started: the
  * warm-up included).
  *
+ * <p>Every closed-loop node window carries {@code processCpuMsPerMessage} and {@code allocatedBytesPerMessage}, the heap bytes
+ * the bench process allocated per message: a sync or ack window over its load, a worker or at-most-once window from the first
+ * request until what it accepted landed, so the runs behind the 202s are in it.
+ *
  * <p>CORE-15: {@code --rate} runs {@code ack} or {@code sync} open loop ({@link OpenLoop}) after the warm-up instead of the
  * closed-loop window — {@code --ramp}, {@code --window}, {@code --max-outstanding}, {@code --pg-cpu-source} ({@link #open}) —
  * and the record carries its {@code open} object; {@code --scenario echo} runs it at the raw echo alone. bench/RESULTS.md,
@@ -131,7 +140,7 @@ public final class NodeBenchMain {
      * What a run measures; the CLI name is the lower-case name. {@code ECHO} (CORE-15) is the open loop's self-test: the open
      * loop straight at the raw echo, no node and no Postgres — the harness' own ceiling; it needs {@code --rate}.
      */
-    public enum Scenario { SYNC, ACK, WORKER, ECHO }
+    public enum Scenario { SYNC, ACK, WORKER, AT_MOST_ONCE, ECHO }
 
     /** The flow's {@code recording.payload}; the CLI name is the lower-case name with a dash. */
     public enum Recording { KEEP, METADATA_ONLY }
@@ -359,7 +368,7 @@ public final class NodeBenchMain {
 
     /** The flow's in-flight limit when {@code --max-in-flight} is not given (see the class comment). */
     static int defaultInFlight(Scenario scenario, int concurrency) {
-        return scenario == Scenario.SYNC ? SYNC_PERMITS_PER_CLIENT * concurrency : concurrency;
+        return scenario == Scenario.SYNC || scenario == Scenario.AT_MOST_ONCE ? SYNC_PERMITS_PER_CLIENT * concurrency : concurrency;
     }
 
     /** {@code raw} as a positive int; anything else is refused naming {@code --key} and the value. */
@@ -583,7 +592,7 @@ public final class NodeBenchMain {
 
     /**
      * The bench package as a zip: the in endpoint on 127.0.0.1:{@code in}, the partner at the echo, and the flow {@code bench}
-     * — sync for the sync scenario, else at-least-once — with the run's recording level and payload and its steps.
+     * — sync for the sync scenario, at-most-once for at-most-once, else at-least-once — with the run's recording level and payload and its steps.
      */
     static byte[] benchPackage(Options o, int in, int echo) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
@@ -597,7 +606,11 @@ public final class NodeBenchMain {
         if (o.step() == Step.XSLT) steps.add(new JsonObject().put("type", "xslt").put("name", "transform").put("stylesheet", "flows/transform.xsl"));
         steps.add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner"));
         files.put("flows/bench.yaml", yaml(doc("flow").put("id", "bench").put("version", "0.1.0").put("from", new JsonObject().put("endpoint", "in"))
-                .put("delivery", new JsonObject().put("mode", o.scenario() == Scenario.SYNC ? "sync" : "at-least-once"))
+                .put("delivery", new JsonObject().put("mode", switch (o.scenario()) {
+                    case SYNC -> "sync";
+                    case AT_MOST_ONCE -> "at-most-once";
+                    default -> "at-least-once";
+                }))
                 .put("recording", new JsonObject().put("level", o.recordingLevel() == RecordingLevel.NONE ? "off" : "all")
                         .put("payload", cli(o.recording())))
                 .put("limits", new JsonObject().put("maxBodyBytes", MAX_BODY_BYTES).put("maxInFlight", inFlight(o)))
@@ -675,6 +688,22 @@ public final class NodeBenchMain {
         }
     }
 
+    /** The bench process' CPU time and heap allocation when a window started ({@link Harness#processCpuNanos}, {@link Harness#allocatedBytes}). */
+    record Cost(long cpuNanos, long allocatedBytes) {
+        static Cost start() {
+            return new Cost(Harness.processCpuNanos(), Harness.allocatedBytes());
+        }
+
+        /**
+         * What one of {@code messages} cost the bench process since the start: {@code processCpuMsPerMessage} and
+         * {@code allocatedBytesPerMessage}.
+         */
+        JsonObject perMessage(int messages) {
+            return new JsonObject().put("processCpuMsPerMessage", (Harness.processCpuNanos() - cpuNanos) / 1_000_000.0 / messages)
+                    .put("allocatedBytesPerMessage", (Harness.allocatedBytes() - allocatedBytes) / (double) messages);
+        }
+    }
+
     /** The database's counters at one instant. */
     record Snapshot(long walBytes, long journalBytes, long parked) {}
 
@@ -726,6 +755,7 @@ public final class NodeBenchMain {
                     JsonObject w = window(recorded, admin);
                     yield w.mergeIn(perMessage(before, counters(), o.messages()));
                 }
+                case AT_MOST_ONCE -> atMostOnce(recorded, admin);
                 default -> worker(recorded, admin);   // WORKER: an echo run measures no node window
             };
         }
@@ -815,36 +845,62 @@ public final class NodeBenchMain {
         private JsonObject window(int recorded, int admin) {
             long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
-            long cpuBefore = processCpuNanos();
+            Cost cost = Cost.start();
             Window w = load(in, "/in", o.messages(), accepted());
-            long cpuSpent = processCpuNanos() - cpuBefore;
+            JsonObject spent = cost.perMessage(o.messages());
             settle(recorded + o.messages() - w.failed(), failuresAtStart, DRAIN, probe(admin));
             Snapshot after = snapshot();
-            return w.toJson(o.messages()).mergeIn(rates(before, after, w.elapsedNanos()))
-                    .put("processCpuMsPerMessage", cpuSpent / 1_000_000.0 / o.messages());
+            return w.toJson(o.messages()).mergeIn(rates(before, after, w.elapsedNanos())).mergeIn(spent);
+        }
+
+        /**
+         * At-most-once: the 202s and the runs behind them. The window runs from the first request until every message it
+         * accepted was recorded, so its throughput is the runs' and its CPU and allocation hold theirs; the latency is the
+         * 202's. The record adds {@code drainTailMs}, from the last 202 until the last message was recorded, and the
+         * database's commits and WAL syncs per message.
+         */
+        private JsonObject atMostOnce(int recorded, int admin) {
+            Counters counted = counters();
+            long failuresAtStart = snapshotWriteFailures(admin);
+            Snapshot before = snapshot();
+            Cost cost = Cost.start();
+            long started = System.nanoTime();
+            Window answered = load(in, "/in", o.messages(), accepted());
+            long lastAnswer = System.nanoTime();
+            settle(recorded + o.messages() - answered.failed(), failuresAtStart, DRAIN, probe(admin));
+            long landed = System.nanoTime();
+            JsonObject spent = cost.perMessage(o.messages());
+            Snapshot after = snapshot();
+            return new Window(answered.latency(), answered.refused(), answered.errors(), landed - started, answered.firstFailure())
+                    .toJson(o.messages()).mergeIn(rates(before, after, landed - started)).mergeIn(spent)
+                    .put("drainTailMs", (landed - lastAnswer) / 1_000_000.0)
+                    .mergeIn(perMessage(counted, counters(), o.messages()));
         }
 
         /**
          * The items queued and run, the window from the first request until they landed (the queue empty); the latency is claim →
          * complete. The record also carries the ingress' own window ({@code ingress}) and {@code drainTailMs}, from the last
-         * ingress answer until the queue was empty: which side set the rate.
+         * ingress answer until the queue was empty: which side set the rate. Its CPU and allocation per message span the whole
+         * window, the ingress' and the worker's together.
          */
         private JsonObject worker(int recorded, int admin) {
             pool.query("truncate bench_work_log").execute().await();
             long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
+            Cost cost = Cost.start();
             long started = System.nanoTime();
             Window queued = load(in, "/in", o.messages(), accepted());
             long answered = System.nanoTime();
             settle(recorded + o.messages() - queued.failed(), failuresAtStart, DRAIN, probe(admin));
             long drained = System.nanoTime();
+            JsonObject spent = cost.perMessage(o.messages());
             Snapshot after = snapshot();
             LatencyStats claimToComplete = new LatencyStats(o.messages());
             for (Row r : pool.query(CLAIM_TO_COMPLETE).execute().await()) claimToComplete.record(r.getLong(0));
             // the ingress' refusals stay refusals; an item parked in the window is an error
             return new Window(claimToComplete, queued.refused(), failed(queued, before, after) - queued.refused(), drained - started,
                     queued.firstFailure()).toJson(o.messages())
-                    .mergeIn(rates(before, after, drained - started)).put("ingress", queued.toJson(o.messages()))
+                    .mergeIn(rates(before, after, drained - started)).mergeIn(spent).put("ingress", queued.toJson(o.messages()))
                     .put("drainTailMs", (drained - answered) / 1_000_000.0);
         }
 
@@ -979,6 +1035,14 @@ public final class NodeBenchMain {
         /** The bench process' CPU time so far, in nanoseconds: the node, the client and the echo together. */
         static long processCpuNanos() {
             return ManagementFactory.getPlatformMXBean(com.sun.management.OperatingSystemMXBean.class).getProcessCpuTime();
+        }
+
+        /**
+         * The heap bytes the bench process allocated so far, by every thread (a virtual thread's through its carrier): the
+         * node, the client and the echo together.
+         */
+        static long allocatedBytes() {
+            return ManagementFactory.getPlatformMXBean(com.sun.management.ThreadMXBean.class).getTotalThreadAllocatedBytes();
         }
 
         /** The node's /health {@code snapshotWriteFailures} (its body carries the counter whether the node is up or down). */

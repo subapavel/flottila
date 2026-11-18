@@ -13,7 +13,7 @@
 # e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM), BENCH_SCENARIOS (batched — what runs, space-separated:
 # `batched` the BatchingWriter pair, the CI regression job's; the node bench (NodeBenchMain, P1-10a): `sync` keep and
 # metadata-only against the raw echo, `ack` the at-least-once 202 at c=1, c=8 and c=64, `worker` passthrough and xslt, each keep
-# and metadata-only, `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
+# and metadata-only, `at-most-once` keep and metadata-only (the 202s and the runs behind them), `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
 # PT0.002S one after the other, BENCH_CPU_ROUNDS (3) rounds, runs named node-cpu-<step>-c<c>-<sampling>-r<round>;
 # BENCH_MESSAGES / BENCH_WARMUP / BENCH_CONCURRENCY apply to every run but ack's and cpu's concurrency), BENCH_COMMIT_DELAY (unset —
 # the server's own: a commit_delay in µs, 0 to 100000; set server-wide with ALTER SYSTEM + pg_reload_conf() before the first
@@ -153,7 +153,7 @@ summary() { # name
   local open
   open="$(python3 -c "$OPEN_SUMMARY" "bench/out/$1.json")"
   if [[ -n "$open" ]]; then echo "$1: $open"; return; fi
-  echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\" + (f\", overhead p50 {j['overheadP50Ms']:.2f} ms\" if 'overheadP50Ms' in j else '') + (f\", process cpu {j['processCpuMsPerMessage']:.3f} ms/msg\" if 'processCpuMsPerMessage' in j else '') + (f\", refused {j['refused']} of {j['messages']}\" if 'refused' in j else '') + (f\", warm-up failed {j['warmupFailed']}\" if 'warmupFailed' in j else ''))")"
+  echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\" + (f\", overhead p50 {j['overheadP50Ms']:.2f} ms\" if 'overheadP50Ms' in j else '') + (f\", process cpu {j['processCpuMsPerMessage']:.3f} ms/msg\" if 'processCpuMsPerMessage' in j else '') + (f\", allocated {j['allocatedBytesPerMessage'] / 1024:.1f} KiB/msg\" if 'allocatedBytesPerMessage' in j else '') + (f\", commits {j['commitsPerMessage']:.2f}/msg\" if 'commitsPerMessage' in j else '') + (f\", refused {j['refused']} of {j['messages']}\" if 'refused' in j else '') + (f\", warm-up failed {j['warmupFailed']}\" if 'warmupFailed' in j else ''))")"
 }
 
 run() { # name sync-commit
@@ -191,6 +191,8 @@ for scenario in $BENCH_SCENARIOS; do
       run batched-persistence-async off ;;
     sync)
       for recording in keep metadata-only; do run_node "node-sync-$recording" --scenario sync --recording "$recording"; done ;;
+    at-most-once)
+      for recording in keep metadata-only; do run_node "node-at-most-once-$recording" --scenario at-most-once --recording "$recording"; done ;;
     ack)
       if [[ -n "$ack_suffix" ]]; then set_commit_delay "$BENCH_COMMIT_DELAY"; fi
       for c in 1 8 64; do run_node "node-ack-c$c$ack_suffix" --scenario ack --concurrency "$c"; done ;;
@@ -221,7 +223,7 @@ for scenario in $BENCH_SCENARIOS; do
       if [[ -n "${BENCH_MAX_IN_FLIGHT:-}" ]]; then open_args+=(--max-in-flight "$BENCH_MAX_IN_FLIGHT"); fi
       run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}${BENCH_RECORDING_LEVEL:+-$BENCH_RECORDING_LEVEL}" "${open_args[@]}" ;;
     *)
-      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse, open)" >&2
+      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, at-most-once, cpu, clickhouse, open)" >&2
       exit 2 ;;
   esac
 done

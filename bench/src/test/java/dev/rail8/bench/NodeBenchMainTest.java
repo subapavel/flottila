@@ -34,7 +34,7 @@ class NodeBenchMainTest {
 
         // every scenario and recording by its CLI name
         Map<String, NodeBenchMain.Scenario> scenarios = Map.of("sync", NodeBenchMain.Scenario.SYNC, "ack", NodeBenchMain.Scenario.ACK,
-                "worker", NodeBenchMain.Scenario.WORKER);
+                "worker", NodeBenchMain.Scenario.WORKER, "at-most-once", NodeBenchMain.Scenario.AT_MOST_ONCE);
         scenarios.forEach((cli, scenario) -> assertEquals(scenario, NodeBenchMain.options(new String[] {"--scenario", cli}).scenario(), cli));
         assertEquals(NodeBenchMain.Recording.KEEP, NodeBenchMain.options(new String[] {"--scenario", "sync", "--recording", "keep"}).recording());
 
@@ -47,7 +47,7 @@ class NodeBenchMainTest {
         IllegalArgumentException scenario = assertThrows(IllegalArgumentException.class,
                 () -> NodeBenchMain.options(new String[] {"--scenario", "batch"}));
         assertTrue(scenario.getMessage().contains("batch"), "names the refused value: " + scenario.getMessage());
-        for (String known : new String[] {"sync", "ack", "worker"})
+        for (String known : new String[] {"sync", "ack", "worker", "at-most-once"})
             assertTrue(scenario.getMessage().contains(known), "names the known scenarios: " + scenario.getMessage());
 
         IllegalArgumentException recording = assertThrows(IllegalArgumentException.class,
@@ -85,6 +85,18 @@ class NodeBenchMainTest {
         NodeBenchMain.Options ack = NodeBenchMain.options(new String[] {"--scenario", "ack", "--concurrency", "8"});
         assertEquals(8, NodeBenchMain.inFlight(ack), "at-least-once: the concurrency");
         assertEquals(8, flowLimit(ack));
+        NodeBenchMain.Options atMostOnce = NodeBenchMain.options(new String[] {"--scenario", "at-most-once", "--concurrency", "8"});
+        assertEquals(512, NodeBenchMain.inFlight(atMostOnce), "at-most-once: 64 x 8, a permit is held until the run's recording closed");
+        assertEquals(512, flowLimit(atMostOnce));
+    }
+
+    @Test
+    void eachScenarioDeploysTheBenchFlowInItsDeliveryMode() throws IOException {
+        Map<String, String> modes = Map.of("sync", "sync", "ack", "at-least-once", "worker", "at-least-once", "at-most-once", "at-most-once");
+        for (Map.Entry<String, String> m : modes.entrySet()) {
+            JsonObject flow = NodeBenchMainRecordingLevelTest.flowDocument(NodeBenchMain.options(new String[] {"--scenario", m.getKey()}));
+            assertEquals(m.getValue(), flow.getJsonObject("delivery").getString("mode"), m.getKey());
+        }
     }
 
     @Test
