@@ -9,8 +9,6 @@ import { collectProblems } from './problems';
 // Chromium caps frames at 60 Hz, so 16.7 ms is the floor. The virtualised pane keeps fewer than 50 rows in the DOM.
 const SCROLL_MS = 3000;
 
-test.use({ viewport: { width: 1440, height: 900 } });
-
 test('ui/tree-20128/scroll', async ({ page }, testInfo) => {
   const problems = collectProblems(page);
 

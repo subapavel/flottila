@@ -6,7 +6,7 @@
 #
 # <ticket>           ticket number, used in the log names (.logs/<ticket>-<check>.log)
 # <modules>          touched module directories, comma-separated (engine/xdm,engine/ir); `service` for the service
-# [integration-ref]  e.g. origin/spec/21-walking-skeleton. When given, the ui/ steps run only if ui/ or contract/
+# [integration-ref]  e.g. origin/spec/21-walking-skeleton. When given, the UI steps run only if ../ui/ or contract/
 #                    changed against it (without it they always run), and the trailers of <ref>..HEAD are checked.
 #
 # Every step runs even if an earlier one failed. Each prints an evidence word (VERIFIED_PASS, EXECUTED_FAIL, NOT_RUN)
@@ -28,7 +28,7 @@ base=${3:-}
 cd "$(dirname "$0")/.."
 # the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
 mvnw=${MVNW:-../mvnw}
-mkdir -p .logs ui/.logs
+mkdir -p .logs
 # the console output, stderr included, also goes to .logs/<ticket>-gate.log under this root, whatever the caller's
 # directory (#125). On exit, close it and wait for tee, so the log is complete when the script returns.
 exec > >(tee ".logs/${ticket}-gate.log") 2>&1
@@ -98,24 +98,25 @@ fi
 step "3 contract diff" ".logs/${ticket}-contract.log" \
   git diff --exit-code contract/
 
-# 4: ui/
+# 4: ../ui, the repository's Rail8 UI, when it or contract/ changed; its logs in ../ui/.logs
 ui_changed=true
 if [ -n "$base" ]; then
-  if git diff --quiet "$base"...HEAD -- ui contract && git diff --quiet HEAD -- ui contract; then
+  if git diff --quiet "$base"...HEAD -- ../ui contract && git diff --quiet HEAD -- ../ui contract; then
     ui_changed=false
   fi
 fi
-if [ "$ui_changed" = true ] && [ -f ui/package.json ]; then
-  if [ ! -d ui/node_modules ]; then
-    step "4 ui npm ci" "ui/.logs/${ticket}-npm-ci.log" bash -c 'cd ui && npm ci'
+if [ "$ui_changed" = true ] && [ -f ../ui/package.json ]; then
+  mkdir -p ../ui/.logs
+  if [ ! -d ../ui/node_modules ]; then
+    step "4 ui npm ci" "../ui/.logs/${ticket}-npm-ci.log" bash -c 'cd ../ui && npm ci'
   fi
   for check in licences typecheck lint test test:browser e2e; do
-    step "4 ui $check" "ui/.logs/${ticket}-${check/:/-}.log" bash -c "cd ui && npm run $check"
+    step "4 ui $check" "../ui/.logs/${ticket}-${check/:/-}.log" bash -c "cd ../ui && npm run $check"
   done
-  step "4 ui gen:types diff" "ui/.logs/${ticket}-gen-types.log" \
-    bash -c 'cd ui && npm run gen:types && git diff --exit-code src/generated'
+  step "4 ui gen:types diff" "../ui/.logs/${ticket}-gen-types.log" \
+    bash -c 'cd ../ui && npm run gen:types && git diff --exit-code src/mapping/generated'
 else
-  skipped "4 ui" "ui/ and contract/ unchanged, or no ui/"
+  skipped "4 ui" "../ui/ and contract/ unchanged, or no ../ui/"
 fi
 
 # 5: the ratchet

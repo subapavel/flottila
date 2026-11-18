@@ -1,6 +1,6 @@
 name: mapping-ci
 
-# The mapping engine's checks on every change (mapping/, ADR-0017): build with unit tests, licences and bans and
+# The mapping engine's checks on every change (mapping/): build with unit tests, licences and bans and
 # the script tests. Every step runs in mapping/ with the repository's wrapper. The mapping studio is part of the
 # Rail8 UI (ui/), which ui-ci.yml checks.
 # It runs when the mapping, the root pom, the wrapper, the root .gitattributes, this file or mapping-nightly.yml
