@@ -208,6 +208,27 @@ class FlowBuilderSecretsTest {
     }
 
     @Test
+    void aLineTheLongerReferencePushesOutOfTheBoundIsDroppedAndCounted() {
+        String logger = "partner.client";
+        int count = 32;
+        String padding = "x".repeat((int) (StepLog.MAX_BYTES / count) - logger.length() - VALUE.length());
+        System.Logger log = System.getLogger(logger);
+        Pipeline p = build(builder(taking("sign", secret -> Stage.of(e -> {
+            for (int i = 0; i < count; i++) {
+                log.log(System.Logger.Level.INFO, secret.value() + padding);
+            }
+            return e;
+        }))), "sync", List.of(step("sign", "sign", REFERENCE)));
+        Envelope in = in();
+        p.apply(in);
+        StepLog kept = store.timeline(in.id()).await().getLast().log();
+        assertEquals(count - 1, kept.lines().size(), "with the value the lines fill the bound exactly; with the longer reference the last no longer fits");
+        assertEquals(1, kept.dropped());
+        assertTrue(kept.lines().stream().allMatch(l -> l.text().equals(REFERENCE + padding)));
+        assertTrue(kept.lines().stream().mapToLong(StepLog.Line::bytes).sum() <= StepLog.MAX_BYTES);
+    }
+
+    @Test
     void aParkedFailureHoldsTheReference() {
         Pipeline p = build(builder(leaking(value -> new IllegalStateException("refused " + value))), "at-least-once", List.of(step("leak", "leak", REFERENCE)));
         ParkedException parked = assertThrows(ParkedException.class, () -> p.apply(in()));
