@@ -33,6 +33,8 @@
     <module>sim</module>
     <module>archtest</module>
     <module>../bench</module>   <!-- the bench harness lives beside its scripts in the root bench/ (D-149) -->
+    <!-- the sample adapter plugin, a build of its own over the kit: built here so that its tests run and a node's test loads it -->
+    <module>../examples/webhook-plugin</module>
   </modules>
 
   <properties>

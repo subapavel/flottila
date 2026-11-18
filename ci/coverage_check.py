@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """JaCoCo no-decrease gate: no module's line or branch coverage falls on a push.
 
-Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates), computes line and branch coverage in percent
+Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates, or under examples/, the
+samples for plugin authors, which have none), computes line and branch coverage in percent
 rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
 previous main commit in CI, HEAD locally). A module whose coverage dropped by more than TOLERANCE
 percentage points (a noise band; the JaCoCo floors in the poms stay exact) fails the check; a
@@ -36,12 +37,13 @@ IGNORED: frozenset[str] = frozenset()
 # between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
 # floors in the poms stay hard.
 TOLERANCE = 2.0
-# the mapping engine has its own gates: this guard reads platform/ and bench/, never a module under mapping/
-FOREIGN = "mapping"
+# the mapping engine has its own gates and the examples are samples for plugin authors, with no coverage gate: this guard
+# reads platform/ and bench/, never a module under mapping/ or examples/
+FOREIGN = frozenset({"mapping", "examples"})
 
 
 def _ours(path: Path, root: Path) -> bool:
-    return path.resolve().relative_to(root.resolve()).parts[0] != FOREIGN
+    return path.resolve().relative_to(root.resolve()).parts[0] not in FOREIGN
 
 
 def _percent(missed: int, covered: int) -> float:

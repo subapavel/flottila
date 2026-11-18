@@ -1,0 +1,7 @@
+# A package over the sample webhook plugin: a node or the command line needs the plugin to build it.
+schemaVersion: 1
+kind: package
+name: webhook-relay
+version: 0.1.0
+description: Relays an order received on a webhook to the partner's webhook and answers with the partner's reply.
+dependencies: []

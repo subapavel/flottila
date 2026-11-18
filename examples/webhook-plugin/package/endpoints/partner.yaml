@@ -1,0 +1,8 @@
+schemaVersion: 1
+kind: endpoint
+id: partner
+scheme: webhook
+direction: out
+config:
+  url: http://127.0.0.1:18091/orders
+  maxBodyBytes: 1048576
