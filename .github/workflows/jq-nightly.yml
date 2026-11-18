@@ -1,6 +1,6 @@
 name: jq-nightly
 
-# The jq engine's nightly report; nothing here blocks a change.
+# The jq engine's long checks, run on demand only; nothing here blocks a change.
 # mutation: PIT on the class-C modules of jq/quality/floors.tsv and on oracle; uploads the reports.
 # calibration: the calibration matrix at the committed stack constants, a check only; uploads its tsv.
 # reference: with the reference jq 1.8.2 installed, the script tests, the recorded cases against it
@@ -9,8 +9,6 @@ name: jq-nightly
 # windows: the whole reactor compiles on Windows.
 # It commits nothing.
 on:
-  schedule:
-    - cron: '41 3 * * *'
   workflow_dispatch:
 
 permissions:

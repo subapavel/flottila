@@ -86,15 +86,16 @@ check "ci: the backend job's name is the one scripts/ratchet-baseline.sh looks u
 on=$(block "$ci" on)
 under() { printf '%s\n' "$on" | awk -v k="  $1:" '$0 == k {s = 1; next} /^  [^ ]/ {s = 0} s'; }   # under <trigger>
 nightly_path="^ +- ['\"]?\.github/workflows/mapping-nightly\.yml['\"]? *\$"
-check "ci: both path lists name the nightly workflow" \
-  "pull_request $(under pull_request | count "$nightly_path"), push $(under push | count "$nightly_path")" \
-  "pull_request 1, push 1"
+check "ci: only the push path list names the nightly workflow, and there is no pull_request trigger" \
+  "pull_request $(printf '%s\n' "$on" | count '^  pull_request:'), push $(under push | count "$nightly_path")" \
+  "pull_request 0, push 1"
 check "ci: the header comment says the nightly workflow's file starts it too" \
   "$(header "$ci" | yes_no names 'mapping-nightly\.yml')" yes
-check "ci: mapping-ci.yml has no schedule and no windows job; the nightly has the windows job" \
-  "schedule $(printf '%s\n' "$on" | count '^  schedule:'), ci windows $(job "$ci" windows | count 'runs-on'), \
-nightly windows $(job "$nightly" windows | count '^    runs-on: windows-latest *$')" \
-  "schedule 0, ci windows 0, nightly windows 1"
+check "ci: mapping-ci.yml runs on a schedule and on demand and has no windows job; the nightly has the windows job, on demand only" \
+  "ci schedule $(printf '%s\n' "$on" | count '^  schedule:'), ci dispatch $(printf '%s\n' "$on" | count '^  workflow_dispatch:'), \
+ci windows $(job "$ci" windows | count 'runs-on'), nightly windows $(job "$nightly" windows | count '^    runs-on: windows-latest *$'), \
+nightly schedule $(block "$nightly" on | count '^  schedule:'), nightly dispatch $(block "$nightly" on | count '^  workflow_dispatch:')" \
+  "ci schedule 1, ci dispatch 1, ci windows 0, nightly windows 1, nightly schedule 0, nightly dispatch 1"
 check "ci: the concurrency group carries the event's name" \
   "$(block "$ci" concurrency | count '^  group: mapping-ci-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\} *$')" 1
 check "ci: no secrets., continue-on-error, RATCHET_TODAY or ISO date anywhere in mapping-ci.yml" \

@@ -1,23 +1,13 @@
 name: ui-ci
 
-# The Rail8 web application (ui/) on every change to it: licences of every npm package, the generated types, type
-# check, lint, unit tests, component tests in Chromium and the production build.
+# The Rail8 web application (ui/): licences of every npm package, the generated types, type check, lint, unit tests,
+# component tests in Chromium and the production build, and the end-to-end scenarios against the mapping service's jar.
+# It runs once a day on main, before the owner's morning overview, and on demand; it has no pull request trigger, and
+# the session that wrote a change builds locally before it merges.
 on:
-  pull_request:
-    paths:
-      - 'ui/**'
-      # the mapping studio's types are generated from the contract, and its fake service reads the corpus and the contract
-      - 'mapping/corpus/**'
-      - 'mapping/contract/**'
-      - '.github/workflows/ui-ci.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'ui/**'
-      # the mapping studio's types are generated from the contract, and its fake service reads the corpus and the contract
-      - 'mapping/corpus/**'
-      - 'mapping/contract/**'
-      - '.github/workflows/ui-ci.yml'
+  schedule:
+    - cron: '42 4 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: ui-ci-${{ github.event_name }}-${{ github.ref }}
@@ -62,3 +52,48 @@ jobs:
         run: |
           test ! -e dist/e2e
           ! grep -rqF 'fake mapping service' dist
+
+  # The mapping service's jar started over a copy of the corpus, and the @stack scenarios of the UI against it.
+  stack:
+    name: ui · stack
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mapping
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: 'mapping/**/pom.xml'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - name: The service's jar
+        run: ../mvnw -B -pl service -am package -DskipTests
+      - name: Playwright
+        working-directory: ui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: '@stack scenarios against the service'
+        working-directory: ui
+        run: npm run e2e:stack

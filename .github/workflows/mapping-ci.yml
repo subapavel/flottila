@@ -1,22 +1,18 @@
 name: mapping-ci
 
-# The mapping engine's checks on every change (mapping/): build with unit tests, licences and bans and
-# the script tests. Every step runs in mapping/ with the repository's wrapper. The mapping studio is part of the
-# Rail8 UI (ui/), which ui-ci.yml checks.
-# It runs when the mapping, the root pom, the wrapper, the root .gitattributes, this file or mapping-nightly.yml
-# changes. The UI's end-to-end tests, the stack suite against the service, coverage floors, the ratchet, mutation
-# testing and the Windows build run once a night in
-# mapping-nightly.yml as a report that blocks nothing. The platform's ci.yml checks the sign-off of every commit.
+# The mapping engine's checks (mapping/): build with unit tests, licences and bans and the script tests. Every step
+# runs in mapping/ with the repository's wrapper. The mapping studio is part of the Rail8 UI (ui/), which ui-ci.yml
+# checks.
+# It runs once a day on main, before the owner's morning overview, and on demand. It has no pull request trigger; the
+# session that wrote a change builds locally before it merges. A push to main also runs it when the mapping, the root
+# pom, the wrapper, the root .gitattributes, this file or mapping-nightly.yml changes, because the coverage ratchet of
+# mapping-nightly.yml reads the push runs of the backend job. The UI's end-to-end tests, coverage floors, the ratchet,
+# mutation testing and the Windows build run only on demand in mapping-nightly.yml. The platform's ci.yml checks the
+# sign-off of every commit.
 on:
-  pull_request:
-    paths:
-      - 'mapping/**'
-      - 'pom.xml'
-      - '.mvn/**'
-      - 'mvnw*'
-      - '.gitattributes'
-      - '.github/workflows/mapping-ci.yml'
-      - '.github/workflows/mapping-nightly.yml'
+  schedule:
+    - cron: '12 4 * * *'
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
