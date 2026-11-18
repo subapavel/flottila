@@ -1,0 +1,1399 @@
+# Differential cases of _match_impl, jq 1.8.2's f_match (src/builtin.c) on joni: one case per construct of
+# Oniguruma's syntax list (doc/RE of Oniguruma 6.9, by its section numbers), one per modifier, the match loop's
+# steps after an empty match and its offsets in code points, the type errors, and one case per compile-error text
+# Oniguruma gives for a pattern. Each case reads its subject, pattern and modifiers from the document on stdin and
+# prints every match, or the error, so a difference shows the construct. The prelude-* cases run the functions jq's
+# prelude defines over the native, and the order of the native's arguments. A case where joni differs on purpose names
+# its DEVIATIONS.md row ("Regex dialect") with deviation and gives the engine's output. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in regex.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+
+case regex/escape
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a.b axb", "re": "a\\\\.b", "f": "g"}\n
+end
+
+case regex/alternation
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "cat dog cow", "re": "cat|cow", "f": "g"}\n
+end
+
+case regex/group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ababx", "re": "(ab)+", "f": "g"}\n
+end
+
+case regex/class
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a1b2", "re": "[a-b]", "f": "g"}\n
+end
+
+case regex/char-tab
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\tb", "re": "\\\\t", "f": "g"}\n
+end
+
+case regex/char-vtab
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\u000bb", "re": "\\\\v", "f": "g"}\n
+end
+
+case regex/char-newline
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "\\\\n", "f": "g"}\n
+end
+
+case regex/char-return
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\rb", "re": "\\\\r", "f": "g"}\n
+end
+
+case regex/char-backspace-in-class
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\bb", "re": "[\\\\b]", "f": "g"}\n
+end
+
+case regex/char-formfeed
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\fb", "re": "\\\\f", "f": "g"}\n
+end
+
+case regex/char-bell
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\u0007b", "re": "\\\\a", "f": "g"}\n
+end
+
+case regex/char-escape
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\u001bb", "re": "\\\\e", "f": "g"}\n
+end
+
+case regex/char-octal
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xAx", "re": "\\\\101", "f": "g"}\n
+end
+
+case regex/char-hex
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xAx", "re": "\\\\x41", "f": "g"}\n
+end
+
+case regex/char-hex-codepoint
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xあx", "re": "\\\\x{3042}", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no \N, \O or \o{...}: it reads the escape as the letter
+case regex/char-octal-codepoint
+deviation regex-escape-as-letter
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xAx", "re": "\\\\o{101}", "f": "g"}\n
+engine-stdout []\n
+end
+
+case regex/char-u
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xあx", "re": "\\\\u3042", "f": "g"}\n
+end
+
+case regex/char-control-c
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "x\\u0001x", "re": "\\\\ca", "f": "g"}\n
+end
+
+case regex/char-control-C
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "x\\u0001x", "re": "\\\\C-a", "f": "g"}\n
+end
+
+case regex/char-meta
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xáx", "re": "\\\\M-a", "f": "g"}\n
+end
+
+case regex/char-meta-control
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xx", "re": "\\\\M-\\\\C-a", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni reads a code point sequence in \x{...} as one code point
+case regex/codepoint-sequence-hex
+deviation regex-codepoint-sequence
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xABx", "re": "\\\\x{41 42}", "f": "g"}\n
+engine-stdout []\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no \N, \O or \o{...}: it reads the escape as the letter
+case regex/codepoint-sequence-octal
+deviation regex-escape-as-letter
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xABx", "re": "\\\\o{101 102}", "f": "g"}\n
+engine-stdout []\n
+end
+
+case regex/type-dot
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": ".", "f": "g"}\n
+end
+
+case regex/type-word
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a_1 é-", "re": "\\\\w", "f": "g"}\n
+end
+
+case regex/type-not-word
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a_1 é-", "re": "\\\\W", "f": "g"}\n
+end
+
+case regex/type-space
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a b c d", "re": "\\\\s", "f": "g"}\n
+end
+
+case regex/type-not-space
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a b", "re": "\\\\S", "f": "g"}\n
+end
+
+case regex/type-digit
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "1a٣", "re": "\\\\d", "f": "g"}\n
+end
+
+case regex/type-not-digit
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "1a٣", "re": "\\\\D", "f": "g"}\n
+end
+
+case regex/type-hex
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "fg9", "re": "\\\\h", "f": "g"}\n
+end
+
+case regex/type-not-hex
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "fg9", "re": "\\\\H", "f": "g"}\n
+end
+
+case regex/type-general-newline
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\r\\nb\\nc d", "re": "\\\\R", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no \N, \O or \o{...}: it reads the escape as the letter
+case regex/type-not-newline
+deviation regex-escape-as-letter
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "\\\\N", "f": "g"}\n
+engine-stdout []\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no \N, \O or \o{...}: it reads the escape as the letter
+case regex/type-true-anychar
+deviation regex-escape-as-letter
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "\\\\O", "f": "g"}\n
+engine-stdout []\n
+end
+
+case regex/type-text-segment
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "éx🇨🇿", "re": "\\\\X", "f": "g"}\n
+end
+
+case regex/property
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aB1é", "re": "\\\\p{Alpha}", "f": "g"}\n
+end
+
+case regex/property-negated-caret
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aB1é", "re": "\\\\p{^Alpha}", "f": "g"}\n
+end
+
+case regex/property-negated-P
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aB1é", "re": "\\\\P{Alpha}", "f": "g"}\n
+end
+
+case regex/property-script
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aαあ", "re": "\\\\p{Greek}", "f": "g"}\n
+end
+
+case regex/property-category
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aB1", "re": "\\\\p{Lu}", "f": "g"}\n
+end
+
+case regex/property-hiragana
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aあア", "re": "\\\\p{Hiragana}", "f": "g"}\n
+end
+
+case regex/greedy-optional
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "ab?", "f": "g"}\n
+end
+
+case regex/greedy-star
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaab", "re": "a*", "f": "g"}\n
+end
+
+case regex/greedy-plus
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaab", "re": "a+", "f": "g"}\n
+end
+
+case regex/greedy-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2,3}", "f": "g"}\n
+end
+
+case regex/greedy-at-least
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2,}", "f": "g"}\n
+end
+
+case regex/greedy-at-most
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{,2}", "f": "g"}\n
+end
+
+case regex/greedy-exactly
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2}", "f": "g"}\n
+end
+
+case regex/reluctant-optional
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa", "re": "a??", "f": "g"}\n
+end
+
+case regex/reluctant-star
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaa", "re": "a*?", "f": "g"}\n
+end
+
+case regex/reluctant-plus
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaa", "re": "a+?", "f": "g"}\n
+end
+
+case regex/reluctant-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2,3}?", "f": "g"}\n
+end
+
+case regex/reluctant-at-least
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2,}?", "f": "g"}\n
+end
+
+case regex/reluctant-at-most
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{,2}?", "f": "g"}\n
+end
+
+case regex/reluctant-exactly
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaaa", "re": "a{2}?", "f": "g"}\n
+end
+
+case regex/possessive-optional
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aab", "re": "a?+a", "f": "g"}\n
+end
+
+case regex/possessive-star
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaa", "re": "a*+a", "f": "g"}\n
+end
+
+case regex/possessive-plus
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaab", "re": "a++b", "f": "g"}\n
+end
+
+case regex/possessive-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaa", "re": "a{2,3}+", "f": "g"}\n
+end
+
+case regex/possessive-reversed-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aaaa", "re": "a{3,2}", "f": "g"}\n
+end
+
+case regex/anchor-line-start
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\na", "re": "^a", "f": "g"}\n
+end
+
+case regex/anchor-line-end
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\na", "re": "a$", "f": "g"}\n
+end
+
+case regex/anchor-word-boundary
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab cd", "re": "\\\\b", "f": "g"}\n
+end
+
+case regex/anchor-not-word-boundary
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab cd", "re": "\\\\B", "f": "g"}\n
+end
+
+case regex/anchor-string-start
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\na", "re": "\\\\Aa", "f": "g"}\n
+end
+
+case regex/anchor-string-end-or-newline
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\na\\n", "re": "a\\\\Z", "f": "g"}\n
+end
+
+case regex/anchor-string-end
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\na\\n", "re": "a\\\\n\\\\z", "f": "g"}\n
+end
+
+case regex/anchor-search-start
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aab", "re": "\\\\Ga", "f": "g"}\n
+end
+
+case regex/anchor-keep
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abcabc", "re": "ab\\\\Kc", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no text segment boundary: it reads the escape as the letter
+case regex/anchor-text-segment-boundary
+deviation regex-text-segment-anchor
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "éx", "re": "\\\\y", "f": "g"}\n
+engine-stdout []\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no text segment boundary: it reads the escape as the letter
+case regex/anchor-text-segment-not-boundary
+deviation regex-text-segment-anchor
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "éx", "re": "\\\\Y", "f": "g"}\n
+engine-stdout []\n
+end
+
+case regex/class-negated
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc1", "re": "[^a-b]", "f": "g"}\n
+end
+
+case regex/class-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abcz", "re": "[b-y]", "f": "g"}\n
+end
+
+case regex/class-nested
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab1-", "re": "[a[0-9]]", "f": "g"}\n
+end
+
+case regex/class-intersection
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abcdefghz", "re": "[a-w&&[^c-g]z]", "f": "g"}\n
+end
+
+case regex/class-escaped-specials
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a[b]c-d", "re": "[\\\\[\\\\]\\\\-]", "f": "g"}\n
+end
+
+case regex/posix-alnum
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a1_ é", "re": "[[:alnum:]]", "f": "g"}\n
+end
+
+case regex/posix-alpha
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a1_ é", "re": "[[:alpha:]]", "f": "g"}\n
+end
+
+case regex/posix-ascii
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aé\x7f", "re": "[[:ascii:]]", "f": "g"}\n
+end
+
+case regex/posix-blank
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a \\tb　", "re": "[[:blank:]]", "f": "g"}\n
+end
+
+case regex/posix-cntrl
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\u0001", "re": "[[:cntrl:]]", "f": "g"}\n
+end
+
+case regex/posix-digit
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a1٣", "re": "[[:digit:]]", "f": "g"}\n
+end
+
+case regex/posix-graph
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a b ", "re": "[[:graph:]]", "f": "g"}\n
+end
+
+case regex/posix-lower
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aBé", "re": "[[:lower:]]", "f": "g"}\n
+end
+
+case regex/posix-print
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a \\u0001", "re": "[[:print:]]", "f": "g"}\n
+end
+
+case regex/posix-punct
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a!$-", "re": "[[:punct:]]", "f": "g"}\n
+end
+
+case regex/posix-space
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a \\n ", "re": "[[:space:]]", "f": "g"}\n
+end
+
+case regex/posix-upper
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aBÉ", "re": "[[:upper:]]", "f": "g"}\n
+end
+
+case regex/posix-xdigit
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "afg9", "re": "[[:xdigit:]]", "f": "g"}\n
+end
+
+case regex/posix-word
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a_ é1", "re": "[[:word:]]", "f": "g"}\n
+end
+
+case regex/posix-negated
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a1_", "re": "[[:^alpha:]]", "f": "g"}\n
+end
+
+case regex/comment
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "a(?#note)b", "f": "g"}\n
+end
+
+case regex/option-ignorecase
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aAbB", "re": "(?i:a)b", "f": "g"}\n
+end
+
+case regex/option-off
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aAbB", "re": "(?i)a(?-i:b)", "f": "g"}\n
+end
+
+case regex/option-m
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "(?m:a.b)", "f": "g"}\n
+end
+
+case regex/option-s
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "(?s:a.b)", "f": "g"}\n
+end
+
+case regex/option-x
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?x: a b )", "f": "g"}\n
+end
+
+case regex/option-W
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "é a", "re": "(?W:\\\\w)", "f": "g"}\n
+end
+
+case regex/option-D
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "1٣", "re": "(?D:\\\\d)", "f": "g"}\n
+end
+
+case regex/option-S
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "  ", "re": "(?S:\\\\s)", "f": "g"}\n
+end
+
+case regex/option-P
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "é a1", "re": "(?P:[[:alnum:]])", "f": "g"}\n
+end
+
+case regex/option-y-grapheme
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "éx", "re": "(?y{g}:\\\\X)", "f": "g"}\n
+end
+
+case regex/option-y-word
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab cd", "re": "(?y{w}:\\\\X)", "f": "g"}\n
+end
+
+case regex/option-isolated
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abC abc", "re": "ab(?i)c", "f": "g"}\n
+end
+
+case regex/option-whole-C
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?C)(a)b", "f": "g"}\n
+end
+
+case regex/option-whole-I
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aKK", "re": "(?I)(?i)k", "f": "g"}\n
+end
+
+case regex/option-whole-L
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?L)a|abc", "f": "g"}\n
+end
+
+case regex/noncapturing
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(?:ab)+", "f": "g"}\n
+end
+
+case regex/capturing
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(a)(b)", "f": "g"}\n
+end
+
+case regex/lookahead
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab ac", "re": "a(?=c)", "f": "g"}\n
+end
+
+case regex/negative-lookahead
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab ac", "re": "a(?!c)", "f": "g"}\n
+end
+
+case regex/lookbehind
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ba ca", "re": "(?<=c)a", "f": "g"}\n
+end
+
+case regex/negative-lookbehind
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ba ca", "re": "(?<!c)a", "f": "g"}\n
+end
+
+case regex/atomic
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aab", "re": "(?>a+)b", "f": "g"}\n
+end
+
+case regex/named-angle
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?<x>a)(b)", "f": "g"}\n
+end
+
+case regex/named-quote
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?'x'a)b", "f": "g"}\n
+end
+
+case regex/named-twice
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?<x>a)(?<x>b)", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no callouts: the pattern fails to compile with another text
+case regex/callout-contents
+deviation regex-callout
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "a(?{x})b", "f": "g"}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no callouts: the pattern fails to compile with another text
+case regex/callout-name
+deviation regex-callout
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "a(*FAIL)|b", "f": "g"}\n
+engine-stdout "Regex failure: target of repeat operator is not specified"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's absent group stops where Oniguruma's does not, so the engine does not compile it
+case regex/absent-repeater
+deviation regex-absent-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a123b456", "re": "a(?~45)", "f": "g"}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's absent group stops where Oniguruma's does not, so the engine does not compile it
+case regex/absent-expression
+deviation regex-absent-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "12345678", "re": "(?~|345|\\\\d*)", "f": "g"}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's absent group stops where Oniguruma's does not, so the engine does not compile it
+case regex/absent-stopper
+deviation regex-absent-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "12345", "re": "(?~|34)\\\\d+", "f": "g"}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's absent group stops where Oniguruma's does not, so the engine does not compile it
+case regex/absent-range-clear
+deviation regex-absent-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "12345", "re": "(?~|34)(?~|)\\\\d+", "f": "g"}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+case regex/if-then-else
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab b", "re": "(a)?(?(1)b|c)", "f": "g"}\n
+end
+
+case regex/if-then
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab b", "re": "(a)?(?(1)b)", "f": "g"}\n
+end
+
+case regex/if-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab b", "re": "(?<x>a)?(?(<x>)b|c)", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): both fail to compile, with different texts
+case regex/if-condition-expression
+deviation regex-condition-expression
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab cd", "re": "(?(?=a)ab|cd)", "f": "g"}\n
+engine-stdout "Regex failure: unmatched close parenthesis"\n
+end
+
+case regex/validity-checker
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(a)(?(1))b", "f": "g"}\n
+end
+
+case regex/backref-number
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(a)\\\\1", "f": "g"}\n
+end
+
+case regex/backref-k-number
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(a)\\\\k<1>", "f": "g"}\n
+end
+
+case regex/backref-k-quote
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(a)\\\\k'1'", "f": "g"}\n
+end
+
+case regex/backref-k-relative-back
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(a)\\\\k<-1>", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no backreference to a later group
+case regex/backref-k-relative-forward
+deviation regex-relative-forward-backref
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa", "re": "(?:\\\\k<+1>|(a))+", "f": "g"}\n
+engine-stdout "Regex failure: undefined name <+1> reference"\n
+end
+
+case regex/backref-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(?<x>a)\\\\k<x>", "f": "g"}\n
+end
+
+case regex/backref-name-quote
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa ab", "re": "(?<x>a)\\\\k'x'", "f": "g"}\n
+end
+
+case regex/backref-name-twice
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aa bb", "re": "(?<x>a)|(?<x>b)\\\\k<x>", "f": "g"}\n
+end
+
+case regex/backref-level
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "reer", "re": "\\\\A(?<a>|.|(?:(?<b>.)\\\\g<a>\\\\k<b+0>))\\\\z", "f": "g"}\n
+end
+
+case regex/call-number
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(ab)\\\\g<1>", "f": "g"}\n
+end
+
+case regex/call-number-quote
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(ab)\\\\g'1'", "f": "g"}\n
+end
+
+case regex/call-zero
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "((x))", "re": "\\\\((?:x|\\\\g<0>)\\\\)", "f": "g"}\n
+end
+
+case regex/call-relative-back
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(ab)\\\\g<-1>", "f": "g"}\n
+end
+
+case regex/call-relative-forward
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "\\\\g<+1>(ab)", "f": "g"}\n
+end
+
+case regex/call-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "(?<x>ab)\\\\g<x>", "f": "g"}\n
+end
+
+case regex/call-option-of-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "A", "re": "(?-i:\\\\g<x>)(?i:(?<x>a)){0}", "f": "g"}\n
+end
+
+case regex/unnamed-beside-named
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(a)(?<x>b)(c)", "f": "g"}\n
+end
+
+case regex/numbered-backref-beside-named
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aba", "re": "(a)(?<x>b)\\\\1", "f": "g"}\n
+end
+
+case regex/perl-option-s
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "(?s)a.b", "f": "g"}\n
+end
+
+case regex/perl-option-m
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "(?m)^b", "f": "g"}\n
+end
+
+case regex/quote
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a.b axb", "re": "\\\\Qa.b\\\\E", "f": "g"}\n
+end
+
+case regex/named-char
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a b", "re": "\\\\N{SPACE}", "f": "g"}\n
+end
+
+case regex/unpaired-brace
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a{b", "re": "a{", "f": "g"}\n
+end
+
+case regex/unpaired-brace-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a{2,3", "re": "a{2,3", "f": "g"}\n
+end
+
+case regex/brace-empty-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a{,}", "re": "a{,}", "f": "g"}\n
+end
+
+case regex/ignorecase-escape
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aA", "re": "\\\\x61", "f": "gi"}\n
+end
+
+case regex/zero-width-loop
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "", "re": "(?:()|())*\\\\1\\\\2", "f": "g"}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni lets an empty capture's backreference match in a later turn of the loop
+case regex/zero-width-loop-backref
+deviation regex-backref-in-empty-loop
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a", "re": "(?:\\\\1a|())*", "f": "g"}\n
+engine-stdout [{"offset":0,"length":1,"string":"a","captures":[{"offset":0,"string":"","length":0,"name":null}]},{"offset":1,"length":0,"string":"","captures":[{"offset":1,"string":"","length":0,"name":null}]}]\n
+end
+
+case regex/modifier-none
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "b", "f": null}\n
+end
+
+case regex/modifier-g
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abab", "re": "b", "f": "g"}\n
+end
+
+case regex/modifier-i
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aAbB", "re": "a", "f": "gi"}\n
+end
+
+case regex/modifier-x
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": " a b # comment", "f": "x"}\n
+end
+
+case regex/modifier-m
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "a.b", "f": "m"}\n
+end
+
+case regex/modifier-s
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "a$", "f": "s"}\n
+end
+
+case regex/modifier-p
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a\\nb", "re": "a.b", "f": "p"}\n
+end
+
+case regex/modifier-l
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "a|abc", "f": "l"}\n
+end
+
+case regex/modifier-n
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "x*", "f": "gn"}\n
+end
+
+case regex/modifier-repeated
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "aA", "re": "a", "f": "ggii"}\n
+end
+
+case regex/modifier-empty
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "b", "f": ""}\n
+end
+
+case regex/modifier-invalid
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "b", "f": "gz"}\n
+end
+
+case regex/modifier-not-string
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "b", "f": 1}\n
+end
+
+case regex/loop-empty-in-two-bytes
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "é", "re": "", "f": "g"}\n
+end
+
+case regex/loop-empty-alternative
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "éa", "re": "|a", "f": "g"}\n
+end
+
+case regex/loop-lookahead-once
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "qux", "re": "(?=u)", "f": "g"}\n
+end
+
+case regex/loop-captures-reset
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(a)|b", "f": "g"}\n
+end
+
+case regex/loop-lookbehind-capture
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "xbx", "re": "(?<=(x))b", "f": "g"}\n
+end
+
+case regex/loop-empty-capture-offset
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "ab", "re": "(?=(b))", "f": "g"}\n
+end
+
+case regex/loop-four-byte
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "😀a😀a", "re": "a|😀", "f": "g"}\n
+end
+
+case regex/input-not-string
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": 1, "re": "a", "f": "g"}\n
+end
+
+case regex/pattern-not-string
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "a", "re": 1, "f": "g"}\n
+end
+
+case regex/error-empty-char-class
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "[]", "f": null}\n
+end
+
+case regex/error-premature-end-of-char-class
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "[", "f": null}\n
+end
+
+case regex/error-end-at-escape
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\", "f": null}\n
+end
+
+case regex/error-class-value-at-end-of-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "[a-\\\\w]", "f": null}\n
+end
+
+case regex/error-repeat-target-not-specified
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "*", "f": null}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni repeats a look-around that Oniguruma rejects
+case regex/error-repeat-target-invalid
+deviation regex-repeated-lookaround
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?=a)*", "f": null}\n
+engine-stdout [{"offset":0,"length":0,"string":"","captures":[]}]\n
+end
+
+case regex/error-unmatched-close
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": ")", "f": null}\n
+end
+
+case regex/error-unmatched-open
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(", "f": null}\n
+end
+
+case regex/error-end-in-group
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?", "f": null}\n
+end
+
+case regex/error-undefined-group-option
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?z)", "f": null}\n
+end
+
+case regex/error-invalid-posix-bracket
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "[[:foo:]]", "f": null}\n
+end
+
+case regex/error-too-big-repeat
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "a{100001}", "f": null}\n
+end
+
+case regex/error-upper-below-lower
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "a{2,1}", "f": null}\n
+end
+
+case regex/error-empty-range
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "[b-a]", "f": null}\n
+end
+
+case regex/error-invalid-backref
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\2", "f": null}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's text for a code point past the range
+case regex/error-too-long-wide-char
+deviation regex-wide-char-text
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\x{FFFFFFFFF}", "f": null}\n
+engine-stdout "Regex failure: too big wide-char value"\n
+end
+
+case regex/error-empty-group-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?<>a)", "f": null}\n
+end
+
+case regex/error-invalid-group-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?<1a>a)", "f": null}\n
+end
+
+case regex/error-undefined-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\k<x>", "f": null}\n
+end
+
+case regex/error-undefined-call-name
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\g<x>", "f": null}\n
+end
+
+case regex/error-multiplex-call
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?<n>a)(?<n>b)\\\\g<n>", "f": null}\n
+end
+
+case regex/error-never-ending-recursion
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?<n>a|\\\\g<n>b)", "f": null}\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni's text names the property in angle brackets
+case regex/error-invalid-property
+deviation regex-property-name-text
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\p{Foo}", "f": null}\n
+engine-stdout "Regex failure: invalid character property name <Foo>"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no callouts: the pattern fails to compile with another text
+case regex/error-invalid-callout-pattern
+deviation regex-callout
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?{a", "f": null}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no callouts: the pattern fails to compile with another text
+case regex/error-undefined-callout-name
+deviation regex-callout
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(*FOO)", "f": null}\n
+engine-stdout "Regex failure: target of repeat operator is not specified"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no callouts: the pattern fails to compile with another text
+case regex/error-invalid-callout-tag
+deviation regex-callout
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "(?{a}[1])", "f": null}\n
+engine-stdout "Regex failure: undefined group option"\n
+end
+
+# Deviation (DEVIATIONS "Regex dialect"): joni has no \N, \O or \o{...}: it reads the escape as the letter
+case regex/error-octal-too-long
+deviation regex-escape-as-letter
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "abc", "re": "\\\\o{8}", "f": null}\n
+engine-stdout []\n
+end
+
+case regex/prelude-test
+arg -c
+filter .s | [test("b"), test("B"; "i"), test(["B", "i"]), test("x")]
+stdin {"s": "abc"}\n
+end
+
+case regex/prelude-match-array
+arg -c
+filter .s | [match(["(b)", "g"])]
+stdin {"s": "abab"}\n
+end
+
+case regex/prelude-capture
+arg -c
+filter .s | capture("(?<y>[0-9]+)-(?<m>[0-9]+)")
+stdin {"s": "2026-11"}\n
+end
+
+case regex/prelude-capture-global
+arg -c
+filter .s | [capture("(?<d>[0-9])"; "g")]
+stdin {"s": "a1b2"}\n
+end
+
+case regex/prelude-capture-unmatched
+arg -c
+filter .s | capture("(?<a>x)?(?<b>y)")
+stdin {"s": "y"}\n
+end
+
+case regex/prelude-scan
+arg -c
+filter .s | [scan("c"), scan("(a+)(b)"), scan("A"; "i")]
+stdin {"s": "aabcab"}\n
+end
+
+case regex/prelude-splits
+arg -c
+filter .s | [splits(", *")]
+stdin {"s": "a, b,c"}\n
+end
+
+case regex/prelude-splits-flags
+arg -c
+filter .s | [splits("X"; "i")]
+stdin {"s": "axbXc"}\n
+end
+
+case regex/prelude-split-regex
+arg -c
+filter .s | split(", *"; null)
+stdin {"s": "a, b,c"}\n
+end
+
+case regex/prelude-split-empty-match
+arg -c
+filter .s | split(""; null)
+stdin {"s": "abc"}\n
+end
+
+case regex/prelude-offsets-in-code-points
+arg -c
+filter .s | [match("é+"; "g") | .offset, .length]
+stdin {"s": "aééaé"}\n
+end
+
+case regex/prelude-argument-order
+arg -c
+filter .s | [test("a", "c"; null, "g")]
+stdin {"s": "ab"}\n
+end
+
+case regex/prelude-test-not-string
+arg -c
+filter .s | try test(1) catch .
+stdin {"s": "a"}\n
+end
+
+case regex/prelude-match-not-string
+arg -c
+filter .s | try match(1) catch .
+stdin {"s": "a"}\n
+end

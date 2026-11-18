@@ -52,11 +52,13 @@ public final class JqFilter {
     try {
       // Outside the inner try: a refused run never ends the one running, and a run ended here began none.
       state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten(), limits.recursionDepth(), limits.stackBytes());
+      workspace.patterns.begin(limits.regexMatchTime().toNanos());
       try {
         // query-core hands values over as Object; every value this filter pushes or raises is a jq value.
         return executable.run(state, parameters, input, v -> sink.emit((JqValue) v));
       } finally {
         state.end();
+        workspace.patterns.end();
       }
     } catch (FilterException e) {
       // After the run, so the detach charges nothing (a copy made for the host after a run is not charged), and while

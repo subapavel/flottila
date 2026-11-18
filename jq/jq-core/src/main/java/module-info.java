@@ -2,6 +2,7 @@
 @SuppressWarnings("module")
 module dev.rail8.jq {
   requires dev.rail8.jq.query;
+  requires org.jruby.joni;
 
   exports dev.rail8.jq;
   exports dev.rail8.jq.host;

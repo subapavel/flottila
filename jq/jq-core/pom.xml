@@ -22,6 +22,10 @@
       <groupId>dev.rail8.jq</groupId>
       <artifactId>rail8-jq-query-core</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.jruby.joni</groupId>
+      <artifactId>joni</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

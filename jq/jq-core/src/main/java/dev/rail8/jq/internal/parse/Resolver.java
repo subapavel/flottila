@@ -21,6 +21,7 @@ import dev.rail8.jq.internal.op.NumberTests;
 import dev.rail8.jq.internal.op.ObjectKey;
 import dev.rail8.jq.internal.op.Raise;
 import dev.rail8.jq.internal.op.Range;
+import dev.rail8.jq.internal.op.Regex;
 import dev.rail8.jq.internal.op.Search;
 import dev.rail8.jq.internal.op.Slice;
 import dev.rail8.jq.internal.op.Sort;
@@ -682,6 +683,7 @@ public final class Resolver {
       case FROMJSON -> new Intrinsic(at, Basics.FROMJSON, List.of());
       case TOBOOLEAN -> new Intrinsic(at, Basics.TOBOOLEAN, List.of());
       case FORMAT -> withArgument(c, Formats.FORMAT);
+      case MATCH -> withArguments(c, Regex.MATCH);
     };
   }
 
@@ -694,6 +696,28 @@ public final class Resolver {
     Node arg = lower(c.args().getFirst());
     int slot = operandSlot(arg);
     return bind(arg, slot, new Intrinsic(here(c.source()), op, List.of(argument(arg, slot))));
+  }
+
+  /**
+   * The call {@code c} of a native of several arguments, the FnN {@code op} on each combination of their results: each
+   * argument passed or bound as {@link #withArgument} does, the last outermost, as jq 1.8.2 runs a C function's
+   * arguments last-first. {@code _match_impl(re; mode; testmode)} lowers so.
+   */
+  private Node withArguments(Ast.Call c, Operation op) {
+    int n = c.args().size();
+    Node[] args = new Node[n];
+    int[] argSlots = new int[n];
+    List<Node> passed = new ArrayList<>(n);
+    for (int i = 0; i < n; i++) {
+      args[i] = lower(c.args().get(i));
+      argSlots[i] = operandSlot(args[i]);
+      passed.add(argument(args[i], argSlots[i]));
+    }
+    Node call = new Intrinsic(here(c.source()), op, passed);
+    for (int i = 0; i < n; i++) {
+      call = bind(args[i], argSlots[i], call);
+    }
+    return call;
   }
 
   /**
