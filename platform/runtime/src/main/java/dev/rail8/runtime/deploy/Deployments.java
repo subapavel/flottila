@@ -1162,7 +1162,7 @@ public final class Deployments {
                 return;
             }
             flows.put(id, def);
-            problems.addAll(optionProblems(id, flow.getJsonArray("steps"), def.steps()));
+            problems.addAll(optionProblems(id, def.steps()));
             feeds.computeIfAbsent(def.fromEndpoint(), endpoint -> new ArrayList<>()).add(id);
             if (outs.contains(def.fromEndpoint())) {
                 problems.add("flow '" + id + "' consumes from endpoint '" + def.fromEndpoint() + "', whose direction is out: a flow's from is an in endpoint");
@@ -1237,16 +1237,15 @@ public final class Deployments {
         }
         pkg.flows().forEach((id, flow) -> {
             if (!Schemas.FLOW.validate(flow).valid()) return;   // its schema problems are listed
-            JsonArray steps = flow.getJsonArray("steps");
-            for (int i = 0; i < steps.size(); i++) {
-                JsonObject step = steps.getJsonObject(i);
+            for (Package.WrittenStep written : Package.writtenSteps(flow)) {
+                JsonObject step = written.entry();
                 for (String key : List.of("stylesheet", "schema")) {
                     if (!(step.getValue(key) instanceof String reference)) continue;
                     Optional<String> dep = Package.dependencyOf(reference);
                     Path root = dep.map(dirs::get).orElse(null);   // null: a path from the package root, or a dependency not resolved
                     if (root != null && !Files.isRegularFile(root.resolve(reference.substring(dep.get().length() + 1)).normalize())) {
-                        lines.add(dir.relativize(pkg.flowFile(id)).toString().replace(File.separatorChar, '/') + ": flow '" + id + "' step '"
-                                + step.getString("name") + "' " + key + " '" + reference + "' does not exist in " + dep.get() + "@" + versions.get(dep.get()));
+                        lines.add(dir.relativize(pkg.flowFile(id)).toString().replace(File.separatorChar, '/') + ": flow '" + id + "' "
+                                + written.label() + " " + key + " '" + reference + "' does not exist in " + dep.get() + "@" + versions.get(dep.get()));
                     }
                 }
             }
@@ -1407,20 +1406,18 @@ public final class Deployments {
 
     /**
      * The options of each step whose type a step factory on the node builds — {@link StepConfig#config()} without {@code recording},
-     * i.e. the step without {@code type}, {@code name}, {@code retryable} and {@code recording}, read from {@code entries}, the flow's
-     * {@code steps} as written — judged by that factory's {@code configSchema()}: a line per problem, {@code flow '<flow>' step
-     * <n> '<name>' (type '<type>') option at '<path>': <message>}, and one line for the step when the schema cannot be used (not JSON,
-     * no object, not a schema).
+     * i.e. the step without {@code type}, {@code name}, {@code retryable} and {@code recording} — judged by that factory's
+     * {@code configSchema()}: a line per problem, {@code flow '<flow>' step <n> '<name>' (type '<type>') option at '<path>':
+     * <message>}, n and name the step's number and name in the run (a step of a local process under {@code <call>/<step>}), and
+     * one line for the step when the schema cannot be used (not JSON, no object, not a schema).
      * A type no factory builds is not judged: a built-in one is typed by the flow schema, an unknown one does not build.
      */
-    private List<String> optionProblems(String flowId, JsonArray entries, List<StepConfig> defs) {
+    private List<String> optionProblems(String flowId, List<StepConfig> defs) {
         List<String> problems = new ArrayList<>();
         for (StepConfig step : defs) {
             Optional<StepFactory> factory = steps.stream().filter(f -> f.type().equals(step.type())).findFirst();
             if (factory.isEmpty()) continue;
-            JsonObject entry = entries.getJsonObject(step.index() - 1);
-            JsonObject options = new JsonObject();
-            step.config().keySet().forEach(key -> options.put(key, entry.getValue(key)));
+            JsonObject options = (JsonObject) json(step.config());
             options.remove("recording");   // the platform's key (the recorder reads it), never the factory's option
             String at = "flow '" + flowId + "' step " + step.index() + " '" + step.name() + "' (type '" + step.type() + "')";
             try {
@@ -1927,6 +1924,21 @@ public final class Deployments {
     private static Object plain(Object value) {
         if (value instanceof JsonObject o) return map(o);
         if (value instanceof JsonArray a) return a.stream().map(Deployments::plain).toList();
+        return value;
+    }
+
+    /** {@code value} with its maps and lists as JSON objects and arrays, at any depth: the inverse of {@link #plain}. */
+    private static Object json(Object value) {
+        if (value instanceof Map<?, ?> m) {
+            JsonObject o = new JsonObject();
+            m.forEach((k, v) -> o.put(String.valueOf(k), json(v)));
+            return o;
+        }
+        if (value instanceof List<?> l) {
+            JsonArray a = new JsonArray();
+            l.forEach(v -> a.add(json(v)));
+            return a;
+        }
         return value;
     }
 

@@ -115,13 +115,14 @@ class BuiltInStepsTest {
     }
 
     /**
-     * {@link FlowBuilder#BUILT_INS} are the types the builder builds itself: a step of each, with no factory registered and none
+     * {@link FlowBuilder#BUILT_INS} are the types the platform handles itself: a step of each, with no factory registered and none
      * of its keys, fails for a missing key and never as an unknown type, while a type not listed is unknown; and a factory for a
-     * built-in type, which would never be called, is refused.
+     * built-in type, which would never be called, is refused ({@code process} included: the flow's definition replaces such a
+     * step by its process's steps).
      */
     @Test
     void theBuiltInTypesNeedNoFactoryAndTakeNone() {
-        assertEquals(Set.of("to", "route", "filter", "extractKey", "validate", "split"), FlowBuilder.BUILT_INS);
+        assertEquals(Set.of("to", "route", "filter", "extractKey", "validate", "split", "process"), FlowBuilder.BUILT_INS);
         for (String type : FlowBuilder.BUILT_INS) {
             RuntimeException failed = assertThrows(RuntimeException.class, () -> build(Map.of("type", type, "name", "s", "language", "header")));
             assertFalse(String.valueOf(failed.getMessage()).contains("unknown step type"), type + " is built in: " + failed.getMessage());
@@ -134,5 +135,12 @@ class BuiltInStepsTest {
         };
         String refused = assertThrows(IllegalArgumentException.class, () -> new FlowBuilder(rt.runtime(), List.of(route), List.of(HEADERS), Map.of())).getMessage();
         assertTrue(refused.contains("'route'") && refused.contains("built in"), refused);
+        StepFactory process = new StepFactory() {
+            @Override public String type() { return "process"; }
+            @Override public String configSchema() { return "{}"; }
+            @Override public Stage create(StepConfig step, StepResources resources) { return (e, rest) -> rest.apply(e); }
+        };
+        String processRefused = assertThrows(IllegalArgumentException.class, () -> new FlowBuilder(rt.runtime(), List.of(process), List.of(HEADERS), Map.of())).getMessage();
+        assertTrue(processRefused.contains("'process'") && processRefused.contains("built in"), processRefused);
     }
 }

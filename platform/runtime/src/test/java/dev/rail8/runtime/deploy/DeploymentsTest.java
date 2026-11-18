@@ -454,9 +454,21 @@ class DeploymentsTest {
                         p -> steps(p, "ping", OptionSchemaSteps.Sheet.step("first", 7), OptionSchemaSteps.Sheet.step("second", "")),
                         List.of(List.of("ping'", "step 1 'first' (type 'sheet') option at '/template'"),
                                 List.of("ping'", "step 2 'second' (type 'sheet') option at '/template'"))),
+                rule("a step option its factory's schema refuses inside a local process (named and numbered by its place in the run)",
+                        p -> {
+                            steps(p, "orders", OptionSchemaSteps.Sheet.step("good", "maps/order.xsl"), call("enrich", "prepare"));
+                            p.flowDoc("orders").put("processes", new JsonObject().put("prepare", new JsonObject()
+                                    .put("steps", new JsonArray().add(OptionSchemaSteps.Sheet.step("fine", "x.xsl")).add(OptionSchemaSteps.Sheet.step("bad", 7)))));
+                        },
+                        List.of(List.of("orders'", "step 3 'enrich/bad' (type 'sheet') option at '/template'"))),
                 rule("a step factory whose configSchema is not a schema",
                         p -> steps(p, "orders", new JsonObject().put("type", OptionSchemaSteps.Garbled.TYPE).put("name", "g")),
                         List.of(List.of("orders'", "garbled"))));
+    }
+
+    /** A step that runs the local process {@code process} of its flow. */
+    static JsonObject call(String name, String process) {
+        return new JsonObject().put("type", "process").put("name", name).put("process", process);
     }
 
     /** Sets flow {@code flow}'s steps to {@code steps} followed by the send to {@code partner}. */
@@ -513,6 +525,24 @@ class DeploymentsTest {
         assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(deployed.flows()), "the package deployed");
         Sent sync = send("shop/orders");
         assertEquals(sync.id(), assertInstanceOf(Ack.Reply.class, within(sync.answer(), "the sync answer"), "the flow runs its sheet steps").reply().id());
+    }
+
+    /**
+     * A flow whose steps call a local process deploys and runs: the process's steps run where the call stands, and their options
+     * are judged by their factory's schema like any step's.
+     */
+    @Test
+    void aFlowThatCallsALocalProcessDeploysAndRunsItsSteps() throws Exception {
+        PackageDraft p = shop("shop");
+        steps(p, "orders", call("enrich", "prepare"), OptionSchemaSteps.Sheet.step("after", "x.xsl"));
+        p.flowDoc("orders").put("processes", new JsonObject().put("prepare", new JsonObject()
+                .put("steps", new JsonArray().add(OptionSchemaSteps.Sheet.step("good", "maps/order.xsl")).add(OptionSchemaSteps.Sheet.step("again", "x.xsl")))));
+
+        DeployedPackage deployed = deploy(p);
+
+        assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(deployed.flows()), "the package deployed");
+        Sent sync = send("shop/orders");
+        assertEquals(sync.id(), assertInstanceOf(Ack.Reply.class, within(sync.answer(), "the sync answer"), "the flow runs its steps").reply().id());
     }
 
     /**

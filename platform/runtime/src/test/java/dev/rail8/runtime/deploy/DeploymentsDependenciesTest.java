@@ -410,6 +410,25 @@ class DeploymentsDependenciesTest {
         assertEquals(Optional.empty(), node.listed("invoice"));
     }
 
+    /** A stylesheet missing from common 1.2.0, named by a step of a local process: 422 naming the process and its step. */
+    @Test
+    void aMissingDependencyFileNamedInsideAProcessIs422NamingTheProcessStep() throws Exception {
+        Node node = new Node("node-1");
+        Zipped common = Zipped.of(common("1.2.0", "UBL 1.2.0"));
+        node.deploy(common);
+        PackageDraft invoice = user("invoice", "1.0.0", "common:xslt/to-ubl.xsl", common.draft());
+        JsonObject flow = invoice.flowDoc("to-ubl");
+        flow.put("processes", new JsonObject().put("convert", new JsonObject().put("steps", flow.getJsonArray("steps").copy())));
+        flow.getJsonObject("processes").getJsonObject("convert").getJsonArray("steps").getJsonObject(0).put("stylesheet", "common:xslt/missing.xsl");
+        flow.put("steps", new JsonArray().add(new JsonObject().put("type", "process").put("name", "run").put("process", "convert")));
+
+        DeployRefusedException missing = node.refused(invoice);
+
+        assertTrue(missing.problems().stream().anyMatch(l -> l.contains("flow 'to-ubl' process 'convert' step 'map' stylesheet 'common:xslt/missing.xsl'")
+                && l.endsWith("does not exist in common@1.2.0")), missing.problems().toString());
+        assertEquals(Optional.empty(), node.listed("invoice"));
+    }
+
     /** common 1.2.1 with 1.2.0's stylesheets byte for byte: invoice 1.0.1 locking it swaps nothing and pins 1.2.1; a bump to new bytes swaps. */
     @Test
     void aLockBumpWithIdenticalBytesSwapsNothing() throws Exception {

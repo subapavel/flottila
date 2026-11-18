@@ -496,6 +496,53 @@ class TestCommandTest {
         assertEquals(1, ran.exit(), ran.toString());
     }
 
+    /**
+     * A flow that calls a local process runs the process's steps where the call stands, inside the same message: its history has
+     * a row for the ingress, each of the process's two steps and the send, the process's key is the message's, and the process's
+     * send reached its mock.
+     */
+    @Test
+    void aFlowThatCallsALocalProcessRunsItsStepsInsideTheMessage() throws IOException {
+        Map<String, String> docs = new LinkedHashMap<>();
+        docs.put("sync-order.yaml", """
+                schemaVersion: 1
+                kind: flow
+                id: sync-order
+                version: 0.1.0
+                from: { endpoint: in-sync }
+                delivery: { mode: sync }
+                recording: { level: all, payload: keep }
+                limits: { maxBodyBytes: 1048576 }
+                steps:
+                  - { type: process, name: prepare, process: keyAndArchive }
+                  - { type: to, name: partner, endpoint: partner }
+                processes:
+                  keyAndArchive:
+                    steps:
+                      - { type: extractKey, name: orderId, key: orderId, xpath: /Order/Id }
+                      - { type: to, name: archive, endpoint: archive }
+                """);
+        docs.put("sync-order.test.yaml", """
+                schemaVersion: 1
+                kind: test
+                flow: sync-order
+                cases:
+                  - name: happy path
+                    send: fixtures/order.xml
+                    expect:
+                      status: 200
+                      steps: 4
+                      keys: { orderId: "42" }
+                      sent: { archive: { count: 1, contains: "<Id>42</Id>" }, partner: { count: 1 } }
+                """);
+        Path pkg = flowtestWith(tmp, docs);
+
+        Ran ran = run("test", pkg.toString());
+
+        assertEquals(List.of("PASS sync-order: happy path (flow time 0ms)", "1 cases: 1 passed, 0 failed"), ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
     // --- problems: printed, no case runs, exit 1
 
     /**

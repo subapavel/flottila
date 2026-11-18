@@ -73,13 +73,25 @@
         "multiplier": { "type": "number", "minimum": 1 }
       }
     },
-    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+    "processes": {
+      "type": "object",
+      "description": "Local processes: named blocks of steps, each run inside the same message where a step of type process calls it, its steps numbered in run order and named <call>/<step>. A process may call another; one that calls itself, directly or through others, is refused when the flow loads. A process no step calls is allowed.",
+      "propertyNames": { "$ref": "#/$defs/stepName" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["steps"],
+        "additionalProperties": false,
+        "properties": { "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } } }
+      }
+    }
   },
   "$defs": {
     "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
     "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
     "duration": { "type": "string", "pattern": "^\\d+(ms|s|m|h)$" },
     "keyName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+    "stepName": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64 },
     "recording": {
       "type": "object",
       "additionalProperties": false,
@@ -92,8 +104,8 @@
       "type": "object",
       "required": ["type", "name"],
       "properties": {
-        "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, xsd, route, to, extractKey, validate and split; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
-        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "description": "Step name, unique in the flow; the label on snapshots and per-step timings (camelCase allowed)." },
+        "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, xsd, route, to, extractKey, validate, split and process; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
+        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "description": "Step name, unique in the flow and in each process; the label on snapshots and per-step timings (camelCase allowed)." },
         "retryable": { "type": "boolean" },
         "recording": { "$ref": "#/$defs/recording" }
       },
@@ -110,7 +122,10 @@
         { "if": { "properties": { "type": { "const": "extractKey" } } }, "then": { "required": ["key", "xpath"], "properties": { "key": { "$ref": "#/$defs/keyName" }, "xpath": { "type": "string" } } } },
         { "if": { "properties": { "type": { "const": "validate" } } }, "then": { "required": ["required"], "properties": { "required": { "type": "string" } } } },
         { "if": { "properties": { "type": { "const": "xsd" } } }, "then": { "required": ["schema"], "properties": { "schema": { "type": "string", "minLength": 1, "description": "Path of the XSD file from the package root (D-078); an include or import inside it is relative to the including file. Stays inside the package." } } } },
-        { "if": { "properties": { "type": { "const": "split" } } }, "then": { "required": ["xpath"], "properties": { "xpath": { "type": "string", "description": "Selects the parts; every selected node becomes a child message." } } } }
+        { "if": { "properties": { "type": { "const": "split" } } }, "then": { "required": ["xpath"], "properties": { "xpath": { "type": "string", "description": "Selects the parts; every selected node becomes a child message." } } } },
+        { "if": { "properties": { "type": { "const": "process" } } },
+          "then": { "required": ["process"], "propertyNames": { "enum": ["type", "name", "process"] },
+                    "properties": { "process": { "$ref": "#/$defs/stepName", "description": "The process of this flow file whose steps run here; the call takes no other key." } } } }
       ]
     }
   }

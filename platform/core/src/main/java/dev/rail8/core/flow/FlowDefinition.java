@@ -27,6 +27,9 @@ import java.util.Set;
  * is refused with {@link #ON_FAILURE_GONE}. {@code retries} is an at-least-once flow's own schedule
  * of retries ({@code delivery.retries}, refused for any other mode); empty, its worker runs under the node's default
  * ({@link FlowBuilder#retries}). {@code retry} is the in-thread retry of the steps marked {@code retryable}, a key of its own.
+ * {@code processes} names blocks of steps that a {@value #PROCESS} step runs where it stands: {@code steps} is the run's steps,
+ * each call replaced by the steps of its process, numbered in run order and named {@code <call>/<step>}; a problem inside a
+ * process names its step as {@code processes.<process>.steps[i]}.
  *
  * @since 0.1
  */
@@ -37,6 +40,15 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
     private static final Set<String> STRUCTURAL = Set.of("type", "name", "retryable");
+
+    /** The step type that runs a process of the flow file where it stands. */
+    public static final String PROCESS = "process";
+
+    /** The keys of a {@value #PROCESS} step: it stands for the steps of its process and has no options of its own. */
+    private static final Set<String> CALL = Set.of("type", "name", PROCESS);
+
+    /** The most steps a flow runs once its processes are expanded. */
+    public static final int MAX_STEPS = 1024;
 
     /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing. */
     public static final Duration DEFAULT_SAVE_TIMEOUT = Duration.ofSeconds(5);
@@ -110,7 +122,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
                 Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),
-                strings(doc.get("forwardHeaders")), retry(doc.get("retry")), retries(delivery.get("retries")), RecordingPolicy.from(doc.get("recording"), RecordingPolicy.DEFAULT), steps(doc.get("steps")));
+                strings(doc.get("forwardHeaders")), retry(doc.get("retry")), retries(delivery.get("retries")), RecordingPolicy.from(doc.get("recording"), RecordingPolicy.DEFAULT), steps(doc.get("steps"), doc.get("processes")));
     }
 
     /** Endpoints the steps send to, in order, each once: {@code to.endpoint} and the values of {@code to.endpoints}. The {@code from} endpoint is a consumer and not listed. */
@@ -184,25 +196,110 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         return d;
     }
 
-    private static List<StepConfig> steps(Object node) {
-        if (!(node instanceof List<?> list) || list.isEmpty()) throw new IllegalArgumentException("steps must be a non-empty list");
-        List<StepConfig> steps = new ArrayList<>(list.size());
+    /**
+     * The run's steps: those of {@code stepsNode} (the flow's {@code steps}) with each {@code process} step replaced by the steps
+     * of the process it names in {@code processesNode} (the flow's {@code processes}, may be null), numbered 1.. in run order and
+     * named {@code <call>/<step>}. Every process is checked, called or not; a process that calls itself, directly or through
+     * others, is refused, and so is a run of more than {@link #MAX_STEPS} steps, at the step that would pass the cap.
+     */
+    private static List<StepConfig> steps(Object stepsNode, Object processesNode) {
+        Map<String, Object> declared = processesNode == null ? Map.of() : declared(processesNode);
+        Map<String, List<Written>> processes = new LinkedHashMap<>();
+        declared.forEach((name, steps) -> processes.put(name, written(steps, "processes." + name + ".steps", declared.keySet())));
+        List<Written> flow = written(stepsNode, "steps", declared.keySet());
+        Set<String> followed = new HashSet<>();
+        acyclic(flow, processes, new ArrayList<>(), followed);
+        processes.forEach((name, steps) -> {
+            if (!followed.contains(name)) acyclic(steps, processes, new ArrayList<>(List.of(name)), followed);
+            followed.add(name);
+        });
+        List<StepConfig> run = new ArrayList<>();
+        expand(flow, "", processes, run);
+        return run;
+    }
+
+    /** A step entry as written at {@code path}: a step, or a call of the process {@code process} (null for a step). */
+    private record Written(String path, String type, String name, boolean retryable, Map<String, Object> config, String process) { }
+
+    /** {@code processes}: each process's name to its {@code steps} as written (null when it has none). */
+    private static Map<String, Object> declared(Object node) {
+        if (!(node instanceof Map<?, ?> m)) throw new IllegalArgumentException("processes must be an object that names each process");
+        Map<String, Object> declared = new LinkedHashMap<>();
+        m.forEach((key, value) -> {
+            String name = String.valueOf(key);
+            if (!(value instanceof Map<?, ?> process)) throw new IllegalArgumentException("processes." + name + " must be an object with steps");
+            declared.put(name, process.get("steps"));
+        });
+        return declared;
+    }
+
+    /**
+     * The entries of the step list {@code node} at {@code path}, names unique among them; a {@code process} step takes only
+     * {@code type}, {@code name} and {@code process}, which must be one of {@code processes}.
+     */
+    private static List<Written> written(Object node, String path, Set<String> processes) {
+        if (!(node instanceof List<?> list) || list.isEmpty()) throw new IllegalArgumentException(path + " must be a non-empty list");
+        List<Written> entries = new ArrayList<>(list.size());
         Set<String> names = new HashSet<>();
         for (int i = 0; i < list.size(); i++) {
-            String path = "steps[" + i + "]";
-            if (!(list.get(i) instanceof Map<?, ?> m)) throw new IllegalArgumentException(path + " must be an object");
-            String type = string(m, path + ".type", "type");
-            String name = string(m, path + ".name", "name");
-            if (!names.add(name)) throw new IllegalArgumentException(path + ".name '" + name + "' is used twice; step names are unique in a flow");
-            boolean retryable = Boolean.TRUE.equals(m.get("retryable"));
+            String at = path + "[" + i + "]";
+            if (!(list.get(i) instanceof Map<?, ?> m)) throw new IllegalArgumentException(at + " must be an object");
+            String type = string(m, at + ".type", "type");
+            String name = string(m, at + ".name", "name");
+            if (!names.add(name)) throw new IllegalArgumentException(at + ".name '" + name + "' is used twice; step names are unique in a flow and in each process");
+            if (PROCESS.equals(type)) {
+                for (Object key : m.keySet()) {
+                    if (!CALL.contains(String.valueOf(key))) {
+                        throw new IllegalArgumentException(at + " runs a process and takes only type, name and process, not " + key);
+                    }
+                }
+                String process = string(m, at + ".process", "process");
+                if (!processes.contains(process)) throw new IllegalArgumentException(at + ".process '" + process + "' names no process of this flow");
+                entries.add(new Written(at, type, name, false, Map.of(), process));
+                continue;
+            }
             Map<String, Object> config = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : m.entrySet()) {
                 String key = String.valueOf(e.getKey());
                 if (!STRUCTURAL.contains(key) && e.getValue() != null) config.put(key, e.getValue());
             }
-            steps.add(new StepConfig(i + 1, type, name, retryable, config));
+            entries.add(new Written(at, type, name, Boolean.TRUE.equals(m.get("retryable")), config, null));
         }
-        return steps;
+        return entries;
+    }
+
+    /**
+     * Refuses a call among {@code entries} of a process on {@code calling} (the chain of processes that led to them), naming the
+     * cycle; follows every other call. {@code followed} holds the processes already followed to their end, so each is followed once.
+     */
+    private static void acyclic(List<Written> entries, Map<String, List<Written>> processes, List<String> calling, Set<String> followed) {
+        for (Written w : entries) {
+            if (w.process() == null || followed.contains(w.process())) continue;
+            int at = calling.indexOf(w.process());
+            if (at >= 0) {
+                throw new IllegalArgumentException(w.path() + ".process: process '" + w.process() + "' calls itself: "
+                        + String.join(" -> ", calling.subList(at, calling.size())) + " -> " + w.process());
+            }
+            calling.add(w.process());
+            acyclic(processes.get(w.process()), processes, calling, followed);
+            calling.removeLast();
+            followed.add(w.process());
+        }
+    }
+
+    /** Adds {@code entries} to {@code run}, each call as its process's steps under the call's name, each step named after {@code prefix}. */
+    private static void expand(List<Written> entries, String prefix, Map<String, List<Written>> processes, List<StepConfig> run) {
+        for (Written w : entries) {
+            if (w.process() != null) {
+                expand(processes.get(w.process()), prefix + w.name() + "/", processes, run);
+                continue;
+            }
+            if (run.size() == MAX_STEPS) {
+                throw new IllegalArgumentException("a flow runs at most " + MAX_STEPS + " steps once its processes are expanded; " + w.path()
+                        + " ('" + prefix + w.name() + "') would be one more");
+            }
+            run.add(new StepConfig(run.size() + 1, w.type(), prefix + w.name(), w.retryable(), w.config()));
+        }
     }
 
     private static Map<String, Object> section(Map<String, Object> doc, String key) {
