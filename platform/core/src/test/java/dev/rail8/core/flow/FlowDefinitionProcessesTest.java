@@ -159,17 +159,60 @@ class FlowDefinitionProcessesTest {
         for (int i = 0; i < 16; i++) sixteen.add(step("to", "s" + i, "endpoint", "partner"));
         Map<String, Object> processes = new HashMap<>();
         processes.put("p0", Map.of("steps", sixteen));
-        for (int level = 1; level <= 40; level++) {
-            processes.put("p" + level, block(call("a", "p" + (level - 1)), call("b", "p" + (level - 1))));
+        int top = FlowDefinition.MAX_NESTING - 1;
+        for (int level = 1; level <= top; level++) {
+            List<Object> calls = new ArrayList<>();
+            for (int i = 0; i < 16; i++) calls.add(call("c" + i, "p" + (level - 1)));
+            processes.put("p" + level, Map.of("steps", calls));
         }
-        String refused = refusal(flow(List.of(call("all", "p40")), processes));
-        assertTrue(refused.contains(Integer.toString(FlowDefinition.MAX_STEPS)), "16 * 2^40 steps are refused at the cap, not expanded: " + refused);
+        String refused = refusal(flow(List.of(call("all", "p" + top)), processes));
+        assertTrue(refused.contains("at most " + FlowDefinition.MAX_STEPS + " steps once its processes are expanded"),
+                "16^8 steps, nested no deeper than allowed, are refused at the cap, not expanded: " + refused);
 
         List<Object> most = new ArrayList<>();
         for (int i = 0; i < FlowDefinition.MAX_STEPS; i++) most.add(step("to", "s" + i, "endpoint", "partner"));
         assertEquals(FlowDefinition.MAX_STEPS, FlowDefinition.from(flow(most, null)).steps().size(), "the cap itself is allowed");
         most.add(step("to", "one-more", "endpoint", "partner"));
         assertTrue(refusal(flow(most, null)).contains(Integer.toString(FlowDefinition.MAX_STEPS)), "a flow without processes has the same cap");
+    }
+
+    /**
+     * Processes {@code <prefix>1} .. {@code <prefix>n} in that order, each calling the next; the last calls {@code last}, or sends
+     * when it is null.
+     */
+    static Map<String, Object> chain(String prefix, int n, String last) {
+        Map<String, Object> processes = new LinkedHashMap<>();
+        for (int i = 1; i < n; i++) processes.put(prefix + i, block(call("c", prefix + (i + 1))));
+        processes.put(prefix + n, last == null ? block(step("to", "send", "endpoint", "partner")) : block(call("c", last)));
+        return processes;
+    }
+
+    @Test
+    void processesCallEachOtherAtMostTheMostNestingDeep() {
+        int most = FlowDefinition.MAX_NESTING;
+        FlowDefinition f = FlowDefinition.from(flow(List.of(call("go", "p1")), chain("p", most, null)));
+        assertEquals(List.of("1 go" + "/c".repeat(most - 1) + "/send"), indexed(f.steps()), "a chain of the most processes is allowed");
+
+        String deeper = refusal(flow(List.of(call("go", "p1")), chain("p", most + 1, null)));
+        assertTrue(deeper.contains("processes.p" + most + ".steps[0].process") && deeper.contains(Integer.toString(most))
+                && deeper.contains("p1 -> p2"), "one process more is refused at the call that goes past: " + deeper);
+
+        String unused = refusal(flow(List.of(step("to", "out", "endpoint", "partner")), chain("p", most + 1, null)));
+        assertTrue(unused.contains("processes.p" + most + ".steps[0].process"), "a process nobody calls is checked as if it were: " + unused);
+
+        String far = refusal(flow(List.of(call("go", "p1")), chain("p", 100_000, null)));
+        assertTrue(far.contains(Integer.toString(most)), "a chain of any length is refused at the cap, not followed to its end: " + far);
+    }
+
+    @Test
+    void aProcessAlreadyCheckedIsCheckedAgainWhereItIsCalledDeeper() {
+        int most = FlowDefinition.MAX_NESTING;
+        Map<String, Object> processes = new LinkedHashMap<>(chain("d", most, "leaf"));
+        processes.put("leaf", block(step("to", "send", "endpoint", "partner")));
+
+        String refused = refusal(flow(List.of(call("shallow", "leaf"), call("deep", "d1")), processes));
+        assertTrue(refused.contains("processes.d" + most + ".steps[0].process") && refused.contains("leaf"),
+                "leaf is one deep under the first call and one past the cap under the second: " + refused);
     }
 
     private static List<String> indexed(List<StepConfig> steps) {

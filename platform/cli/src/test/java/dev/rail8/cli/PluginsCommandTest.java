@@ -51,7 +51,7 @@ class PluginsCommandTest {
                 """);
         Ran overHttp = run("validate", pkg.toString());
         assertEquals(1, overHttp.exit(), overHttp.toString());
-        assertEquals(List.of("problem: flow 'dropped' does not build: step 'drop' (steps[0], drop): unknown step type 'drop'"), overHttp.problems());
+        assertEquals(List.of("problem: flow 'dropped' does not build: step 'drop' (step 1, drop): unknown step type 'drop'"), overHttp.problems());
     }
 
     @Test

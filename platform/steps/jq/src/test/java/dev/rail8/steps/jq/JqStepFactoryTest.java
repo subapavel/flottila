@@ -79,7 +79,7 @@ class JqStepFactoryTest {
     @Test
     void aFilterThatDoesNotCompileIsABuildErrorNamingTheStepAndTheKey() {
         IllegalArgumentException bad = assertThrows(IllegalArgumentException.class, () -> factory.create(step(".a |"), resources(64)));
-        assertTrue(bad.getMessage().startsWith("step 'toPartner' (steps[1], jq): 'filter' does not compile"), bad.getMessage());
+        assertTrue(bad.getMessage().startsWith("step 'toPartner' (step 2, jq): 'filter' does not compile"), bad.getMessage());
         IllegalArgumentException variable = assertThrows(IllegalArgumentException.class, () -> factory.create(step("$x"), resources(64)));
         assertTrue(variable.getMessage().contains("'filter' does not compile"), "no host variables: " + variable.getMessage());
         assertThrows(IllegalArgumentException.class, () -> factory.create(new StepConfig(2, "jq", "toPartner", false, Map.of()), resources(64)),
