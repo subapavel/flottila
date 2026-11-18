@@ -1,7 +1,7 @@
 # obs-target-creation-3
 
 Notation, what to return and the ESR / CPI naming: `../README.md`. Structures are in
-`../../structures/observations/`. The two runs that separate the four readings (a) to (d) that
+`../../structures/observations/`. The two runs that narrow the four readings (a) to (d) that
 `obs-target-creation` and `obs-target-creation-2` left open for a target field that reads a
 context its queue lacks (the assumed case `target/minOccurs/004`). A run that ends with an error:
 return the exact error text and stop there. No case is set by this request; the answers go to the
