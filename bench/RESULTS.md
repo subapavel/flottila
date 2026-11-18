@@ -1,5 +1,107 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## The platform's speed by delivery mode — cloud VM, 4 vCPU @ 2.10 GHz (a direction, not a target)
+
+Date 2026-11-18. What each delivery mode gives: messages per second, the time until the sender has its answer, and what a
+message costs the process (CPU, heap allocated) and the database (commits, WAL syncs, WAL bytes). These numbers are for
+comparing before and after a change on the same kind of machine. They are no target and no promise.
+
+Commits. The node's code is that of main at c53ebc4 in every run; the runs differ only in the bench harness: the closed-loop
+sync, ack and worker runs at 803ccda, the closed-loop at-most-once runs and the open-loop ack runs at recording level none
+at 8bc9650, the open-loop at-most-once runs and the open-loop ack runs at recording level all at f26eb5a. Every tree was clean.
+
+Machine: the session's cloud VM, KVM, 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB, no swap, kernel 6.18.44-fc-v595, Java 25.0.5.1
+(Oracle HotSpot); PostgreSQL 16.15 native on the same host, data on vda (fsync on, synchronous_commit on, full_page_writes
+on, wal_sync_method fdatasync, shared_buffers 128 MB, pg_stat_statements preloaded, track_wal_io_timing on). The same host
+shape as the records of 2026-11-06 to 2026-11-16 below. Nothing else ran during the runs. One node in the bench process, pool 21
+(5 intake), body 132 B (the xslt rows: an invoice of about 100 KB), the partner a local HTTP echo.
+
+Commands, from the repository root:
+
+```sh
+# closed loop: 20 000 messages after 1 000 warm-up, 64 clients
+BENCH_MACHINE="cloud VM, 4 vCPU" BENCH_SCENARIOS="sync ack worker at-most-once" bench/run.sh
+# open loop: one run per rate and scenario (ack at level none; at-most-once and ack at level all leave BENCH_RECORDING_LEVEL unset)
+BENCH_MACHINE="cloud VM, 4 vCPU" BENCH_SCENARIOS=open BENCH_OPEN_SCENARIO=ack BENCH_RECORDING_LEVEL=none BENCH_RATE=2000 \
+  BENCH_CONCURRENCY=512 BENCH_MAX_IN_FLIGHT=256 BENCH_RAMP=PT30S BENCH_WINDOW=PT3M BENCH_IO_DEVICE=vda \
+  BENCH_PG_CPU="$(pgrep -o postgres)" BENCH_PG_STATEMENTS=1 bench/run.sh
+```
+
+Every run exited 0 and settled (every accepted message recorded, the work queue empty); no timeouts and no errors. The
+partner received every message a flow accepted, so no at-most-once run was dropped.
+
+### Closed loop — each client sends its next message once it has its answer
+
+CPU and allocation are the whole bench process: the node, the 64 clients and the echo together. Sync and ack count them over
+the load. Worker and at-most-once count them from the first request until the last message landed, so the runs behind the
+202 are in them. Commits and WAL syncs are those of the run's database between two reads 11 s apart around the window: the
+ack rows hold the whole at-least-once path (the ingress, the worker, the recording and the polls). WAL bytes and journal bytes
+are per message the flow took.
+
+| mode, run | msg/s | answer p50 / p95 / p99 ms | CPU ms/msg | heap KiB/msg | commits/msg | WAL syncs/msg | WAL B/msg | journal B/msg |
+|---|---|---|---|---|---|---|---|---|
+| sync, keep | 1 473 | 40.7 / 66.5 / 78.8 | 1.26 | 145 | | | 2 717 | 590 |
+| sync, metadata-only | 5 644 | 10.3 / 22.1 / 29.0 | 0.60 | 51 | | | 1 359 | 0 |
+| at-least-once 202, 1 client | 464 | 2.0 / 3.3 / 4.9 | 2.05 | 103 | 6.48 | 5.01 | 3 451 | 596 |
+| at-least-once 202, 8 clients | 1 026 | 7.2 / 13.3 / 18.4 | 1.66 | 107 | 4.40 | 2.43 | 3 363 | 596 |
+| at-least-once 202, 64 clients | 1 946 | 30.5 / 58.9 / 72.4 | 1.16 | 97 | 2.46 | 0.67 | 3 402 | 587 |
+| at-least-once worker, passthrough, keep | 1 312 | 34.8 / 87.3 / 108.3 | 1.58 | 160 | | | 3 399 | 593 |
+| at-least-once worker, passthrough, metadata-only | 1 792 | 26.2 / 59.1 / 81.2 | 1.39 | 151 | | | 2 121 | 299 |
+| at-least-once worker, xslt, keep | 405 | 140.8 / 238.1 / 284.9 | 7.53 | 6 467 | | | 4 753 | 211 713 |
+| at-least-once worker, xslt, metadata-only | 340 | 167.1 / 310.1 / 409.1 | 9.72 | 12 080 | | | 3 053 | 100 323 |
+| at-most-once, keep | 969 | 10.1 / 27.9 / 41.5 | 3.27 | 143 | 2.10 | 0.98 | 2 717 | 562 |
+| at-most-once, metadata-only | 2 535 | 7.7 / 21.3 / 36.4 | 1.44 | 77 | 0.06 | 0.06 | 1 352 | 0 |
+
+The answer is: sync, the reply; at-least-once 202, the 202 after the durable save; worker, the item's claim to its completion
+(its msg/s runs from the first request until the queue was empty; its ingress answered at 1 948, 2 466, 875 and 375 msg/s);
+at-most-once, every answer, 202 or 503. msg/s is the messages the flow took: an at-most-once 202 comes at once, so the
+clients outran the runs and the flow refused 16 322 (keep) and 12 603 (metadata-only) of the 20 000 with 503, and the CPU per
+message of those rows includes the cost of the refused requests. The sync rows' raw echo answered at p50 3.8 and 4.3 ms, so
+the node added 36.8 ms (keep) and 6.0 ms (metadata-only) to the median.
+
+### Open loop — requests at a fixed rate, whatever the answers
+
+512 clients, flow limit 256 in flight, a ramp of 30 s, then a window of 180 s; the figures are the window's. CPU is in cores
+over the window and in ms per accepted message; commits and WAL syncs per message are the window's per-second rates over the
+offered rate.
+
+| run | accepted / 503 | answer p50 / p99 / p99.9 ms | backlog growth | Postgres CPU cores (ms/msg) | bench CPU cores (ms/msg) | commits/msg | WAL syncs/msg |
+|---|---|---|---|---|---|---|---|
+| at-least-once r2000, level none, 1 | 360 000 / 0 | 8.2 / 44.8 / 102.3 | +1 (0.00 %) | 1.20 (0.60) | 1.57 (0.79) | 1.56 | 0.52 |
+| at-least-once r2000, level none, 2 | 360 000 / 0 | 7.8 / 34.0 / 101.6 | −3 (0.00 %) | 1.14 (0.57) | 1.61 (0.81) | 1.60 | 0.56 |
+| at-least-once r3000, level none, 1 | 538 494 / 1 506 | 21.3 / 78.6 / 191.3 | +399 (0.07 %) | 1.44 (0.48) | 1.55 (0.52) | 1.22 | 0.20 |
+| at-least-once r3000, level none, 2 | 538 942 / 1 058 | 17.4 / 68.5 / 138.6 | −12 (0.00 %) | 1.42 (0.47) | 1.57 (0.52) | 1.25 | 0.23 |
+| at-least-once r2000, level all, 1 | 359 506 / 494 | 21.5 / 67.1 / 191.2 | **+13 311 (3.70 %)** | 1.61 (0.81) | 1.38 (0.69) | 2.15 | 0.49 |
+| at-least-once r2000, level all, 2 | 359 370 / 630 | 22.9 / 81.8 / 180.9 | **+10 283 (2.86 %)** | 1.69 (0.85) | 1.34 (0.67) | 2.15 | 0.47 |
+| at-most-once r1000, level all | 180 000 / 0 | 0.9 / 3.2 / 10.2 | 0 | 0.88 (0.88) | 1.38 (1.38) | 2.90 | 2.50 |
+| at-most-once r2000, level all | 357 345 / 2 655 | 2.0 / 9.3 / 23.3 | −3 (0.00 %) | 1.24 (0.63) | 1.47 (0.74) | 2.17 | 1.03 |
+
+Reading.
+- Per mode on this machine: sync answers at about 1 500 msg/s with the payload kept and 5 600 with metadata only; at-least-once
+  saves and answers 202 at about 1 950 msg/s in the closed loop and holds 3 000 msg/s in the open loop (level none), its
+  worker completing about 1 300 to 1 800 a second; at-most-once holds 2 000 msg/s with a 202 at p50 2 ms. A ~100 KB xslt step
+  brings the worker down to 340–405 msg/s, at 6–12 MiB allocated and 7.5–9.7 ms of CPU per message.
+- A message's cost: 0.6–1.3 ms of the bench process' CPU and 50–160 KiB of heap with the passthrough body; Postgres 0.5–0.9
+  ms of CPU; 1.2–2.9 commits under load and 1.4–3.5 KB of WAL. Keeping the payload costs the sync path four times metadata-only in
+  latency and twice in CPU; at-least-once keeps the arrival body whatever the setting, so the gap there is smaller.
+- Against the earlier records on this host shape (open loop, at-least-once, level none, the same settings): r2000 p50
+  7.8–8.2 ms and p99 34–45 ms against 8.8–8.9 and 36–46 ms on 2026-11-11; r3000 p99 68–79 ms and 1 058–1 506 refusals against
+  81–82 ms and 1 471–2 314 the same day before the pools by role, and against 58–63 ms and 807–1 006 with them. Postgres CPU
+  1.14–1.44 cores against 1.16–1.37. Between the two earlier states, the same direction as on 2026-11-11: no step either way
+  that two runs per rate could show.
+- Not the same: at-least-once at r2000 with every step recorded (level all) no longer keeps up. The backlog grew by 2.9 and
+  3.7 % in the window in two runs (the same cell on 2026-11-11 with the pools by role: 0 and +60), p99 67–82 ms (51–57), and
+  Postgres used 1.61–1.69 cores (0.81–0.85 ms per message). Two runs on a shared VM, so a sign to follow, not a proven
+  regression. Its top statements were reading body references (about 2 calls per message, 0.07 ms each) and a select of the
+  recorded steps (0.15 ms per call in the second run). The commits since 2026-11-11 that touch this path include the message
+  log (V23) and a change to the worker's claim after a settle; neither is measured on its own here.
+- Unexplained: the xslt worker ran slower and allocated twice as much with metadata-only (340 msg/s, 11.8 MiB) as with keep
+  (405 msg/s, 6.3 MiB). One run each.
+- In the closed loop at-most-once has no backpressure but its refusals: the clients send again at once, so the flow refused
+  63–82 % of the requests. Its open-loop rows are the ones to compare.
+
+Raw records: the session's scratchpad, not committed.
+
 ## CONSIDER-24 — the re-run window at a run's end: the two commits measured — cloud VM, 4 vCPU @ 2.10 GHz (NOT CORE-GATE)
 
 Date 2026-11-16. Commit 28e7ff9a (its code is 616ee25b's: the commits since are documents and the website). Machine: cloud VM,
