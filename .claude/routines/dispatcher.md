@@ -11,7 +11,8 @@ Call `mcp__claude-code-remote__get_session` with no `session_id` and read
 `external_metadata.rate_limit_info.status`:
 
 - `allowed`: normal run.
-- `allowed_warning`: at most one worker running in total, counting those already running.
+- `allowed_warning`: at most three workers running in total, counting those already running. The owner
+  accepts that the weekly limit may run out before it resets.
 - anything else, or the field is missing: start nothing. Still do steps 2 and 3 (stalled workers), then stop.
 
 ## 2. What is running
