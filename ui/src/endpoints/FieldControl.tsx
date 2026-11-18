@@ -1,5 +1,5 @@
 import { FormGroup, FormHelperText, FormSelect, FormSelectOption, HelperText, HelperTextItem, TextInput } from '@patternfly/react-core';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { KNOWN_TYPES, type SettingsField } from './settings';
 
 export interface FieldControlProps {
@@ -23,10 +23,14 @@ function placeholder(field: SettingsField): string | undefined {
   return field.default === undefined ? undefined : `Default: ${shown(field.default)}`;
 }
 
-/** A whole number as the draft keeps it: a number when the text is one, else the text, which the check refuses. */
+/**
+ * A whole number as the draft keeps it: a number when the text is one JavaScript holds exactly, else the text, which the
+ * check refuses.
+ */
 function integer(text: string): unknown {
   if (text.trim() === '') return undefined;
-  return /^-?\d+$/.test(text.trim()) ? Number(text.trim()) : text;
+  const n = Number(text.trim());
+  return /^-?\d+$/.test(text.trim()) && Number.isSafeInteger(n) ? n : text;
 }
 
 /**
@@ -36,7 +40,7 @@ function integer(text: string): unknown {
  * and a field of a type the form does not know a raw editor of its value as JSON.
  */
 export function FieldControl({ field, value, readOnly, onChange, onInvalid, problem }: FieldControlProps) {
-  const id = `setting-${field.name}`;
+  const id = `${useId()}-${field.name}`;
   const known = KNOWN_TYPES.has(field.type);
   const [raw, setRaw] = useState<string | null>(null);
   const rawInvalid = raw !== null;

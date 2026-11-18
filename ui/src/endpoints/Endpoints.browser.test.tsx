@@ -117,6 +117,16 @@ describe('Endpoints', () => {
     await expect.element(button('Edit')).toBeVisible();
   });
 
+  test('two forms open at once each keep their own labelled fields', async () => {
+    const outbox: EndpointFile = { ...inbox, id: 'outbox', path: 'demo/endpoints/outbox.yaml', direction: 'out', config: { host: 'partner' }, environments: [] };
+    await open(fakeApi([inbox, outbox]));
+    await page.getByRole('tab', { name: 'Endpoints', exact: true }).click();
+    await button('outbox').click();
+    const panel = page.getByRole('tabpanel', { name: 'outbox' });
+    await expect.element(panel.getByLabelText('host', { exact: false })).toHaveValue('partner');
+    await expect.element(panel.getByLabelText('url', { exact: false })).toBeVisible();
+  });
+
   test('offers no Edit when the working folder is read-only', async () => {
     await open(fakeApi([{ ...inbox, editable: false }]));
     await expect.element(page.getByRole('tabpanel', { name: 'inbox' }).getByText('Read-only')).toBeVisible();

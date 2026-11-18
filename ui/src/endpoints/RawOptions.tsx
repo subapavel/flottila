@@ -1,5 +1,5 @@
 import { FormGroup, FormHelperText, HelperText, HelperTextItem, TextArea } from '@patternfly/react-core';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { Options } from './settings';
 
 export interface RawOptionsProps {
@@ -15,12 +15,13 @@ const isOptions = (value: unknown): value is Options => typeof value === 'object
 
 /** All of an endpoint's options as one JSON object, for a component that describes none of them. */
 export function RawOptions({ options, readOnly, onChange, onInvalid }: RawOptionsProps) {
+  const id = useId();
   const [text, setText] = useState(() => JSON.stringify(options, null, 2));
   const [invalid, setInvalid] = useState(false);
   return (
-    <FormGroup label="Settings" fieldId="setting-raw">
+    <FormGroup label="Settings" fieldId={id}>
       <TextArea
-        id="setting-raw"
+        id={id}
         readOnlyVariant={readOnly ? 'default' : undefined}
         value={text}
         rows={Math.min(20, text.split('\n').length + 1)}

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -160,6 +160,22 @@ describe('endpointFiles', () => {
     expect(refused.status).toBe(422);
     expect(refused.body.error).toContain('text editor');
     expect(await readFile(join(root, 'demo', 'endpoints', 'flow.yaml'), 'utf8')).toBe(flow);
+  });
+
+  it('never writes a YAML file of another kind, even one with a config mapping', async () => {
+    const flow = 'schemaVersion: 1\nkind: flow\nid: f\nconfig:\n  a: 1\n';
+    await writeFile(join(root, 'demo', 'flows', 'f.yaml'), flow);
+    const base = await serve();
+    expect((await save(`${base}/files/endpoints/demo/flows/f.yaml`, { a: 2 }, etagOf(flow))).status).toBe(404);
+    expect(await readFile(join(root, 'demo', 'flows', 'f.yaml'), 'utf8')).toBe(flow);
+  });
+
+  it('keeps the permissions of the file it saves', async () => {
+    const file = join(root, 'demo', 'endpoints', 'http-in.yaml');
+    await chmod(file, 0o640);
+    const base = await serve();
+    expect((await save(`${base}/files/endpoints/demo/endpoints/http-in.yaml`, { host: '0.0.0.0', port: 1 }, etagOf(httpIn))).status).toBe(200);
+    expect((await stat(file)).mode & 0o777).toBe(0o640);
   });
 
   it('refuses a body that is not {"config": {...}}', async () => {

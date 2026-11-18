@@ -187,6 +187,7 @@ export function endpointFiles(options: EndpointFilesOptions) {
     const bytes = await readFile(file);
     if (etagOf(bytes) !== ifMatch) throw new Refusal(412, 'the file changed since it was read; nothing was saved');
     const text = bytes.toString('utf8');
+    endpointOf(text, path, options.editable);
     let written: string;
     try {
       written = writeConfig(text, config as Record<string, unknown>);
@@ -196,7 +197,7 @@ export function endpointFiles(options: EndpointFilesOptions) {
     }
     const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
     try {
-      await writeFile(temporary, written, { flag: 'wx' });
+      await writeFile(temporary, written, { flag: 'wx', mode: (await stat(file)).mode & 0o777 });
       await rename(temporary, file);
     } catch (error) {
       await rm(temporary, { force: true });
