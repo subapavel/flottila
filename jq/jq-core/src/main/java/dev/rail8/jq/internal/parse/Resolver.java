@@ -579,7 +579,9 @@ public final class Resolver {
 
   /**
    * Spends one node of the compile's inline cap when the lowering is inside an expansion; past the cap, a Stub. An
-   * expansion starts only when its measure fits the cap, so the Stub is a backstop no filter reaches.
+   * expansion starts only when its measure fits the cap, so the Stub is a backstop no filter reaches: no test can
+   * reach it, and a mutation of it survives. It stays so that a measure that ever counted fewer nodes than the
+   * lowering builds would end in this Stub rather than in an unbounded inline.
    */
   private void spend() {
     if (depth > 0 && ++inlined > INLINE_CAP) {

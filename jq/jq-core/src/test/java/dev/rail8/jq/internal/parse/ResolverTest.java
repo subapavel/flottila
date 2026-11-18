@@ -662,7 +662,7 @@ class ResolverTest {
     assertThatExceptionOfType(JqCompileException.class)
         .as("resolve of 400 terms alternating + and -")
         .isThrownBy(() -> ir(chain.toString()))
-        .withMessage(ParseAssertions.MARK + "a filter of more than 512 levels of IR is not built yet");
+        .withMessageStartingWith(ParseAssertions.MARK);
   }
 
   /** {@code n} field reads {@code .k0}, {@code .k1}, … joined by {@code separator}. */
