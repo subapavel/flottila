@@ -133,9 +133,9 @@ padding up to `minOccurs` with one mapping and the error with another, and F-38 
 
 What would settle it is F-38's next step: an observation that separates (a) to (d) - for example
 mc-memo's mapping with two `Text` under o2, and `removeContexts` over a queue with one value in its
-only context under `Row` 1..2 with three `Grp`. Those two mappings are not drawn up: they need a
-request of their own (boxes, inputs, structures, in the form of `obs-target-creation-2/request.md`),
-which is a corpus task and not this list. Until then the case stays listed, assumed and deferred.
+only context under `Row` 1..2 with three `Grp`. Those two mappings are drawn up in
+`obs-target-creation-3/request.md` (`mc-memo-two` and `mc-remove-one`, with their inputs and the
+structure `src-memos.xsd`); they are not run. Until they are, the case stays listed, assumed and deferred.
 
 One run of that follow-up was made on PO only: `mc-opt` on `minOccurs-004.xml`
 (`obs-target-creation-2/meta.json`; `Row` 0..2). PO: "Grp 1 has Row a,b; Grp 2 has no Row when Row is
