@@ -22,6 +22,7 @@ import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Recorder;
 import dev.rail8.core.record.RecordingPolicy;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.StepLog;
 import dev.rail8.testkit.InMemoryBlobStore;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -247,7 +248,8 @@ class AdminServerTest {
         JsonArray steps = t.getJsonArray("steps");
         assertEquals(4, steps.size(), "one entry per step, in step order");
         // FIX-175 (P3) changed this expectation: each step object gains its attempt (additive), 1 for a first run's rows
-        Set<String> fields = Set.of("step", "attempt", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions");
+        Set<String> fields = Set.of("step", "attempt", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions",
+                "log");
         for (int i = 0; i < 4; i++) {
             JsonObject s = steps.getJsonObject(i);
             assertEquals(fields, s.fieldNames(), "step " + i + ": the D-057 fields and the attempt, cpuNanos and error present even when null");
@@ -257,6 +259,7 @@ class AdminServerTest {
             assertEquals(Set.of("hash", "size", "kept"), s.getJsonObject("body").fieldNames());
             assertEquals(new JsonObject().put("flow", "invoice-sync@0.1.0"), s.getJsonObject("versions"));
             assertEquals(new JsonObject().put("PARTNER", "domestic"), s.getJsonObject("props"));
+            assertEquals(new JsonObject().put("lines", new JsonArray()).put("dropped", 0), s.getJsonObject("log"), "step " + i + ": no line logged");
         }
         JsonObject ingress = steps.getJsonObject(0);
         assertEquals("ingress", ingress.getString("name"));
@@ -282,6 +285,27 @@ class AdminServerTest {
         assertEquals("java.lang.IllegalStateException: 503 from partner", failed.getString("error"));
         assertEquals(7L, failed.getLong("wallNanos"));
         assertEquals(3L, failed.getLong("cpuNanos"));
+    }
+
+    @Test
+    void theTimelineShowsTheLinesAStepLoggedAndHowManyItDropped() throws Exception {
+        start();
+        Body body = blobs.write(BlobKey.body("m-log", 0), xml, MAX).await();
+        Snapshot s = snapshot("m-log", 1, "sign", Snapshot.Outcome.OK, Optional.empty(), 1L, 1L, Headers.empty(), Keys.empty(), body, false);
+        StepLog log = new StepLog(List.of(
+                new StepLog.Line(T0.plusMillis(5), System.Logger.Level.INFO, "partner.client", "signed 18 bytes", Optional.empty()),
+                new StepLog.Line(T0.plusMillis(7), System.Logger.Level.WARNING, "partner.client", "the partner said no",
+                        Optional.of("java.lang.IllegalStateException: 503 from partner"))), 3);
+        messages.record(new Snapshot(s.messageId(), s.flow(), s.step(), s.attempt(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(),
+                s.cpuNanos(), s.headers(), s.props(), s.keys(), s.bodyHash(), s.bodySize(), s.bodyKey(), s.versions(), log)).await();
+
+        JsonObject shown = admin("/admin/messages/m-log").json().getJsonArray("steps").getJsonObject(0).getJsonObject("log");
+        assertEquals(new JsonObject()
+                .put("lines", new JsonArray()
+                        .add(new JsonObject().put("at", T0.plusMillis(5).toString()).put("level", "INFO").put("logger", "partner.client").put("text", "signed 18 bytes"))
+                        .add(new JsonObject().put("at", T0.plusMillis(7).toString()).put("level", "WARNING").put("logger", "partner.client")
+                                .put("text", "the partner said no").put("thrown", "java.lang.IllegalStateException: 503 from partner")))
+                .put("dropped", 3), shown, "a line logged without a failure has no thrown");
     }
 
     @Test

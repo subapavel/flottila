@@ -181,7 +181,7 @@ public final class Trail {
     }
 
     private static Snapshot withoutBody(Snapshot s) {
-        return new Snapshot(s.messageId(), s.flow(), s.step(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(), s.cpuNanos(),
-                s.headers(), s.props(), s.keys(), s.bodyHash(), s.bodySize(), Optional.empty(), s.versions());
+        return new Snapshot(s.messageId(), s.flow(), s.step(), s.attempt(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(), s.cpuNanos(),
+                s.headers(), s.props(), s.keys(), s.bodyHash(), s.bodySize(), Optional.empty(), s.versions(), s.log());
     }
 }

@@ -19,6 +19,7 @@ import dev.rail8.core.dlq.ParkedException;
 import dev.rail8.core.node.FencedException;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.StepLog;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * set) is a build error naming the step and the key, which never shows a literal, and a secret is taken only while the flow
  * builds. Every whole string {@code secret://...} in any step's config is resolved while the flow builds. A failure of a step a
  * factory built, in a flow that took a secret, leaves with each value replaced by its reference: in what the pipeline throws,
- * in the recorded step and in the parked row, its retry answer, kind, causes and stack frames kept. Steps of one type share
+ * in the recorded step and in the parked row, its retry answer, kind, causes and stack frames kept; so does each line such a step
+ * logged that its recorded step keeps. Steps of one type share
  * the cache their type is given.
  */
 class FlowBuilderSecretsTest {
@@ -189,6 +191,20 @@ class FlowBuilderSecretsTest {
         Snapshot failed = store.timeline(in.id()).await().getLast();
         assertEquals(Snapshot.Outcome.FAILED, failed.outcome());
         assertEquals("java.lang.IllegalStateException: the partner refused key " + REFERENCE, failed.error().orElseThrow());
+    }
+
+    @Test
+    void aLineAStepLoggedIsRecordedWithEachValueReplacedByItsReference() {
+        System.Logger log = System.getLogger("partner.client");
+        Pipeline p = build(builder(taking("sign", secret -> Stage.of(e -> {
+            log.log(System.Logger.Level.WARNING, "signing with " + secret.value(), new IllegalStateException("refused " + secret.value()));
+            return e;
+        }))), "sync", List.of(step("sign", "sign", REFERENCE)));
+        Envelope in = in();
+        p.apply(in);
+        StepLog.Line line = store.timeline(in.id()).await().getLast().log().lines().getFirst();
+        assertEquals("signing with " + REFERENCE, line.text());
+        assertEquals(Optional.of("java.lang.IllegalStateException: refused " + REFERENCE), line.thrown());
     }
 
     @Test

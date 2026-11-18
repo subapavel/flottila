@@ -36,11 +36,12 @@ import java.util.Optional;
  * @param bodySize the body's size in bytes
  * @param bodyKey where the body lives; empty when the flow records metadata only
  * @param versions the configuration versions the message ran with ({@code flow} = {@code id@version}, later partner directory and routing table)
+ * @param log the lines the step's code logged while the step ran; {@link StepLog#EMPTY} for ingress
  * @since 0.1
  */
 public record Snapshot(String messageId, String flow, int step, int attempt, String stepName, Outcome outcome, Optional<String> error, Instant startedAt,
                        long wallNanos, long cpuNanos, Headers headers, Props props, Keys keys, Hash bodyHash, long bodySize,
-                       Optional<BlobKey> bodyKey, Map<String, String> versions) {
+                       Optional<BlobKey> bodyKey, Map<String, String> versions, StepLog log) {
 
     /** How a step ended. @since 0.1 */
     public enum Outcome { OK, FILTERED, FAILED }
@@ -60,6 +61,7 @@ public record Snapshot(String messageId, String flow, int step, int attempt, Str
         Objects.requireNonNull(keys, "keys");
         Objects.requireNonNull(bodyHash, "bodyHash");
         Objects.requireNonNull(bodyKey, "bodyKey");
+        Objects.requireNonNull(log, "log");
         if (step < 0) throw new IllegalArgumentException("step < 0");
         if (wallNanos < 0) throw new IllegalArgumentException("wallNanos < 0");
         if (cpuNanos < CPU_UNKNOWN) throw new IllegalArgumentException("cpuNanos must be a reading or CPU_UNKNOWN, was " + cpuNanos);
@@ -69,9 +71,17 @@ public record Snapshot(String messageId, String flow, int step, int attempt, Str
         versions = Map.copyOf(versions);
     }
 
+    /** A snapshot with no lines logged: {@link StepLog#EMPTY}. @since 0.1 */
+    public Snapshot(String messageId, String flow, int step, int attempt, String stepName, Outcome outcome, Optional<String> error, Instant startedAt,
+                    long wallNanos, long cpuNanos, Headers headers, Props props, Keys keys, Hash bodyHash, long bodySize,
+                    Optional<BlobKey> bodyKey, Map<String, String> versions) {
+        this(messageId, flow, step, attempt, stepName, outcome, error, startedAt, wallNanos, cpuNanos, headers, props, keys, bodyHash, bodySize,
+                bodyKey, versions, StepLog.EMPTY);
+    }
+
     /**
      * A snapshot whose attempt is its props' {@link Envelope#ATTEMPT}: 1 when absent (a first run carries none, a rerun carries 2
-     * or more); one that is not an int of at least 1 is an IllegalArgumentException.
+     * or more); one that is not an int of at least 1 is an IllegalArgumentException. It has no lines logged: {@link StepLog#EMPTY}.
      *
      * @since 0.1
      */
@@ -79,11 +89,11 @@ public record Snapshot(String messageId, String flow, int step, int attempt, Str
                     long wallNanos, long cpuNanos, Headers headers, Props props, Keys keys, Hash bodyHash, long bodySize,
                     Optional<BlobKey> bodyKey, Map<String, String> versions) {
         this(messageId, flow, step, attemptOf(props), stepName, outcome, error, startedAt, wallNanos, cpuNanos, headers, props, keys, bodyHash, bodySize,
-                bodyKey, versions);
+                bodyKey, versions, StepLog.EMPTY);
     }
 
     /** {@code props}' attempt; one that is not an int of at least 1 is an IllegalArgumentException. */
-    private static int attemptOf(Props props) {
+    static int attemptOf(Props props) {
         Object attempt = Objects.requireNonNull(props, "props").asMap().get(Envelope.ATTEMPT.name());
         if (attempt == null) return 1;
         if (!(attempt instanceof Integer k) || k < 1) throw new IllegalArgumentException("attempt must be an int of at least 1, was " + attempt);

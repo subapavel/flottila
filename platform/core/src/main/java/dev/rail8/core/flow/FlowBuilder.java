@@ -72,7 +72,8 @@ import java.util.function.UnaryOperator;
  * body is already at its number. A {@code retryable} step is wrapped in the flow's {@link RetryPolicy} by
  * {@link Retry}. With a {@link MessageStore} given through {@link #recording(MessageStore, Meter)}, every step is also
  * wrapped by a {@link Recorder} under the flow's {@link RecordingPolicy} (a step's own {@code recording} overrides it),
- * and the pipeline starts with the ingress snapshot. With {@link #stepEvents stepEvents(true)} every step is marked
+ * and the pipeline starts with the ingress snapshot. The lines a step logs are kept with its snapshot, each value a step of
+ * the flow took as a secret replaced by its reference. With {@link #stepEvents stepEvents(true)} every step is marked
  * outermost by a {@link StepEvent}, whatever else wraps it; the start stage is not marked. An at-least-once flow parks
  * a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} and does not build without one; a sync flow
  * answers its caller and an at-most-once flow drops the message.
@@ -516,7 +517,7 @@ public final class FlowBuilder {
         Parking parker = parks ? new Parking(dlq, runtime.clock(), versions) : null;
         StepResources resources = resources(flow, baseDir, Services.NONE);
         FlowSecrets flowSecrets = new FlowSecrets(secrets);
-        Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
+        Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions, flowSecrets::scrubber);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
         List<Stage> stages = new ArrayList<>(flow.steps().size());
         int lastIndex = flow.steps().size();

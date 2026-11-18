@@ -21,13 +21,15 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 /**
  * The secrets of one build of a flow. While the flow builds, every whole string {@code secret://...} in a step's config is
  * checked ({@link #check}), and a factory takes the secrets its options name through {@link #services} (the reference is
  * resolved now, so one that is not set fails the build). Once the flow has built ({@link #built()}) no secret is handed out.
  * A stage wrapped by {@link #scrubbing} throws its own failures with every value handed out in the flow replaced by its
- * reference, in each message of the failure, its causes and its suppressed failures.
+ * reference, in each message of the failure, its causes and its suppressed failures. {@link #scrubber} does the same to a
+ * text.
  */
 final class FlowSecrets {
 
@@ -157,6 +159,16 @@ final class FlowSecrets {
         Map<String, String> values = values();
         if (values.isEmpty() || !holds(failure, values, Collections.newSetFromMap(new IdentityHashMap<>()))) return failure;
         return copy(failure, values, new IdentityHashMap<>());
+    }
+
+    /**
+     * The text with every value handed out in this flow replaced by its reference, the longest value first; the values are
+     * read once, now. Without a value handed out it is the identity.
+     */
+    UnaryOperator<String> scrubber() {
+        if (handedOut.isEmpty()) return UnaryOperator.identity();
+        Map<String, String> values = values();
+        return text -> replaced(text, values);
     }
 
     /** Each value handed out, longest first, to its reference; a value that cannot be read now is left out. */

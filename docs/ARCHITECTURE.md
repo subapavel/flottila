@@ -207,7 +207,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 | Table | Holds |
 | --- | --- |
 | `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held, stops its key or is cancelled, and where the body is in the journal |
-| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size), and the business keys for search |
+| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size, the lines the step's code logged), and the business keys for search |
 | `dlq` | parked messages, by reference |
 | `body_refs`, `journal_segments`, `journal_keys`, `journal_nodes`, `journal_losses` | where each durable body is, the journal files, their wrapped encryption keys, and losses an operator accepted |
 | `nodes` | node membership and leases |
@@ -432,8 +432,8 @@ to give to `--plugins` or `RAIL8_PLUGINS`.
 
 A step factory, a plugin's or the node's own, gets `services()` among its resources: the step's
 secrets and a cache. With the envelope (read it, return a new one) and standard Java logging (its
-lines go to the node's log today), that is what custom code works with, as a script in SAP
-Integration Suite works with security material.
+lines go to the node's log and to the message's history), that is what custom code works with, as a
+script in SAP Integration Suite works with security material.
 `HmacSignPlugin` in the runtime's tests is a sample step that uses all of it.
 
 - **Secrets.** `secret(step, key)` takes the step's option `key`, whose whole value must be
@@ -451,6 +451,14 @@ Integration Suite works with security material.
   node wait for that load instead of starting their own. The steps of one type in one package share
   their keys, and no one else sees them. A node keeps the cache in memory, at most 10,000 entries and
   64 MiB, dropping the least recently used first; entries stay across a redeploy.
+- **Logging.** A line logged through `System.Logger`, `java.util.logging` or SLF4J on the message's
+  thread while the step runs, at or above the level the node's log shows for its logger, is kept in
+  the step's record: its time, level, logger, text, and the failure logged with it (class and
+  message, no stack). The flow's `recording.level` keeps the lines where it keeps the step's record.
+  One run of a step keeps at most 100 lines and 32 KiB of them, whole lines only, and counts the
+  lines it did not keep. A line logged after the step handed its first message on, or on a thread
+  the code started itself, reaches only the node's log. In a kept line every value the flow's steps
+  took as a secret is replaced by its reference; the node's log gets the line as it was logged.
 - **Testing.** The testkit's `FakeServices` gives a step under test its secrets and a cache on a fake
   clock. Every cache passes the testkit's cache contract.
 
@@ -468,7 +476,6 @@ a file to poll; a deployed node refuses it.
 - The admin API lists the loaded plugins.
 - A deferred acknowledgement in the adapter contract: system and application acknowledgements as
   in SAP XI.
-- Lines that custom code logs while its step runs go into the message's history.
 - Custom code sends through an outbound endpoint of its package.
 - Priority: the core and the contracts first, then HTTP inbound and outbound.
 
@@ -694,6 +701,9 @@ run's records are written in groups, after the bodies they refer to are durable.
 ### Logs, metrics, health
 
 - The code logs through `java.lang.System.Logger`; there is no logging configuration of its own.
+  SLF4J, which Netty, the AWS SDK and MINA SSHD use, logs through `java.util.logging` too
+  (`slf4j-jdk14`); the node has Vert.x log to `java.util.logging` straight, so that its lines name
+  their own logger. The lines a step's code logs are also kept in its record (§5).
 - There is no metrics endpoint. Each record has wall and CPU time per step, and an optional CPU
   sampler (`RAIL8_CPU_SAMPLING`) reports CPU by step.
 - `/live`, `/ready` and `/health` (Postgres, deployments, journal) answer without a token.
@@ -706,7 +716,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | Route | Purpose |
 | --- | --- |
 | `GET /admin/messages?key=…` | find messages by business key |
-| `GET /admin/messages/{id}` | a message's steps with their times |
+| `GET /admin/messages/{id}` | a message's steps with their times and the lines their code logged |
 | `GET /admin/messages/{id}/steps/{n}/body` | the body after step `n` |
 | `GET /admin/dlq`, `POST /admin/dlq/{id}/retry`, `POST /admin/dlq/{id}/cancel` | failed messages, running one again, ending one |
 | `POST /admin/messages/{id}/cancel` | cancelling a message that has not ended |
@@ -728,7 +738,7 @@ that echoes, and deploys `examples/demo`. The root `docker-compose.yml` is a sma
 
 **Planned**
 - One log of records per message, per interface and per connection, with levels and a threshold that
-  can be changed at run time; custom code logs through standard Java logging into its message's log.
+  can be changed at run time, holding the lines custom code logs.
 - Metrics and alerts inside the platform, OpenTelemetry for export, with no required extra product;
   a full queue waits and alerts, it never drops.
 - Teams, rights and roles; a separate right to see payloads, with a record of who viewed one.

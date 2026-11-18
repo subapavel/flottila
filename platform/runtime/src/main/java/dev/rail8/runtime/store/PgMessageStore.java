@@ -10,6 +10,7 @@ import dev.rail8.core.batch.BatchingWriter;
 import dev.rail8.core.record.MessageStore;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.StepLog;
 import dev.rail8.runtime.batch.PgBatchSink;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -39,7 +40,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * The MessageStore over Postgres. Every snapshot given to {@link #record} goes through the
  * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message, step and attempt, the first wins
  * — the timeline lists them by attempt, then step; the
- * body by reference: hash, hash algorithm, size, BlobStore key) and {@code message_keys} (one row per (name, value,
+ * body by reference: hash, hash algorithm, size, BlobStore key; the lines the step's code logged as {@link StepLogJson}, null when
+ * it logged none) and {@code message_keys} (one row per (name, value,
  * message), numbered by {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
  * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
  * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it. On the node, the at-least-once
@@ -50,13 +52,13 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     private static final String INSERT_MESSAGES = """
-            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions, attempt)
+            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions, attempt, log)
             select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::bigint[], $9::bigint[],
-                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::text[], $16::bigint[], $17::jsonb[], $18::int[])
+                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::text[], $16::bigint[], $17::jsonb[], $18::int[], $19::jsonb[])
             on conflict (id, step, attempt) do nothing""";
     private static final String INSERT_KEYS = "insert into message_keys(name, value, message_id, step) select * from unnest($1::text[], $2::text[], $3::text[], $4::int[]) "
             + "on conflict (name, value, message_id) do nothing";
-    private static final String TIMELINE = "select id, step, attempt, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions "
+    private static final String TIMELINE = "select id, step, attempt, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions, log "
             + "from messages where id = $1 order by attempt, step";
     private static final String FIND_BY_KEY = "select message_id, seq from message_keys where name = $1 and value = $2 order by seq limit $3";
     private static final String FIND_BY_KEY_AFTER = "select message_id, seq from message_keys where name = $1 and value = $2 and seq > $3 order by seq limit $4";
@@ -98,12 +100,13 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     /**
-     * The UTF-8 bytes {@code s}'s rows bind, at least: its id, flow and step name, and its headers, props and keys as the JSON they
-     * are written as (a group's byte limit weighs a member by them).
+     * The UTF-8 bytes {@code s}'s rows bind, at least: its id, flow and step name, its headers, props and keys as the JSON they
+     * are written as, and its log's lines by what they weigh (a group's byte limit weighs a member by them).
      */
     static long weight(Snapshot s) {
         return utf8(s.messageId()) + utf8(s.flow()) + utf8(s.stepName()) + utf8(new JsonObject(new HashMap<>(s.headers().asMap())).encode())
-                + utf8(json(s.props().asMap()).encode()) + utf8(new JsonObject(new HashMap<>(s.keys().asMap())).encode());
+                + utf8(json(s.props().asMap()).encode()) + utf8(new JsonObject(new HashMap<>(s.keys().asMap())).encode())
+                + s.log().lines().stream().mapToLong(StepLog.Line::bytes).sum();
     }
 
     /** The UTF-8 bytes of {@code text}; none for null. */
@@ -167,7 +170,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         Integer[] steps = new Integer[n], attempts = new Integer[n];
         OffsetDateTime[] started = new OffsetDateTime[n];
         Long[] walls = new Long[n], cpus = new Long[n], sizes = new Long[n];
-        JsonObject[] headers = new JsonObject[n], props = new JsonObject[n], keys = new JsonObject[n], versions = new JsonObject[n];
+        JsonObject[] headers = new JsonObject[n], props = new JsonObject[n], keys = new JsonObject[n], versions = new JsonObject[n], logs = new JsonObject[n];
         Buffer[] hashes = new Buffer[n];
         String[] algorithms = new String[n];
         for (int i = 0; i < n; i++) {
@@ -190,8 +193,10 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             sizes[i] = s.bodySize();
             versions[i] = new JsonObject(new HashMap<>(s.versions()));
             attempts[i] = s.attempt();
+            logs[i] = s.log().equals(StepLog.EMPTY) ? null : StepLogJson.json(s.log());
         }
-        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, algorithms, bodyKeys, sizes, versions, attempts});
+        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, algorithms, bodyKeys, sizes, versions, attempts,
+                logs});
     }
 
     /**
@@ -237,7 +242,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
                 r.getOffsetDateTime("started_at").toInstant(), r.getLong("wall_ns"), cpu == null ? Snapshot.CPU_UNKNOWN : cpu,
                 new Headers(strings(r.getJsonObject("headers"))), new Props(r.getJsonObject("props").getMap()), new Keys(strings(r.getJsonObject("keys"))),
                 new Hash(r.getString("hash_algorithm"), r.getBuffer("body_hash").getLong(0)), r.getLong("body_size"),
-                Optional.ofNullable(r.getString("body_key")).map(PgMessageStore::blobKey), strings(r.getJsonObject("versions")));
+                Optional.ofNullable(r.getString("body_key")).map(PgMessageStore::blobKey), strings(r.getJsonObject("versions")), StepLogJson.log(r.getJsonObject("log")));
     }
 
     private static Map<String, String> strings(JsonObject o) {
