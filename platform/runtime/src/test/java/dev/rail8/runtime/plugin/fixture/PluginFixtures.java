@@ -202,6 +202,22 @@ public final class PluginFixtures {
         @Override public List<Component> components(ComponentContext context) { return List.of(new BadlyDescribed()); }
     }
 
+    /** A component of the scheme {@code unsaid} whose settings description is null. */
+    public static final class NullDescribed implements Component {
+        @Override public String scheme() { return "unsaid"; }
+        @Override public Settings settings() { return null; }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { throw new UnsupportedOperationException("never started"); }
+        @Override public Producer producer(EndpointConfig cfg) { throw new UnsupportedOperationException("never started"); }
+        @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
+    }
+
+    /** A plugin named {@code null-settings} whose one component is {@link NullDescribed}. */
+    public static final class NullSettings implements Plugin {
+        @Override public String name() { return "null-settings"; }
+        @Override public String api() { return API; }
+        @Override public List<Component> components(ComponentContext context) { return List.of(new NullDescribed()); }
+    }
+
     /** A plugin whose name is null. */
     public static final class NullName implements Plugin {
         @Override public String name() { return null; }

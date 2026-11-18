@@ -50,9 +50,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * The cases every component passes, real or mock: both must pass the same suite. A
  * component's test extends this class and supplies the component and an endpoint that selects it. Every case asserts
- * an observable: the scheme, the config schema's shape, the settings description — the same on every call, given or else
- * a configSchema() of the component's own, and passed by {@link #endpoint()} as an in endpoint and by
- * {@link #producerEndpoint} as an out one —, delivery to the running consumer's handler with the body
+ * an observable: the scheme, the config schema's shape, the settings description (the same on every call; given, unless
+ * the component declares a configSchema() of its own; passed by {@link #endpoint()} as an in endpoint and by
+ * {@link #producerEndpoint} as an out one), delivery to the running consumer's handler with the body
  * intact (the receiver mints its own message id — a transport carries bytes and headers), a stopped consumer receiving nothing, health, the send completing only after the handler acknowledged, a
  * Nack failing the send, a body above the tree limit streaming through, a second send of the same envelope delivering
  * the same body again (a retry re-opens the body, nothing is consumed), and a consumer stopped mid-delivery:
@@ -148,7 +148,7 @@ public abstract class ComponentContract {
     @Test
     public void settingsAreTheSameOnEveryCall() {
         Component component = component();
-        assertEquals(component.settings().toJson(), component.settings().toJson(), "the node reads the description once and serves it as it is");
+        assertEquals(component.settings().toJson(), component.settings().toJson(), "the node asks for the description whenever it checks an endpoint or serves it, and gets the same one every time");
     }
 
     @Test

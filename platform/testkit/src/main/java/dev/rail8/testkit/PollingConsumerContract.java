@@ -47,8 +47,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * failed answer, a handler that throws or answers null keep the file and end the round: the next round delivers it again.
  * A final Nack keeps the file (this endpoint names no error directory) but never delivers it again to the same consumer.
  * {@link Consumer#stop()} takes no new file, waits for the answer in flight and for its removal; a stopped consumer
- * delivers nothing. Health is up only while a consumer runs. The settings description is the same on every call, given or
- * else a configSchema() of the component's own, and {@link #endpoint()} passes it as an in endpoint.
+ * delivers nothing. Health is up only while a consumer runs. The settings description is the same on every call; it is
+ * given, unless the component declares a configSchema() of its own; and {@link #endpoint()} passes it as an in endpoint.
  *
  * @since 0.1
  */
@@ -219,7 +219,7 @@ public abstract class PollingConsumerContract {
     @Test
     public void settingsAreTheSameOnEveryCall() {
         Component component = component();
-        assertEquals(component.settings().toJson(), component.settings().toJson(), "the node reads the description once and serves it as it is");
+        assertEquals(component.settings().toJson(), component.settings().toJson(), "the node asks for the description whenever it checks an endpoint or serves it, and gets the same one every time");
     }
 
     @Test

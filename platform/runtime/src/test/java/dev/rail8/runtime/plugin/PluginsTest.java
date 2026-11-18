@@ -338,6 +338,15 @@ class PluginsTest {
     }
 
     @Test
+    void aComponentWhoseSettingsAreNullRefusesTheStartNamingThePlugin() throws IOException {
+        jar("unsaid.jar", PluginFixtures.NullSettings.class);
+        try (Plugins plugins = Plugins.load(dir)) {
+            String refused = assertThrows(IllegalStateException.class, () -> plugins.components(NOTHING_SHIPPED).apply(context())).getMessage();
+            assertEquals("plugin null-settings: settings() of " + PluginFixtures.NullDescribed.class.getName() + " is null", refused);
+        }
+    }
+
+    @Test
     void aPluginThatThrowsOrBringsTooMuchRefusesTheConfigurationNamingIt() throws IOException {
         jar("failing.jar", PluginFixtures.FailingSteps.class);
         try (Plugins plugins = Plugins.load(dir)) {
