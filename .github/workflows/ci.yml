@@ -275,9 +275,9 @@ jobs:
           reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in)
           echo "$reply"
           echo "$reply" | grep -q '<PartnerInvoice number="4711" currency="CZK"'
-          # the UI's server adds the token itself, so no Authorization header here
+          # the UI's server adds the token itself; the Sec-Fetch-Site header stands in for the browser's own page
           for _ in $(seq 1 30); do
-            found=$(curl -sf 'localhost:5173/admin/messages?key=invoiceId:4711' || true)
+            found=$(curl -sf -H 'Sec-Fetch-Site: same-origin' 'localhost:5173/admin/messages?key=invoiceId:4711' || true)
             echo "$found" | grep -q '"items":\["' && exit 0
             sleep 2
           done
