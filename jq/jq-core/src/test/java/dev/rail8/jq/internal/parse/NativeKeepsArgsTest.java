@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
  * that keep: {@code tostring} gives a string input back, {@code last/1} its generator's last value, {@code keys} and
  * {@code keys_unsorted} an object's key strings, {@code to_entries} its input's keys and members (#85),
  * {@code flatten} its input's members, and #73's sort and its kin
- * their input's members (min and max one of them). The rest build their result afresh or give no container or string.
+ * their input's members (min and max one of them), and {@code trim}, {@code ltrim} and {@code rtrim} a string with
+ * nothing to trim. The rest build their result afresh or give no container or string.
  */
 class NativeKeepsArgsTest {
   @Test
@@ -24,14 +25,16 @@ class NativeKeepsArgsTest {
     for (String keeps :
         new String[] {
           "TOSTRING", "LAST", "KEYS", "KEYS_UNSORTED", "TO_ENTRIES", "FLATTEN", "FLATTEN_DEPTH", "SORT", "SORT_BY", "GROUP_BY",
-          "UNIQUE", "UNIQUE_BY", "MIN", "MAX", "MIN_BY", "MAX_BY"
+          "UNIQUE", "UNIQUE_BY", "MIN", "MAX", "MIN_BY", "MAX_BY", "TRIM",
+          "LTRIM", "RTRIM"
         }) {
       expected.put(keeps, true);
     }
     for (String fresh :
         new String[] {
           "EMPTY", "ERROR", "NOT", "RANGE", "LENGTH", "TYPE", "TOJSON", "TONUMBER", "HAS", "NAN", "INFINITE", "ISNAN",
-          "ISINFINITE", "ISNORMAL", "HAVE_DECNUM", "HAVE_LITERAL_NUMBERS"
+          "ISINFINITE", "ISNORMAL", "HAVE_DECNUM", "HAVE_LITERAL_NUMBERS", "STARTSWITH",
+          "ENDSWITH", "UTF8BYTELENGTH", "EXPLODE", "IMPLODE", "SPLIT", "STRINDICES"
         }) {
       expected.put(fresh, false);
     }

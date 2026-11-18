@@ -23,6 +23,7 @@ import dev.rail8.jq.internal.op.Range;
 import dev.rail8.jq.internal.op.Slice;
 import dev.rail8.jq.internal.op.Sort;
 import dev.rail8.jq.internal.op.StepRun;
+import dev.rail8.jq.internal.op.StringNatives;
 import dev.rail8.jq.internal.value.BuiltArray;
 import dev.rail8.jq.internal.value.BuiltString;
 import dev.rail8.jq.internal.value.LiteralNumber;
@@ -666,6 +667,16 @@ public final class Resolver {
       case MAX -> new Intrinsic(at, Sort.MAX, List.of());
       case MIN_BY -> withArgument(c, Sort.MIN_BY);
       case MAX_BY -> withArgument(c, Sort.MAX_BY);
+      case STARTSWITH -> withArgument(c, StringNatives.STARTSWITH);
+      case ENDSWITH -> withArgument(c, StringNatives.ENDSWITH);
+      case UTF8BYTELENGTH -> new Intrinsic(at, StringNatives.UTF8BYTELENGTH, List.of());
+      case TRIM -> new Intrinsic(at, StringNatives.TRIM, List.of());
+      case LTRIM -> new Intrinsic(at, StringNatives.LTRIM, List.of());
+      case RTRIM -> new Intrinsic(at, StringNatives.RTRIM, List.of());
+      case EXPLODE -> new Intrinsic(at, StringNatives.EXPLODE, List.of());
+      case IMPLODE -> new Intrinsic(at, StringNatives.IMPLODE, List.of());
+      case SPLIT -> withArgument(c, StringNatives.SPLIT);
+      case STRINDICES -> withArgument(c, StringNatives.STRINDICES);
     };
   }
 

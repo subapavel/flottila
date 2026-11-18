@@ -57,19 +57,17 @@ public final class PreludeSignatures {
    *       {@code map_values}), and paths/0 and paths/1, which call recurse/0 inside {@code path/1}. The other ten
    *       recursive ones ({@link #LIFTED}) left at #110 (ADR-0042 amendment for #110);
    *   <li>a replaced definition, whose native is unbuilt: inputs/0 (spec 5);
-   *   <li>spec 4's {@code _strindices}, past the natives #72 built (indices, index, rindex), and {@code _match_impl}
-   *       (match/1, test/1, capture/1);
+   *   <li>spec 4's {@code _match_impl} (match/1, test/1, capture/1);
    *   <li>spec 3's paths: {@code path/1}, {@code getpath}, {@code setpath}, {@code delpaths} and the update and
    *       assignment operators (del, _assign, _modify, map_values, truncate_stream, fromstream, pick, INDEX/1,
    *       INDEX/2);
-   *   <li>spec 4's families: {@code _match_impl}, {@code startswith}, {@code endswith}, {@code contains},
-   *       {@code explode}, {@code implode}, the date functions (match/2, test/2, capture/2, scan/1, scan/2, splits/1,
-   *       splits/2, split/2, sub/2, sub/3, gsub/2, gsub/3, ltrimstr, rtrimstr, trimstr, inside, ascii_downcase,
-   *       ascii_upcase, fromdateiso8601, todateiso8601, fromdate, todate);
+   *   <li>spec 4's families: {@code _match_impl}, {@code contains}, the date functions (match/2, test/2, capture/2,
+   *       scan/1, scan/2, splits/1, splits/2, split/2, sub/2, sub/3, gsub/2, gsub/3, inside, fromdateiso8601,
+   *       todateiso8601, fromdate, todate);
    *   <li>spec 7's host builtins: {@code halt_error/1}, {@code debug/0} (halt_error/0, debug/1).
    * </ul>
    *
-   * <p>The 62 others compile. 52 lift no function: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
+   * <p>The 70 others compile. 60 lift no function: error/1, map, select, add/0, add/1, abs, nulls, values, range/1, limit, skip, first/0,
    * first/1, isempty, all/0..2, any/0..2, nth/1, nth/2, last/0, JOIN/2..4, IN/1, IN/2 with the natives built before
    * #71 ({@code empty}, {@code not}, {@code error/0}, {@code range/2}) and the constructs of #63 to #70; since #72's
    * natives ({@code type}, {@code length}, {@code tostring}, {@code has}, {@code keys_unsorted}, {@code isinfinite},
@@ -79,14 +77,17 @@ public final class PreludeSignatures {
    * and since #110 the ten of {@link #LIFTED} compile too, each lifting one. #72 and #73 may move entries out of this set, and only out
    * (design approval, O3); an entry leaving it with its Stub is not a weakened test, and each of the ten that left at
    * #110 is asserted to lift one function (PreludeLiftTest) and run (diff/rec-prelude.cases).
+   *
+   * <p>The string natives ({@code startswith}, {@code endswith}, {@code _strindices}, {@code explode}, {@code implode})
+   * moved eight more out, none lifting a function: indices, index, rindex, ltrimstr, rtrimstr, trimstr,
+   * ascii_downcase and ascii_upcase, which StringNativesTest runs.
    */
   public static final Set<String> STUBS =
       Set.of(
-          "halt_error/0", "del/1", "_assign/2", "_modify/2", "map_values/1", "indices/1", "index/1", "rindex/1",
-          "paths/0", "paths/1", "fromdateiso8601/0", "todateiso8601/0", "fromdate/0", "todate/0",
-          "ltrimstr/1", "rtrimstr/1", "trimstr/1", "match/2", "match/1", "test/2", "test/1",
+          "halt_error/0", "del/1", "_assign/2", "_modify/2", "map_values/1", "paths/0", "paths/1",
+          "fromdateiso8601/0", "todateiso8601/0", "fromdate/0", "todate/0", "match/2", "match/1", "test/2", "test/1",
           "capture/2", "capture/1", "scan/2", "scan/1", "splits/2", "splits/1", "split/2", "sub/3", "sub/2", "gsub/3",
-          "gsub/2", "inside/1", "inputs/0", "ascii_downcase/0", "ascii_upcase/0", "truncate_stream/1",
+          "gsub/2", "inside/1", "inputs/0", "truncate_stream/1",
           "fromstream/1", "tostream/0", "walk/1", "pick/1", "debug/1", "INDEX/2", "INDEX/1");
 
   /** The call of {@code signature} with {@code .} for every argument: {@code map(.)}, {@code limit(.; .)}, {@code add}. */
