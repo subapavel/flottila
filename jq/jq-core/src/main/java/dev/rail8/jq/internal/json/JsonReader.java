@@ -61,8 +61,34 @@ public final class JsonReader {
    * @throws JqSyntaxException when the bytes are not exactly one JSON document, or a limit is exceeded
    */
   public Document read(MemorySegment json) {
+    read(json, true, 0);
+    return last;
+  }
+
+  /**
+   * Reads the first value of {@code text} from index {@code from} on, and none after it, as jq's {@code
+   * jv_parse_sized} reads each value for {@code fromjson}: the text after the value is not looked at, except that a
+   * top-level number, {@code true}, {@code false} or {@code null} must end at whitespace, a quote, a bracket, a brace, a
+   * comma, a colon or the end, where jq's tokens end. One UTF-8 BOM at the start of the text is skipped and not counted
+   * in a column; lines and columns count from the start of the text. The value's document is {@link #last()}.
+   *
+   * @return the index in {@code text} after the value, or -1 when there is nothing but whitespace from {@code from} on
+   * @throws JqSyntaxException when the value is malformed, or a limit is exceeded
+   */
+  public long readFirst(MemorySegment text, long from) {
+    return read(text, false, from);
+  }
+
+  /** The document of the last read that returned one. */
+  public Document last() {
+    return last;
+  }
+
+  /** Reads {@code json} as {@link #read(MemorySegment)} or, when not {@code whole}, as {@link #readFirst}. */
+  private long read(MemorySegment json, boolean whole, long from) {
     if (last != null) {
       last.drop();
+      last = null;
     }
     long size = json.byteSize();
     if (size > limits.document()) {
@@ -78,9 +104,13 @@ public final class JsonReader {
       origin = 0;
     }
     int end = origin + (int) size;
-    parse(bytes, hasBom(bytes, origin, end) ? origin + 3 : origin, end);
+    int base = hasBom(bytes, origin, end) ? origin + 3 : origin;
+    int after = parse(bytes, base, (int) Math.max(base, origin + from), end, whole);
+    if (after < 0) {
+      return -1;
+    }
     last = new Document(bytes, tape);
-    return last;
+    return after - origin;
   }
 
   /** Whether {@code b[p, end)} starts with the UTF-8 BOM, EF BB BF. */
@@ -88,11 +118,18 @@ public final class JsonReader {
     return end - p >= 3 && b[p] == (byte) 0xEF && b[p + 1] == (byte) 0xBB && b[p + 2] == (byte) 0xBF;
   }
 
-  /** Writes the value in {@code b[base, end)} onto the tape, its root at index 0. */
-  private void parse(byte[] b, int base, int end) {
+  /**
+   * Writes the value in {@code b[from, end)} onto the tape, its root at index 0; lines and columns count from {@code
+   * base}. When {@code whole}, only whitespace may follow it; otherwise the first value ends the read, as {@link
+   * #readFirst} says. Returns the position after the value, or -1 when only whitespace is there and not {@code whole}.
+   */
+  private int parse(byte[] b, int base, int from, int end, boolean whole) {
     int t = 0;
     int sp = 0;
-    int p = skip(b, base, end);
+    int p = skip(b, from, end);
+    if (!whole && p == end) {
+      return -1;
+    }
     value:
     for (;;) {
       // p is where a value must start.
@@ -136,12 +173,20 @@ public final class JsonReader {
       // A value ended: close the containers it ends, then a separator leads to the next value. At depth 0 only
       // whitespace may follow.
       for (;;) {
+        if (sp == 0 && !whole) {
+          int root = Tape.tag(tape[0]);
+          boolean token = root == Tape.NUMBER || root == Tape.TRUE || root == Tape.FALSE || root == Tape.NULL;
+          if (token && !tokenEnds(peek(b, p, end))) {
+            throw malformed(b, base, end, p);
+          }
+          return p;
+        }
         p = skip(b, p, end);
         if (sp == 0) {
           if (p != end) {
             throw malformed(b, base, end, p);
           }
-          return;
+          return p;
         }
         // The top slot is KEY when an object member's value ended, otherwise the index of an open array: an object
         // never reaches this loop before its first key, and an empty one is closed above.
@@ -407,6 +452,14 @@ public final class JsonReader {
       }
     }
     return p + word.length();
+  }
+
+  /** Whether jq's token ends before {@code c}: whitespace, a quote, {@code [ ] { } , :} or the end. */
+  private static boolean tokenEnds(int c) {
+    return switch (c) {
+      case EOF, ' ', '\t', '\n', '\r', '"', '[', ']', '{', '}', ',', ':' -> true;
+      default -> false;
+    };
   }
 
   /** The first position from p whose byte is not SP, TAB, LF or CR, or end. */

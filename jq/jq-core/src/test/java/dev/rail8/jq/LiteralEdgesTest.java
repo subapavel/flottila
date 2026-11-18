@@ -127,7 +127,7 @@ class LiteralEdgesTest {
   }
 
   @Test
-  void callsOfConstantsAreNotDefinedAndFormatStringsAreStubs() {
+  void callsOfConstantsAreNotDefinedAndFormatsRun() {
     // jq-ref 1.8.2, observed 2026-11-13 with -n: 'true(1)' and 'foo' give rc 3 and exactly these blocks. Since #70 a
     // call that binds nowhere is jq's compile error (ADR-0040): a constant called with arguments, and another name.
     Map<String, String> notDefined =
@@ -140,24 +140,18 @@ class LiteralEdgesTest {
       assertThat(error.blocks()).as("blocks of %s", e.getKey()).containsExactly(e.getValue());
       assertThat(error.getMessage()).as("message of %s", e.getKey()).isEqualTo(e.getValue() + "\njq: 1 compile error");
     }
-    // jq-ref -n '@text "a"' -> "a" and '@base64' -> "bnVsbA==", rc 0. A format string and another format are not built
-    // in #61. #67 lowers a format string, so its entry ended with | .., which stubbed until #110: it now compiles and
-    // runs (jq-ref 1.8.2, observed 2026-11-15: '@text "a" | ..' on null -> "a", rc 0). Another format stays a Stub.
-    for (String text : new String[] {"@base64"}) {
-      assertThatExceptionOfType(JqCompileException.class)
-          .as("compile of %s", text)
-          .isThrownBy(() -> ENGINE.compile(text))
-          .withMessageStartingWith(MARK);
-    }
-    // Witnesses: jq-ref -n 'true, @text' -> true and "null".
+    // jq-ref -n '@text "a"' -> "a" and '@base64' -> "bnVsbA==", rc 0; '@text "a" | ..' on null -> "a", rc 0 (jq-ref
+    // 1.8.2, observed 2026-11-15); 'true, @text' -> true and "null". Every format is built.
     Results results = new Results();
     ENGINE.compile("true").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
     ENGINE.compile("@text").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
     ENGINE.compile("@text \"a\" | ..").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
-    assertThat(results.values).as("results of true, @text and @text \"a\" | ..").hasSize(3);
+    ENGINE.compile("@base64").run(JqNull.NULL, NONE, results, ENGINE.newWorkspace());
+    assertThat(results.values).as("results of true, @text, @text \"a\" | .. and @base64").hasSize(4);
     assertThat(results.values.getFirst()).as("result of true").isSameAs(JqBool.TRUE);
     assertThat(((JqString) results.values.get(1)).value()).as("result of @text").isEqualTo("null");
     assertThat(((JqString) results.values.get(2)).value()).as("result of @text \"a\" | ..").isEqualTo("a");
+    assertThat(((JqString) results.values.get(3)).value()).as("result of @base64").isEqualTo("bnVsbA==");
   }
 
   @Test

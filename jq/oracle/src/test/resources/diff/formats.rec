@@ -1,0 +1,141 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case formats/json-text
+def be72e7963cc7
+rc 0
+stdout ["1","1","\\"a\\\\\\"b\\"","a\\"b","null","null","true","true","{\\"b\\":[2]}","{\\"b\\":[2]}","\\"a\\\\u0000b\\"","a\\u0000b"]\n
+stderr
+end
+
+case formats/html
+def a63498afe51c
+rc 0
+stdout ["&lt;&amp;&apos;&quot;&gt;x","[1,&quot;&lt;&quot;]","a\\\\0b","1"]\n
+stderr
+end
+
+case formats/uri
+def 728eb10c6f8a
+rc 0
+stdout ["a%20b%2F%C3%BC~-_.%21","","1","%5B%22%C3%A9%22%5D"]\n
+stderr
+end
+
+case formats/urid
+def f2e2f02de8d7
+rc 0
+stdout ["AB","x","a bü","string (\\"a%20b%C3%BC%2\\") is not a valid uri encoding","string (\\"%\\") is not a valid uri encoding","string (\\"%zz\\") is not a valid uri encoding","string (\\"%FF\\") is not a valid uri encoding","é"]\n
+stderr
+end
+
+case formats/base64
+def 32e9b85e786d
+rc 0
+stdout ["aGVsbG8=","","WzFd","MQ==","w6k=","YWI=","YWJj"]\n
+stderr
+end
+
+case formats/base64d
+def c2b47503bed6
+rc 0
+stdout ["hello","hello","ab","string (\\"a\\") trailing base64 byte found","string (\\"!!!!\\") is not valid base64 data","","string (\\"1\\") trailing base64 byte found","é"]\n[65533]\n
+stderr
+end
+
+case formats/strings-built
+def 4fc11a1c3662
+rc 0
+stdout ["\\"a\\\\u0000<b>xxx\\"","a\\\\0&lt;b&gt;xxx","a%00%3Cb%3Exxx","YQA8Yj54eHg=","a\\u0000<b>xxx"]\n
+stderr
+end
+
+case formats/csv
+def 916b3397944b
+rc 0
+stdout ["1,\\"a\\"\\"b\\",,true,false,1.5","\\"a\\\\0b\\"","","array ([1]) is not valid in a csv row","object ({}) is not valid in a csv row","string (\\"x\\") cannot be csv-formatted, only array","object ({}) cannot be csv-formatted, only array"]\n
+stderr
+end
+
+case formats/tsv
+def b2375849e63c
+rc 0
+stdout ["1\\ta\\\\tb\\\\\\\\c\\\\nd\\\\re\\t\\ttrue","a\\\\0b","","array ([1]) is not valid in a csv row","object ({}) is not valid in a csv row","string (\\"x\\") cannot be tsv-formatted, only array","object ({}) cannot be tsv-formatted, only array"]\n
+stderr
+end
+
+case formats/sh
+def 11a12d56e8ba
+rc 0
+stdout ["'it'\\\\''s'","1 'a b' null false","'a\\\\0b'","","array ([1]) can not be escaped for shell","object ({\\"a\\":1}) can not be escaped for shell","1"]\n
+stderr
+end
+
+case formats/rows-built
+def 12de28c098b2
+rc 0
+stdout ["0,1,2,\\"x y\\",","0\\t1\\t2\\tx y\\t","0 1 2 'x y' null"]\n
+stderr
+end
+
+case formats/format-names
+def 4bf44f7a536f
+rc 0
+stdout ["[\\"a b\\"]","[\\"a b\\"]","[&quot;a b&quot;]","%5B%22a%20b%22%5D","[\\"a b\\"]","\\"a b\\"","a b","'a b'","WyJhIGIiXQ==","string (\\"[\\\\\\"a b\\\\\\"]\\") is not valid base64 data","[\\"a b\\"]"]\n
+stderr
+end
+
+case formats/format-errors
+def 3f1f6977ff24
+rc 0
+stdout "nope is not a valid format"\n"number (1) is not a valid format"\n"null (null) is not a valid format"\n"foo is not a valid format"\n
+stderr
+end
+
+case formats/interpolation
+def 5f083360c421
+rc 0
+stdout "xWyJhIGInPCJdyYQ=="\n"v=[\\"a b'<\\"]"\n"echo 'a b'\\\\''<' 'a b'\\\\''<'"\n"?q=a%20b%27%3C"\n"\\"a b'<\\""\n"[\\"a b'<\\"]"\n"<b>a b&apos;&lt;</b>"\n
+stderr
+end
+
+case formats/uncaught
+def a3f4b6c9b16c
+rc 5
+stdout "1"\n
+stderr jq: error (at <stdin>:1): array ([2]) is not valid in a csv row\n
+end
+
+case formats/fromjson
+def 6d322c770eac
+rc 0
+stdout [[1,"ab",{"k":[]}],{"a":1},"é",[1],{"a":1},1.000,-0,null]\n
+stderr
+end
+
+case formats/fromjson-numbers
+def 5dd9c4e8b222
+rc 0
+stdout [[1E+1000,"1E+1000"],[100000000000000000001,"100000000000000000001"],[1.10,"1.10"],[[1E+1000],"[1E+1000]"]]\n
+stderr
+end
+
+case formats/fromjson-errors
+def 503ce5844dc0
+rc 0
+stdout ["Expected JSON value (while parsing '')","Expected JSON value (while parsing '  ')","Unexpected extra JSON values (while parsing '1 2')","Unexpected extra JSON values (while parsing '[1,2] 3')","Unexpected extra JSON values (while parsing '\\"a\\" \\"b\\"')","number (1) only strings can be parsed","null (null) only strings can be parsed","array ([]) only strings can be parsed"]\n
+stderr
+end
+
+case formats/fromjson-built
+def 973ba66abbd8
+rc 0
+stdout [1,{"a":[1.10,"x"]}]\n
+stderr
+end
+
+case formats/toboolean
+def 39ebff32bd68
+rc 0
+stdout [true,false,true,false,"string (\\"True\\") cannot be parsed as a boolean","string (\\" true\\") cannot be parsed as a boolean","string (\\"\\") cannot be parsed as a boolean","number (1) cannot be parsed as a boolean","null (null) cannot be parsed as a boolean","array ([]) cannot be parsed as a boolean"]\n
+stderr
+end

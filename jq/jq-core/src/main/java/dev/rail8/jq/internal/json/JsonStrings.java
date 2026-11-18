@@ -1,6 +1,6 @@
 /*
- * Translated from jq 1.8.2 (https://github.com/jqlang/jq): found_string in src/jv_parse.c, jvp_utf8_next and
- * jvp_utf8_encode in src/jv_unicode.c, jv_string_sized and jvp_string_copy_replace_bad in src/jv.c.
+ * Translated from jq 1.8.2 (https://github.com/jqlang/jq): found_string in src/jv_parse.c, jvp_utf8_next,
+ * jvp_utf8_is_valid and jvp_utf8_encode in src/jv_unicode.c, jv_string_sized and jvp_string_copy_replace_bad in src/jv.c.
  *
  * jq is copyright (C) 2012 Stephen Dolan
  *
@@ -177,6 +177,18 @@ public final class JsonStrings {
     byte[] s = new byte[to - from];
     int n = unescape(b, from, to, s);
     return replaceBad(s, 0, n);
+  }
+
+  /** {@code jvp_utf8_is_valid} over {@code s[from, to)}: whether {@link #step} calls no sequence there invalid. */
+  public static boolean isValid(byte[] s, int from, int to) {
+    for (int i = from; i < to; ) {
+      int length = step(s, i, to);
+      if (length < 0) {
+        return false;
+      }
+      i += length;
+    }
+    return true;
   }
 
   /**

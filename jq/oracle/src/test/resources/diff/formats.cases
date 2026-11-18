@@ -1,0 +1,139 @@
+# Differential cases of the formats, format/1, fromjson and toboolean: jq 1.8.2's f_format, escape_string,
+# f_json_parse and f_toboolean (src/builtin.c, src/jv_print.c, src/jv_parse.c). Each format on a document's value
+# (stdin) and on a built one, with its errors; format/1 on every name and on a name that is no format; a format applied
+# to each interpolation; fromjson's literal numbers, BOM and messages; toboolean's accepted texts. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in formats.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# The string formats: @text and @json dump, @html, @uri and @base64 escape the text of the value, @urid and @base64d
+# decode it.
+
+case formats/json-text
+arg -c
+filter map(@json, @text)
+stdin [1,"a\\"b",null,true,{"b":[2]},"a\\u0000b"]\n
+end
+
+case formats/html
+arg -c
+filter map(@html)
+stdin ["<&'\\">x",[1,"<"],"a\\u0000b",1]\n
+end
+
+case formats/uri
+arg -c
+filter map(@uri)
+stdin ["a b/ü~-_.!","",1,["é"]]\n
+end
+
+case formats/urid
+arg -c
+filter map(try @urid catch .)
+stdin ["%41%42","x","a%20b%C3%BC","a%20b%C3%BC%2","%","%zz","%FF","%c3%a9"]\n
+end
+
+case formats/base64
+arg -c
+filter map(@base64)
+stdin ["hello","",[1],1,"é","ab","abc"]\n
+end
+
+case formats/base64d
+arg -c
+filter map(try @base64d catch .), ("/w==" | @base64d | explode)
+stdin ["aGVsbG8=","aGVsbG8=xyz","YWI","a","!!!!","",1,"w6k="]\n
+end
+
+case formats/strings-built
+arg -c
+filter "a\\u0000<b>" + ("x" * 3) | [@json, @html, @uri, @base64, (@base64 | @base64d)]
+stdin null\n
+end
+
+# The row formats: @csv, @tsv and @sh take an array, @sh also a scalar; an element that is an array or an object is an
+# error.
+
+case formats/csv
+arg -c
+filter map(try @csv catch .)
+stdin [[1,"a\\"b",null,true,false,1.5],["a\\u0000b"],[],[[1]],[{}],"x",{}]\n
+end
+
+case formats/tsv
+arg -c
+filter map(try @tsv catch .)
+stdin [[1,"a\\tb\\\\c\\nd\\re",null,true],["a\\u0000b"],[],[[1]],[{}],"x",{}]\n
+end
+
+case formats/sh
+arg -c
+filter map(try @sh catch .)
+stdin ["it's",[1,"a b",null,false],"a\\u0000b",[],[[1]],{"a":1},1]\n
+end
+
+case formats/rows-built
+arg -c
+filter [range(3)] + ["x y", null] | [@csv, @tsv, @sh]
+stdin null\n
+end
+
+# format/1 takes the name as a string, compared up to its first NUL; an unknown name is an error of the run.
+
+case formats/format-names
+arg -c
+filter . as $v | ["text","json","html","uri","urid","csv","tsv","sh","base64","base64d","json\\u0000y"] | map(. as $f | $v | try format($f) catch .)
+stdin ["a b"]\n
+end
+
+case formats/format-errors
+arg -c
+filter try format("nope") catch ., try format(1) catch ., try format(null) catch ., try @foo catch .
+stdin "x"\n
+end
+
+case formats/interpolation
+arg -c
+filter @base64 "x\\(.)y\\("a")", @json "v=\\(.)", @sh "echo \\(.[0]) \\(.)", @uri "?q=\\(.[0])", @csv "\\(.)", @text "\\(.)", @html "<b>\\(.[0])</b>"
+stdin ["a b'<"]\n
+end
+
+case formats/uncaught
+arg -c
+filter .[] | @csv
+stdin [[1],[[2]],[3]]\n
+end
+
+# fromjson reads one strict document: literal numbers kept, a BOM at the start skipped, jq's messages for no value and
+# for extra values.
+
+case formats/fromjson
+arg -c
+filter map(fromjson)
+stdin ["[1,\\"ab\\",{\\"k\\":[]}]","  {\\"a\\":1} ","\\"\\\\u00e9\\"","\\ufeff[1]","{\\"a\\":\\"xyz\\",\\"a\\":1}","1.000","-0","null"]\n
+end
+
+case formats/fromjson-numbers
+arg -c
+filter map(fromjson | [., tojson])
+stdin ["1E+1000","100000000000000000001","1.10","[1e1000]"]\n
+end
+
+case formats/fromjson-errors
+arg -c
+filter map(try fromjson catch .)
+stdin ["","  ","1 2","[1,2] 3","\\"a\\" \\"b\\"",1,null,[]]\n
+end
+
+case formats/fromjson-built
+arg -c
+filter [1, {"a": [1.10, "x"]}] | tojson | fromjson
+stdin null\n
+end
+
+# toboolean accepts a boolean and exactly the texts "true" and "false".
+
+case formats/toboolean
+arg -c
+filter map(try toboolean catch .)
+stdin ["true","false",true,false,"True"," true","",1,null,[]]\n
+end
