@@ -14,6 +14,7 @@ module | exports dev.rail8.jq.value
 module | module dev.rail8.jq
 module | requires dev.rail8.jq.query
 module | requires mandated java.base
+module | requires org.jruby.joni
 
 dev.rail8.jq.Bindings | public final class dev.rail8.jq.Bindings
 dev.rail8.jq.Bindings | public static dev.rail8.jq.Bindings$Builder dev.rail8.jq.Bindings.builder()

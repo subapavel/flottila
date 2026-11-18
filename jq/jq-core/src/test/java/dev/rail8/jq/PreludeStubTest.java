@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
  * each test that compiles, and {@link PreludeCompileTest}. An entry leaves this class with its Stub, which is not a
  * weakened test: #72 for {@code flatten}; #110 for {@code ..}, {@code recurse} and {@code limit(3; repeat(1))}
  * (ADR-0042 amendment for #110), which RecursivePreludeTest, PreludeLiftTest and diff/rec-prelude.cases now run;
- * the string natives for {@code ltrimstr}, which StringNativesTest now runs.
+ * the string natives for {@code ltrimstr}, which StringNativesTest now runs; the regex native for {@code test}, which
+ * RegexTest and diff/regex.cases now run.
  */
 class PreludeStubTest {
   private static final String MARK = "rail8-jq stub: ";
@@ -38,13 +39,6 @@ class PreludeStubTest {
     assertStub("[paths]");
     assertCompiles("[select(true)]");
     assertCompiles("[recurse]");
-  }
-
-  /** test/1 reaches _match_impl, the regular expressions' native, still unbuilt. */
-  @Test
-  void testIsAStub() {
-    assertStub("test(\"a\")");
-    assertCompiles("first(\"a\")");
   }
 
   /**
