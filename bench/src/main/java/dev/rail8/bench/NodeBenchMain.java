@@ -72,17 +72,19 @@ import java.util.zip.ZipOutputStream;
  *       item's claim → complete, from triggers on {@code work} into an unlogged {@code bench_work_log}; the window runs from
  *       the first request until the queue is empty, and the record adds the ingress' own distribution ({@code ingress}) and
  *       {@code drainTailMs} (the last 202 → the queue empty);</li>
- *   <li>{@code at-most-once}: the at-most-once flow's 202s and the runs behind them: the distribution is the 202's, the
- *       window runs from the first request until every accepted message was recorded, so its throughput is the runs'; the
- *       record adds {@code drainTailMs} (the last 202 → the last message recorded) and {@code commitsPerMessage} and
+ *   <li>{@code at-most-once}: the at-most-once flow's 202s and the runs behind them: the distribution is every answer's
+ *       (202 and 503), the window runs from the first request until every accepted message was recorded, so its throughput
+ *       is the runs'; an accepted run that never reached the partner was dropped and counts as an error. The record adds
+ *       {@code drainTailMs} (the last 202 → the last message recorded) and {@code commitsPerMessage} and
  *       {@code walSyncsPerMessage} as an ack record does.</li>
  * </ul>
  * The flow is {@code [xslt?, to partner]} ({@code --step}; xslt sends a ~100 KB generated invoice, passthrough a one-line one)
  * under {@code --recording}. Its {@code maxInFlight} is {@code --max-in-flight}, by default {@code --concurrency} for
  * at-least-once (the ingress permit is back when the 202 is decided, and the worker runs at most that many items) and
- * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync and at-most-once: a sync message holds its permit until its recording
- * closed, after the reply, and an at-most-once message until its run's recording closed, after the 202, so a client's next
- * request comes while earlier ones still hold theirs. A window counts its 503s
+ * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync: a sync message holds its permit until its recording closed, after the
+ * reply, so a client's next request comes while earlier ones still hold theirs. At-most-once takes {@code --concurrency} too,
+ * so its runs' calls fit the partner's pool; its 202 comes at once, so a closed loop refuses what the runs cannot keep up
+ * with, and those 503s are its backpressure. A window counts its 503s
  * ({@code refused}, the flow's admission) apart from its {@code errors} (any other status, a failed request); {@code failed} is
  * both, and the record adds the warm-up's ({@code warmupFailed}). A sync window's wait for its rows fails at once when the
  * node's /health {@code snapshotWriteFailures} rises above its value before the load. The partner's pool has
@@ -368,7 +370,7 @@ public final class NodeBenchMain {
 
     /** The flow's in-flight limit when {@code --max-in-flight} is not given (see the class comment). */
     static int defaultInFlight(Scenario scenario, int concurrency) {
-        return scenario == Scenario.SYNC || scenario == Scenario.AT_MOST_ONCE ? SYNC_PERMITS_PER_CLIENT * concurrency : concurrency;
+        return scenario == Scenario.SYNC ? SYNC_PERMITS_PER_CLIENT * concurrency : concurrency;
     }
 
     /** {@code raw} as a positive int; anything else is refused naming {@code --key} and the value. */
@@ -443,7 +445,7 @@ public final class NodeBenchMain {
             int warmupFailed = h.load(in, "/in", o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
             h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
-            measured = (o.open() == null ? h.measure(warmedUp, admin) : h.open(warmedUp, admin, receipts))
+            measured = (o.open() == null ? h.measure(warmedUp, admin, receipts::get) : h.open(warmedUp, admin, receipts))
                     .put("warmupFailed", warmupFailed)   // settled too: the node stops with nothing in flight
                     .put("cpu", h.cpu(admin));
         } finally {
@@ -741,9 +743,9 @@ public final class NodeBenchMain {
 
         /**
          * The scenario's window, {@code recorded} messages of the node recorded before it (the warmup's); the node's admin API
-         * on {@code admin} answers /health.
+         * on {@code admin} answers /health; {@code receipts} counts the requests the partner received so far.
          */
-        JsonObject measure(int recorded, int admin) {
+        JsonObject measure(int recorded, int admin, LongSupplier receipts) {
             return switch (o.scenario()) {
                 case SYNC -> {
                     JsonObject raw = load(echo, "/echo", o.messages(), 200).toJson(o.messages());
@@ -755,7 +757,7 @@ public final class NodeBenchMain {
                     JsonObject w = window(recorded, admin);
                     yield w.mergeIn(perMessage(before, counters(), o.messages()));
                 }
-                case AT_MOST_ONCE -> atMostOnce(recorded, admin);
+                case AT_MOST_ONCE -> atMostOnce(recorded, admin, receipts);
                 default -> worker(recorded, admin);   // WORKER: an echo run measures no node window
             };
         }
@@ -855,26 +857,28 @@ public final class NodeBenchMain {
 
         /**
          * At-most-once: the 202s and the runs behind them. The window runs from the first request until every message it
-         * accepted was recorded, so its throughput is the runs' and its CPU and allocation hold theirs; the latency is the
-         * 202's. The record adds {@code drainTailMs}, from the last 202 until the last message was recorded, and the
-         * database's commits and WAL syncs per message.
+         * accepted was recorded, so its throughput is the runs' and its CPU and allocation hold theirs; the latency is every
+         * answers'. The record adds {@code drainTailMs}, from the last 202 until the last message was recorded, and the
+         * database's commits and WAL syncs per message. Its costs per message are per accepted message: a 503 runs nothing.
          */
-        private JsonObject atMostOnce(int recorded, int admin) {
+        private JsonObject atMostOnce(int recorded, int admin, LongSupplier receipts) {
             Counters counted = counters();
             long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
             Cost cost = Cost.start();
+            long receivedBefore = receipts.getAsLong();
             long started = System.nanoTime();
             Window answered = load(in, "/in", o.messages(), accepted());
             long lastAnswer = System.nanoTime();
             settle(recorded + o.messages() - answered.failed(), failuresAtStart, DRAIN, probe(admin));
             long landed = System.nanoTime();
-            JsonObject spent = cost.perMessage(o.messages());
+            int accepted = Math.max(1, o.messages() - answered.failed());
+            JsonObject spent = cost.perMessage(accepted);
             Snapshot after = snapshot();
-            return new Window(answered.latency(), answered.refused(), answered.errors(), landed - started, answered.firstFailure())
-                    .toJson(o.messages()).mergeIn(rates(before, after, landed - started)).mergeIn(spent)
+            return withDropped(answered, receipts.getAsLong() - receivedBefore, landed - started).toJson(o.messages())
+                    .mergeIn(rates(before, after, landed - started)).mergeIn(spent)
                     .put("drainTailMs", (landed - lastAnswer) / 1_000_000.0)
-                    .mergeIn(perMessage(counted, counters(), o.messages()));
+                    .mergeIn(perMessage(counted, counters(), accepted));
         }
 
         /**
@@ -902,6 +906,18 @@ public final class NodeBenchMain {
                     queued.firstFailure()).toJson(o.messages())
                     .mergeIn(rates(before, after, drained - started)).mergeIn(spent).put("ingress", queued.toJson(o.messages()))
                     .put("drainTailMs", (drained - answered) / 1_000_000.0);
+        }
+
+        /**
+         * An at-most-once window of {@code elapsedNanos} from its load's answers and the requests the partner {@code received}
+         * meanwhile: every accepted run calls the partner once, so an accepted run the partner never received was dropped and
+         * counts as an error.
+         */
+        static Window withDropped(Window answered, long received, long elapsedNanos) {
+            long dropped = Math.max(0, answered.latency().count() - answered.failed() - received);
+            String first = answered.firstFailure() != null || dropped == 0 ? answered.firstFailure()
+                    : dropped + " accepted runs never reached the partner: dropped";
+            return new Window(answered.latency(), answered.refused(), answered.errors() + Math.toIntExact(dropped), elapsedNanos, first);
         }
 
         /** A worker window's failures: the requests the ingress did not take, and the items parked in the window. */

@@ -55,7 +55,9 @@ class NodeBenchMainIT {
     void eachScenarioWritesItsJsonWithTheNamedFields(String scenario) throws Exception {
         String db = database();
         Path out = dir.resolve(scenario + ".json");
-        int code = NodeBenchMain.run(args(db, scenario, "keep", 4, out));
+        // an at-most-once closed loop refuses what its runs cannot keep up with: a limit of every message keeps this check free of 503s
+        String[] limit = scenario.equals("at-most-once") ? new String[] {"--max-in-flight", String.valueOf(MESSAGES)} : new String[0];
+        int code = NodeBenchMain.run(args(db, scenario, "keep", 4, out, limit));
         assertEquals(0, code, "the " + scenario + " run exits 0");
         assertTrue(Files.exists(out), "the run wrote its JSON to --out: " + out);
         JsonObject json = new JsonObject(Files.readString(out));
@@ -71,8 +73,8 @@ class NodeBenchMainIT {
         assertEquals(0, json.getInteger("refused"), "the record counts the 503 refusals (FIX-67): " + json.encode());
         assertEquals(0, json.getInteger("errors"), "the record counts the other failures apart (FIX-67): " + json.encode());
         assertEquals(0, json.getInteger("warmupFailed"), "the record counts the warm-up's failures (FIX-67/FIX-63): " + json.encode());
-        assertEquals(scenario.equals("sync") || scenario.equals("at-most-once") ? 64 * 4 : 4, json.getInteger("maxInFlight"),
-                "the default flow limit: " + json.encode());
+        assertEquals(scenario.equals("sync") ? 64 * 4 : scenario.equals("at-most-once") ? MESSAGES : 4, json.getInteger("maxInFlight"),
+                "the flow limit: " + json.encode());
         assertEquals(true, json.getBoolean("syncCommit"), "observed on the server: " + json.encode());
         assertEquals("test", json.getString("commit"));
         assertNotNull(json.getString("date"), "the record carries its date");

@@ -13,14 +13,14 @@
 # e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM), BENCH_SCENARIOS (batched — what runs, space-separated:
 # `batched` the BatchingWriter pair, the CI regression job's; the node bench (NodeBenchMain, P1-10a): `sync` keep and
 # metadata-only against the raw echo, `ack` the at-least-once 202 at c=1, c=8 and c=64, `worker` passthrough and xslt, each keep
-# and metadata-only, `at-most-once` keep and metadata-only (the 202s and the runs behind them), `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
+# and metadata-only, `at-most-once` keep and metadata-only (the 202s and the runs behind them; its 503s stand as the cpu scenario's do), `cpu` (FIX-108) the sync flow passthrough and xslt at c=1 and c=64, each with --cpu-sampling off, PT0.004S and
 # PT0.002S one after the other, BENCH_CPU_ROUNDS (3) rounds, runs named node-cpu-<step>-c<c>-<sampling>-r<round>;
 # BENCH_MESSAGES / BENCH_WARMUP / BENCH_CONCURRENCY apply to every run but ack's and cpu's concurrency), BENCH_COMMIT_DELAY (unset —
 # the server's own: a commit_delay in µs, 0 to 100000; set server-wide with ALTER SYSTEM + pg_reload_conf() before the first
 # ack run, checked in pg_settings, and in force for every run after it, later scenarios included, until the EXIT trap resets
 # it (ALTER SYSTEM RESET + pg_reload_conf()) when the script exits, failed or not; the ack runs are named node-ack-c<c>-cd<µs>. NodeBenchMain never sets it. The role needs, from a superuser, Postgres 15+:
 # `GRANT ALTER SYSTEM ON PARAMETER commit_delay TO <role>` and `GRANT EXECUTE ON FUNCTION pg_reload_conf() TO <role>`).
-# A node run that exits non-zero stops the script, with one exception: in the cpu scenario (refusals_ok=1) an exit 3 whose record
+# A node run that exits non-zero stops the script, with one exception: in the cpu and at-most-once scenarios (refusals_ok=1) an exit 3 whose record
 # counts no error (errors 0: every failure is the flow's admission refusing, 503) stands — refusals occur even at 1 in flight against
 # the default limit 64×c, a permit outliving its reply (FIX-113), and FIX-112 judges their share. Every node run's summary names its
 # refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight)
@@ -192,7 +192,9 @@ for scenario in $BENCH_SCENARIOS; do
     sync)
       for recording in keep metadata-only; do run_node "node-sync-$recording" --scenario sync --recording "$recording"; done ;;
     at-most-once)
-      for recording in keep metadata-only; do run_node "node-at-most-once-$recording" --scenario at-most-once --recording "$recording"; done ;;
+      for recording in keep metadata-only; do
+        refusals_ok=1 run_node "node-at-most-once-$recording" --scenario at-most-once --recording "$recording"
+      done ;;
     ack)
       if [[ -n "$ack_suffix" ]]; then set_commit_delay "$BENCH_COMMIT_DELAY"; fi
       for c in 1 8 64; do run_node "node-ack-c$c$ack_suffix" --scenario ack --concurrency "$c"; done ;;
