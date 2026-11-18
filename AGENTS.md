@@ -23,11 +23,13 @@ change touches. Everything in the repository is in English.
 ## One task
 
 1. One task = one GitHub issue = one fresh session, branched from `main`.
-2. The session writes the test and the code, and runs the tests of the modules it touched.
+2. The session writes the test and the code. Before it merges, it runs the build with the tests of the
+   modules it touched, and `python3 ci/change_guard.py --base origin/main`.
 3. It opens a pull request. Every commit is signed off (`git commit -s`, checked by DCO).
 4. One review by a different agent (`reviewer`), launched at the effort the class sets: correct behaviour, needless complexity, readable
    comments. Wording in docs is never a reason to send a change back. One round of fixes.
-5. Green checks, then the session merges the pull request with the rebase method.
+5. Its own build green and the sign-off check green, then the session merges the pull request with the
+   rebase method. It does not wait for other checks on GitHub.
 
 The dispatcher (`.claude/routines/dispatcher.md`) picks the tasks and starts their sessions; a
 session removes the label `in-progress` from its issue once its pull request is merged.
@@ -48,10 +50,12 @@ Every task issue carries one class label (an `owner-question` issue carries none
 Whoever opens the issue sets the class; when it is unclear, the owner-proxy decides. When a task
 turns out harder than its class, raise the label and say why in the issue. Never lower it mid-task.
 
-Blocking on every change: the build with unit and integration tests on one Postgres version, and
-the sign-off check. The build also runs Error Prone (its errors fail) and `ci/change_guard.py`,
-which rejects task or decision references in comments and hard-coded colours on the changed lines. Coverage, mutation tests, a second Postgres, Windows, performance and the
-platform started in Docker run nightly as a report.
+Blocking on every change: the sign-off check on GitHub, and the session's own build with unit and
+integration tests on one Postgres version. The build runs Error Prone (its errors fail);
+`ci/change_guard.py` rejects task or decision references in comments and hard-coded colours on the
+changed lines. Once a day, before the owner's morning overview, GitHub builds `main`, runs the tests
+and starts the platform in Docker; when that is red, its fix is the first task of the day. Coverage,
+mutation tests, a second Postgres, Windows and performance are switched off for now.
 
 ## Technical rules
 

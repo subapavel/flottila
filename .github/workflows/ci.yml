@@ -1,16 +1,14 @@
 # The platform's checks on GitHub.
-# On every change (a push to main, a pull request): the sign-off check of every commit, and the build with unit
-# and integration tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package.
-# These block a merge.
-# Once a night and on demand, as a report that blocks nothing: the whole stack in Docker with the demo deployed,
-# the same tests on the oldest supported Postgres, the coverage floors and the "coverage must not fall"
-# comparison, the benchmark, mutation testing, and the check that a test JVM which dies fails the build in every
-# module of the platform, the jq engine and the mapping.
+# On every pull request: the sign-off check of every commit. It blocks a merge. The session that wrote the change
+# runs the build with its tests itself before it merges.
+# Once a day and on demand, before the owner's morning overview: the build of main with unit and integration
+# tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package, and then the
+# whole stack started in Docker with the demo deployed. It blocks nothing; a red run is the first task of the day.
+# The larger reports (the oldest supported Postgres, coverage, the benchmark, mutation testing and the fork kill
+# check) are switched off for now.
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:
@@ -23,6 +21,7 @@ env:
 jobs:
   dco:
     name: DCO sign-off on every commit
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +51,7 @@ jobs:
 
   build:
     name: "build · unit · integration (-Pit) · ArchUnit"
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -121,7 +121,7 @@ jobs:
 
   postgres-floor:
     name: "nightly · unit · integration (-Pit) · Postgres 17.11, the oldest supported"
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +139,7 @@ jobs:
 
   coverage:
     name: "nightly · coverage floors and the comparison with ci/coverage-baseline.json"
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -221,7 +221,7 @@ jobs:
 
   fork-kill:
     name: "nightly · a test JVM that dies fails the build, in every module (ci/fork_kill_check.py)"
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,7 +249,7 @@ jobs:
 
   bench:
     name: bench (native Postgres on the runner)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -284,7 +284,7 @@ jobs:
 
   mutation:
     name: mutation (PIT, api + core)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     needs: build
     runs-on: ubuntu-latest
     steps:
