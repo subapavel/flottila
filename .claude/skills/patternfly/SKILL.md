@@ -12,7 +12,7 @@ description: PatternFly 6 rules for Rail8's UI — build screens only from Patte
      then `claude plugins install patternfly@uxd-ai-helpers`. -->
 
 The UI uses PatternFly 6 (`@patternfly/react-core`, `react-icons`, `react-table`; the versions are
-in `mapping/ui/package.json`).
+in `ui/package.json`).
 
 ## Rules
 

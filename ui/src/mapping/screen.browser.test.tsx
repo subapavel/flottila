@@ -135,3 +135,93 @@ describe('the Mappings screen in the shell', () => {
     await expect.element(row('order-id-copy').getByRole('cell', { name: 'Copies the order id.' })).toBeVisible();
   });
 });
+
+describe('the mapping studio in the shell', () => {
+  const fields = (side: 'source' | 'target') => page.getByRole('region', { name: `${side} message` }).getByRole('table', { name: `${side} fields` });
+  const canvasNode = (name: RegExp) => page.getByRole('group', { name: 'Mapping canvas' }).getByRole('group', { name });
+  const nodeFooter = () => page.getByRole('region', { name: 'Field mapping canvas' }).getByText(/nodes · /);
+  /** How far the document scrolls vertically: 0 when the page fits the window. */
+  const verticalScroll = () => document.documentElement.scrollHeight - document.documentElement.clientHeight;
+  /** Whether `element` is wholly inside the window. */
+  const wholly = (element: Element) => {
+    const box = element.getBoundingClientRect();
+    return box.top >= 0 && box.left >= 0 && box.bottom <= window.innerHeight && box.right <= window.innerWidth && box.height > 0;
+  };
+
+  test('at 1440 x 900 the studio fills the window without a page scroll, on the Definition and on the Test tab', async () => {
+    await page.viewport(1440, 900);
+    render(fakeApiClient());
+    await openMapping('order-id-copy');
+    await shellTab('Definition').click();
+    await fields('target').getByRole('button', { name: 'OrderId', exact: true }).click();
+
+    await expect.element(nodeFooter()).toHaveTextContent('2 nodes · 1 connections');
+    for (const part of [
+      fields('source'),
+      fields('target'),
+      page.getByRole('group', { name: 'Mapping canvas' }),
+      page.getByRole('region', { name: 'Function catalogue' }),
+    ]) {
+      await expect.element(part).toBeInViewport();
+    }
+    // the canvas fits its pane: its tools and its footer are fully shown, not scrolled away
+    expect(wholly(page.getByRole('toolbar', { name: 'Mapping tools' }).element())).toBe(true);
+    expect(wholly(nodeFooter().element())).toBe(true);
+    expect(verticalScroll()).toBe(0);
+
+    await shellTab('Test').click();
+    await expect.element(page.getByRole('button', { name: 'Run simulation' })).toBeInViewport();
+    // the result region is wholly on screen, not pushed below the fold, and so is the processing log's head
+    expect(wholly(page.getByRole('region', { name: 'Result', exact: true }).element())).toBe(true);
+    expect(wholly(page.getByRole('heading', { name: 'Processing log' }).element())).toBe(true);
+    expect(verticalScroll()).toBe(0);
+  });
+
+  test('a wire, a parameter and a moved box survive Save, closing the tab and opening the mapping again', async () => {
+    await page.viewport(1440, 900);
+    render(fakeApiClient());
+    await openMapping('order-unmapped');
+    await button('Edit').click();
+    await shellTab('Definition').click();
+    await fields('target').getByRole('button', { name: 'OrderId', exact: true }).click();
+    await fields('source').getByRole('button', { name: 'OrderId', exact: true }).dblClick();
+    await expect.element(canvasNode(/^Source field OrderId\. Complete/)).toBeVisible();
+
+    const catalogue = page.getByRole('region', { name: 'Function catalogue' });
+    await catalogue.getByRole('button', { name: /^Text/ }).click();
+    await catalogue.getByRole('button', { name: /^substring\b/ }).click();
+    await canvasNode(/^Source field OrderId/).click({ button: 'right' });
+    await page.getByRole('menu').getByRole('button', { name: 'Connect to', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'substring · value', exact: true }).click();
+    await canvasNode(/^Node function substring/).click({ button: 'right' });
+    await page.getByRole('menu').getByRole('button', { name: 'Connect to', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'OrderId · OrderId', exact: true }).click();
+    await expect.element(canvasNode(/^Node function substring\. Complete/)).toBeVisible();
+
+    await canvasNode(/^Node function substring/).getByRole('button', { name: 'Parameters for substring' }).click();
+    const parameters = page.getByRole('dialog', { name: 'Function parameters · substring' });
+    await parameters.getByLabelText('Character Count').fill('3');
+    await parameters.getByRole('button', { name: 'Apply' }).click();
+    await expect.element(parameters).not.toBeInTheDocument();
+
+    await userEvent.dragAndDrop(canvasNode(/^Node function substring/), canvasNode(/^Target field OrderId/), { steps: 5 });
+    const transform = () => (canvasNode(/^Node function substring/).element() as HTMLElement).style.transform;
+    const moved = transform();
+    await expect.element(nodeFooter()).toHaveTextContent('3 nodes · 2 connections');
+
+    await button('Save').click();
+    await expect.element(page.getByRole('heading', { name: /Mapping order-unmapped saved/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Close order-unmapped' }).click();
+    await expect.element(shellTab('order-unmapped')).not.toBeInTheDocument();
+
+    await openMapping('order-unmapped');
+    await shellTab('Definition').click();
+    await fields('target').getByRole('button', { name: 'OrderId', exact: true }).click();
+    await expect.element(nodeFooter()).toHaveTextContent('3 nodes · 2 connections');
+    await expect.element(canvasNode(/^Node function substring\. Complete/)).toBeVisible();
+    await expect.element(canvasNode(/^Node function substring/)).toMatchTextContent(/length 3/);
+    expect(transform()).toBe(moved);
+    await expect.element(button('Edit')).toBeVisible();
+    await expect.element(button('Save')).not.toBeInTheDocument();
+  });
+});
