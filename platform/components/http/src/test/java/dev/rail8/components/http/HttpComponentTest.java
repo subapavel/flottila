@@ -10,10 +10,13 @@ import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.testkit.FakeRuntime;
 import dev.rail8.testkit.Ports;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
+import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -50,6 +53,7 @@ class HttpComponentTest {
 
     static Vertx vertx;
     static HttpClientAgent raw;
+    static Context rawContext;
     final FakeRuntime rt = FakeRuntime.create();
     final HttpComponent http = new HttpComponent(vertx, rt.blobs(), rt.ids());
     final List<Consumer> started = new CopyOnWriteArrayList<>();
@@ -59,6 +63,7 @@ class HttpComponentTest {
     static void start() {
         vertx = Vertx.vertx();
         raw = vertx.createHttpClient();
+        rawContext = vertx.getOrCreateContext();
     }
 
     @AfterAll
@@ -83,11 +88,25 @@ class HttpComponentTest {
 
     record Answer(int status, io.vertx.core.MultiMap headers, Buffer body) {}
 
+    /**
+     * Sends one request of the test's client, {@code send} writing it, and gives the answer. Every request starts on one Vert.x
+     * context: a request started on a thread outside Vert.x gets a context of its own, and when its pooled connection's events
+     * arrive on another event loop the response's body can be dropped before the body handler is set, so the answer would come
+     * back with an empty body.
+     */
+    static Future<Answer> exchange(RequestOptions options, Function<HttpClientRequest, Future<HttpClientResponse>> send) {
+        Promise<Answer> answer = Promise.promise();
+        rawContext.runOnContext(v -> raw.request(options).compose(send)
+                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b)))
+                .onComplete(answer));
+        return answer.future();
+    }
+
     Answer post(int port, String path, Buffer body, Map<String, String> headers) {
-        return raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + path)).compose(req -> {
+        return exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + path), req -> {
             headers.forEach(req::putHeader);
             return req.send(body);
-        }).compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b))).await();
+        }).await();
     }
 
     @Test
@@ -169,15 +188,13 @@ class HttpComponentTest {
         Answer declared = post(c.port(), "/in", Buffer.buffer("x".repeat(17)), Map.of());
         assertEquals(413, declared.status(), "declared above the limit: refused before a byte is stored");
         assertEquals(0, store.streamingWrites.get(), "the store was never asked: the declared length is refused at the door");
-        Answer chunked = raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"))
-                .compose(req -> { req.setChunked(true); return req.send(Buffer.buffer("y".repeat(40))); })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b))).await();
+        Answer chunked = exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"),
+                req -> { req.setChunked(true); return req.send(Buffer.buffer("y".repeat(40))); }).await();
         assertEquals(413, chunked.status(), "undeclared length: the store stops at the limit");
         assertEquals(1, store.streamingWrites.get(), "undeclared: the store is asked and refuses at the limit");
         assertEquals(202, post(c.port(), "/in", Buffer.buffer("x".repeat(16)), Map.of()).status(), "at the limit is fine");
         assertEquals(404, post(c.port(), "/elsewhere", Buffer.buffer("x"), Map.of()).status());
-        Answer get = raw.request(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"))
-                .compose(req -> req.send()).compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b))).await();
+        Answer get = exchange(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + c.port() + "/in"), HttpClientRequest::send).await();
         assertEquals(405, get.status());
         assertEquals("POST, PUT", get.headers().get("allow"));
         assertEquals(1, seen.size(), "only the body within the limit reached the handler");
@@ -196,8 +213,7 @@ class HttpComponentTest {
         started.remove(c);
         assertEquals(-1, c.port());
         assertEquals(Health.Status.DOWN, http.health().await().status());
-        Future<Answer> after = raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in")).compose(req -> req.send(Buffer.buffer("x")))
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b)));
+        Future<Answer> after = exchange(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/in"), req -> req.send(Buffer.buffer("x")));
         after.otherwiseEmpty().await();
         assertTrue(after.failed(), "connection refused: the port is free again");
     }
