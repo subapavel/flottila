@@ -48,6 +48,7 @@ check "ticket: evidence lines" "$(evidence)" 8
 check "ticket: pit summary" "$(tail -n1 <<< "$out")" "engine/xdm 9/9 survivors 0 floor 0 ok"
 check "ticket: log equals console" "$(cat "$root/.logs/7-gate.log" 2>&1)" "$out"
 check "ticket: no log in the current directory" "$(ls -A "$elsewhere")" ""
+check "ticket: no ui/ under its root, the UI is the repository's ../ui" "$(ls -d "$root/ui" 2>/dev/null)" ""
 MVNW_EXIT=1 gate gate-ticket.sh 7 engine/xdm
 check "ticket failing: exit" "$code" 1
 check "ticket failing: log equals console" "$(cat "$root/.logs/7-gate.log" 2>&1)" "$out"

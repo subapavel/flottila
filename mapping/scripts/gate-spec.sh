@@ -108,7 +108,7 @@ fi
 # judges again on all three files, a scenario in three of them on its median (#193); step 4 reads the same files. A
 # clean first judgement stays one run. Any JMH run that fails (a heap fork, -foe true) fails the gate.
 bench_results=()
-# The tree scenario (#188): three runs of ../ui/e2e/tree-20128.spec.ts against the fake API. TREE_P95_FILE names the
+# The tree scenario: three runs of ../ui/e2e/tree-20128.spec.ts against the fake API. TREE_P95_FILE names the
 # file the spec writes its result to; the median of the three goes to ../ui/.logs/<spec>-tree-20128.json, the shape
 # scripts/ratchet.java bench reads. A run that fails or writes nothing leaves no median file (the judgement then
 # finds no result). Printed whatever the label; judged below only on the labelled machine. Without ../ui step 2

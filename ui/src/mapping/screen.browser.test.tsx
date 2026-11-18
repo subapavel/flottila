@@ -204,8 +204,10 @@ describe('the mapping studio in the shell', () => {
     await parameters.getByRole('button', { name: 'Apply' }).click();
     await expect.element(parameters).not.toBeInTheDocument();
 
-    await userEvent.dragAndDrop(canvasNode(/^Node function substring/), canvasNode(/^Target field OrderId/), { steps: 5 });
     const transform = () => (canvasNode(/^Node function substring/).element() as HTMLElement).style.transform;
+    const before = transform();
+    await userEvent.dragAndDrop(canvasNode(/^Node function substring/), canvasNode(/^Target field OrderId/), { steps: 5 });
+    await expect.poll(transform).not.toBe(before);
     const moved = transform();
     await expect.element(nodeFooter()).toHaveTextContent('3 nodes · 2 connections');
 
