@@ -23,6 +23,20 @@ describe('httpAdminApi', () => {
     expect(calls.map((c) => c.url)).toEqual(['/admin/messages?key=order%3AA%3A1+%26+2', '/admin/messages?key=order%3AA%3A1+%26+2&after=c1']);
   });
 
+  it('searches by flow and step, with the cursor of the next page', async () => {
+    const { send, calls } = fakeFetch(json(200, { items: ['m-1'], next: 'c1' }), json(200, { items: [], next: null }));
+    const api = httpAdminApi(send);
+    expect(await api.findByStep('demo/order-jq', 'call/pick')).toEqual({ items: ['m-1'], next: 'c1' });
+    expect(await api.findByStep('demo/order-jq', 'call/pick', 'c1')).toEqual({ items: [], next: null });
+    expect(calls.map((c) => c.url)).toEqual(['/admin/messages?flow=demo%2Forder-jq&step=call%2Fpick', '/admin/messages?flow=demo%2Forder-jq&step=call%2Fpick&after=c1']);
+  });
+
+  it('lists the ids of the deployed flows', async () => {
+    const { send, calls } = fakeFetch(json(200, { items: [{ id: 'demo/invoice', state: 'RUNNING' }, { id: 'demo/order-jq', state: 'FAILED' }] }));
+    expect(await httpAdminApi(send).flows()).toEqual(['demo/invoice', 'demo/order-jq']);
+    expect(calls[0]?.url).toBe('/admin/flows');
+  });
+
   it("reads a message's timeline, and null for a message the node did not record", async () => {
     const timeline = { id: 'a/b', flow: 'demo/orders', steps: [] };
     const { send, calls } = fakeFetch(json(200, timeline), json(404, { error: 'no message x recorded' }));
