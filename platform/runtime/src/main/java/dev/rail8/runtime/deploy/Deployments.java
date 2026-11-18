@@ -11,6 +11,8 @@ import dev.rail8.api.Runtime;
 import dev.rail8.api.StepConfig;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.Timer;
+import dev.rail8.api.settings.Direction;
+import dev.rail8.api.settings.Settings;
 import dev.rail8.core.admission.TargetLimit;
 import dev.rail8.core.admission.Targets;
 import dev.rail8.core.cache.InMemoryCache;
@@ -54,6 +56,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,6 +68,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -93,7 +97,8 @@ import java.util.stream.Stream;
  * deleted, or one the node cannot read) is not trusted: the archive is unpacked afresh over it, and it stays kept whatever happens
  * next. A refused archive is {@link Kind#BAD_REQUEST}. Then the package is checked whole — {@code Package.problems()}, the
  * manifest's name, its dependencies ({@link #dependencies}), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
- * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
+ * its component's settings description ({@code Component.settings()}, or its {@code configSchema()} when it describes
+ * nothing), no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
  * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
  * {@code kafka}, the optional add-on not in this build, no at-least-once flow above {@code RAIL8_BLOB_DURABLE_MAX}, no
  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
@@ -309,7 +314,7 @@ public final class Deployments {
 
     /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
-     * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
+     * @param components the node's components by scheme: the consumers, and the settings the endpoints are checked against
      * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
      * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline, and
      *              ticks every leased consumer
@@ -478,6 +483,13 @@ public final class Deployments {
     /** {@code <dataDir>/.incoming}: uploads and unpacks land here, on the file system of the packages, so the move is atomic. */
     public Path incomingDir() {
         return config.dataDir().resolve(".incoming");
+    }
+
+    /** The settings description of every component the node serves, by scheme in name order. */
+    public SortedMap<String, Settings> settings() {
+        SortedMap<String, Settings> all = new TreeMap<>();
+        components.forEach((scheme, component) -> all.put(scheme, component.settings()));
+        return Collections.unmodifiableSortedMap(all);
     }
 
     /** The gauge of every target the flows built here named so far, sorted by target; never an unshared limit. */
@@ -1073,6 +1085,24 @@ public final class Deployments {
     }
 
     /**
+     * What is wrong with {@code cfg}, an endpoint's config as written, for an endpoint of {@code direction} ({@code in} or
+     * {@code out}) served by {@code component}: each {@code '<pointer>': <message>}. A component that describes its settings
+     * is judged by that description only; one that describes nothing by its {@code configSchema()}.
+     */
+    private static List<String> refusedBy(Component component, JsonObject cfg, String direction) {
+        Settings settings = component.settings();
+        List<String> refused = new ArrayList<>();
+        if (settings.described()) {
+            for (Settings.Problem p : settings.check(cfg.getMap(), "in".equals(direction) ? Direction.IN : Direction.OUT)) {
+                refused.add("'" + p.path() + "': " + p.message());
+            }
+        } else {
+            for (Schemas.Problem p : Schemas.check(component.configSchema(), cfg).problems()) refused.add("'" + p.path() + "': " + p.message());
+        }
+        return refused;
+    }
+
+    /**
      * Every check that needs no component built; all problems at once, as one {@link Kind#INVALID}. Each endpoint's
      * {@code secret://} references are resolved after its schema check, which sees them as written ({@link #resolved}). Of the flows {@code running}
      * (the package's, empty on a first deploy), every at-least-once one the new version does not run at-least-once — removed, or
@@ -1105,10 +1135,8 @@ public final class Deployments {
             if (component == null) {
                 problems.add("endpoint '" + id + "': no component on this node serves the scheme '" + scheme + "'");
             } else {
-                List<Schemas.Problem> refused = Schemas.check(component.configSchema(), cfg).problems();
-                for (Schemas.Problem p : refused) {
-                    problems.add("endpoint '" + id + "' config (environment " + config.env() + ") at '" + p.path() + "': " + p.message());
-                }
+                List<String> refused = refusedBy(component, cfg, endpoint.getString("direction"));
+                for (String p : refused) problems.add("endpoint '" + id + "' config (environment " + config.env() + ") at " + p);
                 valid = refused.isEmpty();
             }
             JsonObject values = resolved(id, cfg, problems);   // null: a reference did not resolve, its problem is listed

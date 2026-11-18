@@ -9,6 +9,7 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Health;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Runtime;
+import dev.rail8.api.settings.Settings;
 import dev.rail8.components.sftp.SftpComponent;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.record.InMemoryMessageStore;
@@ -116,20 +117,20 @@ class DeploymentsSecretsTest {
     // --- fixture
 
     /**
-     * A component of the scheme {@code sftp} with the real sftp configSchema ({@code password} and {@code privateKey} plain strings)
+     * A component of the scheme {@code sftp} with the real sftp settings ({@code password} and {@code privateKey} secrets)
      * that records the config of every consumer it builds; it never connects. No package here sends to it.
      */
     static final class SftpShaped implements Component {
         final List<EndpointConfig> consumers = new CopyOnWriteArrayList<>();
-        private final String schema;
+        private final Settings settings;
 
         SftpShaped(FakeRuntime rt) {
-            this.schema = new SftpComponent(rt.blobs(), rt.ids(), rt.timer(), rt.clock()).configSchema();
+            this.settings = new SftpComponent(rt.blobs(), rt.ids(), rt.timer(), rt.clock()).settings();
         }
 
         @Override public String scheme() { return "sftp"; }
 
-        @Override public String configSchema() { return schema; }
+        @Override public Settings settings() { return settings; }
 
         @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
             consumers.add(cfg);

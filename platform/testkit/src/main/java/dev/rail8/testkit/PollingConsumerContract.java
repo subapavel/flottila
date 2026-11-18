@@ -7,6 +7,7 @@ import dev.rail8.api.Consumer;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
+import dev.rail8.api.settings.Direction;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -46,7 +47,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * failed answer, a handler that throws or answers null keep the file and end the round: the next round delivers it again.
  * A final Nack keeps the file (this endpoint names no error directory) but never delivers it again to the same consumer.
  * {@link Consumer#stop()} takes no new file, waits for the answer in flight and for its removal; a stopped consumer
- * delivers nothing. Health is up only while a consumer runs.
+ * delivers nothing. Health is up only while a consumer runs. The settings description is the same on every call, given or
+ * else a configSchema() of the component's own, and {@link #endpoint()} passes it as an in endpoint.
  *
  * @since 0.1
  */
@@ -212,6 +214,24 @@ public abstract class PollingConsumerContract {
     public void configSchemaIsAJsonObjectSchema() {
         JsonObject schema = new JsonObject(component().configSchema());
         assertEquals("object", schema.getString("type"), "the endpoint options are validated against an object schema: " + schema);
+    }
+
+    @Test
+    public void settingsAreTheSameOnEveryCall() {
+        Component component = component();
+        assertEquals(component.settings().toJson(), component.settings().toJson(), "the node reads the description once and serves it as it is");
+    }
+
+    @Test
+    public void settingsAreDescribedOrTheComponentDeclaresItsOwnSchema() {
+        Component component = component();
+        assertTrue(component.settings().described() || ComponentContract.declaresItsOwnSchema(component),
+                "a component describes its settings, or says what its options are with a configSchema() of its own: the default takes any object");
+    }
+
+    @Test
+    public void theEndpointPassesTheDescription() {
+        assertEquals(List.of(), component().settings().check(endpoint().options(), Direction.IN), "the consumer's endpoint is one the node deploys");
     }
 
     @Test

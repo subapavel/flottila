@@ -14,6 +14,8 @@ import dev.rail8.api.StepFactory;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 
@@ -182,6 +184,22 @@ public final class PluginFixtures {
             boolean own = seen.size() == 4 && seen.stream().allMatch(l -> l == ChecksTheContextLoader.class.getClassLoader());
             return List.of(new Step(own ? "own-loader" : "other-loader"));
         }
+    }
+
+    /** A component of the scheme {@code badly} whose settings description names a field {@code Max}, which no field may be named. */
+    public static final class BadlyDescribed implements Component {
+        @Override public String scheme() { return "badly"; }
+        @Override public Settings settings() { return Settings.of(Field.integer("Max", "The most.")); }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { throw new UnsupportedOperationException("never started"); }
+        @Override public Producer producer(EndpointConfig cfg) { throw new UnsupportedOperationException("never started"); }
+        @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
+    }
+
+    /** A plugin named {@code badly-described} whose one component is {@link BadlyDescribed}. */
+    public static final class BadSettings implements Plugin {
+        @Override public String name() { return "badly-described"; }
+        @Override public String api() { return API; }
+        @Override public List<Component> components(ComponentContext context) { return List.of(new BadlyDescribed()); }
     }
 
     /** A plugin whose name is null. */

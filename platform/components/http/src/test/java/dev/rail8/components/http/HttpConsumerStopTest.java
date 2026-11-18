@@ -7,6 +7,8 @@ import dev.rail8.api.Body;
 import dev.rail8.api.EndpointConfig;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Health;
+import dev.rail8.api.settings.Direction;
+import dev.rail8.api.settings.Settings;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -16,7 +18,6 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -206,9 +207,9 @@ class HttpConsumerStopTest {
         assertEquals(Duration.ofSeconds(30), byDefault.shutdownTimeout(), "absent: the 30 000 ms default");
         HttpComponent.HttpConsumer oneMilli = (HttpComponent.HttpConsumer) http.consumer(endpoint(Map.of("shutdownTimeoutMs", 1)), handler);
         assertEquals(Duration.ofMillis(1), oneMilli.shutdownTimeout(), "one millisecond is positive, read as milliseconds");
-        JsonObject option = new JsonObject(http.configSchema()).getJsonObject("properties").getJsonObject("shutdownTimeoutMs");
-        assertEquals("integer", option == null ? null : option.getString("type"), "the option is in the config schema: " + http.configSchema());
-        assertEquals(1, option.getInteger("minimum"), "and the schema refuses a non-positive value too");
+        assertEquals(List.of(new Settings.Problem("/shutdownTimeoutMs", "must be a whole number of at least 1")),
+                http.settings().check(Map.of("shutdownTimeoutMs", 0), Direction.IN), "and the description refuses a non-positive value too");
+        assertEquals(List.of(), http.settings().check(Map.of("shutdownTimeoutMs", 1), Direction.IN));
     }
 
     @Test

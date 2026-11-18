@@ -12,6 +12,8 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Health;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -48,7 +50,8 @@ class PollingConsumerContractSelfTest {
             "aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain", "aRetryableNackEndsTheRound", "aHandlerThatThrowsOrAnswersNullKeepsTheFile",
             "aFinalNackIsNotDeliveredAgain", "filesAreDeliveredOldestFirst", "aReplyFinishesTheFileAsAcceptedDoes",
             "aBodyAboveTheTreeLimitStreamsThroughIntact", "eachDeliveryRunsOnAVirtualThreadOfItsOwn",
-            "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval", "aStoppedConsumerDeliversNothing", "healthIsUpWhileRunningAndDownAfterStop");
+            "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval", "aStoppedConsumerDeliversNothing", "healthIsUpWhileRunningAndDownAfterStop",
+            "settingsAreTheSameOnEveryCall", "settingsAreDescribedOrTheComponentDeclaresItsOwnSchema", "theEndpointPassesTheDescription");
 
     static final String DROPPED = "aDroppedFileIsDeliveredIntactAndRemovedAfterAccepted";
     static final String PENDING = "theFileStaysWhileTheAnswerIsPending";
@@ -88,6 +91,10 @@ class PollingConsumerContractSelfTest {
 
         String scheme = "polling";
         String schema = "{\"type\":\"object\"}";
+        /** What {@link #settings} answers on each call; the correct variant describes nothing and declares its schema. */
+        Supplier<Settings> settings = () -> Settings.NONE;
+        /** Broken: the suite gets the variant behind a component that takes the default configSchema(). */
+        boolean undeclared;
         /** Broken: health reports UP whether or not a consumer runs. */
         boolean healthAlwaysUp;
         /** Broken: files taken in name order, not oldest first. */
@@ -147,6 +154,8 @@ class PollingConsumerContractSelfTest {
         @Override public String scheme() { return scheme; }
 
         @Override public String configSchema() { return schema; }
+
+        @Override public Settings settings() { return settings.get(); }
 
         @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return new Poller(handler); }
 
@@ -288,6 +297,14 @@ class PollingConsumerContractSelfTest {
         }
     }
 
+    /** {@code inner} behind a component that describes nothing and takes the default configSchema(). */
+    record Undeclared(Variant inner) implements Component {
+        @Override public String scheme() { return inner.scheme(); }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return inner.consumer(cfg, handler); }
+        @Override public Producer producer(EndpointConfig cfg) { return inner.producer(cfg); }
+        @Override public Future<Health> health() { return inner.health(); }
+    }
+
     /** The engine instantiates the suite itself; the variant under test is handed over through this slot. */
     static volatile Supplier<Variant> current = Variant::new;
 
@@ -299,7 +316,7 @@ class PollingConsumerContractSelfTest {
             return variant;
         }
 
-        @Override protected Component component() { return variant(); }
+        @Override protected Component component() { return variant().undeclared ? new Undeclared(variant()) : variant(); }
         @Override protected EndpointConfig endpoint() { return new EndpointConfig("in", URI.create("polling://partner/inbox"), Map.of()); }
         @Override protected void drop(String name, ReadStream<Buffer> bytes) { variant().drop(name, bytesOf(bytes)); }
         @Override protected Set<String> remaining() { return variant().remaining(); }
@@ -336,6 +353,16 @@ class PollingConsumerContractSelfTest {
     void aWrongSchemeOrSchemaFailsOnlyItsCase() {
         assertEquals(Set.of("schemeMatchesTheEndpointUri"), failing(v -> v.scheme = "other"));
         assertEquals(Set.of("configSchemaIsAJsonObjectSchema"), failing(v -> v.schema = "{\"type\":\"string\"}"));
+    }
+
+    @Test
+    void aSettingsDescriptionThatIsWrongFailsOnlyItsCase() {
+        assertEquals(Set.of("settingsAreDescribedOrTheComponentDeclaresItsOwnSchema"), failing(v -> v.undeclared = true));
+        assertEquals(Set.of(), failing(v -> v.settings = () -> Settings.of(Field.text("glob", "Which files.").in())), "described, and the endpoint passes");
+        AtomicLong calls = new AtomicLong();
+        assertEquals(Set.of("settingsAreTheSameOnEveryCall"),
+                failing(v -> v.settings = () -> Settings.of(Field.text("f" + calls.incrementAndGet(), "Another field on every call."))));
+        assertEquals(Set.of("theEndpointPassesTheDescription"), failing(v -> v.settings = () -> Settings.of(Field.text("dir", "Where files are.").required())));
     }
 
     @Test

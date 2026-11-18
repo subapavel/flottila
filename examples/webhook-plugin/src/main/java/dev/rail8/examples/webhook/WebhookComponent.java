@@ -16,6 +16,8 @@ import dev.rail8.api.NackException;
 import dev.rail8.api.Producer;
 import dev.rail8.api.Timer;
 import dev.rail8.api.Views;
+import dev.rail8.api.settings.Field;
+import dev.rail8.api.settings.Settings;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -70,11 +72,17 @@ public final class WebhookComponent implements Component {
     /** The scheme this component serves. */
     public static final String SCHEME = "webhook";
 
-    static final String CONFIG_SCHEMA = """
-            {"type":"object","properties":{
-              "host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"path":{"type":"string"},
-              "url":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},"timeoutMs":{"type":"integer","minimum":1},
-              "flow":{"type":"string"}}}""";
+    /**
+     * What a webhook endpoint may set: the node checks every endpoint file against it, and the UI draws the endpoint's form
+     * from it. The consumer's {@code flow} and {@code maxBodyBytes} are the node's and are no field here.
+     */
+    static final Settings SETTINGS = Settings.of(
+            Field.text("host", "The address the server listens on.").byDefault("127.0.0.1").in(),
+            Field.integer("port", "The port the server listens on; 0 for any free port.").range(0, 65535).byDefault(0).in(),
+            Field.text("path", "The path POSTs are taken at; others get 404.").byDefault("/").in(),
+            Field.text("url", "The URL each message is posted to.").required().out(),
+            Field.integer("maxBodyBytes", "The largest reply body taken, in bytes.").required().min(1).out(),
+            Field.integer("timeoutMs", "How long a request may take, in milliseconds.").min(1).byDefault(30_000).out());
 
     /** Headers that describe one connection, never copied from a message to a request or a response, or back. */
     private static final Set<String> HOP_BY_HOP =
@@ -100,7 +108,7 @@ public final class WebhookComponent implements Component {
 
     @Override public String scheme() { return SCHEME; }
 
-    @Override public String configSchema() { return CONFIG_SCHEMA; }
+    @Override public Settings settings() { return SETTINGS; }
 
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {

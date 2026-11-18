@@ -26,12 +26,6 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- the deploy's own check of endpoint options against configSchema() (optionsOutsideTheSchemaAreRefused) -->
-      <groupId>dev.rail8</groupId>
-      <artifactId>rail8-schemas</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <!-- the client; the tests' embedded SshServer comes from the same two jars -->
       <groupId>org.apache.sshd</groupId>
       <artifactId>sshd-core</artifactId>

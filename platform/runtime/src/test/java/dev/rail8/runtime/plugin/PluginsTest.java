@@ -328,6 +328,16 @@ class PluginsTest {
     }
 
     @Test
+    void aComponentWhoseSettingsCannotBeDescribedRefusesTheStartNamingThePlugin() throws IOException {
+        jar("badly.jar", PluginFixtures.BadSettings.class);
+        try (Plugins plugins = Plugins.load(dir)) {
+            String refused = assertThrows(IllegalStateException.class, () -> plugins.components(NOTHING_SHIPPED).apply(context())).getMessage();
+            assertEquals("plugin badly-described: settings() of " + PluginFixtures.BadlyDescribed.class.getName()
+                    + " failed: java.lang.IllegalArgumentException: field 'Max': a name is a lower-case letter, then at most 63 letters or digits", refused);
+        }
+    }
+
+    @Test
     void aPluginThatThrowsOrBringsTooMuchRefusesTheConfigurationNamingIt() throws IOException {
         jar("failing.jar", PluginFixtures.FailingSteps.class);
         try (Plugins plugins = Plugins.load(dir)) {
