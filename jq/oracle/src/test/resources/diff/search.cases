@@ -1,7 +1,7 @@
-# Differential cases (ADR-0020) of contains, inside, bsearch and builtins: jq 1.8.2's f_contains and jv_contains
+# Differential cases of contains, inside, bsearch and builtins: jq 1.8.2's f_contains and jv_contains
 # (src/builtin.c, src/jv.c), the prelude's inside over it, f_bsearch and gen_builtin_list's list. Each on a document's
 # value (stdin) and on a built one: contains on every kind, its error for two kinds, where "Containment check too deep"
-# (ADR-0029) bites, bsearch's index and insertion points and its errors. Format:
+# bites, bsearch's index and insertion points and its errors. Format:
 # oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in search.rec, written by
 # scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
 
@@ -92,6 +92,18 @@ case search/depth-after-a-miss
 arg -c
 filter (reduce range(9999) as $_ ([[1, 0], [0]]; [[.[0]], [.[1]]])) as [$a, $b] | ($a | contains($b)), (reduce range(10000) as $_ ([[1, 0], [0]]; [[.[0]], [.[1]]]) as [$a, $b] | try ($a | contains($b)) catch .)
 stdin null\n
+end
+
+case search/depth-missing-key
+arg -c
+filter (reduce range(9999) as $_ ([{}, {"b": 1}]; [{a: .[0]}, {a: .[1]}])) as [$a, $b] | ($a | contains($b)), (reduce range(10000) as $_ ([{}, {"b": 1}]; [{a: .[0]}, {a: .[1]}]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin null\n
+end
+
+case search/depth-missing-key-read
+arg -c
+filter . as $v | (reduce range(9999) as $_ ([$v, {"b": 1}]; [{a: .[0]}, {a: .[1]}])) as [$a, $b] | ($a | contains($b)), (reduce range(10000) as $_ ([$v, {"b": 1}]; [{a: .[0]}, {a: .[1]}]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin {"c":1}\n
 end
 
 # bsearch: the index of an equal element, or -1 minus the insertion point; jq's value order over mixed kinds.
