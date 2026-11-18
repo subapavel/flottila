@@ -589,8 +589,15 @@ public final class Package {
 
         /** {@code step '<name>'}, or {@code process '<process>' step '<name>'}: how a problem line names the step. */
         public String label() {
-            String step = "step '" + entry.getValue("name") + "'";
+            String step = "step '" + name() + "'";
             return process.map(p -> "process '" + p + "' " + step).orElse(step);
+        }
+
+        /** The step's name as the flow loads it: its {@code name}, else, for a {@code process} call, the process it calls, else its type. */
+        public String name() {
+            Object name = entry.getValue("name");
+            if (name != null) return String.valueOf(name);
+            return String.valueOf("process".equals(entry.getValue("type")) ? entry.getValue("process") : entry.getValue("type"));
         }
     }
 

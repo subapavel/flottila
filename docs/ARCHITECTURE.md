@@ -208,7 +208,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 | Table | Holds |
 | --- | --- |
 | `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held, stops its key or is cancelled, and where the body is in the journal |
-| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size, the lines the step's code logged), and the business keys for search |
+| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size, the lines the step's code logged), indexed by flow, step name and start for the search by step, and the business keys for search |
 | `dlq` | parked messages, by reference |
 | `body_refs`, `journal_segments`, `journal_keys`, `journal_nodes`, `journal_losses` | where each durable body is, the journal files, their wrapped encryption keys, and losses an operator accepted |
 | `nodes` | node membership and leases |
@@ -300,6 +300,26 @@ whole value is `secret://<name>` is a secret; a node reads it from the environme
 `RAIL8_SECRET_<NAME>`, and tests and validation use a placeholder. A step's option is a secret in the
 same way; its code takes it through the API for custom code (part 5).
 
+### Step names
+
+A step may have a `name`. A step without one is named after its type, and a call of a process after
+the process it calls: the steps of the flow above are `xsd`, `extractKey`, `route`, `xslt` and `to`.
+A name starts with a lower-case letter, then letters, digits, `_` and `-`, at most 64 characters, and
+no step is named `ingress`, which is the arrival's name in a message's history. Names, written or by
+default, are unique in the flow's `steps` and in each process's; when two steps of one list have the
+same name, the flow is refused with both named, and one of them needs a name of its own.
+
+The name labels the step in a message's history and in its timings, and the search by step finds the
+messages that passed it (`GET /admin/messages?flow=…&step=…`, part 10). Each row of the history keeps
+the name it was written under:
+
+- Renaming a step, or changing the type of a step that has no name, starts a new name; the older rows
+  keep the old one.
+- When a new step's default clashes with an older step's, name the new step, so the older one keeps
+  its name and its rows stay findable.
+- A step that is not recorded (by the recording level `ends`, `errors` or `off`) leaves no row, and
+  the search by step does not find it.
+
 ### Local processes
 
 A flow file may name blocks of steps under `processes`. A step of type `process` runs one where it
@@ -318,7 +338,7 @@ processes:
 
 When the flow is loaded, each call is replaced by the steps of its process. The message's history
 shows those steps, numbered in the order they run and named after the call: `1 enrich/orderId`,
-`2 enrich/map`, `3 dispatch`. The call itself has no row. A step inside a process behaves as if it
+`2 enrich/map`, `3 dispatch`. A call without a name takes its process's: `enrichOrder/map`. The call itself has no row. A step inside a process behaves as if it
 were written at the call: a `filter` ends the message, a `route` sets its prop for the rest of the
 flow, a `split` runs the rest of the flow once per part, and an `extractKey` may set the key that
 `partitionBy` reads. `retryable` and `recording` belong to each inner step.
@@ -400,7 +420,9 @@ deploy made on another node.
 - Deployment from git: the package's revision in git is what runs. The archive in S3 and the upload by
   command go away.
 - A graphical flow editor (React Flow). The flow file and the editor are two views of the same
-  thing: an edit in either shows in the other.
+  thing: an edit in either shows in the other. The flow file holds no layout. The editor shows a
+  step's default name but never writes it, and an edit changes only the step edited, keeping the
+  file's comments and order as written.
 - An authentication, authorization and secret store comes in step 2; today secrets are environment
   variables.
 
@@ -842,6 +864,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | Route | Purpose |
 | --- | --- |
 | `GET /admin/messages?key=…` | find messages by business key |
+| `GET /admin/messages?flow=…&step=…` | find a flow's messages that passed a named step, newest first |
 | `GET /admin/messages/{id}` | a message's steps with their times and the lines their code logged |
 | `GET /admin/messages/{id}/steps/{n}/body` | the body after step `n` |
 | `GET /admin/dlq`, `POST /admin/dlq/{id}/retry`, `POST /admin/dlq/{id}/cancel` | failed messages, running one again, ending one |

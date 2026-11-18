@@ -696,6 +696,76 @@ class AdminServerTest {
         assertEquals(new JsonArray().add("m-a"), page.getJsonArray("items"), "name ref, value a:b:c — not ref:a:b = c nor ref:a = b:c");
     }
 
+    // --- GET /admin/messages?flow=<flow id>&step=<step name>
+
+    @Test
+    void searchByStepFindsTheFlowsMessagesThatPassedItNewestFirst() throws Exception {
+        start();
+        recordInvoice();
+        recordKeyed("m-2", Keys.empty());
+        Body b = blobs.write(BlobKey.body("m-2", 3), xml, MAX).await();
+        messages.record(snapshot("m-2", 3, "partner", Snapshot.Outcome.OK, Optional.empty(), 1L, 1L, Headers.empty(), Keys.empty(), b, false)).await();
+        messages.record(new Snapshot("m-9", "other-flow", 3, "partner", Snapshot.Outcome.OK, Optional.empty(), T0, 1L, 1L, Headers.empty(), Props.empty(),
+                Keys.empty(), b.hash(), b.size(), Optional.empty(), Map.of())).await();
+
+        Answer a = admin("/admin/messages?flow=invoice-sync&step=partner");
+
+        assertEquals(200, a.status(), a.body().toString());
+        assertTrue(a.contentType().startsWith("application/json"), a.contentType());
+        JsonObject page = a.json();
+        assertEquals(Set.of("items", "next"), page.fieldNames(), "{items, next|null}");
+        assertEquals(new JsonArray().add("m-2").add("m-1"), page.getJsonArray("items"), "m-2 and m-1 started the step at the same time: by id, descending; m-9 is another flow's");
+        assertNull(page.getValue("next"));
+        assertTrue(calls.stream().anyMatch(c -> c.what().equals("findByStep")), "the route asked the store: " + calls);
+        assertEquals(new JsonArray().add("m-1"), admin("/admin/messages?flow=invoice-sync&step=validate").json().getJsonArray("items"));
+        assertEquals(new JsonArray(), admin("/admin/messages?flow=invoice-sync&step=nothing").json().getJsonArray("items"), "an unknown step: an empty page");
+    }
+
+    @Test
+    void searchByStepPagesWithLimitAndFollowsNext() throws Exception {
+        start();
+        List<String> newestFirst = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            String id = String.format("s-%02d", i);
+            Body b = blobs.write(BlobKey.body(id, 0), xml, MAX).await();
+            messages.record(new Snapshot(id, "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), T0.plusSeconds(i), 1L, 1L, Headers.empty(),
+                    Props.empty(), Keys.empty(), b.hash(), b.size(), Optional.empty(), Map.of())).await();
+            newestFirst.addFirst(id);
+        }
+        List<Object> walked = new ArrayList<>();
+        String after = null;
+        int pages = 0;
+        do {
+            JsonObject page = admin("/admin/messages?flow=invoice-sync&step=ingress&limit=4" + (after == null ? "" : "&after=" + enc(after))).json();
+            walked.addAll(page.getJsonArray("items").getList());
+            after = page.getString("next");
+            pages++;
+        } while (after != null && pages < 10);
+        assertEquals(3, pages, "4 + 4 + 1");
+        assertEquals(newestFirst, walked, "newest first, without gaps or repeats");
+        assertEquals(9, admin("/admin/messages?flow=invoice-sync&step=ingress").json().getJsonArray("items").size(), "no limit: up to 50");
+    }
+
+    @Test
+    void aSearchByStepNamesBothFlowAndStepAndNoKey() throws Exception {
+        start();
+        recordInvoice();
+        assertJsonError(400, admin("/admin/messages?flow=invoice-sync"), "a flow without a step");
+        assertJsonError(400, admin("/admin/messages?step=partner"), "a step without a flow");
+        assertJsonError(400, admin("/admin/messages?flow=&step=partner"), "an empty flow");
+        assertJsonError(400, admin("/admin/messages?flow=invoice-sync&step="), "an empty step");
+        assertJsonError(400, admin("/admin/messages?key=invoiceId:4711&flow=invoice-sync&step=partner"), "a key and a step");
+        assertJsonError(400, admin("/admin/messages?key=invoiceId:4711&step=partner"), "a key and a step without a flow");
+        assertJsonError(400, admin("/admin/messages"), "neither");
+        for (String limit : List.of("501", "0", "abc")) assertJsonError(400, admin("/admin/messages?flow=invoice-sync&step=partner&limit=" + limit), "limit " + limit);
+        assertJsonError(400, admin("/admin/messages?flow=invoice-sync&step=partner&after=" + enc("!!!")), "a garbled cursor");
+        recordKeyed("m-3", Keys.empty().with("invoiceId", "4711"));
+        String keyCursor = admin("/admin/messages?key=invoiceId:4711&limit=1").json().getString("next");
+        assertNotNull(keyCursor);
+        assertJsonError(400, admin("/admin/messages?flow=invoice-sync&step=partner&after=" + enc(keyCursor)), "a cursor of the key search");
+        assertEquals(200, admin("/admin/messages?flow=invoice-sync&step=partner").status());
+    }
+
     // --- GET /admin/dlq
 
     @Test
@@ -1205,6 +1275,10 @@ class AdminServerTest {
         @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
             saw("findByKey");
             return inner.findByKey(name, value, after, limit);
+        }
+        @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+            saw("findByStep");
+            return inner.findByStep(flow, step, after, limit);
         }
     }
 

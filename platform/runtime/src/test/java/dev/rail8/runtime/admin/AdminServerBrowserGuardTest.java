@@ -315,5 +315,8 @@ class AdminServerBrowserGuardTest {
         @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
             return inner.findByKey(name, value, after, limit);
         }
+        @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+            return inner.findByStep(flow, step, after, limit);
+        }
     }
 }

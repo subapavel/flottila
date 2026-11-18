@@ -155,6 +155,9 @@ class DeliverySavePropertyTest {
         @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
             return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
         }
+        @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+            return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
+        }
 
         void answer(String id, boolean ok) {
             Promise<Void> p = records.get(id);

@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Where snapshots are saved and read back: a snapshot after every step, searchable by business key. Implemented by
+ * Where snapshots are saved and read back: a snapshot after every step, searchable by business key and by step. Implemented by
  * {@link InMemoryMessageStore} and by the Postgres store in the runtime. A row is keyed by
  * (message, step, {@link Snapshot#attempt() attempt}): each attempt of a rerun under the same id keeps its own rows, and a
  * second snapshot for the same (message, step, attempt) is ignored — the first row wins, as {@code ON CONFLICT DO NOTHING}
@@ -40,4 +40,17 @@ public interface MessageStore {
      * the failed future's cause.
      */
     Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit);
+
+    /**
+     * One page of the ids of the messages of {@code flow} (a flow id, as the history names it) with a recorded row of the step
+     * named {@code step} ({@code enrich/map} for a step of a local process, {@code ingress} for the arrival), each once, newest
+     * first: by the start of the message's row of that step in its latest attempt that has one, then by id, descending. A
+     * step that was not recorded (by the flow's or the step's recording level) leaves nothing to find, and an unknown flow or
+     * step name gives an empty last page. {@code after} is the previous page's {@link Page#next()} cursor, empty for the first
+     * page. A walk lists each id at most once: a message that reaches the step again in a later attempt during the walk moves to
+     * the front, and a row written after the walk began with a start older than the cursor's is passed over; a new search shows
+     * both. A {@code limit} outside 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out for this search is an
+     * {@link IllegalArgumentException}, thrown or as the failed future's cause.
+     */
+    Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit);
 }

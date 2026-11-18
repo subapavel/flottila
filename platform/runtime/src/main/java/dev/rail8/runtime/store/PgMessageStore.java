@@ -22,8 +22,10 @@ import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
 import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -43,7 +45,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * body by reference: hash, hash algorithm, size, BlobStore key; the lines the step's code logged as {@link StepLogJson}, null when
  * it logged none) and {@code message_keys} (one row per (name, value,
  * message), numbered by {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
- * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
+ * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). {@link #findByStep} reads the
+ * {@code (flow, step_name, started_at, id)} index backwards and passes over a row a later attempt of its message has at the same
+ * step name; its cursor is the page's last start, in microseconds, and id. Reads are plain queries. A failed commit fails
  * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it. On the node, the at-least-once
  * ingress row bypasses the writer: {@link #insert} writes it with the same statements in the intake's transaction.
  *
@@ -62,6 +66,14 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             + "from messages where id = $1 order by attempt, step";
     private static final String FIND_BY_KEY = "select message_id, seq from message_keys where name = $1 and value = $2 order by seq limit $3";
     private static final String FIND_BY_KEY_AFTER = "select message_id, seq from message_keys where name = $1 and value = $2 and seq > $3 order by seq limit $4";
+    /** The flow's messages with a row of the step, each at its row of the latest attempt that has one, newest first: {@code messages_flow_step}, read backwards. */
+    private static final String FIND_BY_STEP = "select m.id, m.started_at from messages m where m.flow = $1 and m.step_name = $2 "
+            + "and not exists (select 1 from messages later where later.id = m.id and later.step_name = m.step_name and later.attempt > m.attempt) "
+            + "order by m.started_at desc, m.id desc limit $3";
+    private static final String FIND_BY_STEP_AFTER = "select m.id, m.started_at from messages m where m.flow = $1 and m.step_name = $2 "
+            + "and (m.started_at, m.id) < ($3, $4) "
+            + "and not exists (select 1 from messages later where later.id = m.id and later.step_name = m.step_name and later.attempt > m.attempt) "
+            + "order by m.started_at desc, m.id desc limit $5";
     private static final Comparator<KeyRow> KEY_ORDER = Comparator.comparing(KeyRow::name).thenComparing(KeyRow::value).thenComparing(KeyRow::messageId);
 
     private record KeyRow(String name, String value, String messageId) {}
@@ -139,6 +151,46 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             }
             return new Page<>(ids, Optional.<String>empty());
         });
+    }
+
+    @Override
+    public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        Future<RowSet<Row>> rows;
+        if (after.isPresent()) {
+            String position = Page.position(after.get());
+            int colon = position.indexOf(':');
+            if (colon < 0) throw new IllegalArgumentException("not a cursor of a search by step");
+            OffsetDateTime started = startedAt(Long.parseLong(position.substring(0, colon)));
+            rows = pool.preparedQuery(FIND_BY_STEP_AFTER).execute(Tuple.of(flow, step, started, position.substring(colon + 1), limit + 1));
+        } else {
+            rows = pool.preparedQuery(FIND_BY_STEP).execute(Tuple.of(flow, step, limit + 1));
+        }
+        return rows.map(found -> {
+            List<String> ids = new ArrayList<>();
+            String last = null;
+            for (Row r : found) {
+                if (ids.size() == limit) return new Page<>(ids, Optional.of(Page.cursor(last)));   // the limit + 1st row: another page exists
+                ids.add(r.getString(0));
+                last = micros(r.getOffsetDateTime(1).toInstant()) + ":" + r.getString(0);
+            }
+            return new Page<>(ids, Optional.<String>empty());
+        });
+    }
+
+    /** {@code at} in microseconds since the epoch, the precision Postgres keeps. */
+    private static long micros(Instant at) {
+        return Math.addExact(Math.multiplyExact(at.getEpochSecond(), 1_000_000L), at.getNano() / 1_000);
+    }
+
+    /** The earliest and the latest start a cursor of the search by step may carry: years 1 to 9999, which a timestamptz holds. */
+    private static final long FIRST_MICROS = micros(Instant.parse("0001-01-01T00:00:00Z"));
+    private static final long LAST_MICROS = micros(Instant.parse("9999-12-31T23:59:59.999999Z"));
+
+    /** The start a cursor of the search by step carries, in microseconds since the epoch; one out of range is an IllegalArgumentException. */
+    private static OffsetDateTime startedAt(long micros) {
+        if (micros < FIRST_MICROS || micros > LAST_MICROS) throw new IllegalArgumentException("not a cursor of a search by step");
+        return Instant.EPOCH.plus(micros, ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
     }
 
     /** The key sequence a cursor carries; a garbled cursor is a NumberFormatException (an IllegalArgumentException). */

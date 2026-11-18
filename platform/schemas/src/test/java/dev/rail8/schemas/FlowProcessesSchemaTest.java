@@ -53,7 +53,7 @@ class FlowProcessesSchemaTest {
             "a process without steps|{ a: {} }|/processes/a",
             "a process with no step|{ a: { steps: [] } }|/processes/a/steps",
             "a process with a key besides steps|{ a: { steps: [{ type: to, name: out, endpoint: partner }], retry: 3 } }|/processes/a",
-            "a process step without a name|{ a: { steps: [{ type: to, endpoint: partner }] } }|/processes/a/steps/0",
+            "a process step with a name of the wrong form|{ a: { steps: [{ type: to, name: Bad, endpoint: partner }] } }|/processes/a/steps/0/name",
             "a process step of a typed type missing its option|{ a: { steps: [{ type: xslt, name: map }] } }|/processes/a/steps/0",
             "a process name of the wrong form|{ Bad.Name: { steps: [{ type: to, name: out, endpoint: partner }] } }|/processes",
     })
