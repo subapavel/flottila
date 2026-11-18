@@ -86,8 +86,25 @@ class NodeBenchMainTest {
         assertEquals(8, NodeBenchMain.inFlight(ack), "at-least-once: the concurrency");
         assertEquals(8, flowLimit(ack));
         NodeBenchMain.Options atMostOnce = NodeBenchMain.options(new String[] {"--scenario", "at-most-once", "--concurrency", "8"});
-        assertEquals(512, NodeBenchMain.inFlight(atMostOnce), "at-most-once: 64 x 8, a permit is held until the run's recording closed");
-        assertEquals(512, flowLimit(atMostOnce));
+        assertEquals(8, NodeBenchMain.inFlight(atMostOnce), "at-most-once: the concurrency, so its runs' calls fit the partner's pool");
+        assertEquals(8, flowLimit(atMostOnce));
+    }
+
+    @Test
+    void anAtMostOnceRunThePartnerNeverReceivedCountsAsAnError() {
+        LatencyStats latency = new LatencyStats(10);
+        for (int i = 0; i < 10; i++) latency.record(1_000_000);
+        NodeBenchMain.Window answered = new NodeBenchMain.Window(latency, 2, 1, 5, null);   // 7 accepted
+
+        NodeBenchMain.Window all = NodeBenchMain.Harness.withDropped(answered, 7, 9);
+        assertEquals(2, all.refused());
+        assertEquals(1, all.errors(), "every accepted run reached the partner");
+        assertEquals(9, all.elapsedNanos(), "the window's length is the one given, not the load's");
+
+        NodeBenchMain.Window dropped = NodeBenchMain.Harness.withDropped(answered, 4, 9);
+        assertEquals(2, dropped.refused(), "the 503s stay refusals");
+        assertEquals(4, dropped.errors(), "the load's error and the 3 runs the partner never received");
+        assertTrue(dropped.firstFailure().contains("3 accepted runs"), dropped.firstFailure());
     }
 
     @Test

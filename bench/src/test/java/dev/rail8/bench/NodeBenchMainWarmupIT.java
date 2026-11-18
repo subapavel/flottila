@@ -185,7 +185,7 @@ class NodeBenchMainWarmupIT {
                     io.vertx.core.buffer.Buffer.buffer("<Invoice/>"), stub.actualPort(), 0);
 
             // the 2 accepted items were never recorded by a node: recorded -2 makes the landed target 0 (the queue is empty)
-            JsonObject json = h.measure(-2, stub.actualPort());
+            JsonObject json = h.measure(-2, stub.actualPort(), () -> 0);
 
             JsonObject ingress = json.getJsonObject("ingress");
             assertEquals(2, ingress.getInteger("refused"), "the ingress' two 503s: " + ingress.encode());
