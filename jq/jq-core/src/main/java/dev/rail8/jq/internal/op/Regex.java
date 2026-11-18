@@ -61,8 +61,12 @@ import org.joni.exception.TimeoutException;
  * the deadline ends the run with the deadline's termination; an interrupt cancels the run, with the thread's flag set
  * again.
  *
+ * <p>A search that starts inside a code point may find, on joni, a match that begins before its start, at the code
+ * point's first byte; jq's search never does, so that match is dropped and the search starts again at the next code
+ * point.
+ *
  * <p>Ticks: one per search call, and one per started KiB from the search start to the match end, or to the input's end
- * when nothing matches; the lookup ticks once per started KiB of the pattern. A string the run read is copied to an
+ * when nothing matches, a dropped match none; the lookup ticks once per started KiB of the pattern. A string the run read is copied to an
  * array for joni, which is not charged; what the result builds is charged before it is allocated.
  */
 public final class Regex {
@@ -136,9 +140,16 @@ public final class Regex {
     do {
       state.tick();
       Matcher matcher = compiled.regex.matcher(bytes, 0, end);
-      if (search(state, patterns, matcher, start, end) < 0) {
+      int at = search(state, patterns, matcher, start, end);
+      if (at < 0) {
         state.tick(Built.kibibytes(end - start));
         break;
+      }
+      if (at < start) {
+        // A search from inside a code point, after an empty match: joni began it at the code point's first byte and
+        // found a match before the start, which jq's search never does. Search again from the next code point.
+        start = CodePoints.next(bytes, start, end);
+        continue;
       }
       Region region = matcher.getEagerRegion();
       int matchStart = region.getBeg(0);
@@ -310,6 +321,15 @@ public final class Regex {
       long offset = count(from);
       long upTo = count(to);
       return lead(bytes[from]) ? new long[] {offset, upTo - offset} : new long[] {0, upTo};
+    }
+
+    /** The position of the first lead byte after {@code position}, or {@code end} when there is none. */
+    static int next(byte[] bytes, int position, int end) {
+      int at = position + 1;
+      while (at < end && !lead(bytes[at])) {
+        at++;
+      }
+      return Math.min(at, end);
     }
 
     /** Whether {@code b} starts a UTF-8 sequence: any byte but a continuation byte. */

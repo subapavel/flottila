@@ -1239,6 +1239,20 @@ stdout [{"offset":0,"length":1,"string":"😀","captures":[]},{"offset":1,"lengt
 stderr
 end
 
+case regex/loop-lookbehind-after-empty-match
+def ae8ec8631d09
+rc 0
+stdout [{"offset":2,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/loop-alternative-after-empty-match
+def 5ef96732dcea
+rc 0
+stdout [{"offset":1,"length":0,"string":"","captures":[]},{"offset":3,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
 case regex/input-not-string
 def 9e374db7a09b
 rc 0
@@ -1509,6 +1523,13 @@ case regex/prelude-split-empty-match
 def ceebc5d904fe
 rc 0
 stdout ["","a","b","c",""]\n
+stderr
+end
+
+case regex/prelude-splits-after-empty-match
+def a276ca10fde9
+rc 0
+stdout ["日本","語"]\n
 stderr
 end
 

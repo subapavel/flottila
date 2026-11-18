@@ -1,6 +1,6 @@
-# Regex on joni 2.2.9: `PerlNG` with `CAPTURE_GROUP`, jq's match loop translated, the time limit per search call, a pattern cache per Workspace
+# Regex on joni 2.2.9: `PerlNG` plus the Perl_NT operators joni reads as jq does, with `CAPTURE_GROUP`, jq's match loop translated, the time limit per search call, a pattern cache per Workspace
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 4 round 1); amends ADR-0017 (the regex limit per search call) and ADR-0016 (the Workspace's pattern cache); its ticks are in ADR-0034's spec-4 amendment
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 4 round 1); amends ADR-0017 (the regex limit per search call) and ADR-0016 (the Workspace's pattern cache); its ticks are in ADR-0034's spec-4 amendment; Dialect amended 2026-11-18 (owner-proxy for the owner, issue #216: PerlNG plus six Perl_NT operators)
 
 jq-ref facts: probes P1–P8 observed by the architect and those marked A by the adviser, on jq 1.8.2
 (spec 4 grilling round 1); joni facts read at the joni-2.2.9 tag.
@@ -12,7 +12,13 @@ the limit applies, and when a pattern compiles.
 
 ## Decision
 
-- **Dialect**: joni 2.2.9 as it is, `Syntax.PerlNG` with the `CAPTURE_GROUP` option. `PerlNG` has
+- **Dialect**: joni 2.2.9 unpatched, with the `CAPTURE_GROUP` option and a `Syntax` made of
+  `Syntax.PerlNG` plus the six op2 operators of Oniguruma's Perl_NT, jq's syntax, that joni reads as
+  jq 1.8.2 does: `PLUS_POSSESSIVE_REPEAT`, `PLUS_POSSESSIVE_INTERVAL`, `QMARK_LPAREN_CONDITION`,
+  `ESC_CAPITAL_R_LINEBREAK`, `ESC_CAPITAL_X_EXTENDED_GRAPHEME_CLUSTER`, `ESC_CAPITAL_K_KEEP`. The
+  absent group (`QMARK_TILDE_ABSENT`) stays off: joni follows Onigmo's older rules and would match
+  wrongly without an error, so the pattern fails to compile and is a `DEVIATIONS.md` row. An
+  operator is switched on only when the matrix shows it identical to jq 1.8.2. `PerlNG` has
   named groups, `\k`, `\g` and `CAPTURE_ONLY_NAMED_GROUP`. The texts of P6's compile errors are
   joni's own constants ("end pattern with unmatched parenthesis", "unmatched close parenthesis",
   "upper is smaller than lower in repeat range").
@@ -50,6 +56,8 @@ the limit applies, and when a pattern compiles.
 
 ## Considered options
 
+- **Plain `Syntax.PerlNG`**: 8 more of the 220 recorded cases differ from jq 1.8.2, four of them
+  silent wrong matches (possessive `a*+a`, `\K`, `\R`, `\X`).
 - **A limit per `_match_impl` call**: it would fail long global scans that jq completes, on a
   command line with no deadline.
 - **A one-entry memo per call site**: it misses `test($a, $b)` and needs a slot per site.

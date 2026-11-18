@@ -21,7 +21,7 @@ import org.joni.exception.JOniException;
 
 /**
  * A Workspace's compiled regular expressions, kept across its runs in its run state, and the time one search of a run
- * may take. A pattern compiles with joni's {@code Syntax.PerlNG} over UTF-8 and the options its modifiers give.
+ * may take. A pattern compiles with {@link #SYNTAX} over UTF-8 and the options its modifiers give.
  *
  * <p>The cache holds up to {@link #ENTRIES} patterns of up to {@link #LONGEST} bytes each, the least recently used out
  * first; a longer pattern compiles at each lookup. An entry is keyed by a copy of the pattern's bytes and the options,

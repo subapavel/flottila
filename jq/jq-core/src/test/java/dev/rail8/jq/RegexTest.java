@@ -70,6 +70,17 @@ class RegexTest {
   }
 
   @Test
+  void aSearchFromInsideACodePointNeverFindsAMatchBeforeItsStart() {
+    // After the empty match at byte 6, the next search starts at byte 7, inside 語. joni starts it at 語's first byte
+    // and finds the same match again; the engine searches again from the next code point, where jq's search finds
+    // nothing. A budget ends the loop that would otherwise repeat the match.
+    JqEngine engine = steps(1_000_000);
+    assertThat(results(engine, "\"日本語\" | [match(\"(?<=本)\"; \"g\") | .offset]")).containsExactly("[2]");
+    assertThat(results(engine, "\"日本語\" | [match(\"(?<=日)|$\"; \"g\") | [.offset, .length]]")).containsExactly("[[1,0],[3,0]]");
+    assertThat(results(engine, "\"日本語\" | [splits(\"(?<=本)\")]")).containsExactly("[\"日本\",\"語\"]");
+  }
+
+  @Test
   void aSearchPastTheMatchTimeIsJqsRetryLimitError() {
     JqEngine engine = engine(matchTime(Duration.ofNanos(1), Limits.UNLIMITED_TIME));
     assertThat(results(engine, "try (" + CATASTROPHIC + ") catch .")).containsExactly("\"Regex failure: retry-limit-in-match over\"");

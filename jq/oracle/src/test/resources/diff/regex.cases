@@ -1119,6 +1119,18 @@ filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
 stdin {"s": "😀a😀a", "re": "a|😀", "f": "g"}\n
 end
 
+case regex/loop-lookbehind-after-empty-match
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "日本語", "re": "(?<=本)", "f": "g"}\n
+end
+
+case regex/loop-alternative-after-empty-match
+arg -c
+filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
+stdin {"s": "日本語", "re": "(?<=日)|$", "f": "g"}\n
+end
+
 case regex/input-not-string
 arg -c
 filter .re as $re | .f as $f | .s | try [match($re; $f)] catch .
@@ -1372,6 +1384,12 @@ case regex/prelude-split-empty-match
 arg -c
 filter .s | split(""; null)
 stdin {"s": "abc"}\n
+end
+
+case regex/prelude-splits-after-empty-match
+arg -c
+filter .s | [splits("(?<=本)")]
+stdin {"s": "日本語"}\n
 end
 
 case regex/prelude-offsets-in-code-points
