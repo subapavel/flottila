@@ -300,6 +300,52 @@ class RunStateTest {
     assertThat(state.memo()).as("memo after end").isNull();
   }
 
+  /** What the engine keeps lasts across runs: neither begin nor end clears it, while they clear the memo. */
+  @Test
+  void keptOutlivesBeginAndEnd() {
+    RunState state = new RunState();
+    assertThat(state.kept()).as("kept before anything is kept").isNull();
+    state.keep("a cache");
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.kept()).as("kept after begin").isEqualTo("a cache");
+    state.end();
+    assertThat(state.kept()).as("kept after end").isEqualTo("a cache");
+  }
+
+  /**
+   * The deadline left counts down from begin on the run's clock and goes below zero past the deadline; a run without a
+   * deadline keeps nearly all of Long.MAX_VALUE.
+   */
+  @Test
+  void deadlineLeftCountsDownFromBegin() {
+    FakeClock clock = new FakeClock(7_000);
+    RunState state = new RunState(clock);
+    state.begin(Long.MAX_VALUE, DEADLINE, Long.MAX_VALUE);
+    assertThat(state.deadlineLeft()).as("left at begin").isEqualTo(DEADLINE);
+    clock.now = 7_000 + DEADLINE - 3;
+    assertThat(state.deadlineLeft()).as("left 3 ns before the deadline").isEqualTo(3L);
+    clock.now = 7_000 + DEADLINE + 2;
+    assertThat(state.deadlineLeft()).as("left 2 ns past the deadline").isEqualTo(-2L);
+    state.end();
+
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    clock.now += 5;
+    assertThat(state.deadlineLeft()).as("left 5 ns into a run without a deadline").isEqualTo(Long.MAX_VALUE - 5);
+  }
+
+  /** The terminations an operation throws after a wait are refuel's: the deadline's budget, and the cancel's cause. */
+  @Test
+  void overDeadlineAndCancelledAreRefuelsTerminations() {
+    RunState state = new RunState();
+    assertBudget(
+        () -> {
+          throw state.overDeadline();
+        },
+        Budget.DEADLINE,
+        "overDeadline");
+    assertThat(state.cancelled().cause()).as("cause of cancelled").isEqualTo(Termination.Cause.CANCELLED);
+  }
+
   /**
    * Whether a charge would fit tells, without throwing or counting, what chargeBuilt would do: a charge up to the bytes
    * left fits and then succeeds, one byte more does not fit.

@@ -164,6 +164,7 @@ final class Binder {
     FROMJSON("fromjson", 0, false),
     TOBOOLEAN("toboolean", 0, false),
     FORMAT("format", 1, true),
+    MATCH("_match_impl", 3, false),
     ;
 
     private final String signature;

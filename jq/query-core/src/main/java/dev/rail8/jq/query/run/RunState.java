@@ -6,7 +6,8 @@ import java.util.function.LongSupplier;
 /**
  * The budgets of one evaluation: its fuel, the step budget, the deadline, the bytes-built and bytes-written counts and
  * the live call activations, in a phase that is idle, primed or running; the stack bytes the run declares; its label
- * tokens and break target; a reused scratch of ints; and the engine's memo for one run. The engine's Workspace owns
+ * tokens and break target; a reused scratch of ints; the engine's memo for one run; and what the engine keeps across
+ * the runs of this run state. The engine's Workspace owns
  * one and hands it to each run, so it is never shared between two running evaluations; it is not thread-safe.
  *
  * <p>A main read primes it: the run that begins next keeps the ticks counted since, less those the writer charged
@@ -108,6 +109,9 @@ public final class RunState {
 
   /** The engine's memo for the running run, or null: never read here, set to null by each begin and each end. */
   private Object memo;
+
+  /** What the engine keeps across the runs of this run state, or null: never read here, and no begin or end clears it. */
+  private Object kept;
 
   /** The longest scratch {@link #ints} keeps: 2^20 ints, 4 MiB. */
   static final int KEPT_INTS = 1 << 20;
@@ -373,6 +377,42 @@ public final class RunState {
   /** Sets the memo {@link #memo()} gives until the next {@link #begin} or {@link #end}. */
   public void memo(Object memo) {
     this.memo = memo;
+  }
+
+  /**
+   * What the engine keeps across the runs of this run state, or null before it keeps anything. Unlike the memo, no
+   * {@link #begin} or {@link #end} clears it, so it must hold nothing whose cost depends on another run.
+   */
+  public Object kept() {
+    return kept;
+  }
+
+  /** Sets what {@link #kept()} gives from now on, across runs. */
+  public void keep(Object kept) {
+    this.kept = kept;
+  }
+
+  /**
+   * The nanoseconds left before the running run's deadline, at most the deadline itself; 0 or less once it has passed.
+   * A run without a deadline has {@code Long.MAX_VALUE} nanoseconds of it, and so nearly as many left. It reads the
+   * clock each call, and it checks nothing: a caller that bounds a wait by it ends the run with {@link #overDeadline}.
+   */
+  public long deadlineLeft() {
+    return deadline - (clock.getAsLong() - start);
+  }
+
+  /** The termination for an operation that ran into the deadline while it waited, as refuel would have found it. */
+  public Termination overDeadline() {
+    return Termination.over(Budget.DEADLINE);
+  }
+
+  /**
+   * The termination for an operation that saw the thread's interrupt while it waited, as refuel would have found it.
+   * An operation whose wait cleared the interrupt flag sets it again before it throws this, so the code that runs on
+   * this thread after the cancelled run still sees it.
+   */
+  public Termination cancelled() {
+    return Termination.cancelled();
   }
 
   /**

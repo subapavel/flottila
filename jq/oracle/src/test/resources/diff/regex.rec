@@ -1,0 +1,1541 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case regex/escape
+def bbffd1ee08d8
+rc 0
+stdout [{"offset":0,"length":3,"string":"a.b","captures":[]}]\n
+stderr
+end
+
+case regex/alternation
+def ea181decd3f7
+rc 0
+stdout [{"offset":0,"length":3,"string":"cat","captures":[]},{"offset":8,"length":3,"string":"cow","captures":[]}]\n
+stderr
+end
+
+case regex/group
+def 6220bf83f966
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":null}]}]\n
+stderr
+end
+
+case regex/class
+def f03fc657cbdf
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/char-tab
+def 9929ba8da1d8
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\t","captures":[]}]\n
+stderr
+end
+
+case regex/char-vtab
+def bf54919f7137
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/char-newline
+def b7f32072079c
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\n","captures":[]}]\n
+stderr
+end
+
+case regex/char-return
+def a7c114a7dd15
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\r","captures":[]}]\n
+stderr
+end
+
+case regex/char-backspace-in-class
+def 7b5f0d265de9
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\b","captures":[]}]\n
+stderr
+end
+
+case regex/char-formfeed
+def 01efbc6024e5
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\f","captures":[]}]\n
+stderr
+end
+
+case regex/char-bell
+def dfc619d198d3
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\u0007","captures":[]}]\n
+stderr
+end
+
+case regex/char-escape
+def 80f2eae7f44b
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\u001b","captures":[]}]\n
+stderr
+end
+
+case regex/char-octal
+def 66efe44cebeb
+rc 0
+stdout [{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/char-hex
+def 6bcd604b413e
+rc 0
+stdout [{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/char-hex-codepoint
+def 8721409cd474
+rc 0
+stdout [{"offset":1,"length":1,"string":"あ","captures":[]}]\n
+stderr
+end
+
+case regex/char-octal-codepoint
+def 7b7eeacc4f0b
+rc 0
+stdout [{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/char-u
+def fd8e0ddbda35
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/char-control-c
+def 2b75ddda5c8c
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\u0001","captures":[]}]\n
+stderr
+end
+
+case regex/char-control-C
+def 959589c2fe99
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/char-meta
+def 374b5fee3b17
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/char-meta-control
+def 908787043baf
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/codepoint-sequence-hex
+def 804d9f6fb877
+rc 0
+stdout [{"offset":1,"length":2,"string":"AB","captures":[]}]\n
+stderr
+end
+
+case regex/codepoint-sequence-octal
+def 47dce5946ffc
+rc 0
+stdout [{"offset":1,"length":2,"string":"AB","captures":[]}]\n
+stderr
+end
+
+case regex/type-dot
+def 4c2637708544
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/type-word
+def 041f13ae3de7
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"_","captures":[]},{"offset":2,"length":1,"string":"1","captures":[]},{"offset":4,"length":1,"string":"é","captures":[]}]\n
+stderr
+end
+
+case regex/type-not-word
+def 76deef91de5c
+rc 0
+stdout [{"offset":3,"length":1,"string":" ","captures":[]},{"offset":5,"length":1,"string":"-","captures":[]}]\n
+stderr
+end
+
+case regex/type-space
+def 2efbbd94f340
+rc 0
+stdout [{"offset":1,"length":1,"string":" ","captures":[]},{"offset":3,"length":1,"string":" ","captures":[]},{"offset":5,"length":1,"string":" ","captures":[]}]\n
+stderr
+end
+
+case regex/type-not-space
+def d27171d624b6
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/type-digit
+def abed0135d091
+rc 0
+stdout [{"offset":0,"length":1,"string":"1","captures":[]},{"offset":2,"length":1,"string":"٣","captures":[]}]\n
+stderr
+end
+
+case regex/type-not-digit
+def b3ce531c6b48
+rc 0
+stdout [{"offset":1,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/type-hex
+def e52ff3087dfb
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/type-not-hex
+def 5bd643ca26ee
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/type-general-newline
+def 09628bc2cf20
+rc 0
+stdout [{"offset":1,"length":2,"string":"\\r\\n","captures":[]},{"offset":4,"length":1,"string":"\\n","captures":[]},{"offset":6,"length":1,"string":" ","captures":[]}]\n
+stderr
+end
+
+case regex/type-not-newline
+def 179102af27e5
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/type-true-anychar
+def 9ad9d1a5f70f
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"\\n","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/type-text-segment
+def 5d001ad2a3d4
+rc 0
+stdout [{"offset":0,"length":2,"string":"é","captures":[]},{"offset":2,"length":1,"string":"x","captures":[]},{"offset":3,"length":2,"string":"🇨🇿","captures":[]}]\n
+stderr
+end
+
+case regex/property
+def db78e4ffe100
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"B","captures":[]},{"offset":3,"length":1,"string":"é","captures":[]}]\n
+stderr
+end
+
+case regex/property-negated-caret
+def 369b4c981f6f
+rc 0
+stdout [{"offset":2,"length":1,"string":"1","captures":[]}]\n
+stderr
+end
+
+case regex/property-negated-P
+def 47fdbd47fe23
+rc 0
+stdout [{"offset":2,"length":1,"string":"1","captures":[]}]\n
+stderr
+end
+
+case regex/property-script
+def c185a9cc0228
+rc 0
+stdout [{"offset":1,"length":1,"string":"α","captures":[]}]\n
+stderr
+end
+
+case regex/property-category
+def dd3cf510d607
+rc 0
+stdout [{"offset":1,"length":1,"string":"B","captures":[]}]\n
+stderr
+end
+
+case regex/property-hiragana
+def bf154d035a67
+rc 0
+stdout [{"offset":1,"length":1,"string":"あ","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-optional
+def 51e6a62e41ea
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[]},{"offset":2,"length":2,"string":"ab","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-star
+def ba62945ee1ce
+rc 0
+stdout [{"offset":0,"length":3,"string":"aaa","captures":[]},{"offset":3,"length":0,"string":"","captures":[]},{"offset":4,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-plus
+def 7cc87c1470b2
+rc 0
+stdout [{"offset":0,"length":3,"string":"aaa","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-range
+def a785abba6f36
+rc 0
+stdout [{"offset":0,"length":3,"string":"aaa","captures":[]},{"offset":3,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-at-least
+def 5655dd0be4a9
+rc 0
+stdout [{"offset":0,"length":5,"string":"aaaaa","captures":[]}]\n
+stderr
+end
+
+case regex/greedy-at-most
+def 2f2ec2c205e6
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/greedy-exactly
+def f4cd531e1ec1
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[]},{"offset":2,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-optional
+def 2ac0f46da764
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]},{"offset":2,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-star
+def 9638461651d0
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]},{"offset":2,"length":0,"string":"","captures":[]},{"offset":3,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-plus
+def 35bcaf1828c6
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-range
+def 170ae29c0f96
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[]},{"offset":2,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-at-least
+def 1646b205e976
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[]},{"offset":2,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/reluctant-at-most
+def e76898c9ea34
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/reluctant-exactly
+def 431907283dda
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[]},{"offset":2,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/possessive-optional
+def a1210a1cc520
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[]}]\n
+stderr
+end
+
+case regex/possessive-star
+def 4868739ca13c
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/possessive-plus
+def 51af81f0f916
+rc 0
+stdout [{"offset":0,"length":4,"string":"aaab","captures":[]}]\n
+stderr
+end
+
+case regex/possessive-range
+def 92896d13f3bd
+rc 0
+stdout [{"offset":0,"length":3,"string":"aaa","captures":[]}]\n
+stderr
+end
+
+case regex/possessive-reversed-range
+def 65c2523d3797
+rc 0
+stdout "Regex failure: upper is smaller than lower in repeat range"\n
+stderr
+end
+
+case regex/anchor-line-start
+def 098a300ec826
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-line-end
+def af87af13904e
+rc 0
+stdout [{"offset":2,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-word-boundary
+def 470f5b175a72
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":2,"length":0,"string":"","captures":[]},{"offset":3,"length":0,"string":"","captures":[]},{"offset":5,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-not-word-boundary
+def 622ebb649859
+rc 0
+stdout [{"offset":1,"length":0,"string":"","captures":[]},{"offset":4,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-string-start
+def 5af15477453e
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-string-end-or-newline
+def 0755c700c76e
+rc 0
+stdout [{"offset":2,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-string-end
+def b52724eb0f3f
+rc 0
+stdout [{"offset":2,"length":2,"string":"a\\n","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-search-start
+def be0d9d936009
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-keep
+def a673996ffa37
+rc 0
+stdout [{"offset":2,"length":1,"string":"c","captures":[]},{"offset":5,"length":1,"string":"c","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-text-segment-boundary
+def bad14402edcc
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":2,"length":0,"string":"","captures":[]},{"offset":3,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/anchor-text-segment-not-boundary
+def 1574f2d5ffe1
+rc 0
+stdout [{"offset":1,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/class-negated
+def 9c0e5b52fdc7
+rc 0
+stdout [{"offset":2,"length":1,"string":"c","captures":[]},{"offset":3,"length":1,"string":"1","captures":[]}]\n
+stderr
+end
+
+case regex/class-range
+def b36b13b0a5cf
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[]},{"offset":2,"length":1,"string":"c","captures":[]}]\n
+stderr
+end
+
+case regex/class-nested
+def 08fc0452251d
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/class-intersection
+def 6b37fc6ebba0
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/class-escaped-specials
+def 4f9b8197144b
+rc 0
+stdout [{"offset":1,"length":1,"string":"[","captures":[]},{"offset":3,"length":1,"string":"]","captures":[]},{"offset":5,"length":1,"string":"-","captures":[]}]\n
+stderr
+end
+
+case regex/posix-alnum
+def 0f573ddcbe48
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"1","captures":[]},{"offset":4,"length":1,"string":"é","captures":[]}]\n
+stderr
+end
+
+case regex/posix-alpha
+def ad28cdcd5b1c
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":4,"length":1,"string":"é","captures":[]}]\n
+stderr
+end
+
+case regex/posix-ascii
+def 42edd83de75f
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"\\u007f","captures":[]}]\n
+stderr
+end
+
+case regex/posix-blank
+def 8f3c095b8ec4
+rc 0
+stdout [{"offset":1,"length":1,"string":" ","captures":[]},{"offset":2,"length":1,"string":"\\t","captures":[]},{"offset":4,"length":1,"string":"　","captures":[]}]\n
+stderr
+end
+
+case regex/posix-cntrl
+def 0c2dc941d198
+rc 0
+stdout [{"offset":1,"length":1,"string":"\\u0001","captures":[]},{"offset":2,"length":1,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/posix-digit
+def baa3a1686a91
+rc 0
+stdout [{"offset":1,"length":1,"string":"1","captures":[]},{"offset":2,"length":1,"string":"٣","captures":[]}]\n
+stderr
+end
+
+case regex/posix-graph
+def 2d3106a7754b
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/posix-lower
+def 79c70ac0141c
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"é","captures":[]}]\n
+stderr
+end
+
+case regex/posix-print
+def 706bd58196b3
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":" ","captures":[]}]\n
+stderr
+end
+
+case regex/posix-punct
+def ec4546f1d11b
+rc 0
+stdout [{"offset":1,"length":1,"string":"!","captures":[]},{"offset":2,"length":1,"string":"$","captures":[]},{"offset":3,"length":1,"string":"-","captures":[]}]\n
+stderr
+end
+
+case regex/posix-space
+def 7a3b4eb72cf0
+rc 0
+stdout [{"offset":1,"length":1,"string":" ","captures":[]},{"offset":2,"length":1,"string":"\\n","captures":[]},{"offset":3,"length":1,"string":" ","captures":[]}]\n
+stderr
+end
+
+case regex/posix-upper
+def 59cd2d0bce02
+rc 0
+stdout [{"offset":1,"length":1,"string":"B","captures":[]},{"offset":2,"length":1,"string":"É","captures":[]}]\n
+stderr
+end
+
+case regex/posix-xdigit
+def b0d5e1744554
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"f","captures":[]},{"offset":3,"length":1,"string":"9","captures":[]}]\n
+stderr
+end
+
+case regex/posix-word
+def e21fd676e436
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"_","captures":[]},{"offset":3,"length":1,"string":"é","captures":[]},{"offset":4,"length":1,"string":"1","captures":[]}]\n
+stderr
+end
+
+case regex/posix-negated
+def 18a1d6a2f1e3
+rc 0
+stdout [{"offset":1,"length":1,"string":"1","captures":[]},{"offset":2,"length":1,"string":"_","captures":[]}]\n
+stderr
+end
+
+case regex/comment
+def f6f962e3b3b4
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[]}]\n
+stderr
+end
+
+case regex/option-ignorecase
+def 89c368936806
+rc 0
+stdout [{"offset":1,"length":2,"string":"Ab","captures":[]}]\n
+stderr
+end
+
+case regex/option-off
+def 4c1169440481
+rc 0
+stdout [{"offset":1,"length":2,"string":"Ab","captures":[]}]\n
+stderr
+end
+
+case regex/option-m
+def 45d7c9708ad7
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/option-s
+def a02fbdf74cdb
+rc 0
+stdout [{"offset":0,"length":3,"string":"a\\nb","captures":[]}]\n
+stderr
+end
+
+case regex/option-x
+def d0abb0227565
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[]}]\n
+stderr
+end
+
+case regex/option-W
+def ad62355e8e79
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-D
+def 1bd6b62ecdf5
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-S
+def 7ef2d165362e
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-P
+def 28e98ec49635
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-y-grapheme
+def a55d65b2d9a9
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-y-word
+def 73030c90dc15
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-isolated
+def f747fee4f698
+rc 0
+stdout [{"offset":0,"length":3,"string":"abC","captures":[]},{"offset":4,"length":3,"string":"abc","captures":[]}]\n
+stderr
+end
+
+case regex/option-whole-C
+def b534cffc2dec
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-whole-I
+def fe93601090a0
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/option-whole-L
+def 0fd6d5fae7dd
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/noncapturing
+def 345aa7b5f14c
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[]}]\n
+stderr
+end
+
+case regex/capturing
+def b79a558b840d
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":null},{"offset":1,"length":1,"string":"b","name":null}]},{"offset":2,"length":2,"string":"ab","captures":[{"offset":2,"length":1,"string":"a","name":null},{"offset":3,"length":1,"string":"b","name":null}]}]\n
+stderr
+end
+
+case regex/lookahead
+def c02d28be1c11
+rc 0
+stdout [{"offset":3,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/negative-lookahead
+def 7308f175414b
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/lookbehind
+def e1da3c559371
+rc 0
+stdout [{"offset":4,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/negative-lookbehind
+def 52af24ede9d0
+rc 0
+stdout [{"offset":1,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/atomic
+def 290c2fdaeebb
+rc 0
+stdout [{"offset":0,"length":3,"string":"aab","captures":[]}]\n
+stderr
+end
+
+case regex/named-angle
+def 69f73fe236df
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":"x"},{"offset":1,"length":1,"string":"b","name":null}]}]\n
+stderr
+end
+
+case regex/named-quote
+def fc99b46d4971
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":"x"}]}]\n
+stderr
+end
+
+case regex/named-twice
+def 6dd915af3f94
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":"x"},{"offset":1,"length":1,"string":"b","name":"x"}]}]\n
+stderr
+end
+
+case regex/callout-contents
+def b15b0d6f1765
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[]}]\n
+stderr
+end
+
+case regex/callout-name
+def 2b34a50e191d
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/absent-repeater
+def c245a624298d
+rc 0
+stdout [{"offset":0,"length":5,"string":"a123b","captures":[]}]\n
+stderr
+end
+
+case regex/absent-expression
+def dfc13ec247e7
+rc 0
+stdout [{"offset":0,"length":2,"string":"12","captures":[]},{"offset":2,"length":0,"string":"","captures":[]},{"offset":3,"length":5,"string":"45678","captures":[]},{"offset":8,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/absent-stopper
+def 524c5fca2078
+rc 0
+stdout [{"offset":0,"length":2,"string":"12","captures":[]},{"offset":3,"length":2,"string":"45","captures":[]}]\n
+stderr
+end
+
+case regex/absent-range-clear
+def a1ddaae46831
+rc 0
+stdout [{"offset":0,"length":5,"string":"12345","captures":[]}]\n
+stderr
+end
+
+case regex/if-then-else
+def fe590d3458f0
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/if-then
+def eb5f1641da6e
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":null}]},{"offset":2,"length":0,"string":"","captures":[{"offset":-1,"string":null,"length":0,"name":null}]},{"offset":3,"length":0,"string":"","captures":[{"offset":-1,"string":null,"length":0,"name":null}]},{"offset":4,"length":0,"string":"","captures":[{"offset":-1,"string":null,"length":0,"name":null}]}]\n
+stderr
+end
+
+case regex/if-name
+def 6430bd48565b
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":"x"}]}]\n
+stderr
+end
+
+case regex/if-condition-expression
+def 3ebcbdab03af
+rc 0
+stdout "Regex failure: target of repeat operator is not specified"\n
+stderr
+end
+
+case regex/validity-checker
+def 286fa75f7fef
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-number
+def 2ae39e6e253b
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-k-number
+def e014b6280c55
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-k-quote
+def 360d744c4a60
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-k-relative-back
+def 586645e6a575
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-k-relative-forward
+def 51673cc518a6
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":null}]}]\n
+stderr
+end
+
+case regex/backref-name
+def e16e32b6149b
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":"x"}]}]\n
+stderr
+end
+
+case regex/backref-name-quote
+def fd0ba873b5c5
+rc 0
+stdout [{"offset":0,"length":2,"string":"aa","captures":[{"offset":0,"length":1,"string":"a","name":"x"}]}]\n
+stderr
+end
+
+case regex/backref-name-twice
+def bd54813533b7
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[{"offset":0,"length":1,"string":"a","name":"x"},{"offset":-1,"string":null,"length":0,"name":"x"}]},{"offset":1,"length":1,"string":"a","captures":[{"offset":1,"length":1,"string":"a","name":"x"},{"offset":-1,"string":null,"length":0,"name":"x"}]},{"offset":3,"length":2,"string":"bb","captures":[{"offset":-1,"string":null,"length":0,"name":"x"},{"offset":3,"length":1,"string":"b","name":"x"}]}]\n
+stderr
+end
+
+case regex/backref-level
+def 824bd68ba566
+rc 0
+stdout [{"offset":0,"length":4,"string":"reer","captures":[{"offset":0,"length":4,"string":"reer","name":"a"},{"offset":1,"length":1,"string":"e","name":"b"}]}]\n
+stderr
+end
+
+case regex/call-number
+def a1a4514b6ade
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":null}]}]\n
+stderr
+end
+
+case regex/call-number-quote
+def 518694684741
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":null}]}]\n
+stderr
+end
+
+case regex/call-zero
+def 72cc83b9e119
+rc 0
+stdout [{"offset":0,"length":5,"string":"((x))","captures":[]}]\n
+stderr
+end
+
+case regex/call-relative-back
+def 4d051ac11ae5
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":null}]}]\n
+stderr
+end
+
+case regex/call-relative-forward
+def 0e52f579bbe1
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":null}]}]\n
+stderr
+end
+
+case regex/call-name
+def 0b6eeedd0b5c
+rc 0
+stdout [{"offset":0,"length":4,"string":"abab","captures":[{"offset":2,"length":2,"string":"ab","name":"x"}]}]\n
+stderr
+end
+
+case regex/call-option-of-group
+def 98346ae0bf92
+rc 0
+stdout [{"offset":0,"length":1,"string":"A","captures":[{"offset":0,"length":1,"string":"A","name":"x"}]}]\n
+stderr
+end
+
+case regex/unnamed-beside-named
+def fc9e019cc9f7
+rc 0
+stdout [{"offset":0,"length":3,"string":"abc","captures":[{"offset":0,"length":1,"string":"a","name":null},{"offset":1,"length":1,"string":"b","name":"x"},{"offset":2,"length":1,"string":"c","name":null}]}]\n
+stderr
+end
+
+case regex/numbered-backref-beside-named
+def 4e5ea480d428
+rc 0
+stdout [{"offset":0,"length":3,"string":"aba","captures":[{"offset":0,"length":1,"string":"a","name":null},{"offset":1,"length":1,"string":"b","name":"x"}]}]\n
+stderr
+end
+
+case regex/perl-option-s
+def ec2b9b72c51d
+rc 0
+stdout [{"offset":0,"length":3,"string":"a\\nb","captures":[]}]\n
+stderr
+end
+
+case regex/perl-option-m
+def 67a59e0365e8
+rc 0
+stdout [{"offset":2,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/quote
+def f698cccde979
+rc 0
+stdout [{"offset":0,"length":3,"string":"a.b","captures":[]}]\n
+stderr
+end
+
+case regex/named-char
+def cb081594db8d
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/unpaired-brace
+def 21e5be386641
+rc 0
+stdout [{"offset":0,"length":2,"string":"a{","captures":[]}]\n
+stderr
+end
+
+case regex/unpaired-brace-range
+def a7746881bb94
+rc 0
+stdout [{"offset":0,"length":5,"string":"a{2,3","captures":[]}]\n
+stderr
+end
+
+case regex/brace-empty-range
+def c7a26317557f
+rc 0
+stdout [{"offset":0,"length":4,"string":"a{,}","captures":[]}]\n
+stderr
+end
+
+case regex/ignorecase-escape
+def 0551790e6a62
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/zero-width-loop
+def d95f1d4e895b
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[{"offset":0,"string":"","length":0,"name":null},{"offset":0,"string":"","length":0,"name":null}]}]\n
+stderr
+end
+
+case regex/zero-width-loop-backref
+def e7f4743ab847
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[{"offset":0,"string":"","length":0,"name":null}]},{"offset":1,"length":0,"string":"","captures":[{"offset":1,"string":"","length":0,"name":null}]}]\n
+stderr
+end
+
+case regex/modifier-none
+def 552f81959d6d
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-g
+def bfdffb2d5bc2
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[]},{"offset":3,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-i
+def 4f6be3cbb6f5
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-x
+def a92a8640b358
+rc 0
+stdout [{"offset":0,"length":2,"string":"ab","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-m
+def 4d8c7fcaaf80
+rc 0
+stdout [{"offset":0,"length":3,"string":"a\\nb","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-s
+def c30d456165b0
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/modifier-p
+def 134e585d89a6
+rc 0
+stdout [{"offset":0,"length":3,"string":"a\\nb","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-l
+def e47776d320ab
+rc 0
+stdout [{"offset":0,"length":3,"string":"abc","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-n
+def fa9573e2de44
+rc 0
+stdout []\n
+stderr
+end
+
+case regex/modifier-repeated
+def 22efc811bbcb
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[]},{"offset":1,"length":1,"string":"A","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-empty
+def f5bb43dd1295
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[]}]\n
+stderr
+end
+
+case regex/modifier-invalid
+def 635ff3a023b7
+rc 0
+stdout "gz is not a valid modifier string"\n
+stderr
+end
+
+case regex/modifier-not-string
+def 829dd45b70b2
+rc 0
+stdout "number (1) is not a string"\n
+stderr
+end
+
+case regex/loop-empty-in-two-bytes
+def 2c97b83933c6
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/loop-empty-alternative
+def e065c1776547
+rc 0
+stdout [{"offset":0,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]},{"offset":1,"length":0,"string":"","captures":[]},{"offset":2,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/loop-lookahead-once
+def f26bddbc52eb
+rc 0
+stdout [{"offset":1,"length":0,"string":"","captures":[]}]\n
+stderr
+end
+
+case regex/loop-captures-reset
+def ad44f93599f3
+rc 0
+stdout [{"offset":0,"length":1,"string":"a","captures":[{"offset":0,"length":1,"string":"a","name":null}]},{"offset":1,"length":1,"string":"b","captures":[{"offset":-1,"string":null,"length":0,"name":null}]}]\n
+stderr
+end
+
+case regex/loop-lookbehind-capture
+def f60d805bc6f6
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[{"offset":0,"length":1,"string":"x","name":null}]}]\n
+stderr
+end
+
+case regex/loop-empty-capture-offset
+def 302630a2e3ce
+rc 0
+stdout [{"offset":1,"length":0,"string":"","captures":[{"offset":1,"string":"","length":0,"name":null}]}]\n
+stderr
+end
+
+case regex/loop-four-byte
+def b2de0c20d301
+rc 0
+stdout [{"offset":0,"length":1,"string":"😀","captures":[]},{"offset":1,"length":1,"string":"a","captures":[]},{"offset":2,"length":1,"string":"😀","captures":[]},{"offset":3,"length":1,"string":"a","captures":[]}]\n
+stderr
+end
+
+case regex/input-not-string
+def 9e374db7a09b
+rc 0
+stdout "number (1) cannot be matched, as it is not a string"\n
+stderr
+end
+
+case regex/pattern-not-string
+def b76782e32b19
+rc 0
+stdout "number (1) is not a string"\n
+stderr
+end
+
+case regex/error-empty-char-class
+def f58ce9884229
+rc 0
+stdout "Regex failure: empty char-class"\n
+stderr
+end
+
+case regex/error-premature-end-of-char-class
+def fe82428fa962
+rc 0
+stdout "Regex failure: premature end of char-class"\n
+stderr
+end
+
+case regex/error-end-at-escape
+def 9d548676ddf8
+rc 0
+stdout "Regex failure: end pattern at escape"\n
+stderr
+end
+
+case regex/error-class-value-at-end-of-range
+def 595517e28f23
+rc 0
+stdout "Regex failure: char-class value at end of range"\n
+stderr
+end
+
+case regex/error-repeat-target-not-specified
+def 5ce005809ad0
+rc 0
+stdout "Regex failure: target of repeat operator is not specified"\n
+stderr
+end
+
+case regex/error-repeat-target-invalid
+def 72ec049aab49
+rc 0
+stdout "Regex failure: target of repeat operator is invalid"\n
+stderr
+end
+
+case regex/error-unmatched-close
+def cda40b9256c4
+rc 0
+stdout "Regex failure: unmatched close parenthesis"\n
+stderr
+end
+
+case regex/error-unmatched-open
+def 441918a17fbc
+rc 0
+stdout "Regex failure: end pattern with unmatched parenthesis"\n
+stderr
+end
+
+case regex/error-end-in-group
+def 0414754dcbd8
+rc 0
+stdout "Regex failure: end pattern in group"\n
+stderr
+end
+
+case regex/error-undefined-group-option
+def 5615e8a26734
+rc 0
+stdout "Regex failure: undefined group option"\n
+stderr
+end
+
+case regex/error-invalid-posix-bracket
+def 5fd173c74180
+rc 0
+stdout "Regex failure: invalid POSIX bracket type"\n
+stderr
+end
+
+case regex/error-too-big-repeat
+def 932e33d98ea2
+rc 0
+stdout "Regex failure: too big number for repeat range"\n
+stderr
+end
+
+case regex/error-upper-below-lower
+def f89d7da38022
+rc 0
+stdout "Regex failure: upper is smaller than lower in repeat range"\n
+stderr
+end
+
+case regex/error-empty-range
+def 7d389e801ac2
+rc 0
+stdout "Regex failure: empty range in char class"\n
+stderr
+end
+
+case regex/error-invalid-backref
+def 2b8f718ac6c0
+rc 0
+stdout "Regex failure: invalid backref number/name"\n
+stderr
+end
+
+case regex/error-too-long-wide-char
+def 661e7d1c2698
+rc 0
+stdout "Regex failure: too long wide-char value"\n
+stderr
+end
+
+case regex/error-empty-group-name
+def 63f72335f666
+rc 0
+stdout "Regex failure: group name is empty"\n
+stderr
+end
+
+case regex/error-invalid-group-name
+def b0bad1f83e25
+rc 0
+stdout "Regex failure: invalid group name <1a>"\n
+stderr
+end
+
+case regex/error-undefined-name
+def 86b39fddb194
+rc 0
+stdout "Regex failure: undefined name <x> reference"\n
+stderr
+end
+
+case regex/error-undefined-call-name
+def 8d737efd364e
+rc 0
+stdout "Regex failure: undefined name <x> reference"\n
+stderr
+end
+
+case regex/error-multiplex-call
+def 859a12c98d85
+rc 0
+stdout "Regex failure: multiplex definition name <n> call"\n
+stderr
+end
+
+case regex/error-never-ending-recursion
+def 40347acba1ed
+rc 0
+stdout "Regex failure: never ending recursion"\n
+stderr
+end
+
+case regex/error-invalid-property
+def a473377c5246
+rc 0
+stdout "Regex failure: invalid character property name {Foo}"\n
+stderr
+end
+
+case regex/error-invalid-callout-pattern
+def 97ed1e711aa1
+rc 0
+stdout "Regex failure: invalid callout pattern"\n
+stderr
+end
+
+case regex/error-undefined-callout-name
+def 8cea547733e9
+rc 0
+stdout "Regex failure: undefined callout name"\n
+stderr
+end
+
+case regex/error-invalid-callout-tag
+def a6acaf26af40
+rc 0
+stdout "Regex failure: invalid callout tag name"\n
+stderr
+end
+
+case regex/error-octal-too-long
+def 9017b4f82d65
+rc 0
+stdout "Regex failure: too long wide-char value"\n
+stderr
+end
+
+case regex/prelude-test
+def fbb2f95a45f1
+rc 0
+stdout [true,true,true,false]\n
+stderr
+end
+
+case regex/prelude-match-array
+def 74d10604a43c
+rc 0
+stdout [{"offset":1,"length":1,"string":"b","captures":[{"offset":1,"length":1,"string":"b","name":null}]},{"offset":3,"length":1,"string":"b","captures":[{"offset":3,"length":1,"string":"b","name":null}]}]\n
+stderr
+end
+
+case regex/prelude-capture
+def c2014332e9d0
+rc 0
+stdout {"y":"2026","m":"11"}\n
+stderr
+end
+
+case regex/prelude-capture-global
+def b0726996baae
+rc 0
+stdout [{"d":"1"},{"d":"2"}]\n
+stderr
+end
+
+case regex/prelude-capture-unmatched
+def 56127b87a590
+rc 0
+stdout {"a":null,"b":"y"}\n
+stderr
+end
+
+case regex/prelude-scan
+def 6dd680f525be
+rc 0
+stdout ["c",["aa","b"],["a","b"],"a","a","a"]\n
+stderr
+end
+
+case regex/prelude-splits
+def 811e4336fb3c
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end
+
+case regex/prelude-splits-flags
+def 21c29e6a74f8
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end
+
+case regex/prelude-split-regex
+def 60a0b24b23df
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end
+
+case regex/prelude-split-empty-match
+def ceebc5d904fe
+rc 0
+stdout ["","a","b","c",""]\n
+stderr
+end
+
+case regex/prelude-offsets-in-code-points
+def e45ef4f6412a
+rc 0
+stdout [1,2,4,1]\n
+stderr
+end
+
+case regex/prelude-argument-order
+def 31fd05db4547
+rc 0
+stdout [true,false,true,false]\n
+stderr
+end
+
+case regex/prelude-test-not-string
+def 04d0d3004236
+rc 0
+stdout "number not a string or array"\n
+stderr
+end
+
+case regex/prelude-match-not-string
+def 8bb38c227eb5
+rc 0
+stdout "number not a string or array"\n
+stderr
+end

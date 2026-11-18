@@ -6,8 +6,8 @@ import java.util.Objects;
 /**
  * The budgets of an evaluation. A budget with no limit holds its largest value, {@link #UNLIMITED} or
  * {@link #UNLIMITED_TIME}, never 0 or a negative. The engine carries them; a run enforces the steps, the deadline,
- * the recursion depth and the bytes built and written, and reads the stack bytes. The nesting depth and the regex
- * match time are carried but not read.
+ * the recursion depth, the bytes built and written and the regex match time, and reads the stack bytes. The nesting
+ * depth is carried but not read.
  *
  * @param steps the steps an evaluation may take
  * @param deadline the wall-clock time an evaluation may take
@@ -15,7 +15,7 @@ import java.util.Objects;
  * @param recursionDepth the live activations an evaluation may hold
  * @param bytesBuilt the string bytes and container slots an evaluation may build
  * @param bytesWritten the bytes a writer may write
- * @param regexMatchTime the time one regex match may take
+ * @param regexMatchTime the time one regex search call may take; a global match makes one call per match
  * @param stackBytes the stack the evaluation declares, from which each run derives how many stack units of its calls
  *     stay on the Java stack before a call starts the heap-form trampoline: {@code U_f =
  *     floorDiv(stackBytes - reserve, b) - D_f}, with the reserve 180 KiB and {@code b}, the bytes per unit, 192, both

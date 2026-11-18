@@ -163,14 +163,26 @@ where jq errors, and the reverse.
 
 ## Regex dialect (ADR-0053, spec 4)
 
-The engine runs regexes on joni 2.2.9 with `Syntax.PerlNG` and `CAPTURE_GROUP`; jq-ref runs them on its
-builtin Oniguruma. The regex prelude ticket records one case per construct of Oniguruma's syntax
-list and one per compile-error text. Each construct or text where joni differs, and no text mapping
-closes the gap, is a row here.
+The engine runs regexes on joni 2.2.9 with `CAPTURE_GROUP` and a syntax made of `Syntax.PerlNG` and
+the operators of Oniguruma's Perl_NT, jq's syntax, that joni reads the same way: the possessive
+repeats, the conditionals, `\R`, `\X` and `\K`. jq-ref runs them on its builtin Oniguruma. The
+cases `regex/*` record one case per construct of Oniguruma's syntax list and one per compile-error
+text. Each construct or text where joni differs is a row here; `jq/oracle/src/test/resources/diff/regex.cases`
+gives each case's engine output.
 
 | case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
-| (rows added by the regex prelude ticket) | | | | |
+| `regex/absent-repeater` (`deviation regex-absent-group`), `regex/absent-expression`, `regex/absent-stopper`, `regex/absent-range-clear` | `[match("a(?~45)")]` | `"a123b456"` | the match `a123b` | `Regex failure: undefined group option` |
+| `regex/anchor-text-segment-boundary` (`deviation regex-text-segment-anchor`), `regex/anchor-text-segment-not-boundary` | `[match("\\y"; "g")]` | `"éx"` | three empty matches | `[]`: `\y` matches the letter y |
+| `regex/type-not-newline` (`deviation regex-escape-as-letter`), `regex/type-true-anychar`, `regex/char-octal-codepoint`, `regex/codepoint-sequence-octal`, `regex/error-octal-too-long` | `[match("\\N"; "g")]` | `"a\nb"` | `a` and `b` | `[]`: `\N`, `\O` and `\o` match the letter |
+| `regex/codepoint-sequence-hex` (`deviation regex-codepoint-sequence`) | `[match("\\x{41 42}")]` | `"xABx"` | the match `AB` | `[]` |
+| `regex/backref-k-relative-forward` (`deviation regex-relative-forward-backref`) | `[match("(?:\\k<+1>\|(a))+")]` | `"aa"` | the match `aa` | `Regex failure: undefined name <+1> reference` |
+| `regex/callout-contents` (`deviation regex-callout`), `regex/callout-name`, `regex/error-invalid-callout-pattern`, `regex/error-invalid-callout-tag`, `regex/error-undefined-callout-name` | `[match("a(*FAIL)\|b")]` | `"ab"` | the match `b` | `Regex failure: target of repeat operator is not specified` |
+| `regex/if-condition-expression` (`deviation regex-condition-expression`) | `[match("(?(?=a)ab\|cd)")]` | `"ab cd"` | `Regex failure: target of repeat operator is not specified` | `Regex failure: unmatched close parenthesis` |
+| `regex/error-invalid-property` (`deviation regex-property-name-text`) | `[match("\\p{Foo}")]` | `"abc"` | `Regex failure: invalid character property name {Foo}` | `Regex failure: invalid character property name <Foo>` |
+| `regex/error-too-long-wide-char` (`deviation regex-wide-char-text`) | `[match("\\x{FFFFFFFFF}")]` | `"abc"` | `Regex failure: too long wide-char value` | `Regex failure: too big wide-char value` |
+| `regex/error-repeat-target-invalid` (`deviation regex-repeated-lookaround`) | `[match("(?=a)*")]` | `"abc"` | `Regex failure: target of repeat operator is invalid` | one empty match |
+| `regex/zero-width-loop-backref` (`deviation regex-backref-in-empty-loop`) | `[match("(?:\\1a\|())*"; "g")]` | `"a"` | two empty matches | the match `a`, then an empty one |
 
 Reason: joni is the JVM's port of Oniguruma (ADR-0017), and a patched joni would be a fork outside
 the mutation floors. `builtins-regex-v1` draws only constructs the matrix shows identical.

@@ -103,6 +103,8 @@ licence text ships in the jq-core jar under META-INF/.
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Formats.java, translated from jq 1.8.2's
   f_format, escape_string, URI_UNRESERVED, BASE64_ENCODE_TABLE and BASE64_DECODE_TABLE
   (src/builtin.c) (#149)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Regex.java, translated from jq 1.8.2's
+  f_match and f_match_name_iter (src/builtin.c) (#150)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported
