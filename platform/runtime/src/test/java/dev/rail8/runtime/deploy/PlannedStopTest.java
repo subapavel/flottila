@@ -70,8 +70,11 @@ class PlannedStopTest {
     static final String FLOW = "relay/orders";
     /** The stop deadline: longer than one work lease, so the drain outlives a lease that is not renewed. */
     static final Duration STOP_DEADLINE = Duration.ofMinutes(2);
-    /** The default work lease of a worker ({@code WorkerPolicy.DEFAULT}) plus a margin: past it, a lease not renewed is lost. */
-    static final Duration PAST_A_LEASE = Duration.ofSeconds(45);
+    /**
+     * A worker's default lease and poll interval ({@code WorkerPolicy.DEFAULT}, 30 s each) plus a second: by then a lease that
+     * is not renewed is lost, and node 2 has polled at least once, whatever offset its first poll tick has.
+     */
+    static final Duration PAST_A_LEASE = Duration.ofSeconds(61);
     static final Duration BOUND = Duration.ofSeconds(10);
 
     @TempDir Path tmp;
@@ -230,7 +233,8 @@ class PlannedStopTest {
 
         // past a whole work lease, within the stop deadline: node 2 polls, node 1 still runs what it holds
         advance(PAST_A_LEASE);
-        until(() -> deliveries(receiving.id()) == 1, () -> "node 2 takes over the message that was saved while node 1 stopped");
+        until(() -> sends(doors2, receiving.id()) == 1, () -> "node 2 takes over the message that was saved while node 1 stopped");
+        assertEquals(0, sends(doors1, receiving.id()), "node 1 did not send the message it handed over");
         assertFalse(stopping.isDone(), "node 1's stop waits for the run in the gate step and the send at the partner");
         assertEquals(0, sends(doors2, inStep.id()) + sends(doors2, sending.id()),
                 "node 2 takes neither the message being processed nor the one being sent: node 1 renews their leases while it stops");
