@@ -18,6 +18,32 @@
   <build>
     <plugins>
       <plugin>
+        <!-- the template of `rail8 new-adapter`: the sample adapter's build, sources and package, in the jar under
+             adapter-template/; its target folder is left out -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>adapter-template</id>
+            <phase>process-resources</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/adapter-template</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.basedir}/../../examples/webhook-plugin</directory>
+                  <includes>
+                    <include>pom.xml</include>
+                    <include>src/**</include>
+                    <include>package/**</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>

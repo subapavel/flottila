@@ -11,6 +11,7 @@ DLQ and a Postgres work queue). What is built and what is planned is in
 `docs/ARCHITECTURE.md`.
 
 To send a message through a local node now: `docs/QUICKSTART.md` (Docker Compose, the demo package, the admin API).
+To write an adapter and run it with the UI: `docs/ADAPTERS.md`.
 
 Where to look:
 

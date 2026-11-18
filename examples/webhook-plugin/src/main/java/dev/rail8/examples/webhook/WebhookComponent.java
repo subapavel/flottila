@@ -49,8 +49,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /**
- * The {@code webhook} component of the sample plugin: a consumer that takes HTTP POSTs on a path and a producer that POSTs to
- * a URL, over the Vert.x HTTP server and client.
+ * The {@code webhook} component: a consumer that takes HTTP POSTs on a path and a producer that POSTs to a URL, over the
+ * Vert.x HTTP server and client.
  *
  * <p><b>Consumer</b> (options {@code host}, default 127.0.0.1; {@code port}, default 0, any free port, see
  * {@link WebhookConsumer#port()}; {@code path}, default {@code /}; and {@code flow} and {@code maxBodyBytes}, which the node sets).
@@ -66,6 +66,13 @@ import java.util.function.Function;
  * Any other status fails the send with a {@link NackException} whose reason holds the first {@value #REASON_BYTES} bytes of the
  * response body: retryable for 429 and 5xx, final otherwise. A send that times out fails retryable, and so does a bounded send
  * still unanswered when its {@link Deadline} runs out: the request is reset.
+ *
+ * <p><b>What is HTTP here.</b> The options {@code host}, {@code port}, {@code path}, {@code url} and {@code timeoutMs}, the
+ * server in {@link WebhookConsumer}, the client in {@link WebhookProducer}, and the statuses they answer and read are this
+ * component's protocol; the parts marked {@code HTTP:} below are where an adapter for another protocol puts its own. What every
+ * adapter keeps: the body streamed into and out of the blob store, one handler call on a virtual thread of its own per
+ * message, the answer taken only from the handler's {@link Ack}, the message id sent on, the cut at the deadline on the
+ * {@link Timer}, and a stop that waits for the deliveries in flight.
  */
 public final class WebhookComponent implements Component {
 
@@ -198,6 +205,7 @@ public final class WebhookComponent implements Component {
 
         @Override
         public Future<Void> start() {
+            // HTTP: a server on the endpoint's host and port; another protocol opens its listener or connection here.
             HttpServer s = vertx.createHttpServer(new HttpServerOptions().setHost(host).setPort(port)).requestHandler(this::handle);
             return s.listen().map(listening -> {
                 server = listening;
@@ -218,6 +226,7 @@ public final class WebhookComponent implements Component {
             return s == null ? Future.succeededFuture() : s.shutdown(SHUTDOWN);
         }
 
+        // HTTP: one request is one message; its body goes into the blob store, its headers become the message's.
         private void handle(HttpServerRequest req) {
             HttpServerResponse res = req.response();
             if (!path.equals(req.path())) {
@@ -249,6 +258,7 @@ public final class WebhookComponent implements Component {
             });
         }
 
+        // HTTP: the handler's Ack as a status; another protocol answers its sender in its own terms, from the Ack alone.
         private void answer(HttpServerResponse res, AsyncResult<Ack> done) {
             if (done.failed()) {
                 reason(res, 500, String.valueOf(done.cause().getMessage()));
@@ -314,6 +324,7 @@ public final class WebhookComponent implements Component {
             return cut.out.future();
         }
 
+        // HTTP: one POST per send, the body streamed from a fresh open(); another protocol writes to its partner here.
         private Future<Envelope> post(Envelope e, Cut cut) {
             Envelope out = e.withOutboundId();
             RequestOptions options = new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(url)
@@ -332,6 +343,7 @@ public final class WebhookComponent implements Component {
                     : failure));
         }
 
+        // HTTP: a 2xx response is the reply, any other status a refusal, retryable or for good.
         private Future<Envelope> reply(Envelope e, HttpClientResponse res) {
             int status = res.statusCode();
             if (status / 100 == 2) {

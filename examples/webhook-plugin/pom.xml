@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <!-- A sample adapter plugin, built with the development kit alone: rail8-api for the contract, rail8-testkit for the
+  <!-- An adapter plugin, built with the development kit alone: rail8-api for the contract, rail8-testkit for the
        contract suite and the mock. It has no parent; the node provides rail8-api and Vert.x core at run time, so the plugin
        jar holds only the plugin's own classes. `mvn package` writes the jar into target/plugin, a directory a node can load
        as RAIL8_PLUGINS. -->
@@ -13,8 +13,8 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
-  <name>Rail8 :: examples :: webhook plugin</name>
-  <description>A sample adapter plugin: the webhook component, an HTTP consumer and producer, and its contract tests.</description>
+  <name>Rail8 plugin :: webhook</name>
+  <description>An adapter plugin: the webhook component, an HTTP consumer and producer, and its contract tests.</description>
   <licenses>
     <license>
       <name>Apache-2.0</name>

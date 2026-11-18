@@ -305,7 +305,8 @@ same way; its code takes it through the API for custom code (part 5).
 `*.test.yaml` cases of each flow in process, with mock endpoints and a virtual clock, so a case with
 retries five minutes apart finishes in milliseconds. Both load plugins as a node does, from
 `--plugins <dir>` or `RAIL8_PLUGINS`. `rail8 lock` writes `package.lock`.
-`rail8 deploy` zips the package and sends it to a node's admin API.
+`rail8 deploy` zips the package and sends it to a node's admin API. `rail8 new-adapter` writes the
+skeleton of a new adapter (part 5).
 
 ### Deployment
 
@@ -442,6 +443,22 @@ Build, test and install:
 For the sample, `mvn -f examples/webhook-plugin/pom.xml verify` (after the platform is installed)
 runs its contract tests and writes the jar into `examples/webhook-plugin/target/plugin`, a folder
 to give to `--plugins` or `RAIL8_PLUGINS`.
+
+Two tools start a new adapter and run it (`docs/ADAPTERS.md`):
+
+- **Template.** `rail8 new-adapter <dir> --scheme <scheme> [--package <package>]` writes the sample
+  under the new scheme, Java package and class names: its build, the component with its settings
+  description, the plugin, the contract tests of the component and of its mock, and a package that
+  uses it. It builds and passes the contract suite as written; the comments marked `HTTP:` are
+  where another protocol goes. The cli jar carries the sample's files, copied at build time. A
+  scheme the node already has, a name that is not a valid scheme or Java package, and a folder that
+  is not empty are refused.
+- **Local run.** `bin/run-adapter <dir>`, in a checkout with the platform built, builds the
+  adapter's jar, starts an empty Postgres in Docker on a free port and a node of environment `dev`
+  with the adapter's `target/plugin` as its plugins (admin API on `127.0.0.1:18081`, no token),
+  deploys the adapter's `package/`, starts a partner that echoes on `127.0.0.1:18091`, and runs the
+  UI with the adapter's folder as its working folder, until Ctrl+C. A taken port or a missing tool
+  stops it before it starts anything.
 
 ### The API for custom code
 

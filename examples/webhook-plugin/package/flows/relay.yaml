@@ -2,16 +2,23 @@ schemaVersion: 1
 kind: flow
 id: relay
 version: 0.1.0
-description: Send the order to the partner and answer with its reply.
+description: Key the order by its id, send it to the partner and answer with its reply.
 from:
   endpoint: orders-in
 delivery:
   mode: sync
+recording:
+  level: all
+  payload: keep
 limits:
   maxBodyBytes: 1048576
   maxInFlight: 16
   maxInFlightBytes: 16777216
 steps:
+  - type: extractKey
+    name: orderId
+    key: orderId
+    xpath: /Order/Id
   - type: to
     name: partner
     endpoint: partner
