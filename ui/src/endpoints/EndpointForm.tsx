@@ -234,7 +234,8 @@ export function EndpointForm({ api, path, guardClose }: EndpointFormProps) {
     if (settings === null) return [];
     const fields = settings.fields.filter((f) => f.tab === tabId && f.directions.includes(file.direction) && shown.has(f.name));
     if (tabId !== 'general') return fields;
-    const named = new Set(settings.fields.map((f) => f.name));
+    // on an in endpoint the node sets flow and maxBodyBytes itself: no field describes them, and they are no stray key
+    const named = new Set([...settings.fields.map((f) => f.name), ...(file.direction === 'in' ? ['flow', 'maxBodyBytes'] : [])]);
     return [...fields, ...Object.keys(options).filter((k) => !named.has(k) && options[k] !== undefined).map(undescribed)];
   };
 
