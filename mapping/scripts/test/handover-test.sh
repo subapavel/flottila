@@ -11,7 +11,7 @@ check "HANDOVER.md exists" "$([ -f "$doc" ] && echo yes || echo no)" yes
 # start the stack from a clean clone (JDK 25, Node 22)
 has "JDK 25" "JDK 25"
 has "Node 22" "Node 22"
-has "dev service" "../mvnw -pl service -am quarkus:dev"   # the repository's wrapper, from mapping/ (BRAND-3)
+has "dev service" "../mvnw -pl service -am quarkus:dev"   # the repository's wrapper, from mapping/
 has "dev UI" "npm run dev"
 has "the service's jar" "quarkus-run.jar"
 has "loopback bind" "127.0.0.1"
@@ -27,7 +27,6 @@ has "Definition" "Definition"
 has "Test tab" "**Test**"
 has "Display Queue" "Display Queue"
 # gates and benchmarks
-has "ticket gate" "scripts/gate-ticket.sh"
 has "spec gate" "scripts/gate-spec.sh"
 has "machine label" "MACHINE_LABEL=claude-cloud-4vcpu"
 has "-Pbench" "-Pbench"

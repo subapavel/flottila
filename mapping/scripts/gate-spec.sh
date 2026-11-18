@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Spec gate (docs/WORKFLOW.md section 6, ADR-0017, ADR-0019, ADR-0021). Run by the verifier on the integration
-# branch, one at a time. Changes to the repository root of the worktree it lives in.
+# branch, one at a time. Changes to the mapping/ directory it lives in.
 #
 #   [MACHINE_LABEL=claude-cloud-4vcpu] scripts/gate-spec.sh <spec> [pit-modules]
 #
@@ -11,7 +11,7 @@
 # MACHINE_LABEL  the machine the verifier runs on; only claude-cloud-4vcpu (with nproc = 4) judges the benchmarks
 #                and lets step 4 write ratchet/bench.tsv (ADR-0021). Unset elsewhere: step 5 only measures.
 #
-# The UI is the repository's ui/, beside this root: steps 2, 3 and 5 run its checks and scenarios there.
+# The UI is the repository's ui/, beside mapping/: steps 2, 3 and 5 run its checks and scenarios there.
 #
 # Order: 1, 1b, 2, 5, 4, 3. Step 5 writes the JMH JSON that step 4 reads. Step 4 reads the reports of steps 1, 1b
 # and 2, step 2's the UI's coverage. Every step runs even if an earlier one failed; each prints an
@@ -28,10 +28,10 @@ fi
 spec=$1
 
 cd "$(dirname "$0")/.."
-# the Maven wrapper is the repository's, one level above this root (BRAND-3); a script test sets MVNW to its stub
+# the Maven wrapper is the repository's, one level above mapping/; a script test sets MVNW to its stub
 mvnw=${MVNW:-../mvnw}
 mkdir -p .logs
-# the console output, stderr included, also goes to .logs/<spec>-spec-gate.log under this root, whatever the caller's
+# the console output, stderr included, also goes to .logs/<spec>-spec-gate.log under mapping/, whatever the caller's
 # directory (#125). On exit, close it and wait for tee, so the log is complete when the script returns.
 exec > >(tee ".logs/${spec}-spec-gate.log") 2>&1
 tee_pid=$!

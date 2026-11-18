@@ -14,8 +14,7 @@ the worktree; the Maven wrapper is at the repository's root, so from `mapping/` 
 The mapping studio is part of the Rail8 UI, the repository's `ui/` (from `mapping/` it is `../ui`).
 Logs go to `.logs/<ticket>-<check>.log` and `../ui/.logs/<ticket>-<check>.log`, never to `target/`
 (`../mvnw clean` deletes it). The milestone-1 skeleton adds
-`scripts/gate-ticket.sh <ticket> <modules>` and `scripts/gate-spec.sh <spec>`. The verifier runs
-those scripts; until they exist it runs the steps below by hand, in this order.
+`scripts/gate-spec.sh <spec>`. The ticket gate below is run by hand, in this order.
 
 **Ticket gate** (verifier, per ticket, in its worktree; `<modules>` = the touched module
 directories, comma-separated, e.g. `engine/xdm,engine/ir`):
@@ -26,7 +25,6 @@ directories, comma-separated, e.g. `engine/xdm,engine/ir`):
 | 1b | `../mvnw -B -pl <class-C modules among <modules>> -am test-compile org.pitest:pitest-maven:mutationCoverage`, then `scripts/pit-summary.sh ratchet/mutation.tsv <modules>` | `.logs/<t>-pit.log` | a class-C engine module is touched (#67): a score below its `ratchet/` floor is `EXECUTED_FAIL`; none touched prints `NOT_RUN`. The last lines of the script are `module killed/generated score% floor N% ok|DROP`, one per module |
 | 2 | `../mvnw -B -q -DskipTests verify` | `.logs/<t>-compile-all.log` | always: the whole reactor compiles; Spotless, enforcer, licences |
 | 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
-| 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the old repository's trailer `Ticket: #n` (`docs/archive/WORKFLOW-until-2026-11-15.md` §11), merges of the integration tip included (spec-3 retro); it does not pass on commits made under the root's process (`Task:`, the root `docs/WORKFLOW.md` §3). The old-process scripts — `check-trailers.sh`, this step 2c of `gate-ticket.sh`, `clean-worktrees.sh`, `push-retry.sh` — are adapted or archived by MAP-7 (pending) |
 | 3 | `git diff --exit-code contract/` | — | the service or `contract/` changed |
 | 4 | in `../ui`: `npm run licences`, `typecheck`, `lint`, `test:coverage`, `test:browser`, `e2e`; `npm run gen:types && git diff --exit-code src/mapping/generated` | `../ui/.logs/<t>-<check>.log` | `../ui` or `contract/` changed |
 | 5 | `java scripts/ratchet.java check` | `.logs/<t>-ratchet.log` | always: no listed case failing or missing, no coverage below `ratchet/` of the integration branch; unbuilt modules print `NOT_RUN` (ADR-0019) |
@@ -82,13 +80,12 @@ Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1, 1b and 2 (the UI's c
 workflow or the nightly workflow - and, until MAP-12c, four scheduled runs a day of the backend job alone;
 the old repository required its four jobs on `main`, here `mapping-ci` is not a required check (D-164 (6))
 and the required checks are the owner's to set). Its steps run in `mapping/` with the repository's wrapper (`../mvnw`). The commits' sign-off is the
-root `ci.yml`'s `dco` job; the mapping's `trailers` job is gone (BRAND-3):
+root `ci.yml`'s `dco` job:
 
 - `mapping · backend`: every script test in `scripts/test/` (`function-families*-test.sh`, #69;
   `ratchet-mutation-test.sh`, `ratchet-moved-test.sh`, `ratchet-bench-test.sh`, `ratchet-baseline-test.sh`,
-  `gate-spec-bench-test.sh`, and those that need no JDK: `trailers*-test.sh`,
-  `clean-worktrees-test.sh`, `pit-summary-test.sh`, `gate-spec-default-test.sh`, `gate-log-test.sh`,
-  `push-retry-test.sh`, `handover-test.sh`, `ratchet-ci-test.sh`, `ratchet-ci-wiring-test.sh`), then `../mvnw -B -Pbench verify`,
+  `gate-spec-bench-test.sh`, and those that need no JDK: `pit-summary-test.sh`, `gate-spec-default-test.sh`, `gate-log-test.sh`,
+  `handover-test.sh`, `ratchet-ci-test.sh`, `ratchet-ci-wiring-test.sh`), then `../mvnw -B -Pbench verify`,
   `git diff --exit-code contract/`, `scripts/check-lf-checkout.sh` and last `scripts/ratchet-ci.sh push`: the
   ratchet check against the last commit it passed on (ADR-0019, "On GitHub"; it reports until the date in
   `scripts/ratchet-enforced-from`, then it fails the job);
@@ -107,8 +104,7 @@ root `ci.yml`'s `dco` job; the mapping's `trailers` job is gone (BRAND-3):
 and mutation per module, benchmark baselines. Every push is checked on GitHub against the last
 commit the check passed on, and the verifier regenerates the files at every task commit that
 touches `mapping/` (ADR-0019, "On GitHub"; the repository's D-164). The old gates checked against
-the integration branch's copy and regenerated at the spec gate (rows 1b and 5 above; MAP-7 adapts
-or archives them). A drop is a failure; a rise is recorded at regeneration. Writers never touch it.
+the integration branch's copy and regenerated at the spec gate (rows 1b and 5 above). A drop is a failure; a rise is recorded at regeneration. Writers never touch it.
 
 **Floors** (fixed in the build, ADR-0019): JaCoCo lines ≥ 90 % and branches ≥ 80 % on `xdm`, `ir`,
 `runtime`, `serializer`, `mapping`, `xslt-export`, `api`, `udf-api`, `udf`; lines ≥ 80 % on `structure`,
