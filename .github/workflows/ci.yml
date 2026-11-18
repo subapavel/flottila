@@ -3,7 +3,8 @@
 # runs the build with its tests itself before it merges.
 # Once a day and on demand, before the owner's morning overview: the build of main with unit and integration
 # tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package, and then the
-# whole stack started in Docker with the demo deployed. It blocks nothing; a red run is the first task of the day.
+# whole stack started in Docker with the demo deployed, and the quickstart's first-run and start commands run as
+# written (node, mapping service and UI, an invoice found). It blocks nothing; a red run is the first task of the day.
 # The larger reports (the oldest supported Postgres, coverage, the benchmark, mutation testing and the fork kill
 # check) are switched off for now.
 name: ci
@@ -218,6 +219,77 @@ jobs:
         if: always()
         working-directory: deploy/compose
         run: docker compose --profile history --profile kafka down -v
+
+  quickstart:
+    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found)"
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      RAIL8_ADMIN_TOKEN: rail8-local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # The commands of the quickstart's first run, in its order.
+      - name: Install the engines, build the node's jar and the mapping service, install the UI
+        run: |
+          set -euo pipefail
+          bin/install-jq && bin/install-mapping
+          mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+          ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
+          (cd ui && npm ci)
+      - name: Start the node, wait for /health and deploy the demo
+        run: |
+          set -euo pipefail
+          docker compose up -d --build
+          start=$(date +%s)
+          until curl -sf localhost:8081/health > /dev/null; do
+            if [ $(( $(date +%s) - start )) -ge 120 ]; then echo "::error::/health not green within 120 s of up"; exit 1; fi
+            sleep 2
+          done
+          deploy/quickstart/deploy.sh examples/demo
+      - name: Start the mapping service and the UI as the quickstart does
+        run: |
+          set -euo pipefail
+          cp -r mapping/corpus ~/rail8-mapping-workspace
+          nohup java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar > "$RUNNER_TEMP/mapping.log" 2>&1 &
+          (cd ui && QUARKUS_HTTP_PORT=18080 nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
+          for url in localhost:18080/api/mappings localhost:5173/; do
+            start=$(date +%s)
+            until curl -sf "$url" > /dev/null; do
+              if [ $(( $(date +%s) - start )) -ge 90 ]; then echo "::error::$url not answering within 90 s"; exit 1; fi
+              sleep 2
+            done
+          done
+      - name: An invoice is sent in and found through the UI's server
+        run: |
+          set -euo pipefail
+          reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in)
+          echo "$reply"
+          echo "$reply" | grep -q '<PartnerInvoice number="4711" currency="CZK"'
+          # the UI's server adds the token itself, so no Authorization header here
+          for _ in $(seq 1 30); do
+            found=$(curl -sf 'localhost:5173/admin/messages?key=invoiceId:4711' || true)
+            echo "$found" | grep -q '"items":\["' && exit 0
+            sleep 2
+          done
+          echo "::error::the invoice was not found through the UI's /admin: $found"; exit 1
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker compose logs --no-color | tail -200
+          tail -100 "$RUNNER_TEMP/mapping.log" "$RUNNER_TEMP/ui.log" || true
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
 
   fork-kill:
     name: "nightly · a test JVM that dies fails the build, in every module (ci/fork_kill_check.py)"

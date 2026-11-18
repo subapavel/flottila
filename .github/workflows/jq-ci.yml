@@ -1,31 +1,15 @@
 name: jq-ci
 
-# The jq engine's check on every change (jq/): the build with its unit and oracle tests, licences, bans and the
-# query-core word check, in jq/ with the repository's wrapper. It runs when the engine, the root pom, the wrapper,
-# the root .gitattributes, this file or jq-nightly.yml changes. The long checks (mutation tests, the calibration
-# matrix, the comparison with the reference jq, the benchmarks with the ratchet, the script tests and the Windows
-# build) run once a night in jq-nightly.yml as a report that blocks nothing. The platform's ci.yml checks the
-# sign-off of every commit.
+# The jq engine's check (jq/): the build with its unit and oracle tests, licences, bans and the query-core word
+# check, in jq/ with the repository's wrapper. It runs once a day on main, before the owner's morning overview, and on
+# demand; it has no pull request trigger, and the session that wrote a change builds locally before it merges. The
+# long checks (mutation tests, the calibration matrix, the comparison with the reference jq, the benchmarks with the
+# ratchet, the script tests and the Windows build) run only on demand in jq-nightly.yml. The platform's ci.yml checks
+# the sign-off of every commit.
 on:
-  pull_request:
-    paths:
-      - 'jq/**'
-      - 'pom.xml'
-      - '.mvn/**'
-      - 'mvnw*'
-      - '.gitattributes'
-      - '.github/workflows/jq-ci.yml'
-      - '.github/workflows/jq-nightly.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'jq/**'
-      - 'pom.xml'
-      - '.mvn/**'
-      - 'mvnw*'
-      - '.gitattributes'
-      - '.github/workflows/jq-ci.yml'
-      - '.github/workflows/jq-nightly.yml'
+  schedule:
+    - cron: '27 4 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: jq-ci-${{ github.event_name }}-${{ github.ref }}
