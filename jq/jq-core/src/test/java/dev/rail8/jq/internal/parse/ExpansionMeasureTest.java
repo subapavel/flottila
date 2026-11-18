@@ -320,7 +320,7 @@ class ExpansionMeasureTest {
   /**
    * A leaf that is a Stub when lowered still counts a node: {@code def g(h): .; g(<leaf>)} measures g's body, the
    * closure in the lifted form (D1) and the leaf's one node, five for {@code 1 as $v | $$$$v} (a Bind, its pattern,
-   * {@code 1} and builtin.jq's {@code $$$$v}, LastRead, which the Resolver stubs) and two for {@code explode} (an
+   * {@code 1} and builtin.jq's {@code $$$$v}, LastRead, which the Resolver stubs) and two for {@code toboolean} (an
    * unbuilt native of the NativeTable, spec 4). With the measured nodes left the call is inlined and the unused closure
    * never lowered, so the filter resolves; with one fewer left the call is a PLAIN Call, whose closure is lowered, and
    * the Stub fires. A leaf measured at no node would be inlined there too, and resolve. g is the one definition the
@@ -338,7 +338,7 @@ class ExpansionMeasureTest {
   }
 
   static Stream<Arguments> stubLeaves() {
-    return Stream.of(Arguments.of("def g(h): .; g(1 as $v | $$$$v)", 5), Arguments.of("def g(h): .; g(explode)", 2));
+    return Stream.of(Arguments.of("def g(h): .; g(1 as $v | $$$$v)", 5), Arguments.of("def g(h): .; g(toboolean)", 2));
   }
 
   /**

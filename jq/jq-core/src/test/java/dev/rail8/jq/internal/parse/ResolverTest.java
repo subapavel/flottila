@@ -128,10 +128,10 @@ class ResolverTest {
           // Unwrapped at #71: getpath/1 is an unbuilt native of spec 3 (ADR-0042) and |= is _modify's; jq-ref 1.8.2,
           // observed 2026-11-13 with -nc: {"a":1}, rc 0.
           "getpath([\"a\"]) |= 1",
-          // Unwrapped at #71. #72 builds tostring/0, so the key is ascii_downcase/0, which reaches spec 4's explode;
+          // The key is the string "e" from fromjson/0, still unbuilt, so it stubs;
           // jq-ref 1.8.2, observed 2026-11-13 with -nc:
           // {"if":1,"and":2,"a":3,"b":4,"k":5,"x1":6,"e":7,"__loc__":{"file":"<top-level>","line":1},"c":null}.
-          "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, (\"e\"|ascii_downcase): 7, $__loc__, c}",
+          "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, (\"\\\"e\\\"\"|fromjson): 7, $__loc__, c}",
           "1 as $v | $$$$v",
           "module {a:1}; .",
           "import \"nosuch\" as n; .",

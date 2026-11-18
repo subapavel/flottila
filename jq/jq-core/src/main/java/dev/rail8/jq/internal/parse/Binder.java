@@ -148,6 +148,16 @@ final class Binder {
     MAX("max", 0, true),
     MIN_BY("_min_by_impl", 1, true),
     MAX_BY("_max_by_impl", 1, true),
+    STARTSWITH("startswith", 1, false),
+    ENDSWITH("endswith", 1, false),
+    UTF8BYTELENGTH("utf8bytelength", 0, false),
+    TRIM("trim", 0, true),
+    LTRIM("ltrim", 0, true),
+    RTRIM("rtrim", 0, true),
+    EXPLODE("explode", 0, false),
+    IMPLODE("implode", 0, false),
+    SPLIT("split", 1, false),
+    STRINDICES("_strindices", 1, false),
     ;
 
     private final String signature;

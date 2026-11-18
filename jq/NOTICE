@@ -87,6 +87,10 @@ licence text ships in the jq-core jar under META-INF/.
   jq 1.8.2's f_sort, f_sort_by_impl, f_group_by_impl, f_unique, f_unique_by_impl, minmax_by,
   f_min, f_max, f_min_by_impl and f_max_by_impl (src/builtin.c) and sort_items, jv_sort,
   jv_group and jv_unique (src/jv_aux.c) (#73)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/StringNatives.java, translated from
+  jq 1.8.2's f_startswith, f_endswith, f_utf8bytelength, string_trim, f_string_explode,
+  f_string_implode, f_string_split and f_string_indexes (src/builtin.c), jv_string_explode and
+  jv_string_indexes (src/jv.c) and jvp_codepoint_is_whitespace (src/jv_unicode.c) (#147)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

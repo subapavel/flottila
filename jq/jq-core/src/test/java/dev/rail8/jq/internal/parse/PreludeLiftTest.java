@@ -45,7 +45,7 @@ class PreludeLiftTest {
   }
 
   /**
-   * The design's guard for "a filter that names no recursive builtin lowers to the same IR as before": each of the 52
+   * The design's guard for "a filter that names no recursive builtin lowers to the same IR as before": each of the 60
    * prelude calls that compile and reach no recursive definition (PreludeSignatures: neither a Stub nor lifted) lifts
    * no function, and neither does any core-v1 seed but those of form 6, which define their own recursive r and lift
    * exactly that one (CoreV1 "Form": seed % 7 == 6 is the one recursive template, and no seed names a recursive
@@ -63,7 +63,7 @@ class PreludeLiftTest {
       int functions = program(filter).functions().size();
       if (functions != 0) lifting.add(filter + ": " + functions);
     }
-    assertThat(calls).as("prelude calls that compile and reach no recursive definition").isEqualTo(52);
+    assertThat(calls).as("prelude calls that compile and reach no recursive definition").isEqualTo(60);
     assertThat(lifting).as("non-recursive prelude calls that lift a function").isEmpty();
     // A recursive builtin named only in a dead definition is never reached, so nothing lifts (ADR-0042 "Live
     // definitions"; jq-ref 1.8.2, observed 2026-11-15: 'def f: ..; 1' on null -> 1).

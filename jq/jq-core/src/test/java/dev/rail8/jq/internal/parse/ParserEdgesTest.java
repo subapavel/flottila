@@ -78,9 +78,8 @@ class ParserEdgesTest {
             "import \"a\" as $x; .",
             "import \"a\" as x {a: 1}; .",
             // .a."b"? left with its Stub: #63 lowers it (ResolverTest.navigationAndCommaLowerToTheirIr).
-            // Unwrapped at #71. #72 builds tostring/0, so the key is ascii_downcase/0, which reaches spec 4's explode
-            // and so still stubs (jq-ref 1.8.2, observed 2026-11-13 with -nc: 1, rc 0).
-            ". as {(\"a\"|ascii_downcase): $e} | 1")) {
+            // The key is the string "a" from fromjson/0, still unbuilt, so it stubs; jq 1.8.2 gives 1, rc 0.
+            ". as {(\"\\\"a\\\"\"|fromjson): $e} | 1")) {
       parsesToAStub(text);
     }
     // #67 lowers as and its patterns, #68 if and elif, and #69 foreach, so those entries ended with | .., which
