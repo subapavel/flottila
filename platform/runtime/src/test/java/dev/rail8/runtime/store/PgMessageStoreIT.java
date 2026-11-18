@@ -11,6 +11,7 @@ import dev.rail8.core.batch.BatchingWriter;
 import dev.rail8.core.batch.OverloadedException;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.StepLog;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeClock;
@@ -75,7 +76,7 @@ class PgMessageStoreIT {
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(8)).using(vertx).build();
         Migrations.Result r = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals("22", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088), V11 payloads dropped (P2-07c, D-097), V12 the body journal (CORE-4c1, D-105), V13 the journal losses (CORE-4c3), V14 the node lease (P2-15a), V15 the work key index (P2-16a), V16 the audit table (FIX-141), V17 work.max_attempts (CORE-14b), V18 nodes.peer_address (CORE-5a), V19 messages.attempt (FIX-175), V20 work.stopped_at, V21 work.cancel_audit, V22 processed_ids dropped");
+        assertEquals("23", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088), V11 payloads dropped (P2-07c, D-097), V12 the body journal (CORE-4c1, D-105), V13 the journal losses (CORE-4c3), V14 the node lease (P2-15a), V15 the work key index (P2-16a), V16 the audit table (FIX-141), V17 work.max_attempts (CORE-14b), V18 nodes.peer_address (CORE-5a), V19 messages.attempt (FIX-175), V20 work.stopped_at, V21 work.cancel_audit, V22 processed_ids dropped, V23 messages.log");
     }
 
     @AfterAll
@@ -118,6 +119,23 @@ class PgMessageStoreIT {
                 Props.empty().with(new Key<Duration>("deadline"), Duration.ofSeconds(3)), Keys.empty(), new Hash("sha256-64", 1), 1, Optional.empty(), Map.of());
         store.record(odd).await();
         assertEquals("PT3S", store.timeline("m-odd").await().get(0).props().asMap().get("deadline"), "a prop that is not JSON-native is kept by its string form");
+    }
+
+    @Test
+    void theLinesAStepLoggedRoundTripAndAStepThatLoggedNoneHasANullLog() {
+        Snapshot s = snap("m-log", 1, "sign", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty());
+        StepLog log = new StepLog(List.of(
+                new StepLog.Line(Instant.parse("2026-01-01T00:00:01.123456789Z"), System.Logger.Level.INFO, "partner.client", "signed 18 bytes for Zürich", Optional.empty()),
+                new StepLog.Line(Instant.parse("2026-01-01T00:00:01.2Z"), System.Logger.Level.WARNING, "partner.client", "the partner said \"no\"",
+                        Optional.of("java.lang.IllegalStateException: 503 from partner"))), 3);
+        store.record(new Snapshot(s.messageId(), s.flow(), s.step(), s.attempt(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(),
+                s.cpuNanos(), s.headers(), s.props(), s.keys(), s.bodyHash(), s.bodySize(), s.bodyKey(), s.versions(), log)).await();
+        store.record(snap("m-log", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())).await();
+        List<Snapshot> t = store.timeline("m-log").await();
+        assertEquals(StepLog.EMPTY, t.get(0).log());
+        assertEquals(log, t.get(1).log());
+        assertEquals(1L, pool.query("select count(*) from messages where id = 'm-log' and step = 0 and log is null").execute().await().iterator().next().getLong(0),
+                "no line logged: the column is null");
     }
 
     @Test

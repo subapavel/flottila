@@ -27,6 +27,7 @@ import dev.rail8.runtime.deploy.DeployedPackage;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.UndeployResult;
 import dev.rail8.runtime.pg.PgTx;
+import dev.rail8.runtime.store.StepLogJson;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
@@ -72,7 +73,8 @@ import java.util.function.Supplier;
 
 /**
  * The admin read API over the stores: a message's timeline with wall and CPU nanos per step (the rows of
- * every attempt by attempt, then step, each naming its {@code attempt}), the payload after step n (the latest attempt's,
+ * every attempt by attempt, then step, each naming its {@code attempt} and showing the lines the step's code logged as its
+ * {@code log}, {@link StepLogJson}), the payload after step n (the latest attempt's,
  * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
  * {@code /live} and {@code /ready}.
  *
@@ -1017,7 +1019,8 @@ public final class AdminServer {
                 .put("props", props(s.props().asMap()))
                 .put("keys", new JsonObject(new HashMap<>(s.keys().asMap())))
                 .put("body", new JsonObject().put("hash", hash(s.bodyHash())).put("size", s.bodySize()).put("kept", s.bodyKey().isPresent()))
-                .put("versions", new JsonObject(new HashMap<>(s.versions())));
+                .put("versions", new JsonObject(new HashMap<>(s.versions())))
+                .put("log", StepLogJson.json(s.log()));
     }
 
     private static JsonObject parked(Parked p) {

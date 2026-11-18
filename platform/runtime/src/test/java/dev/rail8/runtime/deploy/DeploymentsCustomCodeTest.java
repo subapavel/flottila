@@ -18,6 +18,7 @@ import dev.rail8.core.dlq.Parked;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Page;
 import dev.rail8.core.record.Snapshot;
+import dev.rail8.core.record.StepLog;
 import dev.rail8.runtime.deploy.DeployRefusedException.Kind;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
@@ -63,8 +64,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Custom code on a node, deployed as a package. The sample plugin step {@code hmac-sign} takes the secret its config names from the
  * node's {@code RAIL8_SECRET_*} variables and the node's cache, and signs each message of a deployed flow; a secret that is not set
  * refuses the deploy, naming the step, the key and the variable. A step that fails with a secret's value in its failure shows only
- * the reference: in the answer the sender gets, in the recorded step, in the parked row and in the node's log. The node's cache is
- * shared by the steps of one type in one package, and kept across a redeploy.
+ * the reference: in the answer the sender gets, in the recorded step, in the parked row and in the node's log. The line the sample
+ * step logs is kept in the message's history, and so is a line a step logs through SLF4J, with only the reference of a secret's
+ * value. The node's cache is shared by the steps of one type in one package, and kept across a redeploy.
  */
 @Timeout(60)
 class DeploymentsCustomCodeTest {
@@ -95,6 +97,17 @@ class DeploymentsCustomCodeTest {
         @Override public Stage create(StepConfig step, StepResources resources) {
             Secret secret = resources.services().secret(step, "key");
             return Stage.of(e -> { throw new NackException("the partner refused the signature of " + secret.value(), true); });
+        }
+    };
+
+    /** A step that takes the secret its option {@code key} names and logs its value at WARNING through SLF4J. */
+    static final StepFactory TELL = new StepFactory() {
+        @Override public String type() { return "tell"; }
+        @Override public String configSchema() { return "{}"; }
+        @Override public Stage create(StepConfig step, StepResources resources) {
+            Secret secret = resources.services().secret(step, "key");
+            org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger("partner.client");
+            return Stage.of(e -> { log.warn("calling the partner with {}", secret.value()); return e; });
         }
     };
 
@@ -149,6 +162,7 @@ class DeploymentsCustomCodeTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         List<StepFactory> steps = new ArrayList<>(new HmacSignPlugin().steps());
         steps.add(LEAK);
+        steps.add(TELL);
         steps.add(counting("count"));
         steps.add(counting("count-too"));
         NodeConfig config = placeholders ? NodeConfig.from(env).withSecrets(Secrets.placeholder()) : NodeConfig.from(env);
@@ -207,6 +221,30 @@ class DeploymentsCustomCodeTest {
         List<Snapshot> history = messages.timeline(e.id()).await();
         assertTrue(history.stream().anyMatch(s -> s.stepName().equals("sign") && s.outcome() == Snapshot.Outcome.OK), history.toString());
         assertNotLogged(VALUE);
+    }
+
+    @Test
+    void theSampleStepsLineIsInTheMessagesHistory() throws Exception {
+        node(Map.of("RAIL8_SECRET_PARTNER_HMAC", VALUE));
+        deploy(shop("sync", HmacSign.TYPE, REFERENCE));
+        Envelope e = rt.ingress("shop/orders", Headers.empty(), Buffer.buffer("<order id='4711'/>"));
+        assertTrue(within(doors.door("shop/orders").deliver(e), "the answer") instanceof Ack.Reply);
+
+        Snapshot sign = messages.timeline(e.id()).await().stream().filter(s -> s.stepName().equals("sign")).findFirst().orElseThrow();
+        assertEquals(new StepLog(List.of(new StepLog.Line(rt.clock().instant(), System.Logger.Level.INFO, HmacSign.class.getName(),
+                "signed 18 bytes with the key of 2026-01-01", Optional.empty())), 0), sign.log());
+    }
+
+    @Test
+    void aLineLoggedThroughSlf4jIsInTheHistoryWithOnlyTheSecretsReference() throws Exception {
+        node(Map.of("RAIL8_SECRET_PARTNER_HMAC", VALUE));
+        deploy(shop("sync", "tell", REFERENCE));
+        Envelope e = rt.ingress("shop/orders", Headers.empty(), Buffer.buffer("<order/>"));
+        assertTrue(within(doors.door("shop/orders").deliver(e), "the answer") instanceof Ack.Reply);
+
+        Snapshot tell = messages.timeline(e.id()).await().stream().filter(s -> s.stepName().equals("sign")).findFirst().orElseThrow();
+        assertEquals(List.of(new StepLog.Line(rt.clock().instant(), System.Logger.Level.WARNING, "partner.client", "calling the partner with " + REFERENCE,
+                Optional.empty())), tell.log().lines());
     }
 
     @Test

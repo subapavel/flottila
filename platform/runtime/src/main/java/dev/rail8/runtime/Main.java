@@ -79,8 +79,30 @@ public final class Main {
                 new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock()))), plugins.steps(steps), plugins.languages(xml.languages()));
     }
 
-    /** Starts a node from the process environment; it runs on Vert.x's non-daemon threads until the JVM is told to stop. */
+    /**
+     * The system property that names the class Vert.x logs through, and the class the node names: Vert.x's own one for
+     * {@code java.util.logging}.
+     */
+    static final String VERTX_LOGGING = "vertx.logger-delegate-factory-class-name";
+    static final String VERTX_JUL = "io.vertx.core.logging.JULLogDelegateFactory";
+
+    /**
+     * Has Vert.x log straight to {@code java.util.logging} rather than through SLF4J, so that a Vert.x line in the node's log
+     * names the Vert.x class that logged it, not SLF4J's adapter. A class the operator named in {@link #VERTX_LOGGING} stays.
+     * It takes effect only before Vert.x logs its first line.
+     */
+    static void vertxLogsToJul() {
+        if (System.getProperty(VERTX_LOGGING) == null) {
+            System.setProperty(VERTX_LOGGING, VERTX_JUL);
+        }
+    }
+
+    /**
+     * Starts a node from the process environment, Vert.x logging to {@code java.util.logging} ({@link #vertxLogsToJul}); it runs
+     * on Vert.x's non-daemon threads until the JVM is told to stop.
+     */
     public static void main(String[] args) {
+        vertxLogsToJul();
         int code = run(System.getenv(), System.err);
         if (code != 0) {
             System.exit(code);
