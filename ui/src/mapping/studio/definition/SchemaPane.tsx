@@ -422,9 +422,9 @@ function FieldRows({ side, rows, table, toggleable, onToggle, format, connected,
       return n === 1 ? path : `${path}#${n}`;
     });
   }, [rows]);
-  // The rows share one height: the first row rendered sets the estimate of all, so that a row scrolled into view is
-  // measured at its estimate and nothing above it moves. Each row that differed would re-lay the 20,128 rows out and
-  // render the pane again within the frame.
+  // The rows are as high as each other: the first row rendered sets the estimate of all, so that a row scrolled into
+  // view is measured at its estimate and nothing above it moves. Each row that differed would move every row below it
+  // and render the pane again within the frame.
   const rowHeight = useRef(ROW_HEIGHT);
   const virtualizer = useVirtualizer({
     count: rows.length,
