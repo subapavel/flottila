@@ -20,7 +20,7 @@ import {
 import { AngleDownIcon, AngleRightIcon, CheckIcon, CubeIcon, ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { ApiClient, FieldDto, StructureLoaded } from '../../api/client';
 import type { FieldPath, StructureRef, TargetFieldMappings } from '../../generated/mapping-model';
 import { localPath, stepName } from '../../model/field-path';
@@ -33,8 +33,8 @@ import { expressionText, keptRows, mappedHow, schemaLines, typeKind, xsdType, ty
 import { expandAllPaths, nameMatches, occurrenceText, treeRows, type TreeRow } from './rows';
 import { TreeToolbar, type SelectionChange, type TreeFilter, type ViewMode } from './TreeToolbar';
 
-/** The first guess of a row's height, before it is measured. */
-const ROW_HEIGHT = 37;
+/** The first guess of a row's height, until the pane has measured its first row. */
+const ROW_HEIGHT = 38;
 const LINE_HEIGHT = 21;
 /** Rows rendered beyond the scrolled view on each side. */
 const OVERSCAN = 8;
@@ -422,14 +422,26 @@ function FieldRows({ side, rows, table, toggleable, onToggle, format, connected,
       return n === 1 ? path : `${path}#${n}`;
     });
   }, [rows]);
+  // The rows share one height: the first row rendered sets the estimate of all, so that a row scrolled into view is
+  // measured at its estimate and nothing above it moves. Each row that differed would re-lay the 20,128 rows out and
+  // render the pane again within the frame.
+  const rowHeight = useRef(ROW_HEIGHT);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight.current,
     getItemKey: (index) => keys[index]!,
     overscan: OVERSCAN,
   });
   const items = virtualizer.getVirtualItems();
+  const rendered = items.length > 0;
+  useLayoutEffect(() => {
+    const first = scrollRef.current?.querySelector('tbody tr[data-index]');
+    const height = first && Math.round(first.getBoundingClientRect().height);
+    if (!height || height === rowHeight.current) return;
+    rowHeight.current = height;
+    virtualizer.measure();
+  }, [rendered, virtualizer]);
   const top = items[0]?.start ?? 0;
   const bottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
   const columns = 1 + (selection ? 1 : 0) + (mapping ? 1 : 0) + (table ? 3 : 0);
