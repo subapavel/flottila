@@ -12,7 +12,7 @@ repository root.
 | Maven | 3.9 | for the platform build; the mapping build uses the `./mvnw` wrapper in the repository |
 | Node.js | 22.12 or newer | with npm |
 | Docker | Compose v2 | Docker Engine on Linux, Docker Desktop on macOS and Windows |
-| `curl`, `zip`, `openssl` | | `zip` is optional: `deploy.sh` falls back to the JDK's `jar` |
+| `curl`, `zip` | | `zip` is optional: `deploy.sh` falls back to the JDK's `jar` |
 
 The scripts are shell scripts. On Windows run everything inside WSL 2, with Docker Desktop's WSL integration on and the
 repository cloned inside the WSL file system.
@@ -26,7 +26,7 @@ mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   
 ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests        # the mapping service the studio talks to
 (cd ui && npm ci)
 
-export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)   # the admin API's bearer token; any string will do
+export RAIL8_ADMIN_TOKEN=rail8-local               # the admin API's bearer token; any string will do, keep it for later shells
 docker compose up -d --build                       # the node, its Postgres and the partner echo
 until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
 deploy/quickstart/deploy.sh examples/demo          # the demo flows, deployed to the node
@@ -50,17 +50,21 @@ with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker 
 
 ## Every morning
 
+Stop the mapping service and the UI (Ctrl+C), then:
+
 ```sh
 git pull
+bin/install-jq && bin/install-mapping
 mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
 ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
 (cd ui && npm ci)
-docker compose up -d --build --force-recreate      # the node restores the deployed demo from its volume
-deploy/quickstart/deploy.sh examples/demo          # only when the demo itself changed
+export RAIL8_ADMIN_TOKEN=<the token of the first run>   # a new shell has none, and the node refuses to start without it
+docker compose up -d --build --force-recreate           # the node restores the deployed demo from its volume
+deploy/quickstart/deploy.sh examples/demo               # only when the demo itself changed
 ```
 
-Then stop the mapping service and the UI (Ctrl+C) and start them again with the two commands above. After `git pull`
-brought a new `bin/install-jq` or `bin/install-mapping`, run those two first.
+Then start the mapping service and the UI again with the two commands of the first run, with the same token exported
+in the UI's terminal.
 
 If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
 removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.
