@@ -22,7 +22,8 @@
 //       its metamorphic variants pass, so the oracle tests report one test case per case id.
 //   <module>/target/site/jacoco/jacoco.csv             lines and branches, rounded down
 //   <module>/target/pit-reports/mutations.xml          surviving mutants (generated - killed, NON_VIABLE excluded)
-//   ui/coverage/coverage-summary.json                  summed per directory (ui/src/model, ui/src/studio/store)
+//   ../ui/coverage/coverage-summary.json               the repository's UI, beside the root: summed per directory
+//                                                      (../ui/src/mapping/model, ../ui/src/mapping/studio/store)
 //
 //
 // Bench results (ADR-0021 "The bench ratchet", #184, "Notes of 2026-11-11", #193), in the order given. A scenario in
@@ -60,10 +61,16 @@ public final class Ratchet {
   private static final Path ROOT = Path.of("").toAbsolutePath();
   private static final Path RATCHET = ROOT.resolve("ratchet");
   private static final Path ORACLE_REPORTS = ROOT.resolve("engine/oracle/target/surefire-reports");
-  private static final List<String> UI_DIRECTORIES = List.of("ui/src/model", "ui/src/studio/store");
-  // #161 moved the store; the baseline follows the module
+  // The UI is the repository's ui/, beside the mapping's root; its rows are keyed by their path from this root.
+  private static final String UI_ROOT = "../ui/";
+  private static final List<String> UI_DIRECTORIES =
+      List.of(UI_ROOT + "src/mapping/model", UI_ROOT + "src/mapping/studio/store");
+  // Rows of the mapping's own editor follow its code into the UI in one step, so a baseline reads under the new keys.
   private static final Map<String, String> MOVED_COVERAGE_MODULES =
-      Map.of("ui/src/editor/store", "ui/src/studio/store");
+      Map.of(
+          "ui/src/model", UI_ROOT + "src/mapping/model",
+          "ui/src/studio/store", UI_ROOT + "src/mapping/studio/store",
+          "ui/src/editor/store", UI_ROOT + "src/mapping/studio/store");
   private static final List<String> MUTATION_MODULES =
       List.of(
           "engine/xdm",
@@ -166,8 +173,8 @@ public final class Ratchet {
       int branches = Integer.parseInt(c[2]);
       int[] now = coverage.get(module);
       if (now == null) {
-        if (baseline != null && !module.startsWith("ui/")) {
-          // the mode requires a row's report; a ui/ row keeps NOT_RUN (the backend job builds no UI report)
+        if (baseline != null && !module.startsWith(UI_ROOT)) {
+          // the mode requires a row's report; a UI row keeps NOT_RUN (the backend job builds no UI report)
           fail("baseline report coverage " + module + ": "
               + (Files.isRegularFile(jacocoCsv(module)) ? "the report has no figures for its row" : "no JaCoCo report"));
         } else {
@@ -379,11 +386,11 @@ public final class Ratchet {
           new long[] {linesCovered, linesCovered + linesMissed, branchesCovered, branchesCovered + branchesMissed});
       result.put(module, new int[] {percent(linesCovered, linesMissed), percent(branchesCovered, branchesMissed)});
     }
-    Path summary = ROOT.resolve("ui/coverage/coverage-summary.json");
+    Path summary = ROOT.resolve(UI_ROOT + "coverage/coverage-summary.json").normalize();
     if (Files.isRegularFile(summary)) {
       Object json = new Json(Files.readString(summary)).parse();
       for (String dir : UI_DIRECTORIES) {
-        String prefix = ROOT.resolve(dir) + "/";
+        String prefix = ROOT.resolve(dir).normalize() + "/";
         long[] lines = new long[2]; // covered, total
         long[] branches = new long[2];
         boolean any = false;
@@ -493,7 +500,7 @@ public final class Ratchet {
     }
     for (String dir : UI_DIRECTORIES) {
       if (hasSources(ROOT.resolve(dir)) && !coverage.containsKey(dir)) {
-        fail("regen: no Vitest coverage for " + dir + " (ui/coverage/coverage-summary.json)");
+        fail("regen: no Vitest coverage for " + dir + " (" + UI_ROOT + "coverage/coverage-summary.json)");
       }
     }
   }

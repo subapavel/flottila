@@ -7,7 +7,8 @@ name: mapping-nightly
 # coverage: the build with the coverage floors and the benchmarks, then scripts/ratchet-ci.sh push compares it with
 #   the ratchet of the closest earlier commit whose push run of mapping-ci's backend job was green.
 # windows: the whole reactor compiles on Windows (drive letters and backslashes in paths).
-# ui-e2e and stack: the UI's end-to-end tests, then the jar with the UI inside and the @stack suite against it.
+# ui-e2e and stack: the UI's coverage floors and end-to-end scenarios over the fake mapping service, and its @stack
+#   scenarios against the mapping service's jar.
 # A drop is reported until the date in scripts/ratchet-enforced-from and fails the job from that day; either way it
 # only turns the nightly report red. It commits nothing.
 on:
@@ -148,35 +149,30 @@ jobs:
       - name: Whole reactor compiles; Spotless, enforcer, licences
         run: ../mvnw.cmd -B -q -DskipTests verify
 
-  # The UI's end-to-end tests, and the built UI for the stack job below.
+  # The UI's unit tests with the coverage floors of the mapping studio's model and store, and its end-to-end scenarios
+  # over the fake mapping service (ui/e2e, ui/playwright.config.ts).
   ui-e2e:
-    name: mapping · ui end-to-end
+    name: ui · end-to-end
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: mapping/ui
+        working-directory: ui
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: mapping/ui/package-lock.json
+          cache-dependency-path: ui/package-lock.json
       - run: npm ci
-      # The pinned @playwright/test (1.63.0) decides the Chromium build.
+      # The pinned playwright devDependency decides the Chromium build.
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:coverage
       - run: npm run e2e
-      - run: npm run build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ui-dist
-          path: mapping/ui/dist
-          if-no-files-found: error
 
-  # The jar with the UI inside, started and tested end to end (the @stack suite).
+  # The mapping service's jar started over a copy of the corpus, and the @stack scenarios of the UI against it.
   stack:
     name: mapping · stack
-    needs: ui-e2e
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -193,7 +189,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: mapping/ui/package-lock.json
+          cache-dependency-path: ui/package-lock.json
       - name: Maven mirror
         run: |
           mkdir -p ~/.m2
@@ -208,17 +204,13 @@ jobs:
             </mirrors>
           </settings>
           EOF
-      - uses: actions/download-artifact@v4
-        with:
-          name: ui-dist
-          path: mapping/ui/dist
-      - name: Jar with the UI inside
-        run: ../mvnw -B -Pui -pl service -am package -DskipTests
+      - name: The service's jar
+        run: ../mvnw -B -pl service -am package -DskipTests
       - name: Playwright
-        working-directory: mapping/ui
+        working-directory: ui
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: '@stack suite against the jar'
-        working-directory: mapping/ui
+      - name: '@stack scenarios against the service'
+        working-directory: ui
         run: npm run e2e:stack

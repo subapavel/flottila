@@ -1,10 +1,11 @@
 name: mapping-ci
 
-# The mapping engine's checks on every change (mapping/, ADR-0017): build with unit tests, licences and bans,
-# the script tests and the UI's unit and component tests. Every step runs in mapping/ with the repository's wrapper.
+# The mapping engine's checks on every change (mapping/, ADR-0017): build with unit tests, licences and bans and
+# the script tests. Every step runs in mapping/ with the repository's wrapper. The mapping studio is part of the
+# Rail8 UI (ui/), which ui-ci.yml checks.
 # It runs when the mapping, the root pom, the wrapper, the root .gitattributes, this file or mapping-nightly.yml
-# changes. The end-to-end tests, the stack suite against the jar, coverage floors, the ratchet, mutation testing
-# and the Windows build run once a night in
+# changes. The UI's end-to-end tests, the stack suite against the service, coverage floors, the ratchet, mutation
+# testing and the Windows build run once a night in
 # mapping-nightly.yml as a report that blocks nothing. The platform's ci.yml checks the sign-off of every commit.
 on:
   pull_request:
@@ -102,31 +103,3 @@ jobs:
         run: git diff --exit-code contract/
       - name: Every file checks out byte-identical on Windows (#49)
         run: scripts/check-lf-checkout.sh
-
-  ui:
-    name: mapping · ui
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: mapping/ui
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: mapping/ui/package-lock.json
-      - run: npm ci
-      - name: Licences (CLAUDE.md list, exceptions in ui/scripts/licence-exceptions.json)
-        run: npm run licences
-      # The pinned @playwright/test (1.63.0) decides the Chromium build.
-      - run: npx playwright install --with-deps chromium
-      - name: Generated types are up to date
-        run: |
-          npm run gen:types
-          git diff --exit-code src/generated
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run test:browser
-      - run: npm run build

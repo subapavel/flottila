@@ -168,26 +168,26 @@ class ChangeGuardTest(unittest.TestCase):
     def test_comments_in_typescript_and_css_of_the_ui_are_checked(self):
         repo = self.repo()
         repo.change({
-            "mapping/ui/src/a.tsx": "\n".join([
+            "ui/src/a.tsx": "\n".join([
                 "// the tree (D-12)",
                 "const re = /#1/; const u = 'x // #2';",
                 "export const A = () => <div>{/* MAP-7 */}</div>;",
                 "const d = a / b; // #44",
             ]) + "\n",
-            "mapping/ui/src/a.css": "/* spacing of the rows (#157) */\n.a { margin: 0; }\n",
+            "ui/src/a.css": "/* spacing of the rows (#157) */\n.a { margin: 0; }\n",
         })
         self.assertEqual([
-            "mapping/ui/src/a.css:1: a reference in a comment (#157): say what the code does and why instead",
-            "mapping/ui/src/a.tsx:1: a reference in a comment (D-12): say what the code does and why instead",
-            "mapping/ui/src/a.tsx:3: a reference in a comment (MAP-7): say what the code does and why instead",
-            "mapping/ui/src/a.tsx:4: a reference in a comment (#44): say what the code does and why instead",
+            "ui/src/a.css:1: a reference in a comment (#157): say what the code does and why instead",
+            "ui/src/a.tsx:1: a reference in a comment (D-12): say what the code does and why instead",
+            "ui/src/a.tsx:3: a reference in a comment (MAP-7): say what the code does and why instead",
+            "ui/src/a.tsx:4: a reference in a comment (#44): say what the code does and why instead",
         ], self.findings(repo, 4))
 
     # hard-coded colours ----------------------------------------------------------------------
 
     def test_hard_coded_colours_in_css_are_findings(self):
         repo = self.repo()
-        repo.change({"mapping/ui/src/a.css": "\n".join([
+        repo.change({"ui/src/a.css": "\n".join([
             ".a {",
             "  border: 1px solid #c2cbd4;",
             "  color: rgb(0 0 0);",
@@ -201,19 +201,19 @@ class ChangeGuardTest(unittest.TestCase):
             "/* #fff in a comment is not a colour */",
         ]) + "\n"})
         self.assertEqual([
-            "mapping/ui/src/a.css:2: a hard-coded colour (#c2cbd4): use a PatternFly token, "
+            "ui/src/a.css:2: a hard-coded colour (#c2cbd4): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
-            "mapping/ui/src/a.css:3: a hard-coded colour (rgb()): use a PatternFly token, "
+            "ui/src/a.css:3: a hard-coded colour (rgb()): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
-            "mapping/ui/src/a.css:4: a hard-coded colour (hsla()): use a PatternFly token, "
+            "ui/src/a.css:4: a hard-coded colour (hsla()): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
-            "mapping/ui/src/a.css:5: a hard-coded colour (white): use a PatternFly token, "
+            "ui/src/a.css:5: a hard-coded colour (white): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
         ], self.findings(repo, 4))
 
     def test_hard_coded_colours_in_tsx_strings_are_findings(self):
         repo = self.repo()
-        repo.change({"mapping/ui/src/a.tsx": "\n".join([
+        repo.change({"ui/src/a.tsx": "\n".join([
             "const EDGE = '#567187';",
             "const s = { stroke: on ? 'rgba(0,0,0,.5)' : EDGE, color: 'red' };",
             "const t = <svg><path fill=\"white\" /></svg>;",
@@ -223,11 +223,11 @@ class ChangeGuardTest(unittest.TestCase):
             "const ok = `${'#/definitions'}`;",
         ]) + "\n"})
         self.assertEqual([
-            "mapping/ui/src/a.tsx:1: a hard-coded colour (#567187): use a PatternFly token, "
+            "ui/src/a.tsx:1: a hard-coded colour (#567187): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
-            "mapping/ui/src/a.tsx:2: a hard-coded colour (rgba(), red): use a PatternFly token, "
+            "ui/src/a.tsx:2: a hard-coded colour (rgba(), red): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
-            "mapping/ui/src/a.tsx:3: a hard-coded colour (white): use a PatternFly token, "
+            "ui/src/a.tsx:3: a hard-coded colour (white): use a PatternFly token, "
             "var(--pf-t--...) or var(--pf-v6-...)",
         ], self.findings(repo, 3))
 
@@ -235,9 +235,9 @@ class ChangeGuardTest(unittest.TestCase):
         repo = self.repo()
         repo.change({
             "site/style.css": ":root { --bg: #ffffff; }\n",
-            "mapping/ui/src/a.test.tsx": "expect(x).toHaveStyle('color: rgb(0, 0, 0)');\n",
-            "mapping/ui/e2e/a.ts": "const c = '#000000';\n",
-            "mapping/ui/src/generated/api.ts": "const c = '#000';\n",
+            "ui/src/a.test.tsx": "expect(x).toHaveStyle('color: rgb(0, 0, 0)');\n",
+            "ui/e2e/a.ts": "const c = '#000000';\n",
+            "ui/src/mapping/generated/api.ts": "const c = '#000';\n",
             "platform/A.java": 'class A { String c = "#ffffff"; }\n',
         })
         self.assertClean(repo)

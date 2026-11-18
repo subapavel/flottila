@@ -30,7 +30,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <!-- The mapping's root (BRAND-3, D-150): the repository holds it as mapping/ and keeps the one .mvn/ at its own
          root, which Maven finds from the root, from mapping/ and with -f mapping/pom.xml alike. Every path to the
-         corpus, the contract, the scripts and ui/dist goes through it. -->
+         corpus, the contract and the scripts goes through it. -->
     <mapping.root>${maven.multiModuleProjectDirectory}/mapping</mapping.root>
 
     <!-- plugins (tools, not dependencies) -->
@@ -305,7 +305,7 @@
       </plugin>
 
       <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in licence-filters.txt.
-           npm licences (ui/): exceptions by package name in ui/scripts/licence-exceptions.json. -->
+           npm licences (the repository's ui/): exceptions by package name in ../ui/scripts/licence-exceptions.json. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>license-maven-plugin</artifactId>
