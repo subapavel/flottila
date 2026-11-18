@@ -9,7 +9,9 @@ import java.util.Map;
 /**
  * The function family {@code context}, its eleven functions: each catalogue name to its binder. A
  * queue function binds to its algebra in {@link ContextFunctions}, its params parsed here, into the
- * node; a data error of its algebra stops the run with the function's one code at its box. The
+ * node; a data error of its algebra stops the run with the function's one code at its box. A
+ * function whose call over a single value is itself a single value also binds that call, under the
+ * same name, among the single-value functions: {@code removeContexts} passes the value on. The
  * binders are methods, not lambdas of the maps, so that PIT mutates them: it leaves out what only a
  * static initializer runs.
  */
@@ -30,8 +32,9 @@ final class ContextFamily {
           Map.entry("splitByValue", ContextFamily::splitByValue),
           Map.entry("useOneAsMany", ContextFamily::useOneAsMany));
 
-  /** The family's single-value functions: none, as replaceValue reads SUPPRESS. */
-  static final Map<String, SingleValueLibrary.Binder> VALUE = Map.of();
+  /** The family's calls over a single value that are a single value. */
+  static final Map<String, SingleValueLibrary.Binder> VALUE =
+      Map.ofEntries(Map.entry("removeContexts", ContextFamily::removeContextsOfValue));
 
   private ContextFamily() {}
 
@@ -73,6 +76,14 @@ final class ContextFamily {
       AuthoringId box, List<Node.OfQueue> inputs, List<String> params) {
     Node.OfQueue input = inputs.getFirst();
     return frame -> ContextFunctions.removeContexts(input.eval(frame));
+  }
+
+  /**
+   * {@code removeContexts} over a single value, such as a constant: that value, unchanged, so it
+   * goes into every occurrence of a target field as the constant does.
+   */
+  static Node.OfString removeContextsOfValue(AuthoringId box, List<Node.OfString> args) {
+    return args.getFirst();
   }
 
   static Node.OfQueue sort(AuthoringId box, List<Node.OfQueue> inputs, List<String> params) {

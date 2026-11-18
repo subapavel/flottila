@@ -399,8 +399,9 @@ _Avoid_: index alone
 
 **Generating function**:
 A function graph whose result is one value for every occurrence of its target field: a graph with
-no source field whose result is a single value, such as a constant or `concat` of two constants
-(one that yields a queue, such as `count` of a constant, is a queue, F-21), or a graph whose result
+no source field whose result is a single value, such as a constant, `concat` of two constants or
+`removeContexts` of a constant (F-51; one that yields a queue, such as `count` of a constant, is a
+queue, F-21), or a graph whose result
 is a generating block (F-46). On a target field it gives `max(1, minOccurs)` occurrences per parent
 occurrence. A single value is computed once per occurrence; on a structure field it is traced,
 never written. A generating block is read once per run, and when its value is SUPPRESS or missing

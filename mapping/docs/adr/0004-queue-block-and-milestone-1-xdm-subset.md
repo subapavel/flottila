@@ -62,8 +62,11 @@ nodes when the callee accepts a queue directly. Milestone 1 has no such callee.
 - `XSI_NIL` (#2 ambiguity 14) is not in milestone 1. Adding it later means a second bitset with
   the same invariants.
 - Assumed readings until observed cases confirm them (ADR-0002):
-  - A constant fed into a context or queue function is a queue of one context with one value.
-    Contradicted for removeContexts by obs-lift-reuse lift-4 (F-51, open, #222).
+  - A constant fed into a context or queue function is a queue of one context with one value
+    (observed for count, `fn/constant/006`), except for a function the catalogue marks
+    `keepsSingleValue`: its call over single values only is a single value, which goes into every
+    occurrence as a constant's does. Observed for removeContexts (obs-lift-reuse lift-4, PO 7.50
+    and CPI, F-51); assumed for every other function.
   - ~~An absent parent gives zero contexts, not one empty context.~~ Observed otherwise (#31,
     F-17): a parent absent under one occurrence adds no context, as assumed (d1), but a context
     element absent from the whole message gives one empty context (d3). Replaced by the rule above.

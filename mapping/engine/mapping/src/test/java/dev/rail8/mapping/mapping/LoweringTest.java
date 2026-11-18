@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import dev.rail8.mapping.ir.AtomicToQueue;
 import dev.rail8.mapping.ir.AtomicType;
 import dev.rail8.mapping.ir.AttributeConstructor;
 import dev.rail8.mapping.ir.AuthoringId;
@@ -890,6 +891,177 @@ class LoweringTest {
                     FLAG,
                     fromOrders("t0", "/Orders/Order/Id", "/Orders"))))
         .containsExactly(errorAtId("unsupported-generating-input", "f2"));
+  }
+
+  // --- a context or queue function that keeps a single value single, removeContexts
+
+  private static final FunctionRef REMOVE_CONTEXTS_OF_VALUE =
+      new FunctionRef("removeContexts", List.of(AtomicType.STRING), AtomicType.STRING);
+  private static final FunctionRef REMOVE_CONTEXTS =
+      new FunctionRef("removeContexts", List.of(new QueueType()), new QueueType());
+
+  /** The boxes of the constant k at c1 and of {@code graph}, whose result is f2 or f1. */
+  private static Map<AuthoringId, Box> withConstant(Object... graph) {
+    Object[] all = new Object[graph.length + 2];
+    all[0] = "c1";
+    all[1] = function("constant", inputs(), Models.params("value", Models.text("k")));
+    System.arraycopy(graph, 0, all, 2, graph.length);
+    return boxes(all);
+  }
+
+  private static final FunCall K =
+      new FunCall(
+          new FunctionRef("constant", List.of(AtomicType.STRING), AtomicType.STRING),
+          List.of(new Literal("k", id("c1"))),
+          id("c1"));
+
+  /** The value of code, the first target field, from {@code result} over {@code boxes}. */
+  private static TargetDocument code(String result, Map<AuthoringId, Box> boxes) {
+    return lowered(
+        lowerTagged(
+            CODE,
+            targetFieldMapping("t1", result, boxes),
+            FLAG,
+            fromOrders("t0", "/Orders/Order/Id", "/Orders")));
+  }
+
+  /**
+   * removeContexts over single values only is the atomic call, a single value, so its field is a
+   * generating TargetRepeat, as a constant's is: over the constant, over its own call, and as
+   * concat's input beside a second constant.
+   */
+  @Test
+  void removeContextsOverASingleValueIsASingleValue() {
+    FunCall once = new FunCall(REMOVE_CONTEXTS_OF_VALUE, List.of(K), id("f1"));
+    FunCall c3 =
+        new FunCall(
+            new FunctionRef("constant", List.of(AtomicType.STRING), AtomicType.STRING),
+            List.of(new Literal("z", id("c3"))),
+            id("c3"));
+    Map<String, Map<AuthoringId, Box>> graphs =
+        Map.of(
+            "f1",
+            withConstant("f1", function("removeContexts", inputs("c1"), noParams())),
+            "f2 removeContexts",
+            withConstant(
+                "f1",
+                function("removeContexts", inputs("c1"), noParams()),
+                "f2",
+                function("removeContexts", inputs("f1"), noParams())),
+            "f2 concat",
+            withConstant(
+                "f1",
+                function("removeContexts", inputs("c1"), noParams()),
+                "c3",
+                function("constant", inputs(), Models.params("value", Models.text("z"))),
+                "f2",
+                function("concat", inputs("f1", "c3"), noParams())));
+    Map<String, Expr> values =
+        Map.of(
+            "f1",
+            once,
+            "f2 removeContexts",
+            new FunCall(REMOVE_CONTEXTS_OF_VALUE, List.of(once), id("f2")),
+            "f2 concat",
+            new FunCall(
+                new FunctionRef(
+                    "concat", List.of(AtomicType.STRING, AtomicType.STRING), AtomicType.STRING),
+                List.of(once, c3),
+                id("f2")));
+
+    for (Map.Entry<String, Map<AuthoringId, Box>> graph : graphs.entrySet()) {
+      TargetDocument document = code(graph.getKey().split(" ")[0], graph.getValue());
+      assertThat(document.content().getFirst())
+          .as(graph.getKey())
+          .isEqualTo(
+              new TargetRepeat(
+                  1,
+                  integer("root", "t1"),
+                  "slot2",
+                  new AttributeConstructor(
+                      "", new Name("", "code"), values.get(graph.getKey()), id("t1")),
+                  id("t1")));
+      assertThatCode(() -> IrVerifier.verify(document))
+          .as(graph.getKey())
+          .doesNotThrowAnyException();
+    }
+  }
+
+  /**
+   * At a context function's input, removeContexts of a constant is the single value it is, so count
+   * reads it as AtomicToQueue at the removeContexts box, as it reads a constant.
+   */
+  @Test
+  void removeContextsOfAConstantAtAContextInputIsAtomicToQueue() {
+    TargetDocument document =
+        code(
+            "f2",
+            withConstant(
+                "f1",
+                function("removeContexts", inputs("c1"), noParams()),
+                "f2",
+                function("count", inputs("f1"), noParams())));
+
+    FunctionRef count = new FunctionRef("count", List.of(new QueueType()), new QueueType());
+    assertThat(document.content().getFirst())
+        .isEqualTo(
+            rootAttribute(
+                "",
+                new Name("", "code"),
+                new FunCall(
+                    count,
+                    List.of(
+                        new AtomicToQueue(
+                            new FunCall(REMOVE_CONTEXTS_OF_VALUE, List.of(K), id("f1")), id("f1"))),
+                    id("f2")),
+                0,
+                "t1"));
+    assertThatCode(() -> IrVerifier.verify(document)).doesNotThrowAnyException();
+  }
+
+  /**
+   * Over a queue removeContexts stays the context call: over a source field, and over copyValue's
+   * generating block, which is no single value, so its field reads the call's one context.
+   */
+  @Test
+  void removeContextsOverAQueueOrAGeneratingBlockIsTheContextCall() {
+    TargetDocument overSource =
+        code(
+            "f1",
+            boxes(
+                "s1",
+                source("/Orders/Order/Id", "/Orders"),
+                "f1",
+                function("removeContexts", inputs("s1"), noParams())));
+    Object[] copy = copyValueBoxes("f1", "1");
+    TargetDocument overBlock =
+        code(
+            "f2",
+            boxes(
+                copy[0],
+                copy[1],
+                copy[2],
+                copy[3],
+                "f2",
+                function("removeContexts", inputs("f1"), noParams())));
+
+    assertThat(overSource.content().getFirst())
+        .isEqualTo(
+            rootAttribute(
+                "",
+                new Name("", "code"),
+                new FunCall(REMOVE_CONTEXTS, List.of(orderIds("s1")), id("f1")),
+                0,
+                "t1"));
+    assertThat(overBlock.content().getFirst())
+        .isEqualTo(
+            rootAttribute(
+                "",
+                new Name("", "code"),
+                new FunCall(REMOVE_CONTEXTS, List.of(copyValueBlock("f1", "1")), id("f2")),
+                0,
+                "t1"));
+    assertThatCode(() -> IrVerifier.verify(overBlock)).doesNotThrowAnyException();
   }
 
   /**

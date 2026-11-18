@@ -246,6 +246,37 @@ class FunctionCatalogueSchemaTest {
                 INPUTS,
                 "\"generating\": \"true\"",
                 PORTABLE)),
+        // a queue function whose call over a single value is itself a single value
+        accepted(
+            "a queue function that keeps a single value single",
+            catalogue(
+                "removeLike",
+                "\"executionKind\": \"queue\"",
+                FAMILY,
+                EXACT,
+                INPUTS,
+                "\"keepsSingleValue\": true",
+                PORTABLE)),
+        refused(
+            "\"keepsSingleValue\": false",
+            catalogue(
+                "removeLike",
+                "\"executionKind\": \"queue\"",
+                FAMILY,
+                EXACT,
+                INPUTS,
+                "\"keepsSingleValue\": false",
+                PORTABLE)),
+        refused(
+            "\"keepsSingleValue\": \"true\"",
+            catalogue(
+                "removeLike",
+                "\"executionKind\": \"queue\"",
+                FAMILY,
+                EXACT,
+                INPUTS,
+                "\"keepsSingleValue\": \"true\"",
+                PORTABLE)),
         refused("no portable", catalogue("sortLike", KIND, FAMILY, EXACT, INPUTS)),
         refused(
             "inputs: []", catalogue("sortLike", KIND, FAMILY, EXACT, "\"inputs\": []", PORTABLE)),

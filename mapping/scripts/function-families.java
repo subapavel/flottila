@@ -16,8 +16,9 @@
 //              the root end tag. A top-level declaration (element and name) in two modules is refused.
 //   index      <Family>Family.java: the family <family> of dev.rail8.mapping.runtime, holding the
 //              maps QUEUE and VALUE. Output: FamilyIndex, those maps by family id. A function name in
-//              two of those maps is refused when the runtime merges them (FunctionFamilies.merge), as
-//              this program does not read Java.
+//              the QUEUE maps of two families, or in the VALUE maps of two, is refused when the runtime
+//              merges them (FunctionFamilies.merge), as this program does not read Java; one family may
+//              bind a name in both its maps.
 // In every mode a family's file given twice (two files of one stem) is refused, so the order in which
 // the files are listed or given never shows in an output. A refusal exits 1 with a message that names
 // the name or the file, and no output is written.

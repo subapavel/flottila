@@ -65,13 +65,16 @@ import java.util.stream.IntStream;
  * a JSON property, with the depths of the array properties on its path; a JSON root makes the
  * document's input JSON, any other root XML. A standard function box whose function the catalogue
  * holds gives, by its execution kind, a {@code FunCall} over its inputs' queues, a single value as
- * {@code AtomicToQueue}, and then its params as {@code Literal}s for a context or queue function.
- * For a single-value function it gives the atomic {@code FunCall} over its inputs and then the
- * params when every input is a single value, as for {@code constant}, which has none; otherwise a
- * {@code Lift} over its queue inputs whose body is that {@code FunCall} over their slot variables
- * and the single values. A generating block is the queue it is at a context or queue function's
- * input. A param the box leaves out is its catalogue default, and a table param's {@code Literal}
- * is its {@code TableText}. A box that feeds several inputs is lowered once per use.
+ * {@code AtomicToQueue}, and then its params as {@code Literal}s for a context or queue function;
+ * one the catalogue marks as keeping a single value single, such as {@code removeContexts}, gives
+ * over inputs that are all single values the atomic {@code FunCall} over them and then its params,
+ * a single value of its own, as a single-value function does. For a single-value function it gives
+ * the atomic {@code FunCall} over its inputs and then the params when every input is a single
+ * value, as for {@code constant}, which has none; otherwise a {@code Lift} over its queue inputs
+ * whose body is that {@code FunCall} over their slot variables and the single values. A generating
+ * block is the queue it is at a context or queue function's input. A param the box leaves out is
+ * its catalogue default, and a table param's {@code Literal} is its {@code TableText}. A box that
+ * feeds several inputs is lowered once per use.
  *
  * <p>Stage 3 reports, each at its authoring id:
  *
@@ -584,10 +587,12 @@ public final class Lowering {
 
   /**
    * The call of {@code box}'s function over its inputs' values and then its params, or empty once
-   * its refusals are reported. Every defect of the box against its catalogue entry is reported at
-   * the box before any input is lowered; a generating block at a single-value function's input,
-   * once they are. Each param is a {@code Literal} at the box: the string the box gives, or a
-   * table's {@code TableText}, or the entry's default when the box leaves the param out.
+   * its refusals are reported: a single-value call for a single-value function, and for a context
+   * or queue function that keeps a single value single when its inputs are all single values; a
+   * context call otherwise. Every defect of the box against its catalogue entry is reported at the
+   * box before any input is lowered; a generating block at a single-value function's input, once
+   * they are. Each param is a {@code Literal} at the box: the string the box gives, or a table's
+   * {@code TableText}, or the entry's default when the box leaves the param out.
    */
   private Optional<Expr> call(TargetFieldMapping mapping, AuthoringId id, StandardFunctionBox box) {
     Optional<FunctionCatalogue.Entry> catalogued = FunctionCatalogue.entry(box.fn());
@@ -648,7 +653,11 @@ public final class Lowering {
           takesNoGeneratingBlock(id, box.fn(), inputs, values)
               ? Optional.of(singleValueCall(box.fn(), values, params, id))
               : Optional.empty();
-      case CONTEXT, QUEUE -> Optional.of(contextCall(box.fn(), values, params, id));
+      case CONTEXT, QUEUE ->
+          Optional.of(
+              entry.keepsSingleValue() && values.stream().allMatch(Lowering::single)
+                  ? singleValueCall(box.fn(), values, params, id)
+                  : contextCall(box.fn(), values, params, id));
     };
   }
 
@@ -718,7 +727,8 @@ public final class Lowering {
   }
 
   /**
-   * The call of single-value function {@code fn}. Over inputs that are all single values, none for
+   * The call of single-value function {@code fn}, or of a context or queue function that keeps a
+   * single value single over single values only. Over inputs that are all single values, none for
    * {@code constant}, it is the atomic {@code FunCall} over them and then the params. Otherwise it
    * is the {@code Lift} over its queue inputs, one slot variable {@code in1} … per queue, whose
    * body is that {@code FunCall} with each queue input's slot variable in its place, so a single

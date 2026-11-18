@@ -33,6 +33,10 @@
           "description": "Present on a queue function whose result is a generating block, one value that every occurrence of the target field under every parent occurrence takes, as a constant's (ADR-0006, F-46); absent on every other function.",
           "const": true
         },
+        "keepsSingleValue": {
+          "description": "Present on a context or queue function whose call over single values only is itself a single value, which its family computes under the same name; absent on every other function.",
+          "const": true
+        },
         "inputs": {
           "type": "array",
           "minItems": 1,

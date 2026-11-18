@@ -99,10 +99,12 @@
 
   <!-- removeContexts: every value of $queue, in order, in one context, SUPPRESS kept at its slot.
        A queue with no context at all gives one empty context, as the runtime's
-       ContextFunctions.removeContexts does. -->
-  <xsl:function name="po:removeContexts" as="array(item()*)">
-    <xsl:param name="queue" as="array(item()*)"/>
-    <xsl:sequence select="[$queue?*]"/>
+       ContextFunctions.removeContexts does. A single value, such as a constant's, is passed on
+       unchanged, as the runtime's ContextFamily.removeContextsOfValue does: its call is a single
+       value, which goes into every occurrence of a target field as the constant does. -->
+  <xsl:function name="po:removeContexts" as="item()">
+    <xsl:param name="queue" as="item()"/>
+    <xsl:sequence select="if ($queue instance of xs:string) then $queue else [$queue?*]"/>
   </xsl:function>
 
   <!-- replaceValue: $replacement at every slot of $value, SUPPRESS included (F-45), as the runtime's

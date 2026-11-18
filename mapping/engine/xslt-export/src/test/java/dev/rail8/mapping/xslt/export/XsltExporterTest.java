@@ -1000,6 +1000,44 @@ class XsltExporterTest {
   }
 
   /**
+   * removeContexts over a constant is an atomic FunCall as well, its {@code po:removeContexts} call
+   * over the constant's in the text of its TargetRepeat's element: the same helper that takes a
+   * queue takes the single value and passes it on.
+   */
+  @Test
+  void removeContextsOverAConstantIsItsCallInTheTextOfItsTargetRepeat() {
+    AuthoringId t1 = id("t1");
+    FunCall constant =
+        new FunCall(
+            new FunctionRef("constant", List.of(AtomicType.STRING), AtomicType.STRING),
+            List.of(new Literal("k", id("c1"))),
+            id("c1"));
+    FunCall removeContexts =
+        new FunCall(
+            new FunctionRef("removeContexts", List.of(AtomicType.STRING), AtomicType.STRING),
+            List.of(constant),
+            id("r1"));
+    TargetDocument document =
+        new TargetDocument(
+            "ns0",
+            ORDER,
+            ROOT,
+            List.of(
+                new TargetRepeat(
+                    1,
+                    new VarRef(ROOT, AtomicType.INTEGER, t1),
+                    SLOT,
+                    new ElementConstructor(
+                        "", ORDER_ID, List.of(new TextConstructor(removeContexts, t1)), t1),
+                    t1)));
+    IrVerifier.verify(document);
+
+    assertThat(XsltExporter.export(document))
+        .contains(
+            "<OrderId><xsl:value-of select=\"po:removeContexts(po:constant('k'))\"/></OrderId>");
+  }
+
+  /**
    * A generating structure field's value (ADR-0006 as amended by #83): inside the copies' {@code
    * xsl:for-each}, after the slot-number variable and before the body, a zero-length {@code
    * xsl:value-of} of {@code substring(value, 1, 0)}, so each copy evaluates it and writes no text.
@@ -1479,6 +1517,10 @@ class XsltExporterTest {
    * gives true per value and SUPPRESS counts, mapWithDefault keeps a SUPPRESS-only context, and
    * useOneAsMany needs one value per context of its first input, as PO 7.50 and CPI do. The
    * assertions below are #69's, unchanged.
+   *
+   * <p>po:removeContexts is re-pinned alone, for an observed rule that changes its signature:
+   * removeContexts passes a single value, such as a constant, on unchanged, as PO 7.50 and CPI do,
+   * so it takes and gives a queue or a single value.
    */
   private static final String MAIN_HELPER_MODULE =
       "engine/xslt-export/src/test/resources/pinned-71/po-runtime.xsl";
