@@ -22,18 +22,29 @@ const RETURNED = ['content-type', 'content-length', 'www-authenticate'] as const
 export type Forward = { refused: string } | { headers: Record<string, string> };
 
 /**
+ * Why a request does not come from a page of this server, or undefined when it does: it must carry
+ * `Sec-Fetch-Site: same-origin`, and an `Origin`, when there is one, from `origins` (never compared with the request's
+ * `Host`, which a page on a re-bound domain controls). `what` names what the request is for in the refusal.
+ */
+export function foreign(headers: IncomingHttpHeaders, origins: readonly string[], what: string): string | undefined {
+  if (headers['sec-fetch-site'] !== 'same-origin') {
+    return `only this server's own pages may call ${what} through it (Sec-Fetch-Site must be same-origin)`;
+  }
+  if (headers.origin !== undefined && !origins.includes(headers.origin)) {
+    return `the origin ${headers.origin} may not call ${what} through this server`;
+  }
+  return undefined;
+}
+
+/**
  * Decides whether a browser request may reach the node, and with which headers. It must come from a page of this
  * server: `Sec-Fetch-Site: same-origin`, and an `Origin`, when there is one, from the fixed list (never compared with
  * the request's `Host`, which a page on a re-bound domain controls). Only `Accept` and `Content-Type` go on; the token,
  * when one is configured, is set here, so the browser never holds it.
  */
 export function forward(headers: IncomingHttpHeaders, options: Pick<AdminProxyOptions, 'origins' | 'token'>): Forward {
-  if (headers['sec-fetch-site'] !== 'same-origin') {
-    return { refused: "only this server's own pages may call the admin API through it (Sec-Fetch-Site must be same-origin)" };
-  }
-  if (headers.origin !== undefined && !options.origins.includes(headers.origin)) {
-    return { refused: `the origin ${headers.origin} may not call the admin API through this server` };
-  }
+  const refused = foreign(headers, options.origins, 'the admin API');
+  if (refused !== undefined) return { refused };
   const passed: Record<string, string> = {};
   for (const name of PASSED) {
     const value = headers[name];

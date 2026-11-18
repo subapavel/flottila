@@ -37,12 +37,21 @@ Then start the mapping service and the UI, each in its own terminal (the same `R
 ```sh
 cp -r mapping/corpus ~/rail8-mapping-workspace     # once: the mapping studio's working copy
 java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar
-cd ui && QUARKUS_HTTP_PORT=18080 npm run dev       # port 18080: the demo's http-in already uses 8080
 ```
 
-Open **http://localhost:5173**. The UI has **Messages**, a search over what the node stored, and **Mappings**, the
-mapping studio. The UI sends its `/admin` requests to the node on `localhost:8081` and adds the token itself, so the
-browser never sees it.
+```sh
+mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # once: the packages the endpoint forms edit
+cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev   # port 18080: the demo's http-in already uses 8080
+```
+
+Open **http://localhost:5173**. The UI has **Messages**, a search over what the node stored, **Endpoints**, the
+settings form of each endpoint file in `RAIL8_WORKSPACE`, and **Mappings**, the mapping studio. The UI sends its
+`/admin` requests to the node on `localhost:8081` and adds the token itself, so the browser never sees it.
+
+An endpoint's form is drawn from its component's settings description, which the node serves, so it needs the node
+running. It opens read-only; Edit, change a setting, Check, and Save writes the file in the working folder, changing only
+the lines of the settings you changed. Deploy the edited package with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`.
+With `RAIL8_READ_ONLY=true` the forms only show the files, as on a server.
 
 The node migrates its database itself and serves `/health` on `localhost:8081`. Postgres is published on the host's
 loopback port 5432; if that is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token the node exits
@@ -63,8 +72,8 @@ docker compose up -d --build --force-recreate           # the node restores the 
 deploy/quickstart/deploy.sh examples/demo               # only when the demo itself changed
 ```
 
-Then start the mapping service and the UI again with the two commands of the first run, with the same token exported
-in the UI's terminal.
+Then start the mapping service and the UI again with the commands of the first run (not the copies, which are made
+once), with the same token exported in the UI's terminal.
 
 If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
 removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.

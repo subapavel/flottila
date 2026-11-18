@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { adminProxy } from './server/adminProxy.ts';
+import { endpointFiles } from './server/endpointFiles.ts';
 import { mappingServiceTarget } from './server/mappingService.ts';
 
 // The development server listens on localhost only, on a fixed port, so the origins its own pages send are known.
@@ -27,8 +28,27 @@ function adminApi(): Plugin {
   };
 }
 
+/**
+ * Serves the endpoint files of the working folder that RAIL8_WORKSPACE names to the settings form, under
+ * `/files/endpoints`. They may be edited unless RAIL8_READ_ONLY is `true`. Both are read here, on the server.
+ */
+function workingFolder(): Plugin {
+  return {
+    name: 'rail8-working-folder',
+    configureServer(server) {
+      server.middlewares.use(
+        endpointFiles({
+          workspace: process.env.RAIL8_WORKSPACE?.trim() || undefined,
+          editable: process.env.RAIL8_READ_ONLY?.trim() !== 'true',
+          origins,
+        }),
+      );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), adminApi()],
+  plugins: [react(), adminApi(), workingFolder()],
   server: {
     host: 'localhost',
     port,
