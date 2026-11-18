@@ -48,13 +48,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P1-09d3: {@code Main} in process. {@code Main.start(env, err)} is {@code run} without the shutdown hook: it hands back the code
- * and what it started, so a case can run {@code Main.stopper(node, vertx)} — the hook's body — itself and leak nothing. The
+ * and what it started, so a case can run {@code Main.stopper(node, vertx, plugins)} — the hook's body — itself and leak nothing. The
  * stopper closes the node (the admin port refuses, the store is flushed) and only then Vert.x; it closes Vert.x even when the
  * node's close throws. A {@link Witness} verticle deployed on the started Vert.x marks the moment Vert.x closes: closing
  * Vert.x undeploys every verticle.
  *
- * <p>Assumed shape (package-private, in {@code Main}): {@code record Started(int code, Optional<Node> node, Optional<Vertx> vertx)},
- * {@code static Started start(Map<String, String> env, PrintStream err)}, {@code static Runnable stopper(Node node, Vertx vertx)};
+ * <p>Assumed shape (package-private, in {@code Main}): {@code record Started(int code, Optional<Node> node, Optional<Vertx> vertx,
+ * Optional<Plugins> plugins)}, {@code static Started start(Map<String, String> env, PrintStream err)},
+ * {@code static Runnable stopper(Node node, Vertx vertx, Plugins plugins)};
  * {@code run} = {@code start} + registering {@code stopper} as the hook. {@code run} itself is exercised in a separate JVM
  * ({@link MainProcessIT}): in process its hook would outlive the case.
  */
@@ -162,7 +163,7 @@ class MainIT {
             holder.preparedQuery("insert into messages(id, step, flow, body_hash) values ('m-flushed', 0, 'node-it', $1)").execute(Tuple.of(NodeIT.hashBytes(4711L))).await();
             recorded = node.messages().record(NodeIT.snapshot("m-flushed", 4711L));
             NodeIT.until(() -> lockWaiters() == 1, "the snapshot's batch waits on the held messages row");
-            Runnable stopper = Main.stopper(node, main);
+            Runnable stopper = Main.stopper(node, main, started.plugins().orElseThrow());
             stopping = OnVirtualThread.start(stopper::run);
             NodeIT.until(() -> NodeIT.refuses(port), "the stopper closed the node's admin server: the port refuses");
             assertFalse(stopping.isDone(), "the stopper waits for the node's close: the snapshot's flush is still held");
@@ -199,7 +200,7 @@ class MainIT {
 
         witness = new Witness();
         main.deployVerticle(witness).await();
-        Runnable stopper = Main.stopper(node, main);
+        Runnable stopper = Main.stopper(node, main, started.plugins().orElseThrow());
         OnVirtualThread.Call<Void> stopping = OnVirtualThread.start(stopper::run);
         assertTrue(witness.stopped.await(20, TimeUnit.SECONDS), "the stopper closes Vert.x although the node's close threw: the witness is being undeployed");
         waitsForVertxClose(stopping);

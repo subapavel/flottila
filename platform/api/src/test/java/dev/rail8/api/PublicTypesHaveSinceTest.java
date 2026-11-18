@@ -102,6 +102,6 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(43, publicTypes, "36 top-level + 7 nested public types after P2-15b (Deadline); update this number with every api change");
+        assertEquals(45, publicTypes, "38 top-level + 7 nested public types, the plugin contract's Plugin and ComponentContext the last two; update this number with every api change");
     }
 }

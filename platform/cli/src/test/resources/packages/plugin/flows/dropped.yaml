@@ -1,0 +1,19 @@
+schemaVersion: 1
+kind: flow
+id: dropped
+version: 0.1.0
+description: End the order at the plugin's drop step, before the partner.
+from:
+  endpoint: in-dropped
+delivery:
+  mode: sync
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+steps:
+  - type: drop
+    name: drop
+  - type: to
+    name: partner
+    endpoint: partner

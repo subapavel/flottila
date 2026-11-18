@@ -18,7 +18,7 @@ import dev.rail8.core.record.Snapshot;
 import dev.rail8.runtime.db.Migrations;
 import dev.rail8.runtime.deploy.Doors;
 import dev.rail8.runtime.deploy.PackageDraft;
-import dev.rail8.runtime.node.ComponentContext;
+import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;

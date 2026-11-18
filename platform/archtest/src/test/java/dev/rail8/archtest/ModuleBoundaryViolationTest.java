@@ -44,6 +44,26 @@ class ModuleBoundaryViolationTest {
         assertDoesNotThrow(() -> Rules.API_SURFACE.check(allowedOnly));
     }
 
+    // --- the plugin contract: the one api package that may name Vertx, named by no other api package and no core class
+    @Test void thePluginContractUsingVertxBeyondItsSurfaceIsCaught() {
+        assertFails(Rules.PLUGIN_SURFACE, "PluginUsesVertxBeyondItsSurface");
+    }
+    @Test void thePluginContractMayNameVertxAndTheApiSurfaceRuleLeavesItAlone() {
+        JavaClasses contractOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(dev.rail8.api.plugin.violation.PluginNamesVertx.class);
+        assertDoesNotThrow(() -> Rules.PLUGIN_SURFACE.check(contractOnly), "Vertx, an allowlisted type and the contract itself");
+        for (ArchRule rule : java.util.List.of(Rules.API_SURFACE, Rules.NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT)) {
+            AssertionError others = assertThrows(AssertionError.class, () -> rule.check(fixtures), rule.getDescription());
+            assertFalse(others.getMessage().contains("PluginNamesVertx"), () -> "the contract has a rule of its own:\n" + others.getMessage());
+        }
+    }
+    @Test void apiNamingThePluginContractIsCaught() {
+        assertFails(Rules.NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT, "ApiNamesThePluginContract");
+    }
+    @Test void coreNamingThePluginContractIsCaught() {
+        assertFails(Rules.NOTHING_ELSE_NAMES_THE_PLUGIN_CONTRACT, "CoreNamesThePluginContract");
+    }
     @Test void coreUsingJdbcIsCaught() { assertFails(Rules.CORE_SURFACE, "CoreUsesJdbc"); }
     @Test void stepDependingOnCoreIsCaught() { assertFails(Rules.STEPS_DEPEND_ON_API_ONLY, "StepDependsOnCore"); }
 

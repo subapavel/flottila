@@ -1,0 +1,7 @@
+schemaVersion: 1
+kind: endpoint
+id: partner
+scheme: acme
+direction: out
+config:
+  url: acme://partner

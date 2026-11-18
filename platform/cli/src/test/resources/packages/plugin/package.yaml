@@ -1,0 +1,8 @@
+# A package over the component and the step of the fixture plugin acme (PluginsCommandTest): without the plugin, no component
+# serves the partner's scheme and no factory builds the drop step.
+schemaVersion: 1
+kind: package
+name: plugin
+version: 0.1.0
+description: Two flows to a partner served by a plugin's component; one ends at a plugin's step first.
+dependencies: []

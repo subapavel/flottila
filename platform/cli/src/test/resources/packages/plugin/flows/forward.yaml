@@ -1,0 +1,17 @@
+schemaVersion: 1
+kind: flow
+id: forward
+version: 0.1.0
+description: Send the order to the partner.
+from:
+  endpoint: in-forward
+delivery:
+  mode: sync
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+steps:
+  - type: to
+    name: partner
+    endpoint: partner
