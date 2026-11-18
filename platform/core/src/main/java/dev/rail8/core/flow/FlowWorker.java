@@ -97,8 +97,9 @@ import java.util.function.BooleanSupplier;
  *
  * <p><b>A second claim of a running item.</b> A claim that returns an item this worker still runs starts no second run:
  * the run adopts that claim. Its attempts become the token by which the lease is renewed and the item settled, and a
- * renewal stopped as lost resumes. An adoption that happens after the settle read its token is not seen: the complete
- * answers false, and the row stays leased to this worker, unrenewed, and runs once more after its lease.
+ * renewal stopped as lost resumes. A claim that returns the item once its settle has read the token is not adopted: it is
+ * a hand-out of its own, and it runs once the chain of the run before has ended. Its claim came either after that settle
+ * reached the queue (a deferred row at its due) or before it, and then that settle, fenced by the older token, answers false.
  *
  * <p><b>Stale settles.</b> The queue completes or holds an item only for its current holder. A complete that answers
  * false (the item was claimed again, held or completed meanwhile) leaves the row to its holder as it is; it is logged
@@ -437,7 +438,7 @@ public final class FlowWorker {
                 else if (wakes == since) backlog = false;             // drained, and nothing woke it since
                 for (WorkQueue.Item item : claim.result()) {
                     Lease ours = running.get(item.seq());
-                    if (ours != null) {   // its lease ran out under a run of ours that is still going: the run takes this claim on
+                    if (ours != null) {   // a run of ours that is still going takes this claim on; once it settles, the claim runs after it
                         if (ours.adopt(item)) marked.add(ours);
                         continue;
                     }
@@ -592,8 +593,9 @@ public final class FlowWorker {
         });
         return ran.future().compose(verdict -> settleOrTake(lease, verdict, chain)).transform(settled -> {
             if (settled.succeeded() && settled.result().isPresent()) return process(settled.result().get(), chain + 1);
-            finished(item);   // the chain's end
-            return settled.succeeded() ? Future.succeededFuture() : Future.failedFuture(settled.cause());
+            Lease again = finished(lease);   // the chain's end
+            Future<Void> end = settled.succeeded() ? Future.succeededFuture() : Future.failedFuture(settled.cause());
+            return again == null ? end : Future.join(end, process(again, 0)).mapEmpty();
         });
     }
 
@@ -620,7 +622,7 @@ public final class FlowWorker {
             }
             return settle(lease, verdict).map(Optional.empty());
         }
-        int token = lease.token();
+        int token = lease.settling();
         return queue.completeAndTakeNext(item.seq(), token, workerId, policy.lease()).map(taken -> taken(item, token, taken));
     }
 
@@ -828,7 +830,7 @@ public final class FlowWorker {
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
-        int token = lease.token();
+        int token = lease.settling();
         if (verdict.complete()) return (item.partitionKey() == null ? queue.completeUnkeyed(item.seq(), token)
                 : queue.completeRow(item.seq(), token)).transform(removed -> {
             if (removed.failed()) {
@@ -897,17 +899,29 @@ public final class FlowWorker {
                 + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not " + not);
     }
 
-    /** A chain's end: out of the running items; a claim while a backlog is known. */
-    private void finished(WorkQueue.Item item) {
+    /**
+     * A chain's end, its last run {@code lease}'s: out of the running items, or replaced by the lease of a claim of the same item
+     * that came once its settle had read the token, returned for the caller to run; null when there is none. A claim while a
+     * backlog is known.
+     */
+    private Lease finished(Lease lease) {
+        WorkQueue.Item item = lease.item;
+        Lease again = null;
         Promise<Void> due;
         boolean claim;
         synchronized (lock) {
             running.remove(item.seq());
+            WorkQueue.Item reclaimed = lease.reclaimed();
+            if (reclaimed != null) {
+                again = new Lease(reclaimed);
+                running.put(item.seq(), again);
+            }
             due = closeDue();
             claim = backlog;
         }
         closeProducers(due);
         if (claim) pollFor("after message " + item.messageId() + " finished");
+        return again;
     }
 
     /**
@@ -945,7 +959,8 @@ public final class FlowWorker {
     /**
      * The lease of one running item: renewed every third of the policy's lease, fenced by its token — the attempts of this
      * worker's newest claim of the item, read when a renewal fires — until the run ends or it is lost; a claim adopted later
-     * moves the token and resumes a lost lease.
+     * moves the token and resumes a lost lease. Once the settle has read the token, a claim of the item is kept for the run
+     * after this one instead.
      */
     private final class Lease {
         final WorkQueue.Item item;          // as the run was started with
@@ -953,6 +968,8 @@ public final class FlowWorker {
         private Timer.Cancellable next;     // guarded by this
         private Renewal renewal = Renewal.RENEWING;   // guarded by this
         private WorkQueue.Cancel cancel;    // guarded by this: the operator's cancel the item is known to be marked with, null: none
+        private boolean settling;           // guarded by this: the settle has read the token
+        private WorkQueue.Item reclaimed;   // guarded by this: the claim of the item that came once the settle read the token
 
         Lease(WorkQueue.Item item) {
             this.item = item;
@@ -983,11 +1000,25 @@ public final class FlowWorker {
 
         synchronized int token() { return token; }
 
+        /** The token the settle is fenced by; from now on a claim of the item is not adopted but kept for the next run. */
+        synchronized int settling() {
+            settling = true;
+            return token;
+        }
+
+        /** The claim of the item that came once the settle had read the token; null when there was none. */
+        synchronized WorkQueue.Item reclaimed() { return reclaimed; }
+
         /**
          * This worker claimed the item again while it runs: the newer attempts are the token from now on; a lost lease is renewed
-         * again. True when the claim told of a cancel this lease did not know of: the caller stops the run.
+         * again. True when the claim told of a cancel this lease did not know of: the caller stops the run. Once the settle has
+         * read the token the claim is only kept, for the run after this one ({@link #reclaimed()}), and the answer is false.
          */
         synchronized boolean adopt(WorkQueue.Item again) {
+            if (settling) {
+                reclaimed = again;
+                return false;
+            }
             token = again.attempts();
             if (renewal == Renewal.LOST) {
                 renewal = Renewal.RENEWING;
