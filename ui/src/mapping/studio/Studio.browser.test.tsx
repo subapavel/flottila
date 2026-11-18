@@ -89,7 +89,7 @@ describe('the studio', () => {
     renderStudio(fakeApiClient(), 'mappings/order-id-copy');
 
     await expect.element(page.getByRole('heading', { level: 1, name: 'order-id-copy' })).toBeVisible();
-    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(4);
+    await expect.element(page.getByRole('tablist', { name: 'Editor views' }).getByRole('tab')).toHaveLength(5);
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
     await expect.element(button('Edit')).toBeVisible();
     await expect.element(button('Save')).not.toBeInTheDocument();
@@ -456,7 +456,7 @@ describe('Ctrl+S and Cmd+S', () => {
 });
 
 describe('the tabs', () => {
-  test('a mapping opens on the tab it was last left on, a tab named to open on wins, and a kept tab not shown is Overview', async () => {
+  test('a mapping opens on the tab it was last left on, a tab named to open on wins, and a kept value that is no tab is Overview', async () => {
     const browserState = memoryBrowserState();
     renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
     await tab('Signature').click();
@@ -488,14 +488,18 @@ describe('the tabs', () => {
     await expect.element(page.getByRole('region', { name: 'Test', exact: true })).toBeVisible();
     unmount();
 
-    // a studio tab this studio does not show yet, and a value that is no tab at all
-    for (const kept of ['functions', 'nope']) {
-      browserState.write(lastTabKey('mappings/order-id-copy'), kept);
-      renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
-      await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
-      await expect.element(page.getByRole('region', { name: 'Overview' })).toBeVisible();
-      unmount();
-    }
+    browserState.write(lastTabKey('mappings/order-id-copy'), 'functions');
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await expect.element(tab('Functions')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('region', { name: 'Function editor' })).toBeVisible();
+    unmount();
+
+    // a value that is no tab at all
+    browserState.write(lastTabKey('mappings/order-id-copy'), 'nope');
+    renderStudio(fakeApiClient(), 'mappings/order-id-copy', { browserState });
+    await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(page.getByRole('region', { name: 'Overview' })).toBeVisible();
+    unmount();
   });
 
   test('arrow keys, Home and End move between the tabs and choose them, only the active tab is focusable; another key does nothing', async () => {
@@ -505,6 +509,7 @@ describe('the tabs', () => {
     await expect.element(tab('Definition')).toHaveAttribute('tabindex', '-1');
     await expect.element(tab('Test')).toHaveAttribute('tabindex', '-1');
     await expect.element(tab('Signature')).toHaveAttribute('tabindex', '-1');
+    await expect.element(tab('Functions')).toHaveAttribute('tabindex', '-1');
     (tab('Overview').element() as HTMLElement).focus();
 
     await userEvent.keyboard('{ArrowRight}');
@@ -517,16 +522,18 @@ describe('the tabs', () => {
     await userEvent.keyboard('{ArrowRight}');
     await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{ArrowRight}');
+    await expect.element(tab('Functions')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{ArrowRight}');
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{ArrowLeft}');
-    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(tab('Functions')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{Home}');
     await expect.element(tab('Overview')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{End}');
-    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(tab('Functions')).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{ArrowDown}');
-    await expect.element(tab('Signature')).toHaveAttribute('aria-selected', 'true');
-    await expect.element(tab('Signature')).toHaveFocus();
+    await expect.element(tab('Functions')).toHaveAttribute('aria-selected', 'true');
+    await expect.element(tab('Functions')).toHaveFocus();
   });
 
   test('Definition asks for both messages while the mapping lacks one, and leads to the Signature tab', async () => {
