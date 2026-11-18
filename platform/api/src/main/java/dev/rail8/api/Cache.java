@@ -13,7 +13,8 @@ import java.util.Objects;
  * <p>Both methods block, so they run only on a virtual thread, such as the message's thread a step runs on. On any other
  * thread they throw {@link IllegalStateException}. A key is 1 to {@link #MAX_KEY_CHARS} characters with no control
  * characters; any other key is refused with an {@link IllegalArgumentException} naming it. A key is not secret: errors may
- * show it. A value is never shown.
+ * show it. A value is never shown. A key stands for one value wherever the step's flows use it, so a value that depends on a
+ * secret has the secret's {@link Secret#reference()} in its key.
  *
  * @since 0.1
  */

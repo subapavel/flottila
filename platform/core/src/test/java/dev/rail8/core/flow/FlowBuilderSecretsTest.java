@@ -16,6 +16,7 @@ import dev.rail8.api.StepResources;
 import dev.rail8.core.cache.InMemoryCache;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.dlq.ParkedException;
+import dev.rail8.core.node.FencedException;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Snapshot;
 import dev.rail8.testkit.FakeRuntime;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -224,13 +226,19 @@ class FlowBuilderSecretsTest {
     }
 
     @Test
-    void anErrorAndAnInterruptLeaveAsThrown() {
+    void anErrorAnInterruptAFenceAndAStoppedRunLeaveAsThrown() {
         AssertionError error = new AssertionError("error holds " + VALUE);
         assertSame(error, assertThrows(AssertionError.class,
                 () -> build(builder(leaking(value -> error)), "sync", List.of(step("leak", "leak", REFERENCE))).apply(in())));
         InterruptedException interrupt = new InterruptedException("interrupt holds " + VALUE);
         assertSame(interrupt, assertThrows(InterruptedException.class,
                 () -> build(builder(leaking(value -> interrupt)), "sync", List.of(step("leak", "leak", REFERENCE))).apply(in())));
+        FencedException fenced = new FencedException("fenced while holding " + VALUE);
+        assertSame(fenced, assertThrows(FencedException.class,
+                () -> build(builder(leaking(value -> fenced)), "sync", List.of(step("leak", "leak", REFERENCE))).apply(in())));
+        RunStoppedException stopped = new RunStoppedException(new Runs.Cancelled("operator", Optional.of("holds " + VALUE)), null);
+        assertSame(stopped, assertThrows(RunStoppedException.class,
+                () -> build(builder(leaking(value -> stopped)), "sync", List.of(step("leak", "leak", REFERENCE))).apply(in())));
     }
 
     @Test
