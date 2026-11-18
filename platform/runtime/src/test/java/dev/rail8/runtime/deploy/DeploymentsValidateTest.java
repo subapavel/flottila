@@ -248,7 +248,7 @@ class DeploymentsValidateTest {
 
     /**
      * A component that describes its settings is judged by that description only, never by its configSchema(): the demo's
-     * http endpoints pass with an http component whose schema refuses every config, and that schema refuses all four of
+     * http endpoints pass with an http component whose schema refuses every config, and that schema refuses all five of
      * them once the component describes nothing.
      */
     @Test
@@ -257,7 +257,7 @@ class DeploymentsValidateTest {
 
         List<String> undescribed = validate(shipped("dev", c -> "http".equals(c.scheme()) ? new RefusingSchema(c, false) : c), "demo", DEMO);
 
-        assertEquals(new TreeSet<>(List.of("http-in", "http-in-async", "partner-domestic", "partner-foreign")),
+        assertEquals(new TreeSet<>(List.of("http-in", "http-in-async", "http-in-order", "partner-domestic", "partner-foreign")),
                 undescribed.stream().map(l -> l.substring("endpoint '".length(), l.indexOf("' config (environment dev) at "))).collect(Collectors.toCollection(TreeSet::new)),
                 "every http endpoint, and nothing else, is refused by the schema: " + undescribed);
     }

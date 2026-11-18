@@ -31,6 +31,7 @@ services:
           - rail8
     ports:
       - "127.0.0.1:8080:8080"   # the demo's http-in
+      - "127.0.0.1:8083:8083"   # the demo's http-in-order
       - "127.0.0.1:8081:8081"   # admin API and /health
     healthcheck:
       test: ["CMD", "true"]

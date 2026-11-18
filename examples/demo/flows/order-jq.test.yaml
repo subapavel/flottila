@@ -1,0 +1,13 @@
+schemaVersion: 1
+kind: test
+flow: order-jq
+mocks:
+  partner-domestic: { reply: fixtures/partner-ack.xml }
+cases:
+  - name: order picked and renamed
+    send: fixtures/sample-order.json
+    expect:
+      status: 200
+      steps: 3
+      sent:
+        partner-domestic: { count: 1, equals: '{"orderId":42,"customer":"Acme Corp","total":50}' }

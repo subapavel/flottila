@@ -59,6 +59,7 @@ class ValidateCommandTest {
             "package demo 0.1.0",
             "endpoints/  -  -",
             "  http-in-async.yaml  endpoint  http-in-async",
+            "  http-in-order.yaml  endpoint  http-in-order",
             "  http-in.yaml  endpoint  http-in",
             "  partner-domestic.yaml  endpoint  partner-domestic",
             "  partner-foreign.yaml  endpoint  partner-foreign",
@@ -70,6 +71,8 @@ class ValidateCommandTest {
             "  invoice-async.yaml  flow  invoice-async",
             "  invoice-sync.test.yaml  test  -",
             "  invoice-sync.yaml  flow  invoice-sync",
+            "  order-jq.test.yaml  test  -",
+            "  order-jq.yaml  flow  order-jq",
             "  sftp-invoice.test.yaml  test  -",
             "  sftp-invoice.yaml  flow  sftp-invoice");
 

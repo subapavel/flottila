@@ -79,12 +79,12 @@ class DemoFlowsTest {
     // ---- the three flows ------------------------------------------------------------------------------------------------
 
     @Test
-    void theThreeFlowsLoadAndTheWholePackageIsValid() throws IOException {
+    void theFlowsLoadAndTheWholePackageIsValid() throws IOException {
         Package pkg = demo();
-        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice"), Set.copyOf(pkg.flowIds()));
-        assertEquals(Set.of("http-in", "http-in-async", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
+        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq"), Set.copyOf(pkg.flowIds()));
+        assertEquals(Set.of("http-in", "http-in-async", "http-in-order", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
         assertEquals(List.of(), pkg.problems(), "every document is valid against its schema and the package is consistent across files");
-        for (String id : List.of("invoice-sync", "invoice-async", "sftp-invoice")) {
+        for (String id : List.of("invoice-sync", "invoice-async", "sftp-invoice", "order-jq")) {
             assertTrue(Schemas.forKind("flow").validate(flow(id)).valid(), id + " is valid against the flow schema");
         }
     }
@@ -135,7 +135,7 @@ class DemoFlowsTest {
             String clash = ports.put(d.getJsonObject("config").getInteger("port"), e.getKey());
             assertEquals(null, clash, "http endpoints '" + clash + "' and '" + e.getKey() + "' listen on one port");
         }
-        assertEquals(2, ports.size(), "the demo's two doors: " + ports);
+        assertEquals(3, ports.size(), "the demo's three doors: " + ports);
     }
 
     @Test
