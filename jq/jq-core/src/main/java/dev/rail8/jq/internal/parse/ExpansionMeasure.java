@@ -490,7 +490,9 @@ final class ExpansionMeasure {
       case Ast.Slice _ -> steps(acc, ast, parts, done);
       case Ast.Optional _ -> steps(acc, ast, parts, done);
       case Ast.Str s -> {
-        long k = Math.min(s.parts().size(), Resolver.BIND_RUN) + 2L;
+        // Under a format other than @text, each interpolation is one Pipe deeper.
+        long formatted = s.format() == null || s.format().equals("text") ? 0 : 1;
+        long k = Math.min(s.parts().size(), Resolver.BIND_RUN) + 2L + formatted;
         acc.own(1, k + 1);
         children(acc, parts, done, k);
       }

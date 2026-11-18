@@ -26,7 +26,7 @@ class NativeKeepsArgsTest {
         new String[] {
           "TOSTRING", "LAST", "KEYS", "KEYS_UNSORTED", "TO_ENTRIES", "FLATTEN", "FLATTEN_DEPTH", "SORT", "SORT_BY", "GROUP_BY",
           "UNIQUE", "UNIQUE_BY", "MIN", "MAX", "MIN_BY", "MAX_BY", "TRIM",
-          "LTRIM", "RTRIM"
+          "LTRIM", "RTRIM", "FORMAT"
         }) {
       expected.put(keeps, true);
     }
@@ -35,7 +35,7 @@ class NativeKeepsArgsTest {
           "EMPTY", "ERROR", "NOT", "RANGE", "LENGTH", "TYPE", "TOJSON", "TONUMBER", "HAS", "NAN", "INFINITE", "ISNAN",
           "ISINFINITE", "ISNORMAL", "HAVE_DECNUM", "HAVE_LITERAL_NUMBERS", "STARTSWITH",
           "ENDSWITH", "UTF8BYTELENGTH", "EXPLODE", "IMPLODE", "SPLIT", "STRINDICES", "CONTAINS",
-          "BSEARCH", "BUILTINS"
+          "BSEARCH", "BUILTINS", "FROMJSON", "TOBOOLEAN"
         }) {
       expected.put(fresh, false);
     }

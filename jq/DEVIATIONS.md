@@ -26,6 +26,9 @@ item variable. jq also accepts some other forms; the engine raises "Invalid path
 | `{"k":"xy"} \| [path(.k \| trim)]` | `[["k"]]` | error |
 | `{"k":"xy"} \| [path(.k \| ltrim)]` | `[["k"]]` | error |
 | `{"k":"xy"} \| [path(.k \| rtrim)]` | `[["k"]]` | error |
+| `{"k":null} \| [path(.k \| tojson \| fromjson)]` | `[["k"]]` | error |
+| `{"k":true} \| [path(.k \| toboolean)]` | `[["k"]]` | error |
+| `{"k":"x"} \| [path(.k \| format("text"))]` | `[["k"]]` | error |
 | `[[5],[6]] \| [path(foreach .[] as $x ?// [$x] (0;1;$x))]` | `[[0],[1]]` | error |
 | `null \| path(reduce 0 as $i (.; .))` | `[]` | error |
 | `[[1],[2]] \| path(foreach (0,1) as $i (.; .; .[$i]))` | `[0]`, `[1]` | error |
@@ -41,7 +44,10 @@ survives an iteration, and
 `[[1,2]] | path(reduce (0,1) as $i (.; .[$i]))` raises in jq as well.
 
 The `tostring` to `not | not` rows are spec 3's share of P6; the `trim`, `ltrim` and `rtrim` rows
-came with spec 4's natives (F-70): jq keeps the path when they leave the string unchanged. In the `foreach … ?//` row only a `foreach … as $name` item keeps its
+came with spec 4's natives (F-70): jq keeps the path when they leave the string unchanged. The
+`fromjson`, `toboolean` and `format("text")` rows came with the formats and the two parsing
+builtins: jq keeps the path when the result is the input itself, as `fromjson` of the text of
+null, `toboolean` of a boolean and `@text` of a string are. In the `foreach … ?//` row only a `foreach … as $name` item keeps its
 path (Tracking ITEM, ADR-0048, F-59), so a destructured item is untracked where jq's matcher keeps
 one. The last four rows are F-59's, added at spec 3's ticket approval by the grilling-adviser for
 the owner under the delegation of 2026-11-14. In the last two rows jq's first matcher step succeeds

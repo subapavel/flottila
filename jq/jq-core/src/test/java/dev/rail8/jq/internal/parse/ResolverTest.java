@@ -128,15 +128,14 @@ class ResolverTest {
           // Unwrapped at #71: getpath/1 is an unbuilt native of spec 3 (ADR-0042) and |= is _modify's; jq-ref 1.8.2,
           // observed 2026-11-13 with -nc: {"a":1}, rc 0.
           "getpath([\"a\"]) |= 1",
-          // The key is the string "e" from fromjson/0, still unbuilt, so it stubs;
+          // The key is the string "e" from getpath/1, still unbuilt, so it stubs;
           // jq-ref 1.8.2, observed 2026-11-13 with -nc:
           // {"if":1,"and":2,"a":3,"b":4,"k":5,"x1":6,"e":7,"__loc__":{"file":"<top-level>","line":1},"c":null}.
-          "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, (\"\\\"e\\\"\"|fromjson): 7, $__loc__, c}",
+          "{if: 1, and: 2, a: 3, \"b\": 4, @base64 \"k\": 5, \"x\\(1)\": 6, ({\"x\":\"e\"}|getpath([\"x\"])): 7, $__loc__, c}",
           "1 as $v | $$$$v",
           "module {a:1}; .",
           "import \"nosuch\" as n; .",
-          "include \"nosuch\"; .",
-          "@json");
+          "include \"nosuch\"; .");
 
   /**
    * The GRAMMAR entries whose only Stub was {@code ..}, the recursion itself or the {@code | ..} after a construct an
@@ -251,14 +250,10 @@ class ResolverTest {
   }
 
   @Test
-  void anInterpolationWithAFormatOtherThanTextParsesAndIsAStub() {
-    // jq-ref 1.8.2, observed 2026-11-12 on null: @base64 "x\(.)" gives "xbnVsbA==" and @json "x\(.)" gives "xnull"
-    // (rc 0). The string parts are parsed in #62 (jq's QQSTRING split); lowering an interpolation is #67's (F-35), and
-    // one with another format than @text stays a Stub. anInterpolationWithNoFormatCompiles is the witness that an
-    // interpolation without a format is no Stub.
-    for (String text : List.of("@base64 \"x\\(.)\"", "@json \"x\\(.)\"")) {
-      parsesToAStub(text);
-    }
+  void formatsAndInterpolationsWithAFormatCompile() {
+    // jq-ref 1.8.2, observed 2026-11-12 on null: @base64 "x\(.)" gives "xbnVsbA==", @json "x\(.)" gives "xnull" and
+    // @json gives "null" (rc 0). Each interpolation is piped into the format; FormatsTest checks the results.
+    allCompile(List.of("@base64 \"x\\(.)\"", "@json \"x\\(.)\"", "@json"));
   }
 
   @Test

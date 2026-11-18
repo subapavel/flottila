@@ -161,6 +161,9 @@ final class Binder {
     CONTAINS("contains", 1, false),
     BSEARCH("bsearch", 1, false),
     BUILTINS("builtins", 0, false),
+    FROMJSON("fromjson", 0, false),
+    TOBOOLEAN("toboolean", 0, false),
+    FORMAT("format", 1, true),
     ;
 
     private final String signature;

@@ -1,10 +1,12 @@
 package dev.rail8.jq.internal.value;
 
 import dev.rail8.jq.internal.json.JsonStrings;
+import dev.rail8.jq.query.run.Charges;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqObject;
 import dev.rail8.jq.value.JqString;
 import dev.rail8.jq.value.JqValue;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -77,6 +79,57 @@ public final class Detach {
         copied = top.build();
         copies.put(top.container, copied);
         top = top.parent;
+      }
+    }
+  }
+
+  /**
+   * The bytes built that the copy {@link #of} makes of {@code doc}'s root would charge in a run: per container {@code
+   * Charges.CONTAINER}, plus {@code Charges.ELEMENT} per array element and {@code Charges.ENTRY} per object entry; per
+   * string and per key {@code Charges.STRING} plus its decoded length; nothing for a number, null or a boolean. An
+   * object is walked through its key proof, as {@link #of} walks it, so a repeated key is one entry with its last value.
+   * It keeps a stack of its own and charges no run.
+   */
+  public static long charge(Document doc) {
+    RunState free = new RunState();
+    ArrayDeque<Members> containers = new ArrayDeque<>();
+    ArrayDeque<Integer> cursors = new ArrayDeque<>();
+    long total = 0;
+    JqValue next = doc.root();
+    for (;;) {
+      switch (next) {
+        case JqString s -> total += Charges.STRING + s.utf8().byteSize();
+        case ArrayView a -> {
+          total += Charges.CONTAINER;
+          containers.push(a);
+          cursors.push(a.first());
+        }
+        case ObjectView o -> {
+          total += Charges.CONTAINER;
+          ObjectWalk walk = KeyProof.walk(free, o, false);
+          containers.push(walk);
+          cursors.push(walk.first());
+        }
+        // A number, null or a boolean: a document holds no built value.
+        default -> {}
+      }
+      for (;;) {
+        if (containers.isEmpty()) {
+          return total;
+        }
+        int cursor = cursors.pop();
+        if (cursor != END) {
+          Members top = containers.peek();
+          if (top instanceof Keyed keyed) {
+            total += Charges.ENTRY + Charges.STRING + keyed.key(cursor).utf8().byteSize();
+          } else {
+            total += Charges.ELEMENT;
+          }
+          next = top.member(free, cursor);
+          cursors.push(top.next(free, cursor));
+          break;
+        }
+        containers.pop();
       }
     }
   }

@@ -479,11 +479,8 @@ public final class Resolver {
     return node;
   }
 
-  /** A bare {@code @name}: an Intrinsic of its format when it is built, else a Stub. */
+  /** A bare {@code @name}: an Intrinsic of its format, which raises jq's error for a name that is no format. */
   private Node format(Ast.Format f) {
-    if (Formats.lookup(f.name()) == null) {
-      throw unbuilt(f);
-    }
     return new Intrinsic(here(f.source()), Formats.lookup(f.name()), List.of());
   }
 
@@ -682,6 +679,9 @@ public final class Resolver {
       case CONTAINS -> withArgument(c, Search.CONTAINS);
       case BSEARCH -> withArgument(c, Search.BSEARCH);
       case BUILTINS -> new Intrinsic(at, Builtins.BUILTINS, List.of());
+      case FROMJSON -> new Intrinsic(at, Basics.FROMJSON, List.of());
+      case TOBOOLEAN -> new Intrinsic(at, Basics.TOBOOLEAN, List.of());
+      case FORMAT -> withArgument(c, Formats.FORMAT);
     };
   }
 
@@ -1716,16 +1716,14 @@ public final class Resolver {
    * A string literal: without interpolation a Const of its text, whatever its format (in jq 1.8.2 {@code @base64 "k"}
    * is {@code "k"}); with one, an Intrinsic of Interpolate on its parts, each text part a Const and each interpolation
    * bound around it unless atomic, the last part outermost, as jq loops ({@code "\(1,2)\(3,4)"} gives 13, 23, 14, 24);
-   * past {@link #BIND_RUN} bound parts, one Binds, the last part first. Only {@code @text} or no format is built with
-   * interpolations.
+   * past {@link #BIND_RUN} bound parts, one Binds, the last part first. Under a format other than {@code @text} each
+   * interpolation is piped into the format, as jq's {@code gen_format} does, and its text parts are kept as they are.
    */
   private Node string(Ast.Str s) {
     if (plain(s)) {
       return new Const(here(s.source()), BuiltString.of(bytes(s)));
     }
-    if (s.format() != null && !s.format().equals("text")) {
-      throw stub("the @", s.format(), " string at byte ", here(s.source()).start());
-    }
+    Operation format = s.format() == null || s.format().equals("text") ? null : Formats.lookup(s.format());
     List<Ast.Part> parts = s.parts();
     Node[] nodes = new Node[parts.size()];
     int[] partSlots = new int[parts.size()];
@@ -1735,7 +1733,8 @@ public final class Resolver {
       nodes[i] =
           switch (parts.get(i)) {
             case Ast.Text t -> new Const(here(t.source()), BuiltString.of(t.bytes()));
-            case Ast.Interp p -> lower(p.query());
+            case Ast.Interp p ->
+                format == null ? lower(p.query()) : pipe(lower(p.query()), new Intrinsic(here(p.source()), format, List.of()));
           };
       partSlots[i] = operandSlot(nodes[i]);
       args.add(argument(nodes[i], partSlots[i]));

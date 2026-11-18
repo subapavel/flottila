@@ -16,7 +16,8 @@ licence text ships in the jq-core jar under META-INF/.
 
 - jq-core/src/main/java/dev/rail8/jq/internal/json/JsonStrings.java, translated
   from jq 1.8.2's found_string (src/jv_parse.c), jvp_utf8_next and jvp_utf8_encode
-  (src/jv_unicode.c), jv_string_sized and jvp_string_copy_replace_bad (src/jv.c) (#35)
+  (src/jv_unicode.c), jv_string_sized and jvp_string_copy_replace_bad (src/jv.c) (#35), and
+  jvp_utf8_is_valid (src/jv_unicode.c) (#149)
 - jq-core/src/main/java/dev/rail8/jq/internal/parse/Lexer.java, translated from
   jq 1.8.2's token rules, start conditions and try_exit (src/lexer.l) (#61)
 - jq-core/src/main/java/dev/rail8/jq/internal/parse/FilterText.java, translated
@@ -72,7 +73,9 @@ licence text ships in the jq-core jar under META-INF/.
   jq 1.8.2's function_list, bind_bytecoded_builtins and gen_builtin_list (src/builtin.c), BINOPS
   (src/builtin.h) and the function list of src/libm.h (#71)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Basics.java, translated from
-  jq 1.8.2's f_length, f_type, f_tostring, f_dump and f_tonumber (src/builtin.c) (#72)
+  jq 1.8.2's f_length, f_type, f_tostring, f_dump and f_tonumber (src/builtin.c) (#72), and
+  f_json_parse and f_toboolean (src/builtin.c) and jv_parse_sized_custom_flags (src/jv_parse.c)
+  (#149)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Keys.java, translated from
   jq 1.8.2's f_has, f_keys and f_keys_unsorted (src/builtin.c) and jv_has, jv_keys and
   jv_keys_unsorted (src/jv_aux.c) (#72), and to_entries/0 (src/builtin.jq) (#85)
@@ -97,6 +100,9 @@ licence text ships in the jq-core jar under META-INF/.
   f_contains and f_bsearch (src/builtin.c) (#148)
 - jq-core/src/main/java/dev/rail8/jq/internal/op/Builtins.java, the list jq 1.8.2's
   gen_builtin_list (src/builtin.c) gives (#148)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Formats.java, translated from jq 1.8.2's
+  f_format, escape_string, URI_UNRESERVED, BASE64_ENCODE_TABLE and BASE64_DECODE_TABLE
+  (src/builtin.c) (#149)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

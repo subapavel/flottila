@@ -575,7 +575,7 @@ class IrDepthTest {
    *   <li>leaves, one level: Dot {@code .}, Num {@code 1}, Constant {@code null}, Loc, Format {@code @text}, each alone
    *       and in brackets (alone, f's call is at least its lifted form's one level, which hides a leaf's count); a Var, a
    *       Break and builtin.jq's {@code $$$$v} (LastRead) as an unused closure argument, where only the leaf's level
-   *       decides (a Bind or a label above them would hide it), and an unbuilt native ({@code toboolean}) the same way;
+   *       decides (a Bind or a label above them would hide it), and an unbuilt native ({@code gmtime}) the same way;
    *   <li>Paren and Def pass their part's form on: {@code (length)}, and every row with a {@code def};
    *   <li>Comma, one level and its terms log2(terms) down: 2 terms, and 4 and 5 terms (2^k and 2^k+1, k = 2); its own
    *       level never decides, as every term is a level;
@@ -671,7 +671,7 @@ class IrDepthTest {
         Arguments.of(". as $x | def g(h): .; g($x)", 10, "null"),
         Arguments.of("label $f | def g(h): .; g(break $f)", 4, "null"),
         Arguments.of(". as $v | def g(h): .; g($$$$v)", 10, "null"),
-        Arguments.of("def g(h): .; g(toboolean)", 2, "null"),
+        Arguments.of("def g(h): .; g(gmtime)", 2, "null"),
         // Paren; Comma; Pipe; ArrayCons; Binary.
         Arguments.of("(length)", 2, "0"),
         Arguments.of("length, length", 3, "0,0"),

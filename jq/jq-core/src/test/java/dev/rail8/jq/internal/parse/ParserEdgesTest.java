@@ -78,8 +78,8 @@ class ParserEdgesTest {
             "import \"a\" as $x; .",
             "import \"a\" as x {a: 1}; .",
             // .a."b"? left with its Stub: #63 lowers it (ResolverTest.navigationAndCommaLowerToTheirIr).
-            // The key is the string "a" from fromjson/0, still unbuilt, so it stubs; jq 1.8.2 gives 1, rc 0.
-            ". as {(\"\\\"a\\\"\"|fromjson): $e} | 1")) {
+            // The key is the string "a" from getpath/1, still unbuilt, so it stubs; jq 1.8.2 gives 1, rc 0.
+            ". as {({\"x\":\"a\"}|getpath([\"x\"])): $e} | 1")) {
       parsesToAStub(text);
     }
     // #67 lowers as and its patterns, #68 if and elif, and #69 foreach, so those entries ended with | .., which

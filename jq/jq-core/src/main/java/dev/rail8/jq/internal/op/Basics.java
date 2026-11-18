@@ -1,6 +1,7 @@
 /*
- * Translated from jq 1.8.2 (https://github.com/jqlang/jq): f_length, f_type, f_tostring, f_dump (tojson) and
- * f_tonumber in src/builtin.c.
+ * Translated from jq 1.8.2 (https://github.com/jqlang/jq): f_length, f_type, f_tostring, f_dump (tojson),
+ * f_json_parse (fromjson), f_tonumber and f_toboolean in src/builtin.c, and jv_parse_sized_custom_flags in
+ * src/jv_parse.c.
  *
  * jq is copyright (C) 2012 Stephen Dolan
  *
@@ -26,17 +27,25 @@
 package dev.rail8.jq.internal.op;
 
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
+import dev.rail8.jq.JqSyntaxException;
+import dev.rail8.jq.internal.Stub;
+import dev.rail8.jq.internal.json.JsonReader;
+import dev.rail8.jq.internal.json.TapeLimits;
 import dev.rail8.jq.internal.value.ArrayView;
 import dev.rail8.jq.internal.value.BuiltArray;
 import dev.rail8.jq.internal.value.BuiltObject;
 import dev.rail8.jq.internal.value.BuiltString;
+import dev.rail8.jq.internal.value.Detach;
+import dev.rail8.jq.internal.value.Document;
 import dev.rail8.jq.internal.value.DoubleNumber;
 import dev.rail8.jq.internal.value.LiteralNumber;
 import dev.rail8.jq.internal.value.Numbers;
 import dev.rail8.jq.internal.value.KeyProof;
 import dev.rail8.jq.internal.value.ObjectView;
 import dev.rail8.jq.query.ir.Operation;
+import dev.rail8.jq.query.run.FilterException;
 import dev.rail8.jq.query.run.Fn0;
 import dev.rail8.jq.query.run.RunState;
 import dev.rail8.jq.value.JqArray;
@@ -50,10 +59,10 @@ import java.lang.foreign.MemorySegment;
 
 /**
  * jq 1.8.2's natives of a value's basics, each an operation on its input: {@code length}, {@code type}, {@code
- * tostring}, {@code tojson} and {@code tonumber}. Each loop whose length depends on the data ticks: {@code length} once
- * per started KiB of a string or of a non-short literal number's token and as a view's walk charges, {@code tonumber}
- * once per started KiB of its string, and {@code tostring} and {@code tojson} as {@link TextFormat} does; the strings
- * they build are charged to bytes built.
+ * tostring}, {@code tojson}, {@code fromjson}, {@code tonumber} and {@code toboolean}. Each loop whose length depends
+ * on the data ticks: {@code length} once per started KiB of a string or of a non-short literal number's token and as a
+ * view's walk charges, {@code tonumber} and {@code fromjson} once per started KiB of their string, and {@code tostring}
+ * and {@code tojson} as {@link TextFormat} does; the values they build are charged to bytes built.
  */
 public final class Basics {
   /** {@code length}. */
@@ -68,8 +77,14 @@ public final class Basics {
   /** {@code tojson}. */
   public static final Operation TOJSON = new Operation("tojson", (Fn0) (state, in) -> TextFormat.dump(state, (JqValue) in));
 
+  /** {@code fromjson}. */
+  public static final Operation FROMJSON = new Operation("fromjson", (Fn0) Basics::fromjson);
+
   /** {@code tonumber}. */
   public static final Operation TONUMBER = new Operation("tonumber", (Fn0) Basics::tonumber);
+
+  /** {@code toboolean}. */
+  public static final Operation TOBOOLEAN = new Operation("toboolean", (Fn0) Basics::toboolean);
 
   /** {@code null | length}: jq's {@code jv_number(0)}. */
   private static final DoubleNumber ZERO = new DoubleNumber(0);
@@ -82,6 +97,11 @@ public final class Basics {
   private static final BuiltString STRING = BuiltString.of("string");
   private static final BuiltString ARRAY = BuiltString.of("array");
   private static final BuiltString OBJECT = BuiltString.of("object");
+
+  /** The texts {@code toboolean} reads. */
+  private static final MemorySegment TRUE_TEXT = MemorySegment.ofArray("true".getBytes(UTF_8));
+
+  private static final MemorySegment FALSE_TEXT = MemorySegment.ofArray("false".getBytes(UTF_8));
 
   private Basics() {}
 
@@ -148,5 +168,86 @@ public final class Basics {
       }
     }
     throw Arithmetic.cannot(state, v, "cannot be parsed as a number");
+  }
+
+  /**
+   * {@code toboolean}: a boolean itself, the string {@code "true"} true and {@code "false"} false; any other value jq's
+   * "cannot be parsed as a boolean". It reads at most six bytes and ticks nothing.
+   */
+  private static Object toboolean(RunState state, Object in) {
+    JqValue v = (JqValue) in;
+    if (v instanceof JqBool) {
+      return v;
+    }
+    if (v instanceof JqString s) {
+      MemorySegment utf8 = s.utf8();
+      if (spells(utf8, TRUE_TEXT)) {
+        return JqBool.TRUE;
+      }
+      if (spells(utf8, FALSE_TEXT)) {
+        return JqBool.FALSE;
+      }
+    }
+    throw Arithmetic.cannot(state, v, "cannot be parsed as a boolean");
+  }
+
+  /** Whether the bytes of {@code s} are those of {@code word}. */
+  private static boolean spells(MemorySegment s, MemorySegment word) {
+    return s.byteSize() == word.byteSize() && s.mismatch(word) == -1;
+  }
+
+  /**
+   * {@code fromjson}, jq's {@code jv_parse_sized}: the one value of a string's JSON text, a BOM at its start skipped, as
+   * the root of a document of its own, after one tick per started KiB of the text. It charges what {@link Detach#charge}
+   * says the document's built copy would. A text of whitespace alone is jq's "Expected JSON value", a second value after
+   * the first its "Unexpected extra JSON values", and a limit the reader's text; each adds " (while parsing '…')" with
+   * the text up to its first NUL. A malformed value, a lenient token among them, ends the run with the reader's Stub.
+   * Any other input is jq's "only strings can be parsed".
+   */
+  private static Object fromjson(RunState state, Object in) {
+    JqValue v = (JqValue) in;
+    if (!(v instanceof JqString s)) {
+      throw Arithmetic.cannot(state, v, "only strings can be parsed");
+    }
+    MemorySegment text = s.utf8();
+    long n = text.byteSize();
+    state.tick(Built.kibibytes(n));
+    JsonReader reader = new JsonReader(TapeLimits.ADR_0002);
+    try {
+      long after = reader.readFirst(text, 0);
+      if (after < 0) {
+        throw parsing("Expected JSON value", text);
+      }
+      Document doc = reader.last();
+      long rest = after;
+      while (rest < n && whitespace(text.get(JAVA_BYTE, rest))) {
+        rest++;
+      }
+      if (rest == n) {
+        state.chargeBuilt(Detach.charge(doc));
+        return doc.root();
+      }
+      reader.readFirst(text, rest);
+      throw parsing("Unexpected extra JSON values", text);
+    } catch (JqSyntaxException e) {
+      if (e.getMessage().startsWith(Stub.PREFIX)) {
+        throw e;
+      }
+      throw parsing(e.getMessage(), text);
+    }
+  }
+
+  /** Whether jq's parser skips {@code b} as whitespace: SP, TAB, LF or CR. */
+  private static boolean whitespace(byte b) {
+    return b == ' ' || b == '\t' || b == '\n' || b == '\r';
+  }
+
+  /** jq's {@code "%s (while parsing '%.*s')"}: {@code message}, then the text up to its first NUL. */
+  private static FilterException parsing(String message, MemorySegment text) {
+    long nul = 0;
+    while (nul < text.byteSize() && text.get(JAVA_BYTE, nul) != 0) {
+      nul++;
+    }
+    return Arithmetic.error(message + " (while parsing '" + new String(text.asSlice(0, nul).toArray(JAVA_BYTE), UTF_8) + "')");
   }
 }
