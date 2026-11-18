@@ -100,8 +100,6 @@ class DeploymentsRetriesTest {
     @Test
     void aNodeRetriesCountOfZeroParksTheFirstFailure() throws Exception {
         Envelope e = deployedAndAccepted(Map.of("RAIL8_RETRIES_COUNT", "0"));
-        until(() -> doors.partner().sent().size() >= 1, () -> "the hand-off's run reached the partner");   // before the clock moves past its deadline
-        rt.clock().advance(Duration.ofSeconds(61));
         until(() -> !parked().isEmpty(), () -> "parked: sends " + doors.partner().sent().size() + ", defers " + queue.deferredAt());
 
         assertEquals(List.of(e.id()), parked().stream().map(Parked::messageId).toList(), "parked at its first failure");
@@ -114,8 +112,7 @@ class DeploymentsRetriesTest {
     @Test
     void theNodeRetriesIntervalSpacesTheRetriesOfADeployedFlow() throws Exception {
         Envelope e = deployedAndAccepted(Map.of("RAIL8_RETRIES_COUNT", "1", "RAIL8_RETRIES_INTERVAL", "PT2M"));
-        until(() -> doors.partner().sent().size() >= 1, () -> "the hand-off's run reached the partner");   // before the clock moves past its deadline
-        rt.clock().advance(Duration.ofSeconds(61));
+        // the clock stands still until the hand-off's run has settled: no lease runs out under it and nothing claims it early
         until(() -> queue.deferredAt().size() == 1, () -> "the first failure deferred: sends " + doors.partner().sent().size() + ", DLQ " + parked());
         Instant deferred = queue.deferredAt().get(0);
         until(() -> scheduled.contains(Duration.ofMinutes(2)), () -> "the worker armed its retry wake: " + scheduled);   // before the clock moves

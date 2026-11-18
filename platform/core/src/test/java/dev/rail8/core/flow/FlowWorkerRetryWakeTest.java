@@ -2,6 +2,7 @@ package dev.rail8.core.flow;
 
 import dev.rail8.api.Envelope;
 import dev.rail8.api.NackException;
+import io.vertx.core.Future;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -12,7 +13,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static dev.rail8.core.flow.FlowWorkerRetryTest.FAIL;
 import static dev.rail8.core.flow.FlowWorkerRetryTest.LEASE;
@@ -24,6 +27,7 @@ import static dev.rail8.core.flow.FlowWorkerTest.NO_FILES;
 import static dev.rail8.core.flow.FlowWorkerTest.TO_PARTNER;
 import static dev.rail8.core.flow.FlowWorkerTest.until;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -201,5 +205,41 @@ class FlowWorkerRetryWakeTest {
         } finally {
             logs.detach();
         }
+    }
+
+    /**
+     * A claim of this worker that lands once a failed run's defer reached the queue and before the run's chain ended — here at
+     * the row's due, as a retry wake or a reconciliation fired by a clock that moved on would — hands the row out again: that
+     * hand-out runs as the retry, it is not taken for the finished run's own and left without a run.
+     */
+    @Test
+    void aClaimBetweenADeferAndTheEndOfItsChainRunsTheRetry() throws Exception {
+        CountDownLatch answered = new CountDownLatch(1);
+        w.failures.add(() -> {   // the run fails once the delivery answered: the clock moved below passes no save deadline
+            try {
+                assertTrue(answered.await(5, SECONDS), "the delivery answered");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return downstream();
+        });
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(1, "1m"), List.of(REWRITE, FAIL, TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        AtomicReference<Future<Integer>> claim = new AtomicReference<>();
+        w.queue.afterNextDefer(() -> {   // on the run's thread: the row deferred, the run's chain not ended yet
+            w.rt.clock().set(w.t0.plus(Duration.ofMinutes(1)));
+            claim.set(worker.poll());
+        });
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        answered.countDown();
+        until(() -> claim.get() != null, () -> "the claim after the defer: defers " + w.queue.deferCalls());
+        assertEquals(1, claim.get().await(5, SECONDS), "fixture: the claim at the due took the row");
+
+        w.sent(worker, 1);
+        assertEquals(List.of(in.id()), w.sentIds(), "the retry ran and went through");
+        assertEquals(2, w.failRuns.get(), "the first run and its retry");
+        assertEquals(List.of(), w.dlq(), "nothing parked");
+        assertEquals(0, w.rows.size(), "its row completed");
     }
 }

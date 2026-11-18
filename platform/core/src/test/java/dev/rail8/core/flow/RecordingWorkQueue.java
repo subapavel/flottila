@@ -91,6 +91,7 @@ final class RecordingWorkQueue implements WorkQueue {
     private final List<CompleteCall> completeCalls = new CopyOnWriteArrayList<>();
     private final List<DeferCall> deferCalls = new CopyOnWriteArrayList<>();
     private final AtomicReference<Throwable> nextDeferFailure = new AtomicReference<>();
+    private final AtomicReference<Runnable> afterNextDefer = new AtomicReference<>();
     private final List<EnqueueLeasedCall> enqueueLeasedCalls = new CopyOnWriteArrayList<>();
     private final AtomicReference<Throwable> nextEnqueueFailure = new AtomicReference<>();
     private final Map<String, Integer> handedOut = new ConcurrentHashMap<>();
@@ -179,6 +180,9 @@ final class RecordingWorkQueue implements WorkQueue {
 
     /** The next defer fails with {@code cause} without reaching the delegate (the row stays as it was); later ones answer as before. */
     void failNextDefer(Throwable cause) { nextDeferFailure.set(Objects.requireNonNull(cause, "cause")); }
+
+    /** Runs {@code hook} once, on the caller's thread, right after the next defer the delegate answered, before that answer returns. */
+    void afterNextDefer(Runnable hook) { afterNextDefer.set(Objects.requireNonNull(hook, "hook")); }
 
     /** Sampled at every claim call into {@link ClaimCall#runningAtCall}. */
     void probeRunning(IntSupplier probe) { runningProbe = Objects.requireNonNull(probe, "probe"); }
@@ -329,13 +333,18 @@ final class RecordingWorkQueue implements WorkQueue {
         return delegate.stopped(after, limit);
     }
 
-    /** The delegate's defer (CORE-14a P3), recorded with the clock at the call and its answer; a staged failure reaches no delegate. */
+    /**
+     * The delegate's defer, recorded with the clock at the call and its answer; a staged failure reaches no delegate.
+     * A hook staged by {@link #afterNextDefer} runs once the delegate answered.
+     */
     @Override
     public Future<Boolean> defer(long seq, int attempts, Duration delay) {
         Instant at = clock.instant();
         Throwable failure = nextDeferFailure.getAndSet(null);
         Future<Boolean> answer = failure != null ? Future.failedFuture(failure) : delegate.defer(seq, attempts, delay);
         deferCalls.add(new DeferCall(seq, attempts, delay, at, answer.succeeded() ? answer.result() : null));
+        Runnable hook = failure == null ? afterNextDefer.getAndSet(null) : null;
+        if (hook != null) hook.run();
         return answer;
     }
 
