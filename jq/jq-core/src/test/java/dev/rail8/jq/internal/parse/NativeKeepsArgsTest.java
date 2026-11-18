@@ -34,7 +34,8 @@ class NativeKeepsArgsTest {
         new String[] {
           "EMPTY", "ERROR", "NOT", "RANGE", "LENGTH", "TYPE", "TOJSON", "TONUMBER", "HAS", "NAN", "INFINITE", "ISNAN",
           "ISINFINITE", "ISNORMAL", "HAVE_DECNUM", "HAVE_LITERAL_NUMBERS", "STARTSWITH",
-          "ENDSWITH", "UTF8BYTELENGTH", "EXPLODE", "IMPLODE", "SPLIT", "STRINDICES"
+          "ENDSWITH", "UTF8BYTELENGTH", "EXPLODE", "IMPLODE", "SPLIT", "STRINDICES", "CONTAINS",
+          "BSEARCH", "BUILTINS"
         }) {
       expected.put(fresh, false);
     }

@@ -91,6 +91,12 @@ licence text ships in the jq-core jar under META-INF/.
   jq 1.8.2's f_startswith, f_endswith, f_utf8bytelength, string_trim, f_string_explode,
   f_string_implode, f_string_split and f_string_indexes (src/builtin.c), jv_string_explode and
   jv_string_indexes (src/jv.c) and jvp_codepoint_is_whitespace (src/jv_unicode.c) (#147)
+- jq-core/src/main/java/dev/rail8/jq/internal/value/Containment.java, translated from
+  jq 1.8.2's jvp_contains, jvp_array_contains and jvp_object_contains (src/jv.c) (#148)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Search.java, translated from jq 1.8.2's
+  f_contains and f_bsearch (src/builtin.c) (#148)
+- jq-core/src/main/java/dev/rail8/jq/internal/op/Builtins.java, the list jq 1.8.2's
+  gen_builtin_list (src/builtin.c) gives (#148)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

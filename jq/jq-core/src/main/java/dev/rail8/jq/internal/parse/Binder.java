@@ -158,6 +158,9 @@ final class Binder {
     IMPLODE("implode", 0, false),
     SPLIT("split", 1, false),
     STRINDICES("_strindices", 1, false),
+    CONTAINS("contains", 1, false),
+    BSEARCH("bsearch", 1, false),
+    BUILTINS("builtins", 0, false),
     ;
 
     private final String signature;

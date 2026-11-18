@@ -1,0 +1,129 @@
+# Differential cases (ADR-0020) of contains, inside, bsearch and builtins: jq 1.8.2's f_contains and jv_contains
+# (src/builtin.c, src/jv.c), the prelude's inside over it, f_bsearch and gen_builtin_list's list. Each on a document's
+# value (stdin) and on a built one: contains on every kind, its error for two kinds, where "Containment check too deep"
+# (ADR-0029) bites, bsearch's index and insertion points and its errors. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in search.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# contains: substrings on strings, every element of the argument in some element of the input on arrays, key by key on
+# objects, equality on the other kinds.
+
+case search/contains-strings
+arg -c
+filter map(contains("é"), contains(""), contains("ab"), contains("ba"))
+stdin ["abé","","a"]\n
+end
+
+case search/contains-arrays
+arg -c
+filter contains([[2]]), contains([{"b":[{}]}]), contains(["ell", "he"]), contains([[[4]]]), contains([[5]]), contains([]), ([] | contains([1]))
+stdin [[1,2],{"a":"xyz","b":[{"c":1}]},"hello",[3,[4]]]\n
+end
+
+case search/contains-arrays-built
+arg -c
+filter [[1, 2], [3, 4]] | contains([[4], [1]]), contains([[2, 3]]), contains([[]]), ([[1, 2], [3]] | contains([[2, 3]]))
+stdin null\n
+end
+
+case search/contains-objects
+arg -c
+filter contains({"a":"y"}), contains({"a":"y","d":1}), contains({"b":[{"c":1}]}), contains({"b":[{"c":2}]}), contains({}), contains({"n":null}), contains({"m":null})
+stdin {"a":"xyz","b":[{"c":1,"d":2}],"n":null}\n
+end
+
+case search/contains-objects-built
+arg -c
+filter {"a": ("x" + "yz"), "b": [1, 2]} | contains({"a": "y"}), contains({"b": [2]}), contains({"b": [3]}), contains({"c": null})
+stdin null\n
+end
+
+case search/contains-object-repeated-keys
+arg -c
+filter contains({"a":2}), contains({"a":1}), contains({"b":[2]}), ({"a":2,"b":[1,2,3]} | contains({"a":2,"b":[1,2],"a":5}))
+stdin {"a":1,"b":[1,2],"a":2}\n
+end
+
+case search/contains-a-document-in-a-built-value
+arg -c
+filter . as $v | ({"a": "xyz", "b": [{"c": 1, "d": 2}]} | contains($v)), ({"a": "xyz"} | contains($v)), ([$v, 0] | contains([$v]))
+stdin {"a":"y","b":[{"c":1}]}\n
+end
+
+case search/contains-scalars
+arg -c
+filter map(contains(.)), (1.0 | contains(1)), (1 | contains(2)), (null | contains(null)), (true | contains(true)), (nan | contains(nan)), ([nan] | contains([nan]))
+stdin [0,1.5,"a",null,true,false]\n
+end
+
+case search/contains-kinds-differ
+arg -c
+filter map(. as $x | try (.[0] | contains($x[1])) catch .)
+stdin [[true,false],[false,true],[1,"a"],[{},[]],[null,0],["a",["a"]]]\n
+end
+
+case search/inside
+arg -c
+filter (.[0] | inside([1, 2, 3])), (.[1] | inside("abc")), (.[2] | inside({"a": 1, "b": 2})), (try (1 | inside("a")) catch .)
+stdin [[1,2],"b",{"a":1}]\n
+end
+
+# Containment check too deep: past 10 000 levels, a pair of arrays or of objects; the depth is checked before the kinds.
+
+case search/depth-arrays
+arg -c
+filter (reduce range(10000) as $_ ([0, 0]; [[.[0]], [.[1]]])) as [$a, $b] | ($a | contains($b)), (reduce range(10001) as $_ ([0, 0]; [[.[0]], [.[1]]]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin null\n
+end
+
+case search/depth-objects
+arg -c
+filter (reduce range(10000) as $_ ([{}, {}]; [{a: .[0]}, {a: .[1]}])) as [$a, $b] | ($a | contains($b)), (reduce range(10001) as $_ ([{}, {}]; [{a: .[0]}, {a: .[1]}]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin null\n
+end
+
+case search/depth-before-kinds
+arg -c
+filter (reduce range(10000) as $_ ([0, "x"]; [[.[0]], [.[1]]])) as [$a, $b] | ($a | contains($b)), (reduce range(10001) as $_ ([0, "x"]; [[.[0]], [.[1]]]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin null\n
+end
+
+case search/depth-after-a-miss
+arg -c
+filter (reduce range(9999) as $_ ([[1, 0], [0]]; [[.[0]], [.[1]]])) as [$a, $b] | ($a | contains($b)), (reduce range(10000) as $_ ([[1, 0], [0]]; [[.[0]], [.[1]]]) as [$a, $b] | try ($a | contains($b)) catch .)
+stdin null\n
+end
+
+# bsearch: the index of an equal element, or -1 minus the insertion point; jq's value order over mixed kinds.
+
+case search/bsearch
+arg -c
+filter bsearch(2), bsearch(0), bsearch(4), bsearch(2.5), bsearch(1), bsearch(3), bsearch("a")
+stdin [1,2,3]\n
+end
+
+case search/bsearch-built
+arg -c
+filter [null, false, true, 1, "a", [1], {"a": 1}] | bsearch(true), bsearch([1]), bsearch({"a": 1}), bsearch({}), bsearch(-1), ([] | bsearch(1))
+stdin null\n
+end
+
+case search/bsearch-errors
+arg -c
+filter map(try bsearch(1) catch .), ((reduce range(10001) as $_ ([]; [.])) as $x | try ([$x] | bsearch($x)) catch .)
+stdin ["a",{},null,1,true]\n
+end
+
+# builtins: one array of the public signatures, in jq's order.
+
+case search/builtins
+arg -c
+filter builtins
+stdin null\n
+end
+
+case search/builtins-count
+arg -c
+filter (builtins | length), ([builtins[] | select(startswith("_"))] | length), ([builtins] | length)
+stdin null\n
+end
