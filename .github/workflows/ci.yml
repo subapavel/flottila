@@ -4,7 +4,9 @@
 # Once a day and on demand, before the owner's morning overview: the build of main with unit and integration
 # tests on the pinned Postgres, Error Prone, the name guard, the change guard and the demo package, and then the
 # whole stack started in Docker with the demo deployed, and the quickstart's first-run and start commands run as
-# written (node, mapping service and UI, an invoice found). It blocks nothing; a red run is the first task of the day.
+# written (node, mapping service and UI, an invoice found), and the adapter kit's commands run as docs/ADAPTERS.md writes
+# them (a new adapter built and tested, run with a node and the UI, a test message sent through it and found). It blocks
+# nothing; a red run is the first task of the day.
 # The larger reports (the oldest supported Postgres, coverage, the benchmark, mutation testing and the fork kill
 # check) are switched off for now.
 name: ci
@@ -291,6 +293,61 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  adapter-kit:
+    name: "nightly · adapter kit (docs/ADAPTERS.md: a new adapter built and tested, run with the UI, a test message found)"
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # The commands of docs/ADAPTERS.md, in its order.
+      - name: Build the kit, create an adapter, run its tests
+        run: |
+          set -euo pipefail
+          bin/install-jq && bin/install-mapping
+          mvn -B -ntp -q -f platform/pom.xml install -DskipTests -pl :rail8-cli -am
+          (cd ui && npm ci)
+          bin/rail8 new-adapter ~/acme-adapter --scheme acme --package com.acme.rail8
+          mvn -B -ntp -q -f ~/acme-adapter/pom.xml verify
+          bin/rail8 validate --plugins ~/acme-adapter/target/plugin ~/acme-adapter/package
+          bin/rail8 test --plugins ~/acme-adapter/target/plugin ~/acme-adapter/package
+      - name: Run it with the UI, send a test message through it and find it
+        run: |
+          set -euo pipefail
+          nohup bin/run-adapter ~/acme-adapter > "$RUNNER_TEMP/run-adapter.log" 2>&1 &
+          start=$(date +%s)
+          until grep -q 'Ctrl+C stops everything' "$RUNNER_TEMP/run-adapter.log"; do
+            if [ $(( $(date +%s) - start )) -ge 300 ]; then echo "::error::bin/run-adapter not running within 300 s"; exit 1; fi
+            sleep 2
+          done
+          # the UI's server answers for the node; the Sec-Fetch-Site header stands in for the browser's own page
+          ui() { curl -sf -H 'Sec-Fetch-Site: same-origin' "localhost:5173$1"; }
+          components=$(ui /admin/components)
+          echo "$components" | grep -q '"scheme":"acme"'
+          endpoints=$(ui /files/endpoints)
+          echo "$endpoints" | grep -q '"path":"package/endpoints/orders-in.yaml"'
+          reply=$(curl -sf -X POST --data-binary @"$HOME/acme-adapter/package/fixtures/order.xml" -H 'Content-Type: application/xml' localhost:18090/orders)
+          echo "$reply"
+          [ "$reply" = '<Order><Id>7</Id></Order>' ]
+          for _ in $(seq 1 30); do
+            found=$(ui '/admin/messages?key=orderId:7' || true)
+            echo "$found" | grep -q '"items":\["' && exit 0
+            sleep 2
+          done
+          echo "::error::the test message was not found through the UI's /admin: $found"; exit 1
+      - name: Logs on failure
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/run-adapter.log" ~/acme-adapter/target/run-adapter/*.log || true
 
   fork-kill:
     name: "nightly · a test JVM that dies fails the build, in every module (ci/fork_kill_check.py)"

@@ -1,0 +1,150 @@
+#!/bin/sh
+# run-adapter: runs an adapter on this machine with a node and the UI, until Ctrl+C.
+#
+#   bin/run-adapter <adapter-dir>
+#
+# <adapter-dir> is an adapter's Maven project, as `bin/rail8 new-adapter` writes one: its pom.xml builds the plugin jar into
+# target/plugin, and package/ holds a package that uses the adapter. In order, the script:
+#   1. builds the adapter's jar (mvn package, tests skipped: `mvn verify` runs them);
+#   2. starts a Postgres of its own in Docker, empty, on a free loopback port;
+#   3. starts a node of environment dev from the platform's runtime jar, with the adapter's target/plugin as its plugins and
+#      its admin API on 127.0.0.1:18081 without a token; its log and data are in <adapter-dir>/target/run-adapter;
+#   4. deploys <adapter-dir>/package to it;
+#   5. starts a partner that answers every request with the body it was sent on 127.0.0.1:18091, the port the template's out
+#      endpoint calls;
+#   6. runs the UI on http://localhost:5173 with <adapter-dir> as its working folder: the Endpoints screen shows the
+#      adapter's settings forms, and Save writes the endpoint files there; the Messages screen finds what the node stored.
+# Ctrl+C stops the UI, the partner and the node, and removes the Postgres container. Each run starts empty and deploys the
+# package as it is on disk: after a change to the adapter or its package, run the script again.
+#
+# Needs a checkout of Rail8 with the platform built and the UI installed (docs/ADAPTERS.md), Docker, a JDK 25, Maven, Node.js
+# and curl. Exits 2 on a usage error, 1 when a step fails, each with one line naming what failed.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+admin_port=18081
+partner_port=18091
+ui_port=5173
+pg_image=postgres:18.6
+
+fail() { echo "run-adapter: $1" >&2; exit "${2:-1}"; }
+
+[ "$#" -eq 1 ] || fail "usage: bin/run-adapter <adapter-dir>" 2
+[ -d "$1" ] || fail "no adapter directory at $1" 2
+dir=$(cd "$1" && pwd)
+[ -f "$dir/pom.xml" ] || fail "$dir has no pom.xml: not an adapter's project" 2
+[ -f "$dir/package/package.yaml" ] || fail "$dir/package/package.yaml not found: the package to deploy" 2
+
+for tool in docker java mvn node curl; do
+  command -v "$tool" > /dev/null 2>&1 || fail "$tool is not installed"
+done
+docker info > /dev/null 2>&1 || fail "Docker is not running"
+if [ -n "${JAVA_HOME:-}" ]; then java="$JAVA_HOME/bin/java"; else java=java; fi
+
+runtime=
+for candidate in "$root"/platform/runtime/target/rail8-runtime-*.jar; do
+  case $candidate in
+    *-sources.jar|*-javadoc.jar|*-tests.jar) ;;
+    *) runtime=$candidate ;;
+  esac
+done
+[ -n "$runtime" ] && [ -f "$runtime" ] || fail "no runtime jar in $root/platform/runtime/target: build the platform first (docs/ADAPTERS.md)"
+[ -x "$root/ui/node_modules/.bin/vite" ] || fail "the UI is not installed: run (cd $root/ui && npm ci)"
+
+# curl's exit code 7 is "could not connect": nothing listens there
+for port in $admin_port $partner_port $ui_port; do
+  code=0
+  curl -s -o /dev/null --max-time 2 "http://localhost:$port/" || code=$?
+  [ "$code" -eq 7 ] || fail "port $port is taken: stop what listens there (the quickstart's UI uses $ui_port)"
+done
+
+echo "run-adapter: building $dir"
+mvn -B -ntp -q -f "$dir/pom.xml" package -DskipTests || fail "the adapter's build failed"
+[ -d "$dir/target/plugin" ] || fail "the build wrote no $dir/target/plugin"
+
+run="$dir/target/run-adapter"
+rm -rf "$run"
+mkdir -p "$run"
+container="rail8-adapter-pg-$$"
+node_pid=
+partner_pid=
+ui_pid=
+
+stop() {
+  for pid in $ui_pid $partner_pid $node_pid; do
+    kill "$pid" 2> /dev/null || true
+  done
+  for pid in $ui_pid $partner_pid $node_pid; do
+    wait "$pid" 2> /dev/null || true
+  done
+  docker rm -f "$container" > /dev/null 2>&1 || true
+}
+trap stop EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+echo "run-adapter: starting Postgres ($pg_image)"
+docker run -d --rm --name "$container" -e POSTGRES_DB=rail8 -e POSTGRES_USER=rail8 -e POSTGRES_PASSWORD=rail8 \
+  -p 127.0.0.1::5432 "$pg_image" > /dev/null || fail "Postgres did not start"
+# over TCP: the image's first, socket-only server during its set-up does not count
+waited=0
+until docker exec "$container" pg_isready -q -h 127.0.0.1 -U rail8 -d rail8 > /dev/null 2>&1; do
+  [ "$waited" -lt 60 ] || fail "Postgres not ready within 60 s"
+  sleep 1
+  waited=$((waited + 1))
+done
+pg_port=$(docker port "$container" 5432/tcp | head -n 1 | sed 's/.*://')
+
+echo "run-adapter: starting the node with the plugins in $dir/target/plugin (log: $run/node.log)"
+(
+  unset RAIL8_ADMIN_TOKEN
+  RAIL8_ENV=dev RAIL8_NODE_ID=run-adapter RAIL8_PG_HOST=127.0.0.1 RAIL8_PG_PORT="$pg_port" RAIL8_PG_PASSWORD=rail8 \
+    RAIL8_ADMIN_PORT=$admin_port RAIL8_DATA_DIR="$run/node" RAIL8_JOURNAL_KEY_GENERATE=true RAIL8_PLUGINS="$dir/target/plugin" \
+    exec "$java" -jar "$runtime"
+) > "$run/node.log" 2>&1 &
+node_pid=$!
+waited=0
+until curl -sf "http://127.0.0.1:$admin_port/health" > /dev/null 2>&1; do
+  if ! kill -0 "$node_pid" 2> /dev/null; then
+    tail -n 20 "$run/node.log" >&2
+    fail "the node stopped; its log: $run/node.log"
+  fi
+  [ "$waited" -lt 120 ] || fail "the node's /health not green within 120 s; its log: $run/node.log"
+  sleep 1
+  waited=$((waited + 1))
+done
+
+echo "run-adapter: deploying $dir/package"
+(unset RAIL8_ADMIN_TOKEN; "$root/bin/rail8" deploy "$dir/package" --admin "http://127.0.0.1:$admin_port") \
+  || fail "the node refused the package; its log: $run/node.log"
+
+"$java" "$root/deploy/quickstart/PartnerEcho.java" $partner_port > "$run/partner.log" 2>&1 &
+partner_pid=$!
+
+# the UI's `npm run dev`, started as vite itself so that the stop reaches it
+(
+  unset RAIL8_ADMIN_TOKEN
+  cd "$root/ui"
+  RAIL8_WORKSPACE="$dir" RAIL8_ADMIN_URL="http://127.0.0.1:$admin_port" exec node_modules/.bin/vite
+) > "$run/ui.log" 2>&1 &
+ui_pid=$!
+waited=0
+until curl -sf "http://localhost:$ui_port/" > /dev/null 2>&1; do
+  if ! kill -0 "$ui_pid" 2> /dev/null; then
+    tail -n 20 "$run/ui.log" >&2
+    fail "the UI stopped; its log: $run/ui.log"
+  fi
+  [ "$waited" -lt 90 ] || fail "the UI not answering within 90 s; its log: $run/ui.log"
+  sleep 1
+  waited=$((waited + 1))
+done
+
+cat << EOF
+
+The adapter runs. Open http://localhost:$ui_port: Endpoints shows the package's endpoint files and their settings forms
+(Save writes them into $dir), Messages finds what the node stored.
+A test message to the template's in endpoint, from another terminal:
+  curl -X POST --data-binary @$dir/package/fixtures/order.xml -H 'Content-Type: application/xml' localhost:18090/orders
+Then search Messages by key name orderId and value 7. Logs: $run. Ctrl+C stops everything.
+EOF
+wait "$ui_pid"
