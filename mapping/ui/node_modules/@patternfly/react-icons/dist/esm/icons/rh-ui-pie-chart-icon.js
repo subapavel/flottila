@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiPieChartIconConfig = {
+  name: 'RhUiPieChartIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 15H17.996a.997.997 0 0 1-.996-.996V2a1 1 0 0 0-1-1A15.023 15.023 0 0 0 4.823 5.998c-2.842 3.173-4.2 7.44-3.729 11.707.762 6.887 6.313 12.439 13.201 13.201.557.062 1.114.092 1.668.092 3.694 0 7.28-1.35 10.039-3.82A15.023 15.023 0 0 0 31 16.001a1 1 0 0 0-1-1Zm-5.332 10.688c-2.79 2.499-6.391 3.652-10.153 3.23-5.965-.66-10.773-5.468-11.432-11.433-.416-3.757.731-7.362 3.23-10.153a13.024 13.024 0 0 1 8.688-4.293v10.966a3 3 0 0 0 2.996 2.996h10.966a13.027 13.027 0 0 1-4.293 8.688ZM20 11V2.93a1 1 0 0 1 1.355-.934 14.932 14.932 0 0 1 8.649 8.649A1.001 1.001 0 0 1 29.07 12H21a1 1 0 0 1-1-1Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiPieChartIcon = createIconBase(RhUiPieChartIconConfig);
+
+export default RhUiPieChartIcon;

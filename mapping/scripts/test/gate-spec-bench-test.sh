@@ -6,8 +6,11 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 real_java=$(command -v java)
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# the scratch copy of the repository: the mapping's root is mapping/, the UI is ui/ beside it
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+tmp=$scratch/mapping
+ui=$scratch/ui
 fails=0
 check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fails=1; else echo "ok   $1"; fi; }
 lines() { echo "$1" | grep -cF -- "$2"; }
@@ -46,8 +49,8 @@ if [ "$*" = "run e2e -- tree-20128" ]; then
 fi
 exit 0
 EOF
-mkdir -p "$tmp/ui"
-echo '{}' > "$tmp/ui/package.json"
+mkdir -p "$ui"
+echo '{}' > "$ui/package.json"
 chmod +x "$tmp/mvnw" "$tmp/scripts/pit-summary.sh" "$tmp/bin/nproc" "$tmp/bin/java" "$tmp/bin/npm"
 
 B=dev.rail8.mapping.bench
@@ -61,7 +64,7 @@ row="orders/small/latency	$M	100	us/op"
 # gate [<label>] [<nproc>]: the gate's output; the bench.tsv row, the calls and the logs reset first
 gate() {
   printf '%s\n%s\n' "$row" "$treerow" > "$tmp/ratchet/bench.tsv"
-  rm -rf "$tmp/jmh-calls" "$tmp/tree-calls" "$tmp/.logs" "$tmp/ui/.logs"
+  rm -rf "$tmp/jmh-calls" "$tmp/tree-calls" "$tmp/.logs" "$ui/.logs"
   (cd "$tmp" && MACHINE_LABEL=${1:-} NPROC=${2:-4} PATH="$tmp/bin:$PATH" scripts/gate-spec.sh 1 2>&1)
 }
 calls() { if [ -f "$tmp/jmh-calls" ]; then wc -l < "$tmp/jmh-calls"; else echo 0; fi; }
@@ -162,9 +165,9 @@ check "failed re-run: judged" "$(lines "$out" 'VERIFIED_PASS  5 bench judgement 
 rm "$tmp/canned/jmh-3.fail"
 
 # the tree scenario (#188): three runs of `npm run e2e -- tree-20128`, each with its own result file in TREE_P95_FILE,
-# the median in ui/.logs/<spec>-tree-20128.json. Unlabelled it is printed; labelled it is judged with the JMH file.
+# the median in ../ui/.logs/<spec>-tree-20128.json. Unlabelled it is printed; labelled it is judged with the JMH file.
 tcalls() { if [ -f "$tmp/tree-calls" ]; then wc -l < "$tmp/tree-calls"; else echo 0; fi; }
-tfile="$tmp/ui/.logs/1-tree-20128.json"
+tfile="$ui/.logs/1-tree-20128.json"
 tjson() { printf '{"scenario":"ui/tree-20128/scroll","score":%s,"unit":"ms"}\n' "$1"; }
 row="orders/small/latency	$M	100	us/op"
 latency 1 105

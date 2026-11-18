@@ -1,0 +1,302 @@
+import { useState } from 'react';
+import {
+  Avatar,
+  Brand,
+  Breadcrumb,
+  BreadcrumbItem,
+  Button,
+  ButtonVariant,
+  Card,
+  CardBody,
+  Content,
+  Divider,
+  Dropdown,
+  DropdownGroup,
+  DropdownItem,
+  DropdownList,
+  Gallery,
+  GalleryItem,
+  Masthead,
+  MastheadMain,
+  MastheadLogo,
+  MastheadContent,
+  MastheadBrand,
+  MastheadToggle,
+  MenuToggle,
+  MenuToggleElement,
+  Nav,
+  NavItem,
+  NavList,
+  NotificationBadge,
+  NotificationBadgeVariant,
+  Page,
+  PageSection,
+  PageSidebar,
+  PageSidebarBody,
+  PageToggleButton,
+  SkipToContent,
+  Toolbar,
+  ToolbarContent,
+  ToolbarGroup,
+  ToolbarItem
+} from '@patternfly/react-core';
+import RhUiSettingsFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-settings-fill-icon';
+import RhUiQuestionMarkCircleIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-icon';
+import RhUiQuestionMarkCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-fill-icon';
+import RhUiEllipsisVerticalFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-ellipsis-vertical-fill-icon';
+import imgAvatar from '@patternfly/react-core/src/components/assets/avatarImg.svg';
+import pfLogo from '@patternfly/react-core/src/demos/assets/PF-HorizontalLogo-Color.svg';
+interface NavOnSelectProps {
+  groupId: number | string;
+  itemId: number | string;
+  to: string;
+}
+
+export const PageStickySectionGroup: React.FunctionComponent = () => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isKebabDropdownOpen, setIsKebabDropdownOpen] = useState(false);
+  const [isFullKebabDropdownOpen, setIsFullKebabDropdownOpen] = useState(false);
+  const [activeItem, setActiveItem] = useState(1);
+
+  const onNavSelect = (_event: React.FormEvent<HTMLInputElement>, selectedItem: NavOnSelectProps) => {
+    typeof selectedItem.itemId === 'number' && setActiveItem(selectedItem.itemId);
+  };
+
+  const onDropdownToggle = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const onDropdownSelect = () => {
+    setIsDropdownOpen(false);
+  };
+
+  const onKebabDropdownToggle = () => {
+    setIsKebabDropdownOpen(!isKebabDropdownOpen);
+  };
+
+  const onKebabDropdownSelect = () => {
+    setIsKebabDropdownOpen(false);
+  };
+
+  const onFullKebabDropdownToggle = () => {
+    setIsFullKebabDropdownOpen(!isFullKebabDropdownOpen);
+  };
+
+  const onFullKebabDropdownSelect = () => {
+    setIsFullKebabDropdownOpen(false);
+  };
+
+  const dashboardBreadcrumb = (
+    <Breadcrumb>
+      <BreadcrumbItem>Section home</BreadcrumbItem>
+      <BreadcrumbItem to="#">Section title</BreadcrumbItem>
+      <BreadcrumbItem to="#">Section title</BreadcrumbItem>
+      <BreadcrumbItem to="#" isActive>
+        Section landing
+      </BreadcrumbItem>
+    </Breadcrumb>
+  );
+
+  const kebabDropdownItems = (
+    <>
+      <DropdownItem>
+        <RhUiSettingsFillIcon /> Settings
+      </DropdownItem>
+      <DropdownItem>
+        <RhUiQuestionMarkCircleIcon /> Help
+      </DropdownItem>
+    </>
+  );
+  const userDropdownItems = (
+    <>
+      <DropdownItem key="group 2 profile">My profile</DropdownItem>
+      <DropdownItem key="group 2 user">User management</DropdownItem>
+      <DropdownItem key="group 2 logout">Logout</DropdownItem>
+    </>
+  );
+
+  const headerToolbar = (
+    <Toolbar id="toolbar" isStatic>
+      <ToolbarContent>
+        <ToolbarGroup
+          variant="action-group-plain"
+          align={{ default: 'alignEnd' }}
+          gap={{ default: 'gapNone', md: 'gapMd' }}
+        >
+          <ToolbarItem>
+            <NotificationBadge aria-label="Notifications" variant={NotificationBadgeVariant.plain} onClick={() => {}} />
+          </ToolbarItem>
+          <ToolbarGroup variant="action-group-plain" visibility={{ default: 'hidden', lg: 'visible' }}>
+            <ToolbarItem>
+              <Button aria-label="Settings" isSettings variant="plain" />
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button aria-label="Help" variant={ButtonVariant.plain} icon={<RhUiQuestionMarkCircleFillIcon />} />
+            </ToolbarItem>
+          </ToolbarGroup>
+          <ToolbarItem visibility={{ default: 'hidden', md: 'visible', lg: 'hidden' }}>
+            <Dropdown
+              isOpen={isKebabDropdownOpen}
+              onSelect={onKebabDropdownSelect}
+              onOpenChange={(isOpen: boolean) => setIsKebabDropdownOpen(isOpen)}
+              popperProps={{ position: 'right' }}
+              toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  onClick={onKebabDropdownToggle}
+                  isExpanded={isKebabDropdownOpen}
+                  variant="plain"
+                  aria-label="Settings and help"
+                  icon={<RhUiEllipsisVerticalFillIcon />}
+                />
+              )}
+            >
+              <DropdownList>{kebabDropdownItems}</DropdownList>
+            </Dropdown>
+          </ToolbarItem>
+          <ToolbarItem visibility={{ md: 'hidden' }}>
+            <Dropdown
+              isOpen={isFullKebabDropdownOpen}
+              onSelect={onFullKebabDropdownSelect}
+              onOpenChange={(isOpen: boolean) => setIsFullKebabDropdownOpen(isOpen)}
+              popperProps={{ position: 'right' }}
+              toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  onClick={onFullKebabDropdownToggle}
+                  isExpanded={isFullKebabDropdownOpen}
+                  variant="plain"
+                  aria-label="Toolbar menu"
+                  icon={<RhUiEllipsisVerticalFillIcon />}
+                />
+              )}
+            >
+              <DropdownGroup key="group 2" aria-label="User actions">
+                <DropdownList>{userDropdownItems}</DropdownList>
+              </DropdownGroup>
+              <Divider />
+              <DropdownList>{kebabDropdownItems}</DropdownList>
+            </Dropdown>
+          </ToolbarItem>
+        </ToolbarGroup>
+        <ToolbarItem visibility={{ default: 'hidden', md: 'visible' }}>
+          <Dropdown
+            isOpen={isDropdownOpen}
+            onSelect={onDropdownSelect}
+            onOpenChange={(isOpen: boolean) => setIsDropdownOpen(isOpen)}
+            popperProps={{ position: 'right' }}
+            toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+              <MenuToggle
+                ref={toggleRef}
+                onClick={onDropdownToggle}
+                isExpanded={isDropdownOpen}
+                icon={<Avatar src={imgAvatar} alt="" size="sm" />}
+              >
+                Ned Username
+              </MenuToggle>
+            )}
+          >
+            <DropdownList>{userDropdownItems}</DropdownList>
+          </Dropdown>
+        </ToolbarItem>
+      </ToolbarContent>
+    </Toolbar>
+  );
+
+  const masthead = (
+    <Masthead>
+      <MastheadMain>
+        <MastheadToggle>
+          <PageToggleButton isHamburgerButton aria-label="Global navigation" />
+        </MastheadToggle>
+        <MastheadBrand>
+          <MastheadLogo>
+            <Brand src={pfLogo} alt="PatternFly" heights={{ default: '36px' }} />
+          </MastheadLogo>
+        </MastheadBrand>
+      </MastheadMain>
+      <MastheadContent>{headerToolbar}</MastheadContent>
+    </Masthead>
+  );
+
+  const pageNav = (
+    <Nav onSelect={onNavSelect}>
+      <NavList>
+        <NavItem itemId={0} isActive={activeItem === 0} to="#system-panel">
+          System panel
+        </NavItem>
+        <NavItem itemId={1} isActive={activeItem === 1} to="#policy">
+          Policy
+        </NavItem>
+        <NavItem itemId={2} isActive={activeItem === 2} to="#auth">
+          Authentication
+        </NavItem>
+        <NavItem itemId={3} isActive={activeItem === 3} to="#network">
+          Network services
+        </NavItem>
+        <NavItem itemId={4} isActive={activeItem === 4} to="#server">
+          Server
+        </NavItem>
+      </NavList>
+    </Nav>
+  );
+
+  const sidebar = (
+    <PageSidebar>
+      <PageSidebarBody>{pageNav}</PageSidebarBody>
+    </PageSidebar>
+  );
+
+  const mainContainerId = 'main-content';
+
+  const handleClick = (event) => {
+    event.preventDefault();
+
+    const mainContentElement = document.getElementById(mainContainerId);
+    if (mainContentElement) {
+      mainContentElement.focus();
+    }
+  };
+
+  const pageSkipToContent = (
+    <SkipToContent onClick={handleClick} href={`#${mainContainerId}`}>
+      Skip to content
+    </SkipToContent>
+  );
+
+  return (
+    <Page
+      masthead={masthead}
+      sidebar={sidebar}
+      isManagedSidebar
+      skipToContent={pageSkipToContent}
+      breadcrumb={dashboardBreadcrumb}
+      mainContainerId={mainContainerId}
+      isBreadcrumbWidthLimited
+      isBreadcrumbGrouped
+      additionalGroupedContent={
+        <PageSection isWidthLimited aria-labelledby="main-title">
+          <Content>
+            <h1 id="main-title">Main title</h1>
+            <p>This is a full page demo.</p>
+          </Content>
+        </PageSection>
+      }
+      groupProps={{
+        stickyOnBreakpoint: { default: 'top' }
+      }}
+    >
+      <PageSection aria-label="Card gallery">
+        <Gallery hasGutter>
+          {Array.from({ length: 50 }).map((_value, index) => (
+            <GalleryItem key={index}>
+              <Card>
+                <CardBody>This is a card</CardBody>
+              </Card>
+            </GalleryItem>
+          ))}
+        </Gallery>
+      </PageSection>
+    </Page>
+  );
+};

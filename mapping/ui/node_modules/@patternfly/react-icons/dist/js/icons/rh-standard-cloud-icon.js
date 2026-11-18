@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardCloudIconConfig = {
+  name: 'RhStandardCloudIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M28.62 17.52a9.12 9.12 0 0 0-17.28-4.07 7.12 7.12 0 1 0-.84 14.19H28a.75.75 0 0 0 .26-.05 5.11 5.11 0 0 0 .36-10Zm-1.12 8.86h-17a5.88 5.88 0 1 1 1.09-11.65.64.64 0 0 0 .69-.36 7.87 7.87 0 0 1 15.1 3.13v.5a.63.63 0 0 0 .56.66 3.87 3.87 0 0 1-.41 7.71Z"},
+  rhUiIcon: null,
+};
+exports.RhStandardCloudIcon = require('../createIcon').createIconBase(exports.RhStandardCloudIconConfig);
+exports["default"] = exports.RhStandardCloudIcon;

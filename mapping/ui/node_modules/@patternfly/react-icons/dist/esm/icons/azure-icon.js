@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const AzureIconConfig = {
+  name: 'AzureIcon',
+  icon: {"xOffset":0,"yOffset":-10,"width":160,"height":150,"svgPathData":"m88.33 0-47.66 41.33-40.67 73h36.67zm6.34 9.67-20.34 57.33 39 49-75.66 13h124z"},
+  rhUiIcon: null,
+};
+
+export const AzureIcon = createIconBase(AzureIconConfig);
+
+export default AzureIcon;

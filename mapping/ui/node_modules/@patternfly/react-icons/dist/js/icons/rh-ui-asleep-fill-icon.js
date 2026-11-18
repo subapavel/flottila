@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiAsleepFillIconConfig = {
+  name: 'RhUiAsleepFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm9.569 17.902A9.941 9.941 0 0 1 16 26c-5.514 0-10-4.486-10-10a9.94 9.94 0 0 1 7.098-9.569 1 1 0 0 1 1.247 1.246A8.025 8.025 0 0 0 14 10c0 4.411 3.589 8 8 8 .784 0 1.565-.116 2.323-.345a1 1 0 0 1 1.246 1.247Z"},
+  rhUiIcon: null,
+};
+exports.RhUiAsleepFillIcon = require('../createIcon').createIconBase(exports.RhUiAsleepFillIconConfig);
+exports["default"] = exports.RhUiAsleepFillIcon;

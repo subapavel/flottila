@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiLaptopFillIconConfig: {
+  name: 'RhUiLaptopFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 27a1 1 0 0 1-1 1H2a1 1 0 1 1 0-2h28a1 1 0 0 1 1 1ZM3 21.5v-16C3 4.673 3.673 4 4.5 4h23c.827 0 1.5.673 1.5 1.5v16c0 .827-.673 1.5-1.5 1.5h-23c-.827 0-1.5-.673-1.5-1.5ZM14.25 8a1.75 1.75 0 1 0 3.5 0 1.75 1.75 0 0 0-3.5 0Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiLaptopFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiLaptopFillIcon;

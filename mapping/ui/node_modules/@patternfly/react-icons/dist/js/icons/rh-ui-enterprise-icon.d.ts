@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiEnterpriseIconConfig: {
+  name: 'RhUiEnterpriseIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M27.5 1h-23C3.673 1 3 1.673 3 2.5v27c0 .827.673 1.5 1.5 1.5h23c.827 0 1.5-.673 1.5-1.5v-27c0-.827-.673-1.5-1.5-1.5ZM17 13V9h4v4h-4Zm-6 0V9h4v4h-4Zm-6 0V9h4v4H5Zm10-6h-4V3h4v4Zm2-4h4v4h-4V3Zm6 6h4v4h-4V9Zm4-2h-4V3h4v4ZM9 3v4H5V3h4Zm3 26v-8h3v8h-3Zm5 0v-8h3v8h-3Zm5 0v-8.5c0-.827-.673-1.5-1.5-1.5h-9c-.827 0-1.5.673-1.5 1.5V29H5V15h22v14h-5Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiEnterpriseIcon: ComponentClass<SVGIconProps>;
+export default RhUiEnterpriseIcon;

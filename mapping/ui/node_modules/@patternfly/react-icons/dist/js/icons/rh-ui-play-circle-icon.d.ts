@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiPlayCircleIconConfig: {
+  name: 'RhUiPlayCircleIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm7.659-13c0 .379-.214.725-.553.895l-10.659 5.329a1.005 1.005 0 0 1-.973-.044 1 1 0 0 1-.474-.851V10.672a1 1 0 0 1 1.447-.895l10.659 5.329a1 1 0 0 1 .553.895Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiPlayCircleIcon: ComponentClass<SVGIconProps>;
+export default RhUiPlayCircleIcon;

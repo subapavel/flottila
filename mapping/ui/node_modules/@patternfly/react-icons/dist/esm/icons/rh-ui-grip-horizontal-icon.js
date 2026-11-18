@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiGripHorizontalIconConfig = {
+  name: 'RhUiGripHorizontalIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.75 6h-5.5C23.561 6 23 6.561 23 7.25v5.5c0 .689.561 1.25 1.25 1.25h5.5c.689 0 1.25-.561 1.25-1.25v-5.5C31 6.561 30.439 6 29.75 6ZM29 12h-4V8h4v4Zm.75 6h-5.5c-.689 0-1.25.561-1.25 1.25v5.5c0 .689.561 1.25 1.25 1.25h5.5c.689 0 1.25-.561 1.25-1.25v-5.5c0-.689-.561-1.25-1.25-1.25ZM29 24h-4v-4h4v4ZM18.75 6h-5.5C12.561 6 12 6.561 12 7.25v5.5c0 .689.561 1.25 1.25 1.25h5.5c.689 0 1.25-.561 1.25-1.25v-5.5C20 6.561 19.439 6 18.75 6ZM18 12h-4V8h4v4Zm.75 6h-5.5c-.689 0-1.25.561-1.25 1.25v5.5c0 .689.561 1.25 1.25 1.25h5.5c.689 0 1.25-.561 1.25-1.25v-5.5c0-.689-.561-1.25-1.25-1.25ZM18 24h-4v-4h4v4ZM7.75 6h-5.5C1.561 6 1 6.561 1 7.25v5.5c0 .689.561 1.25 1.25 1.25h5.5C8.439 14 9 13.439 9 12.75v-5.5C9 6.561 8.439 6 7.75 6ZM7 12H3V8h4v4Zm.75 6h-5.5C1.561 18 1 18.561 1 19.25v5.5c0 .689.561 1.25 1.25 1.25h5.5C8.439 26 9 25.439 9 24.75v-5.5C9 18.561 8.439 18 7.75 18ZM7 24H3v-4h4v4Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiGripHorizontalIcon = createIconBase(RhUiGripHorizontalIconConfig);
+
+export default RhUiGripHorizontalIcon;

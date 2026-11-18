@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardChecklistIconConfig = {
+  name: 'RhStandardChecklistIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M28 4.38H11.84a.55.55 0 0 0-.28.15l-4 4a.55.55 0 0 0-.15.28.24.24 0 0 0 0 .08V31a.61.61 0 0 0 .62.62H28a.61.61 0 0 0 .62-.62V5a.61.61 0 0 0-.62-.62ZM11.38 6.51v1.87H9.51Zm16 23.87H8.62V9.62H12a.61.61 0 0 0 .62-.62V5.62h14.76Z"},{"path":"M14 22.62h8a.61.61 0 0 0 .62-.62v-2.67a.62.62 0 0 0-1.24 0v2.05h-6.76v-6.76h4.71a.62.62 0 0 0 0-1.24H14a.61.61 0 0 0-.62.62v8a.61.61 0 0 0 .62.62Z"},{"path":"M17.11 17.56c-.57-.58-1.47.32-.89.88l1.34 1.34a.63.63 0 0 0 .88 0l4-4c.58-.57-.32-1.47-.88-.89L18 18.45Z"}]},
+  rhUiIcon: null,
+};
+exports.RhStandardChecklistIcon = require('../createIcon').createIconBase(exports.RhStandardChecklistIconConfig);
+exports["default"] = exports.RhStandardChecklistIcon;

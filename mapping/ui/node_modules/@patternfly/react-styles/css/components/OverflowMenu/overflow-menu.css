@@ -1,0 +1,52 @@
+.pf-v6-c-overflow-menu {
+  --pf-v6-c-overflow-menu--ColumnGap: var(--pf-t--global--spacer--md);
+  --pf-v6-c-overflow-menu--RowGap: var(--pf-t--global--spacer--md);
+  --pf-v6-c-overflow-menu__group--ColumnGap: var(--pf-t--global--spacer--md);
+  --pf-v6-c-overflow-menu__group--RowGap: var(--pf-t--global--spacer--md);
+  --pf-v6-c-overflow-menu__group--m-button-group--ColumnGap: var(--pf-t--global--spacer--sm);
+  --pf-v6-c-overflow-menu__group--m-button-group--RowGap: var(--pf-t--global--spacer--sm);
+  --pf-v6-c-overflow-menu__group--m-icon-button-group--ColumnGap: var(--pf-t--global--spacer--xs);
+  --pf-v6-c-overflow-menu__group--m-icon-button-group--RowGap: var(--pf-t--global--spacer--xs);
+}
+
+.pf-v6-c-overflow-menu {
+  display: inline-flex;
+  row-gap: var(--pf-v6-c-overflow-menu--RowGap);
+  column-gap: var(--pf-v6-c-overflow-menu--ColumnGap);
+}
+
+.pf-v6-c-overflow-menu.pf-m-vertical,
+.pf-v6-c-overflow-menu.pf-m-vertical .pf-v6-c-overflow-menu__content,
+.pf-v6-c-overflow-menu.pf-m-vertical .pf-v6-c-overflow-menu__group {
+  flex-direction: column;
+}
+
+.pf-v6-c-overflow-menu__content,
+.pf-v6-c-overflow-menu__group {
+  display: flex;
+  align-items: start;
+}
+
+.pf-v6-c-overflow-menu__group {
+  row-gap: var(--pf-v6-c-overflow-menu__group--RowGap);
+  column-gap: var(--pf-v6-c-overflow-menu__group--ColumnGap);
+}
+.pf-v6-c-overflow-menu__group.pf-m-button-group {
+  row-gap: var(--pf-v6-c-overflow-menu__group--m-button-group--RowGap);
+  column-gap: var(--pf-v6-c-overflow-menu__group--m-button-group--ColumnGap);
+}
+.pf-v6-c-overflow-menu__group.pf-m-icon-button-group {
+  row-gap: var(--pf-v6-c-overflow-menu__group--m-icon-button-group--RowGap);
+  column-gap: var(--pf-v6-c-overflow-menu__group--m-icon-button-group--ColumnGap);
+}
+
+.pf-v6-c-overflow-menu__item {
+  row-gap: var(--pf-v6-c-overflow-menu__item--RowGap, var(--pf-v6-c-overflow-menu--RowGap));
+  column-gap: var(--pf-v6-c-overflow-menu__item--ColumnGap, var(--pf-v6-c-overflow-menu--ColumnGap));
+}
+
+.pf-v6-c-overflow-menu__content,
+.pf-v6-c-overflow-menu__control {
+  row-gap: var(--pf-v6-c-overflow-menu--RowGap);
+  column-gap: var(--pf-v6-c-overflow-menu--ColumnGap);
+}

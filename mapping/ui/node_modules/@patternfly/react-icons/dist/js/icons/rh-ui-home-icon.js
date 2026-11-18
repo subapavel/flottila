@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiHomeIconConfig = {
+  name: 'RhUiHomeIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.707 15.435 17.061 1.789a1.501 1.501 0 0 0-2.121 0L1.293 15.435a.999.999 0 1 0 1.414 1.414L3 16.556V29.5c0 .827.673 1.5 1.5 1.5h23c.827 0 1.5-.673 1.5-1.5V16.556l.293.293a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414ZM19 29h-6V19h6v10Zm8-10v10h-6V18.5c0-.827-.673-1.5-1.5-1.5h-7c-.827 0-1.5.673-1.5 1.5V29H5V14.556l11-11 11 11V19Z"},
+  rhUiIcon: null,
+};
+exports.RhUiHomeIcon = require('../createIcon').createIconBase(exports.RhUiHomeIconConfig);
+exports["default"] = exports.RhUiHomeIcon;

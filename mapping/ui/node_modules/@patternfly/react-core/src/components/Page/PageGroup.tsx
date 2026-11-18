@@ -1,0 +1,89 @@
+import { useContext, useEffect } from 'react';
+import { css } from '@patternfly/react-styles';
+import styles from '@patternfly/react-styles/css/components/Page/page';
+import { formatBreakpointMods } from '../../helpers/util';
+import { PageContext } from './PageContext';
+export interface PageGroupProps extends React.HTMLProps<HTMLDivElement> {
+  /** Additional classes to apply to the PageGroup */
+  className?: string;
+  /** Content rendered inside of the PageGroup */
+  children?: React.ReactNode;
+  /** Modifier indicating if the PageBreadcrumb is sticky to the top or bottom at various breakpoints */
+  stickyOnBreakpoint?: {
+    default?: 'top' | 'bottom';
+    sm?: 'top' | 'bottom';
+    md?: 'top' | 'bottom';
+    lg?: 'top' | 'bottom';
+    xl?: 'top' | 'bottom';
+    '2xl'?: 'top' | 'bottom';
+  };
+  /** @beta Applies the base sticky positioning to the top or bottom of the scroll parent container. */
+  stickyBase?: 'top' | 'bottom';
+  /** @beta Flag indicating if the group has stuck styling, applied when the group is not at the edge of the scroll parent container. */
+  isStickyStuck?: boolean;
+  /** Enables the page group to fill the available vertical space if true, or disable filling if false. */
+  isFilled?: boolean;
+  /** Modifier indicating if PageGroup should have a shadow at the top */
+  hasShadowTop?: boolean;
+  /** Modifier indicating if PageGroup should have a shadow at the bottom */
+  hasShadowBottom?: boolean;
+  /** Flag indicating if the PageGroup has a scrolling overflow */
+  hasOverflowScroll?: boolean;
+  /** Adds an accessible name to the page group when the hasOverflowScroll prop is set to true. */
+  'aria-label'?: string;
+  /** Adds plain styling to the page group. */
+  isPlain?: boolean;
+  /** @beta Prevents the page group from automatically applying plain styling when glass theme is enabled. */
+  isNoPlainOnGlass?: boolean;
+}
+
+export const PageGroup = ({
+  className = '',
+  children,
+  stickyOnBreakpoint,
+  stickyBase,
+  isStickyStuck = false,
+  isFilled,
+  hasShadowTop = false,
+  hasShadowBottom = false,
+  hasOverflowScroll = false,
+  'aria-label': ariaLabel,
+  isPlain = false,
+  isNoPlainOnGlass = false,
+  ...props
+}: PageGroupProps) => {
+  const { height, getVerticalBreakpoint } = useContext(PageContext);
+
+  useEffect(() => {
+    if (hasOverflowScroll && !ariaLabel) {
+      /* eslint-disable no-console */
+      console.warn('PageGroup: An accessible aria-label is required when hasOverflowScroll is set to true.');
+    }
+  }, [hasOverflowScroll, ariaLabel]);
+
+  return (
+    <div
+      {...props}
+      className={css(
+        styles.pageMainGroup,
+        formatBreakpointMods(stickyOnBreakpoint, styles, 'sticky-', getVerticalBreakpoint(height), true),
+        stickyBase === 'top' && styles.modifiers.stickyTopBase,
+        stickyBase === 'bottom' && styles.modifiers.stickyBottomBase,
+        isStickyStuck && stickyBase === 'top' && styles.modifiers.stickyTopStuck,
+        isStickyStuck && stickyBase === 'bottom' && styles.modifiers.stickyBottomStuck,
+        isFilled === false && styles.modifiers.noFill,
+        isFilled === true && styles.modifiers.fill,
+        hasShadowTop && styles.modifiers.shadowTop,
+        hasShadowBottom && styles.modifiers.shadowBottom,
+        hasOverflowScroll && styles.modifiers.overflowScroll,
+        isPlain && styles.modifiers.plain,
+        isNoPlainOnGlass && styles.modifiers.noPlainOnGlass,
+        className
+      )}
+      {...(hasOverflowScroll && { tabIndex: 0, role: 'region', 'aria-label': ariaLabel })}
+    >
+      {children}
+    </div>
+  );
+};
+PageGroup.displayName = 'PageGroup';

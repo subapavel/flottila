@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiCloudDownloadFillIconConfig: {
+  name: 'RhUiCloudDownloadFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M20.707 25.293a.999.999 0 0 1 0 1.414l-3.646 3.646c-.292.292-.677.438-1.061.438s-.769-.146-1.061-.438l-3.646-3.646a.999.999 0 1 1 1.414-1.414L15 27.586V20.75h2v6.836l2.293-2.293a.999.999 0 0 1 1.414 0Zm6.03-14.874A6.72 6.72 0 0 0 26.75 10c0-4.825-3.925-8.75-8.75-8.75a8.777 8.777 0 0 0-8.372 6.203A6.631 6.631 0 0 0 8 7.25c-3.722 0-6.75 3.028-6.75 6.75S4.278 20.75 8 20.75h6.875V14a1.125 1.125 0 0 1 2.25 0v6.75H25.5a5.256 5.256 0 0 0 5.25-5.25 5.21 5.21 0 0 0-4.013-5.081Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiCloudDownloadFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiCloudDownloadFillIcon;

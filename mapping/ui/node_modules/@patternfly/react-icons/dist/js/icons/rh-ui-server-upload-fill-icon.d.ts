@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiServerUploadFillIconConfig: {
+  name: 'RhUiServerUploadFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M11.293 6.707a.999.999 0 0 1 0-1.414l3.646-3.646a1.501 1.501 0 0 1 2.121 0l3.646 3.646a.999.999 0 1 1-1.414 1.414l-2.293-2.293V12a1 1 0 0 1-2 0V4.414l-2.293 2.293a.999.999 0 0 1-1.414 0ZM31 17.5v11c0 .827-.673 1.5-1.5 1.5h-27c-.827 0-1.5-.673-1.5-1.5v-11c0-.827.673-1.5 1.5-1.5h27c.827 0 1.5.673 1.5 1.5ZM14.125 23c0-.621-.504-1.125-1.125-1.125H8a1.125 1.125 0 0 0 0 2.25h5c.621 0 1.125-.504 1.125-1.125Zm10.755.016a1.874 1.874 0 1 0-3.749-.001 1.874 1.874 0 0 0 3.749.001Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiServerUploadFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiServerUploadFillIcon;

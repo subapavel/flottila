@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiUnsecuredIconConfig = {
+  name: 'RhUiUnsecuredIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M23.102 27.727a1 1 0 0 1-.333 1.375A12.983 12.983 0 0 1 16 31C8.832 31 3 25.168 3 18v-8a1 1 0 1 1 2 0v8c0 6.065 4.935 11 11 11 2.027 0 4.007-.555 5.727-1.605a1 1 0 0 1 1.375.332Zm6.605 1.98a.997.997 0 0 1-1.414 0l-27-27a.999.999 0 1 1 1.414-1.414l2.078 2.078 11.007-2.349a1.01 1.01 0 0 1 .417 0l12 2.56a1 1 0 0 1 .792.978V18a12.86 12.86 0 0 1-2.263 7.323l2.97 2.97a.999.999 0 0 1 0 1.414Zm-4.413-5.827A10.877 10.877 0 0 0 27 18V5.369L16 3.022 6.47 5.055l18.824 18.824Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiUnsecuredIcon = createIconBase(RhUiUnsecuredIconConfig);
+
+export default RhUiUnsecuredIcon;

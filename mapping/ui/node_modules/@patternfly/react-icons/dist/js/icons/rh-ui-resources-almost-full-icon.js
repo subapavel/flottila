@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiResourcesAlmostFullIconConfig = {
+  name: 'RhUiResourcesAlmostFullIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm10-13c0 6.117-5.501 10.957-11.823 9.838-4.055-.717-7.305-3.987-8.019-8.043-.482-2.737.166-5.326 1.549-7.372a.987.987 0 0 1 .82-.424h14.945c.326 0 .637.153.819.423a9.927 9.927 0 0 1 1.708 5.577Z"},
+  rhUiIcon: null,
+};
+exports.RhUiResourcesAlmostFullIcon = require('../createIcon').createIconBase(exports.RhUiResourcesAlmostFullIconConfig);
+exports["default"] = exports.RhUiResourcesAlmostFullIcon;

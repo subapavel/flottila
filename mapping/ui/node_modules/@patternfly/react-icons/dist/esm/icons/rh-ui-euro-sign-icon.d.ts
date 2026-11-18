@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiEuroSignIconConfig: {
+  name: 'RhUiEuroSignIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.82 26.918a1 1 0 0 1-.248 1.393A14.908 14.908 0 0 1 21 31c-6.885 0-12.685-4.667-14.442-11H3a1 1 0 1 1 0-2h3.15c-.09-.656-.15-1.32-.15-2 0-1.027.105-2.03.302-3H3a1 1 0 1 1 0-2h3.875C8.941 5.183 14.484 1 21 1c3.086 0 6.05.93 8.572 2.69a1 1 0 0 1-1.144 1.64A12.915 12.915 0 0 0 21 3c-5.397 0-10.034 3.307-11.997 8H25a1 1 0 1 1 0 2H8.363A12.95 12.95 0 0 0 8 16c0 .682.069 1.346.17 2H25a1 1 0 1 1 0 2H8.636c1.692 5.216 6.592 9 12.364 9a12.92 12.92 0 0 0 7.428-2.33 1.001 1.001 0 0 1 1.392.248Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiEuroSignIcon: ComponentClass<SVGIconProps>;
+export default RhUiEuroSignIcon;

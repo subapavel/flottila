@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiMcpServerIconConfig: {
+  name: 'RhUiMcpServerIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.5 16h-27c-.827 0-1.5.673-1.5 1.5v11c0 .827.673 1.5 1.5 1.5h27c.827 0 1.5-.673 1.5-1.5v-11c0-.827-.673-1.5-1.5-1.5ZM29 28H3V18h26v10ZM7 23a1 1 0 0 1 1-1h5a1 1 0 1 1 0 2H8a1 1 0 0 1-1-1Zm3.496-16c0-.289.209-.537.497-.59a5.525 5.525 0 0 0 4.418-4.417c.052-.288.3-.497.589-.497s.537.209.59.497a5.525 5.525 0 0 0 4.417 4.418c.289.052.498.3.498.589s-.21.537-.498.59a5.525 5.525 0 0 0-4.418 4.417c-.052.288-.3.497-.589.497s-.537-.209-.59-.497a5.525 5.525 0 0 0-4.417-4.418.602.602 0 0 1-.497-.589ZM21.38 23.003a1.625 1.625 0 1 1 3.25 0 1.625 1.625 0 0 1-3.25 0Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiMcpServerIcon: ComponentClass<SVGIconProps>;
+export default RhUiMcpServerIcon;

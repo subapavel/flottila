@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiLongArrowUpIconConfig = {
+  name: 'RhUiLongArrowUpIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M22.707 8.707a.997.997 0 0 1-1.414 0L17 4.414V30a1 1 0 1 1-2 0V4.414l-4.293 4.293a.999.999 0 1 1-1.414-1.414l5.646-5.647a1.501 1.501 0 0 1 2.121 0l5.646 5.646a.999.999 0 0 1 0 1.414Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiLongArrowUpIcon = createIconBase(RhUiLongArrowUpIconConfig);
+
+export default RhUiLongArrowUpIcon;

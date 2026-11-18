@@ -1,0 +1,44 @@
+---
+id: Input group
+section: components
+cssPrefix: pf-v6-c-input-group
+propComponents: ['InputGroup', 'InputGroupItem', 'InputGroupText']
+---
+
+import { Fragment, useRef, useState } from 'react';
+import AtIcon from '@patternfly/react-icons/dist/esm/icons/at-icon';
+import DollarSignIcon from '@patternfly/react-icons/dist/esm/icons/dollar-sign-icon';
+import RhUiQuestionMarkCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-fill-icon';
+
+## Examples
+
+### Basic
+
+```ts file='./InputGroupBasic.tsx'
+
+```
+
+### With textarea
+
+```ts file='./InputGroupWithTextarea.tsx'
+
+```
+
+### With dropdown
+
+```ts file='./InputGroupWithDropdown.tsx'
+
+```
+
+### With popover
+
+using `appendTo` with ref to the `InputGroup` for the Popover so that the popover width will depend on the whole input group
+```ts file ='./InputGroupWithPopover.tsx'
+
+```
+
+### With multiple group siblings
+
+```ts file='./InputGroupWithSiblings.tsx'
+
+```

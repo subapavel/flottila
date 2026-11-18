@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhMicronsExternalLinkIconConfig = {
+  name: 'RhMicronsExternalLinkIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M18 14c-.55 0-1 .45-1 1v2H3V3h2c.55 0 1-.45 1-1s-.45-1-1-1H2.5C1.67 1 1 1.67 1 2.5v15c0 .83.67 1.5 1.5 1.5h15c.83 0 1.5-.67 1.5-1.5V15c0-.55-.45-1-1-1Zm-.5-13H11c-.55 0-1 .45-1 1s.45 1 1 1h4.59L8.3 10.29a.987.987 0 0 0-.02 1.41c.38.4 1.02.41 1.41.02l.02-.02L17 4.41V9c0 .55.45 1 1 1s1-.45 1-1V2.5c0-.83-.67-1.5-1.5-1.5Z"},
+  rhUiIcon: null,
+};
+exports.RhMicronsExternalLinkIcon = require('../createIcon').createIconBase(exports.RhMicronsExternalLinkIconConfig);
+exports["default"] = exports.RhMicronsExternalLinkIcon;

@@ -1,0 +1,396 @@
+.pf-v6-c-avatar {
+  --pf-v6-c-avatar--BorderColor: transparent;
+  --pf-v6-c-avatar--BorderWidth: 0;
+  --pf-v6-c-avatar--BorderRadius: var(--pf-t--global--border--radius--pill);
+  --pf-v6-c-avatar--Width: 2.25rem;
+  --pf-v6-c-avatar--Height: 2.25rem;
+  --pf-v6-c-avatar--FontSize: calc(2.25rem / 1.414);
+  --pf-v6-c-avatar--m-sm--Width: 1.5rem;
+  --pf-v6-c-avatar--m-sm--Height: 1.5rem;
+  --pf-v6-c-avatar--m-sm--FontSize: calc(1.5rem / 1.414);
+  --pf-v6-c-avatar--m-md--Width: 2.25rem;
+  --pf-v6-c-avatar--m-md--Height: 2.25rem;
+  --pf-v6-c-avatar--m-md--FontSize: calc(2.25rem / 1.414);
+  --pf-v6-c-avatar--m-lg--Width: 4.5rem;
+  --pf-v6-c-avatar--m-lg--Height: 4.5rem;
+  --pf-v6-c-avatar--m-lg--FontSize: calc(4.5rem / 1.414);
+  --pf-v6-c-avatar--m-xl--Width: 8rem;
+  --pf-v6-c-avatar--m-xl--Height: 8rem;
+  --pf-v6-c-avatar--m-xl--FontSize: calc(8rem / 1.414);
+  --pf-v6-c-avatar--m-bordered--BorderColor: var(--pf-t--global--border--color--default);
+  --pf-v6-c-avatar--m-bordered--BorderWidth: var(--pf-t--global--border--width--box--default);
+  --pf-v6-c-avatar--m-colorful--BorderWidth: var(--pf-t--global--border--width--box--default);
+  --pf-v6-c-avatar--m-gray--BackgroundColor: var(--pf-t--global--background--color--secondary--default);
+  --pf-v6-c-avatar--m-gray--Color: var(--pf-t--global--icon--color--nonstatus--on-gray--hover);
+  --pf-v6-c-avatar--m-gray--BorderColor: var(--pf-t--global--border--color--default);
+  --pf-v6-c-avatar--m-red--BackgroundColor: var(--pf-t--global--color--nonstatus--red--default);
+  --pf-v6-c-avatar--m-red--Color: var(--pf-t--global--icon--color--nonstatus--on-red--default);
+  --pf-v6-c-avatar--m-red--BorderColor: var(--pf-t--global--border--color--nonstatus--red--default);
+  --pf-v6-c-avatar--m-orangered--BackgroundColor: var(--pf-t--global--color--nonstatus--orangered--default);
+  --pf-v6-c-avatar--m-orangered--Color: var(--pf-t--global--icon--color--nonstatus--on-orangered--default);
+  --pf-v6-c-avatar--m-orangered--BorderColor: var(--pf-t--global--border--color--nonstatus--orangered--default);
+  --pf-v6-c-avatar--m-orange--BackgroundColor: var(--pf-t--global--color--nonstatus--orange--default);
+  --pf-v6-c-avatar--m-orange--Color: var(--pf-t--global--icon--color--nonstatus--on-orange--default);
+  --pf-v6-c-avatar--m-orange--BorderColor: var(--pf-t--global--border--color--nonstatus--orange--default);
+  --pf-v6-c-avatar--m-yellow--BackgroundColor: var(--pf-t--global--color--nonstatus--yellow--default);
+  --pf-v6-c-avatar--m-yellow--Color: var(--pf-t--global--icon--color--nonstatus--on-yellow--default);
+  --pf-v6-c-avatar--m-yellow--BorderColor: var(--pf-t--global--border--color--nonstatus--yellow--default);
+  --pf-v6-c-avatar--m-green--BackgroundColor: var(--pf-t--global--color--nonstatus--green--default);
+  --pf-v6-c-avatar--m-green--Color: var(--pf-t--global--icon--color--nonstatus--on-green--default);
+  --pf-v6-c-avatar--m-green--BorderColor: var(--pf-t--global--border--color--nonstatus--green--default);
+  --pf-v6-c-avatar--m-teal--BackgroundColor: var(--pf-t--global--color--nonstatus--teal--default);
+  --pf-v6-c-avatar--m-teal--Color: var(--pf-t--global--icon--color--nonstatus--on-teal--default);
+  --pf-v6-c-avatar--m-teal--BorderColor: var(--pf-t--global--border--color--nonstatus--teal--default);
+  --pf-v6-c-avatar--m-blue--BackgroundColor: var(--pf-t--global--color--nonstatus--blue--default);
+  --pf-v6-c-avatar--m-blue--Color: var(--pf-t--global--icon--color--nonstatus--on-blue--default);
+  --pf-v6-c-avatar--m-blue--BorderColor: var(--pf-t--global--border--color--nonstatus--blue--default);
+  --pf-v6-c-avatar--m-purple--BackgroundColor: var(--pf-t--global--color--nonstatus--purple--default);
+  --pf-v6-c-avatar--m-purple--Color: var(--pf-t--global--icon--color--nonstatus--on-purple--default);
+  --pf-v6-c-avatar--m-purple--BorderColor: var(--pf-t--global--border--color--nonstatus--purple--default);
+  --pf-v6-c-avatar__initials--FontSize: var(--pf-t--global--font--size--body--lg);
+  --pf-v6-c-avatar__initials--FontWeight: var(--pf-t--global--font--weight--body--bold);
+  --pf-v6-c-avatar--m-sm__initials--FontSize: var(--pf-t--global--font--size--body--sm);
+  --pf-v6-c-avatar--m-sm__initials--FontWeight: var(--pf-t--global--font--weight--body--bold);
+  --pf-v6-c-avatar--m-lg__initials--FontSize: var(--pf-t--global--font--size--2xl);
+  --pf-v6-c-avatar--m-lg__initials--FontWeight: var(--pf-t--global--font--weight--heading--bold);
+  --pf-v6-c-avatar--m-lg__initials--FontFamily: var(--pf-t--global--font--family--heading);
+  --pf-v6-c-avatar--m-xl__initials--FontSize: var(--pf-t--global--font--size--4xl);
+  --pf-v6-c-avatar--m-xl__initials--FontWeight: var(--pf-t--global--font--weight--heading--default);
+  --pf-v6-c-avatar--m-xl__initials--FontFamily: var(--pf-t--global--font--family--heading);
+  --pf-v6-c-avatar--m-gray__initials--Color: var(--pf-t--global--text--color--nonstatus--on-gray--hover);
+  --pf-v6-c-avatar--m-red__initials--Color: var(--pf-t--global--text--color--nonstatus--on-red--default);
+  --pf-v6-c-avatar--m-orangered__initials--Color: var(--pf-t--global--text--color--nonstatus--on-orangered--default);
+  --pf-v6-c-avatar--m-orange__initials--Color: var(--pf-t--global--text--color--nonstatus--on-orange--default);
+  --pf-v6-c-avatar--m-yellow__initials--Color: var(--pf-t--global--text--color--nonstatus--on-yellow--default);
+  --pf-v6-c-avatar--m-green__initials--Color: var(--pf-t--global--text--color--nonstatus--on-green--default);
+  --pf-v6-c-avatar--m-teal__initials--Color: var(--pf-t--global--text--color--nonstatus--on-teal--default);
+  --pf-v6-c-avatar--m-blue__initials--Color: var(--pf-t--global--text--color--nonstatus--on-blue--default);
+  --pf-v6-c-avatar--m-purple__initials--Color: var(--pf-t--global--text--color--nonstatus--on-purple--default);
+}
+
+.pf-v6-c-avatar {
+  width: var(--pf-v6-c-avatar--Width);
+  height: var(--pf-v6-c-avatar--Height);
+  font-size: var(--pf-v6-c-avatar--FontSize);
+  color: var(--pf-v6-c-avatar--Color, inherit);
+  background-color: var(--pf-v6-c-avatar--BackgroundColor, transparent);
+  border: var(--pf-v6-c-avatar--BorderWidth) solid var(--pf-v6-c-avatar--BorderColor);
+  border-radius: var(--pf-v6-c-avatar--BorderRadius);
+}
+div.pf-v6-c-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: clip;
+  vertical-align: middle;
+}
+
+.pf-v6-c-avatar.pf-m-bordered {
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-bordered--BorderColor);
+  --pf-v6-c-avatar--BorderWidth: var(--pf-v6-c-avatar--m-bordered--BorderWidth);
+}
+.pf-v6-c-avatar.pf-m-sm {
+  --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width-on-sm, var(--pf-v6-c-avatar--m-sm--Width));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width-on-md, var(--pf-v6-c-avatar--m-sm--Width-on-sm, var(--pf-v6-c-avatar--m-sm--Width)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width-on-lg, var(--pf-v6-c-avatar--m-sm--Width-on-md, var(--pf-v6-c-avatar--m-sm--Width-on-sm, var(--pf-v6-c-avatar--m-sm--Width))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width-on-xl, var(--pf-v6-c-avatar--m-sm--Width-on-lg, var(--pf-v6-c-avatar--m-sm--Width-on-md, var(--pf-v6-c-avatar--m-sm--Width-on-sm, var(--pf-v6-c-avatar--m-sm--Width)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-sm--Width-on-2xl, var(--pf-v6-c-avatar--m-sm--Width-on-xl, var(--pf-v6-c-avatar--m-sm--Width-on-lg, var(--pf-v6-c-avatar--m-sm--Width-on-md, var(--pf-v6-c-avatar--m-sm--Width-on-sm, var(--pf-v6-c-avatar--m-sm--Width))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-sm {
+  --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height-on-sm, var(--pf-v6-c-avatar--m-sm--Height));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height-on-md, var(--pf-v6-c-avatar--m-sm--Height-on-sm, var(--pf-v6-c-avatar--m-sm--Height)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height-on-lg, var(--pf-v6-c-avatar--m-sm--Height-on-md, var(--pf-v6-c-avatar--m-sm--Height-on-sm, var(--pf-v6-c-avatar--m-sm--Height))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height-on-xl, var(--pf-v6-c-avatar--m-sm--Height-on-lg, var(--pf-v6-c-avatar--m-sm--Height-on-md, var(--pf-v6-c-avatar--m-sm--Height-on-sm, var(--pf-v6-c-avatar--m-sm--Height)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-sm {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-sm--Height-on-2xl, var(--pf-v6-c-avatar--m-sm--Height-on-xl, var(--pf-v6-c-avatar--m-sm--Height-on-lg, var(--pf-v6-c-avatar--m-sm--Height-on-md, var(--pf-v6-c-avatar--m-sm--Height-on-sm, var(--pf-v6-c-avatar--m-sm--Height))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-md {
+  --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width-on-sm, var(--pf-v6-c-avatar--m-md--Width));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width-on-md, var(--pf-v6-c-avatar--m-md--Width-on-sm, var(--pf-v6-c-avatar--m-md--Width)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width-on-lg, var(--pf-v6-c-avatar--m-md--Width-on-md, var(--pf-v6-c-avatar--m-md--Width-on-sm, var(--pf-v6-c-avatar--m-md--Width))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width-on-xl, var(--pf-v6-c-avatar--m-md--Width-on-lg, var(--pf-v6-c-avatar--m-md--Width-on-md, var(--pf-v6-c-avatar--m-md--Width-on-sm, var(--pf-v6-c-avatar--m-md--Width)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-md--Width-on-2xl, var(--pf-v6-c-avatar--m-md--Width-on-xl, var(--pf-v6-c-avatar--m-md--Width-on-lg, var(--pf-v6-c-avatar--m-md--Width-on-md, var(--pf-v6-c-avatar--m-md--Width-on-sm, var(--pf-v6-c-avatar--m-md--Width))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-md {
+  --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height-on-sm, var(--pf-v6-c-avatar--m-md--Height));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height-on-md, var(--pf-v6-c-avatar--m-md--Height-on-sm, var(--pf-v6-c-avatar--m-md--Height)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height-on-lg, var(--pf-v6-c-avatar--m-md--Height-on-md, var(--pf-v6-c-avatar--m-md--Height-on-sm, var(--pf-v6-c-avatar--m-md--Height))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height-on-xl, var(--pf-v6-c-avatar--m-md--Height-on-lg, var(--pf-v6-c-avatar--m-md--Height-on-md, var(--pf-v6-c-avatar--m-md--Height-on-sm, var(--pf-v6-c-avatar--m-md--Height)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-md {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-md--Height-on-2xl, var(--pf-v6-c-avatar--m-md--Height-on-xl, var(--pf-v6-c-avatar--m-md--Height-on-lg, var(--pf-v6-c-avatar--m-md--Height-on-md, var(--pf-v6-c-avatar--m-md--Height-on-sm, var(--pf-v6-c-avatar--m-md--Height))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-lg {
+  --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width-on-sm, var(--pf-v6-c-avatar--m-lg--Width));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width-on-md, var(--pf-v6-c-avatar--m-lg--Width-on-sm, var(--pf-v6-c-avatar--m-lg--Width)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width-on-lg, var(--pf-v6-c-avatar--m-lg--Width-on-md, var(--pf-v6-c-avatar--m-lg--Width-on-sm, var(--pf-v6-c-avatar--m-lg--Width))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width-on-xl, var(--pf-v6-c-avatar--m-lg--Width-on-lg, var(--pf-v6-c-avatar--m-lg--Width-on-md, var(--pf-v6-c-avatar--m-lg--Width-on-sm, var(--pf-v6-c-avatar--m-lg--Width)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-lg--Width-on-2xl, var(--pf-v6-c-avatar--m-lg--Width-on-xl, var(--pf-v6-c-avatar--m-lg--Width-on-lg, var(--pf-v6-c-avatar--m-lg--Width-on-md, var(--pf-v6-c-avatar--m-lg--Width-on-sm, var(--pf-v6-c-avatar--m-lg--Width))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-lg {
+  --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height-on-sm, var(--pf-v6-c-avatar--m-lg--Height));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height-on-md, var(--pf-v6-c-avatar--m-lg--Height-on-sm, var(--pf-v6-c-avatar--m-lg--Height)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height-on-lg, var(--pf-v6-c-avatar--m-lg--Height-on-md, var(--pf-v6-c-avatar--m-lg--Height-on-sm, var(--pf-v6-c-avatar--m-lg--Height))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height-on-xl, var(--pf-v6-c-avatar--m-lg--Height-on-lg, var(--pf-v6-c-avatar--m-lg--Height-on-md, var(--pf-v6-c-avatar--m-lg--Height-on-sm, var(--pf-v6-c-avatar--m-lg--Height)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-lg {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-lg--Height-on-2xl, var(--pf-v6-c-avatar--m-lg--Height-on-xl, var(--pf-v6-c-avatar--m-lg--Height-on-lg, var(--pf-v6-c-avatar--m-lg--Height-on-md, var(--pf-v6-c-avatar--m-lg--Height-on-sm, var(--pf-v6-c-avatar--m-lg--Height))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-xl {
+  --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width-on-sm, var(--pf-v6-c-avatar--m-xl--Width));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width-on-md, var(--pf-v6-c-avatar--m-xl--Width-on-sm, var(--pf-v6-c-avatar--m-xl--Width)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width-on-lg, var(--pf-v6-c-avatar--m-xl--Width-on-md, var(--pf-v6-c-avatar--m-xl--Width-on-sm, var(--pf-v6-c-avatar--m-xl--Width))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width-on-xl, var(--pf-v6-c-avatar--m-xl--Width-on-lg, var(--pf-v6-c-avatar--m-xl--Width-on-md, var(--pf-v6-c-avatar--m-xl--Width-on-sm, var(--pf-v6-c-avatar--m-xl--Width)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Width: var(--pf-v6-c-avatar--m-xl--Width-on-2xl, var(--pf-v6-c-avatar--m-xl--Width-on-xl, var(--pf-v6-c-avatar--m-xl--Width-on-lg, var(--pf-v6-c-avatar--m-xl--Width-on-md, var(--pf-v6-c-avatar--m-xl--Width-on-sm, var(--pf-v6-c-avatar--m-xl--Width))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-xl {
+  --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height);
+}
+@media (min-width: 36rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height-on-sm, var(--pf-v6-c-avatar--m-xl--Height));
+  }
+}
+@media (min-width: 48rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height-on-md, var(--pf-v6-c-avatar--m-xl--Height-on-sm, var(--pf-v6-c-avatar--m-xl--Height)));
+  }
+}
+@media (min-width: 62rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height-on-lg, var(--pf-v6-c-avatar--m-xl--Height-on-md, var(--pf-v6-c-avatar--m-xl--Height-on-sm, var(--pf-v6-c-avatar--m-xl--Height))));
+  }
+}
+@media (min-width: 75rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height-on-xl, var(--pf-v6-c-avatar--m-xl--Height-on-lg, var(--pf-v6-c-avatar--m-xl--Height-on-md, var(--pf-v6-c-avatar--m-xl--Height-on-sm, var(--pf-v6-c-avatar--m-xl--Height)))));
+  }
+}
+@media (min-width: 90.625rem) {
+  .pf-v6-c-avatar.pf-m-xl {
+    --pf-v6-c-avatar--Height: var(--pf-v6-c-avatar--m-xl--Height-on-2xl, var(--pf-v6-c-avatar--m-xl--Height-on-xl, var(--pf-v6-c-avatar--m-xl--Height-on-lg, var(--pf-v6-c-avatar--m-xl--Height-on-md, var(--pf-v6-c-avatar--m-xl--Height-on-sm, var(--pf-v6-c-avatar--m-xl--Height))))));
+  }
+}
+.pf-v6-c-avatar.pf-m-sm {
+  --pf-v6-c-avatar--FontSize: var(--pf-v6-c-avatar--m-sm--FontSize);
+  --pf-v6-c-avatar__initials--FontSize: var(--pf-v6-c-avatar--m-sm__initials--FontSize);
+  --pf-v6-c-avatar__initials--FontWeight: var(--pf-v6-c-avatar--m-sm__initials--FontWeight);
+}
+.pf-v6-c-avatar.pf-m-lg {
+  --pf-v6-c-avatar--FontSize: var(--pf-v6-c-avatar--m-lg--FontSize);
+  --pf-v6-c-avatar__initials--FontSize: var(--pf-v6-c-avatar--m-lg__initials--FontSize);
+  --pf-v6-c-avatar__initials--FontWeight: var(--pf-v6-c-avatar--m-lg__initials--FontWeight);
+  --pf-v6-c-avatar__initials--FontFamily: var(--pf-v6-c-avatar--m-lg__initials--FontFamily);
+}
+.pf-v6-c-avatar.pf-m-xl {
+  --pf-v6-c-avatar--FontSize: var(--pf-v6-c-avatar--m-xl--FontSize);
+  --pf-v6-c-avatar__initials--FontSize: var(--pf-v6-c-avatar--m-xl__initials--FontSize);
+  --pf-v6-c-avatar__initials--FontWeight: var(--pf-v6-c-avatar--m-xl__initials--FontWeight);
+  --pf-v6-c-avatar__initials--FontFamily: var(--pf-v6-c-avatar--m-xl__initials--FontFamily);
+}
+.pf-v6-c-avatar.pf-m-colorful {
+  --pf-v6-c-avatar--BorderWidth: var(--pf-v6-c-avatar--m-colorful--BorderWidth);
+}
+.pf-v6-c-avatar.pf-m-red {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-red--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-red--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-red--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-red__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-orangered {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-orangered--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-orangered--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-orangered--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-orangered__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-orange {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-orange--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-orange--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-orange--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-orange__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-yellow {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-yellow--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-yellow--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-yellow--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-yellow__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-green {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-green--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-green--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-green--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-green__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-teal {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-teal--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-teal--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-teal--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-teal__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-blue {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-blue--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-blue--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-blue--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-blue__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-purple {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-purple--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-purple--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-purple--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-purple__initials--Color);
+}
+.pf-v6-c-avatar.pf-m-gray {
+  --pf-v6-c-avatar--BackgroundColor: var(--pf-v6-c-avatar--m-gray--BackgroundColor);
+  --pf-v6-c-avatar--Color: var(--pf-v6-c-avatar--m-gray--Color);
+  --pf-v6-c-avatar--BorderColor: var(--pf-v6-c-avatar--m-gray--BorderColor);
+  --pf-v6-c-avatar__initials--Color: var(--pf-v6-c-avatar--m-gray__initials--Color);
+}
+
+.pf-v6-c-avatar__initials {
+  font-family: var(--pf-v6-c-avatar__initials--FontFamily, revert);
+  font-size: var(--pf-v6-c-avatar__initials--FontSize);
+  font-weight: var(--pf-v6-c-avatar__initials--FontWeight);
+  color: var(--pf-v6-c-avatar__initials--Color);
+}

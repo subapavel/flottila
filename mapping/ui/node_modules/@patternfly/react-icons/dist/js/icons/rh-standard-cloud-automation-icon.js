@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardCloudAutomationIconConfig = {
+  name: 'RhStandardCloudAutomationIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M28.62 15.52c-.05-9.6-12.95-12.64-17.28-4.09a7.12 7.12 0 1 0-.84 14.19h.5a.62.62 0 0 0 0-1.24h-.5c-8.5-.46-7.35-12.79 1.09-11.65a.64.64 0 0 0 .69-.36c3.59-8 15.4-5.21 15.08 3.52V16a.63.63 0 0 0 .56.66 3.87 3.87 0 0 1-.41 7.71H27a.62.62 0 0 0 0 1.24h.5a5.12 5.12 0 0 0 1.12-10.09Z"},{"path":"M24 24.38h-1.1a4 4 0 0 0-.7-1.69l.78-.78a.63.63 0 0 0-.89-.89l-.78.78a4 4 0 0 0-1.69-.69V20a.62.62 0 0 0-1.24 0v1.11a4 4 0 0 0-1.69.69l-.78-.8a.63.63 0 0 0-.89.89l.78.78a4 4 0 0 0-.7 1.69H14a.62.62 0 0 0 0 1.24h1.1a4 4 0 0 0 .7 1.69l-.78.78a.63.63 0 0 0 .89.89l.78-.78a4 4 0 0 0 1.69.69V30a.62.62 0 0 0 1.24 0v-1.11a4 4 0 0 0 1.69-.69l.78.78a.63.63 0 0 0 .89-.89l-.78-.78a4 4 0 0 0 .7-1.69H24a.62.62 0 0 0 0-1.24Zm-5 3.33a2.71 2.71 0 0 1 0-5.42 2.71 2.71 0 0 1 0 5.42Z"}]},
+  rhUiIcon: null,
+};
+exports.RhStandardCloudAutomationIcon = require('../createIcon').createIconBase(exports.RhStandardCloudAutomationIconConfig);
+exports["default"] = exports.RhStandardCloudAutomationIcon;

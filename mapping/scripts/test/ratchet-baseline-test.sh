@@ -158,13 +158,13 @@ tree_o() {
   code engine/structure                             # a row, no csv
   csv engine/xdm 7 0 2 0                            # no row
   code engine/udf                                   # production code, no row, no csv
-  tsv coverage.tsv 'engine/api 90 100' 'engine/structure 92 80' 'ui/src/model 100 100'
+  tsv coverage.tsv 'engine/api 90 100' 'engine/structure 92 80' '../ui/src/mapping/model 100 100'
   pit engine/mapping 8 2
   tsv mutation.tsv 'engine/mapping 3 10' 'engine/xdm 0 5'
   tsv bench.tsv "orders/small/latency $M 166.6 us/op" "ui/tree-20128/scroll $M 16.7 ms"
   snapshot
   btsv oracle/corpus.txt c/001 c/002                                          # a case the commit lacks
-  btsv coverage.tsv 'engine/api 91 100' 'engine/structure 92 80' 'ui/src/model 100 100' # lines 91 -> 90
+  btsv coverage.tsv 'engine/api 91 100' 'engine/structure 92 80' '../ui/src/mapping/model 100 100' # lines 91 -> 90
   btsv mutation.tsv 'engine/mapping 2 10' 'engine/xdm 0 5'                    # survivors 2 -> 3
   tsv bench.tsv "orders/small/latency $M 166.6 us/op"                        # a bench row the commit lacks
 }
@@ -208,8 +208,8 @@ run check; exit_is 0
 stdout_is "$(printf '%s\n' \
   'RISE oracle/corpus.txt: 1 new passing case(s)' \
   'RISE coverage engine/xdm lines: 90 % -> 95 %' \
-  'MOVED coverage ui/src/editor/store -> ui/src/studio/store' \
-  'NOT_RUN coverage ui/src/studio/store' \
+  'MOVED coverage ui/src/editor/store -> ../ui/src/mapping/studio/store' \
+  'NOT_RUN coverage ../ui/src/mapping/studio/store' \
   'NEW  coverage engine/udf 100/100' \
   'NOT_RUN mutation engine/api' \
   'RISE mutation engine/mapping: 3 -> 2 surviving mutants' \
@@ -359,7 +359,7 @@ snapshot
 btsv coverage.tsv 'engine/structure 92 80' 'ui/src/editor/store 100 100'
 plain_passes
 mode; exit_is 0; line 'RATCHET CHECK OK'; no_line_with 'FAIL baseline'
-line 'NOT_RUN coverage ui/src/studio/store'
+line 'NOT_RUN coverage ../ui/src/mapping/studio/store'
 end
 
 begin e2-moved-pair-lowered-prints-the-new-key
@@ -369,7 +369,7 @@ snapshot
 btsv coverage.tsv 'engine/structure 92 80' 'ui/src/editor/store 100 100'
 plain_passes
 mode; exit_is 1
-line 'FAIL baseline coverage ui/src/studio/store lines 100 -> 90'
+line 'FAIL baseline coverage ../ui/src/mapping/studio/store lines 100 -> 90'
 no_line_with 'FAIL baseline coverage ui/src/editor/store'
 line 'RATCHET FAIL: 1 problem(s)'
 end
@@ -381,7 +381,7 @@ snapshot
 btsv coverage.tsv 'engine/structure 92 80' 'ui/src/studio/store 100 100'
 plain_passes
 mode; exit_is 1
-line 'FAIL baseline coverage ui/src/studio/store lines 100 -> 90'
+line 'FAIL baseline coverage ../ui/src/mapping/studio/store lines 100 -> 90'
 no_line_with 'FAIL baseline coverage ui/src/editor/store'
 no_line_with 'removed'
 line 'RATCHET FAIL: 1 problem(s)'
@@ -392,7 +392,7 @@ commit_tree; snapshot
 btsv coverage.tsv 'engine/structure 92 80' 'ui/src/editor/store 100 100'
 plain_passes
 mode; exit_is 1
-line 'FAIL baseline coverage ui/src/studio/store removed'
+line 'FAIL baseline coverage ../ui/src/mapping/studio/store removed'
 no_line_with 'FAIL baseline coverage ui/src/editor/store'
 line 'RATCHET FAIL: 1 problem(s)'
 end
@@ -484,13 +484,13 @@ end
 
 begin f7-ui-row-and-mutation-row-without-reports-stay-not-run
 commit_tree
-mkdir -p "$root/ui/src/model"; echo "export const m = 1;" > "$root/ui/src/model/m.ts"
-tsv coverage.tsv 'engine/structure 92 80' 'ui/src/model 100 100' # no ui/coverage summary
+mkdir -p "$root/../ui/src/mapping/model"; echo "export const m = 1;" > "$root/../ui/src/mapping/model/m.ts"
+tsv coverage.tsv 'engine/structure 92 80' '../ui/src/mapping/model 100 100' # no ../ui/coverage summary
 tsv mutation.tsv 'engine/mapping 2 10' 'engine/xdm 0 5'           # no engine/xdm PIT report
 snapshot
 plain_passes
 mode; exit_is 0; line 'RATCHET CHECK OK'; no_line_with 'FAIL'
-line 'NOT_RUN coverage ui/src/model'
+line 'NOT_RUN coverage ../ui/src/mapping/model'
 line 'NOT_RUN mutation engine/xdm'
 end
 
@@ -528,7 +528,7 @@ same "stdout up to the last plain line" "$(printf '%s\n' "$out" | head -n 11)" "
   'FAIL baseline report oracle/differential.txt: no surefire reports' \
   'RISE coverage engine/api lines: 90 % -> 95 %' \
   'FAIL baseline report coverage engine/structure: no JaCoCo report' \
-  'NOT_RUN coverage ui/src/model' \
+  'NOT_RUN coverage ../ui/src/mapping/model' \
   'NEW  coverage engine/xdm 100/100' \
   'FAIL baseline report coverage engine/udf: no JaCoCo report' \
   'MEASURED coverage engine/api lines 19/20 branches 4/4' \
@@ -556,7 +556,7 @@ stdout_is "$(printf '%s\n' \
   'NOT_RUN oracle/differential.txt (1 cases)' \
   'RISE coverage engine/api lines: 90 % -> 95 %' \
   'NOT_RUN coverage engine/structure' \
-  'NOT_RUN coverage ui/src/model' \
+  'NOT_RUN coverage ../ui/src/mapping/model' \
   'NEW  coverage engine/xdm 100/100' \
   'RISE mutation engine/mapping: 3 -> 2 surviving mutants' \
   'NOT_RUN mutation engine/xdm' \

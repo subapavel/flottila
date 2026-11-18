@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiProfileFillIconConfig: {
+  name: 'RhUiProfileFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.75 29a.75.75 0 0 1-.75.75H3a.75.75 0 0 1-.75-.75c0-6.283 4.241-11.583 10.007-13.219A7.755 7.755 0 0 1 8.25 9c0-4.273 3.477-7.75 7.75-7.75S23.75 4.727 23.75 9a7.751 7.751 0 0 1-4.007 6.781C25.509 17.417 29.75 22.717 29.75 29Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiProfileFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiProfileFillIcon;

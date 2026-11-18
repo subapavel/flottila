@@ -1,0 +1,1 @@
+{"version":3,"file":"CompassDockMain.d.ts","sourceRoot":"","sources":["../../../../src/components/Compass/CompassDockMain.tsx"],"names":[],"mappings":";AAGA,MAAM,WAAW,oBAAqB,SAAQ,KAAK,CAAC,SAAS,CAAC,cAAc,CAAC;IAC3E,mEAAmE;IACnE,SAAS,CAAC,EAAE,MAAM,CAAC;IACnB,kDAAkD;IAClD,QAAQ,CAAC,EAAE,KAAK,CAAC,SAAS,CAAC;CAC5B;AAED,eAAO,MAAM,eAAe,EAAE,KAAK,CAAC,iBAAiB,CAAC,oBAAoB,CAQzE,CAAC"}

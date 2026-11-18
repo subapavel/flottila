@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiInsightIconConfig: {
+  name: 'RhUiInsightIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M19 26h-6a1 1 0 0 0-1 1c0 2.206 1.794 4 4 4s4-1.794 4-4a1 1 0 0 0-1-1Zm-3 3a2 2 0 0 1-1.731-1h3.463c-.346.597-.993 1-1.731 1Zm0-28c-5.238 0-9.5 4.262-9.5 9.5a9.489 9.489 0 0 0 3.367 7.255l1.07 5.056A1.507 1.507 0 0 0 12.405 24h7.189c.705 0 1.322-.5 1.468-1.189l1.07-5.056a9.486 9.486 0 0 0 3.367-7.255c0-5.238-4.262-9.5-9.5-9.5Zm3.189 21H12.81l-.847-4h8.072l-.847 4Zm1.894-6H10.917A7.48 7.48 0 0 1 8.5 10.5C8.5 6.364 11.864 3 16 3s7.5 3.364 7.5 7.5a7.48 7.48 0 0 1-2.417 5.5Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiInsightIcon: ComponentClass<SVGIconProps>;
+export default RhUiInsightIcon;

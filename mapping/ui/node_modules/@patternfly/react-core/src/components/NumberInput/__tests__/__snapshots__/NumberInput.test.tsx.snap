@@ -1,0 +1,1370 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`numberInput disables lower threshold 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:ro:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          disabled=""
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:rq:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="0"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rr:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput disables upper threshold 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rs:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:ru:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="100"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rv:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          disabled=""
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput passes button props successfully 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r1g:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          id="minus-id"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r1i:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="5"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r1j:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          id="plus-id"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput passes input props successfully 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r1c:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r1e:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            name="test-name"
+            type="number"
+            value="5"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r1f:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders custom width 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+    style="--pf-v6-c-number-input--c-form-control--width-chars: 10;"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r18:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r1a:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="5"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r1b:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders defaults & extra props 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input custom"
+    id="numberInput1"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r0:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r2:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="0"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r3:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders disabled 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rk:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          disabled=""
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly pf-m-disabled"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:rm:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            disabled=""
+            readonly=""
+            type="number"
+            value="90"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rn:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          disabled=""
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders error validated 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r8:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly pf-m-error"
+        >
+          <input
+            aria-invalid="true"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:ra:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="0"
+          />
+          <span
+            class="pf-v6-c-form-control__utilities"
+          >
+            <span
+              class="pf-v6-c-form-control__icon pf-m-status"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm-1.5 8a1.5 1.5 0 1 1 3 0v7a1.5 1.5 0 1 1-3 0V9ZM16 25.001a2 2 0 1 1-.001-3.999A2 2 0 0 1 16 25.001Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rb:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders success validated 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r4:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly pf-m-success"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r6:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="0"
+          />
+          <span
+            class="pf-v6-c-form-control__utilities"
+          >
+            <span
+              class="pf-v6-c-form-control__icon pf-m-status"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm7.795 11.795-8.646 8.646c-.317.317-.733.475-1.149.475s-.832-.158-1.149-.475l-4.646-4.646a1.126 1.126 0 0 1 1.591-1.591l4.205 4.205 8.205-8.205a1.126 1.126 0 0 1 1.591 1.591Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r7:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders unit & position 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-number-input__unit"
+    >
+      $
+    </div>
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r14:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r16:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="5"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r17:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders unit 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r10:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:r12:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="5"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:r13:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="pf-v6-c-number-input__unit"
+    >
+      %
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders value 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rg:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:ri:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="90"
+          />
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rj:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`numberInput renders warning validated 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-number-input"
+  >
+    <div
+      class="pf-v6-c-input-group"
+    >
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Minus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rc:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 17H3a1 1 0 0 1 0-2h26a1 1 0 0 1 0 2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <span
+          class="pf-v6-c-form-control pf-m-readonly pf-m-warning"
+        >
+          <input
+            aria-invalid="false"
+            aria-label="Input"
+            data-ouia-component-id="OUIA-Generated-TextInputBase-:re:"
+            data-ouia-component-type="PF6/TextInput"
+            data-ouia-safe="true"
+            readonly=""
+            type="number"
+            value="0"
+          />
+          <span
+            class="pf-v6-c-form-control__utilities"
+          >
+            <span
+              class="pf-v6-c-form-control__icon pf-m-status"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="m31.874 28.514-15.011-27a1.001 1.001 0 0 0-1.748 0l-15.011 27A1 1 0 0 0 .978 30H31a1 1 0 0 0 .874-1.486ZM14.5 12a1.5 1.5 0 0 1 3 0v5a1.5 1.5 0 0 1-3 0v-5ZM16 26.001a2 2 0 1 1-.001-3.999A2 2 0 0 1 16 26.001Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </span>
+      </div>
+      <div
+        class="pf-v6-c-input-group__item"
+      >
+        <button
+          aria-label="Plus"
+          class="pf-v6-c-button pf-m-control"
+          data-ouia-component-id="OUIA-Generated-Button-control-:rf:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-number-input__icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 32 32"
+                width="1em"
+              >
+                <path
+                  d="M29 15H17V3a1 1 0 0 0-2 0v12H3a1 1 0 0 0 0 2h12v12a1 1 0 0 0 2 0V17h12a1 1 0 0 0 0-2Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;

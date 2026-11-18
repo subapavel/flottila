@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiTerminalFillIconConfig = {
+  name: 'RhUiTerminalFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.5 2h-25C2.673 2 2 2.673 2 3.5v25c0 .827.673 1.5 1.5 1.5h25c.827 0 1.5-.673 1.5-1.5v-25c0-.827-.673-1.5-1.5-1.5ZM15.65 17.15l-6.647 6.646a1.122 1.122 0 0 1-1.592-.001 1.128 1.128 0 0 1 0-1.59L13.616 16 7.411 9.796a1.126 1.126 0 0 1 1.592-1.592l6.646 6.647a1.63 1.63 0 0 1 0 2.298ZM25 24.124h-7a1.125 1.125 0 0 1 0-2.25h7a1.125 1.125 0 0 1 0 2.25Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiTerminalFillIcon = createIconBase(RhUiTerminalFillIconConfig);
+
+export default RhUiTerminalFillIcon;

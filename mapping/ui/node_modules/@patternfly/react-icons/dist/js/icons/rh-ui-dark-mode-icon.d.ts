@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiDarkModeIconConfig: {
+  name: 'RhUiDarkModeIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 29C8.832 29 3 23.168 3 16a12.98 12.98 0 0 1 8.82-12.307.999.999 0 0 1 1.265 1.275A10.735 10.735 0 0 0 12.5 8.5c0 6.065 4.935 11 11 11 1.226 0 2.414-.197 3.532-.585a1 1 0 0 1 1.275 1.265A12.981 12.981 0 0 1 16 29ZM10.672 6.375A10.985 10.985 0 0 0 5 16c0 6.065 4.935 11 11 11 4.056 0 7.718-2.216 9.625-5.672a13.01 13.01 0 0 1-2.125.172c-7.168 0-13-5.832-13-13 0-.72.058-1.43.172-2.125Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiDarkModeIcon: ComponentClass<SVGIconProps>;
+export default RhUiDarkModeIcon;

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiMailFillIconConfig = {
+  name: 'RhUiMailFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M10.409 16 1 25.409V6.591L10.409 16ZM2.591 5l10.203 10.204h.001v.001l3.203 3.203 3.203-3.203v-.001h.001L29.405 5H2.591Zm19 11L31 25.409V6.591L21.591 16ZM20 17.591l-2.851 2.851c-.317.317-.733.475-1.149.475s-.832-.158-1.149-.475L12 17.591 2.591 27h26.817l-9.409-9.409Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiMailFillIcon = createIconBase(RhUiMailFillIconConfig);
+
+export default RhUiMailFillIcon;

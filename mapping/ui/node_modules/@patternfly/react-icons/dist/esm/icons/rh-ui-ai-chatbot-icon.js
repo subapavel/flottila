@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiAiChatbotIconConfig = {
+  name: 'RhUiAiChatbotIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28 12H17V9h1.75C19.44 9 20 8.44 20 7.75v-4.5C20 2.56 19.44 2 18.75 2h-5.5C12.56 2 12 2.56 12 3.25v4.5c0 .69.56 1.25 1.25 1.25H15v3H4c-1.654 0-3 1.346-3 3v12c0 1.654 1.346 3 3 3h24c1.654 0 3-1.346 3-3V15c0-1.654-1.346-3-3-3ZM14 4h4v3h-4V4Zm15 23a1 1 0 0 1-1 1H4c-.551 0-1-.448-1-1V15c0-.551.449-1 1-1h24c.552 0 1 .449 1 1v12ZM8.75 18v2a.75.75 0 0 1-.75.75H6a.75.75 0 0 1-.75-.75v-2a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75Zm18 0v2a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-2a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75Zm-7.05 4.475a.873.873 0 0 1-.175 1.224c-1.023.77-2.242 1.176-3.525 1.176s-2.502-.406-3.526-1.176a.874.874 0 1 1 1.05-1.398c1.437 1.078 3.513 1.078 4.95 0a.871.871 0 0 1 1.225.174Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiAiChatbotIcon = createIconBase(RhUiAiChatbotIconConfig);
+
+export default RhUiAiChatbotIcon;

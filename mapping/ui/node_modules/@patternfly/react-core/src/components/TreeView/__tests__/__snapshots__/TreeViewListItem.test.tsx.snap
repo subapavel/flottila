@@ -1,0 +1,85 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Matches snapshot with children 1`] = `
+<DocumentFragment>
+  <li
+    aria-expanded="false"
+    aria-selected="false"
+    class="pf-v6-c-tree-view__list-item"
+    role="treeitem"
+    tabindex="-1"
+  >
+    <div
+      class="pf-v6-c-tree-view__content"
+    >
+      <button
+        class="pf-v6-c-tree-view__node"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-tree-view__node-container"
+        >
+          <span
+            class="pf-v6-c-tree-view__node-toggle"
+            tabindex="-1"
+          >
+            <span
+              class="pf-v6-c-tree-view__node-toggle-icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 20 20"
+                width="1em"
+              >
+                <path
+                  d="M14.35 8.94 6.71 1.29l-.02-.02c-.4-.38-1.03-.37-1.41.02-.38.4-.37 1.03.02 1.41l7.29 7.29-7.29 7.29a1.003 1.003 0 0 0 1.42 1.42l7.65-7.65c.59-.59.59-1.54 0-2.12Z"
+                />
+              </svg>
+            </span>
+          </span>
+          <span
+            class="pf-v6-c-tree-view__node-text"
+          >
+            Item name
+          </span>
+        </span>
+      </button>
+    </div>
+  </li>
+</DocumentFragment>
+`;
+
+exports[`Matches snapshot without children 1`] = `
+<DocumentFragment>
+  <li
+    aria-expanded="false"
+    aria-selected="false"
+    class="pf-v6-c-tree-view__list-item"
+    role="treeitem"
+    tabindex="-1"
+  >
+    <div
+      class="pf-v6-c-tree-view__content"
+    >
+      <button
+        class="pf-v6-c-tree-view__node"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-tree-view__node-container"
+        >
+          <span
+            class="pf-v6-c-tree-view__node-text"
+          >
+            Item name
+          </span>
+        </span>
+      </button>
+    </div>
+  </li>
+</DocumentFragment>
+`;

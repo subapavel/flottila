@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiQuestionMarkIconConfig = {
+  name: 'RhUiQuestionMarkIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M24 9c0 4.072-3.06 7.444-7 7.938V22a1 1 0 1 1-2 0v-6a1 1 0 0 1 1-1c3.309 0 6-2.691 6-6s-2.691-6-6-6-6 2.691-6 6a1 1 0 1 1-2 0c0-4.411 3.589-8 8-8s8 3.589 8 8Zm-8 18.388a1.626 1.626 0 1 0 .001 3.251A1.626 1.626 0 0 0 16 27.388Z"},
+  rhUiIcon: null,
+};
+exports.RhUiQuestionMarkIcon = require('../createIcon').createIconBase(exports.RhUiQuestionMarkIconConfig);
+exports["default"] = exports.RhUiQuestionMarkIcon;

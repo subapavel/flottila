@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiLightModeFillIconConfig: {
+  name: 'RhUiLightModeFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M25 16c0 4.962-4.037 9-9 9s-9-4.038-9-9 4.037-9 9-9 9 4.038 9 9ZM16 5a1 1 0 0 0 1-1V1a1 1 0 1 0-2 0v3a1 1 0 0 0 1 1Zm0 22a1 1 0 0 0-1 1v3a1 1 0 1 0 2 0v-3a1 1 0 0 0-1-1Zm15-12h-3a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2ZM5 16a1 1 0 0 0-1-1H1a1 1 0 1 0 0 2h3a1 1 0 0 0 1-1Zm1.293 8.293-2 2a.999.999 0 1 0 1.414 1.414l2-2a.999.999 0 1 0-1.414-1.414ZM25 8a.997.997 0 0 0 .707-.293l2-2a.999.999 0 1 0-1.414-1.414l-2 2A.999.999 0 0 0 25 8ZM6.293 7.707a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414l-2-2a.999.999 0 1 0-1.414 1.414l2 2Zm19.414 16.586a.999.999 0 1 0-1.414 1.414l2 2a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414l-2-2Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiLightModeFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiLightModeFillIcon;

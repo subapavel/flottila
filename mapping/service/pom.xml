@@ -147,23 +147,4 @@
       </plugin>
     </plugins>
   </build>
-
-  <profiles>
-    <!-- Stack: the jar serves the editor and /api from one origin (ADR-0017).
-         Always with clean: otherwise the UI stays in target/classes and lands in the next jar. -->
-    <profile>
-      <id>ui</id>
-      <build>
-        <resources>
-          <resource>
-            <directory>src/main/resources</directory>
-          </resource>
-          <resource>
-            <directory>${mapping.root}/ui/dist</directory>
-            <targetPath>META-INF/resources</targetPath>
-          </resource>
-        </resources>
-      </build>
-    </profile>
-  </profiles>
 </project>

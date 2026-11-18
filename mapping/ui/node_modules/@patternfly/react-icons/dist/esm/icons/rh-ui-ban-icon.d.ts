@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiBanIconConfig: {
+  name: 'RhUiBanIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1ZM3 16c0-3.241 1.2-6.201 3.169-8.48.04.064.069.132.124.187l18 18c.055.055.124.085.187.124A12.932 12.932 0 0 1 16 29C8.832 29 3 23.168 3 16Zm22.831 8.48c-.04-.064-.069-.132-.124-.187l-18-18c-.055-.055-.124-.085-.187-.124A12.932 12.932 0 0 1 16 3c7.168 0 13 5.832 13 13 0 3.241-1.2 6.201-3.169 8.48Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiBanIcon: ComponentClass<SVGIconProps>;
+export default RhUiBanIcon;

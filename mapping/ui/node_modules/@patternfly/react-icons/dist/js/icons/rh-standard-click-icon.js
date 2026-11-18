@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardClickIconConfig = {
+  name: 'RhStandardClickIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M18.558 8.442a.626.626 0 0 1 0-.884l1-1a.625.625 0 1 1 .884.884l-1 1a.622.622 0 0 1-.884 0Zm-8 7.116-1 1a.626.626 0 0 0 .884.884l1-1a.626.626 0 0 0-.884-.884Zm-.116-9a.625.625 0 1 0-.884.884l1 1a.622.622 0 0 0 .884 0 .626.626 0 0 0 0-.884l-1-1ZM15 7.625c.345 0 .625-.28.625-.625V5a.625.625 0 1 0-1.25 0v2c0 .345.28.625.625.625ZM10.625 12a.625.625 0 0 0-.625-.625H8a.625.625 0 0 0 0 1.25h2c.345 0 .625-.28.625-.625Zm8.75 0c0 .345.28.625.625.625h2a.625.625 0 0 0 0-1.25h-2a.625.625 0 0 0-.625.625Zm10.203 14.24a.626.626 0 0 1-.578.385h-8.741l-4.817 4.817A.626.626 0 0 1 14.375 31V12a.625.625 0 0 1 1.067-.442l14 14a.626.626 0 0 1 .136.681Zm-2.087-.865L15.625 13.509V29.49l3.933-3.933a.625.625 0 0 1 .442-.183h7.491Z"},
+  rhUiIcon: null,
+};
+exports.RhStandardClickIcon = require('../createIcon').createIconBase(exports.RhStandardClickIconConfig);
+exports["default"] = exports.RhStandardClickIcon;

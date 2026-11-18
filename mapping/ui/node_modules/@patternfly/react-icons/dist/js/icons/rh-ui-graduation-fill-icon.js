@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiGraduationFillIconConfig = {
+  name: 'RhUiGraduationFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.539 12.074c0 .356-.191.688-.5.866l-13.5 7.794a1 1 0 0 1-1.002-.001L2.04 12.94a1.002 1.002 0 0 1 0-1.733l13.499-7.793c.308-.177.689-.178.998-.001l6.043 3.489-6.162 3.559a1.125 1.125 0 1 0 1.125 1.948l7.286-4.208 5.21 3.008c.309.178.5.51.5.866ZM29 16a1 1 0 0 0-1 1v11a1 1 0 0 0 2 0V17a1 1 0 0 0-1-1Zm-12.961 6.868a2.99 2.99 0 0 1-1.502-.403l-9.529-5.501c0 .013-.007.024-.007.037v4.124c0 .443.238.857.625 1.083l9.749 5.625a1.257 1.257 0 0 0 1.25 0l8.754-5.048c.383-.224.622-.638.622-1.081v-4.123l-8.459 4.883a2.997 2.997 0 0 1-1.502.403Z"},
+  rhUiIcon: null,
+};
+exports.RhUiGraduationFillIcon = require('../createIcon').createIconBase(exports.RhUiGraduationFillIconConfig);
+exports["default"] = exports.RhUiGraduationFillIcon;

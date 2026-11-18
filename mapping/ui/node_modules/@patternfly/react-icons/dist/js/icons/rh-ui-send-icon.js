@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiSendIconConfig = {
+  name: 'RhUiSendIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.407 15.086 3.397 3.056a1 1 0 0 0-1.386 1.122L4.528 16 2.012 27.812a1.002 1.002 0 0 0 1.384 1.122l27.01-12.02a1 1 0 0 0 .001-1.828ZM4.377 26.308 6.36 17H17a1 1 0 1 0 0-2H6.36L4.377 5.683 27.541 16 4.377 26.308Z"},
+  rhUiIcon: null,
+};
+exports.RhUiSendIcon = require('../createIcon').createIconBase(exports.RhUiSendIconConfig);
+exports["default"] = exports.RhUiSendIcon;

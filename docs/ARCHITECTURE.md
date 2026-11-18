@@ -551,9 +551,11 @@ attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
 The Mappings screen lists the mappings of the mapping service's workspace, finds them and creates
 them, and opens each one in a tab of its own, so that several mappings can be open at once. A
 mapping's tab is the mapping studio: it opens read-only; Edit, then Save (with `If-Match`, and a
-dialog when the file changed on disk), Cancel and Check; and its Overview tab, with the mapping's
-details and description. Closing the tab of a mapping with unsaved changes asks first. The
-studio's other tabs are still in the separate studio below, and move into this one tab by tab.
+dialog when the file changed on disk), Cancel and Check; and its tabs Overview, Signature,
+Definition (the message trees, the field mappings and the expression canvas, on React Flow), Test
+and Functions. Closing the tab of a mapping with unsaved changes asks first. The studio's types are
+generated from the mapping service's contract (`mapping/contract/`, `npm run gen:types`), and CI
+fails when they differ from it.
 
 No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
 passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
@@ -563,16 +565,14 @@ pages (`Sec-Fetch-Site: same-origin`, an `Origin` from its fixed list), drops ev
 never holds it. The mapping studio's `/api` requests go to the mapping service on the same machine
 (port `QUARKUS_HTTP_PORT`, default 8080).
 
-The admin API answers JSON and refuses browsers. The old mapping studio in `mapping/ui` is a
-separate application: React with PatternFly 6, the expression canvas on React Flow. Its screens are
-a list of mappings and a studio with overview, definition, test, signature and functions tabs. `site/` is the
-project's public web page.
+The UI's end-to-end scenarios (`ui/e2e/`, Playwright) run nightly: the 20,128-field tree scrolled
+over a fake mapping service on a development-only page, and the `@stack` scenarios against the
+mapping service's jar. The admin API answers JSON and refuses browsers. `site/` is the project's
+public web page.
 
 **Planned**
 - Finding messages by flow and time, which the admin API cannot search by yet.
 - A server for the UI outside development, holding the token and talking to the node the same way.
-- The rest of the mapping studio rebuilt inside it: the Signature, Definition, Test and Functions
-  tabs, then `mapping/ui` removed.
 - Plugins add their screens through a form generated from their JSON Schema.
 - Writing a view of a payload (how a body is shown), later and simply.
 

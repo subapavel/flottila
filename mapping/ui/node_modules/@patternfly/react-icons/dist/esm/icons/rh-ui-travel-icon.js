@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiTravelIconConfig = {
+  name: 'RhUiTravelIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M23.5 7H20V2.5c0-.827-.673-1.5-1.5-1.5h-5c-.827 0-1.5.673-1.5 1.5V7H8.5C7.673 7 7 7.673 7 8.5v17c0 .827.673 1.5 1.5 1.5h15c.827 0 1.5-.673 1.5-1.5v-17c0-.827-.673-1.5-1.5-1.5ZM14 3h4v4h-4V3Zm9 22H9V9h14v16Zm-11-4v-8a1 1 0 1 1 2 0v8a1 1 0 1 1-2 0Zm6 0v-8a1 1 0 1 1 2 0v8a1 1 0 1 1-2 0Zm-6.375 9.003a1.626 1.626 0 1 1-3.251-.001 1.626 1.626 0 0 1 3.251.001Zm12.005.01a1.626 1.626 0 1 1-3.251-.001 1.626 1.626 0 0 1 3.251.001Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiTravelIcon = createIconBase(RhUiTravelIconConfig);
+
+export default RhUiTravelIcon;

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiServerStackFillIconConfig = {
+  name: 'RhUiServerStackFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.5 1h-25C2.673 1 2 1.673 2 2.5v27c0 .827.673 1.5 1.5 1.5h25c.827 0 1.5-.673 1.5-1.5v-27c0-.827-.673-1.5-1.5-1.5ZM13 25.125H8a1.125 1.125 0 0 1 0-2.25h5a1.125 1.125 0 0 1 0 2.25Zm0-8H8a1.125 1.125 0 0 1 0-2.25h5a1.125 1.125 0 0 1 0 2.25Zm0-8H8a1.125 1.125 0 0 1 0-2.25h5a1.125 1.125 0 0 1 0 2.25Zm10.005 16.751a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749Zm0-8a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749Zm0-7.985a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiServerStackFillIcon = createIconBase(RhUiServerStackFillIconConfig);
+
+export default RhUiServerStackFillIcon;

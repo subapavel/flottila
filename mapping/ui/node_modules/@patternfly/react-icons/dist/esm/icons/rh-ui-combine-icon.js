@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCombineIconConfig = {
+  name: 'RhUiCombineIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M21 3a1 1 0 0 1 1-1h6.5c.827 0 1.5.673 1.5 1.5V10a1 1 0 0 1-2 0V4h-6a1 1 0 0 1-1-1ZM3 11a1 1 0 0 0 1-1V4h6a1 1 0 0 0 0-2H3.5C2.673 2 2 2.673 2 3.5V10a1 1 0 0 0 1 1Zm7 17H4v-6a1 1 0 0 0-2 0v6.5c0 .827.673 1.5 1.5 1.5H10a1 1 0 0 0 0-2Zm19-7a1 1 0 0 0-1 1v6h-6a1 1 0 0 0 0 2h6.5c.827 0 1.5-.673 1.5-1.5V22a1 1 0 0 0-1-1Zm1-6h-9.586l3.293-3.293a.999.999 0 1 0-1.414-1.414l-4.646 4.646a1.501 1.501 0 0 0 0 2.121l4.646 4.646a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414l-3.293-3.293H30a1 1 0 0 0 0-2ZM9.707 10.293a.999.999 0 1 0-1.414 1.414L11.586 15H2a1 1 0 0 0 0 2h9.586l-3.293 3.293a.999.999 0 1 0 1.414 1.414l4.646-4.646a1.501 1.501 0 0 0 0-2.121l-4.646-4.646Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCombineIcon = createIconBase(RhUiCombineIconConfig);
+
+export default RhUiCombineIcon;

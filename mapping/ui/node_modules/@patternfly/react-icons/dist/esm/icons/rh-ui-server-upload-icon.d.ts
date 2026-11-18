@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiServerUploadIconConfig: {
+  name: 'RhUiServerUploadIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M11.293 6.707a.999.999 0 0 1 0-1.414l3.646-3.646a1.501 1.501 0 0 1 2.121 0l3.646 3.646a.999.999 0 1 1-1.414 1.414l-2.293-2.293V12a1 1 0 0 1-2 0V4.414l-2.293 2.293a.999.999 0 0 1-1.414 0ZM31 17.5v11c0 .827-.673 1.5-1.5 1.5h-27c-.827 0-1.5-.673-1.5-1.5v-11c0-.827.673-1.5 1.5-1.5h27c.827 0 1.5.673 1.5 1.5Zm-2 .5H3v10h26V18ZM8 24h5a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2Zm15.005.64c.897 0 1.625-.728 1.625-1.625V23c0-.43-.18-.85-.48-1.15a1.52 1.52 0 0 0-.451-.298c-.025-.012-.049-.027-.075-.038-.013-.005-.027-.008-.04-.012a1.612 1.612 0 0 0-.579-.111c-.143 0-.278.024-.41.059a1.55 1.55 0 0 0-.745.401c-.3.31-.47.72-.47 1.15v.015c0 .897.728 1.625 1.625 1.625Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiServerUploadIcon: ComponentClass<SVGIconProps>;
+export default RhUiServerUploadIcon;

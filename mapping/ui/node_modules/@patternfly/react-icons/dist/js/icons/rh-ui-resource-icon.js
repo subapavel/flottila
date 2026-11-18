@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiResourceIconConfig = {
+  name: 'RhUiResourceIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M26.5 1H12a.988.988 0 0 0-.707.294L4.294 8.293A.997.997 0 0 0 4 9v20.5c0 .827.673 1.5 1.5 1.5h21c.827 0 1.5-.673 1.5-1.5v-27c0-.827-.673-1.5-1.5-1.5ZM11 4.414V8H7.414L11 4.414ZM26 29H6V10h5.5c.827 0 1.5-.673 1.5-1.5V3h13v26ZM10 14h6a1 1 0 0 1 0 2h-6a1 1 0 0 1 0-2Zm0 5h12a1 1 0 0 1 0 2H10a1 1 0 0 1 0-2Zm13 6a1 1 0 0 1-1 1H10a1 1 0 0 1 0-2h12a1 1 0 0 1 1 1Z"},
+  rhUiIcon: null,
+};
+exports.RhUiResourceIcon = require('../createIcon').createIconBase(exports.RhUiResourceIconConfig);
+exports["default"] = exports.RhUiResourceIcon;

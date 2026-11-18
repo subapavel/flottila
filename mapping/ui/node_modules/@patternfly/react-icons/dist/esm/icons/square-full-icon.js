@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const SquareFullIconConfig = {
+  name: 'SquareFullIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":512,"height":512,"svgPathData":"M512 512H0V0h512v512z"},
+  rhUiIcon: null,
+};
+
+export const SquareFullIcon = createIconBase(SquareFullIconConfig);
+
+export default SquareFullIcon;

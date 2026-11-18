@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiBranchFillIconConfig = {
+  name: 'RhUiBranchFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M24 10.858V13c0 2.206-1.794 4-4 4h-6c-1.654 0-3 1.346-3 3v3.142c1.721.447 3 2 3 3.858 0 2.206-1.794 4-4 4s-4-1.794-4-4c0-1.858 1.279-3.411 3-3.858V8.858c-1.721-.447-3-2-3-3.858 0-2.206 1.794-4 4-4s4 1.794 4 4c0 1.858-1.279 3.411-3 3.858v7.168A4.948 4.948 0 0 1 14 15h6c1.103 0 2-.897 2-2v-2.142c-1.721-.447-3-2-3-3.858 0-2.206 1.794-4 4-4s4 1.794 4 4c0 1.858-1.279 3.411-3 3.858Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiBranchFillIcon = createIconBase(RhUiBranchFillIconConfig);
+
+export default RhUiBranchFillIcon;

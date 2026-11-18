@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCheckupIconConfig = {
+  name: 'RhUiCheckupIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M26 13c-2.757 0-5 2.243-5 5 0 2.392 1.691 4.392 3.938 4.881C24.503 26.326 21.56 29 18 29c-3.86 0-7-3.14-7-7v-1.069c3.94-.495 7-3.859 7-7.931V3.5c0-.827-.673-1.5-1.5-1.5H14a1 1 0 0 0 0 2h2v9c0 3.309-2.691 6-6 6s-6-2.691-6-6V4h2a1 1 0 0 0 0-2H3.5C2.673 2 2 2.673 2 3.5V13c0 4.072 3.06 7.436 7 7.931V22c0 4.962 4.038 9 9 9 4.657 0 8.499-3.557 8.954-8.096A5.005 5.005 0 0 0 31 18c0-2.757-2.243-5-5-5Zm0 8c-1.654 0-3-1.346-3-3s1.346-3 3-3 3 1.346 3 3-1.346 3-3 3Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCheckupIcon = createIconBase(RhUiCheckupIconConfig);
+
+export default RhUiCheckupIcon;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiBuildFillIconConfig = {
+  name: 'RhUiBuildFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.33 8.171a.752.752 0 0 0-1.248-.313L25.47 11.47c-1.319 1.319-3.62 1.319-4.939 0-.66-.66-1.023-1.537-1.023-2.47s.363-1.81 1.023-2.47l3.612-3.612a.748.748 0 0 0-.313-1.248 9.747 9.747 0 0 0-2.829-.42c-5.376 0-9.75 4.374-9.75 9.75 0 1.077.178 2.137.53 3.159L2.97 22.97c-.81.81-1.255 1.886-1.255 3.03s.446 2.221 1.255 3.03S4.856 30.285 6 30.285s2.221-.446 3.03-1.255l8.811-8.81a9.667 9.667 0 0 0 3.159.53c5.376 0 9.75-4.374 9.75-9.75 0-.957-.142-1.909-.42-2.829ZM6.005 27.878a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749Z"},
+  rhUiIcon: null,
+};
+exports.RhUiBuildFillIcon = require('../createIcon').createIconBase(exports.RhUiBuildFillIconConfig);
+exports["default"] = exports.RhUiBuildFillIcon;

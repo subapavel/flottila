@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiTableFillIconConfig = {
+  name: 'RhUiTableFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M1 8.875V4.5C1 3.673 1.673 3 2.5 3h27c.827 0 1.5.673 1.5 1.5v4.375H1Zm30 2.25V27.5c0 .827-.673 1.5-1.5 1.5h-27c-.827 0-1.5-.673-1.5-1.5V11.125h30ZM28.125 20c0-.621-.504-1.125-1.125-1.125h-9.875V15a1.125 1.125 0 0 0-2.25 0v3.875H5a1.125 1.125 0 0 0 0 2.25h9.875V25a1.125 1.125 0 0 0 2.25 0v-3.875H27c.621 0 1.125-.504 1.125-1.125Z"},
+  rhUiIcon: null,
+};
+exports.RhUiTableFillIcon = require('../createIcon').createIconBase(exports.RhUiTableFillIconConfig);
+exports["default"] = exports.RhUiTableFillIcon;

@@ -1,0 +1,44 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Matches the snapshot 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-back-to-top pf-m-hidden"
+  >
+    <button>
+      Back to top
+    </button>
+    <p>
+      variant: primary
+    </p>
+    <p
+      id="labelling-id"
+    >
+      Test label
+    </p>
+    <p>
+      isInline: undefined
+    </p>
+    <p>
+      iconPosition: end
+    </p>
+    <div
+      data-testid="icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="pf-v6-svg"
+        fill="currentColor"
+        height="1em"
+        role="img"
+        viewBox="0 0 20 20"
+        width="1em"
+      >
+        <path
+          d="m18.71 13.29-7.65-7.65a1.49 1.49 0 0 0-2.12 0l-7.65 7.65-.02.02c-.38.4-.37 1.03.02 1.41.4.38 1.03.37 1.41-.02l7.29-7.29 7.29 7.29c.19.19.44.29.71.29.27 0 .52-.11.71-.29a.996.996 0 0 0 0-1.41Z"
+        />
+      </svg>
+    </div>
+  </div>
+</DocumentFragment>
+`;

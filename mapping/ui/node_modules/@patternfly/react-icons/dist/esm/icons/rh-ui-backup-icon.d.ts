@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiBackupIconConfig: {
+  name: 'RhUiBackupIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 16c0 8.271-6.729 15-15 15a15.021 15.021 0 0 1-12.311-6.428 1.002 1.002 0 0 1 .248-1.393 1.003 1.003 0 0 1 1.393.248A13.018 13.018 0 0 0 16 28.999c7.168 0 13-5.832 13-13S23.168 3 16 3c-4.85 0-9.306 2.763-11.524 7H11a1 1 0 1 1 0 2H2.5c-.827 0-1.5-.673-1.5-1.5V2a1 1 0 1 1 2 0v6.521C5.648 3.945 10.617 1 16 1c8.271 0 15 6.729 15 15Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiBackupIcon: ComponentClass<SVGIconProps>;
+export default RhUiBackupIcon;

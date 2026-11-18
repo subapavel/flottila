@@ -1,0 +1,68 @@
+import { useState } from 'react';
+import {
+  Form,
+  FormGroup,
+  TextInput,
+  Button,
+  ActionListItem,
+  ActionListGroup,
+  ActionList
+} from '@patternfly/react-core';
+import RhUiCheckCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-check-circle-fill-icon';
+
+export const ButtonProgress: React.FunctionComponent = () => {
+  const [loginState, setLoginState] = useState<'notLoggedIn' | 'loading' | 'loggedIn'>('notLoggedIn');
+
+  return (
+    <Form>
+      <FormGroup label="Username" isRequired fieldId="progress-button-initial-login">
+        <TextInput
+          isRequired
+          type="text"
+          id="progress-button-initial-login"
+          name="progress-button-initial-login"
+          value="johndoe"
+          aria-label="username input"
+        />
+      </FormGroup>
+      <FormGroup label="Password" isRequired fieldId="progress-button-initial-password">
+        <TextInput
+          isRequired
+          type="password"
+          value="p@ssw0rd"
+          id="progress-button-initial-password"
+          name="progress-button-initial-password"
+          aria-label="password input"
+        />
+      </FormGroup>
+      <FormGroup isActionGroup>
+        <ActionList>
+          <ActionListGroup>
+            <ActionListItem>
+              <Button
+                variant="primary"
+                onClick={
+                  loginState === 'notLoggedIn'
+                    ? () => {
+                        setLoginState('loading');
+                        setTimeout(() => {
+                          setLoginState('loggedIn');
+                        }, 3000);
+                      }
+                    : null
+                }
+                isLoading={loginState === 'loading'}
+                icon={loginState === 'loggedIn' ? <RhUiCheckCircleFillIcon /> : null}
+                spinnerAriaValueText="Loading..."
+              >
+                {loginState === 'notLoggedIn' && 'Link account and log in'}
+                {loginState === 'loading' && 'Linking account'}
+                {loginState === 'loggedIn' && 'Logged in'}
+              </Button>
+            </ActionListItem>
+          </ActionListGroup>
+        </ActionList>
+      </FormGroup>
+    </Form>
+  );
+};

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiAccessibilityIconConfig = {
+  name: 'RhUiAccessibilityIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm6.979-16.27c.114.54-.23 1.07-.771 1.186l-4.142.88 1.913 8.996a1.001 1.001 0 0 1-1.958.416l-.9-4.233c-.041.006-.078.025-.121.025h-2c-.043 0-.08-.02-.122-.025l-.9 4.233a1.002 1.002 0 0 1-1.957-.416l1.913-8.996-4.142-.88a1.001 1.001 0 0 1-.77-1.187c.115-.54.648-.881 1.186-.77L15.107 13h1.786l4.899-1.041a1.004 1.004 0 0 1 1.187.77ZM14 9c0-1.103.897-2 2-2s2 .897 2 2-.897 2-2 2-2-.897-2-2Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiAccessibilityIcon = createIconBase(RhUiAccessibilityIconConfig);
+
+export default RhUiAccessibilityIcon;

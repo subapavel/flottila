@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const VolumeOffIconConfig: {
+  name: 'VolumeOffIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":256,"height":512,"svgPathData":"M215 71l-89 89H24a24 24 0 0 0-24 24v144a24 24 0 0 0 24 24h102.06L215 441c15 15 41 4.47 41-17V88c0-21.47-26-32-41-17z"},
+  rhUiIcon: null,
+};
+export declare const VolumeOffIcon: ComponentClass<SVGIconProps>;
+export default VolumeOffIcon;

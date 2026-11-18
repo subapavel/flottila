@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiDislikeFillIconConfig = {
+  name: 'RhUiDislikeFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M9 4.5v16c0 .827-.636 1.5-1.417 1.5H3.417C2.636 22 2 21.327 2 20.5v-16C2 3.673 2.636 3 3.417 3h4.166C8.364 3 9 3.673 9 4.5Zm20.798 12.98-2.17-10.207A3.517 3.517 0 0 0 24.204 4.5H11v16.05c2.489.254 4.468 2.335 4.5 4.886.014 1.221.612 2.264 1.561 2.723.473.229.964.343 1.444.343.558 0 1.101-.153 1.587-.458a2.986 2.986 0 0 0 1.408-2.543v-5h5.853c.758 0 1.466-.338 1.942-.927.478-.589.66-1.352.503-2.093Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiDislikeFillIcon = createIconBase(RhUiDislikeFillIconConfig);
+
+export default RhUiDislikeFillIcon;

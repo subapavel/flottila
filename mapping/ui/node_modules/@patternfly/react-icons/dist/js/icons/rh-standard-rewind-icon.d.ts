@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardRewindIconConfig: {
+  name: 'RhStandardRewindIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M31.31 10.11a.62.62 0 0 0-.62 0l-12.07 6.82v-6.28a.63.63 0 0 0-.93-.54l-13 7.35a.63.63 0 0 0 0 1.08l13 7.35a.63.63 0 0 0 .93-.54v-6.28l12.07 6.82a.63.63 0 0 0 .93-.54v-14.7a.62.62 0 0 0-.31-.54ZM17.38 24.27 6.27 18l11.11-6.27Zm13 0L19.27 18l11.11-6.27Z"},
+  rhUiIcon: null,
+};
+export declare const RhStandardRewindIcon: ComponentClass<SVGIconProps>;
+export default RhStandardRewindIcon;

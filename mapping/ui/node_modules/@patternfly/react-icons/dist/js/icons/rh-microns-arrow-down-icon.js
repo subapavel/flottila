@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhMicronsArrowDownIconConfig = {
+  name: 'RhMicronsArrowDownIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M16.71 11.29a.996.996 0 0 0-1.41 0l-4.29 4.29V2c0-.55-.45-1-1-1s-1 .45-1 1v13.59L4.72 11.3a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 5.65 5.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.65-5.65a.996.996 0 0 0 0-1.41Z"},
+  rhUiIcon: null,
+};
+exports.RhMicronsArrowDownIcon = require('../createIcon').createIconBase(exports.RhMicronsArrowDownIconConfig);
+exports["default"] = exports.RhMicronsArrowDownIcon;

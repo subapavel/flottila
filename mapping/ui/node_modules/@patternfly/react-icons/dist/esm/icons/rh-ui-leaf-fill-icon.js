@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiLeafFillIconConfig = {
+  name: 'RhUiLeafFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28 2.5V13c0 6.617-5.383 12-12 12-1.736 0-3.383-.379-4.875-1.045V20c0-4.343 3.532-7.875 7.875-7.875a1.125 1.125 0 0 0 0-2.25C13.417 9.875 8.875 14.417 8.875 20v2.633C5.925 20.445 4 16.948 4 13 4 6.383 9.383 1 16 1h10.5c.827 0 1.5.673 1.5 1.5ZM9 30a1 1 0 1 0 2 0v-6.105a11.987 11.987 0 0 1-2-1.168V30Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiLeafFillIcon = createIconBase(RhUiLeafFillIconConfig);
+
+export default RhUiLeafFillIcon;

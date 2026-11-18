@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiRunningIconConfig = {
+  name: 'RhUiRunningIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M11.572 26.836a1 1 0 0 1-.979-.792l-1.707-8.037H2a1 1 0 1 1 0-2h7.697a1 1 0 0 1 .978.792l.897 4.227 3.449-16.227a1 1 0 0 1 1.958 0l3.282 15.406.724-3.404a1 1 0 0 1 .978-.792l8.038-.002a1 1 0 0 1 0 2h-7.228l-1.532 7.21a1 1 0 0 1-1.958 0L16.001 9.811l-3.45 16.233a1.002 1.002 0 0 1-.979.792Z"},
+  rhUiIcon: null,
+};
+exports.RhUiRunningIcon = require('../createIcon').createIconBase(exports.RhUiRunningIconConfig);
+exports["default"] = exports.RhUiRunningIcon;

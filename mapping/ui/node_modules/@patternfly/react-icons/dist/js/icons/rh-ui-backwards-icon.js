@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiBackwardsIconConfig = {
+  name: 'RhUiBackwardsIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 21v8a1 1 0 1 1-2 0v-8c0-4.962-4.037-9-9-9H5.414l6.293 6.293a.999.999 0 1 1-1.414 1.414l-7.646-7.646c-.283-.283-.439-.66-.439-1.061s.156-.777.439-1.061l7.646-7.646a.999.999 0 1 1 1.414 1.414L5.414 10H19c6.065 0 11 4.935 11 11Z"},
+  rhUiIcon: null,
+};
+exports.RhUiBackwardsIcon = require('../createIcon').createIconBase(exports.RhUiBackwardsIconConfig);
+exports["default"] = exports.RhUiBackwardsIcon;

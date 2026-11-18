@@ -1,0 +1,282 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Disclosure ExpandableSection 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-expandable-section pf-m-display-lg pf-m-limit-width"
+    data-ouia-component-type="PF6/ExpandableSection"
+    data-ouia-safe="true"
+  >
+    <div
+      class="pf-v6-c-expandable-section__toggle"
+    >
+      <button
+        aria-controls="content-id"
+        class="pf-v6-c-button pf-m-link"
+        data-ouia-component-id="OUIA-Generated-Button-link-:rh:"
+        data-ouia-component-type="PF6/Button"
+        data-ouia-safe="true"
+        id="toggle-id"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-button__icon"
+        >
+          <span
+            class="pf-v6-c-expandable-section__toggle-icon"
+          >
+            <svg
+              aria-hidden="true"
+              class="pf-v6-svg"
+              fill="currentColor"
+              height="1em"
+              role="img"
+              viewBox="0 0 20 20"
+              width="1em"
+            >
+              <path
+                d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+              />
+            </svg>
+          </span>
+        </span>
+      </button>
+    </div>
+    <div
+      aria-labelledby="toggle-id"
+      class="pf-v6-c-expandable-section__content"
+      hidden=""
+      id="content-id"
+      role="region"
+    >
+      test 
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`ExpandableSection 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-expandable-section"
+    data-ouia-component-id="ouia-id"
+    data-ouia-component-type="PF6/ExpandableSection"
+    data-ouia-safe="true"
+  >
+    <div
+      class="pf-v6-c-expandable-section__toggle"
+    >
+      <button
+        aria-controls="content-id"
+        class="pf-v6-c-button pf-m-link"
+        data-ouia-component-id="OUIA-Generated-Button-link-:r2:"
+        data-ouia-component-type="PF6/Button"
+        data-ouia-safe="true"
+        id="toggle-id"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-button__icon"
+        >
+          <span
+            class="pf-v6-c-expandable-section__toggle-icon"
+          >
+            <svg
+              aria-hidden="true"
+              class="pf-v6-svg"
+              fill="currentColor"
+              height="1em"
+              role="img"
+              viewBox="0 0 20 20"
+              width="1em"
+            >
+              <path
+                d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+              />
+            </svg>
+          </span>
+        </span>
+      </button>
+    </div>
+    <div
+      aria-labelledby="toggle-id"
+      class="pf-v6-c-expandable-section__content"
+      hidden=""
+      id="content-id"
+      role="region"
+    >
+      test 
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Renders ExpandableSection expanded 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-expandable-section pf-m-expanded"
+    data-ouia-component-type="PF6/ExpandableSection"
+    data-ouia-safe="true"
+  >
+    <div
+      class="pf-v6-c-expandable-section__toggle"
+    >
+      <button
+        aria-controls="content-id"
+        aria-expanded="true"
+        class="pf-v6-c-button pf-m-link"
+        data-ouia-component-id="OUIA-Generated-Button-link-:r5:"
+        data-ouia-component-type="PF6/Button"
+        data-ouia-safe="true"
+        id="toggle-id"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-button__icon"
+        >
+          <span
+            class="pf-v6-c-expandable-section__toggle-icon"
+          >
+            <svg
+              aria-hidden="true"
+              class="pf-v6-svg"
+              fill="currentColor"
+              height="1em"
+              role="img"
+              viewBox="0 0 20 20"
+              width="1em"
+            >
+              <path
+                d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+              />
+            </svg>
+          </span>
+        </span>
+      </button>
+    </div>
+    <div
+      aria-labelledby="toggle-id"
+      class="pf-v6-c-expandable-section__content"
+      id="content-id"
+      role="region"
+    >
+       test 
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Renders ExpandableSection indented 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-expandable-section pf-m-expanded pf-m-indented"
+    data-ouia-component-type="PF6/ExpandableSection"
+    data-ouia-safe="true"
+  >
+    <div
+      class="pf-v6-c-expandable-section__toggle"
+    >
+      <button
+        aria-controls="content-id"
+        aria-expanded="true"
+        class="pf-v6-c-button pf-m-link"
+        data-ouia-component-id="OUIA-Generated-Button-link-:rk:"
+        data-ouia-component-type="PF6/Button"
+        data-ouia-safe="true"
+        id="toggle-id"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-button__icon"
+        >
+          <span
+            class="pf-v6-c-expandable-section__toggle-icon"
+          >
+            <svg
+              aria-hidden="true"
+              class="pf-v6-svg"
+              fill="currentColor"
+              height="1em"
+              role="img"
+              viewBox="0 0 20 20"
+              width="1em"
+            >
+              <path
+                d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+              />
+            </svg>
+          </span>
+        </span>
+      </button>
+    </div>
+    <div
+      aria-labelledby="toggle-id"
+      class="pf-v6-c-expandable-section__content"
+      id="content-id"
+      role="region"
+    >
+       test 
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Renders Uncontrolled ExpandableSection 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-expandable-section"
+    data-ouia-component-type="PF6/ExpandableSection"
+    data-ouia-safe="true"
+  >
+    <div
+      class="pf-v6-c-expandable-section__toggle"
+    >
+      <button
+        aria-controls="content-id"
+        class="pf-v6-c-button pf-m-link"
+        data-ouia-component-id="OUIA-Generated-Button-link-:re:"
+        data-ouia-component-type="PF6/Button"
+        data-ouia-safe="true"
+        id="toggle-id"
+        type="button"
+      >
+        <span
+          class="pf-v6-c-button__icon pf-m-start"
+        >
+          <span
+            class="pf-v6-c-expandable-section__toggle-icon"
+          >
+            <svg
+              aria-hidden="true"
+              class="pf-v6-svg"
+              fill="currentColor"
+              height="1em"
+              role="img"
+              viewBox="0 0 20 20"
+              width="1em"
+            >
+              <path
+                d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+              />
+            </svg>
+          </span>
+        </span>
+        <span
+          class="pf-v6-c-button__text"
+        >
+          Show More
+        </span>
+      </button>
+    </div>
+    <div
+      aria-labelledby="toggle-id"
+      class="pf-v6-c-expandable-section__content"
+      hidden=""
+      id="content-id"
+      role="region"
+    >
+       test 
+    </div>
+  </div>
+</DocumentFragment>
+`;

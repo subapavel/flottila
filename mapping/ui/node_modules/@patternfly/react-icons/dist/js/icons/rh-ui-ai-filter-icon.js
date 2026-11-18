@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiAiFilterIconConfig = {
+  name: 'RhUiAiFilterIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 3.5V7a1 1 0 0 1-.293.707L20 17.414V28c0 .43-.275.813-.684.948l-6 2a1.004 1.004 0 0 1-.901-.137A1.001 1.001 0 0 1 12 30V17.414l-1.707-1.707a1 1 0 1 1 1.414-1.414l2 2A1 1 0 0 1 14 17v11.612l4-1.333V17a1 1 0 0 1 .293-.707L28 6.586V4H14a1 1 0 1 1 0-2h14.5c.827 0 1.5.673 1.5 1.5ZM12.505 7a.603.603 0 0 0-.498-.59A5.523 5.523 0 0 1 7.59 1.993c-.054-.289-.3-.498-.59-.498s-.536.21-.59.498A5.523 5.523 0 0 1 1.993 6.41c-.289.054-.498.3-.498.59s.21.536.498.59a5.523 5.523 0 0 1 4.417 4.417c.054.289.3.498.59.498s.536-.21.59-.498a5.523 5.523 0 0 1 4.417-4.417.603.603 0 0 0 .498-.59Z"},
+  rhUiIcon: null,
+};
+exports.RhUiAiFilterIcon = require('../createIcon').createIconBase(exports.RhUiAiFilterIconConfig);
+exports["default"] = exports.RhUiAiFilterIcon;

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCarFillIconConfig = {
+  name: 'RhUiCarFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M2 7V6a1 1 0 0 1 2 0v1a1 1 0 0 1-2 0Zm27-2a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Zm1 9v7.5c0 .827-.673 1.5-1.5 1.5h-25c-.827 0-1.5-.673-1.5-1.5V14c0-1.654 1.346-3 3-3h.065l1.957-9.208A1 1 0 0 1 8 1h16a1 1 0 0 1 .978.792L26.935 11H27c1.654 0 3 1.346 3 3ZM7.109 11H24.89l-1.7-8H8.809l-1.7 8Zm.016 5a1.125 1.125 0 0 0-2.25 0v2a1.125 1.125 0 0 0 2.25 0v-2Zm14 1c0-.621-.504-1.125-1.125-1.125h-8a1.125 1.125 0 0 0 0 2.25h8c.621 0 1.125-.504 1.125-1.125Zm6-1a1.125 1.125 0 0 0-2.25 0v2a1.125 1.125 0 0 0 2.25 0v-2ZM29 25H3a1 1 0 0 0 0 2h1v2c0 1.103.897 2 2 2h2c1.103 0 2-.897 2-2v-2h12v2c0 1.103.897 2 2 2h2c1.103 0 2-.897 2-2v-2h1a1 1 0 0 0 0-2Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCarFillIcon = createIconBase(RhUiCarFillIconConfig);
+
+export default RhUiCarFillIcon;

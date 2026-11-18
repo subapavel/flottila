@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhMicronsSortDownLargeToSmallIconConfig = {
+  name: 'RhMicronsSortDownLargeToSmallIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M18 2h-8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2Zm-3 4h-5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2Zm-3 4h-2a1 1 0 1 0 0 2h2a1 1 0 1 0 0-2Zm-4 4H6V2a1 1 0 1 0-2 0v12H2a.999.999 0 0 0-.707 1.707l2.646 2.647c.292.292.677.438 1.061.438s.769-.146 1.06-.438l2.647-2.647A.999.999 0 0 0 8 14Z"},
+  rhUiIcon: null,
+};
+exports.RhMicronsSortDownLargeToSmallIcon = require('../createIcon').createIconBase(exports.RhMicronsSortDownLargeToSmallIconConfig);
+exports["default"] = exports.RhMicronsSortDownLargeToSmallIcon;

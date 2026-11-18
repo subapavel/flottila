@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiStorageFillIconConfig = {
+  name: 'RhUiStorageFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M3.071 8.5C3.071 4.977 8.991 2 16 2s12.929 2.977 12.929 6.5S23.009 15 16 15 3.071 12.023 3.071 8.5Zm0 4.312V16c0 3.523 5.92 6.5 12.929 6.5s12.929-2.977 12.929-6.5v-3.188C26.368 15.336 21.589 17 16 17S5.632 15.336 3.071 12.812Zm0 7.5V23.5c0 3.523 5.92 6.5 12.929 6.5s12.929-2.977 12.929-6.5v-3.188C26.368 22.835 21.589 24.5 16 24.5S5.632 22.836 3.071 20.312Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiStorageFillIcon = createIconBase(RhUiStorageFillIconConfig);
+
+export default RhUiStorageFillIcon;

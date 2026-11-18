@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiManufacturingFillIconConfig = {
+  name: 'RhUiManufacturingFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M20 9.5V7h-8.101a4.961 4.961 0 0 1-.732 1.753l5.728 5.728A4.94 4.94 0 0 1 19 14c2.757 0 5 2.243 5 5s-2.243 5-5 5a4.94 4.94 0 0 1-2.105-.481L11.414 29H28a1 1 0 1 1 0 2H4a1 1 0 1 1 0-2h4.586l6.693-6.693C14.493 21.423 14 20.273 14 19s.493-2.423 1.279-3.307l-5.526-5.526A4.969 4.969 0 0 1 7 11c-2.757 0-5-2.243-5-5s2.243-5 5-5a5.01 5.01 0 0 1 4.899 4H20V2.5c0-.827.673-1.5 1.5-1.5H28a1 1 0 1 1 0 2h-6v6h6a1 1 0 1 1 0 2h-6.5c-.827 0-1.5-.673-1.5-1.5Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiManufacturingFillIcon = createIconBase(RhUiManufacturingFillIconConfig);
+
+export default RhUiManufacturingFillIcon;

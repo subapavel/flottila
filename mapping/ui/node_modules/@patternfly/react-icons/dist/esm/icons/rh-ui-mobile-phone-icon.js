@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiMobilePhoneIconConfig = {
+  name: 'RhUiMobilePhoneIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M20 26a1 1 0 0 1-1 1h-6a1 1 0 1 1 0-2h6a1 1 0 0 1 1 1Zm5-22v24c0 1.654-1.346 3-3 3H10c-1.654 0-3-1.346-3-3V4c0-1.654 1.346-3 3-3h12c1.654 0 3 1.346 3 3Zm-2 0c0-.551-.448-1-1-1H10c-.552 0-1 .449-1 1v24a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4Zm-7 4.629a1.625 1.625 0 1 0 0-3.25 1.625 1.625 0 0 0 0 3.25Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiMobilePhoneIcon = createIconBase(RhUiMobilePhoneIconConfig);
+
+export default RhUiMobilePhoneIcon;

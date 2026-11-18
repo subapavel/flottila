@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const SortUpIconConfig: {
+  name: 'SortUpIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":320,"height":512,"svgPathData":"M279 224H41c-21.4 0-32.1-25.9-17-41L143 64c9.4-9.4 24.6-9.4 33.9 0l119 119c15.2 15.1 4.5 41-16.9 41z"},
+  rhUiIcon: null,
+};
+export declare const SortUpIcon: ComponentClass<SVGIconProps>;
+export default SortUpIcon;

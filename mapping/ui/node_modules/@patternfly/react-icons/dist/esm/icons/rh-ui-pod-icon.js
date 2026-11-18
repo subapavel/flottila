@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiPodIconConfig = {
+  name: 'RhUiPodIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M22.5 12.536v6.928a.5.5 0 0 1-.25.432l-6 3.464a.497.497 0 0 1-.5 0l-6-3.464a.499.499 0 0 1-.25-.432v-6.928c0-.179.095-.344.25-.432l6-3.464a.497.497 0 0 1 .5 0l6 3.464a.5.5 0 0 1 .25.432ZM31 16c0 8.271-6.729 15-15 15S1 24.271 1 16 7.729 1 16 1s15 6.729 15 15Zm-2 0c0-7.168-5.832-13-13-13S3 8.832 3 16s5.832 13 13 13 13-5.832 13-13Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiPodIcon = createIconBase(RhUiPodIconConfig);
+
+export default RhUiPodIcon;

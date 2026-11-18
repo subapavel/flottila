@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardEuroIconConfig: {
+  name: 'RhStandardEuroIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M28.643 28.978A13.291 13.291 0 0 1 21 31.375c-6.117 0-11.276-4.133-12.862-9.75H26a.625.625 0 0 0 0-1.25H7.849A13.36 13.36 0 0 1 7.625 18c0-1.168.166-2.295.448-3.375H26a.625.625 0 0 0 0-1.25H8.466c1.889-5.099 6.787-8.75 12.534-8.75 2.752 0 5.395.83 7.643 2.397a.625.625 0 0 0 .715-1.025A14.538 14.538 0 0 0 21 3.375c-6.447 0-11.922 4.198-13.863 10H4a.625.625 0 0 0 0 1.25h2.784A14.57 14.57 0 0 0 6.375 18c0 .81.083 1.6.21 2.375H4a.625.625 0 0 0 0 1.25h2.848c1.62 6.313 7.34 11 14.152 11 3.009 0 5.899-.907 8.357-2.622a.625.625 0 0 0-.714-1.025Z"},
+  rhUiIcon: null,
+};
+export declare const RhStandardEuroIcon: ComponentClass<SVGIconProps>;
+export default RhStandardEuroIcon;

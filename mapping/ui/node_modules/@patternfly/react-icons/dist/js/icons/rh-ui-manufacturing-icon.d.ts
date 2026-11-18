@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiManufacturingIconConfig: {
+  name: 'RhUiManufacturingIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M21.5 11H28a1 1 0 1 0 0-2h-6V3h6a1 1 0 1 0 0-2h-6.5c-.827 0-1.5.673-1.5 1.5V5h-8.1a5 5 0 1 0-2.14 5.17l5.51 5.51C14.48 16.57 14 17.73 14 19s.48 2.43 1.27 3.32L8.58 29H4a1 1 0 1 0 0 2h24a1 1 0 1 0 0-2H11.42l5.47-5.47c.64.3 1.36.47 2.11.47 2.76 0 5-2.24 5-5s-2.24-5-5-5c-.75 0-1.47.17-2.11.47l-5.71-5.71c.34-.52.59-1.12.72-1.76H20v2.5c0 .827.673 1.5 1.5 1.5Zm-3.03 5.05c.17-.03.35-.05.53-.05 1.65 0 3 1.35 3 3s-1.35 3-3 3c-.18 0-.36-.02-.53-.05a2.99 2.99 0 0 1-1.79-1.05c-.42-.52-.68-1.19-.68-1.9s.26-1.38.68-1.9a2.99 2.99 0 0 1 1.79-1.05ZM9.7 7.28c-.29.62-.79 1.13-1.41 1.42-.39.19-.83.3-1.29.3-1.65 0-3-1.35-3-3s1.35-3 3-3c1.31 0 2.42.85 2.83 2.02a2.926 2.926 0 0 1 0 1.96c-.04.1-.08.2-.13.3Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiManufacturingIcon: ComponentClass<SVGIconProps>;
+export default RhUiManufacturingIcon;

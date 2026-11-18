@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiMuteFillIconConfig = {
+  name: 'RhUiMuteFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M18 3v26a1 1 0 0 1-1.614.79L7.657 23H2.5c-.827 0-1.5-.673-1.5-1.5v-11C1 9.673 1.673 9 2.5 9h5.157l8.729-6.79A1.001 1.001 0 0 1 18 2.999Zm9.414 13 3.293-3.293a.999.999 0 1 0-1.414-1.414L26 14.586l-3.293-3.293a.999.999 0 1 0-1.414 1.414L24.586 16l-3.293 3.293a.999.999 0 1 0 1.414 1.414L26 17.414l3.293 3.293a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414L27.414 16Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiMuteFillIcon = createIconBase(RhUiMuteFillIconConfig);
+
+export default RhUiMuteFillIcon;

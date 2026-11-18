@@ -1,0 +1,1159 @@
+# Change Log
+
+All notable changes to this project will be documented in this file.
+See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [6.7.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.7.0-prerelease.3...@patternfly/react-icons@6.7.0) (2026-10-15)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.7.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.7.0-prerelease.2...@patternfly/react-icons@6.7.0-prerelease.3) (2026-10-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.7.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.7.0-prerelease.1...@patternfly/react-icons@6.7.0-prerelease.2) (2026-10-02)
+
+### Features
+
+- **toolbar:** container query support ([#12662](https://github.com/patternfly/patternfly-react/issues/12662)) ([58577a8](https://github.com/patternfly/patternfly-react/commit/58577a8a4d9654e929e5180c0f8241d3c35bd30b))
+
+# [6.7.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.7.0-prerelease.0...@patternfly/react-icons@6.7.0-prerelease.1) (2026-09-30)
+
+### Features
+
+- **Page,Compass,Nav,MenuToggle,Button:** simplify docked nav expand props ([#12661](https://github.com/patternfly/patternfly-react/issues/12661)) ([dab7e8a](https://github.com/patternfly/patternfly-react/commit/dab7e8a28ef70eee1764d682d19fa40c622fb4dd))
+
+### Reverts
+
+- Revert "chore(release): releasing packages [ci skip]" (#12663) ([de8fb05](https://github.com/patternfly/patternfly-react/commit/de8fb05e58ffdf9adf30f8225a03783c70978df6)), closes [#12663](https://github.com/patternfly/patternfly-react/issues/12663)
+
+# [6.7.0-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.5...@patternfly/react-icons@6.7.0-prerelease.0) (2026-09-28)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [6.6.1-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.4...@patternfly/react-icons@6.6.1-prerelease.5) (2026-09-24)
+
+### Bug Fixes
+
+- **deps:** prerelease bump ([#12659](https://github.com/patternfly/patternfly-react/issues/12659)) ([eb08cef](https://github.com/patternfly/patternfly-react/commit/eb08cef1479219a9a11ae441fafc3f73a938ed30))
+
+## [6.6.1-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.3...@patternfly/react-icons@6.6.1-prerelease.4) (2026-09-15)
+
+### Features
+
+- **Drawer:** Add full-size drawer ([#12641](https://github.com/patternfly/patternfly-react/issues/12641)) ([9930770](https://github.com/patternfly/patternfly-react/commit/9930770624d75e6d0b7b0e8480cc198b71906f7e))
+
+## [6.6.1-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.2...@patternfly/react-icons@6.6.1-prerelease.3) (2026-09-11)
+
+### Features
+
+- **Page:** add PageFooter and isPlain ([#12642](https://github.com/patternfly/patternfly-react/issues/12642)) ([6e3dd0e](https://github.com/patternfly/patternfly-react/commit/6e3dd0e11b69671d46742346c818d4463e9b964b))
+
+## [6.6.1-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.1...@patternfly/react-icons@6.6.1-prerelease.2) (2026-09-09)
+
+### Features
+
+- update rhds icons to 2.3.1 ([#12639](https://github.com/patternfly/patternfly-react/issues/12639)) ([7060f7a](https://github.com/patternfly/patternfly-react/commit/7060f7a2adacd74646290d51a8a9ca1532614e50))
+
+## [6.6.1-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.1-prerelease.0...@patternfly/react-icons@6.6.1-prerelease.1) (2026-08-31)
+
+### Features
+
+- **Page:** Add PageHeader component ([#12632](https://github.com/patternfly/patternfly-react/issues/12632)) ([de5b2ef](https://github.com/patternfly/patternfly-react/commit/de5b2efd359b329cad691d2a76caeffe1736ae1f))
+
+## [6.6.1-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.0...@patternfly/react-icons@6.6.1-prerelease.0) (2026-08-03)
+
+### Bug Fixes
+
+- update tree pattern expand icon direction ([#12554](https://github.com/patternfly/patternfly-react/issues/12554)) ([8c89c01](https://github.com/patternfly/patternfly-react/commit/8c89c01501b2db096a23267b585cb46cf438aaea))
+
+# [6.6.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.0-prerelease.4...@patternfly/react-icons@6.6.0) (2026-07-01)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.6.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.0-prerelease.3...@patternfly/react-icons@6.6.0-prerelease.4) (2026-06-26)
+
+### Features
+
+- **ver:** bump to core prerelease.16 ([#12526](https://github.com/patternfly/patternfly-react/issues/12526)) ([894e315](https://github.com/patternfly/patternfly-react/commit/894e31584110cc21c8160ee35a8a9256fa50bb59))
+
+# [6.6.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.6.0-prerelease.1...@patternfly/react-icons@6.6.0-prerelease.3) (2026-06-24)
+
+### Bug Fixes
+
+- **react-icons:** move tslib to deps ([#12454](https://github.com/patternfly/patternfly-react/issues/12454)) ([65c1213](https://github.com/patternfly/patternfly-react/commit/65c1213a7c1a04faac6afc16280b01d86b9bd301))
+
+### Features
+
+- **Avatar:** support colorful ([#12460](https://github.com/patternfly/patternfly-react/issues/12460)) ([46d9e5a](https://github.com/patternfly/patternfly-react/commit/46d9e5a6b2781600d01378d9c26e74fb954437cb))
+
+# [6.6.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.1-prerelease.0...@patternfly/react-icons@6.6.0-prerelease.1) (2026-05-26)
+
+### Bug Fixes
+
+- updated to do 6.6.0 prereleases. ([#12434](https://github.com/patternfly/patternfly-react/issues/12434)) ([6e09ce8](https://github.com/patternfly/patternfly-react/commit/6e09ce8322ff13354991d901782231d437249aa6))
+
+## [6.5.1-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0...@patternfly/react-icons@6.5.1-prerelease.0) (2026-05-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.5.0 (2026-05-20)
+
+### Reverts
+
+- Revert "chore(release): releasing packages [ci skip]" ([7185856](https://github.com/patternfly/patternfly-react/commit/7185856d4985da5129bbabd6c460049e7048dd2a))
+
+# [6.5.0-prerelease.39](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.38...@patternfly/react-icons@6.5.0-prerelease.39) (2026-05-19)
+
+### Features
+
+- **ver:** bump core to .93 ([#12429](https://github.com/patternfly/patternfly-react/issues/12429)) ([bdbbf84](https://github.com/patternfly/patternfly-react/commit/bdbbf84d9b4bc6f4434b51d99ca5db0563841af8))
+
+# [6.5.0-prerelease.38](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.37...@patternfly/react-icons@6.5.0-prerelease.38) (2026-05-14)
+
+### Features
+
+- **ver:** core bump ([#12427](https://github.com/patternfly/patternfly-react/issues/12427)) ([71b2433](https://github.com/patternfly/patternfly-react/commit/71b243388f761946db0043da8c288df1a1e9b70a))
+
+# [6.5.0-prerelease.37](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.36...@patternfly/react-icons@6.5.0-prerelease.37) (2026-05-13)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.36](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.35...@patternfly/react-icons@6.5.0-prerelease.36) (2026-05-12)
+
+### Features
+
+- **Compass:** remove background props, update structure ([#12408](https://github.com/patternfly/patternfly-react/issues/12408)) ([5564f73](https://github.com/patternfly/patternfly-react/commit/5564f730fb899c3f8968cbcc567cbded2def367e))
+
+# [6.5.0-prerelease.35](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.34...@patternfly/react-icons@6.5.0-prerelease.35) (2026-05-12)
+
+### Features
+
+- **react-charts:** add high contrast ([#12419](https://github.com/patternfly/patternfly-react/issues/12419)) ([e9c801c](https://github.com/patternfly/patternfly-react/commit/e9c801c84067fb9ed42d10d19deadf8dfca55289))
+
+# [6.5.0-prerelease.34](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.33...@patternfly/react-icons@6.5.0-prerelease.34) (2026-05-08)
+
+### Features
+
+- **Hero:** glass styling update ([#12412](https://github.com/patternfly/patternfly-react/issues/12412)) ([bea138e](https://github.com/patternfly/patternfly-react/commit/bea138ecd4d33a2f591dac628b875b295ec71c31))
+
+# [6.5.0-prerelease.33](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.32...@patternfly/react-icons@6.5.0-prerelease.33) (2026-05-08)
+
+### Features
+
+- **Page:** add dynamic sticky section support ([#12409](https://github.com/patternfly/patternfly-react/issues/12409)) ([97b29d3](https://github.com/patternfly/patternfly-react/commit/97b29d3fafc14ee01f0bbf0d2bdbc527d62f2a16))
+
+# [6.5.0-prerelease.32](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.31...@patternfly/react-icons@6.5.0-prerelease.32) (2026-05-07)
+
+### Bug Fixes
+
+- **createIcon:** Fix broken API in createIcon.tsx ([#12336](https://github.com/patternfly/patternfly-react/issues/12336)) ([726063b](https://github.com/patternfly/patternfly-react/commit/726063bf5a991f0e64af157014dfdfef77ec4dd3))
+
+# [6.5.0-prerelease.31](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.30...@patternfly/react-icons@6.5.0-prerelease.31) (2026-05-07)
+
+### Features
+
+- **Pagination:** added dynamic sticky and plain ([#12388](https://github.com/patternfly/patternfly-react/issues/12388)) ([7c4f9df](https://github.com/patternfly/patternfly-react/commit/7c4f9dfac4c4a63deecd9fb4d517c5713a617f9e))
+
+# [6.5.0-prerelease.30](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.29...@patternfly/react-icons@6.5.0-prerelease.30) (2026-05-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.29](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.28...@patternfly/react-icons@6.5.0-prerelease.29) (2026-04-29)
+
+### Features
+
+- update rhds icons to 2.2.0 ([#12387](https://github.com/patternfly/patternfly-react/issues/12387)) ([b17ea14](https://github.com/patternfly/patternfly-react/commit/b17ea14befd633e87bcb38440123ee82b2a53c3b))
+
+# [6.5.0-prerelease.28](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.27...@patternfly/react-icons@6.5.0-prerelease.28) (2026-04-28)
+
+### Bug Fixes
+
+- Updated drag and drop to use the correct glass theme. ([#12306](https://github.com/patternfly/patternfly-react/issues/12306)) ([3392662](https://github.com/patternfly/patternfly-react/commit/3392662d57a73d94258a0230fbf9de590ec08d85))
+
+### Features
+
+- **Compass:** added responsive docked compass ([#12382](https://github.com/patternfly/patternfly-react/issues/12382)) ([ccad519](https://github.com/patternfly/patternfly-react/commit/ccad5191fb4ee814a555a8fb73fcdc4b878463ea))
+
+# [6.5.0-prerelease.27](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.26...@patternfly/react-icons@6.5.0-prerelease.27) (2026-04-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.26](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.25...@patternfly/react-icons@6.5.0-prerelease.26) (2026-04-24)
+
+### Features
+
+- **ToggleGroup:** added full width variant ([#12374](https://github.com/patternfly/patternfly-react/issues/12374)) ([bf01ade](https://github.com/patternfly/patternfly-react/commit/bf01adecddf38e4d5fc3bc49d68ec9982dc97485))
+
+# [6.5.0-prerelease.25](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.24...@patternfly/react-icons@6.5.0-prerelease.25) (2026-04-20)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.24](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.23...@patternfly/react-icons@6.5.0-prerelease.24) (2026-04-15)
+
+### Features
+
+- **icon:** apply rh-standard styling and add opt-out ([#12320](https://github.com/patternfly/patternfly-react/issues/12320)) ([930cd56](https://github.com/patternfly/patternfly-react/commit/930cd560742b8b4b8c5f512449eaefce43ddf5e0))
+
+# [6.5.0-prerelease.23](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.22...@patternfly/react-icons@6.5.0-prerelease.23) (2026-04-15)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.22](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.21...@patternfly/react-icons@6.5.0-prerelease.22) (2026-04-13)
+
+### Features
+
+- **Accordion:** Added isPlain and isNoPlainOnGlass prop to Accordion ([#12288](https://github.com/patternfly/patternfly-react/issues/12288)) ([55ffb51](https://github.com/patternfly/patternfly-react/commit/55ffb51760542045f9b7dac0af584cee4a3eff4e))
+
+# [6.5.0-prerelease.21](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.20...@patternfly/react-icons@6.5.0-prerelease.21) (2026-04-06)
+
+### Features
+
+- **Page:** added styles for glass ([#12293](https://github.com/patternfly/patternfly-react/issues/12293)) ([1f7485b](https://github.com/patternfly/patternfly-react/commit/1f7485b291b5da4bb80c596a5efcc19217cabc2c))
+
+# [6.5.0-prerelease.20](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.19...@patternfly/react-icons@6.5.0-prerelease.20) (2026-04-03)
+
+### Bug Fixes
+
+- **react-icons:** add sideEffects: false to dist/esm/package.json ([#12314](https://github.com/patternfly/patternfly-react/issues/12314)) ([edfa3f0](https://github.com/patternfly/patternfly-react/commit/edfa3f0ac52aa9170b50a051e7ef72f2403f92a8))
+
+# [6.5.0-prerelease.19](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.18...@patternfly/react-icons@6.5.0-prerelease.19) (2026-04-01)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.18](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.17...@patternfly/react-icons@6.5.0-prerelease.18) (2026-04-01)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.5.0-prerelease.62 ([#12301](https://github.com/patternfly/patternfly-react/issues/12301)) ([34b99cc](https://github.com/patternfly/patternfly-react/commit/34b99cc84c56def47cb3ec00ee99472ae72b0bd3))
+
+# [6.5.0-prerelease.17](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.16...@patternfly/react-icons@6.5.0-prerelease.17) (2026-03-19)
+
+### Bug Fixes
+
+- bump pf-core version 6.5.0-prerelease.55 ([#12282](https://github.com/patternfly/patternfly-react/issues/12282)) ([852ae9a](https://github.com/patternfly/patternfly-react/commit/852ae9aacb9256d10701973c306a4480b663f583))
+
+# [6.5.0-prerelease.16](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.15...@patternfly/react-icons@6.5.0-prerelease.16) (2026-03-13)
+
+### Bug Fixes
+
+- **icons:** update internal import specifier ([#12265](https://github.com/patternfly/patternfly-react/issues/12265)) ([e23728b](https://github.com/patternfly/patternfly-react/commit/e23728be802c1c85ec1f62dd93dd39f8bbe74107))
+
+# [6.5.0-prerelease.15](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.14...@patternfly/react-icons@6.5.0-prerelease.15) (2026-02-24)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.5.0-prerelease.43 ([#12230](https://github.com/patternfly/patternfly-react/issues/12230)) ([82687ad](https://github.com/patternfly/patternfly-react/commit/82687ad20da22eef09581ea50266feb21d85ea8a))
+
+# [6.5.0-prerelease.14](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.13...@patternfly/react-icons@6.5.0-prerelease.14) (2026-02-18)
+
+### Features
+
+- **icons:** add swap support for mapped rh-ui icons ([#12245](https://github.com/patternfly/patternfly-react/issues/12245)) ([a81ce0e](https://github.com/patternfly/patternfly-react/commit/a81ce0e1b6fdd7a3e85cdd70e5bb667dc7d82801))
+
+# [6.5.0-prerelease.13](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.12...@patternfly/react-icons@6.5.0-prerelease.13) (2026-02-05)
+
+### Features
+
+- Added missing space causing build failure. ([504fcfc](https://github.com/patternfly/patternfly-react/commit/504fcfc162384ba0106359a1aa21263a27c49ab8))
+- **react-icons:** add newest rh brand icons ([#12222](https://github.com/patternfly/patternfly-react/issues/12222)) ([f3613a6](https://github.com/patternfly/patternfly-react/commit/f3613a6a9e36862311f87dc473b601821fa86e14))
+- **TreeView:** add support for disabled TreeViewListItems ([#12140](https://github.com/patternfly/patternfly-react/issues/12140)) ([3514831](https://github.com/patternfly/patternfly-react/commit/35148312f5d9ce4e706ad36b801455fc987842bb))
+
+# [6.5.0-prerelease.12](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.11...@patternfly/react-icons@6.5.0-prerelease.12) (2026-01-09)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.11](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.8...@patternfly/react-icons@6.5.0-prerelease.11) (2025-12-16)
+
+### Bug Fixes
+
+- remove rh social icon set ([#12164](https://github.com/patternfly/patternfly-react/issues/12164)) ([8dd01a0](https://github.com/patternfly/patternfly-react/commit/8dd01a0493414e70ee00afada489df12f5fac675))
+
+### Features
+
+- **docked nav:** add support for docked nav layout ([#12175](https://github.com/patternfly/patternfly-react/issues/12175)) ([5519389](https://github.com/patternfly/patternfly-react/commit/55193896b899aa1e2b8dfbbddd644507988ee31f))
+
+# [6.5.0-prerelease.8](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.7...@patternfly/react-icons@6.5.0-prerelease.8) (2025-12-03)
+
+### Features
+
+- **react-icons:** update to create static SVGs ([#12154](https://github.com/patternfly/patternfly-react/issues/12154)) ([3d2fd6f](https://github.com/patternfly/patternfly-react/commit/3d2fd6f1d408961e89b37da15aaffa705205afa9))
+
+# [6.5.0-prerelease.7](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.6...@patternfly/react-icons@6.5.0-prerelease.7) (2025-11-20)
+
+### Features
+
+- **react-icons:** add rhds icons ([#12143](https://github.com/patternfly/patternfly-react/issues/12143)) ([606f717](https://github.com/patternfly/patternfly-react/commit/606f71751312d5652b0b515dd521ef92be4b887d))
+
+# [6.5.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.5...@patternfly/react-icons@6.5.0-prerelease.6) (2025-11-14)
+
+### Bug Fixes
+
+- Moves items to new nav. ([#12013](https://github.com/patternfly/patternfly-react/issues/12013)) ([ddd0696](https://github.com/patternfly/patternfly-react/commit/ddd0696796134c7d0f9583ce56e26b0df47156cb))
+
+### Features
+
+- **Compass:** updated mainheader structure to be composable ([#12135](https://github.com/patternfly/patternfly-react/issues/12135)) ([6bcdcaf](https://github.com/patternfly/patternfly-react/commit/6bcdcaf116645aad4c9c0d98ca61045976a84946))
+
+# [6.5.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.4...@patternfly/react-icons@6.5.0-prerelease.5) (2025-11-12)
+
+### Features
+
+- **Hero:** added component ([#12131](https://github.com/patternfly/patternfly-react/issues/12131)) ([8da87a2](https://github.com/patternfly/patternfly-react/commit/8da87a2615bb6cfc350a52677ec6bdae335bb6f8))
+
+# [6.5.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.3...@patternfly/react-icons@6.5.0-prerelease.4) (2025-11-06)
+
+### Features
+
+- **drawer:** add no-glass panel variant, test ([#12125](https://github.com/patternfly/patternfly-react/issues/12125)) ([a10ca34](https://github.com/patternfly/patternfly-react/commit/a10ca34069d25caa2954ef464d5b82a9057e0316))
+
+# [6.5.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.2...@patternfly/react-icons@6.5.0-prerelease.3) (2025-11-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.5.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.5.0-prerelease.1...@patternfly/react-icons@6.5.0-prerelease.2) (2025-10-31)
+
+### Features
+
+- **Drawer:** Add pill version ([#12091](https://github.com/patternfly/patternfly-react/issues/12091)) ([b0a9dd8](https://github.com/patternfly/patternfly-react/commit/b0a9dd8fce6266e838ebca33ae16d1f2e0c33cbd))
+
+# [6.5.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.4.0...@patternfly/react-icons@6.5.0-prerelease.1) (2025-10-30)
+
+### Features
+
+- **ActionList:** Add isVertical variant ([#12090](https://github.com/patternfly/patternfly-react/issues/12090)) ([4365bf8](https://github.com/patternfly/patternfly-react/commit/4365bf8130bde19705adac509161525d7fb47f92))
+- **Button:** added circle variant ([#12092](https://github.com/patternfly/patternfly-react/issues/12092)) ([63f79eb](https://github.com/patternfly/patternfly-react/commit/63f79eb43f9ef0a2a665cf02d09e24bddc544329))
+- **Compass:** add Compass components ([#12093](https://github.com/patternfly/patternfly-react/issues/12093)) ([ff397d8](https://github.com/patternfly/patternfly-react/commit/ff397d800b4bfbf9fc8706bc407ed00dd314623a))
+
+# [6.4.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.4.0-prerelease.3...@patternfly/react-icons@6.4.0) (2025-10-16)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.4.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.4.0-prerelease.2...@patternfly/react-icons@6.4.0-prerelease.3) (2025-10-16)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.4.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.4.0-prerelease.1...@patternfly/react-icons@6.4.0-prerelease.2) (2025-10-01)
+
+### Bug Fixes
+
+- Bumped echarts and core. ([#12023](https://github.com/patternfly/patternfly-react/issues/12023)) ([1d4d075](https://github.com/patternfly/patternfly-react/commit/1d4d075730c3645394c774bfc5233ea786e29e43))
+
+# [6.4.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.1-prerelease.2...@patternfly/react-icons@6.4.0-prerelease.1) (2025-09-26)
+
+### Bug Fixes
+
+- updated to 6.4.0-prerelease ([df46ac6](https://github.com/patternfly/patternfly-react/commit/df46ac6bed381eb3e01e5573f77d79301b02b7fa))
+
+## [6.3.1-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.1-prerelease.1...@patternfly/react-icons@6.3.1-prerelease.2) (2025-09-26)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [6.3.1-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.1-prerelease.0...@patternfly/react-icons@6.3.1-prerelease.1) (2025-09-24)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [6.3.1-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0...@patternfly/react-icons@6.3.1-prerelease.0) (2025-09-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.3.0 (2025-07-22)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.3.0-prerelease.15](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.4.0-prerelease.0...@patternfly/react-icons@6.3.0-prerelease.15) (2025-07-22)
+
+### Reverts
+
+- Revert "chore(release): releasing packages [ci skip]" ([40999d7](https://github.com/patternfly/patternfly-react/commit/40999d70a7a3aeadbe8f40fe96bb01ab3a6219d4))
+
+# [6.3.0-prerelease.14](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.13...@patternfly/react-icons@6.3.0-prerelease.14) (2025-07-18)
+
+### Bug Fixes
+
+- **Button:** Bump core version to fix button animation ([#11928](https://github.com/patternfly/patternfly-react/issues/11928)) ([dc6e358](https://github.com/patternfly/patternfly-react/commit/dc6e358e8b9cd81f9be0a1a21d4fc0cae4ca21d8))
+
+# [6.3.0-prerelease.13](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.12...@patternfly/react-icons@6.3.0-prerelease.13) (2025-07-17)
+
+### Bug Fixes
+
+- **Tables:** updated animations to beta ([#11927](https://github.com/patternfly/patternfly-react/issues/11927)) ([cca6678](https://github.com/patternfly/patternfly-react/commit/cca667858c24bb9d7cb39e0c781ff3c8466f7ef6))
+
+# [6.3.0-prerelease.12](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.11...@patternfly/react-icons@6.3.0-prerelease.12) (2025-07-11)
+
+### Bug Fixes
+
+- **Table:** updated logic for expandable class ([#11918](https://github.com/patternfly/patternfly-react/issues/11918)) ([2b6c99b](https://github.com/patternfly/patternfly-react/commit/2b6c99b4617f09009d799af4587a0b0d291cdf84))
+
+# [6.3.0-prerelease.11](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.10...@patternfly/react-icons@6.3.0-prerelease.11) (2025-07-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.3.0-prerelease.10](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.9...@patternfly/react-icons@6.3.0-prerelease.10) (2025-07-01)
+
+### Bug Fixes
+
+- **Icons:** Bring in newer FA icon PenToSquare ([#11905](https://github.com/patternfly/patternfly-react/issues/11905)) ([e9bd4cf](https://github.com/patternfly/patternfly-react/commit/e9bd4cf7155478e4dac8bcbfbf68bc30d5b86760))
+
+# [6.3.0-prerelease.9](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.8...@patternfly/react-icons@6.3.0-prerelease.9) (2025-06-23)
+
+### Bug Fixes
+
+- Bumped to latest core version. ([#11880](https://github.com/patternfly/patternfly-react/issues/11880)) ([0380aa5](https://github.com/patternfly/patternfly-react/commit/0380aa504b4d0d83459126bfd98b2e4e29cac4e8))
+
+# [6.3.0-prerelease.8](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.7...@patternfly/react-icons@6.3.0-prerelease.8) (2025-06-20)
+
+### Features
+
+- **Table:** added optin animations for expansion ([#11865](https://github.com/patternfly/patternfly-react/issues/11865)) ([9adc88b](https://github.com/patternfly/patternfly-react/commit/9adc88b652f77ed5737c9f6dd02885daace1cd2b))
+
+# [6.3.0-prerelease.7](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.6...@patternfly/react-icons@6.3.0-prerelease.7) (2025-06-17)
+
+### Bug Fixes
+
+- **ExpandableSection:** made animation opt-in for detached variant ([#11851](https://github.com/patternfly/patternfly-react/issues/11851)) ([64befbe](https://github.com/patternfly/patternfly-react/commit/64befbe8547ebf4c388ed9f039253a7a689440f8))
+
+# [6.3.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.5...@patternfly/react-icons@6.3.0-prerelease.6) (2025-06-13)
+
+### Features
+
+- **Button/MenuToggle:** added support for hamburger/settings animations ([#11861](https://github.com/patternfly/patternfly-react/issues/11861)) ([cf3d84e](https://github.com/patternfly/patternfly-react/commit/cf3d84ebf8f3046f038af6f6557946faadfe35b0))
+
+# [6.3.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.4...@patternfly/react-icons@6.3.0-prerelease.5) (2025-06-13)
+
+### Features
+
+- **Icons:** Allow more complex paths and svgs ([#11864](https://github.com/patternfly/patternfly-react/issues/11864)) ([fa16a3b](https://github.com/patternfly/patternfly-react/commit/fa16a3bd3ac35be6f0d23f642194d23dba0b313e))
+
+# [6.3.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.3...@patternfly/react-icons@6.3.0-prerelease.4) (2025-06-11)
+
+### Features
+
+- **Form:** enabled opt-in animations for expandable fieldgroup ([#11843](https://github.com/patternfly/patternfly-react/issues/11843)) ([8c6618b](https://github.com/patternfly/patternfly-react/commit/8c6618b87876924b7ef9b3651b86abb65e7e2dd4))
+
+# [6.3.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.2...@patternfly/react-icons@6.3.0-prerelease.3) (2025-05-21)
+
+### Features
+
+- **Tabs:** added animations ([#11767](https://github.com/patternfly/patternfly-react/issues/11767)) ([bae4fc3](https://github.com/patternfly/patternfly-react/commit/bae4fc36aa39007d9474236cbada62ac55a27989))
+
+# [6.3.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.3.0-prerelease.1...@patternfly/react-icons@6.3.0-prerelease.2) (2025-05-20)
+
+### Bug Fixes
+
+- **Table:** removed divider for expanded rows ([#11815](https://github.com/patternfly/patternfly-react/issues/11815)) ([292dd5e](https://github.com/patternfly/patternfly-react/commit/292dd5ebf809d9bffa6698d7c6fea6da82f73c64))
+
+# [6.3.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.1-prerelease.1...@patternfly/react-icons@6.3.0-prerelease.1) (2025-04-24)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [6.2.1-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.1-prerelease.0...@patternfly/react-icons@6.2.1-prerelease.1) (2025-04-21)
+
+### Features
+
+- **version:** testing react 19 ([#11754](https://github.com/patternfly/patternfly-react/issues/11754)) ([b981588](https://github.com/patternfly/patternfly-react/commit/b9815886da3adc7a96bc2d48adacf86e8a752e61))
+
+## [6.2.1-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0...@patternfly/react-icons@6.2.1-prerelease.0) (2025-04-14)
+
+### Features
+
+- **Page:** Added support for sidebar-less layout ([#11760](https://github.com/patternfly/patternfly-react/issues/11760)) ([217aad3](https://github.com/patternfly/patternfly-react/commit/217aad3241e79b02ab8f1f74fd1d8022860a138b))
+
+# 6.2.0 (2025-04-07)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.2.0-prerelease.13](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.12...@patternfly/react-icons@6.2.0-prerelease.13) (2025-04-01)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.2.0-prerelease.12](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.11...@patternfly/react-icons@6.2.0-prerelease.12) (2025-03-20)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.20 ([#11653](https://github.com/patternfly/patternfly-react/issues/11653)) ([f4df244](https://github.com/patternfly/patternfly-react/commit/f4df244b1fe68c1ac34bff7379f2bb6558676fb2))
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.23 ([#11660](https://github.com/patternfly/patternfly-react/issues/11660)) ([01006e6](https://github.com/patternfly/patternfly-react/commit/01006e6ec3085a3e25fb47904206e5476013e0eb))
+
+### Features
+
+- **Alert:** added animations ([#11495](https://github.com/patternfly/patternfly-react/issues/11495)) ([74dd258](https://github.com/patternfly/patternfly-react/commit/74dd258abb9f329dc2fc3fcaaa6fc4de460fc088))
+- **ClipboardCopy:** added truncation for inlinecompact variant ([#11610](https://github.com/patternfly/patternfly-react/issues/11610)) ([48b5749](https://github.com/patternfly/patternfly-react/commit/48b5749dfda3841aaaeea995659f2094272dc999))
+
+# [6.2.0-prerelease.11](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.10...@patternfly/react-icons@6.2.0-prerelease.11) (2025-03-11)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.19 ([#11642](https://github.com/patternfly/patternfly-react/issues/11642)) ([420232c](https://github.com/patternfly/patternfly-react/commit/420232c5172a26c7921ac43469c8910d31c932b2))
+
+# [6.2.0-prerelease.10](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.9...@patternfly/react-icons@6.2.0-prerelease.10) (2025-03-10)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.16 ([#11629](https://github.com/patternfly/patternfly-react/issues/11629)) ([920e709](https://github.com/patternfly/patternfly-react/commit/920e70953ee536cadeb2604e1f323d6d0e71451c))
+
+# [6.2.0-prerelease.9](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.8...@patternfly/react-icons@6.2.0-prerelease.9) (2025-03-06)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.15 ([#11615](https://github.com/patternfly/patternfly-react/issues/11615)) ([49f3f70](https://github.com/patternfly/patternfly-react/commit/49f3f70f44717f156df542c2d6b9facad1caeff4))
+
+# [6.2.0-prerelease.8](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.7...@patternfly/react-icons@6.2.0-prerelease.8) (2025-03-05)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.14 ([#11609](https://github.com/patternfly/patternfly-react/issues/11609)) ([f8af65a](https://github.com/patternfly/patternfly-react/commit/f8af65a09409331bfea6c5818c333457b35fe84b))
+
+# [6.2.0-prerelease.7](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.6...@patternfly/react-icons@6.2.0-prerelease.7) (2025-02-27)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.11 ([#11565](https://github.com/patternfly/patternfly-react/issues/11565)) ([f8832f1](https://github.com/patternfly/patternfly-react/commit/f8832f1b5abd0b62c61905eaeea0584daeb0a650))
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.12 ([#11571](https://github.com/patternfly/patternfly-react/issues/11571)) ([df1322d](https://github.com/patternfly/patternfly-react/commit/df1322d1550f8a83a227534a670547895457d959))
+
+# [6.2.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.5...@patternfly/react-icons@6.2.0-prerelease.6) (2025-02-25)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.2.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.4...@patternfly/react-icons@6.2.0-prerelease.5) (2025-02-24)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.9 ([#11550](https://github.com/patternfly/patternfly-react/issues/11550)) ([e4c7d8d](https://github.com/patternfly/patternfly-react/commit/e4c7d8d3cdf474c9e477091c0867dccbdd17d1f7))
+
+# [6.2.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.3...@patternfly/react-icons@6.2.0-prerelease.4) (2025-02-20)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.7 ([#11543](https://github.com/patternfly/patternfly-react/issues/11543)) ([1779da2](https://github.com/patternfly/patternfly-react/commit/1779da23c863dfc7637ad68d3e266253d77569e9))
+
+# [6.2.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.2...@patternfly/react-icons@6.2.0-prerelease.3) (2025-02-14)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.2.0-prerelease.4 ([#11525](https://github.com/patternfly/patternfly-react/issues/11525)) ([04daac6](https://github.com/patternfly/patternfly-react/commit/04daac6234bf7b85bdf663e4e9cb1093a16b9f44))
+
+# [6.2.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.1...@patternfly/react-icons@6.2.0-prerelease.2) (2025-01-23)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.2.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.2.0-prerelease.0...@patternfly/react-icons@6.2.0-prerelease.1) (2025-01-21)
+
+### Bug Fixes
+
+- **deps:** update dependency @patternfly/patternfly to v6.1.0 ([#11436](https://github.com/patternfly/patternfly-react/issues/11436)) ([b1b172d](https://github.com/patternfly/patternfly-react/commit/b1b172dc1b427ce8883ec1078c307955bc60a2eb))
+
+# [6.2.0-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0...@patternfly/react-icons@6.2.0-prerelease.0) (2025-01-06)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.1.0 (2024-12-16)
+
+### Bug Fixes
+
+- Update promote.sh to release 6.1.0 ([2b5106f](https://github.com/patternfly/patternfly-react/commit/2b5106ff88ce207d4a9ed2066fd390009e81fb79))
+
+# [6.1.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.5...@patternfly/react-icons@6.1.0-prerelease.6) (2024-12-04)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.1.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.4...@patternfly/react-icons@6.1.0-prerelease.5) (2024-11-25)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.1.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.3...@patternfly/react-icons@6.1.0-prerelease.4) (2024-11-20)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.1.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.2...@patternfly/react-icons@6.1.0-prerelease.3) (2024-11-19)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.1.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.1...@patternfly/react-icons@6.1.0-prerelease.2) (2024-11-18)
+
+### Bug Fixes
+
+- **deps:** update dependency tslib to ^2.8.1 ([#11222](https://github.com/patternfly/patternfly-react/issues/11222)) ([7c90e9b](https://github.com/patternfly/patternfly-react/commit/7c90e9bff23083f097e78246570be60dacfb27c0))
+
+# [6.1.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.1.0-prerelease.0...@patternfly/react-icons@6.1.0-prerelease.1) (2024-11-13)
+
+### Bug Fixes
+
+- **CodeEditor:** Set default height ([#11014](https://github.com/patternfly/patternfly-react/issues/11014)) ([6ddfc93](https://github.com/patternfly/patternfly-react/commit/6ddfc93376a48028fed46948b08a185e3c9617f6))
+
+# 6.1.0-prerelease.0 (2024-10-24)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0 (2024-10-24)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-prerelease.7](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.6...@patternfly/react-icons@6.0.0-prerelease.7) (2024-10-02)
+
+### Bug Fixes
+
+- **Menu toggle:** Remove pf-m-action modifier ([#11096](https://github.com/patternfly/patternfly-react/issues/11096)) ([fe6871c](https://github.com/patternfly/patternfly-react/commit/fe6871cf3063eab33dc572f30a57c52e84f34131))
+
+# [6.0.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.5...@patternfly/react-icons@6.0.0-prerelease.6) (2024-09-26)
+
+### Bug Fixes
+
+- **datalist:** actions wrapper ([#10939](https://github.com/patternfly/patternfly-react/issues/10939)) ([833465f](https://github.com/patternfly/patternfly-react/commit/833465f0ea0ef48cd3a02e307c0dd559a8f4e880))
+
+# [6.0.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.4...@patternfly/react-icons@6.0.0-prerelease.5) (2024-09-24)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.3...@patternfly/react-icons@6.0.0-prerelease.4) (2024-09-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-prerelease.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.2...@patternfly/react-icons@6.0.0-prerelease.3) (2024-09-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-prerelease.1...@patternfly/react-icons@6.0.0-prerelease.2) (2024-09-10)
+
+### Bug Fixes
+
+- **deps:** update dependency tslib to ^2.7.0 ([#10949](https://github.com/patternfly/patternfly-react/issues/10949)) ([024b3cc](https://github.com/patternfly/patternfly-react/commit/024b3cc4b1afd4ba9f2dc774c0842712d4fbab1a))
+
+# [6.0.0-prerelease.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.37...@patternfly/react-icons@6.0.0-prerelease.1) (2024-09-07)
+
+### Bug Fixes
+
+- **expandable section:** update to use <Button> for toggle ([#10891](https://github.com/patternfly/patternfly-react/issues/10891)) ([fd9ce14](https://github.com/patternfly/patternfly-react/commit/fd9ce14865230be76444ef025def90a5619d464e))
+
+# [6.0.0-alpha.37](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.36...@patternfly/react-icons@6.0.0-alpha.37) (2024-08-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.36](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.35...@patternfly/react-icons@6.0.0-alpha.36) (2024-08-19)
+
+### Bug Fixes
+
+- **Card:** updated markup for actionable cards ([#10859](https://github.com/patternfly/patternfly-react/issues/10859)) ([d58b051](https://github.com/patternfly/patternfly-react/commit/d58b051f8d736f55580e3df9fc2bbddf479af099))
+
+# [6.0.0-alpha.35](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.34...@patternfly/react-icons@6.0.0-alpha.35) (2024-08-08)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.34](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.33...@patternfly/react-icons@6.0.0-alpha.34) (2024-07-29)
+
+### Bug Fixes
+
+- **deps:** bump v6 alphas ([#10816](https://github.com/patternfly/patternfly-react/issues/10816)) ([d99aa9b](https://github.com/patternfly/patternfly-react/commit/d99aa9b3157f4559a8741415528832946aa32ddf))
+
+# [6.0.0-alpha.33](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.32...@patternfly/react-icons@6.0.0-alpha.33) (2024-07-29)
+
+### Features
+
+- **Masthead:** Updates for new masthead structure in Penta ([#10809](https://github.com/patternfly/patternfly-react/issues/10809)) ([266ee47](https://github.com/patternfly/patternfly-react/commit/266ee476020c51487ae4d426fdab90efc73d12f1))
+
+# [6.0.0-alpha.32](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.31...@patternfly/react-icons@6.0.0-alpha.32) (2024-07-29)
+
+### Features
+
+- **MenuToggle:** replaced custom styles with text modifier V6 ([#10793](https://github.com/patternfly/patternfly-react/issues/10793)) ([95a204c](https://github.com/patternfly/patternfly-react/commit/95a204c166019a433facfdc77204ccb33ce1726e))
+
+# [6.0.0-alpha.31](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.30...@patternfly/react-icons@6.0.0-alpha.31) (2024-07-22)
+
+### Features
+
+- **Page:** support page fill ([#10760](https://github.com/patternfly/patternfly-react/issues/10760)) ([850bd46](https://github.com/patternfly/patternfly-react/commit/850bd4631d4f5845c627ebb2cb86a6b1524d6ffc))
+
+# [6.0.0-alpha.30](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.29...@patternfly/react-icons@6.0.0-alpha.30) (2024-07-15)
+
+### Bug Fixes
+
+- **Toolbar:** updated for parity with Core updates ([#10674](https://github.com/patternfly/patternfly-react/issues/10674)) ([d508325](https://github.com/patternfly/patternfly-react/commit/d50832554af01c6beeb3a5a03f2cdfb41daffbf4))
+
+# [6.0.0-alpha.29](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.28...@patternfly/react-icons@6.0.0-alpha.29) (2024-07-03)
+
+### Features
+
+- **page:** support for context selector in sidebar ([#10686](https://github.com/patternfly/patternfly-react/issues/10686)) ([b85fb19](https://github.com/patternfly/patternfly-react/commit/b85fb19e8e40f3003da644f12609f50b59584f92))
+
+# [6.0.0-alpha.28](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.27...@patternfly/react-icons@6.0.0-alpha.28) (2024-07-02)
+
+### Features
+
+- **Button:** add text wrapper, update icon usage ([#10663](https://github.com/patternfly/patternfly-react/issues/10663)) ([eca5878](https://github.com/patternfly/patternfly-react/commit/eca58789d1f07753657372a46a20c147f984b998))
+
+# [6.0.0-alpha.27](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.26...@patternfly/react-icons@6.0.0-alpha.27) (2024-06-26)
+
+### Features
+
+- **Banner,Label:** rename cyan/gold to teal/yellow ([#10661](https://github.com/patternfly/patternfly-react/issues/10661)) ([3e76f17](https://github.com/patternfly/patternfly-react/commit/3e76f173f62b0f5e9aef9e43c597ae5b7fffee92))
+
+# [6.0.0-alpha.26](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.25...@patternfly/react-icons@6.0.0-alpha.26) (2024-06-25)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.25](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.24...@patternfly/react-icons@6.0.0-alpha.25) (2024-06-25)
+
+### Bug Fixes
+
+- **docs:** fix v6 classname in icons readme ([#10575](https://github.com/patternfly/patternfly-react/issues/10575)) ([52c21a7](https://github.com/patternfly/patternfly-react/commit/52c21a79167dd889ea24b9f0045043f980193feb))
+
+# [6.0.0-alpha.24](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.23...@patternfly/react-icons@6.0.0-alpha.24) (2024-06-05)
+
+### Bug Fixes
+
+- **charts:** renamed cyan to teal, gold to yellow ([#10518](https://github.com/patternfly/patternfly-react/issues/10518)) ([d407554](https://github.com/patternfly/patternfly-react/commit/d4075543aa02e6987abacde96011df2d0347e54a))
+
+# [6.0.0-alpha.23](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.22...@patternfly/react-icons@6.0.0-alpha.23) (2024-05-31)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.22 (2024-05-23)
+
+### Features
+
+- **Toolbar:** updated spacer props to gap ([#10418](https://github.com/patternfly/patternfly-react/issues/10418)) ([29578a2](https://github.com/patternfly/patternfly-react/commit/29578a2f937456c07fb9c2d8f8ae23a1ad0b2b34))
+
+# 6.0.0-alpha.21 (2024-05-21)
+
+### Features
+
+- **misc, TextContent:** update core version & text content updates ([#10378](https://github.com/patternfly/patternfly-react/issues/10378)) ([1f1b93c](https://github.com/patternfly/patternfly-react/commit/1f1b93c9f5f8bfeb686f7344bfc70152d5453df1))
+
+# [6.0.0-alpha.20](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.19...@patternfly/react-icons@6.0.0-alpha.20) (2024-04-22)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.3.0-prerelease.3 (2024-03-26)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.3.0-prerelease.2 (2024-03-22)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.3.0-prerelease.1 (2024-02-28)
+
+### Bug Fixes
+
+- **deps:** bump to latest core ([#10116](https://github.com/patternfly/patternfly-react/issues/10116)) ([dc1aceb](https://github.com/patternfly/patternfly-react/commit/dc1aceb0ee880631320b85bfb068be13d7852a37))
+
+# 5.3.0-prerelease.0 (2024-02-02)
+
+# 5.2.0 (2024-02-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0 (2024-02-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.10 (2024-01-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.9 (2023-12-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.8 (2023-11-14)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.7 (2023-11-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.6 (2023-11-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.19 (2024-04-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.18 (2024-03-27)
+
+### Features
+
+- **Page,Drawer:** core bump and updates ([#10211](https://github.com/patternfly/patternfly-react/issues/10211)) ([8210248](https://github.com/patternfly/patternfly-react/commit/82102488317d9b263f8075179f8fecfc365cc647))
+
+# [6.0.0-alpha.17](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.16...@patternfly/react-icons@6.0.0-alpha.17) (2024-03-22)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.16 (2024-03-18)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.15 (2024-03-08)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.14](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.13...@patternfly/react-icons@6.0.0-alpha.14) (2024-02-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.13 (2024-02-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.12 (2024-02-16)
+
+### Features
+
+- **CodeEditor,Divider:** consume penta & update core version ([#10081](https://github.com/patternfly/patternfly-react/issues/10081)) ([addda04](https://github.com/patternfly/patternfly-react/commit/addda044d7f6d91f3511c7a769b2707140df86d4))
+
+# 6.0.0-alpha.11 (2024-01-31)
+
+### Features
+
+- **Tabs:** consumed Penta updates ([#10044](https://github.com/patternfly/patternfly-react/issues/10044)) ([8fdd83e](https://github.com/patternfly/patternfly-react/commit/8fdd83eb76c216c26c3f06318b7c32030d736d4f))
+
+# [6.0.0-alpha.10](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.9...@patternfly/react-icons@6.0.0-alpha.10) (2024-01-26)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.9 (2024-01-22)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.8 (2024-01-18)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.7 (2024-01-16)
+
+### Features
+
+- **Navigation:** Penta updates for nav ([#9948](https://github.com/patternfly/patternfly-react/issues/9948)) ([dba392d](https://github.com/patternfly/patternfly-react/commit/dba392d62011b1adc38ab0d22a2ad91e0e7d2a2e))
+
+# 6.0.0-alpha.6 (2024-01-04)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.4...@patternfly/react-icons@6.0.0-alpha.5) (2023-12-20)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 6.0.0-alpha.4 (2023-12-13)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.3](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.2...@patternfly/react-icons@6.0.0-alpha.3) (2023-12-04)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [6.0.0-alpha.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@6.0.0-alpha.1...@patternfly/react-icons@6.0.0-alpha.2) (2023-11-16)
+
+### Reverts
+
+- Revert "Merge remote-tracking branch 'upstream/main' into v6" (#9791) ([b7e8065](https://github.com/patternfly/patternfly-react/commit/b7e80650d3e4cad7a657f6e5a3177485ca4f8c26)), closes [#9791](https://github.com/patternfly/patternfly-react/issues/9791)
+
+# 6.0.0-alpha.1 (2023-09-29)
+
+### Bug Fixes
+
+- Release alphas from v6 and rebase from main ([#9692](https://github.com/patternfly/patternfly-react/issues/9692)) ([bb022ff](https://github.com/patternfly/patternfly-react/commit/bb022ffc65da8e8c5b5c984412f936cea9424676)), closes [#9651](https://github.com/patternfly/patternfly-react/issues/9651) [#9627](https://github.com/patternfly/patternfly-react/issues/9627) [#9555](https://github.com/patternfly/patternfly-react/issues/9555) [#9543](https://github.com/patternfly/patternfly-react/issues/9543) [#9578](https://github.com/patternfly/patternfly-react/issues/9578) [#9519](https://github.com/patternfly/patternfly-react/issues/9519) [#9603](https://github.com/patternfly/patternfly-react/issues/9603) [#9655](https://github.com/patternfly/patternfly-react/issues/9655) [#9614](https://github.com/patternfly/patternfly-react/issues/9614) [#9606](https://github.com/patternfly/patternfly-react/issues/9606) [#9628](https://github.com/patternfly/patternfly-react/issues/9628) [#9635](https://github.com/patternfly/patternfly-react/issues/9635) [#9649](https://github.com/patternfly/patternfly-react/issues/9649) [#9642](https://github.com/patternfly/patternfly-react/issues/9642) [#9633](https://github.com/patternfly/patternfly-react/issues/9633) [#9637](https://github.com/patternfly/patternfly-react/issues/9637) [#9584](https://github.com/patternfly/patternfly-react/issues/9584) [#9284](https://github.com/patternfly/patternfly-react/issues/9284)
+
+## 5.1.1-prerelease.7 (2023-09-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.8 (2023-11-14)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.7 (2023-11-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.6 (2023-11-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.9 (2023-12-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.8 (2023-11-14)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.7 (2023-11-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.6 (2023-11-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.10 (2024-01-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.9 (2023-12-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.8 (2023-11-14)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.7 (2023-11-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.6 (2023-11-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.3.0-prerelease.1 (2024-02-28)
+
+### Bug Fixes
+
+- **deps:** bump to latest core ([#10116](https://github.com/patternfly/patternfly-react/issues/10116)) ([dc1aceb](https://github.com/patternfly/patternfly-react/commit/dc1aceb0ee880631320b85bfb068be13d7852a37))
+
+# 5.3.0-prerelease.0 (2024-02-02)
+
+# 5.2.0 (2024-02-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0 (2024-02-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.10 (2024-01-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.9 (2023-12-11)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.8 (2023-11-14)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.7 (2023-11-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.6 (2023-11-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.2.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.2.0-prerelease.4...@patternfly/react-icons@5.2.0-prerelease.5) (2023-10-27)
+
+### Bug Fixes
+
+- **react-icons:** rename custom icons ([#9759](https://github.com/patternfly/patternfly-react/issues/9759)) ([a7a36e9](https://github.com/patternfly/patternfly-react/commit/a7a36e9df0898d9e5ef663d322bbed24a761027d))
+
+# 5.2.0-prerelease.4 (2023-10-26)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.3 (2023-10-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.2.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.2.0-prerelease.1...@patternfly/react-icons@5.2.0-prerelease.2) (2023-10-10)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.2.0-prerelease.1 (2023-10-09)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.2.0-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.1.1...@patternfly/react-icons@5.2.0-prerelease.0) (2023-10-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [5.1.1](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.1.1-prerelease.8...@patternfly/react-icons@5.1.1) (2023-10-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## 5.1.1-prerelease.8 (2023-10-03)
+
+### Bug Fixes
+
+- whitespace changes to trigger prereleases ([#9702](https://github.com/patternfly/patternfly-react/issues/9702)) ([741c248](https://github.com/patternfly/patternfly-react/commit/741c24825b503e116c77cf304aa3e4e3a9ff7841))
+
+## 5.1.1-prerelease.7 (2023-09-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## 5.1.1-prerelease.6 (2023-09-18)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [5.1.1-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.1.1-prerelease.4...@patternfly/react-icons@5.1.1-prerelease.5) (2023-09-07)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## [5.1.1-prerelease.4](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.1.1-prerelease.3...@patternfly/react-icons@5.1.1-prerelease.4) (2023-09-06)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## 5.1.1-prerelease.3 (2023-09-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## 5.1.1-prerelease.2 (2023-08-31)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+## 5.1.1-prerelease.1 (2023-08-29)
+
+# 5.0.0 (2023-07-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.1.0-prerelease.0](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.0.0...@patternfly/react-icons@5.1.0-prerelease.0) (2023-07-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0 (2023-07-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-prerelease.9 (2023-07-20)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-prerelease.8 (2023-07-06)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-prerelease.7 (2023-06-21)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.0.0-prerelease.6](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.0.0-prerelease.5...@patternfly/react-icons@5.0.0-prerelease.6) (2023-06-15)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.0.0-prerelease.5](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.0.0-prerelease.4...@patternfly/react-icons@5.0.0-prerelease.5) (2023-06-15)
+
+### Bug Fixes
+
+- **release:** ensure component package.json file has correct data ([#9272](https://github.com/patternfly/patternfly-react/issues/9272)) ([6053a6f](https://github.com/patternfly/patternfly-react/commit/6053a6f9acc0b1a9856423db59523558c5abd629))
+
+# 5.0.0-prerelease.4 (2023-06-13)
+
+### Bug Fixes
+
+- **docs:** update use of deprecated tag and clean up changelogs ([#9259](https://github.com/patternfly/patternfly-react/issues/9259)) ([8de83dc](https://github.com/patternfly/patternfly-react/commit/8de83dc3b2fb88094fd3c21bda2ed6e371986cba))
+
+# 5.0.0-prerelease.3 (2023-06-12)
+
+### Bug Fixes
+
+- **react-icons:** Added fallback width and height attributes to icons ([#9257](https://github.com/patternfly/patternfly-react/issues/9257)) ([5c782ba](https://github.com/patternfly/patternfly-react/commit/5c782bacfdc02b907b2ca01a3a6800e2f6072b3e))
+
+# [5.0.0-prerelease.2](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.0.0-prerelease.1...@patternfly/react-icons@5.0.0-prerelease.2) (2023-06-06)
+
+### Bug Fixes
+
+- **versions:** bump core and fix demo-app versions ([#9248](https://github.com/patternfly/patternfly-react/issues/9248)) ([d19f9d2](https://github.com/patternfly/patternfly-react/commit/d19f9d21c39574784074ee1def886a6da21b2274))
+
+# 5.0.0-prerelease.1 (2023-06-06)
+
+### Bug Fixes
+
+- **release:** dryrun publishing prereleases ([#9242](https://github.com/patternfly/patternfly-react/issues/9242)) ([e4c35f1](https://github.com/patternfly/patternfly-react/commit/e4c35f14cd57be132179e51ae2bb223600a35f0e))
+
+# 5.0.0-alpha.21 (2023-06-02)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.20 (2023-05-31)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.19 (2023-05-19)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.18 (2023-05-18)
+
+### Features
+
+- **Flex:** add plain gap spacing ([#9143](https://github.com/patternfly/patternfly-react/issues/9143)) ([eceb265](https://github.com/patternfly/patternfly-react/commit/eceb265a5318d4c533a4c54484311bbd9810aa7d))
+
+# 5.0.0-alpha.17 (2023-05-18)
+
+### Features
+
+- **Table:** added class names for table elements ([#9133](https://github.com/patternfly/patternfly-react/issues/9133)) ([51d6d2b](https://github.com/patternfly/patternfly-react/commit/51d6d2b1a92af7bbfb0075361b375a4d881e110b))
+
+# 5.0.0-alpha.16 (2023-05-18)
+
+### Features
+
+- **FormControls:** updated logic for rendering icons ([#9132](https://github.com/patternfly/patternfly-react/issues/9132)) ([9f4863f](https://github.com/patternfly/patternfly-react/commit/9f4863f3251e365142c44aace2c1aeba57ba6b3a))
+
+# 5.0.0-alpha.15 (2023-05-16)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# [5.0.0-alpha.14](https://github.com/patternfly/patternfly-react/compare/@patternfly/react-icons@5.0.0-alpha.13...@patternfly/react-icons@5.0.0-alpha.14) (2023-05-05)
+
+### Bug Fixes
+
+- **deps:** updated Core for v5 versioning ([#9075](https://github.com/patternfly/patternfly-react/issues/9075)) ([3879fc7](https://github.com/patternfly/patternfly-react/commit/3879fc757aefeed80b0694365aa20d5ca856a797))
+
+# 5.0.0-alpha.13 (2023-05-05)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.12 (2023-04-27)
+
+### Bug Fixes
+
+- **createIcon:** Spread className to svg to fix broken images ([#8954](https://github.com/patternfly/patternfly-react/issues/8954)) ([8073115](https://github.com/patternfly/patternfly-react/commit/80731151f6d91299330f580262cb7e0d2ee670b8))
+
+# 5.0.0-alpha.11 (2023-04-25)
+
+### Bug Fixes
+
+- bump dependencies and remove ssl option ([#8984](https://github.com/patternfly/patternfly-react/issues/8984)) ([f8f77d2](https://github.com/patternfly/patternfly-react/commit/f8f77d232b386ad8676af609273d9adff5a5feae))
+
+# 5.0.0-alpha.10 (2023-04-11)
+
+### Bug Fixes
+
+- **icons:** fixed pficons naming overrides ([#8932](https://github.com/patternfly/patternfly-react/issues/8932)) ([1c9c9cb](https://github.com/patternfly/patternfly-react/commit/1c9c9cb7909a26d3bc4ad340d0656c0ec31d9e58))
+
+# 5.0.0-alpha.9 (2023-04-06)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.8 (2023-04-03)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.7 (2023-03-27)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.6 (2023-03-18)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.5 (2023-03-17)
+
+**Note:** Version bump only for package @patternfly/react-icons
+
+# 5.0.0-alpha.4 (2023-03-02)
+
+### Bug Fixes
+
+- **core:** update core to alpha.24 ([#8768](https://github.com/patternfly/patternfly-react/issues/8768)) ([6dd5e01](https://github.com/patternfly/patternfly-react/commit/6dd5e01e16bc94fe4b954b79ba67adaaab9c7135))
+
+# 5.0.0-alpha.3 (2023-02-15)
+
+### Bug Fixes
+
+- **deps:** updated to the latest core alpha ([#8688](https://github.com/patternfly/patternfly-react/issues/8688)) ([5f81928](https://github.com/patternfly/patternfly-react/commit/5f819288d7baaa3806b23c0da8fb26dd4ec12d6b))
+
+# 5.0.0-alpha.2 (2023-02-08)

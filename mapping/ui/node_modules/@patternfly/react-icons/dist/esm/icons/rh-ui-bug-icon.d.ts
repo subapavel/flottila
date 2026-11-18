@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiBugIconConfig: {
+  name: 'RhUiBugIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 19h-5v-3h2c.265 0 .52-.105.707-.293l2-2a.999.999 0 1 0-1.414-1.414L26.586 14H25v-4a8.948 8.948 0 0 0-1.975-5.611l1.682-1.682a.999.999 0 1 0-1.414-1.414l-1.682 1.682C20.071 1.742 18.122 1 16 1s-4.071.742-5.611 1.975L8.707 1.293a.999.999 0 1 0-1.414 1.414l1.682 1.682A8.948 8.948 0 0 0 7 10v4H5.414l-1.707-1.707a.999.999 0 1 0-1.414 1.414l2 2A1 1 0 0 0 5 16h2v3H2a1 1 0 0 0 0 2h5v1c0 .688.085 1.356.232 2H5a.997.997 0 0 0-.707.293l-2 2a.999.999 0 1 0 1.414 1.414L5.414 26H7.95c1.476 2.958 4.526 5 8.05 5s6.574-2.042 8.05-5h2.536l1.707 1.707a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414l-2-2A1 1 0 0 0 27 24h-2.232A8.97 8.97 0 0 0 25 22v-1h5a1 1 0 0 0 0-2Zm-15 9.92c-3.387-.488-6-3.401-6-6.92V11h6v17.92ZM9.08 9c.488-3.387 3.401-6 6.92-6s6.432 2.613 6.92 6H9.08ZM23 22c0 3.519-2.613 6.432-6 6.92V11h6v11Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiBugIcon: ComponentClass<SVGIconProps>;
+export default RhUiBugIcon;

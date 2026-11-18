@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiExternalLinkIconConfig: {
+  name: 'RhUiExternalLinkIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 21v7.5c0 .827-.673 1.5-1.5 1.5h-25c-.827 0-1.5-.673-1.5-1.5v-25C2 2.673 2.673 2 3.5 2H11a1 1 0 1 1 0 2H4v24h24v-7a1 1 0 1 1 2 0ZM28.5 2H18a1 1 0 1 0 0 2h8.586L13.293 17.293a.999.999 0 1 0 1.414 1.414L28 5.414V14a1 1 0 1 0 2 0V3.5c0-.827-.673-1.5-1.5-1.5Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiExternalLinkIcon: ComponentClass<SVGIconProps>;
+export default RhUiExternalLinkIcon;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardMapIconConfig = {
+  name: 'RhStandardMapIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M31.38 4.51a.64.64 0 0 0-.53-.12L23 6.36l-9.86-2a.61.61 0 0 0-.27 0l-8 2a.62.62 0 0 0-.49.64v24a.6.6 0 0 0 .24.49.58.58 0 0 0 .38.13h.15l7.86-2 9.87 2h.27l8-2a.62.62 0 0 0 .47-.61V5a.6.6 0 0 0-.24-.49Zm-25.76 3 6.76-1.71v22.71L5.62 30.2Zm8-1.73 8.76 1.75v22.71l-8.76-1.75Zm16.76 22.73-6.76 1.69V7.49l6.76-1.69Z"},
+  rhUiIcon: null,
+};
+exports.RhStandardMapIcon = require('../createIcon').createIconBase(exports.RhStandardMapIconConfig);
+exports["default"] = exports.RhStandardMapIcon;

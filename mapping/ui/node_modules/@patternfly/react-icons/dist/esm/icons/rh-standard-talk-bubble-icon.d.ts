@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardTalkBubbleIconConfig: {
+  name: 'RhStandardTalkBubbleIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M9 29.625A.625.625 0 0 1 8.375 29v-5.375H5A.625.625 0 0 1 4.375 23V7c0-.345.28-.625.625-.625h26c.345 0 .625.28.625.625v16c0 .345-.28.625-.625.625H15.259l-5.817 5.817a.626.626 0 0 1-.442.183Zm-3.375-7.25H9c.345 0 .625.28.625.625v4.491l4.933-4.933a.625.625 0 0 1 .442-.183h15.375V7.625H5.625v14.75Z"},
+  rhUiIcon: null,
+};
+export declare const RhStandardTalkBubbleIcon: ComponentClass<SVGIconProps>;
+export default RhStandardTalkBubbleIcon;

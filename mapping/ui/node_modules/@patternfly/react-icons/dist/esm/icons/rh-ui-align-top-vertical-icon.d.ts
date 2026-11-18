@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiAlignTopVerticalIconConfig: {
+  name: 'RhUiAlignTopVerticalIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29 2a1 1 0 0 1-1 1H4a1 1 0 1 1 0-2h24a1 1 0 0 1 1 1ZM17.06 6.646a1.5 1.5 0 0 0-2.12 0l-5.647 5.647a1 1 0 1 0 1.414 1.414L15 9.414V30a1 1 0 1 0 2 0V9.414l4.293 4.293a.997.997 0 0 0 1.414 0 1 1 0 0 0 0-1.414l-5.646-5.647Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiAlignTopVerticalIcon: ComponentClass<SVGIconProps>;
+export default RhUiAlignTopVerticalIcon;

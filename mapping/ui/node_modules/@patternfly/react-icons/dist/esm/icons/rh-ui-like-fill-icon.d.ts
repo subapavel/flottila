@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiLikeFillIconConfig: {
+  name: 'RhUiLikeFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M9 11.5v16c0 .827-.636 1.5-1.417 1.5H3.417C2.636 29 2 28.327 2 27.5v-16c0-.827.636-1.5 1.417-1.5h4.166C8.364 10 9 10.673 9 11.5Zm20.295.927a2.49 2.49 0 0 0-1.942-.927H21.5v-5c0-1.04-.526-1.99-1.408-2.543-.904-.566-2.01-.608-3.031-.115-.948.458-1.547 1.502-1.561 2.722-.032 2.551-2.011 4.632-4.5 4.886V27.5h13.204a3.517 3.517 0 0 0 3.424-2.772l2.17-10.208a2.488 2.488 0 0 0-.503-2.093Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiLikeFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiLikeFillIcon;

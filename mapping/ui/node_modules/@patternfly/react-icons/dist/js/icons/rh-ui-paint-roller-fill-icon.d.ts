@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiPaintRollerFillIconConfig: {
+  name: 'RhUiPaintRollerFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 6v8.5c0 .827-.673 1.5-1.5 1.5H15v4h.5c.827 0 1.5.673 1.5 1.5v7c0 .827-.673 1.5-1.5 1.5h-3c-.827 0-1.5-.673-1.5-1.5v-7c0-.827.673-1.5 1.5-1.5h.5v-4.5c0-.827.673-1.5 1.5-1.5H28V6a1 1 0 1 1 2 0Zm-4 2V5c0-1.654-1.346-3-3-3H5C3.346 2 2 3.346 2 5v3c0 1.654 1.346 3 3 3h18c1.654 0 3-1.346 3-3Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiPaintRollerFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiPaintRollerFillIcon;

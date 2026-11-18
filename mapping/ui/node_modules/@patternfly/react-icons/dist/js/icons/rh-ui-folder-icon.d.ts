@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiFolderIconConfig: {
+  name: 'RhUiFolderIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.5 8H17.81l-.681-3.208A1 1 0 0 0 16.15 4h-9.3a1 1 0 0 0-.979.792L5.19 8H2.5C1.673 8 1 8.673 1 9.5v17c0 .827.673 1.5 1.5 1.5h27c.827 0 1.5-.673 1.5-1.5v-17c0-.827-.673-1.5-1.5-1.5ZM29 26H3V10h3a1 1 0 0 0 .979-.792L7.66 6h7.682l.681 3.208a1 1 0 0 0 .979.792h12v16Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiFolderIcon: ComponentClass<SVGIconProps>;
+export default RhUiFolderIcon;

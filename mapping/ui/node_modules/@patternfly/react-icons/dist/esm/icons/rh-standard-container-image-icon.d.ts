@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardContainerImageIconConfig: {
+  name: 'RhStandardContainerImageIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"m30.44 10.46-12.13-7a.62.62 0 0 0-.62 0l-12.13 7a.63.63 0 0 0-.31.54v14a.63.63 0 0 0 .31.54l12.13 7a.64.64 0 0 0 .62 0l12.13-7a.63.63 0 0 0 .31-.54V11a.63.63 0 0 0-.31-.54Zm-.94 14.18L18 31.28 6.5 24.64V11.36L18 4.72l11.5 6.64Z"},{"path":"M16.76 20.79a.62.62 0 0 0 1.22.26l1.24-5.84A.62.62 0 0 0 18 15ZM21 21a.63.63 0 0 0 .88 0l2.56-2.56a.63.63 0 0 0 .18-.45.62.62 0 0 0-.18-.44L21.88 15c-.57-.58-1.47.32-.88.88L23.12 18 21 20.11a.62.62 0 0 0 0 .89Zm-6-6a.61.61 0 0 0-.88 0l-2.56 2.56a.62.62 0 0 0-.18.44.63.63 0 0 0 .18.45L14.12 21a.63.63 0 0 0 .88-.89L12.88 18 15 15.87a.61.61 0 0 0 0-.87Z"}]},
+  rhUiIcon: null,
+};
+export declare const RhStandardContainerImageIcon: ComponentClass<SVGIconProps>;
+export default RhStandardContainerImageIcon;

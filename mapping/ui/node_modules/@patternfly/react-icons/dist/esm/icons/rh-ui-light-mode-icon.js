@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiLightModeIconConfig = {
+  name: 'RhUiLightModeIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 7c-4.963 0-9 4.038-9 9s4.037 9 9 9 9-4.038 9-9-4.037-9-9-9Zm0 16c-3.859 0-7-3.14-7-7s3.141-7 7-7 7 3.14 7 7-3.141 7-7 7ZM15 4V1a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0Zm2 24v3a1 1 0 1 1-2 0v-3a1 1 0 1 1 2 0Zm15-12a1 1 0 0 1-1 1h-3a1 1 0 1 1 0-2h3a1 1 0 0 1 1 1ZM4 17H1a1 1 0 1 1 0-2h3a1 1 0 1 1 0 2Zm3.707 7.293a.999.999 0 0 1 0 1.414l-2 2a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414l2-2a.999.999 0 0 1 1.414 0ZM24.293 7.707a.999.999 0 0 1 0-1.414l2-2a.999.999 0 1 1 1.414 1.414l-2 2a.997.997 0 0 1-1.414 0Zm-20-2a.999.999 0 1 1 1.414-1.414l2 2a.999.999 0 1 1-1.414 1.414l-2-2Zm23.414 20.586a.999.999 0 1 1-1.414 1.414l-2-2a.999.999 0 1 1 1.414-1.414l2 2Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiLightModeIcon = createIconBase(RhUiLightModeIconConfig);
+
+export default RhUiLightModeIcon;

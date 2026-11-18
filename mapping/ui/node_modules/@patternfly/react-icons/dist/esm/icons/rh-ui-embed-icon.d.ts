@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiEmbedIconConfig: {
+  name: 'RhUiEmbedIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm-2.293-17.293L9.414 16l4.293 4.293a.999.999 0 1 1-1.414 1.414l-4.646-4.646a1.501 1.501 0 0 1 0-2.121l4.646-4.646a.999.999 0 1 1 1.414 1.414Zm10.647 3.232a1.501 1.501 0 0 1 0 2.121l-4.646 4.646a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414l4.293-4.293-4.293-4.293a.999.999 0 1 1 1.414-1.414l4.646 4.646Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiEmbedIcon: ComponentClass<SVGIconProps>;
+export default RhUiEmbedIcon;

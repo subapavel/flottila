@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhStandardPlanningIconConfig = {
+  name: 'RhStandardPlanningIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M31 25.38c-.92 0-.55 1.28-.62 2h-4.76v-4.76H29a.62.62 0 0 0 0-1.24h-4a.62.62 0 0 0-.62.62v6a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62v-2a.62.62 0 0 0-.62-.62Z"},{"path":"M27.44 24.56c-.56-.58-1.46.32-.88.88l1 1a.61.61 0 0 0 .88 0l3-3c.58-.56-.32-1.47-.88-.88L28 25.12ZM31 4.38h-6a.62.62 0 0 0-.62.62v13a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62V5a.62.62 0 0 0-.62-.62Zm-.62 13h-4.76V5.62h4.76ZM11 4.38H5a.62.62 0 0 0-.62.62v14a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62V5a.62.62 0 0 0-.62-.62Zm-.62 14H5.62V5.62h4.76Zm.62 3H5a.62.62 0 0 0-.62.62v6a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62v-6a.62.62 0 0 0-.62-.62Zm-.62 6H5.62v-4.76h4.76Zm10.62-11h-6a.62.62 0 0 0-.62.62v14a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62V17a.62.62 0 0 0-.62-.62Zm-.62 14h-4.76V17.62h4.76Zm.62-23h-6a.62.62 0 0 0-.62.62v6a.62.62 0 0 0 .62.62h6a.62.62 0 0 0 .62-.62V8a.62.62 0 0 0-.62-.62Zm-.62 6h-4.76V8.62h4.76Z"}]},
+  rhUiIcon: null,
+};
+
+export const RhStandardPlanningIcon = createIconBase(RhStandardPlanningIconConfig);
+
+export default RhStandardPlanningIcon;

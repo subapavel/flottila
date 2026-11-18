@@ -1,0 +1,189 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`NotificationDrawerGroup drawer group with isExpanded applied  1`] = `
+<DocumentFragment>
+  <section
+    class="pf-v6-c-notification-drawer__group pf-m-expanded"
+  >
+    <h1>
+      <button
+        aria-expanded="true"
+        class="pf-v6-c-notification-drawer__group-toggle"
+      >
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-title"
+        >
+          Critical Alerts
+        </div>
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-count"
+        >
+          <span
+            class="pf-v6-c-badge pf-m-unread"
+          >
+            2
+          </span>
+        </div>
+        <span
+          class="pf-v6-c-notification-drawer__group-toggle-icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="pf-v6-svg"
+            fill="currentColor"
+            height="1em"
+            role="img"
+            viewBox="0 0 20 20"
+            width="1em"
+          >
+            <path
+              d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+            />
+          </svg>
+        </span>
+      </button>
+    </h1>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`NotificationDrawerGroup drawer group with isRead applied  1`] = `
+<DocumentFragment>
+  <section
+    class="pf-v6-c-notification-drawer__group"
+  >
+    <h1>
+      <button
+        aria-expanded="false"
+        class="pf-v6-c-notification-drawer__group-toggle"
+      >
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-title"
+        >
+          Critical Alerts
+        </div>
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-count"
+        >
+          <span
+            class="pf-v6-c-badge pf-m-read"
+          >
+            2
+          </span>
+        </div>
+        <span
+          class="pf-v6-c-notification-drawer__group-toggle-icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="pf-v6-svg"
+            fill="currentColor"
+            height="1em"
+            role="img"
+            viewBox="0 0 20 20"
+            width="1em"
+          >
+            <path
+              d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+            />
+          </svg>
+        </span>
+      </button>
+    </h1>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`NotificationDrawerGroup renders correct heading level 1`] = `
+<DocumentFragment>
+  <section
+    class="pf-v6-c-notification-drawer__group"
+  >
+    <h2>
+      <button
+        aria-expanded="false"
+        class="pf-v6-c-notification-drawer__group-toggle"
+      >
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-title"
+        >
+          Critical Alerts
+        </div>
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-count"
+        >
+          <span
+            class="pf-v6-c-badge pf-m-unread"
+          >
+            2
+          </span>
+        </div>
+        <span
+          class="pf-v6-c-notification-drawer__group-toggle-icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="pf-v6-svg"
+            fill="currentColor"
+            height="1em"
+            role="img"
+            viewBox="0 0 20 20"
+            width="1em"
+          >
+            <path
+              d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+            />
+          </svg>
+        </span>
+      </button>
+    </h2>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`NotificationDrawerGroup renders with PatternFly Core styles 1`] = `
+<DocumentFragment>
+  <section
+    class="pf-v6-c-notification-drawer__group"
+  >
+    <h1>
+      <button
+        aria-expanded="false"
+        class="pf-v6-c-notification-drawer__group-toggle"
+      >
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-title"
+        >
+          Critical Alerts
+        </div>
+        <div
+          class="pf-v6-c-notification-drawer__group-toggle-count"
+        >
+          <span
+            class="pf-v6-c-badge pf-m-unread"
+          >
+            2
+          </span>
+        </div>
+        <span
+          class="pf-v6-c-notification-drawer__group-toggle-icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="pf-v6-svg"
+            fill="currentColor"
+            height="1em"
+            role="img"
+            viewBox="0 0 20 20"
+            width="1em"
+          >
+            <path
+              d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+            />
+          </svg>
+        </span>
+      </button>
+    </h1>
+  </section>
+</DocumentFragment>
+`;

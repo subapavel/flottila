@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCloseCircleFillIconConfig = {
+  name: 'RhUiCloseCircleFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm6.796 20.205A1.127 1.127 0 0 1 22 23.126c-.288 0-.576-.11-.796-.33L16 17.592l-5.204 5.204a1.122 1.122 0 0 1-1.592 0 1.127 1.127 0 0 1 0-1.591L14.409 16l-5.205-5.205a1.127 1.127 0 0 1 0-1.591 1.127 1.127 0 0 1 1.592 0L16 14.408l5.204-5.204a1.127 1.127 0 0 1 1.592 0 1.127 1.127 0 0 1 0 1.591L17.591 16l5.205 5.205Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCloseCircleFillIcon = createIconBase(RhUiCloseCircleFillIconConfig);
+
+export default RhUiCloseCircleFillIcon;

@@ -1,0 +1,50 @@
+{
+  "name": "@patternfly/react-icons",
+  "version": "6.7.0",
+  "description": "PatternFly 4 Icons as React Components",
+  "main": "dist/js/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "tag": "prerelease"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patternfly/patternfly-react.git"
+  },
+  "keywords": [
+    "react",
+    "patternfly"
+  ],
+  "author": "Red Hat",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/patternfly/patternfly-react/issues"
+  },
+  "homepage": "https://github.com/patternfly/patternfly-react#readme",
+  "scripts": {
+    "build:single:packages": "node ../../scripts/build-single-packages.mjs --config single-packages.config.json",
+    "build:esm": "tsc --build tsconfig.json",
+    "clean": "rimraf dist src/icons src/index.js src/index.d.ts",
+    "generate": "rimraf dist/esm/icons dist/js/icons dist/static && yarn build:esm && node scripts/ensureEsmPackageJson.mjs && node scripts/writeIcons.mjs",
+    "update-rhds-icons": "node scripts/parseRHIcons.mjs"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@fortawesome/free-brands-svg-icons": "^5.15.4",
+    "@fortawesome/free-regular-svg-icons": "^5.15.4",
+    "@fortawesome/free-solid-svg-icons": "^5.15.4",
+    "@patternfly/patternfly": "6.7.0-prerelease.3",
+    "@rhds/icons": "^2.3.1",
+    "fs-extra": "^11.3.3"
+  },
+  "peerDependencies": {
+    "react": "^17 || ^18 || ^19",
+    "react-dom": "^17 || ^18 || ^19"
+  },
+  "gitHead": "371c441e48399d85b67eff220edb965f40807453"
+}

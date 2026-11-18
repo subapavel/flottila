@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardMobileAssociateIconConfig: {
+  name: 'RhStandardMobileAssociateIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M24 30.38a.63.63 0 0 0-.62.63.63.63 0 0 0 1.25 0 .63.63 0 0 0-.63-.63Zm-6 0a.63.63 0 0 0-.62.63.63.63 0 0 0 1.25 0 .63.63 0 0 0-.63-.63Zm-6 0a.63.63 0 0 0-.62.63.63.63 0 0 0 1.25 0 .63.63 0 0 0-.63-.63Zm12-11h-.33l.95-12.33a.57.57 0 0 0-.16-.47.63.63 0 0 0-.46-.2H12a.63.63 0 0 0-.46.2.57.57 0 0 0-.16.47l.95 12.33H12A2.62 2.62 0 0 0 9.38 22v2a.61.61 0 0 0 .62.62h7.38v3.76H11a.62.62 0 1 0 0 1.24h14a.62.62 0 0 0 0-1.24h-6.38v-3.76H26a.61.61 0 0 0 .62-.62v-2A2.62 2.62 0 0 0 24 19.38Zm-.67-11.76-.91 11.76h-8.84l-.91-11.76Zm2.05 15.76H10.62V22A1.38 1.38 0 0 1 12 20.62h12A1.38 1.38 0 0 1 25.38 22ZM15 5.62h6a.62.62 0 1 0 0-1.24h-6a.62.62 0 1 0 0 1.24Z"},{"path":"M10.62 17a.61.61 0 0 0-.62-.62H8a.62.62 0 1 0 0 1.24h2a.61.61 0 0 0 .62-.62ZM28 16.38h-2a.62.62 0 0 0 0 1.24h2a.62.62 0 0 0 0-1.24Z"}]},
+  rhUiIcon: null,
+};
+export declare const RhStandardMobileAssociateIcon: ComponentClass<SVGIconProps>;
+export default RhStandardMobileAssociateIcon;

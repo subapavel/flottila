@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-package npm licence exceptions: dev-only build tools or data, never bundled into the UI. The check passes an entry only where the lockfile marks it dev. A new entry needs an owner ruling.",
+  "exceptions": {
+    "argparse": "Python-2.0, PSF-2.0 (through js-yaml in openapi-typescript and json-schema-to-typescript)",
+    "caniuse-lite": "CC-BY-4.0 (browser data for browserslist)",
+    "minimatch": "BlueOak-1.0.0 (glob tooling)"
+  }
+}

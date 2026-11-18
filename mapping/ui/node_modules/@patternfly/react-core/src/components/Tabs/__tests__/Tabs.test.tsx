@@ -1,0 +1,1008 @@
+import { render, screen, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Tabs, TabsProps } from '../Tabs';
+import styles from '@patternfly/react-styles/css/components/Tabs/tabs';
+import { Tab } from '../Tab';
+import { TabTitleText } from '../TabTitleText';
+import { TabTitleIcon } from '../TabTitleIcon';
+import { TabContent } from '../TabContent';
+import { TabContentBody } from '../TabContentBody';
+import { createRef, useState } from 'react';
+
+jest.mock('../../../helpers/GenerateId/GenerateId');
+
+const renderSeparateTabs = (props?: Pick<TabsProps, 'activeKey' | 'defaultActiveKey'>) => {
+  const contentRef1 = createRef<HTMLElement>();
+  const contentRef2 = createRef<HTMLElement>();
+  const contentRef3 = createRef<HTMLElement>();
+
+  let calculatedActiveKey;
+  if (props?.defaultActiveKey) {
+    calculatedActiveKey = props?.defaultActiveKey;
+  } else {
+    calculatedActiveKey = props?.activeKey;
+  }
+
+  return (
+    <>
+      <Tabs id="separateTabs" {...props}>
+        <Tab
+          eventKey={0}
+          title={<TabTitleText>Tab item 1</TabTitleText>}
+          tabContentId="refTab1Section"
+          tabContentRef={contentRef1}
+        />
+        <Tab
+          eventKey={1}
+          title={<TabTitleText>Tab item 2</TabTitleText>}
+          tabContentId="refTab2Section"
+          tabContentRef={contentRef2}
+        />
+        <Tab
+          eventKey={2}
+          title={<TabTitleText>Tab item 3</TabTitleText>}
+          tabContentId="refTab3Section"
+          tabContentRef={contentRef3}
+        />
+      </Tabs>
+      <div>
+        <TabContent
+          eventKey={0}
+          id="refTab1Section"
+          ref={contentRef1}
+          aria-label="Tab item 1"
+          hidden={calculatedActiveKey !== 0}
+        >
+          Tab 1 section
+        </TabContent>
+        <TabContent
+          eventKey={1}
+          id="refTab2Section"
+          ref={contentRef2}
+          aria-label="Tab item 2"
+          hidden={calculatedActiveKey !== 1}
+        >
+          <TabContentBody>Tab 2 section</TabContentBody>
+        </TabContent>
+        <TabContent
+          eventKey={2}
+          id="refTab3Section"
+          ref={contentRef3}
+          aria-label="Tab item 3"
+          hidden={calculatedActiveKey !== 2}
+        >
+          <TabContentBody hasPadding>Tab 3 section with padding </TabContentBody>
+        </TabContent>
+      </div>
+    </>
+  );
+};
+
+test(`Renders with classes ${styles.tabs} and ${styles.modifiers.animateCurrent} by default`, () => {
+  render(
+    <Tabs role="region">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('region')).toHaveClass(`${styles.tabs} ${styles.modifiers.animateCurrent}`);
+});
+
+test(`Renders with class ${styles.modifiers.initializingAccent} when component initially mounts`, () => {
+  render(
+    <Tabs role="region">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('region')).toHaveClass(styles.modifiers.initializingAccent);
+});
+
+test(`Does not render with class ${styles.modifiers.initializingAccent} when component is finished mounting`, () => {
+  jest.useFakeTimers();
+  render(
+    <Tabs role="region">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  act(() => {
+    jest.advanceTimersByTime(500);
+  });
+  expect(screen.getByRole('region')).not.toHaveClass(styles.modifiers.initializingAccent);
+  jest.useRealTimers();
+});
+
+describe('hash-based nav selection', () => {
+  beforeEach(() => {
+    window.location.hash = '#/items/2';
+  });
+
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  test('should select the nav tab that matches the current URL hash on initial render', () => {
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} component="nav">
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+        <Tab eventKey={2} title={<TabTitleText>Tab item 3</TabTitleText>} href="#/items/3">
+          Tab item 3
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should select the nav tab that matches the current URL hash when isNav is enabled', () => {
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} isNav>
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should fall back to activeKey when no tab href matches the current hash', () => {
+    window.location.hash = '#/items/unknown';
+
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} component="nav">
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should fall back to activeKey when the URL hash is empty', () => {
+    window.location.hash = '';
+
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} component="nav">
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should respect later controlled selections after the initial hash match', async () => {
+    const user = userEvent.setup();
+    const ControlledTabs = () => {
+      const [activeKey, setActiveKey] = useState<string | number>(0);
+
+      return (
+        <Tabs activeKey={activeKey} onSelect={(_event, eventKey) => setActiveKey(eventKey)} component="nav">
+          <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+            Tab item 1
+          </Tab>
+          <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+            Tab item 2
+          </Tab>
+          <Tab eventKey={2} title={<TabTitleText>Tab item 3</TabTitleText>} href="#/items/3">
+            Tab item 3
+          </Tab>
+        </Tabs>
+      );
+    };
+
+    render(<ControlledTabs />);
+
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('tab', { name: 'Tab item 3' }));
+
+    expect(screen.getByRole('tab', { name: 'Tab item 3' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should use the URL hash to initialize uncontrolled nav tabs', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Tabs defaultActiveKey={0} isNav>
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+        <Tab eventKey={2} title={<TabTitleText>Tab item 3</TabTitleText>} href="#/items/3">
+          Tab item 3
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'true');
+
+    await user.click(screen.getByRole('tab', { name: 'Tab item 1' }));
+
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should ignore hidden, disabled and aria-disabled tabs when matching the current hash', () => {
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} component="nav">
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Hidden tab</TabTitleText>} href="#/items/2" isHidden>
+          Hidden tab
+        </Tab>
+        <Tab eventKey={2} title={<TabTitleText>Disabled tab</TabTitleText>} href="#/items/2" isDisabled>
+          Disabled tab
+        </Tab>
+        <Tab eventKey={3} title={<TabTitleText>Aria disabled tab</TabTitleText>} href="#/items/2" isAriaDisabled>
+          Aria disabled tab
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.queryByRole('tab', { name: 'Hidden tab' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Disabled tab' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: 'Aria disabled tab' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should ignore the current URL hash when nav behavior is not enabled', () => {
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined}>
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+      </Tabs>
+    );
+
+    expect(screen.getByRole('tab', { name: 'Tab item 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Tab item 2' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('should prevent default anchor navigation when selecting a tab with an href', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '';
+
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined}>
+        <Tab eventKey={0} title={<TabTitleText>Tab item 1</TabTitleText>} href="#/items/1">
+          Tab item 1
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Tab item 2</TabTitleText>} href="#/items/2">
+          Tab item 2
+        </Tab>
+      </Tabs>
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Tab item 2' }));
+
+    expect(window.location.hash).toBe('');
+  });
+
+  test('should update the URL hash when selecting a nav tab with an href', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '';
+
+    render(
+      <Tabs activeKey={0} onSelect={() => undefined} isNav>
+        <Tab eventKey={0} title={<TabTitleText>Users</TabTitleText>} href="#users">
+          Users
+        </Tab>
+        <Tab eventKey={1} title={<TabTitleText>Containers</TabTitleText>} href="#containers">
+          Containers
+        </Tab>
+      </Tabs>
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Containers' }));
+
+    expect(window.location.hash).toBe('#containers');
+  });
+});
+
+test(`Renders with class ${styles.modifiers.initializingAccent} when uncontrolled expandable component initially mounts`, async () => {
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+
+  render(
+    <Tabs
+      isVertical
+      expandable={{ default: 'expandable' }}
+      toggleText="Jump to section"
+      defaultIsExpanded={false}
+      role="region"
+    >
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  jest.useFakeTimers();
+  await user.click(screen.getByRole('button', { name: 'Jump to section' }));
+  act(() => {
+    jest.advanceTimersByTime(100);
+  });
+  expect(screen.getByRole('region')).toHaveClass(styles.modifiers.initializingAccent);
+  jest.useRealTimers();
+});
+
+test(`Does not render with class ${styles.modifiers.initializingAccent} when uncontrolled expandable component is finished mounting`, async () => {
+  const user = userEvent.setup();
+
+  render(
+    <Tabs
+      isVertical
+      expandable={{ default: 'expandable' }}
+      toggleText="Jump to section"
+      defaultIsExpanded={false}
+      role="region"
+    >
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  await user.click(screen.getByRole('button', { name: 'Jump to section' }));
+  expect(screen.getByRole('region')).not.toHaveClass(styles.modifiers.initializingAccent);
+});
+
+test(`Renders with class ${styles.modifiers.nav} when isNav is true`, () => {
+  render(
+    <Tabs isNav role="region">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('region')).toHaveClass(styles.modifiers.nav);
+});
+
+test(`Renders with div wrapper by default`, () => {
+  render(
+    <Tabs>
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+});
+
+test(`Renders with nav wrapper when component="nav"`, () => {
+  render(
+    <Tabs component="nav">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('navigation')).toBeInTheDocument();
+});
+
+test(`Renders with nav wrapper when isNav is true`, () => {
+  render(
+    <Tabs isNav>
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('navigation')).toBeInTheDocument();
+});
+
+test(`Overrides isNav nav wrapper when component="div" is passed`, () => {
+  render(
+    <Tabs component="div" isNav>
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+});
+
+test('should render simple tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="simpleTabs">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render closeable tabs', () => {
+  render(
+    <Tabs onClose={jest.fn()}>
+      <Tab eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>} closeButtonAriaLabel="close-label">
+        Tab 1 section
+      </Tab>
+    </Tabs>
+  );
+  expect(screen.getByLabelText('close-label')).toBeTruthy();
+});
+
+test('should render add button', () => {
+  render(
+    <Tabs onAdd={jest.fn()} addButtonAriaLabel="add-label">
+      <Tab eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>} closeButtonAriaLabel="close-label">
+        Tab 1 section
+      </Tab>
+    </Tabs>
+  );
+  expect(screen.getByLabelText('add-label')).toBeTruthy();
+});
+
+test('should render uncontrolled tabs', () => {
+  const { asFragment } = render(
+    <Tabs defaultActiveKey={0}>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render vertical tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="verticalTabs" isVertical>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render expandable vertical tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="verticalTabs" isVertical toggleText="toggle" expandable={{ default: 'expandable' }}>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should log error when there is no aria-label or toggleText for expandable vertical tabs', () => {
+  const consoleErrorMock = jest.fn();
+  global.console = { error: consoleErrorMock } as any;
+  render(
+    <Tabs id="verticalTabs" isVertical expandable={{ default: 'expandable' }}>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(consoleErrorMock).toHaveBeenCalled();
+});
+
+test('should render box tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="boxTabs" isBox>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+      <Tab
+        id="tab4"
+        eventKey={3}
+        title={
+          <>
+            <TabTitleIcon>
+              <i>4</i>
+            </TabTitleIcon>{' '}
+            <TabTitleText>Users</TabTitleText>{' '}
+          </>
+        }
+      >
+        Tab 4 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render accessible tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="accessibleTabs" aria-label="accessible Tabs example" component="nav">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>} href="#/items/1">
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>} href="#/items/2">
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>} href="#/items/3">
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render filled tabs', () => {
+  const { asFragment } = render(
+    <Tabs id="filledTabs" isFilled>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render subtabs', () => {
+  const { asFragment } = render(
+    <Tabs id="primarieTabs">
+      <Tab eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        <Tabs isSubtab id="subtabs">
+          <Tab id="subtab1" eventKey={10} title={<TabTitleText>"Subtab item 1"</TabTitleText>}>
+            Subtab 1 section
+          </Tab>
+          <Tab id="subtab2" eventKey={11} title={<TabTitleText>"Subtab item 2"</TabTitleText>}>
+            Subtab 2 section
+          </Tab>
+          <Tab id="subtab3" eventKey={12} title={<TabTitleText>"Subtab item 3"</TabTitleText>}>
+            Subtab 3 section
+          </Tab>
+        </Tabs>
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render tabs with eventKey Strings', () => {
+  const { asFragment } = render(
+    <Tabs id="eventKeyTabs">
+      <Tab id="tab1" eventKey={'one'} title={<TabTitleText>"Secondary Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={'two'} title={<TabTitleText>"Secondary Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={'three'} title={<TabTitleText>"Secondary Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render tabs with separate content', () => {
+  const contentRef1: React.RefObject<any> = null;
+  const contentRef2: React.RefObject<any> = null;
+  const contentRef3: React.RefObject<any> = null;
+
+  const { asFragment } = render(
+    <>
+      <Tabs id="separateTabs">
+        <Tab
+          eventKey={0}
+          title={<TabTitleText>Tab item 1</TabTitleText>}
+          tabContentId="refTab1Section"
+          tabContentRef={contentRef1}
+        />
+        <Tab
+          eventKey={1}
+          title={<TabTitleText>Tab item 2</TabTitleText>}
+          tabContentId="refTab2Section"
+          tabContentRef={contentRef2}
+        />
+        <Tab
+          eventKey={2}
+          title={<TabTitleText>Tab item 3</TabTitleText>}
+          tabContentId="refTab3Section"
+          tabContentRef={contentRef3}
+        />
+      </Tabs>
+      <div>
+        <TabContent eventKey={0} id="refTab1Section" ref={contentRef1} aria-label="Tab item 1">
+          Tab 1 section
+        </TabContent>
+        <TabContent eventKey={1} id="refTab2Section" ref={contentRef2} aria-label="Tab item 2" hidden>
+          <TabContentBody>Tab 2 section</TabContentBody>
+        </TabContent>
+        <TabContent eventKey={2} id="refTab3Section" ref={contentRef3} aria-label="Tab item 3" hidden>
+          <TabContentBody hasPadding>Tab 3 section with padding </TabContentBody>
+        </TabContent>
+      </div>
+    </>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render correct tab content for uncontrolled tabs with separate content', () => {
+  render(renderSeparateTabs({ defaultActiveKey: 1 }));
+
+  expect(screen.getByText(/Tab 1 section/i)).not.toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 3 section with padding/i)).not.toBeVisible();
+});
+
+test('should correctly advance tab content for uncontrolled tabs with separate content', async () => {
+  render(renderSeparateTabs({ defaultActiveKey: 1 }));
+
+  userEvent.setup();
+  expect(screen.getByText(/Tab 1 section/i)).not.toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 3 section with padding/i)).not.toBeVisible();
+  await userEvent.click(screen.getByRole('tab', { name: /Tab item 1/i }));
+  expect(screen.getByText(/Tab 1 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).not.toBeVisible();
+});
+
+test('should render correct tab content for controlled tabs with separate content', () => {
+  render(renderSeparateTabs({ activeKey: 1 }));
+
+  expect(screen.getByText(/Tab 1 section/i)).not.toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 3 section with padding/i)).not.toBeVisible();
+});
+
+test('should correctly advance tab content for controlled tabs with separate content', async () => {
+  render(renderSeparateTabs({ activeKey: 1 }));
+
+  userEvent.setup();
+  expect(screen.getByText(/Tab 1 section/i)).not.toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 3 section with padding/i)).not.toBeVisible();
+  await userEvent.click(screen.getByRole('tab', { name: /Tab item 1/i }));
+  expect(screen.getByText(/Tab 1 section/i)).toBeVisible();
+  expect(screen.getByText(/Tab 2 section/i)).not.toBeVisible();
+});
+
+test('should render box tabs of secondary variant', () => {
+  const { asFragment } = render(
+    <Tabs id="boxSecondaryVariantTabs" isBox variant="secondary">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render tabs with no bottom border', () => {
+  const { asFragment } = render(
+    <Tabs id="noBottomBorderTabs" hasNoBorderBottom>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render subtabs with no bottom border when passed hasNoBorderBottom', () => {
+  render(
+    <Tabs isSubtab hasNoBorderBottom id="noBottomBorderTabs" aria-label="Subtab bottom border">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+
+  const tabsContainer = screen.queryByLabelText('Subtab bottom border');
+
+  expect(tabsContainer).toHaveClass('pf-m-no-border-bottom');
+});
+
+test('should render subtabs with border bottom', () => {
+  render(
+    <Tabs isSubtab id="bottomBorderTabs" aria-label="Subtab bottom border">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+
+  const tabsContainer = screen.queryByLabelText('Subtab bottom border');
+
+  expect(tabsContainer).not.toHaveClass('pf-m-no-border-bottom');
+});
+
+test('should not render scroll buttons by default', () => {
+  render(
+    <Tabs>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.queryByLabelText('Scroll left')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Scroll right')).not.toBeInTheDocument();
+});
+
+test('should not render scroll buttons when isVertical is true', () => {
+  render(
+    <Tabs isVertical>
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+      <Tab id="tab3" eventKey={2} title={<TabTitleText>"Tab item 3"</TabTitleText>}>
+        Tab 3 section
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.queryByLabelText('Scroll left')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Scroll right')).not.toBeInTheDocument();
+});
+
+test('should render a disabled add button', () => {
+  render(
+    <Tabs onAdd={jest.fn()} addButtonAriaLabel="add-label" isAddButtonDisabled={true}>
+      <div>Tab content</div>
+    </Tabs>
+  );
+
+  const addButton = screen.getByLabelText('add-label');
+  expect(addButton).toBeDisabled();
+});
+
+test('should render an enabled add button', () => {
+  render(
+    <Tabs onAdd={jest.fn()} addButtonAriaLabel="add-label" isAddButtonDisabled={false}>
+      <div>Tab content</div>
+    </Tabs>
+  );
+
+  const addButton = screen.getByLabelText('add-label');
+  expect(addButton).not.toBeDisabled();
+});
+
+test(`should render with custom inline style and accent position inline style`, () => {
+  render(
+    <Tabs role="region" style="background-color: #12345;">
+      <Tab title="Test title" eventKey={0}>
+        Tab Content
+      </Tab>
+    </Tabs>
+  );
+
+  expect(screen.getByRole('region')).toHaveStyle(`background-color: #12345;--pf-v6-c-tabs--link-accent--start: 0px;`);
+});
+
+test('should render tablist aria-label when provided', () => {
+  const { asFragment } = render(
+    <Tabs id="tabListLabelTabs" tabListAriaLabel="Primary tab list">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+    </Tabs>
+  );
+
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should render tablist aria-labelledby when provided', () => {
+  const { asFragment } = render(
+    <>
+      <h2 id="tablistHeading">My tabs heading</h2>
+      <Tabs id="tabListLabelledByTabs" tabListAriaLabelledBy="tablistHeading">
+        <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+          Tab 1 section
+        </Tab>
+        <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+          Tab 2 section
+        </Tab>
+      </Tabs>
+    </>
+  );
+
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('should not render tablist aria-label or aria-labelledby when neither is provided', () => {
+  const { asFragment } = render(
+    <Tabs id="noTabListLabelTabs">
+      <Tab id="tab1" eventKey={0} title={<TabTitleText>"Tab item 1"</TabTitleText>}>
+        Tab 1 section
+      </Tab>
+      <Tab id="tab2" eventKey={1} title={<TabTitleText>"Tab item 2"</TabTitleText>}>
+        Tab 2 section
+      </Tab>
+    </Tabs>
+  );
+
+  expect(asFragment()).toMatchSnapshot();
+});

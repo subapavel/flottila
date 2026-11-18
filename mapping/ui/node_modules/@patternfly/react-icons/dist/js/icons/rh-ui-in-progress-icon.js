@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiInProgressIconConfig = {
+  name: 'RhUiInProgressIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 16c0 8.271-6.729 15-15 15-.806 0-1.614-.064-2.401-.191a1 1 0 0 1 .318-1.974c.683.11 1.384.166 2.083.166 7.168 0 13-5.832 13-13S23.168 3 16 3a1 1 0 1 1 0-2c8.271 0 15 6.729 15 15ZM5.299 23.384a1 1 0 1 0-1.645 1.138 15.011 15.011 0 0 0 3.824 3.824.997.997 0 0 0 1.39-.253 1 1 0 0 0-.254-1.391 13.037 13.037 0 0 1-3.316-3.317ZM2 15a1 1 0 0 0-1 1c0 .802.064 1.61.191 2.401a1 1 0 1 0 1.974-.318A13.199 13.199 0 0 1 2.999 16a1 1 0 0 0-1-1Z"},
+  rhUiIcon: null,
+};
+exports.RhUiInProgressIcon = require('../createIcon').createIconBase(exports.RhUiInProgressIconConfig);
+exports["default"] = exports.RhUiInProgressIcon;

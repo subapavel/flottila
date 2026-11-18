@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhMicronsDoubleCaretRightIconConfig: {
+  name: 'RhMicronsDoubleCaretRightIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M10 19a1 1 0 0 1-.707-1.707L16.586 10 9.293 2.707a1 1 0 1 1 1.414-1.414l7.647 7.646c.283.284.439.66.439 1.061s-.156.777-.44 1.06l-7.646 7.647A.997.997 0 0 1 10 19Zm-7.293-.293 7.647-7.646c.283-.284.439-.66.439-1.061s-.156-.777-.44-1.06L2.708 1.292a1 1 0 1 0-1.414 1.414L8.586 10l-7.293 7.293a1 1 0 1 0 1.414 1.414Z"},
+  rhUiIcon: null,
+};
+export declare const RhMicronsDoubleCaretRightIcon: ComponentClass<SVGIconProps>;
+export default RhMicronsDoubleCaretRightIcon;

@@ -1,0 +1,19 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PageSidebar should match snapshot (auto-generated) 1`] = `
+<DocumentFragment>
+  <div
+    aria-hidden="false"
+    class="pf-v6-c-page__sidebar ''"
+    id="page-sidebar"
+  >
+    <div
+      class="pf-v6-c-page__sidebar-main"
+    >
+      <div>
+        ReactNode
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;

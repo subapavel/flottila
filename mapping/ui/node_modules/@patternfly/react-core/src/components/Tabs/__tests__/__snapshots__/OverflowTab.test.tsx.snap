@@ -1,0 +1,171 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Matches snapshot when expanded 1`] = `
+<DocumentFragment>
+  <li
+    class="pf-v6-c-tabs__item pf-m-overflow pf-m-current"
+    role="presentation"
+  >
+    <button
+      aria-expanded="true"
+      aria-haspopup="menu"
+      class="pf-v6-c-tabs__link pf-m-expanded"
+      role="tab"
+      type="button"
+    >
+      <span
+        class="pf-v6-c-tabs__item-text"
+      >
+        Tab one
+      </span>
+      <span
+        class="pf-v6-c-tabs__link-toggle-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="pf-v6-svg"
+          fill="currentColor"
+          height="1em"
+          role="img"
+          viewBox="0 0 20 20"
+          width="1em"
+        >
+          <path
+            d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+          />
+        </svg>
+      </span>
+    </button>
+  </li>
+  <div
+    data-testid="popper-mock"
+  >
+    <div
+      data-testid="trigger"
+    />
+    <div
+      data-testid="popper"
+    >
+      <div
+        data-testid="menu-mock"
+      >
+        <div
+          data-testid="menu-content-mock"
+        >
+          <ul
+            data-testid="menu-list-mock"
+          >
+            <li
+              id="1-menu-item-mock"
+            >
+              Tab one
+              <p>
+                Selected: true
+              </p>
+            </li>
+            <li
+              id="2-menu-item-mock"
+            >
+              Tab two
+              <p>
+                Selected: false
+              </p>
+            </li>
+          </ul>
+        </div>
+        <button>
+          Select
+        </button>
+      </div>
+    </div>
+    <p>
+      Append to class name: pf-v6-c-tabs__item pf-m-overflow pf-m-current
+    </p>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Renders tabs passed via overflowingTabs when expanded in strict mode 1`] = `
+<DocumentFragment>
+  <li
+    class="pf-v6-c-tabs__item pf-m-overflow"
+    role="presentation"
+  >
+    <button
+      aria-expanded="true"
+      aria-haspopup="menu"
+      class="pf-v6-c-tabs__link pf-m-expanded"
+      role="tab"
+      type="button"
+    >
+      <span
+        class="pf-v6-c-tabs__item-text"
+      >
+        More
+      </span>
+      <span
+        class="pf-v6-c-tabs__link-toggle-icon"
+      >
+        <svg
+          aria-hidden="true"
+          class="pf-v6-svg"
+          fill="currentColor"
+          height="1em"
+          role="img"
+          viewBox="0 0 20 20"
+          width="1em"
+        >
+          <path
+            d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+          />
+        </svg>
+      </span>
+    </button>
+  </li>
+  <div
+    data-testid="popper-mock"
+  >
+    <div
+      data-testid="trigger"
+    />
+    <div
+      data-testid="popper"
+    >
+      <div
+        data-testid="menu-mock"
+      >
+        <div
+          data-testid="menu-content-mock"
+        >
+          <ul
+            data-testid="menu-list-mock"
+          >
+            <li
+              id="1-menu-item-mock"
+            >
+              Tab one
+              <p>
+                Selected: false
+              </p>
+            </li>
+            <li
+              id="2-menu-item-mock"
+            >
+              Tab two
+              <p>
+                Selected: false
+              </p>
+            </li>
+          </ul>
+        </div>
+        <button>
+          Select
+        </button>
+      </div>
+    </div>
+    <p>
+      Append to class name: pf-v6-c-tabs__item pf-m-overflow
+    </p>
+  </div>
+</DocumentFragment>
+`;

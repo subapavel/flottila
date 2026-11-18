@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiAiExperienceFillIconConfig = {
+  name: 'RhUiAiExperienceFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.502 7c0 .29-.209.536-.498.59a5.523 5.523 0 0 0-4.417 4.417c-.054.289-.3.498-.59.498s-.536-.21-.59-.498A5.52 5.52 0 0 0 19.99 7.59c-.289-.054-.498-.3-.498-.59s.21-.536.498-.59a5.52 5.52 0 0 0 4.417-4.417c.054-.289.301-.498.59-.498s.536.21.59.498a5.523 5.523 0 0 0 4.417 4.417c.289.054.498.3.498.59Zm-4.465 9.962A11.932 11.932 0 0 1 15.038 5.97C15.001 5.447 14.524 5 14 5c-.521 0-.997.442-1.038.962a11.932 11.932 0 0 1-10.992 11C1.447 16.999 1 17.476 1 18c0 .521.442.997.962 1.038a11.932 11.932 0 0 1 11 10.992c.037.524.514.97 1.038.97.521 0 .997-.442 1.038-.962a11.933 11.933 0 0 1 11-10.999c.519-.042.961-.516.961-1.038 0-.521-.442-.997-.962-1.038Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiAiExperienceFillIcon = createIconBase(RhUiAiExperienceFillIconConfig);
+
+export default RhUiAiExperienceFillIcon;

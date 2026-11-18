@@ -1,0 +1,8 @@
+"use strict";
+exports.__esModule = true;
+exports.c_tree_view_m_compact__node_toggle_nested_Color = {
+  "name": "--pf-v6-c-tree-view--m-compact__node-toggle--nested--Color",
+  "value": "initial",
+  "var": "var(--pf-v6-c-tree-view--m-compact__node-toggle--nested--Color)"
+};
+exports["default"] = exports.c_tree_view_m_compact__node_toggle_nested_Color;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiDislikeIconConfig = {
+  name: 'RhUiDislikeIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"m30.287 17.376-2.17-10.207A4.02 4.02 0 0 0 24.204 4H9.908c-.207-.581-.757-1-1.408-1h-5C2.673 3 2 3.673 2 4.5v16c0 .827.673 1.5 1.5 1.5h5c.651 0 1.201-.419 1.408-1h.592c2.45 0 4.469 1.993 4.5 4.441.017 1.412.723 2.626 1.843 3.167a3.814 3.814 0 0 0 1.663.394c.648 0 1.283-.179 1.852-.536a3.485 3.485 0 0 0 1.643-2.967v-4.5h5.353c.909 0 1.759-.405 2.331-1.112s.792-1.623.604-2.512ZM8 20H4V5h4v15Zm20.13-1.371a1 1 0 0 1-.777.371H21.5c-.827 0-1.5.673-1.5 1.5v5c0 .52-.264.996-.705 1.272-.269.169-.833.399-1.581.036-.518-.25-.708-.881-.714-1.391C16.955 21.878 14.039 19 10.5 19H10V6h14.204c.938 0 1.762.666 1.956 1.584l2.17 10.208a.997.997 0 0 1-.2.837Z"},
+  rhUiIcon: null,
+};
+exports.RhUiDislikeIcon = require('../createIcon').createIconBase(exports.RhUiDislikeIconConfig);
+exports["default"] = exports.RhUiDislikeIcon;

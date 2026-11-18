@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardVideoIconConfig = {
+  name: 'RhStandardVideoIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M31 14.71H11l19.6-4.17a.62.62 0 0 0 .4-.27.6.6 0 0 0 .08-.47l-.9-4.27a.64.64 0 0 0-.75-.48L4 10.46a.6.6 0 0 0-.39.27.65.65 0 0 0-.09.47l.87 4.07v15.07A.62.62 0 0 0 5 31h26a.62.62 0 0 0 .62-.62v-15a.63.63 0 0 0-.62-.67Zm-1.92-8.3.65 3-24.21 5.18-.65-3Zm1.3 23.3H5.62V16h24.76Z"},{"path":"M15.49 26.3a.59.59 0 0 0 .31-.09l5-2.83a.64.64 0 0 0 0-1.09l-5-2.83a.62.62 0 0 0-.62 0 .61.61 0 0 0-.31.54v5.67a.61.61 0 0 0 .31.54.56.56 0 0 0 .31.09Zm.63-5.23 3.12 1.77-3.12 1.76Z"}]},
+  rhUiIcon: null,
+};
+exports.RhStandardVideoIcon = require('../createIcon').createIconBase(exports.RhStandardVideoIconConfig);
+exports["default"] = exports.RhStandardVideoIcon;

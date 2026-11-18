@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiHybridCloudFillIconConfig: {
+  name: 'RhUiHybridCloudFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M1.25 16A6.758 6.758 0 0 1 8 9.25c.549 0 1.094.068 1.628.203A8.777 8.777 0 0 1 18 3.25c4.825 0 8.75 3.925 8.75 8.75 0 .136-.004.275-.013.419A5.21 5.21 0 0 1 30.75 17.5a5.256 5.256 0 0 1-5.25 5.25H8A6.758 6.758 0 0 1 1.25 16ZM29 27H3a1 1 0 1 0 0 2h26a1 1 0 1 0 0-2Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiHybridCloudFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiHybridCloudFillIcon;

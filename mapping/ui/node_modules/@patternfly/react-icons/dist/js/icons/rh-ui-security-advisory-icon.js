@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiSecurityAdvisoryIconConfig = {
+  name: 'RhUiSecurityAdvisoryIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 7.75c.69 0 1.25.56 1.25 1.25v7a1.25 1.25 0 0 1-2.5 0V9c0-.69.56-1.25 1.25-1.25Zm13-3.19V18c0 7.168-5.832 13-13 13S3 25.168 3 18V4.56a1 1 0 0 1 .791-.978l12-2.56c.139-.029.279-.029.418 0l12 2.56A1 1 0 0 1 29 4.56Zm-2 .809L16 3.022 5 5.369V18c0 6.065 4.935 11 11 11s11-4.935 11-11V5.369ZM16 20.25a1.75 1.75 0 1 0 .001 3.501A1.75 1.75 0 0 0 16 20.25Z"},
+  rhUiIcon: null,
+};
+exports.RhUiSecurityAdvisoryIcon = require('../createIcon').createIconBase(exports.RhUiSecurityAdvisoryIconConfig);
+exports["default"] = exports.RhUiSecurityAdvisoryIcon;

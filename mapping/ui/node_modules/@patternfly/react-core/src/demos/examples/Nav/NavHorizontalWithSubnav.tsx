@@ -1,0 +1,307 @@
+import { Fragment, useState } from 'react';
+import {
+  Avatar,
+  Brand,
+  Button,
+  ButtonVariant,
+  Card,
+  CardBody,
+  Content,
+  Divider,
+  Dropdown,
+  DropdownGroup,
+  DropdownItem,
+  DropdownList,
+  Gallery,
+  GalleryItem,
+  MenuToggle,
+  Masthead,
+  MastheadMain,
+  MastheadLogo,
+  MastheadContent,
+  MastheadBrand,
+  MastheadToggle,
+  Nav,
+  NavItem,
+  NavList,
+  NotificationBadge,
+  NotificationBadgeVariant,
+  Page,
+  PageSection,
+  PageSectionTypes,
+  PageToggleButton,
+  SkipToContent,
+  Toolbar,
+  ToolbarContent,
+  ToolbarGroup,
+  ToolbarItem
+} from '@patternfly/react-core';
+import RhUiSettingsFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-settings-fill-icon';
+import RhUiQuestionMarkCircleIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-icon';
+import RhUiQuestionMarkCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-fill-icon';
+import RhUiEllipsisVerticalFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-ellipsis-vertical-fill-icon';
+import imgAvatar from '@patternfly/react-core/src/components/assets/avatarImg.svg';
+import pfLogo from '@patternfly/react-core/src/demos/assets/PF-HorizontalLogo-Color.svg';
+import { DashboardBreadcrumb } from '@patternfly/react-core/src/demos/DashboardWrapper';
+
+export const NavHorizontalWithSubnav: React.FunctionComponent = () => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isKebabDropdownOpen, setIsKebabDropdownOpen] = useState(false);
+  const [isFullKebabDropdownOpen, setIsFullKebabDropdownOpen] = useState(false);
+  const [activeItem, setActiveItem] = useState<string | number>(0);
+  const [activeSubNavItem, setActiveSubNavItem] = useState<string | number>(7);
+
+  const onNavSelect = (
+    _event: React.FormEvent<HTMLInputElement>,
+    selectedItem: {
+      groupId: number | string;
+      itemId: number | string;
+      to: string;
+    }
+  ) => setActiveItem(selectedItem.itemId);
+
+  const onSubNavSelect = (
+    _event: React.FormEvent<HTMLInputElement>,
+    selectedItem: {
+      groupId: number | string;
+      itemId: number | string;
+      to: string;
+    }
+  ) => setActiveSubNavItem(selectedItem.itemId);
+
+  const onDropdownToggle = () => setIsDropdownOpen((prevState) => !prevState);
+  const onDropdownSelect = () => setIsDropdownOpen(false);
+  const onKebabDropdownToggle = () => setIsKebabDropdownOpen((prevState) => !prevState);
+  const onKebabDropdownSelect = () => setIsKebabDropdownOpen(false);
+  const onFullKebabToggle = () => setIsFullKebabDropdownOpen((prevState) => !prevState);
+  const onFullKebabSelect = () => setIsFullKebabDropdownOpen(false);
+
+  const PageNav = (
+    <Nav onSelect={onNavSelect} aria-label="Nav" variant="horizontal">
+      <NavList>
+        {/* Preventing default click behavior on each NavItem for demo purposes only */}
+        <NavItem preventDefault itemId={0} isActive={activeItem === 0} to="#">
+          System Panel
+        </NavItem>
+        <NavItem preventDefault itemId={1} isActive={activeItem === 1} to="#">
+          Policy
+        </NavItem>
+        <NavItem preventDefault itemId={2} isActive={activeItem === 2} to="#">
+          Authentication
+        </NavItem>
+        <NavItem preventDefault itemId={3} isActive={activeItem === 3} to="#">
+          Network Services
+        </NavItem>
+        <NavItem preventDefault itemId={4} isActive={activeItem === 4} to="#">
+          Server
+        </NavItem>
+        <NavItem preventDefault itemId={5} isActive={activeItem === 5} to="#">
+          Other horizontal nav item 1
+        </NavItem>
+        <NavItem preventDefault itemId={6} isActive={activeItem === 6} to="#">
+          Other horizontal nav item 2
+        </NavItem>
+      </NavList>
+    </Nav>
+  );
+  const kebabDropdownItems = (
+    <>
+      <DropdownItem>
+        <RhUiSettingsFillIcon /> Settings
+      </DropdownItem>
+      <DropdownItem>
+        <RhUiQuestionMarkCircleIcon /> Help
+      </DropdownItem>
+    </>
+  );
+  const userDropdownItems = (
+    <>
+      <DropdownItem key="group 2 profile">My profile</DropdownItem>
+      <DropdownItem key="group 2 user">User management</DropdownItem>
+      <DropdownItem key="group 2 logout">Logout</DropdownItem>
+    </>
+  );
+
+  const SubNav = (
+    <Nav onSelect={onSubNavSelect} aria-label="Subnav" variant="horizontal-subnav">
+      <NavList>
+        {/* Preventing default click behavior on each NavItem for demo purposes only */}
+        <NavItem preventDefault itemId={7} isActive={activeSubNavItem === 7} to="#">
+          Horizontal subnav item 1
+        </NavItem>
+        <NavItem preventDefault itemId={8} isActive={activeSubNavItem === 8} to="#">
+          Horizontal subnav item 2
+        </NavItem>
+        <NavItem preventDefault itemId={9} isActive={activeSubNavItem === 9} to="#">
+          Horizontal subnav item 3
+        </NavItem>
+        <NavItem preventDefault itemId={10} isActive={activeSubNavItem === 10} to="#">
+          Horizontal subnav item 4
+        </NavItem>
+        <NavItem preventDefault itemId={11} isActive={activeSubNavItem === 11} to="#">
+          Horizontal subnav item 5
+        </NavItem>
+        <NavItem preventDefault itemId={12} isActive={activeSubNavItem === 12} to="#">
+          Horizontal subnav item 6
+        </NavItem>
+        <NavItem preventDefault itemId={13} isActive={activeSubNavItem === 13} to="#">
+          Horizontal subnav item 7
+        </NavItem>
+      </NavList>
+    </Nav>
+  );
+
+  const headerToolbar = (
+    <Toolbar id="toolbar" isStatic>
+      <ToolbarContent>
+        <ToolbarItem isOverflowContainer>{PageNav}</ToolbarItem>
+        <ToolbarGroup
+          variant="action-group-plain"
+          align={{ default: 'alignEnd' }}
+          gap={{ default: 'gapNone', md: 'gapMd' }}
+        >
+          <ToolbarItem>
+            <NotificationBadge aria-label="Notifications" variant={NotificationBadgeVariant.plain} onClick={() => {}} />
+          </ToolbarItem>
+          <ToolbarGroup variant="action-group-plain" visibility={{ default: 'hidden', lg: 'visible' }}>
+            <ToolbarItem>
+              <Button aria-label="Settings" isSettings variant="plain" />
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button aria-label="Help" variant={ButtonVariant.plain} icon={<RhUiQuestionMarkCircleFillIcon />} />
+            </ToolbarItem>
+          </ToolbarGroup>
+          <ToolbarItem visibility={{ default: 'hidden', md: 'visible', lg: 'hidden' }}>
+            <Dropdown
+              isOpen={isKebabDropdownOpen}
+              onSelect={onKebabDropdownSelect}
+              onOpenChange={setIsKebabDropdownOpen}
+              popperProps={{ position: 'right' }}
+              toggle={(toggleRef) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  isExpanded={isKebabDropdownOpen}
+                  onClick={onKebabDropdownToggle}
+                  variant="plain"
+                  aria-label="Settings and help"
+                  icon={<RhUiEllipsisVerticalFillIcon />}
+                />
+              )}
+            >
+              <DropdownList>{kebabDropdownItems}</DropdownList>
+            </Dropdown>
+          </ToolbarItem>
+          <ToolbarItem visibility={{ md: 'hidden' }}>
+            <Dropdown
+              isOpen={isFullKebabDropdownOpen}
+              onSelect={onFullKebabSelect}
+              onOpenChange={setIsFullKebabDropdownOpen}
+              popperProps={{ position: 'right' }}
+              toggle={(toggleRef) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  isExpanded={isFullKebabDropdownOpen}
+                  onClick={onFullKebabToggle}
+                  variant="plain"
+                  aria-label="Toolbar menu"
+                  icon={<RhUiEllipsisVerticalFillIcon />}
+                />
+              )}
+            >
+              <DropdownGroup key="group 2" aria-label="User actions">
+                <DropdownList>{userDropdownItems}</DropdownList>
+              </DropdownGroup>
+              <Divider />
+              <DropdownList>{kebabDropdownItems}</DropdownList>
+            </Dropdown>
+          </ToolbarItem>
+        </ToolbarGroup>
+        <ToolbarItem visibility={{ default: 'hidden', md: 'visible' }}>
+          <Dropdown
+            isOpen={isDropdownOpen}
+            onSelect={onDropdownSelect}
+            onOpenChange={setIsDropdownOpen}
+            popperProps={{ position: 'right' }}
+            toggle={(toggleRef) => (
+              <MenuToggle
+                ref={toggleRef}
+                isExpanded={isDropdownOpen}
+                onClick={onDropdownToggle}
+                icon={<Avatar src={imgAvatar} alt="" size="sm" />}
+              >
+                Ned Username
+              </MenuToggle>
+            )}
+          >
+            <DropdownList>{userDropdownItems}</DropdownList>
+          </Dropdown>
+        </ToolbarItem>
+      </ToolbarContent>
+    </Toolbar>
+  );
+  const masthead = (
+    <Masthead>
+      <MastheadMain>
+        <MastheadToggle>
+          <PageToggleButton isHamburgerButton aria-label="Global navigation" />
+        </MastheadToggle>
+        <MastheadBrand>
+          <MastheadLogo>
+            <Brand src={pfLogo} alt="PatternFly" heights={{ default: '36px' }} />
+          </MastheadLogo>
+        </MastheadBrand>
+      </MastheadMain>
+      <MastheadContent>{headerToolbar}</MastheadContent>
+    </Masthead>
+  );
+
+  const pageId = 'main-content-page-layout-horizontal-nav';
+
+  const handleClick = (event) => {
+    event.preventDefault();
+
+    const mainContentElement = document.getElementById(pageId);
+    if (mainContentElement) {
+      mainContentElement.focus();
+    }
+  };
+
+  const PageSkipToContent = (
+    <SkipToContent onClick={handleClick} href={`#${pageId}`}>
+      Skip to content
+    </SkipToContent>
+  );
+
+  return (
+    <Fragment>
+      <Page masthead={masthead} skipToContent={PageSkipToContent} mainContainerId={pageId}>
+        <PageSection type={PageSectionTypes.subNav} isWidthLimited aria-label="Subnav">
+          {SubNav}
+        </PageSection>
+        <PageSection type={PageSectionTypes.breadcrumb} isWidthLimited aria-label="Breadcrumb">
+          {DashboardBreadcrumb}
+        </PageSection>
+        <PageSection aria-labelledby="main-title">
+          <Content>
+            <h1 id="main-title">Main title</h1>
+            <p>
+              Body text should be Red Hat Text at 1rem(16px). It should have leading of 1.5rem(24px) because <br />
+              of it’s relative line height of 1.5.
+            </p>
+          </Content>
+        </PageSection>
+        <PageSection aria-label="Card gallery">
+          <Gallery hasGutter>
+            {Array.from({ length: 10 }).map((_value, index) => (
+              <GalleryItem key={index}>
+                <Card>
+                  <CardBody>This is a card</CardBody>
+                </Card>
+              </GalleryItem>
+            ))}
+          </Gallery>
+        </PageSection>
+      </Page>
+    </Fragment>
+  );
+};

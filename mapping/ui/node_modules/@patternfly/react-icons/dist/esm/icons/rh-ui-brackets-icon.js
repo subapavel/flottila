@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiBracketsIconConfig = {
+  name: 'RhUiBracketsIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M4.97 16C6.193 16.912 7 18.359 7 20v6c0 1.103.897 2 2 2h2a1 1 0 1 1 0 2H9c-2.206 0-4-1.794-4-4v-6c0-1.654-1.346-3-3-3a1 1 0 1 1 0-2c1.654 0 3-1.346 3-3V6c0-2.206 1.794-4 4-4h2a1 1 0 1 1 0 2H9c-1.103 0-2 .897-2 2v6c0 1.641-.806 3.088-2.03 4ZM30 15c-1.654 0-3-1.346-3-3V6c0-2.206-1.794-4-4-4h-2a1 1 0 1 0 0 2h2c1.103 0 2 .897 2 2v6c0 1.641.806 3.088 2.03 4-1.224.912-2.03 2.359-2.03 4v6c0 1.103-.897 2-2 2h-2a1 1 0 1 0 0 2h2c2.206 0 4-1.794 4-4v-6c0-1.654 1.346-3 3-3a1 1 0 1 0 0-2Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiBracketsIcon = createIconBase(RhUiBracketsIconConfig);
+
+export default RhUiBracketsIcon;

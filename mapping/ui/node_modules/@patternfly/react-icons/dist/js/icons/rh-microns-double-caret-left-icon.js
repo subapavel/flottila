@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhMicronsDoubleCaretLeftIconConfig = {
+  name: 'RhMicronsDoubleCaretLeftIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M10 19a.997.997 0 0 1-.707-.293l-7.647-7.646c-.283-.284-.439-.66-.439-1.061s.156-.777.44-1.06l7.646-7.647a1 1 0 1 1 1.414 1.414L3.414 10l7.293 7.293A1 1 0 0 1 10 19Zm8.707-.293a1 1 0 0 0 0-1.414L11.414 10l7.293-7.293a1 1 0 1 0-1.414-1.414L9.646 8.939c-.283.284-.439.66-.439 1.061s.156.777.44 1.06l7.646 7.647a.997.997 0 0 0 1.414 0Z"},
+  rhUiIcon: null,
+};
+exports.RhMicronsDoubleCaretLeftIcon = require('../createIcon').createIconBase(exports.RhMicronsDoubleCaretLeftIconConfig);
+exports["default"] = exports.RhMicronsDoubleCaretLeftIcon;

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhStandardLuggageIconConfig = {
+  name: 'RhStandardLuggageIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M24 10.38h-2.38V5a.62.62 0 0 0-.62-.62h-6a.62.62 0 0 0-.62.62v5.38H12A1.61 1.61 0 0 0 10.38 12v16A1.61 1.61 0 0 0 12 29.62h12A1.61 1.61 0 0 0 25.62 28V12A1.61 1.61 0 0 0 24 10.38Zm-8.38-4.76h4.76v4.76h-4.76ZM24.38 28a.38.38 0 0 1-.38.38H12a.38.38 0 0 1-.38-.38V12a.38.38 0 0 1 .38-.38h12a.38.38 0 0 1 .38.38Z"},{"path":"M15 13.38a.62.62 0 0 0-.62.62v12a.62.62 0 0 0 1.24 0V14a.62.62 0 0 0-.62-.62Zm3 0a.62.62 0 0 0-.62.62v12a.62.62 0 0 0 1.24 0V14a.62.62 0 0 0-.62-.62Zm3 0a.62.62 0 0 0-.62.62v12a.62.62 0 0 0 1.24 0V14a.62.62 0 0 0-.62-.62Zm1.44 17.18a.63.63 0 0 0-.68-.14.7.7 0 0 0-.34.34.6.6 0 0 0 0 .48.56.56 0 0 0 .14.2.66.66 0 0 0 .2.14.6.6 0 0 0 .48 0 .66.66 0 0 0 .2-.14.56.56 0 0 0 .14-.2.74.74 0 0 0 0-.48.56.56 0 0 0-.14-.2Zm-8 0a.56.56 0 0 0-.2-.14.66.66 0 0 0-.48 0 .7.7 0 0 0-.34.34.74.74 0 0 0 0 .48.56.56 0 0 0 .14.2.66.66 0 0 0 .2.14.6.6 0 0 0 .48 0 .66.66 0 0 0 .2-.14.56.56 0 0 0 .14-.2.74.74 0 0 0 0-.48.66.66 0 0 0-.14-.2Z"}]},
+  rhUiIcon: null,
+};
+
+export const RhStandardLuggageIcon = createIconBase(RhStandardLuggageIconConfig);
+
+export default RhStandardLuggageIcon;

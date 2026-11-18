@@ -1,0 +1,74 @@
+.pf-v6-c-hero {
+  --pf-v6-c-hero--PaddingBlockStart: var(--pf-t--global--spacer--3xl);
+  --pf-v6-c-hero--PaddingBlockEnd: var(--pf-t--global--spacer--3xl);
+  --pf-v6-c-hero--PaddingInlineStart: var(--pf-t--global--spacer--3xl);
+  --pf-v6-c-hero--PaddingInlineEnd: var(--pf-t--global--spacer--3xl);
+  --pf-v6-c-hero--gradient--angle: 109deg;
+  --pf-v6-c-hero--gradient--stop-1--light: transparent;
+  --pf-v6-c-hero--gradient--stop-2--light: transparent;
+  --pf-v6-c-hero--gradient--stop-3--light: transparent;
+  --pf-v6-c-hero--gradient--stop-1--dark: transparent;
+  --pf-v6-c-hero--gradient--stop-2--dark: transparent;
+  --pf-v6-c-hero--gradient--stop-3--dark: transparent;
+  --pf-v6-c-hero--BackgroundColor: var(--pf-t--global--background--color--tertiary--default);
+  --pf-v6-c-hero--BackgroundImage--light: none;
+  --pf-v6-c-hero--BackgroundImage--dark: none;
+  --pf-v6-c-hero--BackgroundRepeat: no-repeat;
+  --pf-v6-c-hero--BackgroundPosition: right center;
+  --pf-v6-c-hero--BackgroundSize: contain;
+  --pf-v6-c-hero--BorderStyle: solid;
+  --pf-v6-c-hero--BorderBlockStartWidth: var(--pf-t--global--border--width--regular);
+  --pf-v6-c-hero--BorderBlockEndWidth: var(--pf-t--global--border--width--regular);
+  --pf-v6-c-hero--BorderInlineStartWidth: var(--pf-t--global--border--width--regular);
+  --pf-v6-c-hero--BorderInlineEndWidth: var(--pf-t--global--border--width--regular);
+  --pf-v6-c-hero--BorderColor: var(--pf-t--global--border--color--default);
+  --pf-v6-c-hero--BorderStartStartRadius: var(--pf-t--global--border--radius--medium);
+  --pf-v6-c-hero--BorderStartEndRadius: 48px;
+  --pf-v6-c-hero--BorderEndEndRadius: var(--pf-t--global--border--radius--medium);
+  --pf-v6-c-hero--BorderEndStartRadius: 48px;
+  --pf-v6-c-hero__body--Width: 800px;
+  --pf-v6-c-hero__body--MaxWidth: 80%;
+  --pf-v6-c-hero--m-glass--BackgroundColor: var(--pf-t--global--background--color--glass--primary--default);
+  --pf-v6-c-hero--m-glass--BackdropFilter: var(--pf-t--global--background--filter--glass--blur--primary);
+  --pf-v6-c-hero--m-glass--BorderColor: var(--pf-t--global--border--color--glass--default);
+  --pf-v6-c-hero--m-glass--BoxShadow: var(--pf-t--global--box-shadow--glass--default);
+}
+
+.pf-v6-c-hero {
+  display: flex;
+  padding-block-start: var(--pf-v6-c-hero--PaddingBlockStart);
+  padding-block-end: var(--pf-v6-c-hero--PaddingBlockEnd);
+  padding-inline-start: var(--pf-v6-c-hero--PaddingInlineStart);
+  padding-inline-end: var(--pf-v6-c-hero--PaddingInlineEnd);
+  background-color: var(--pf-v6-c-hero--BackgroundColor);
+  background-image: var(--pf-v6-c-hero--BackgroundImage, var(--pf-v6-c-hero--BackgroundImage--light)), linear-gradient(var(--pf-v6-c-hero--gradient--angle), var(--pf-v6-c-hero--gradient--stop-1, var(--pf-v6-c-hero--gradient--stop-1--light)) 0%, var(--pf-v6-c-hero--gradient--stop-2, var(--pf-v6-c-hero--gradient--stop-2--light)) 50%, var(--pf-v6-c-hero--gradient--stop-3, var(--pf-v6-c-hero--gradient--stop-3--light)) 100%);
+  background-repeat: var(--pf-v6-c-hero--BackgroundRepeat);
+  background-position: var(--pf-v6-c-hero--BackgroundPosition);
+  background-size: var(--pf-v6-c-hero--BackgroundSize);
+  border-color: var(--pf-v6-c-hero--BorderColor);
+  border-style: var(--pf-v6-c-hero--BorderStyle);
+  border-block-start-width: var(--pf-v6-c-hero--BorderBlockStartWidth);
+  border-block-end-width: var(--pf-v6-c-hero--BorderBlockEndWidth);
+  border-inline-start-width: var(--pf-v6-c-hero--BorderInlineStartWidth);
+  border-inline-end-width: var(--pf-v6-c-hero--BorderInlineEndWidth);
+  border-start-start-radius: var(--pf-v6-c-hero--BorderStartStartRadius);
+  border-start-end-radius: var(--pf-v6-c-hero--BorderStartEndRadius);
+  border-end-start-radius: var(--pf-v6-c-hero--BorderEndStartRadius);
+  border-end-end-radius: var(--pf-v6-c-hero--BorderEndEndRadius);
+}
+:where(.pf-v6-theme-glass) .pf-v6-c-hero.pf-m-glass {
+  --pf-v6-c-hero--BorderColor: var(--pf-v6-c-hero--m-glass--BorderColor);
+  --pf-v6-c-hero--BackgroundColor: var(--pf-v6-c-hero--m-glass--BackgroundColor);
+  box-shadow: var(--pf-v6-c-hero--m-glass--BoxShadow);
+  backdrop-filter: var(--pf-v6-c-hero--m-glass--BackdropFilter);
+}
+:root:where(.pf-v6-theme-dark) .pf-v6-c-hero {
+  --pf-v6-c-hero--BackgroundImage: var(--pf-v6-c-hero--BackgroundImage--dark);
+  --pf-v6-c-hero--gradient--stop-1: var(--pf-v6-c-hero--gradient--stop-1--dark);
+  --pf-v6-c-hero--gradient--stop-2: var(--pf-v6-c-hero--gradient--stop-2--dark);
+  --pf-v6-c-hero--gradient--stop-3: var(--pf-v6-c-hero--gradient--stop-3--dark);
+}
+
+.pf-v6-c-hero__body {
+  width: min(var(--pf-v6-c-hero__body--Width), var(--pf-v6-c-hero__body--MaxWidth));
+}

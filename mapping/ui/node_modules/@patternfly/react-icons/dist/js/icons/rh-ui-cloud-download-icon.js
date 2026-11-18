@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiCloudDownloadIconConfig = {
+  name: 'RhUiCloudDownloadIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 15.5c0 3.033-2.468 5.5-5.5 5.5H21a1 1 0 1 1 0-2h4.5c1.93 0 3.5-1.57 3.5-3.5a3.472 3.472 0 0 0-3.17-3.461 1.004 1.004 0 0 1-.898-1.123c.039-.3.067-.604.067-.916 0-3.86-3.141-7-7-7-3.318 0-6.204 2.357-6.86 5.605a1.001 1.001 0 0 1-1.341.735A4.967 4.967 0 0 0 7.999 9c-2.757 0-5 2.243-5 5s2.243 5 5 5h3a1 1 0 1 1 0 2h-3c-3.859 0-7-3.14-7-7s3.141-7 7-7c.491 0 .979.052 1.46.156C10.666 3.532 14.1 1 17.999 1c4.963 0 9 4.038 9 9 0 .075 0 .151-.004.228a5.456 5.456 0 0 1 4.004 5.272Zm-11.707 9.793L17 27.586V15a1 1 0 1 0-2 0v12.586l-2.293-2.293a.999.999 0 1 0-1.414 1.414l3.646 3.646c.292.292.677.438 1.061.438s.769-.146 1.061-.438l3.646-3.646a.999.999 0 1 0-1.414-1.414Z"},
+  rhUiIcon: null,
+};
+exports.RhUiCloudDownloadIcon = require('../createIcon').createIconBase(exports.RhUiCloudDownloadIconConfig);
+exports["default"] = exports.RhUiCloudDownloadIcon;

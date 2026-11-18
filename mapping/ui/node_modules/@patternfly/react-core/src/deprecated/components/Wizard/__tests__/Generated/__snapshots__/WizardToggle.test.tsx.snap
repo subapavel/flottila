@@ -1,0 +1,59 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`WizardToggle should match snapshot (auto-generated) 1`] = `
+<DocumentFragment>
+  <button
+    aria-expanded="true"
+    aria-label="'Wizard Toggle'"
+    class="pf-v6-c-wizard__toggle pf-m-expanded"
+  >
+    <span
+      class="pf-v6-c-wizard__toggle-list"
+    >
+      <span
+        class="pf-v6-c-wizard__toggle-list-item"
+      >
+        <span
+          class="pf-v6-c-wizard__toggle-num"
+        />
+         
+      </span>
+    </span>
+    <span
+      class="pf-v6-c-wizard__toggle-icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="pf-v6-svg"
+        fill="currentColor"
+        height="1em"
+        role="img"
+        viewBox="0 0 20 20"
+        width="1em"
+      >
+        <path
+          d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+        />
+      </svg>
+    </span>
+  </button>
+  <div
+    class="pf-v6-c-wizard__outer-wrap"
+  >
+    <div
+      class="pf-v6-c-wizard__inner-wrap"
+    >
+      <div
+        class="pf-v6-c-wizard__main"
+      >
+        <div
+          class="pf-v6-c-wizard__main-body"
+        />
+      </div>
+    </div>
+    <div>
+      ReactNode
+    </div>
+  </div>
+</DocumentFragment>
+`;

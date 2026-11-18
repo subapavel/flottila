@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiQuestionMarkCircleFillIconConfig: {
+  name: 'RhUiQuestionMarkCircleFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 26.014a2 2 0 1 1-.001-3.999A2 2 0 0 1 16 27.014Zm1.25-9.914V19a1.25 1.25 0 0 1-2.5 0v-3c0-.69.56-1.25 1.25-1.25 1.517 0 2.75-1.233 2.75-2.75S17.517 9.25 16 9.25s-2.75 1.233-2.75 2.75a1.25 1.25 0 0 1-2.5 0c0-2.895 2.355-5.25 5.25-5.25s5.25 2.355 5.25 5.25a5.26 5.26 0 0 1-4 5.1Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiQuestionMarkCircleFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiQuestionMarkCircleFillIcon;

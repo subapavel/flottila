@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhStandardYenDecreasingIconConfig = {
+  name: 'RhStandardYenDecreasingIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M27.442 5.558a.625.625 0 0 0-.884 0L18 14.116 9.442 5.558a.625.625 0 1 0-.884.884l7.933 7.933H12a.625.625 0 0 0 0 1.25h5.375v2.75H12a.625.625 0 0 0 0 1.25h5.375v9.866l-.933-.933a.625.625 0 1 0-.884.884l2 2c.015.015.034.02.05.034a.617.617 0 0 0 .152.1.627.627 0 0 0 .48 0 .617.617 0 0 0 .152-.1c.016-.013.035-.019.05-.034l2-2a.626.626 0 0 0-.884-.884l-.933.933v-9.866H24a.625.625 0 0 0 0-1.25h-5.375v-2.75H24a.625.625 0 0 0 0-1.25h-4.49l7.932-7.933a.626.626 0 0 0 0-.884Z"},
+  rhUiIcon: null,
+};
+
+export const RhStandardYenDecreasingIcon = createIconBase(RhStandardYenDecreasingIconConfig);
+
+export default RhStandardYenDecreasingIcon;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiCopyIconConfig = {
+  name: 'RhUiCopyIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28 7v22.607c0 .768-.622 1.393-1.387 1.393H10a1 1 0 1 1 0-2h16V7a1 1 0 1 1 2 0Zm-6.5 19h-16c-.827 0-1.5-.673-1.5-1.5V8a1.001 1.001 0 0 1 .294-.708l5.998-5.998A1.001 1.001 0 0 1 11 1h10.5c.827 0 1.5.673 1.5 1.5v22c0 .827-.673 1.5-1.5 1.5ZM7.414 7H10V4.414L7.414 7ZM21 3h-9v4.614C12 8.378 11.378 9 10.613 9H6v15h15V3Z"},
+  rhUiIcon: null,
+};
+exports.RhUiCopyIcon = require('../createIcon').createIconBase(exports.RhUiCopyIconConfig);
+exports["default"] = exports.RhUiCopyIcon;

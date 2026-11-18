@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiEllipsisHorizontalFillIconConfig = {
+  name: 'RhUiEllipsisHorizontalFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.75 16c0 2.068-1.683 3.75-3.75 3.75s-3.75-1.682-3.75-3.75 1.683-3.75 3.75-3.75 3.75 1.682 3.75 3.75ZM16 12.25c-2.067 0-3.75 1.682-3.75 3.75s1.683 3.75 3.75 3.75 3.75-1.682 3.75-3.75-1.683-3.75-3.75-3.75Zm-11 0c-2.067 0-3.75 1.682-3.75 3.75S2.933 19.75 5 19.75 8.75 18.068 8.75 16 7.067 12.25 5 12.25Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiEllipsisHorizontalFillIcon = createIconBase(RhUiEllipsisHorizontalFillIconConfig);
+
+export default RhUiEllipsisHorizontalFillIcon;

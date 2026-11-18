@@ -1,0 +1,272 @@
+import { render, screen } from '@testing-library/react';
+import { Table } from '../Table';
+import { Td } from '../Td';
+import { Th } from '../Th';
+import { AnimationsProvider, useAnimationsConfig, useHasAnimations } from '@patternfly/react-core/dist/esm/helpers';
+import styles from '@patternfly/react-styles/css/components/Table/table';
+
+test('Renders without children', () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toBeInTheDocument();
+});
+
+test('Renders with children', () => {
+  render(
+    <Table aria-label="Test table">
+      <caption>Table caption</caption>
+    </Table>
+  );
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveTextContent('Table caption');
+});
+
+test('Renders with role="treegrid" when isTreeTable is true', () => {
+  render(<Table isTreeTable aria-label="Test table" />);
+
+  expect(screen.getByRole('treegrid', { name: 'Test table' })).toBeInTheDocument();
+});
+
+test(`Renders with class ${styles.table} by default`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.table);
+});
+
+test(`Renders with a pf-m-grid class by default`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(/^pf-m-grid/);
+});
+
+test(`Renders with a pf-m-tree-view-grid class when isTreeTable is true`, () => {
+  render(<Table isTreeTable aria-label="Test table" />);
+
+  expect(screen.getByRole('treegrid', { name: 'Test table' })).not.toHaveClass(/^pf-m-grid/);
+  expect(screen.getByRole('treegrid', { name: 'Test table' })).toHaveClass(/^pf-m-tree-view-grid/);
+});
+
+test(`Does not render with class ${styles.modifiers.animateExpand} by default`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.animateExpand);
+});
+
+test(`Renders with class ${styles.modifiers.animateExpand} hasAnimations is true`, () => {
+  render(<Table hasAnimations aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.animateExpand);
+});
+
+// Animation context tests for expandable tables
+test('respects AnimationsProvider context when no local hasAnimations prop for expandable table', () => {
+  render(
+    <AnimationsProvider config={{ hasAnimations: true }}>
+      <Table isExpandable aria-label="Test table" />
+    </AnimationsProvider>
+  );
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.animateExpand);
+});
+
+test('local hasAnimations prop takes precedence over context for expandable table', () => {
+  render(
+    <AnimationsProvider config={{ hasAnimations: true }}>
+      <Table isExpandable hasAnimations={false} aria-label="Test table" />
+    </AnimationsProvider>
+  );
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.animateExpand);
+});
+
+test('works without AnimationsProvider (backward compatibility) for expandable table', () => {
+  render(<Table isExpandable aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.animateExpand);
+});
+
+test('Matches snapshot without children', () => {
+  const { asFragment } = render(<Table />);
+
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('Renders expandable toggle button with pf-m-small class when variant is compact', () => {
+  render(
+    <Table variant="compact" isExpandable aria-label="Test table">
+      <tbody>
+        <tr>
+          <Td
+            expand={{
+              rowIndex: 0,
+              isExpanded: false,
+              onToggle: () => {}
+            }}
+          />
+          <Td>Test content</Td>
+        </tr>
+      </tbody>
+    </Table>
+  );
+
+  const toggleButton = screen.getByRole('button', { name: 'Details' });
+  expect(toggleButton).toHaveClass('pf-m-small');
+});
+
+test('Renders expandable toggle button in Th with pf-m-small class when variant is compact', () => {
+  render(
+    <Table variant="compact" isExpandable aria-label="Test table">
+      <thead>
+        <tr>
+          <Th
+            expand={{
+              areAllExpanded: false,
+              collapseAllAriaLabel: 'Expand all',
+              onToggle: () => {}
+            }}
+            aria-label="Row expansion"
+          />
+          <Th>Name</Th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <Td
+            expand={{
+              rowIndex: 0,
+              isExpanded: false,
+              onToggle: () => {}
+            }}
+          />
+          <td>Test content</td>
+        </tr>
+      </tbody>
+    </Table>
+  );
+
+  const toggleButtons = screen.getAllByRole('button');
+  expect(toggleButtons).toHaveLength(2); // One in Th, one in Td
+  toggleButtons.forEach((button) => {
+    expect(button).toHaveClass('pf-m-small');
+  });
+});
+
+test(`Renders with class ${styles.modifiers.plain} when isPlain is true`, () => {
+  render(<Table isPlain aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.plain);
+});
+
+test(`Does not render with class ${styles.modifiers.plain} when isPlain is not defined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.plain);
+});
+
+test(`Does not render with class ${styles.modifiers.plain} when isPlain is false`, () => {
+  render(<Table isPlain={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.plain);
+});
+
+test(`Renders with class ${styles.modifiers.noPlainOnGlass} when isNoPlainOnGlass is true`, () => {
+  render(<Table isNoPlainOnGlass aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.noPlainOnGlass);
+});
+
+test(`Does not render with class ${styles.modifiers.noPlainOnGlass} when isNoPlainOnGlass is undefined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.noPlainOnGlass);
+});
+
+test(`Does not render with class ${styles.modifiers.noPlainOnGlass} when isNoPlainOnGlass is false`, () => {
+  render(<Table isNoPlainOnGlass={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.noPlainOnGlass);
+});
+
+test(`Renders with class ${styles.modifiers.stickyHeaderBase} when isStickyHeaderBase is true`, () => {
+  render(<Table isStickyHeaderBase aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.stickyHeaderBase);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyHeaderBase} when isStickyHeaderBase is false`, () => {
+  render(<Table isStickyHeaderBase={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyHeaderBase);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyHeaderBase} when isStickyHeaderBase is undefined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyHeaderBase);
+});
+
+test(`Renders with class ${styles.modifiers.stickyHeaderStuck} when isStickyHeaderStuck is true`, () => {
+  render(<Table isStickyHeaderStuck aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.stickyHeaderStuck);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyHeaderStuck} when isStickyHeaderStuck is false`, () => {
+  render(<Table isStickyHeaderStuck={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyHeaderStuck);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyHeaderStuck} when isStickyHeaderStuck is undefined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyHeaderStuck);
+});
+
+test(`Renders with class ${styles.modifiers.stickyFooter} when isStickyFooter is true`, () => {
+  render(<Table isStickyFooter aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.stickyFooter);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyFooter} when isStickyFooter is false`, () => {
+  render(<Table isStickyFooter={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyFooter);
+});
+
+test(`Renders with class ${styles.modifiers.stickyFooterBase} when isStickyFooterBase is true`, () => {
+  render(<Table isStickyFooterBase aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.stickyFooterBase);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyFooterBase} when isStickyFooterBase is false`, () => {
+  render(<Table isStickyFooterBase={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyFooterBase);
+});
+
+test(`Renders with class ${styles.modifiers.stickyFooterStuck} when isStickyFooterStuck is true`, () => {
+  render(<Table isStickyFooterStuck aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).toHaveClass(styles.modifiers.stickyFooterStuck);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyFooterStuck} when isStickyFooterStuck is false`, () => {
+  render(<Table isStickyFooterStuck={false} aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyFooterStuck);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyFooterBase} when isStickyFooterBase is undefined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyFooterBase);
+});
+
+test(`Does not render with class ${styles.modifiers.stickyFooterStuck} when isStickyFooterStuck is undefined`, () => {
+  render(<Table aria-label="Test table" />);
+
+  expect(screen.getByRole('grid', { name: 'Test table' })).not.toHaveClass(styles.modifiers.stickyFooterStuck);
+});

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiPrintFillIconConfig = {
+  name: 'RhUiPrintFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.5 7H24V4.5c0-.827-.673-1.5-1.5-1.5h-13C8.673 3 8 3.673 8 4.5V7H2.5C1.673 7 1 7.673 1 8.5v14c0 .827.673 1.5 1.5 1.5H8v3.5c0 .827.673 1.5 1.5 1.5h13c.827 0 1.5-.673 1.5-1.5V24h5.5c.827 0 1.5-.673 1.5-1.5v-14c0-.827-.673-1.5-1.5-1.5ZM10 5h12v4H10V5Zm12 22H10v-8h12v8Z"},
+  rhUiIcon: null,
+};
+exports.RhUiPrintFillIcon = require('../createIcon').createIconBase(exports.RhUiPrintFillIconConfig);
+exports["default"] = exports.RhUiPrintFillIcon;

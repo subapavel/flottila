@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiCheckupFillIconConfig: {
+  name: 'RhUiCheckupFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M26.954 22.904C26.499 27.444 22.657 31 18 31c-4.962 0-9-4.038-9-9v-1.069C5.06 20.436 2 17.072 2 13V3.5C2 2.673 2.673 2 3.5 2H6a1 1 0 0 1 0 2H4v9c0 3.309 2.691 6 6 6s6-2.691 6-6V4h-2a1 1 0 0 1 0-2h2.5c.827 0 1.5.673 1.5 1.5V13c0 4.072-3.06 7.436-7 7.931V22c0 3.86 3.14 7 7 7 3.561 0 6.503-2.674 6.938-6.119A5.004 5.004 0 0 1 21 18c0-2.757 2.243-5 5-5s5 2.243 5 5a5.006 5.006 0 0 1-4.046 4.904Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiCheckupFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiCheckupFillIcon;

@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiTagFillIconConfig: {
+  name: 'RhUiTagFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M7 8a.997.997 0 0 1-.707-.293l-4-4a.999.999 0 1 1 1.414-1.414l4 4A.999.999 0 0 1 7 8Zm22.793 11c0 .4-.156.777-.439 1.061l-9.293 9.293c-.292.293-.676.438-1.061.438s-.768-.146-1.061-.438L7.293 18.708A.997.997 0 0 1 7 18.001v-6c0-.266.105-.52.293-.707l4-4A1 1 0 0 1 12 7.001h6c.265 0 .52.105.707.293L29.353 17.94c.283.283.439.66.439 1.061ZM15.88 14.001A1.874 1.874 0 1 0 12.131 14a1.874 1.874 0 0 0 3.749 0Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiTagFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiTagFillIcon;

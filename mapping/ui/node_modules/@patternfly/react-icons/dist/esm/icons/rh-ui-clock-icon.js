@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiClockIconConfig = {
+  name: 'RhUiClockIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm1 27.949V26a1 1 0 0 0-2 0v2.949C8.63 28.461 3.539 23.37 3.051 17H6a1 1 0 0 0 0-2H3.051C3.565 8.299 9.169 3 16 3s12.436 5.299 12.949 12H26a1 1 0 0 0 0 2h2.949C28.461 23.37 23.37 28.461 17 28.949Zm3.707-9.656a.999.999 0 1 1-1.414 1.414l-4-4A1 1 0 0 1 15 16V8a1 1 0 0 1 2 0v7.586l3.707 3.707Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiClockIcon = createIconBase(RhUiClockIconConfig);
+
+export default RhUiClockIcon;

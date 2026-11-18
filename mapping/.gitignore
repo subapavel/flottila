@@ -2,12 +2,6 @@ target/
 !corpus/cases/target/
 .logs/
 contract/openapi.yaml
-ui/node_modules/
-ui/dist/
-ui/.logs/
 .idea/
 *.iml
 .DS_Store
-ui/coverage/
-ui/test-results/
-ui/playwright-report/

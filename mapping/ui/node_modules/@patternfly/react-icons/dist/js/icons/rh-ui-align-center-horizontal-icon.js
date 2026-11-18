@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiAlignCenterHorizontalIconConfig = {
+  name: 'RhUiAlignCenterHorizontalIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M17 4v24a1 1 0 1 1-2 0V4a1 1 0 1 1 2 0Zm13 11h-6.586l2.293-2.293a1 1 0 1 0-1.414-1.414l-3.647 3.646c-.283.284-.439.66-.439 1.061s.156.777.44 1.06l3.646 3.647a.997.997 0 0 0 1.414 0 1 1 0 0 0 0-1.414L23.414 17H30a1 1 0 1 0 0-2ZM7.707 11.293a1 1 0 1 0-1.414 1.414L8.586 15H2a1 1 0 1 0 0 2h6.586l-2.293 2.293a1 1 0 1 0 1.414 1.414l3.647-3.646c.283-.284.439-.66.439-1.061s-.156-.777-.44-1.06l-3.646-3.647Z"},
+  rhUiIcon: null,
+};
+exports.RhUiAlignCenterHorizontalIcon = require('../createIcon').createIconBase(exports.RhUiAlignCenterHorizontalIconConfig);
+exports["default"] = exports.RhUiAlignCenterHorizontalIcon;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiInsightFillIconConfig = {
+  name: 'RhUiInsightFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M20 27c0 2.206-1.794 4-4 4s-4-1.794-4-4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1Zm2.133-9.245-1.07 5.056A1.507 1.507 0 0 1 19.595 24h-7.189c-.705 0-1.322-.5-1.468-1.189l-1.07-5.056A9.486 9.486 0 0 1 6.501 10.5C6.5 5.262 10.762 1 16 1s9.5 4.262 9.5 9.5a9.489 9.489 0 0 1-3.367 7.255ZM10.917 16h10.166a7.48 7.48 0 0 0 2.417-5.5C23.5 6.364 20.136 3 16 3s-7.5 3.364-7.5 7.5c0 2.1.882 4.081 2.417 5.5Z"},
+  rhUiIcon: null,
+};
+exports.RhUiInsightFillIcon = require('../createIcon').createIconBase(exports.RhUiInsightFillIconConfig);
+exports["default"] = exports.RhUiInsightFillIcon;

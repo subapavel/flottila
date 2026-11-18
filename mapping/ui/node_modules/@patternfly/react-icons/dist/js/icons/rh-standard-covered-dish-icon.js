@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhStandardCoveredDishIconConfig = {
+  name: 'RhStandardCoveredDishIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M32 26.38H4a.62.62 0 0 0 0 1.24h28a.62.62 0 0 0 0-1.24ZM5 24.62a.62.62 0 0 0 .62-.62C6.31 7.58 29.7 7.59 30.38 24a.62.62 0 0 0 1.24 0C30.88 5.92 5.12 5.93 4.37 24a.63.63 0 0 0 .63.62Z"},{"path":"M17.56 9.44c.57.59 1.47-.32.88-.88s-1.44.3-.88.88ZM7.38 24a.62.62 0 0 0 1.24 0A9.39 9.39 0 0 1 18 14.62a.62.62 0 0 0 0-1.24A10.63 10.63 0 0 0 7.38 24Z"}]},
+  rhUiIcon: null,
+};
+exports.RhStandardCoveredDishIcon = require('../createIcon').createIconBase(exports.RhStandardCoveredDishIconConfig);
+exports["default"] = exports.RhStandardCoveredDishIcon;

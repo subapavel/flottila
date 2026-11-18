@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCircuitFillIconConfig = {
+  name: 'RhUiCircuitFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M26.875 6.875v5.25H28.5c.758 0 1.375.617 1.375 1.375v15c0 .758-.617 1.375-1.375 1.375H18.125v-5.409l2.67-2.67c.211-.211.33-.497.33-.795v-4.223A3 3 0 0 0 23 14.001c0-1.654-1.346-3-3-3s-3 1.346-3 3a3 3 0 0 0 1.875 2.777v3.757l-2.67 2.67c-.211.211-.33.497-.33.795v5.875H3.5A1.377 1.377 0 0 1 2.125 28.5v-25c0-.758.617-1.375 1.375-1.375h8.375v5.409l-2.67 2.67c-.211.211-.33.497-.33.795v5.223A3 3 0 0 0 7 18.999c0 1.654 1.346 3 3 3s3-1.346 3-3a3 3 0 0 0-1.875-2.777v-4.757l2.67-2.67c.211-.211.33-.497.33-.795V2.125H28.5c.758 0 1.375.617 1.375 1.375v2c0 .758-.617 1.375-1.375 1.375h-1.625Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCircuitFillIcon = createIconBase(RhUiCircuitFillIconConfig);
+
+export default RhUiCircuitFillIcon;

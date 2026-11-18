@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiSecuredFillIconConfig = {
+  name: 'RhUiSecuredFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"m28.208 3.582-12-2.56a1.01 1.01 0 0 0-.417 0L3.792 3.582A1.001 1.001 0 0 0 3 4.56V18c0 7.168 5.832 13 13 13s13-5.832 13-13V4.56a1 1 0 0 0-.792-.978Zm-4.413 8.213-8.646 8.646c-.317.317-.733.475-1.149.475s-.832-.158-1.149-.475l-4.646-4.646a1.126 1.126 0 0 1 1.591-1.591l4.205 4.205 8.205-8.205a1.126 1.126 0 0 1 1.591 1.591Z"},
+  rhUiIcon: null,
+};
+exports.RhUiSecuredFillIcon = require('../createIcon').createIconBase(exports.RhUiSecuredFillIconConfig);
+exports["default"] = exports.RhUiSecuredFillIcon;

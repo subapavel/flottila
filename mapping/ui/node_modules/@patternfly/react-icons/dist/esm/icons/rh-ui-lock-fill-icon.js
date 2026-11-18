@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiLockFillIconConfig = {
+  name: 'RhUiLockFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M24.5 12.125H23V8c0-3.86-3.14-7-7-7S9 4.14 9 8v4.125H7.5c-.758 0-1.375.617-1.375 1.375v15c0 .758.617 1.375 1.375 1.375h17c.758 0 1.375-.617 1.375-1.375v-15c0-.758-.617-1.375-1.375-1.375ZM16 22.761a1.75 1.75 0 1 1 .001-3.501 1.75 1.75 0 0 1-.001 3.5ZM21 12H11V8c0-2.757 2.243-5 5-5s5 2.243 5 5v4Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiLockFillIcon = createIconBase(RhUiLockFillIconConfig);
+
+export default RhUiLockFillIcon;

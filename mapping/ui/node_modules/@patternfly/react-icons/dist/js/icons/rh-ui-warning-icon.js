@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiWarningIconConfig = {
+  name: 'RhUiWarningIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31.461 27.771 17.3 2.301a1.499 1.499 0 0 0-2.623 0L.517 27.771c-.261.469-.255 1.025.018 1.489s.756.74 1.294.74h28.322c.537 0 1.021-.276 1.293-.74a1.49 1.49 0 0 0 .018-1.489ZM2.678 28l13.31-23.942L29.3 28H2.678ZM16 11.75c.69 0 1.25.56 1.25 1.25v5a1.25 1.25 0 0 1-2.5 0v-5c0-.69.56-1.25 1.25-1.25Zm1.75 12.261a1.75 1.75 0 1 1-3.501-.001 1.75 1.75 0 0 1 3.501.001Z"},
+  rhUiIcon: null,
+};
+exports.RhUiWarningIcon = require('../createIcon').createIconBase(exports.RhUiWarningIconConfig);
+exports["default"] = exports.RhUiWarningIcon;

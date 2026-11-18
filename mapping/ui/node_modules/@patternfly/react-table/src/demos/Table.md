@@ -1,0 +1,185 @@
+---
+id: Table
+section: components
+---
+
+import { Fragment, ReactNode, useEffect, useState } from 'react';
+
+import {
+Checkbox,
+Content,
+Label,
+PageSection,
+ToolbarExpandIconWrapper,
+ToolbarContent,
+Toolbar,
+ToolbarItem,
+SearchInput,
+Masthead,
+MastheadToggle,
+MastheadBrand,
+MastheadContent,
+SkipToContent,
+Breadcrumb,
+BreadcrumbItem,
+Page,
+PageSectionVariants,
+Divider,
+Avatar,
+Brand,
+Button,
+ButtonVariant,
+Dropdown,
+DropdownGroup,
+DropdownItem,
+DropdownList,
+MastheadLogo,
+MenuToggle,
+ToolbarGroup,
+PageToggleButton,
+Nav,
+NavItem,
+NavList,
+PageSidebar,
+PageSidebarBody,
+Modal,
+ModalHeader,
+ModalBody,
+ModalFooter,
+} from '@patternfly/react-core';
+import { DragDropSort } from '@patternfly/react-drag-drop';
+import RhUiCopyFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-copy-fill-icon';
+import RhUiCodeIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-code-icon';
+import RhUiBranchFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-branch-fill-icon';
+import CubeIcon from '@patternfly/react-icons/dist/esm/icons/cube-icon';
+import EditIcon from '@patternfly/react-icons/dist/esm/icons/edit-icon';
+import RhMicronsSortDownLargeToSmallIcon from '@patternfly/react-icons/dist/esm/icons/rh-microns-sort-down-large-to-small-icon';
+import RhUiFilterFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-filter-fill-icon';
+import RhMicronsSearchIcon from '@patternfly/react-icons/dist/esm/icons/rh-microns-search-icon';
+import RhUiSyncIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-sync-icon';
+import RhUiErrorFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-error-fill-icon';
+import RhUiSettingsFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-settings-fill-icon';
+import RhUiQuestionMarkCircleIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-icon';
+import RhUiQuestionMarkCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-fill-icon';
+import RhMicronsCaretDownIcon from '@patternfly/react-icons/dist/esm/icons/rh-microns-caret-down-icon';
+import RhMicronsCaretRightIcon from '@patternfly/react-icons/dist/esm/icons/rh-microns-caret-right-icon';
+import RhUiBlueprintIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-blueprint-icon';
+import RhUiMenuBarsIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-menu-bars-icon';
+import RhUiEllipsisVerticalFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-ellipsis-vertical-fill-icon';
+import { DashboardWrapper } from '@patternfly/react-table/dist/esm/demos/DashboardWrapper';
+import { rows, columns } from '@patternfly/react-table/dist/esm/demos/sampleData';
+import spacing from '@patternfly/react-styles/css/utilities/Spacing/spacing';
+import RhUiNotificationFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-notification-fill-icon';
+
+## Demos
+
+### Bulk select
+
+```ts isFullscreen file="examples/TableBulkSelect.tsx"
+
+```
+
+### Expand/collapse all
+
+```ts isFullscreen file="examples/TableExpandCollapseAll.tsx"
+
+```
+
+### Compact
+
+```ts isFullscreen file="examples/TableCompact.tsx"
+
+```
+
+### Compound expansion
+
+```ts isFullscreen file="examples/TableCompoundExpansion.tsx"
+
+```
+
+### Column management
+
+```ts isFullscreen file="examples/TableColumnManagement.tsx"
+
+```
+
+### Column management with draggable
+
+```ts isFullscreen file="examples/TableColumnManagementWithDraggable.tsx"
+
+```
+
+### Filterable
+
+```ts isFullscreen file="examples/TableFilterable.tsx"
+
+```
+
+### Sortable - responsive
+
+```ts isFullscreen file="examples/TableSortableResponsive.tsx"
+
+```
+
+### Automatic pagination
+
+The below example illustrates the `isLastFullPageShown` prop, which makes the following changes when the user sets the number of items to display per page to an amount that exceeds the remaining amount of data:
+
+- The component automatically changes the page back to the last full page of results, rather than defaulting to the final page of results.
+
+To demonstrate this, navigate to the last page of data below using the `>>` navigation arrows, then use the dropdown selector to change the view to 5 per page.
+
+- The default behavior would show the last page of results, which would only contain the last two rows (rows 11 - 12).
+- The `isLastFullPageShown` prop navigates you back to the previous page which does contain a full page of 5 rows (rows 6 - 10).
+
+```js isFullscreen file="./examples/TableAutomaticPagination.tsx"
+
+```
+
+### Static bottom pagination on mobile
+
+```ts isFullscreen file="./examples/TableStaticBottomPagination.tsx"
+
+```
+
+### Sticky header
+
+```js isFullscreen file="./examples/TableStickyHeader.tsx"
+
+```
+
+### Sticky first column
+
+```js isFullscreen file="./examples/TableStickyFirstColumn.tsx"
+
+```
+
+### Sticky columns and header with toolbar
+
+A toolbar may be added above a sticky table either inside or outside the `OuterScrollContainer`.
+
+```js isFullscreen file="../components/Table/examples/TableStickyColumnsAndHeader.tsx"
+
+```
+
+## Empty states
+
+These examples demonstrate the use of an [Empty State component](/components/empty-state) inside of a [Table](/components/table). Empty states are useful in a table when a filter returns no results, while data is loading, or when any type of error or exception condition occurs.
+
+### Empty
+
+```js isFullscreen file="./examples/TableEmptyStateDefault.tsx"
+
+```
+
+### Loading
+
+```js isFullscreen file="./examples/TableEmptyStateLoading.tsx"
+
+```
+
+### Error
+
+```js isFullscreen file="./examples/TableEmptyStateError.tsx"
+
+```

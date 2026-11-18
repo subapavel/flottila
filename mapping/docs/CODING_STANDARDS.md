@@ -66,7 +66,7 @@ Rules marked _(Phase 0)_ wait for the decision named and may change with it.
   Families register themselves (one file per family, ServiceLoader or generated index), so three
   parallel tickets never conflict on one file.
 
-## Frontend (`ui/`, React + PatternFly)
+## Frontend (the repository's `ui/`, React + PatternFly)
 
 - TypeScript strict; no `any` without a comment saying why.
 - PatternFly components and tokens first; a custom component needs a reason in the PR body.

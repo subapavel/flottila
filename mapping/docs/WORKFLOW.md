@@ -11,7 +11,8 @@ mutation tests, the ratchet, the stack suite and Windows run nightly as a report
 
 Decided by ADR-0017 (build, CI, gates) and ADR-0016 (modules). Commands run in `mapping/` of
 the worktree; the Maven wrapper is at the repository's root, so from `mapping/` it is `../mvnw`.
-Logs go to `.logs/<ticket>-<check>.log` and `ui/.logs/<ticket>-<check>.log`, never to `target/`
+The mapping studio is part of the Rail8 UI, the repository's `ui/` (from `mapping/` it is `../ui`).
+Logs go to `.logs/<ticket>-<check>.log` and `../ui/.logs/<ticket>-<check>.log`, never to `target/`
 (`../mvnw clean` deletes it). The milestone-1 skeleton adds
 `scripts/gate-ticket.sh <ticket> <modules>` and `scripts/gate-spec.sh <spec>`. The verifier runs
 those scripts; until they exist it runs the steps below by hand, in this order.
@@ -27,7 +28,7 @@ directories, comma-separated, e.g. `engine/xdm,engine/ir`):
 | 2b | `scripts/check-lf-checkout.sh` | `.logs/<t>-lf-checkout.log` | always: every tracked file checks out byte-identical on Windows (`.gitattributes`, #49) |
 | 2c | `scripts/check-trailers.sh <integration-ref>..HEAD` | `.logs/<t>-trailers.log` | always: every commit the ticket adds carries the old repository's trailer `Ticket: #n` (`docs/archive/WORKFLOW-until-2026-11-15.md` §11), merges of the integration tip included (spec-3 retro); it does not pass on commits made under the root's process (`Task:`, the root `docs/WORKFLOW.md` §3). The old-process scripts — `check-trailers.sh`, this step 2c of `gate-ticket.sh`, `clean-worktrees.sh`, `push-retry.sh` — are adapted or archived by MAP-7 (pending) |
 | 3 | `git diff --exit-code contract/` | — | the service or `contract/` changed |
-| 4 | in `ui/`: `npm run licences`, `typecheck`, `lint`, `test`, `test:browser`, `e2e`; `npm run gen:types && git diff --exit-code src/generated` | `ui/.logs/<t>-<check>.log` | `ui/` or `contract/` changed |
+| 4 | in `../ui`: `npm run licences`, `typecheck`, `lint`, `test:coverage`, `test:browser`, `e2e`; `npm run gen:types && git diff --exit-code src/mapping/generated` | `../ui/.logs/<t>-<check>.log` | `../ui` or `contract/` changed |
 | 5 | `java scripts/ratchet.java check` | `.logs/<t>-ratchet.log` | always: no listed case failing or missing, no coverage below `ratchet/` of the integration branch; unbuilt modules print `NOT_RUN` (ADR-0019) |
 
 Budget on the VM (4 vCPU), three gates in parallel: an engine ticket about 110 s for step 1 (it
@@ -47,15 +48,15 @@ most one gate that builds `service` at a time.
    ADR-0019) → `.logs/<spec>-pit.log`; `gate-spec.sh` ends with one line per module
    (`module killed/generated score% floor N% ok|DROP`) and the corpus and differential case counts (#67); above 10 minutes it narrows to the modules class-C tickets
    touched;
-2. in `ui/`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
-3. the stack: `../mvnw -B -Pui -pl service -am clean package -DskipTests`, then `npm run e2e:stack`;
+2. in `../ui`: `npm ci`, every step of ticket-gate row 4, `npm run build`;
+3. the stack: `../mvnw -B -pl service -am package -DskipTests`, then `npm run e2e:stack` in `../ui`;
 4. `java scripts/ratchet.java regen --all`: every report must be present, a drop fails, the
    verifier alone commits `ratchet/` to the integration branch;
 5. the JMH scenarios (ADR-0021):
    `java -jar bench/jmh/target/benchmarks.jar -foe true -f 3 -wi 3 -i 5 -w 1s -r 1s -prof gc -rf json -rff .logs/<spec>-jmh.json`
    (about 5–6 minutes; large throughput in forks with a 1 GB heap, and `<mapping>/large/heap`
    in its own fork with `-Xmx128m`; one invocation suffices, `-f` keeps the fork's `jvmArgsAppend` (#185); ADR-0021 note of
-   2026-11-10), plus the `ui/tree-20128/scroll` Playwright scenario.
+   2026-11-10), plus the `ui/tree-20128/scroll` Playwright scenario (`../ui/e2e/tree-20128.spec.ts`).
    - The verifier names the machine: `MACHINE_LABEL=claude-cloud-4vcpu scripts/gate-spec.sh <spec>`.
      Only with that label, and `nproc` = 4, does step 5 judge
      (`java scripts/ratchet.java bench .logs/<spec>-jmh.json`) and step 4 write `bench.tsv`.
@@ -74,8 +75,7 @@ most one gate that builds `service` at a time.
    - `regen --all` reads the final results too, so the verifier runs this step before
      step 4. A baseline moves only on a gain beyond the tolerance (ADR-0019).
 
-Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1 and 1b, and step 3's `clean`
-(mandatory with `-Pui`, ADR-0017) deletes them. The spec-1 review found this (#21).
+Run order: 1, 1b, 2, 5, 4, 3. Regen reads the reports of 1, 1b and 2 (the UI's coverage).
 
 **CI** (GitHub Actions, the repository's `.github/workflows/mapping-ci.yml`, every PR and push to
 `main` that touches `mapping/**`, the root `pom.xml`, `.mvn/**`, `mvnw*`, the root `.gitattributes`, the
@@ -93,9 +93,10 @@ root `ci.yml`'s `dco` job; the mapping's `trailers` job is gone (BRAND-3):
   ratchet check against the last commit it passed on (ADR-0019, "On GitHub"; it reports until the date in
   `scripts/ratchet-enforced-from`, then it fails the job);
 - `mapping · windows`: `../mvnw.cmd -B -q -DskipTests verify` (the whole reactor compiles; Spotless, enforcer, licences);
-- `mapping · ui`: `npm ci`, `npx playwright install --with-deps chromium`, generated types with an empty
-  diff, `typecheck`, `lint`, `test`, `test:browser`, `e2e`, `build` → artefact;
-- `mapping · stack` (after both): `-Pui` jar, `npm run e2e:stack`.
+- the Rail8 UI with the studio is checked by the repository's `ui-ci.yml`: licences, generated types
+  with an empty diff, `typecheck`, `lint`, `test`, `test:browser`, `build`;
+- `mapping-nightly.yml` (`ui · end-to-end`): `npm run test:coverage` and `npm run e2e` in `ui/`;
+  (`mapping · stack`): the service's jar, then `npm run e2e:stack` in `ui/`.
 - `mapping-nightly.yml` (`mapping · mutation`): PIT on `main` over the class-C modules `xdm`, `ir`, `runtime`, `serializer`,
   `mapping`, `xslt-export`, `api`, `udf-api`, `udf`, failing below 80 % (ADR-0019), then `scripts/ratchet-ci.sh nightly`: each module's surviving mutants against `ratchet/mutation.tsv`; it commits nothing. `mapping-bench.yml` (`mapping · jmh`): manual JMH,
   informative only; benchmark regression is a spec-gate check on the VM, never on CI.
@@ -112,4 +113,5 @@ or archives them). A drop is a failure; a rise is recorded at regeneration. Writ
 **Floors** (fixed in the build, ADR-0019): JaCoCo lines ≥ 90 % and branches ≥ 80 % on `xdm`, `ir`,
 `runtime`, `serializer`, `mapping`, `xslt-export`, `api`, `udf-api`, `udf`; lines ≥ 80 % on `structure`,
 `structure-import`, `service`; PIT ≥ 80 % on the nine class-C modules; Vitest per-glob lines
-≥ 90 % on `ui/src/model/**` and `ui/src/studio/store/**` (`npm run test` = `vitest run --coverage`).
+≥ 90 % on `../ui/src/mapping/model/**` and `../ui/src/mapping/studio/store/**` (`npm run test:coverage`
+= `vitest run --coverage`).

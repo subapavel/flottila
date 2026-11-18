@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiDoubleCaretRightIconConfig = {
+  name: 'RhUiDoubleCaretRightIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30.354 17.061 17.708 29.707a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414L28.587 16 16.293 3.707a.999.999 0 1 1 1.414-1.414l12.646 12.646a1.501 1.501 0 0 1 0 2.121Zm-14-2.122L3.707 2.293a.999.999 0 1 0-1.414 1.414L14.586 16 2.293 28.293a.999.999 0 1 0 1.414 1.414l12.646-12.646a1.501 1.501 0 0 0 0-2.121Z"},
+  rhUiIcon: null,
+};
+exports.RhUiDoubleCaretRightIcon = require('../createIcon').createIconBase(exports.RhUiDoubleCaretRightIconConfig);
+exports["default"] = exports.RhUiDoubleCaretRightIcon;

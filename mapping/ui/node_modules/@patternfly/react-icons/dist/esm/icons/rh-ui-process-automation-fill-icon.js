@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiProcessAutomationFillIconConfig = {
+  name: 'RhUiProcessAutomationFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M12.005 7.023a1 1 0 1 1-1.89.65L9.046 4.575A22.918 22.918 0 0 0 6 16a22.92 22.92 0 0 0 3.662 12.458.998.998 0 1 1-1.68 1.084A24.903 24.903 0 0 1 4 16c0-4.32 1.112-8.523 3.213-12.252l-3.018 1.04a1 1 0 1 1-.65-1.89l5.349-1.843a1.001 1.001 0 0 1 1.27.62l1.84 5.348ZM29 11c.171 0 .333.034.5.05V2a.5.5 0 0 0-.5-.5c-1.416 0-2.81.202-4.144.6a.5.5 0 0 0-.356.48v3.944c-.513.245-1.003.528-1.462.846L19.63 5.397a.499.499 0 0 0-.594.07 14.47 14.47 0 0 0-4.142 7.168.5.5 0 0 0 .236.548l3.407 1.972a9.635 9.635 0 0 0 .002 1.688l-3.41 1.974a.5.5 0 0 0-.235.548 14.47 14.47 0 0 0 4.142 7.167.5.5 0 0 0 .594.07l3.404-1.97c.469.326.96.61 1.466.85v3.938a.5.5 0 0 0 .356.48c1.333.398 2.728.6 4.144.6a.5.5 0 0 0 .5-.5v-9.05c-.167.016-.329.05-.5.05-2.757 0-5-2.243-5-5s2.243-5 5-5Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiProcessAutomationFillIcon = createIconBase(RhUiProcessAutomationFillIconConfig);
+
+export default RhUiProcessAutomationFillIcon;

@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiArrowCircleDownLeftIconConfig = {
+  name: 'RhUiArrowCircleDownLeftIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M21.657 10.343a.999.999 0 0 1 0 1.414L13.414 20H20a1 1 0 1 1 0 2h-8.5c-.827 0-1.5-.673-1.5-1.5V12a1 1 0 1 1 2 0v6.586l8.243-8.243a.999.999 0 0 1 1.414 0ZM31 16c0 8.271-6.729 15-15 15S1 24.271 1 16 7.729 1 16 1s15 6.729 15 15Zm-2 0c0-7.168-5.832-13-13-13S3 8.832 3 16s5.832 13 13 13 13-5.832 13-13Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiArrowCircleDownLeftIcon = createIconBase(RhUiArrowCircleDownLeftIconConfig);
+
+export default RhUiArrowCircleDownLeftIcon;

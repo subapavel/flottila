@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiVolumeUpFillIconConfig = {
+  name: 'RhUiVolumeUpFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M18 3v26a1 1 0 0 1-1.614.789L7.657 23H2.5c-.827 0-1.5-.673-1.5-1.5v-11C1 9.673 1.673 9 2.5 9h5.157l8.729-6.789A1 1 0 0 1 18.001 3Zm8.716 2.512a1 1 0 1 0-1.432 1.396C27.68 9.363 29 12.592 29 16s-1.319 6.637-3.716 9.092a.999.999 0 1 0 1.432 1.396C29.479 23.658 31 19.932 31 16s-1.521-7.658-4.284-10.488Zm-3.965 4.538a1 1 0 0 0-1.502 1.32C22.378 12.654 23 14.298 23 16s-.622 3.346-1.751 4.63a1 1 0 0 0 1.502 1.32C24.201 20.302 25 18.188 25 16s-.799-4.302-2.249-5.95Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiVolumeUpFillIcon = createIconBase(RhUiVolumeUpFillIconConfig);
+
+export default RhUiVolumeUpFillIcon;

@@ -1,0 +1,61 @@
+---
+id: Empty state
+section: components
+cssPrefix: pf-v6-c-empty-state
+propComponents: ['EmptyState', 'EmptyStateBody', 'EmptyStateFooter', 'EmptyStateActions']
+---
+
+import { useState } from 'react';
+import RhMicronsSearchIcon from '@patternfly/react-icons/dist/esm/icons/rh-microns-search-icon';
+import RhUiCubesIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-cubes-icon';
+import RhUiModuleIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-module-icon';
+
+## Examples
+
+### Basic
+
+```ts file="EmptyStateBasic.tsx"
+
+```
+
+### Extra small
+
+```ts file="EmptyStateExtraSmall.tsx"
+
+```
+
+### Small
+
+```ts file="EmptyStateSmall.tsx"
+
+```
+
+### Large
+
+```ts file="EmptyStateLarge.tsx"
+
+```
+
+### Extra large
+
+```ts file="EmptyStateExtraLarge.tsx"
+
+```
+
+### With status
+
+```ts file="EmptyStateWithStatus.tsx"
+
+```
+
+### Spinner
+
+```ts file="EmptyStateSpinner.tsx"
+
+```
+
+### No match found
+
+```ts file="EmptyStateNoMatchFound.tsx"
+
+```

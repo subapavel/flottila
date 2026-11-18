@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiZoomOutIconConfig = {
+  name: 'RhUiZoomOutIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"m30.707 29.293-8.552-8.552A11.942 11.942 0 0 0 25 13c0-6.617-5.383-12-12-12S1 6.383 1 13s5.383 12 12 12c2.949 0 5.649-1.074 7.741-2.845l8.552 8.552a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414ZM13 23C7.486 23 3 18.514 3 13S7.486 3 13 3s10 4.486 10 10-4.486 10-10 10Zm6-10a1 1 0 0 1-1 1H8a1 1 0 1 1 0-2h10a1 1 0 0 1 1 1Z"},
+  rhUiIcon: null,
+};
+exports.RhUiZoomOutIcon = require('../createIcon').createIconBase(exports.RhUiZoomOutIconConfig);
+exports["default"] = exports.RhUiZoomOutIcon;

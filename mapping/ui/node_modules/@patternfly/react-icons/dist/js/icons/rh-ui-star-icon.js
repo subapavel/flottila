@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiStarIconConfig = {
+  name: 'RhUiStarIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M24 30c-.184 0-.368-.051-.53-.152L16 25.18l-7.47 4.668a.998.998 0 0 1-1.51-1.044l1.885-9.425-7.749-6.619a1 1 0 0 1 .557-1.756l10.245-.945 3.119-7.446a1 1 0 0 1 1.844 0l3.119 7.446 10.245.945a1 1 0 0 1 .557 1.756l-7.749 6.619 1.885 9.425a.998.998 0 0 1-.98 1.197Zm-8-7c.184 0 .368.051.53.152l6.035 3.771-1.545-7.728a1.002 1.002 0 0 1 .331-.957l6.394-5.461-8.485-.783a1 1 0 0 1-.831-.609L16 5.587l-2.429 5.798a.998.998 0 0 1-.831.609l-8.485.783 6.394 5.461c.275.235.402.602.331.957l-1.545 7.728 6.035-3.771A.993.993 0 0 1 16 23Z"},
+  rhUiIcon: null,
+};
+exports.RhUiStarIcon = require('../createIcon').createIconBase(exports.RhUiStarIconConfig);
+exports["default"] = exports.RhUiStarIcon;

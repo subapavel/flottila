@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiPackageIconConfig: {
+  name: 'RhUiPackageIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 25a1 1 0 0 1-1 1H8.5c-.827 0-1.5-.673-1.5-1.5V5.17c0-1.141-.848-2.112-1.891-2.167a1.958 1.958 0 0 0-1.485.547A1.98 1.98 0 0 0 3 5a1 1 0 1 1-2 0 4.002 4.002 0 0 1 4.213-3.995C7.337 1.116 9 2.945 9 5.17V24h21a1 1 0 0 1 1 1Zm-19-5.5v-15c0-.827.673-1.5 1.5-1.5h15c.827 0 1.5.673 1.5 1.5v15c0 .827-.673 1.5-1.5 1.5h-15c-.827 0-1.5-.673-1.5-1.5Zm2-.5h14V5h-5v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V5h-5v14Zm-2.995 8.378a1.626 1.626 0 1 0 .001 3.251 1.626 1.626 0 0 0-.001-3.251Zm15.99 0a1.626 1.626 0 1 0 .001 3.251 1.626 1.626 0 0 0-.001-3.251Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiPackageIcon: ComponentClass<SVGIconProps>;
+export default RhUiPackageIcon;

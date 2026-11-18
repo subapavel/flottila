@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiNotificationActiveFillIconConfig = {
+  name: 'RhUiNotificationActiveFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.75 22v3.5c0 .689-.561 1.25-1.25 1.25h-7.521c.005.084.021.166.021.25 0 2.206-1.794 4-4 4s-4-1.794-4-4c0-.084.016-.166.021-.25H4.5c-.689 0-1.25-.561-1.25-1.25V22a.75.75 0 0 1 .75-.75c1.24 0 2.25-1.009 2.25-2.25v-4c0-4.826 3.528-8.833 8.138-9.605A2.482 2.482 0 0 1 13.5 3.5C13.5 2.122 14.621 1 16 1s2.5 1.122 2.5 2.5c0 .765-.352 1.441-.895 1.9.367.062.733.131 1.095.235a.749.749 0 0 1 .37 1.2 5.753 5.753 0 0 0-1.32 3.665c0 3.17 2.579 5.75 5.75 5.75.436 0 .869-.053 1.328-.161a.752.752 0 0 1 .922.73V19c0 1.241 1.01 2.25 2.25 2.25a.75.75 0 0 1 .75.75Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiNotificationActiveFillIcon = createIconBase(RhUiNotificationActiveFillIconConfig);
+
+export default RhUiNotificationActiveFillIcon;

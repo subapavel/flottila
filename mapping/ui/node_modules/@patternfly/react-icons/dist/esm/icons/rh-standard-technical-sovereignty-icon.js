@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhStandardTechnicalSovereigntyIconConfig = {
+  name: 'RhStandardTechnicalSovereigntyIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M31 4.375H5A.625.625 0 0 0 4.375 5v26c0 .345.28.625.625.625h26c.345 0 .625-.28.625-.625V5A.625.625 0 0 0 31 4.375Zm-.625 26H5.625V5.625h24.75v24.75ZM8.158 16.04l9.53 5.5a.627.627 0 0 0 .625 0l9.53-5.5a.624.624 0 0 0 0-1.082l-9.53-5.5a.627.627 0 0 0-.625 0l-9.53 5.5a.624.624 0 0 0 0 1.082ZM18 10.72l8.28 4.779L18 20.278 9.72 15.5 18 10.722Zm10.072 9.466a.625.625 0 0 1-.23.854l-9.53 5.5a.627.627 0 0 1-.624 0l-9.53-5.5a.625.625 0 1 1 .625-1.082L18 25.279l9.218-5.32a.626.626 0 0 1 .854.228Z"},
+  rhUiIcon: null,
+};
+
+export const RhStandardTechnicalSovereigntyIcon = createIconBase(RhStandardTechnicalSovereigntyIconConfig);
+
+export default RhStandardTechnicalSovereigntyIcon;

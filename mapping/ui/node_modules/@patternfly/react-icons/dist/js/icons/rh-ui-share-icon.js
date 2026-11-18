@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiShareIconConfig = {
+  name: 'RhUiShareIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M27 23c-1.21 0-2.29.53-3.02 1.38L8.91 16.84c.06-.27.09-.55.09-.84s-.03-.57-.09-.84l15.07-7.54A3.96 3.96 0 0 0 27 9c2.21 0 4-1.79 4-4s-1.79-4-4-4a3.999 3.999 0 0 0-3.91 4.84L8.02 13.38A3.96 3.96 0 0 0 5 12c-2.21 0-4 1.79-4 4s1.79 4 4 4c1.21 0 2.29-.53 3.02-1.38l15.07 7.54A3.999 3.999 0 0 0 27 31c2.21 0 4-1.79 4-4s-1.79-4-4-4ZM25.01 4.88C25.07 3.83 25.94 3 27 3c1.1 0 2 .9 2 2a2.006 2.006 0 0 1-3.11 1.67C25.36 6.3 25 5.69 25 5c0-.04 0-.08.01-.12ZM6.11 17.67A2.006 2.006 0 0 1 3 16a2.006 2.006 0 0 1 3.11-1.67c.53.37.89.98.89 1.67s-.36 1.3-.89 1.67ZM27 29c-1.06 0-1.93-.83-1.99-1.88-.01-.04-.01-.08-.01-.12 0-.69.36-1.3.89-1.67A2.006 2.006 0 0 1 29 27c0 1.1-.9 2-2 2Z"},
+  rhUiIcon: null,
+};
+exports.RhUiShareIcon = require('../createIcon').createIconBase(exports.RhUiShareIconConfig);
+exports["default"] = exports.RhUiShareIcon;

@@ -1,0 +1,22 @@
+/// <reference types="react" />
+import { OUIAProps } from '../../helpers';
+export interface FormProps extends Omit<React.HTMLProps<HTMLFormElement>, 'ref'>, OUIAProps {
+    /** Anything that can be rendered as Form content. */
+    children?: React.ReactNode;
+    /** Additional classes added to the Form. */
+    className?: string;
+    /** Sets the Form to horizontal. */
+    isHorizontal?: boolean;
+    /** Limits the max-width of the form. */
+    isWidthLimited?: boolean;
+    /** Sets a custom max-width for the form. */
+    maxWidth?: string;
+    /** @hide Forwarded ref */
+    innerRef?: React.Ref<any>;
+    /** Value to overwrite the randomly generated data-ouia-component-id.*/
+    ouiaId?: number | string;
+    /** Set the value of data-ouia-safe. Only set to true when the component is in a static state, i.e. no animations are occurring. At all other times, this value must be false. */
+    ouiaSafe?: boolean;
+}
+export declare const Form: import("react").ForwardRefExoticComponent<FormProps & import("react").RefAttributes<any>>;
+//# sourceMappingURL=Form.d.ts.map

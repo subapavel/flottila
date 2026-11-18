@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiLiquidFillIconConfig: {
+  name: 'RhUiLiquidFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M24.916 9.5c-2.275-2.276-6.6-6.615-7.855-7.878-.567-.569-1.557-.568-2.122.002l-.534.536C12.59 3.981 8.507 8.077 7.085 9.5a12.503 12.503 0 0 0-3.69 9.157 12.512 12.512 0 0 0 4.044 9.015c2.401 2.226 5.481 3.338 8.562 3.338 3.081 0 6.162-1.113 8.562-3.338a12.513 12.513 0 0 0 4.044-9.015 12.503 12.503 0 0 0-3.69-9.157ZM16 26.125a1.125 1.125 0 0 1 0-2.25 5.38 5.38 0 0 0 5.375-5.375 1.125 1.125 0 0 1 2.25 0c0 4.205-3.421 7.625-7.625 7.625Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiLiquidFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiLiquidFillIcon;

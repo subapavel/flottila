@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiAssessmentFillIconConfig = {
+  name: 'RhUiAssessmentFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.5 3h-27C1.673 3 1 3.673 1 4.5v17c0 .827.673 1.5 1.5 1.5H12v4H8a1 1 0 0 0 0 2h16a1 1 0 0 0 0-2h-4v-4h9.5c.827 0 1.5-.673 1.5-1.5v-17c0-.827-.673-1.5-1.5-1.5ZM8.005 17.891a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749Zm0-6.013a1.874 1.874 0 1 1-.001-3.749 1.874 1.874 0 0 1 .001 3.749ZM18 27h-4v-4h4v4Zm7-9.875h-9a1.125 1.125 0 0 1 0-2.25h9a1.125 1.125 0 0 1 0 2.25Zm0-6h-9a1.125 1.125 0 0 1 0-2.25h9a1.125 1.125 0 0 1 0 2.25Z"},
+  rhUiIcon: null,
+};
+exports.RhUiAssessmentFillIcon = require('../createIcon').createIconBase(exports.RhUiAssessmentFillIconConfig);
+exports["default"] = exports.RhUiAssessmentFillIcon;

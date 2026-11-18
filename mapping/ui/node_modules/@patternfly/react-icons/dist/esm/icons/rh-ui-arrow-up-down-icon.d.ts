@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiArrowUpDownIconConfig: {
+  name: 'RhUiArrowUpDownIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M21.293 23.293 17 27.586V4.414l4.293 4.293a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414l-5.646-5.646a1.5 1.5 0 0 0-2.121 0L9.294 7.293a.999.999 0 1 0 1.414 1.414l4.293-4.293v23.172l-4.293-4.293a.999.999 0 1 0-1.414 1.414l5.646 5.646c.292.293.676.438 1.061.438s.768-.146 1.061-.438l5.646-5.646a.999.999 0 1 0-1.414-1.414Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiArrowUpDownIcon: ComponentClass<SVGIconProps>;
+export default RhUiArrowUpDownIcon;

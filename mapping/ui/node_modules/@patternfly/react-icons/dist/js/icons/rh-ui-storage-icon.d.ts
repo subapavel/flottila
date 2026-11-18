@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiStorageIconConfig: {
+  name: 'RhUiStorageIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C8.149 1 2 4.514 2 9v14c0 4.486 6.149 8 14 8s14-3.514 14-8V9c0-4.486-6.149-8-14-8Zm0 2c6.505 0 12 2.748 12 6s-5.495 6-12 6S4 12.252 4 9s5.495-6 12-6ZM4 13.161C6.427 15.476 10.839 17 16 17s9.573-1.524 12-3.839V16c0 3.252-5.495 6-12 6S4 19.252 4 16v-2.839ZM16 29c-6.505 0-12-2.748-12-6v-2.839C6.427 22.476 10.839 24 16 24s9.573-1.524 12-3.839V23c0 3.252-5.495 6-12 6Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiStorageIcon: ComponentClass<SVGIconProps>;
+export default RhUiStorageIcon;

@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiArrowCircleUpIconConfig = {
+  name: 'RhUiArrowCircleUpIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm6.707-14.707a.999.999 0 1 1-1.414 1.414L17 11.414V23a1 1 0 1 1-2 0V11.414l-4.293 4.293a.999.999 0 1 1-1.414-1.414l5.646-5.646a1.501 1.501 0 0 1 2.121 0l5.646 5.646Z"},
+  rhUiIcon: null,
+};
+exports.RhUiArrowCircleUpIcon = require('../createIcon').createIconBase(exports.RhUiArrowCircleUpIconConfig);
+exports["default"] = exports.RhUiArrowCircleUpIcon;

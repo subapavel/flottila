@@ -1,0 +1,210 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EmptyState Full height 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state pf-m-lg pf-m-full-height"
+  >
+    <div
+      class="pf-v6-c-empty-state__content"
+    >
+      <div
+        class="pf-v6-c-empty-state__header"
+      >
+        <div
+          class="pf-v6-c-empty-state__title"
+        >
+          <h1
+            class="pf-v6-c-empty-state__title-text"
+          >
+            EmptyState large
+          </h1>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`EmptyState Header with icon 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state__header"
+  >
+    <div
+      class="pf-v6-c-empty-state__icon"
+    >
+      <svg
+        aria-hidden="true"
+        class="pf-v6-svg"
+        fill="currentColor"
+        height="1em"
+        role="img"
+        viewBox="0 0 32 32"
+        width="1em"
+      >
+        <path
+          d="M26.5 1H12a1.001 1.001 0 0 0-.708.294L4.294 8.292A1.001 1.001 0 0 0 4 9v20.5c0 .827.673 1.5 1.5 1.5h21c.827 0 1.5-.673 1.5-1.5v-27c0-.827-.673-1.5-1.5-1.5ZM11 4.414V8H7.414L11 4.414ZM26 29H6V10h5.5c.827 0 1.5-.673 1.5-1.5V3h13v26Z"
+        />
+      </svg>
+    </div>
+    <div
+      class="pf-v6-c-empty-state__title"
+    >
+      <h1
+        class="pf-v6-c-empty-state__title-text"
+      >
+        Empty state
+      </h1>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`EmptyState Main 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state"
+  >
+    <div
+      class="pf-v6-c-empty-state__content"
+    >
+      <div
+        class="pf-v6-c-empty-state__header"
+      >
+        <div
+          class="pf-v6-c-empty-state__title"
+        >
+          <h1
+            class="pf-v6-c-empty-state__title-text"
+          >
+            HTTP Proxies
+          </h1>
+        </div>
+      </div>
+      <div
+        class="pf-v6-c-empty-state__body"
+      >
+        Defining HTTP Proxies that exist on your network allows you to perform various actions through those proxies.
+      </div>
+      <div
+        class="pf-v6-c-empty-state__footer"
+      >
+        <div
+          class="pf-v6-c-empty-state__actions"
+        >
+          <button
+            class="pf-v6-c-button pf-m-primary"
+            data-ouia-component-id="OUIA-Generated-Button-primary-:r0:"
+            data-ouia-component-type="PF6/Button"
+            data-ouia-safe="true"
+            type="button"
+          >
+            <span
+              class="pf-v6-c-button__text"
+            >
+              New HTTP Proxy
+            </span>
+          </button>
+        </div>
+        <div
+          class="pf-v6-c-empty-state__actions"
+        >
+          <button
+            aria-label="learn more action"
+            class="pf-v6-c-button pf-m-link"
+            data-ouia-component-id="OUIA-Generated-Button-link-:r1:"
+            data-ouia-component-type="PF6/Button"
+            data-ouia-safe="true"
+            type="button"
+          >
+            <span
+              class="pf-v6-c-button__text"
+            >
+              Learn more about this in the documentation.
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`EmptyState Main variant large 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state pf-m-lg"
+  >
+    <div
+      class="pf-v6-c-empty-state__content"
+    >
+      <div
+        class="pf-v6-c-empty-state__header"
+      >
+        <div
+          class="pf-v6-c-empty-state__title"
+        >
+          <h1
+            class="pf-v6-c-empty-state__title-text"
+          >
+            EmptyState large
+          </h1>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`EmptyState Main variant small 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state pf-m-sm"
+  >
+    <div
+      class="pf-v6-c-empty-state__content"
+    >
+      <div
+        class="pf-v6-c-empty-state__header"
+      >
+        <div
+          class="pf-v6-c-empty-state__title"
+        >
+          <h1
+            class="pf-v6-c-empty-state__title-text"
+          >
+            EmptyState small
+          </h1>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`EmptyState Main variant xs 1`] = `
+<DocumentFragment>
+  <div
+    class="pf-v6-c-empty-state pf-m-xs"
+  >
+    <div
+      class="pf-v6-c-empty-state__content"
+    >
+      <div
+        class="pf-v6-c-empty-state__header"
+      >
+        <div
+          class="pf-v6-c-empty-state__title"
+        >
+          <h1
+            class="pf-v6-c-empty-state__title-text"
+          >
+            EmptyState extra small
+          </h1>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;

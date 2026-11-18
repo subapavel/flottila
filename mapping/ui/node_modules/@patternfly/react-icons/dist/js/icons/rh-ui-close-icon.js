@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiCloseIconConfig = {
+  name: 'RhUiCloseIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.707 27.293a.999.999 0 1 1-1.414 1.414L16 17.414 4.707 28.707a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414L14.586 16 3.293 4.707a.999.999 0 1 1 1.414-1.414L16 14.586 27.293 3.293a.999.999 0 1 1 1.414 1.414L17.414 16l11.293 11.293Z"},
+  rhUiIcon: null,
+};
+exports.RhUiCloseIcon = require('../createIcon').createIconBase(exports.RhUiCloseIconConfig);
+exports["default"] = exports.RhUiCloseIcon;

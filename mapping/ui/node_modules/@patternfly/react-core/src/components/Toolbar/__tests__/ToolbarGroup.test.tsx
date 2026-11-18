@@ -1,0 +1,82 @@
+import { render, screen } from '@testing-library/react';
+import { ToolbarGroup } from '../ToolbarGroup';
+
+describe('ToolbarGroup', () => {
+  it('should render with pf-m-overflow-container when isOverflowContainer is set', () => {
+    render(
+      <ToolbarGroup data-testid="toolbargroup" isOverflowContainer>
+        Test
+      </ToolbarGroup>
+    );
+    expect(screen.getByTestId('toolbargroup')).toHaveClass('pf-m-overflow-container');
+  });
+
+  describe('ToobarGroup rowWrap', () => {
+    const bps = ['default', 'sm', 'md', 'lg', 'xl', '2xl'];
+
+    describe.each(bps)(`rowWrap at various breakpoints`, (bp) => {
+      it(`should render with pf-m-wrap when rowWrap is set to wrap at ${bp}`, () => {
+        render(
+          <ToolbarGroup data-testid="toolbargroup" rowWrap={{ [bp]: 'wrap' }}>
+            Test
+          </ToolbarGroup>
+        );
+        const bpWrapClass = bp === 'default' ? 'pf-m-wrap' : `pf-m-wrap-on-${bp}`;
+
+        expect(screen.getByTestId('toolbargroup')).toHaveClass(bpWrapClass);
+      });
+
+      it(`should render with pf-m-nowrap when rowWrap is set to nowrap at ${bp}`, () => {
+        render(
+          <ToolbarGroup data-testid="toolbargroup" rowWrap={{ [bp]: 'nowrap' }}>
+            Test
+          </ToolbarGroup>
+        );
+        const bpNoWrapClass = bp === 'default' ? 'pf-m-nowrap' : `pf-m-nowrap-on-${bp}`;
+        expect(screen.getByTestId('toolbargroup')).toHaveClass(bpNoWrapClass);
+      });
+    });
+  });
+
+  const bps = ['default', 'md', 'lg', 'xl', '2xl'] as const;
+  describe.each(bps)(`ToolbarGroup visibilityAtHeight`, (bp) => {
+    it(`Applies correct visible class at ${bp}`, () => {
+      render(
+        <ToolbarGroup data-testid="toolbargroup" visibilityAtHeight={{ [bp]: 'visible' }}>
+          Test
+        </ToolbarGroup>
+      );
+
+      if (bp !== 'default') {
+        expect(screen.getByTestId('toolbargroup')).toHaveClass(`pf-m-visible-on-${bp}-height`);
+      }
+    });
+
+    it(`Applies correct hidden class at ${bp}`, () => {
+      render(
+        <ToolbarGroup data-testid="toolbargroup" visibilityAtHeight={{ [bp]: 'hidden' }}>
+          Test
+        </ToolbarGroup>
+      );
+
+      const expectedClass = bp === 'default' ? 'pf-m-hidden' : `pf-m-hidden-on-${bp}-height`;
+      expect(screen.getByTestId('toolbargroup')).toHaveClass(expectedClass);
+    });
+  });
+
+  describe('ToolbarGroup flexGrow', () => {
+    const bps = ['default', 'sm', 'md', 'lg', 'xl', '2xl'];
+
+    describe.each(bps)(`flexGrow at various breakpoints`, (bp) => {
+      it(`should render with pf-m-flex-grow when flexGrow is set at ${bp}`, () => {
+        render(
+          <ToolbarGroup data-testid="toolbargroup" flexGrow={{ [bp]: 'flexGrow' }}>
+            Test
+          </ToolbarGroup>
+        );
+        const bpFlexGrowClass = bp === 'default' ? 'pf-m-flex-grow' : `pf-m-flex-grow-on-${bp}`;
+        expect(screen.getByTestId('toolbargroup')).toHaveClass(bpFlexGrowClass);
+      });
+    });
+  });
+});

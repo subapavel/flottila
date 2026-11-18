@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiDarkModeFillIconConfig = {
+  name: 'RhUiDarkModeFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.307 20.18A12.981 12.981 0 0 1 16 29C8.832 29 3 23.168 3 16a12.98 12.98 0 0 1 8.82-12.307.999.999 0 0 1 1.265 1.275A10.735 10.735 0 0 0 12.5 8.5c0 6.065 4.935 11 11 11 1.226 0 2.414-.197 3.532-.585a1 1 0 0 1 1.275 1.265Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiDarkModeFillIcon = createIconBase(RhUiDarkModeFillIconConfig);
+
+export default RhUiDarkModeFillIcon;

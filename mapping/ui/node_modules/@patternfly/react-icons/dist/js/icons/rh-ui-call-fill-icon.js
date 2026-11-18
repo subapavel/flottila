@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiCallFillIconConfig = {
+  name: 'RhUiCallFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M29.793 25c0 .4-.156.777-.439 1.061l-1.526 1.526c-1.606 1.607-3.717 2.41-5.828 2.41s-4.221-.803-5.828-2.41L4.414 15.827C2.857 14.271 2 12.201 2 9.999s.857-4.271 2.414-5.828L5.94 2.645a1.501 1.501 0 0 1 2.121 0l4.293 4.293c.283.283.439.66.439 1.061s-.156.777-.439 1.061l-2.939 2.939 10.586 10.586 2.939-2.939c.566-.566 1.555-.566 2.121 0l4.293 4.293c.283.283.439.66.439 1.061Z"},
+  rhUiIcon: null,
+};
+exports.RhUiCallFillIcon = require('../createIcon').createIconBase(exports.RhUiCallFillIconConfig);
+exports["default"] = exports.RhUiCallFillIcon;

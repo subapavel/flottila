@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardInstructorIconConfig: {
+  name: 'RhStandardInstructorIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M13.87 24.29a3.88 3.88 0 1 0-4.74 0A7.12 7.12 0 0 0 4.38 31a.62.62 0 0 0 .62.62h13a.62.62 0 0 0 .62-.62 7.12 7.12 0 0 0-4.75-6.71Zm-5-3a2.62 2.62 0 1 1 2.62 2.63 2.62 2.62 0 0 1-2.61-2.67Zm-3.21 9.09a5.87 5.87 0 0 1 11.68 0Z"},{"path":"M31 4.38H12a.62.62 0 0 0-.62.62v10a.62.62 0 0 0 1.24 0V5.62h17.76v17.76H18a.62.62 0 0 0 0 1.24h13a.62.62 0 0 0 .62-.62V5a.62.62 0 0 0-.62-.62Z"}]},
+  rhUiIcon: null,
+};
+export declare const RhStandardInstructorIcon: ComponentClass<SVGIconProps>;
+export default RhStandardInstructorIcon;

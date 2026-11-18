@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardHomeIconConfig: {
+  name: 'RhStandardHomeIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M5.3 12.55 6.38 12v3a.62.62 0 1 0 1.24 0v-3.7L18 5.71l12.7 6.84a.63.63 0 0 0 .6-1.1l-4.68-2.52V6a.62.62 0 0 0-1.24 0v2.26L18.3 4.45a.64.64 0 0 0-.6 0l-13 7a.63.63 0 0 0 .6 1.1Z"},{"path":"M31 30.38h-1.38V14a.62.62 0 0 0-1.24 0v16.38h-1.76V21a.61.61 0 0 0-.62-.62h-6a.61.61 0 0 0-.62.62v9.38H7.62V18.3l7.68-4.13a.63.63 0 0 0-.6-1.11l-10 5.39a.63.63 0 0 0 .6 1.1L6.38 19v11.38H5a.62.62 0 1 0 0 1.24h26a.62.62 0 0 0 0-1.24Zm-10.38 0v-8.76h4.76v8.76Z"},{"path":"M10 20.38a.61.61 0 0 0-.62.62v5a.61.61 0 0 0 .62.62h7a.61.61 0 0 0 .62-.62v-5a.61.61 0 0 0-.62-.62Zm6.38 5h-5.76v-3.76h5.76Z"}]},
+  rhUiIcon: null,
+};
+export declare const RhStandardHomeIcon: ComponentClass<SVGIconProps>;
+export default RhStandardHomeIcon;

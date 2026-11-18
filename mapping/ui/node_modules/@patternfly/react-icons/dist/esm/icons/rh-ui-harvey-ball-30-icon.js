@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiHarveyBall30IconConfig = {
+  name: 'RhUiHarveyBall30Icon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 16c0-8.271-6.729-15-15-15S1 7.729 1 16s6.729 15 15 15a14.956 14.956 0 0 0 14.271-10.371v-.002c.483-1.496.728-3.052.728-4.627ZM16 29C8.832 29 3 23.168 3 16 3 9.168 8.297 3.551 15 3.038V16a1 1 0 0 0 .691.951l12.333 4A12.96 12.96 0 0 1 16 29Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiHarveyBall30Icon = createIconBase(RhUiHarveyBall30IconConfig);
+
+export default RhUiHarveyBall30Icon;

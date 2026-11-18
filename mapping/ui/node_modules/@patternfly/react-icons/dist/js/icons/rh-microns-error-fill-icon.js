@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhMicronsErrorFillIconConfig = {
+  name: 'RhMicronsErrorFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":20,"height":20,"svgPathData":"M10 0C4.486 0 0 4.486 0 10s4.486 10 10 10 10-4.486 10-10S15.514 0 10 0ZM8.5 5a1.5 1.5 0 0 1 3 0v5a1.5 1.5 0 0 1-3 0V5Zm1.505 11.629a1.625 1.625 0 1 1 0-3.25 1.625 1.625 0 0 1 0 3.25Z"},
+  rhUiIcon: null,
+};
+exports.RhMicronsErrorFillIcon = require('../createIcon').createIconBase(exports.RhMicronsErrorFillIconConfig);
+exports["default"] = exports.RhMicronsErrorFillIcon;

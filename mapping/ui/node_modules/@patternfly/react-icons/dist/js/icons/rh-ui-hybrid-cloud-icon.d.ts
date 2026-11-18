@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiHybridCloudIconConfig: {
+  name: 'RhUiHybridCloudIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M8 23h17.5c3.032 0 5.5-2.467 5.5-5.5a5.456 5.456 0 0 0-4.004-5.272c.003-.077.004-.153.004-.228 0-4.962-4.037-9-9-9-3.899 0-7.333 2.532-8.54 6.156A6.891 6.891 0 0 0 8 9c-3.859 0-7 3.14-7 7s3.141 7 7 7Zm0-12a4.97 4.97 0 0 1 1.799.34 1 1 0 0 0 1.341-.735C11.796 7.357 14.682 5 18 5c3.859 0 7 3.14 7 7 0 .311-.028.615-.067.916a1.004 1.004 0 0 0 .898 1.123 3.473 3.473 0 0 1 3.17 3.461c0 1.93-1.57 3.5-3.5 3.5H8c-2.757 0-5-2.243-5-5s2.243-5 5-5Zm22 17a1 1 0 0 1-1 1H3a1 1 0 1 1 0-2h26a1 1 0 0 1 1 1Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiHybridCloudIcon: ComponentClass<SVGIconProps>;
+export default RhUiHybridCloudIcon;

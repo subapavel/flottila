@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiCarIconConfig: {
+  name: 'RhUiCarIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M27 11h-.065l-1.957-9.208A1 1 0 0 0 24 1H8a1 1 0 0 0-.978.792L5.065 11H5c-1.654 0-3 1.346-3 3v7.5c0 .827.673 1.5 1.5 1.5h25c.827 0 1.5-.673 1.5-1.5V14c0-1.654-1.346-3-3-3ZM8.81 3h14.381l1.7 8H7.109l1.7-8ZM28 21H4v-7c0-.551.449-1 1-1h22c.551 0 1 .449 1 1v7ZM8 16v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 2 0ZM2 7V6a1 1 0 0 1 2 0v1a1 1 0 0 1-2 0Zm28-1v1a1 1 0 0 1-2 0V6a1 1 0 0 1 2 0Zm-4 10v2a1 1 0 0 1-2 0v-2a1 1 0 0 1 2 0Zm-5 1a1 1 0 0 1-1 1h-8a1 1 0 0 1 0-2h8a1 1 0 0 1 1 1Zm9 9a1 1 0 0 1-1 1h-1v2c0 1.103-.897 2-2 2h-2c-1.103 0-2-.897-2-2v-2H10v2c0 1.103-.897 2-2 2H6c-1.103 0-2-.897-2-2v-2H3a1 1 0 0 1 0-2h26a1 1 0 0 1 1 1Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiCarIcon: ComponentClass<SVGIconProps>;
+export default RhUiCarIcon;

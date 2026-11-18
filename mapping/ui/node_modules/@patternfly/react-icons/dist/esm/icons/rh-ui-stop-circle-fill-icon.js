@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiStopCircleFillIconConfig = {
+  name: 'RhUiStopCircleFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm5.75 19.5c0 .689-.561 1.25-1.25 1.25h-9c-.689 0-1.25-.561-1.25-1.25v-9c0-.689.561-1.25 1.25-1.25h9c.689 0 1.25.561 1.25 1.25v9Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiStopCircleFillIcon = createIconBase(RhUiStopCircleFillIconConfig);
+
+export default RhUiStopCircleFillIcon;

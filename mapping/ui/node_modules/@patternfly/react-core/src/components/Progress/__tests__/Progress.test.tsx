@@ -1,0 +1,162 @@
+import { render, screen } from '@testing-library/react';
+import { Progress, ProgressSize } from '../Progress';
+import { ProgressVariant, ProgressMeasureLocation } from '../ProgressContainer';
+
+test('Simple progress', () => {
+  const { asFragment } = render(<Progress value={33} id="progress-simple-example" ouiaId="ouia-id" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('no value specified', () => {
+  const { asFragment } = render(<Progress id="no-value" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('additional label', () => {
+  const { asFragment } = render(<Progress id="additional-label" value={33} label="Additional label" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('Progress with aria-valuetext', () => {
+  const { asFragment } = render(<Progress value={33} id="progress-aria-valuetext" valueText="Descriptive text here" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('value lower than minValue', () => {
+  const { asFragment } = render(<Progress value={33} id="lower-min-value" min={40} />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('value higher than maxValue', () => {
+  const { asFragment } = render(<Progress value={77} id="higher-max-value" max={60} />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('value scaled with minValue', () => {
+  const { asFragment } = render(<Progress min={10} value={50} id="scaled-min-value" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('value scaled with maxValue', () => {
+  const { asFragment } = render(<Progress value={50} id="scaled-max-value" max={80} />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+test('value scaled between minValue and maxValue', () => {
+  const { asFragment } = render(<Progress min={10} value={50} id="scaled-range-value" max={80} />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+describe('Progress size', () => {
+  Object.keys(ProgressSize).forEach((oneSize) => {
+    test(oneSize, () => {
+      const { asFragment } = render(<Progress id={`${oneSize}-progress`} value={33} size={oneSize as ProgressSize} />);
+      expect(asFragment()).toMatchSnapshot();
+    });
+  });
+});
+
+describe('Progress variant', () => {
+  Object.keys(ProgressVariant).forEach((oneVariant) => {
+    test(oneVariant, () => {
+      const { asFragment } = render(
+        <Progress id={`${oneVariant}-progress`} value={33} variant={oneVariant as ProgressVariant} />
+      );
+      expect(asFragment()).toMatchSnapshot();
+    });
+  });
+});
+
+describe('Progress measure location', () => {
+  Object.keys(ProgressMeasureLocation).forEach((oneLocation) => {
+    test(oneLocation, () => {
+      const { asFragment } = render(
+        <Progress id={`${oneLocation}-progress`} value={33} measureLocation={oneLocation as ProgressMeasureLocation} />
+      );
+      expect(asFragment()).toMatchSnapshot();
+    });
+  });
+
+  test('inside and small should render large', () => {
+    const { asFragment } = render(
+      <Progress
+        id="large-progress"
+        value={33}
+        measureLocation={ProgressMeasureLocation.inside}
+        size={ProgressSize.sm}
+      />
+    );
+    expect(asFragment()).toMatchSnapshot();
+  });
+});
+
+test('progress component generates console warning when no accessible name is provided', () => {
+  const consoleWarnMock = jest.fn();
+  global.console = { warn: consoleWarnMock } as any;
+  render(<Progress value={33} />);
+  expect(consoleWarnMock).toHaveBeenCalled();
+});
+
+test('Does not render helper text by default', () => {
+  render(<Progress />);
+
+  expect(screen.queryByText('Test helper text')).not.toBeInTheDocument();
+});
+
+test('Renders passed helper text', () => {
+  render(<Progress helperText="Test helper text" />);
+
+  expect(screen.getByText('Test helper text')).toBeVisible();
+});
+
+test('Renders with custom ouiaId', () => {
+  render(<Progress value={33} id="progress-ouia-id" ouiaId="test-id" title="Test" />);
+  expect(document.getElementById('progress-ouia-id')).toHaveAttribute('data-ouia-component-id', 'test-id');
+});
+
+test('Renders with expected ouia component type', () => {
+  render(<Progress value={33} id="progress-ouia-type" ouiaId="test-id" title="Test" />);
+  expect(document.getElementById('progress-ouia-type')).toHaveAttribute('data-ouia-component-type', 'PF6/Progress');
+});
+
+test('Renders with ouiaSafe defaulting to true', () => {
+  render(<Progress value={33} id="progress-ouia-safe" ouiaId="test-id" title="Test" />);
+  expect(document.getElementById('progress-ouia-safe')).toHaveAttribute('data-ouia-safe', 'true');
+});
+
+test('Renders with ouiaSafe=false when specified', () => {
+  render(<Progress value={33} id="progress-ouia-unsafe" ouiaId="test-id" ouiaSafe={false} title="Test" />);
+  expect(document.getElementById('progress-ouia-unsafe')).toHaveAttribute('data-ouia-safe', 'false');
+});
+
+describe('hideStatusIcon prop behavior', () => {
+  test('shows status icon by default when hideStatusIcon is not set', () => {
+    render(<Progress id="default-status-icon-test" value={100} variant="success" />);
+
+    expect(screen.getByRole('img', { hidden: true })).toBeInTheDocument();
+  });
+
+  test('hides status icon when hideStatusIcon flag is set with success variant', () => {
+    render(<Progress id="hide-icon-success" value={100} variant="success" hideStatusIcon />);
+
+    expect(screen.queryByRole('img', { hidden: true })).not.toBeInTheDocument();
+  });
+
+  test('hides status icon when hideStatusIcon flag is set with danger variant', () => {
+    render(<Progress id="hide-icon-danger" value={50} variant="danger" hideStatusIcon />);
+
+    expect(screen.queryByRole('img', { hidden: true })).not.toBeInTheDocument();
+  });
+
+  test('hides status icon when hideStatusIcon flag is set with warning variant', () => {
+    render(<Progress id="hide-icon-warning" value={75} variant="warning" hideStatusIcon />);
+
+    expect(screen.queryByRole('img', { hidden: true })).not.toBeInTheDocument();
+  });
+
+  test('shows status icon when hideStatusIcon is explicitly false', () => {
+    render(<Progress id="show-icon-success" value={100} variant="success" hideStatusIcon={false} />);
+
+    expect(screen.getByRole('img', { hidden: true })).toBeInTheDocument();
+  });
+});

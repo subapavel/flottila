@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCheckCircleIconConfig = {
+  name: 'RhUiCheckCircleIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M16 1C7.729 1 1 7.729 1 16s6.729 15 15 15 15-6.729 15-15S24.271 1 16 1Zm0 28C8.832 29 3 23.168 3 16S8.832 3 16 3s13 5.832 13 13-5.832 13-13 13Zm7.707-17.707a.999.999 0 0 1 0 1.414l-8.646 8.646c-.292.292-.676.438-1.061.438s-.768-.146-1.061-.438l-4.646-4.646a.999.999 0 1 1 1.414-1.414L14 19.586l8.293-8.293a.999.999 0 0 1 1.414 0Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCheckCircleIcon = createIconBase(RhUiCheckCircleIconConfig);
+
+export default RhUiCheckCircleIcon;

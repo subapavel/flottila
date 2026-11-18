@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiCompareFillIconConfig = {
+  name: 'RhUiCompareFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M22 23.125c.141 0 .278-.017.418-.021-1.34 4.488-5.5 7.771-10.418 7.771-5.997 0-10.875-4.878-10.875-10.875 0-4.918 3.283-9.078 7.771-10.418-.004.14-.021.277-.021.418 0 7.237 5.888 13.125 13.125 13.125Zm-1.194-2.319c-.554-5.044-4.568-9.058-9.612-9.612.554 5.044 4.568 9.058 9.612 9.612ZM20 1.125c-4.918 0-9.078 3.283-10.418 7.771.14-.004.277-.021.418-.021 7.237 0 13.125 5.888 13.125 13.125 0 .141-.017.278-.021.418 4.488-1.34 7.771-5.5 7.771-10.418 0-5.997-4.878-10.875-10.875-10.875Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiCompareFillIcon = createIconBase(RhUiCompareFillIconConfig);
+
+export default RhUiCompareFillIcon;

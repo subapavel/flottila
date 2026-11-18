@@ -1,0 +1,113 @@
+import { Fragment, isValidElement } from 'react';
+import styles from '@patternfly/react-styles/css/components/Form/form';
+import { ASTERISK } from '../../helpers/htmlConstants';
+import { css } from '@patternfly/react-styles';
+import { useSSRSafeId, useOUIAProps, OUIAProps } from '../../helpers';
+
+export interface FormGroupProps extends Omit<React.HTMLProps<HTMLDivElement>, 'label'>, OUIAProps {
+  /** Anything that can be rendered as FormGroup content. */
+  children?: React.ReactNode;
+  /** Additional classes added to the FormGroup. */
+  className?: string;
+  /** Label text before the field. */
+  label?: React.ReactNode;
+  /** Additional label information displayed after the label. */
+  labelInfo?: React.ReactNode;
+  /** A help button for the label. We recommend using FormGroupLabelHelp element as a help icon button. The help button should be wrapped or linked to our popover component. */
+  labelHelp?: React.ReactElement<any>;
+  /** Sets the FormGroup required. */
+  isRequired?: boolean;
+  /** Sets the FormGroup isInline. */
+  isInline?: boolean;
+  /** Sets the FormGroupControl to be stacked */
+  isStack?: boolean;
+  /** Sets the FormGroup action modifier. Used to contain form action buttons. */
+  isActionGroup?: boolean;
+  /** Removes top spacer from label. */
+  hasNoPaddingTop?: boolean;
+  /** ID of an individual field or a group of multiple fields. Required when a role of "group" or "radiogroup" is passed in.
+   * If only one field is included, its ID attribute and this prop must be the same.
+   */
+  fieldId?: string;
+  /** Sets the role of the form group. Pass in "radiogroup" when the form group contains multiple
+   * radio inputs, or pass in "group" when the form group contains multiple of any other input type.
+   */
+  role?: string;
+  /** Value to overwrite the randomly generated data-ouia-component-id.*/
+  ouiaId?: number | string;
+  /** Set the value of data-ouia-safe. Only set to true when the component is in a static state, i.e. no animations are occurring. At all other times, this value must be false. */
+  ouiaSafe?: boolean;
+}
+
+export const FormGroup: React.FunctionComponent<FormGroupProps> = ({
+  children = null,
+  className = '',
+  label,
+  labelInfo,
+  labelHelp,
+  isRequired = false,
+  isInline = false,
+  hasNoPaddingTop = false,
+  isStack = false,
+  isActionGroup = false,
+  fieldId,
+  role,
+  ouiaId,
+  ouiaSafe = true,
+  ...props
+}: FormGroupProps) => {
+  const ouiaProps = useOUIAProps(FormGroup.displayName, ouiaId, ouiaSafe);
+  const randomId = useSSRSafeId();
+  const isGroupOrRadioGroup = role === 'group' || role === 'radiogroup';
+  const LabelComponent = isGroupOrRadioGroup ? 'span' : 'label';
+
+  const labelContent = (
+    <>
+      <LabelComponent className={css(styles.formLabel)} {...(!isGroupOrRadioGroup && { htmlFor: fieldId })}>
+        <span className={css(styles.formLabelText)}>{label}</span>
+        {isRequired && (
+          <span className={css(styles.formLabelRequired)} aria-hidden="true">
+            &nbsp;{ASTERISK}
+          </span>
+        )}
+      </LabelComponent>
+      <>&nbsp;&nbsp;</>
+      {isValidElement(labelHelp) && <span className={styles.formGroupLabelHelp}>{labelHelp}</span>}
+    </>
+  );
+
+  return (
+    <div
+      className={css(styles.formGroup, isActionGroup && styles.modifiers.action, className)}
+      {...(role && { role })}
+      {...(isGroupOrRadioGroup && { 'aria-labelledby': `${fieldId || randomId}-legend` })}
+      {...props}
+      {...ouiaProps}
+    >
+      {label && (
+        <div
+          className={css(
+            styles.formGroupLabel,
+            labelInfo && styles.modifiers.info,
+            hasNoPaddingTop && styles.modifiers.noPaddingTop
+          )}
+          {...(isGroupOrRadioGroup && { id: `${fieldId || randomId}-legend` })}
+        >
+          {labelInfo && (
+            <Fragment>
+              <div className={css(styles.formGroupLabelMain)}>{labelContent}</div>
+              <div className={css(styles.formGroupLabelInfo)}>{labelInfo}</div>
+            </Fragment>
+          )}
+          {!labelInfo && labelContent}
+        </div>
+      )}
+      <div
+        className={css(styles.formGroupControl, isInline && styles.modifiers.inline, isStack && styles.modifiers.stack)}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+FormGroup.displayName = 'FormGroup';

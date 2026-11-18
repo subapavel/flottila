@@ -1,0 +1,42 @@
+---
+id: Banner
+section: components
+cssPrefix: pf-v6-c-banner
+propComponents: ['Banner']
+---
+
+import RhUiCheckCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-check-circle-fill-icon';
+import RhUiErrorFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-error-fill-icon';
+import RhUiWarningFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-warning-fill-icon';
+import RhUiInformationFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-information-fill-icon';
+import RhUiNotificationFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-notification-fill-icon';
+
+## Examples
+
+### Basic
+
+Banners can be styled with one of 9 different colors using the `color` prop. A basic banner should only be used when the banner color does not represent status or severity.
+
+```ts file="./BannerBasic.tsx"
+
+```
+
+### Status
+
+When a banner is used to convey status it should be styled using the `status` prop. Additionally, it is advised to pass an icon inside the banner to convey the status in a way besides just color.
+
+The `screenReaderText` prop should also be passed in to convey the status/severity of the banner to users of certain assistive technologies such as screen readers.
+
+In the following example, a flex layout is used inside the banner content to show one possible way to create spacing between the icons and banner text.
+
+```ts file="./BannerStatus.tsx"
+
+```
+
+### Pill
+
+Banners may also have a rounded pill style by passing the `isPill` prop.
+
+```ts file="./BannerPill.tsx"
+
+```

@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiPuzzlePieceFillIconConfig: {
+  name: 'RhUiPuzzlePieceFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M28.5 16c0 1.93-1.57 3.5-3.5 3.5-.521 0-1.033-.12-1.5-.345V24.5c0 .551-.448 1-1 1h-5.346c.227.467.346.979.346 1.5 0 1.93-1.57 3.5-3.5 3.5s-3.5-1.57-3.5-3.5c0-.521.119-1.033.346-1.5H5.5c-.552 0-1-.449-1-1v-6.278a.5.5 0 0 1 .835-.372A2.49 2.49 0 0 0 7 18.5c1.379 0 2.5-1.122 2.5-2.5S8.379 13.5 7 13.5c-.608 0-1.2.231-1.665.65a.5.5 0 0 1-.835-.372V7.5c0-.551.448-1 1-1h5.346A3.43 3.43 0 0 1 10.5 5c0-1.93 1.57-3.5 3.5-3.5s3.5 1.57 3.5 3.5a3.43 3.43 0 0 1-.346 1.5H22.5c.552 0 1 .449 1 1v5.345A3.442 3.442 0 0 1 25 12.5c1.93 0 3.5 1.57 3.5 3.5Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiPuzzlePieceFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiPuzzlePieceFillIcon;

@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhStandardCioItdmIconConfig: {
+  name: 'RhStandardCioItdmIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":[{"path":"M14 18.62h8a.62.62 0 0 0 0-1.24h-.38V13a.62.62 0 0 0-1.24 0v4.38h-1.76v-2.5a.62.62 0 1 0-1.24 0v2.5h-1.76v-1.26a.62.62 0 0 0-1.24 0v1.26H14a.62.62 0 0 0 0 1.24Z"},{"path":"M31 6.38H5a.61.61 0 0 0-.62.62v17a.61.61 0 0 0 .62.62h10.38v3.76H9a.62.62 0 1 0 0 1.24h18a.62.62 0 0 0 0-1.24h-6.38v-3.76H31a.61.61 0 0 0 .62-.62V7a.61.61 0 0 0-.62-.62Zm-11.62 22h-2.76v-3.76h2.76Zm11-5H5.62V7.62h24.76Z"}]},
+  rhUiIcon: null,
+};
+export declare const RhStandardCioItdmIcon: ComponentClass<SVGIconProps>;
+export default RhStandardCioItdmIcon;

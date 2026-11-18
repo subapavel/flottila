@@ -1,0 +1,9 @@
+"use strict"
+exports.__esModule = true;
+exports.RhUiVolumeDownIconConfig = {
+  name: 'RhUiVolumeDownIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M17.439 2.102a1 1 0 0 0-1.054.109L7.656 9H2.5C1.673 9 1 9.673 1 10.5v11c0 .827.673 1.5 1.5 1.5h5.157l8.729 6.789a.998.998 0 0 0 1.053.109c.343-.168.561-.517.561-.898V3a1 1 0 0 0-.561-.898ZM16 26.955l-7.386-5.744A1 1 0 0 0 8 21H3V11h5a.997.997 0 0 0 .614-.211L16 5.045v21.91ZM25 16a9.007 9.007 0 0 1-2.249 5.95.996.996 0 0 1-1.411.091 1 1 0 0 1-.091-1.411C22.378 19.346 23 17.702 23 16s-.622-3.346-1.751-4.63a1 1 0 0 1 1.502-1.32A9.007 9.007 0 0 1 25 16Z"},
+  rhUiIcon: null,
+};
+exports.RhUiVolumeDownIcon = require('../createIcon').createIconBase(exports.RhUiVolumeDownIconConfig);
+exports["default"] = exports.RhUiVolumeDownIcon;

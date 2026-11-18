@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiSecurityAdvisoryFillIconConfig = {
+  name: 'RhUiSecurityAdvisoryFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"m28.209 3.582-12-2.56a1.015 1.015 0 0 0-.418 0l-12 2.56A1 1 0 0 0 3 4.56V18c0 7.168 5.832 13 13 13s13-5.832 13-13V4.56a1 1 0 0 0-.791-.978ZM14.5 9a1.5 1.5 0 0 1 3 0v7a1.5 1.5 0 0 1-3 0V9ZM16 25.001a2 2 0 1 1-.001-3.999A2 2 0 0 1 16 25.001Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiSecurityAdvisoryFillIcon = createIconBase(RhUiSecurityAdvisoryFillIconConfig);
+
+export default RhUiSecurityAdvisoryFillIcon;

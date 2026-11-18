@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiHourglassIconConfig: {
+  name: 'RhUiHourglassIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M26 29h-1v-3.757a3.977 3.977 0 0 0-1.172-2.829L17.414 16l6.414-6.414A3.975 3.975 0 0 0 25 6.757V3h1a1 1 0 1 0 0-2H6a1 1 0 1 0 0 2h1v3.757c0 1.068.416 2.072 1.172 2.829L14.586 16l-6.414 6.414A3.975 3.975 0 0 0 7 25.243V29H6a1 1 0 1 0 0 2h20a1 1 0 1 0 0-2ZM23 3v3.757c0 .082-.014.162-.024.243H9.023c-.01-.081-.024-.16-.024-.243V3h14ZM9 25.243c0-.534.208-1.036.586-1.415L16 17.414l6.414 6.414c.378.378.586.881.586 1.415V26H9v-.757Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiHourglassIcon: ComponentClass<SVGIconProps>;
+export default RhUiHourglassIcon;

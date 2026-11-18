@@ -1,0 +1,15 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Transformer functions sortable asc 1`] = `
+{
+  "aria-sort": "ascending",
+  "children": <SortColumn
+    isSortedBy={true}
+    onSort={[Function]}
+    sortDirection="asc"
+  >
+    
+  </SortColumn>,
+  "className": "pf-v6-c-table__sort pf-m-selected",
+}
+`;

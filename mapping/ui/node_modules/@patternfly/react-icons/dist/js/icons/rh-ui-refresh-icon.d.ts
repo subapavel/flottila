@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiRefreshIconConfig: {
+  name: 'RhUiRefreshIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 2v8.5c0 .827-.673 1.5-1.5 1.5H21a1 1 0 0 1 0-2h6.524C25.307 5.763 20.851 3 16 3 8.832 3 3 8.832 3 16s5.832 13 13 13a13.02 13.02 0 0 0 10.67-5.572 1.002 1.002 0 0 1 1.641 1.145A15.023 15.023 0 0 1 16 31.001c-8.271 0-15-6.729-15-15S7.729 1 16 1c5.384 0 10.352 2.945 13 7.521V2a1 1 0 0 1 2 0Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiRefreshIcon: ComponentClass<SVGIconProps>;
+export default RhUiRefreshIcon;

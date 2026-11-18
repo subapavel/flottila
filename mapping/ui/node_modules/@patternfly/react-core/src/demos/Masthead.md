@@ -1,0 +1,32 @@
+---
+id: Masthead
+section: components
+---
+
+import { cloneElement, Fragment, useEffect, useRef, useState } from 'react';
+import RhUiMenuBarsIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-menu-bars-icon';
+import RhUiEllipsisVerticalFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-ellipsis-vertical-fill-icon';
+import RhUiNotificationFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-notification-fill-icon';
+import RhUiSettingsFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-settings-fill-icon';
+import RhUiQuestionMarkCircleIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-icon';
+import RhUiQuestionMarkCircleFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-question-mark-circle-fill-icon';
+import RhUiThumbnailViewSmallFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-thumbnail-view-small-fill-icon';
+import imgAvatar from '@patternfly/react-core/src/components/assets/avatarImg.svg';
+import pfIcon from './assets/pf-logo-small.svg';
+import pfLogo from './assets/PF-HorizontalLogo-Color.svg';
+
+## Demos
+
+### Utilities and user dropdown menu
+
+Many mastheads contain utilities which collapse into a dropdown at smaller viewport widths. These utilities could include a notification badge to open and close a notification drawer, a link to app or user settings, a help icon which could launch quick starts or link to other resources, and many other utilities. In this demo, the notification badge does not collapse down into the mobile menu so that it is always visible even at narrower viewport widths.
+
+```ts file='./examples/Masthead/MastheadWithUtilitiesAndUserDropdownMenu.tsx' isFullscreen
+
+```
+
+### Horizontal nav
+
+```ts file='./examples/Masthead/MastheadWithHorizontalNav.tsx' isFullscreen
+
+```

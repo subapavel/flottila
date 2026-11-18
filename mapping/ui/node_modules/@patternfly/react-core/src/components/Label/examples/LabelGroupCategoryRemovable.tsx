@@ -1,0 +1,24 @@
+import { useState } from 'react';
+import { Label, LabelColor, LabelGroup } from '@patternfly/react-core';
+import RhUiInformationFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-information-fill-icon';
+
+export const LabelGroupCategoryRemovable: React.FunctionComponent = () => {
+  const [labels, setLabels] = useState([
+    ['Label 1', 'grey'],
+    ['Label 2', 'blue'],
+    ['Label 3', 'green'],
+    ['Label 4', 'orange'],
+    ['Label 5', 'red']
+  ]);
+  const deleteCategory = () => setLabels([]);
+
+  return (
+    <LabelGroup categoryName="Group label" isClosable onClick={deleteCategory}>
+      {labels.map(([labelText, labelColor]) => (
+        <Label icon={<RhUiInformationFillIcon />} color={labelColor as LabelColor} key={labelText}>
+          {labelText}
+        </Label>
+      ))}
+    </LabelGroup>
+  );
+};

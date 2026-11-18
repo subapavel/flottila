@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiUnknownFillIconConfig: {
+  name: 'RhUiUnknownFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"m28.749 10.364-7.113-7.113c-3.108-3.107-8.164-3.107-11.272 0l-7.113 7.113c-3.107 3.108-3.107 8.164 0 11.272l7.113 7.113c1.554 1.554 3.595 2.331 5.636 2.331s4.082-.777 5.636-2.331l7.113-7.113c3.107-3.107 3.107-8.164 0-11.271ZM16 27.001a2 2 0 1 1-.001-3.999A2 2 0 0 1 16 27.001Zm1.25-9.901V19a1.25 1.25 0 0 1-2.5 0v-3c0-.69.56-1.25 1.25-1.25 1.517 0 2.75-1.233 2.75-2.75S17.517 9.25 16 9.25s-2.75 1.233-2.75 2.75a1.25 1.25 0 0 1-2.5 0c0-2.895 2.355-5.25 5.25-5.25s5.25 2.355 5.25 5.25a5.261 5.261 0 0 1-4 5.1Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiUnknownFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiUnknownFillIcon;

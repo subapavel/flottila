@@ -1,0 +1,9 @@
+import { ComponentClass } from 'react';
+import { SVGIconProps } from '../createIcon.js';
+export declare const RhUiCombineFillIconConfig: {
+  name: 'RhUiCombineFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M30 17.125V28.5c0 .827-.673 1.5-1.5 1.5h-25c-.827 0-1.5-.673-1.5-1.5V17.125h8.284l-3.08 3.08a1.126 1.126 0 0 0 1.59 1.591l4.646-4.646a1.626 1.626 0 0 0 0-2.298l-4.646-4.646a1.126 1.126 0 0 0-1.591 1.591l3.08 3.08H2V3.5C2 2.673 2.673 2 3.5 2h25c.827 0 1.5.673 1.5 1.5v11.375h-8.284l3.08-3.08a1.126 1.126 0 0 0-1.591-1.591l-4.646 4.646a1.626 1.626 0 0 0 0 2.298l4.646 4.646a1.12 1.12 0 0 0 1.59 0 1.126 1.126 0 0 0 0-1.591l-3.08-3.08h8.284Z"},
+  rhUiIcon: null,
+};
+export declare const RhUiCombineFillIcon: ComponentClass<SVGIconProps>;
+export default RhUiCombineFillIcon;

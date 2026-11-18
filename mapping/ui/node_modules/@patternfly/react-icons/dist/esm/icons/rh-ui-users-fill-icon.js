@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiUsersFillIconConfig = {
+  name: 'RhUiUsersFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M13.766 21.75H2c-.402 0-.748-.317-.75-.718-.013-3.743 2.34-6.941 5.642-8.201A5.747 5.747 0 0 1 4.25 8a5.76 5.76 0 0 1 6.992-5.619c2.167.456 3.918 2.207 4.376 4.373a5.754 5.754 0 0 1-2.51 6.077c.394.15.77.334 1.134.539.103.058.148.18.113.292a7.924 7.924 0 0 0 .807 6.473.237.237 0 0 1-.054.312c-.485.394-.929.835-1.342 1.303Zm11.342-.919A5.747 5.747 0 0 0 27.75 16c0-3.171-2.58-5.75-5.75-5.75s-5.75 2.579-5.75 5.75a5.747 5.747 0 0 0 2.642 4.831c-3.293 1.257-5.642 4.44-5.642 8.169 0 .414.336.75.75.75h16a.75.75 0 0 0 .75-.75c0-3.73-2.349-6.912-5.642-8.169Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiUsersFillIcon = createIconBase(RhUiUsersFillIconConfig);
+
+export default RhUiUsersFillIcon;

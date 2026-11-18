@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiConstructionIconConfig = {
+  name: 'RhUiConstructionIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M23 17c0 3.86-3.141 7-7 7a6.966 6.966 0 0 1-4.73-1.855l-7.562 7.562a.997.997 0 0 1-1.414 0 .999.999 0 0 1 0-1.414l7.707-7.707a6.95 6.95 0 0 1-1-3.586c0-3.521 2.612-6.442 6-6.929V8h-2.5c-.827 0-1.5-.673-1.5-1.5V3a1 1 0 1 1 2 0v3h6V3a1 1 0 1 1 2 0v3.5c0 .827-.673 1.5-1.5 1.5h-2.5v3a1 1 0 0 1-1 1c-2.757 0-5 2.243-5 5 0 .754.18 1.463.481 2.105l3.459-3.459a1.501 1.501 0 0 1 2.121 0l1.646 1.646a.999.999 0 1 1-1.414 1.414l-1.293-1.293-3.307 3.307c.884.786 2.034 1.279 3.307 1.279 2.757 0 5-2.243 5-5a1 1 0 1 1 2 0Zm6.707 11.293-6-6a.999.999 0 1 0-1.414 1.414l6 6a.997.997 0 0 0 1.414 0 .999.999 0 0 0 0-1.414Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiConstructionIcon = createIconBase(RhUiConstructionIconConfig);
+
+export default RhUiConstructionIcon;

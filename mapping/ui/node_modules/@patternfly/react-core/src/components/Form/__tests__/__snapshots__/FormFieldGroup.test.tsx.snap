@@ -1,0 +1,138 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Check expandable form field group example against snapshot 1`] = `
+<DocumentFragment>
+  <div
+    aria-labelledby="title-text-id2"
+    class="pf-v6-c-form__field-group pf-m-expanded"
+    role="group"
+  >
+    <div
+      class="pf-v6-c-form__field-group-toggle"
+    >
+      <div
+        class="pf-v6-c-form__field-group-toggle-button"
+      >
+        <button
+          aria-expanded="true"
+          aria-label="toggle"
+          aria-labelledby="title-text-id2 form-field-group-toggle:r2:"
+          class="pf-v6-c-button pf-m-plain"
+          data-ouia-component-id="OUIA-Generated-Button-plain-:r3:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          id="form-field-group-toggle:r2:"
+          type="button"
+        >
+          <span
+            class="pf-v6-c-button__icon"
+          >
+            <span
+              class="pf-v6-c-form__field-group-toggle-icon"
+            >
+              <svg
+                aria-hidden="true"
+                class="pf-v6-svg"
+                fill="currentColor"
+                height="1em"
+                role="img"
+                viewBox="0 0 20 20"
+                width="1em"
+              >
+                <path
+                  d="M18.71 5.29a.996.996 0 0 0-1.41 0l-7.29 7.29-7.3-7.29a.987.987 0 0 0-1.41-.02.987.987 0 0 0-.02 1.41l.02.02 7.65 7.65c.29.29.68.44 1.06.44s.77-.15 1.06-.44l7.65-7.65a.996.996 0 0 0 0-1.41Z"
+                />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="pf-v6-c-form__field-group-header"
+    >
+      <div
+        class="pf-v6-c-form__field-group-header-main"
+      >
+        <div
+          class="pf-v6-c-form__field-group-header-title"
+        >
+          <div
+            class="pf-v6-c-form__field-group-header-title-text"
+            id="title-text-id2"
+          >
+            Field group 4 (non-expandable)
+          </div>
+        </div>
+        <div
+          class="pf-v6-c-form__field-group-header-description"
+        >
+          Field group 4 description text.
+        </div>
+      </div>
+      <div
+        class="pf-v6-c-form__field-group-header-actions"
+      >
+        <button
+          class="pf-v6-c-button pf-m-primary"
+          data-ouia-component-id="OUIA-Generated-Button-primary-:r4:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        />
+      </div>
+    </div>
+    <div
+      class="pf-v6-c-form__field-group-body"
+    />
+  </div>
+</DocumentFragment>
+`;
+
+exports[`Check form field group example against snapshot 1`] = `
+<DocumentFragment>
+  <div
+    aria-labelledby="title-text-id1"
+    class="pf-v6-c-form__field-group"
+    role="group"
+  >
+    <div
+      class="pf-v6-c-form__field-group-header"
+    >
+      <div
+        class="pf-v6-c-form__field-group-header-main"
+      >
+        <div
+          class="pf-v6-c-form__field-group-header-title"
+        >
+          <div
+            class="pf-v6-c-form__field-group-header-title-text"
+            id="title-text-id1"
+          >
+            Field group 4 (non-expandable)
+          </div>
+        </div>
+        <div
+          class="pf-v6-c-form__field-group-header-description"
+        >
+          Field group 4 description text.
+        </div>
+      </div>
+      <div
+        class="pf-v6-c-form__field-group-header-actions"
+      >
+        <button
+          class="pf-v6-c-button pf-m-primary"
+          data-ouia-component-id="OUIA-Generated-Button-primary-:r1:"
+          data-ouia-component-type="PF6/Button"
+          data-ouia-safe="true"
+          type="button"
+        />
+      </div>
+    </div>
+    <div
+      class="pf-v6-c-form__field-group-body"
+    />
+  </div>
+</DocumentFragment>
+`;

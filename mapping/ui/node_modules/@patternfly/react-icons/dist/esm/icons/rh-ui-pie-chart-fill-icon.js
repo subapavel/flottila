@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiPieChartFillIconConfig = {
+  name: 'RhUiPieChartFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 16c0 4.259-1.822 8.333-4.998 11.177a15.052 15.052 0 0 1-10.039 3.82c-.555 0-1.111-.03-1.668-.092-6.887-.762-12.439-6.314-13.201-13.201-.472-4.267.887-8.534 3.729-11.707A15.026 15.026 0 0 1 16 1a1 1 0 0 1 1 1v12.004c0 .549.447.996.996.996H30a1 1 0 0 1 1 1Zm-10-4h8.07a1 1 0 0 0 .934-1.355 14.932 14.932 0 0 0-8.649-8.649A1.001 1.001 0 0 0 20 2.93V11a1 1 0 0 0 1 1Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiPieChartFillIcon = createIconBase(RhUiPieChartFillIconConfig);
+
+export default RhUiPieChartFillIcon;

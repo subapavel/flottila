@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhStandardDataIconConfig = {
+  name: 'RhStandardDataIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":36,"height":36,"svgClassName":"pf-v6-icon-rh-standard","svgPathData":"M16.62 12.5a4.12 4.12 0 1 0-4.12 4.12 4.13 4.13 0 0 0 4.12-4.12Zm-4.12 2.88a2.88 2.88 0 1 1 2.88-2.88 2.88 2.88 0 0 1-2.88 2.88Zm5 4a4.12 4.12 0 1 0 4.12 4.12 4.13 4.13 0 0 0-4.12-4.12Zm0 7a2.88 2.88 0 1 1 2.88-2.88 2.88 2.88 0 0 1-2.88 2.88ZM31.62 12.5a4.12 4.12 0 1 0-4.12 4.12 4.13 4.13 0 0 0 4.12-4.12Zm-4.12 2.88a2.88 2.88 0 1 1 2.88-2.88 2.88 2.88 0 0 1-2.88 2.88ZM5 8.38a.61.61 0 0 0-.62.62v7a.62.62 0 0 0 1.24 0V9A.61.61 0 0 0 5 8.38Zm0 11a.61.61 0 0 0-.62.62v7a.62.62 0 0 0 1.24 0v-7a.61.61 0 0 0-.62-.62Zm5 0a.61.61 0 0 0-.62.62v7a.62.62 0 0 0 1.24 0v-7a.61.61 0 0 0-.62-.62Zm15 0a.61.61 0 0 0-.62.62v7a.62.62 0 0 0 1.24 0v-7a.61.61 0 0 0-.62-.62Zm5 0a.61.61 0 0 0-.62.62v7a.62.62 0 0 0 1.24 0v-7a.61.61 0 0 0-.62-.62Zm-10-2.76a.61.61 0 0 0 .62-.62V9a.62.62 0 0 0-1.24 0v7a.61.61 0 0 0 .62.62Z"},
+  rhUiIcon: null,
+};
+
+export const RhStandardDataIcon = createIconBase(RhStandardDataIconConfig);
+
+export default RhStandardDataIcon;

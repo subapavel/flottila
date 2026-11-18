@@ -1,0 +1,42 @@
+import { useState } from 'react';
+import { ToggleGroup, ToggleGroupItem } from '@patternfly/react-core';
+import RhUiUndoIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-undo-icon';
+import RhUiCopyFillIcon from '@patternfly/react-icons/dist/esm/icons/rh-ui-copy-fill-icon';
+import ShareSquareIcon from '@patternfly/react-icons/dist/esm/icons/share-square-icon';
+
+export const ToggleGroupIcon: React.FunctionComponent = () => {
+  const [isSelected, setIsSelected] = useState({
+    'toggle-group-icons-1': false,
+    'toggle-group-icons-2': false,
+    'toggle-group-icons-3': true
+  });
+  const handleItemClick = (event, isSelected: boolean) => {
+    const id = event.currentTarget.id;
+    setIsSelected((prevIsSelected) => ({ ...prevIsSelected, [id]: isSelected }));
+  };
+  return (
+    <ToggleGroup aria-label="Icon variant toggle group">
+      <ToggleGroupItem
+        icon={<RhUiCopyFillIcon />}
+        aria-label="copy"
+        buttonId="toggle-group-icons-1"
+        isSelected={isSelected['toggle-group-icons-1']}
+        onChange={handleItemClick}
+      />
+      <ToggleGroupItem
+        icon={<RhUiUndoIcon />}
+        aria-label="undo"
+        buttonId="toggle-group-icons-2"
+        isSelected={isSelected['toggle-group-icons-2']}
+        onChange={handleItemClick}
+      />
+      <ToggleGroupItem
+        icon={<ShareSquareIcon />}
+        aria-label="share square"
+        buttonId="toggle-group-icons-3"
+        isSelected={isSelected['toggle-group-icons-3']}
+        onChange={handleItemClick}
+      />
+    </ToggleGroup>
+  );
+};

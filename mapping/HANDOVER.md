@@ -2,7 +2,7 @@
 
 This file tells you how to start the Mapping studio, draw and run a mapping, and run the gates
 and benchmarks. It covers GATE check 9. You need only JDK 25 and Node 22 (22.12 or newer,
-`ui/package.json`).
+`../ui/package.json`). The studio is part of the Rail8 UI, the repository's `ui/`.
 
 ## Start the stack on Linux
 
@@ -22,10 +22,11 @@ a workspace, a directory of `*.mapping.json` files (ADR-0014). Start it:
 ../mvnw -pl service -am quarkus:dev
 ```
 
-In a second terminal, start the UI. Vite serves on port 5173 and sends `/api` to the service:
+In a second terminal, start the Rail8 UI in the repository's `ui/`. Vite serves on port 5173 and
+sends `/api` to the service:
 
 ```bash
-cd ui
+cd ../ui
 npm ci
 npm run dev
 ```
@@ -41,21 +42,20 @@ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/catalogue
 `ss -ltn`. Where `ss` is missing, read `/proc/net/tcp`: the line `0100007F:1F90` is `127.0.0.1:8080`
 (`1F90` is 8080 in hex).
 
-Open http://localhost:5173. If port 8080 is taken, set `QUARKUS_HTTP_PORT` for both processes
-(for example `QUARKUS_HTTP_PORT=8081`) and the dev proxy follows.
+Open http://localhost:5173 and choose **Mappings** in the navigation. If port 8080 is taken, set
+`QUARKUS_HTTP_PORT` for both processes (for example `QUARKUS_HTTP_PORT=8081`) and the dev proxy
+follows.
 
-`?api=fake` in the address runs the UI on its built-in fake service, with no backend.
+http://localhost:5173/e2e/fake/ runs the Mappings screen on a built-in fake service, with no
+backend.
 
-### One origin: the `-Pui` jar
+### The service's jar
 
-The jar serves the studio and `/api` from one origin (ADR-0017). `clean` is mandatory with `-Pui`.
+The jar serves `/api` only; the UI's development server talks to it as it does to `quarkus:dev`.
+Build it:
 
 ```bash
-cd ui
-npm ci
-npm run build
-cd ..
-../mvnw -B -Pui -pl service -am clean package -DskipTests
+../mvnw -B -pl service -am package -DskipTests
 ```
 
 Start it over a workspace. It binds to `127.0.0.1`:
@@ -64,7 +64,7 @@ Start it over a workspace. It binds to `127.0.0.1`:
 java -Dquarkus.http.host=127.0.0.1 -Drail8.mapping.workspace=corpus -jar service/target/quarkus-app/quarkus-run.jar
 ```
 
-Open http://127.0.0.1:8080.
+Then start the UI as above and open http://localhost:5173.
 
 ## Start the stack on Windows PowerShell
 
@@ -79,7 +79,7 @@ mvn -pl service -am quarkus:dev
 In a second PowerShell window, start the UI:
 
 ```powershell
-cd ui
+cd ..\ui
 npm ci
 npm run dev
 ```
@@ -106,8 +106,8 @@ Definition and Test show only a link to Signature until the mapping has both a s
 target message, so you choose the messages first. The corpus example is `order-id-copy`: it
 copies a field of `corpus/structures/skeleton/order.xsd` to the same field of the same schema.
 
-1. Open the start page. It is a table of the mappings with the columns Name, Package, Source,
-   Target and Description.
+1. Choose **Mappings** in the navigation of the UI. It is a table of the mappings with the
+   columns Name, Package, Source, Target and Description. Each mapping opens in a tab of its own.
 2. Choose **New mapping**. Enter a Name and, if you like, a Description. The Package is empty, or
    the path of a folder that already exists in the workspace. The service does not create
    folders: a Package that does not exist gives "no such mapping or directory in the workspace"

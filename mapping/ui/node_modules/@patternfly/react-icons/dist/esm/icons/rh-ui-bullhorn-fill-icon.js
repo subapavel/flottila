@@ -1,0 +1,11 @@
+import { createIconBase } from '../createIcon.js';
+
+export const RhUiBullhornFillIconConfig = {
+  name: 'RhUiBullhornFillIcon',
+  icon: {"xOffset":0,"yOffset":0,"width":32,"height":32,"svgPathData":"M31 3.43v24.14a1 1 0 0 1-1.407.912L16 22.43V8.57l13.593-6.052A.998.998 0 0 1 31 3.43ZM6.5 9.5c-2.757 0-5 2.243-5 5s2.243 5 5 5h.395l1.616 7.604A.5.5 0 0 0 9 27.5h3.5a1 1 0 0 0 1-1V10a.5.5 0 0 0-.5-.5H6.5Z"},
+  rhUiIcon: null,
+};
+
+export const RhUiBullhornFillIcon = createIconBase(RhUiBullhornFillIconConfig);
+
+export default RhUiBullhornFillIcon;
