@@ -98,6 +98,20 @@ stdout true\n"Containment check too deep"\n
 stderr
 end
 
+case search/depth-missing-key
+def deb12115259e
+rc 0
+stdout false\n"Containment check too deep"\n
+stderr
+end
+
+case search/depth-missing-key-read
+def 6d5fe00ad0f8
+rc 0
+stdout false\n"Containment check too deep"\n
+stderr
+end
+
 case search/bsearch
 def 52e0c7443d6f
 rc 0

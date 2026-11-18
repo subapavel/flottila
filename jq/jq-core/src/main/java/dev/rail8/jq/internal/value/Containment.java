@@ -43,7 +43,8 @@ import java.lang.foreign.MemorySegment;
  * strings are when the bytes of {@code b} occur in those of {@code a}, which an empty {@code b} always does; two arrays
  * when each element of {@code b}, in order, is contained by some element of {@code a}, tried in order up to the first
  * that contains it, each pair one level deeper; two objects when each key of {@code b}, in its key order, is a key of
- * {@code a} whose value contains {@code b}'s, one level deeper; any other pair when {@link Equality} finds it equal.
+ * {@code a} whose value contains {@code b}'s, one level deeper, where a key {@code a} lacks still has its depth
+ * checked; any other pair when {@link Equality} finds it equal.
  *
  * <p>The walk keeps its open containers on a stack of its own, never in Java frames. It charges one tick per member
  * pair it compares, Equality's ticks for each pair of scalars, and for two strings one per started KiB of {@code a}
@@ -122,6 +123,17 @@ public final class Containment {
         open = open.outer;
       }
     }
+  }
+
+  /**
+   * A key of {@code b} that {@code a} lacks, at {@code depth}: jq still checks the pair of no value and {@code b}'s
+   * value, so past {@link #MAX_DEPTH} it raises "Containment check too deep"; otherwise it is not contained.
+   */
+  private static int missing(int depth) {
+    if (depth > MAX_DEPTH) {
+      throw new FilterException(BuiltString.of(TOO_DEEP));
+    }
+    return Walk.FALSE;
   }
 
   /**
@@ -238,7 +250,7 @@ public final class Containment {
       }
       JqValue value = a.get(state, ((Keyed) keys).key(cursor).value());
       if (value == null) {
-        return FALSE;
+        return missing(depth);
       }
       x = value;
       y = keys.member(state, cursor);
@@ -279,7 +291,7 @@ public final class Containment {
       }
       JqValue value = a.value(matched);
       if (value == null) {
-        return FALSE;
+        return missing(depth);
       }
       x = value;
       y = keys.member(state, cursor);

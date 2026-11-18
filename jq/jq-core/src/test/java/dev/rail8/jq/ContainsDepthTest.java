@@ -55,6 +55,15 @@ class ContainsDepthTest {
   }
 
   @Test
+  void aKeyTheInputLacksIsCheckedForDepthToo() {
+    // jq-ref 1.8.2: false at 9 999 levels around {} and {"b":1}; at 10 000 the key b, which {} lacks, lies past the
+    // limit, so the error.
+    JqValue at9999 = wrapPair(value("[{},{\"b\":1}]"), "{a:", "}", 9_999);
+    assertResult(onSmallStack(CONTAINS, at9999), "false", "chains of 9 999 objects around {} and {\"b\":1}");
+    assertJqError(onSmallStack(CONTAINS, wrapPair(at9999, "{a:", "}", 1)), DEEP, "chains of 10 000 objects around {} and {\"b\":1}");
+  }
+
+  @Test
   void aMillionLevelsGiveJqsErrorOnASmallStack() {
     // jq-ref 1.8.2: reduce range(1000000) as $i (0; [.]) | try contains(.) catch . gives the error.
     JqValue million = wrap(value("0"), "[", "]", 1_000_000);
