@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Script test for the top-level gate logs (#125): scripts/gate-ticket.sh and scripts/gate-spec.sh, started by absolute
-# path from another directory, write .logs/<ticket>-gate.log and .logs/<spec>-spec-gate.log under their own
-# repository root, equal to the console output. Scratch root with stubbed mvnw, java, git and helper scripts: the real
+# Script test for the top-level gate logs (#125): scripts/gate-spec.sh, started by absolute path from another
+# directory, writes .logs/<spec>-spec-gate.log under its own repository root, equal to the console output. Scratch root with stubbed mvnw, java, git and helper scripts: the real
 # gate is never run.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -13,15 +12,14 @@ check() { if [ "$2" != "$3" ]; then echo "FAIL $1: expected '$3' got '$2'"; fail
 root="$tmp/root"
 elsewhere="$tmp/elsewhere"
 mkdir -p "$root/scripts" "$root/ratchet" "$root/bin" "$elsewhere"
-cp "$here/../gate-ticket.sh" "$here/../gate-spec.sh" "$root/scripts/"
+cp "$here/../gate-spec.sh" "$root/scripts/"
 ok='#!/usr/bin/env bash\nexit 0\n'
 printf "$ok" > "$root/bin/java"
 printf "$ok" > "$root/bin/git"
 printf "$ok" > "$root/scripts/check-lf-checkout.sh"
-printf "$ok" > "$root/scripts/check-trailers.sh"
 # MVNW_EXIT sets the exit code of every Maven step: MVNW points the gates at this stub
 printf '#!/usr/bin/env bash\nexit "${MVNW_EXIT:-0}"\n' > "$root/mvnw"
-export MVNW="$root/mvnw"   # the gate's wrapper (BRAND-3: ../mvnw in the tree)
+export MVNW="$root/mvnw"   # the gate's wrapper
 # the summary call prints a warning to stderr, which the log must hold too, then one line per module; the --run call
 # prints nothing
 printf '#!/usr/bin/env bash\n[ "$1" = --run ] && exit 0\nshift\necho "pit-summary: warning" >&2\nfor m in "$@"; do echo "$m 9/9 survivors 0 floor 0 ok"; done\n' \
@@ -41,17 +39,6 @@ gate() {
   out=$(cat "$tmp/console")
 }
 evidence() { grep -cE '^(VERIFIED_PASS|EXECUTED_FAIL|NOT_RUN) ' <<< "$out"; }
-
-gate gate-ticket.sh 7 engine/xdm
-check "ticket: exit" "$code" 0
-check "ticket: evidence lines" "$(evidence)" 8
-check "ticket: pit summary" "$(tail -n1 <<< "$out")" "engine/xdm 9/9 survivors 0 floor 0 ok"
-check "ticket: log equals console" "$(cat "$root/.logs/7-gate.log" 2>&1)" "$out"
-check "ticket: no log in the current directory" "$(ls -A "$elsewhere")" ""
-check "ticket: no ui/ under its root, the UI is the repository's ../ui" "$(ls -d "$root/ui" 2>/dev/null)" ""
-MVNW_EXIT=1 gate gate-ticket.sh 7 engine/xdm
-check "ticket failing: exit" "$code" 1
-check "ticket failing: log equals console" "$(cat "$root/.logs/7-gate.log" 2>&1)" "$out"
 
 gate gate-spec.sh 8 engine/xdm
 check "spec: exit" "$code" 0

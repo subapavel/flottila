@@ -2,7 +2,7 @@
 # Every tracked file checks out byte-identical on Windows and on Linux (#49). Goldens, corpus cases, contract files,
 # canonical fixtures and generated types are compared byte by byte, so a Windows checkout (Git for Windows sets
 # core.autocrlf=true) must not turn their LF into CRLF. .gitattributes decides that. Run from any directory; it
-# changes to the repository root of the worktree it lives in.
+# changes to the mapping/ directory it lives in.
 #
 #   scripts/check-lf-checkout.sh
 #

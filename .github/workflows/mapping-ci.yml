@@ -77,18 +77,12 @@ jobs:
           scripts/test/ratchet-bench-test.sh
           scripts/test/ratchet-baseline-test.sh
           scripts/test/gate-spec-bench-test.sh
-      # From the dropped trailers job (BRAND-3): the script tests that need no JDK, every one the old CI ran. The
-      # old-process scripts (check-trailers.sh, clean-worktrees.sh, push-retry.sh) are adapted or archived by MAP-7.
-      # The ratchet's CI scripts and their wiring (MAP-12b) join them: their test stubs java and gh.
-      - name: Script tests that need no JDK (gate scripts, old-process scripts, HANDOVER.md)
+      # The script tests that need no JDK. The ratchet's CI script and its wiring test stub java and gh.
+      - name: Script tests that need no JDK (gate scripts, ratchet CI scripts, HANDOVER.md)
         run: |
-          scripts/test/trailers-test.sh
-          scripts/test/trailers-root-test.sh
-          scripts/test/clean-worktrees-test.sh
           scripts/test/pit-summary-test.sh
           scripts/test/gate-spec-default-test.sh
           scripts/test/gate-log-test.sh
-          scripts/test/push-retry-test.sh
           scripts/test/handover-test.sh
           scripts/test/ratchet-ci-test.sh
           scripts/test/ratchet-ci-wiring-test.sh

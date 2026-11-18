@@ -135,13 +135,6 @@ To compare with the finished example, choose **Open in studio** on `order-id-cop
 
 ## Run the gates and benchmarks
 
-Run the ticket gate from a worktree. `<ticket>` names the logs and `<modules>` are the touched
-modules, comma-separated (`docs/WORKFLOW.md` section 6):
-
-```bash
-scripts/gate-ticket.sh <ticket> <modules> origin/<integration-branch>
-```
-
 Run the spec gate once per spec:
 
 ```bash
