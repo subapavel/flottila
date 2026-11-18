@@ -98,10 +98,7 @@ public final class FunctionCatalogue {
       boolean generating,
       boolean keepsSingleValue) {
 
-    /**
-     * The entry of a function whose result is no generating block and whose call over single values
-     * is a queue.
-     */
+    /** The entry of a function that is neither generating nor marked {@code keepsSingleValue}. */
     Entry(ExecutionKind executionKind, List<String> inputs, List<Param> params) {
       this(executionKind, inputs, params, false, false);
     }

@@ -915,7 +915,9 @@ class LoweringTest {
           List.of(new Literal("k", id("c1"))),
           id("c1"));
 
-  /** The value of code, the first target field, from {@code result} over {@code boxes}. */
+  /**
+   * The lowered document whose first target field, code, is from {@code result} over {@code boxes}.
+   */
   private static TargetDocument code(String result, Map<AuthoringId, Box> boxes) {
     return lowered(
         lowerTagged(

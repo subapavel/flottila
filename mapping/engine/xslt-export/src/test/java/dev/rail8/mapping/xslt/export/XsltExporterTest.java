@@ -1001,8 +1001,8 @@ class XsltExporterTest {
 
   /**
    * removeContexts over a constant is an atomic FunCall as well, its {@code po:removeContexts} call
-   * over the constant's in the text of its TargetRepeat's element: the same helper that takes a
-   * queue takes the single value and passes it on.
+   * over the constant's in the text of its TargetRepeat's element. The one helper declares its
+   * param and its result {@code item()}, so it takes the single value as it takes a queue.
    */
   @Test
   void removeContextsOverAConstantIsItsCallInTheTextOfItsTargetRepeat() {
@@ -1035,6 +1035,14 @@ class XsltExporterTest {
     assertThat(XsltExporter.export(document))
         .contains(
             "<OrderId><xsl:value-of select=\"po:removeContexts(po:constant('k'))\"/></OrderId>");
+    assertThat(declarationTexts(XsltExporter.helperModule()))
+        .filteredOn(d -> declarationName(d).equals("xsl:function po:removeContexts"))
+        .singleElement()
+        .satisfies(
+            d ->
+                assertThat(d)
+                    .startsWith("<xsl:function name=\"po:removeContexts\" as=\"item()\">")
+                    .contains("<xsl:param name=\"queue\" as=\"item()\"/>"));
   }
 
   /**
