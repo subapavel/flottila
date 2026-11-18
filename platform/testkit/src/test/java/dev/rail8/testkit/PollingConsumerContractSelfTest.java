@@ -362,7 +362,10 @@ class PollingConsumerContractSelfTest {
         AtomicLong calls = new AtomicLong();
         assertEquals(Set.of("settingsAreTheSameOnEveryCall"),
                 failing(v -> v.settings = () -> Settings.of(Field.text("f" + calls.incrementAndGet(), "Another field on every call."))));
-        assertEquals(Set.of("theEndpointPassesTheDescription"), failing(v -> v.settings = () -> Settings.of(Field.text("dir", "Where files are.").required())));
+        assertEquals(Set.of("theEndpointPassesTheDescription"), failing(v -> v.settings = () -> Settings.of(Field.text("dir", "Where files are.").required().in())),
+                "the endpoint lacks a required in setting");
+        assertEquals(Set.of(), failing(v -> v.settings = () -> Settings.of(Field.text("glob", "Which files.").in(), Field.text("url", "Where to send.").required().out())),
+                "the endpoint is an in one: a required out setting is not its business");
     }
 
     @Test

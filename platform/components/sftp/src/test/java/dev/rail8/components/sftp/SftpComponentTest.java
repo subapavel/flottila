@@ -542,26 +542,26 @@ class SftpComponentTest {
     @Test
     void optionsOutsideTheDescriptionAreRefused() {
         assertEquals("sftp", component(rt).scheme());
-        Settings schema = component(rt).settings();
+        Settings settings = component(rt).settings();
         // what the deploy checks: the endpoint's own config, before it sets flow and maxBodyBytes on an in endpoint
         Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
-        assertValid(schema, base, "user, password and hostKey");
-        assertValid(schema, with(without(base, "password"), "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"),
+        assertValid(settings, base, "user, password and hostKey");
+        assertValid(settings, with(without(base, "password"), "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"),
                 "a private key instead of the password");
         Map<String, Object> every = new HashMap<>(base);
         every.putAll(Map.of("glob", "*.xml", "intervalMs", 5_000, "maxFilesPerPoll", 10, "minAgeMs", 30_000, "afterSuccess", "move", "moveTo", "/done",
                 "connectTimeoutMs", 5_000, "ioTimeoutMs", 10_000, "errorDir", "/error"));
         every.putAll(Map.of("flow", "orders/sftp-intake", "maxBodyBytes", 1_000_000));
-        assertValid(schema, every, "every option the component knows, the two the deploy sets included");
-        assertValid(schema, with(base, "maxBodyBytes", 0), "maxBodyBytes is the node's on an in endpoint: the consumer refuses a bad one");
-        assertValid(schema, with(base, "afterSuccess", "delete"), "afterSuccess delete");
-        assertRefused(schema, without(base, "hostKey"), "no hostKey: never accept-all");
-        assertRefused(schema, with(base, "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----"), "both password and privateKey");
-        assertRefused(schema, without(base, "password"), "neither password nor privateKey");
-        assertRefused(schema, without(base, "user"), "no user");
-        assertRefused(schema, with(base, "afterSuccess", "move"), "move without moveTo");
-        assertRefused(schema, with(base, "afterSuccess", "copy"), "afterSuccess is delete or move");
-        assertRefused(schema, with(base, "pasword", "typo"), "strict: an option the component does not know");
+        assertValid(settings, every, "every option the component knows, the two the deploy sets included");
+        assertValid(settings, with(base, "maxBodyBytes", 0), "maxBodyBytes is the node's on an in endpoint: the consumer refuses a bad one");
+        assertValid(settings, with(base, "afterSuccess", "delete"), "afterSuccess delete");
+        assertRefused(settings, without(base, "hostKey"), "no hostKey: never accept-all");
+        assertRefused(settings, with(base, "privateKey", "-----BEGIN OPENSSH PRIVATE KEY-----"), "both password and privateKey");
+        assertRefused(settings, without(base, "password"), "neither password nor privateKey");
+        assertRefused(settings, without(base, "user"), "no user");
+        assertRefused(settings, with(base, "afterSuccess", "move"), "move without moveTo");
+        assertRefused(settings, with(base, "afterSuccess", "copy"), "afterSuccess is delete or move");
+        assertRefused(settings, with(base, "pasword", "typo"), "strict: an option the component does not know");
         EndpointConfig noLimit = new EndpointConfig("sftp-in", inbox(Map.of()).uri(), without(inbox(Map.of()).options(), "maxBodyBytes"));
         IllegalArgumentException unlimited = assertThrows(IllegalArgumentException.class,
                 () -> component(rt).consumer(noLimit, e -> Future.succeededFuture(new Ack.Accepted(e.id()))));
@@ -649,19 +649,19 @@ class SftpComponentTest {
 
     @Test
     void theDescriptionAcceptsHostPortAndDirAndRefusesBadPorts() {
-        Settings schema = component(rt).settings();
+        Settings settings = component(rt).settings();
         Map<String, Object> base = Map.of("user", "rail8", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
-        assertValid(schema, with(with(with(base, "host", "sftp"), "port", 22), "dir", "inbox"), "host, port and dir together");
-        assertValid(schema, with(base, "host", "sftp"), "host alone");
-        assertValid(schema, with(base, "port", 1), "port 1, the lowest");
-        assertValid(schema, with(base, "port", 65535), "port 65535, the highest");
-        assertValid(schema, with(base, "dir", "/inbox"), "dir alone");
-        assertRefused(schema, with(base, "port", 0), "port 0");
-        assertRefused(schema, with(base, "port", 70000), "port 70000");
-        assertRefused(schema, with(base, "port", 65536), "port 65536");
-        assertRefused(schema, with(base, "port", "22"), "port as text");
-        assertRefused(schema, with(base, "host", 7), "host as a number");
-        assertRefused(schema, with(base, "dir", 7), "dir as a number");
+        assertValid(settings, with(with(with(base, "host", "sftp"), "port", 22), "dir", "inbox"), "host, port and dir together");
+        assertValid(settings, with(base, "host", "sftp"), "host alone");
+        assertValid(settings, with(base, "port", 1), "port 1, the lowest");
+        assertValid(settings, with(base, "port", 65535), "port 65535, the highest");
+        assertValid(settings, with(base, "dir", "/inbox"), "dir alone");
+        assertRefused(settings, with(base, "port", 0), "port 0");
+        assertRefused(settings, with(base, "port", 70000), "port 70000");
+        assertRefused(settings, with(base, "port", 65536), "port 65536");
+        assertRefused(settings, with(base, "port", "22"), "port as text");
+        assertRefused(settings, with(base, "host", 7), "host as a number");
+        assertRefused(settings, with(base, "dir", 7), "dir as a number");
     }
 
     @Test
@@ -672,21 +672,21 @@ class SftpComponentTest {
 
     /**
      * The deploy checks the config as written, secret references unresolved (D-081): the demo's {@code hostKey: secret://sftp-host-key}
-     * (the key is generated at the stack's first start) and {@code password: secret://sftp-password} must pass this schema, and a
+     * (the key is generated at the stack's first start) and {@code password: secret://sftp-password} must pass this description, and a
      * hostKey that is neither a fingerprint nor a well-formed reference must still not.
      */
     @Test
     void theHostKeyMayBeASecretReferenceButNothingElseThatIsNotAFingerprint() {
-        Settings schema = component(rt).settings();
+        Settings settings = component(rt).settings();
         Map<String, Object> base = Map.of("user", "demo", "password", "secret://sftp-password", "hostKey", "secret://sftp-host-key");
-        assertValid(schema, base, "password and hostKey as secret references, as the demo's endpoint is written");
-        assertValid(schema, with(base, "hostKey", "secret://sftp.host-key_2"), "a reference name with . and -");
-        assertValid(schema, with(base, "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint still validates");
-        assertRefused(schema, with(base, "hostKey", "secret://"), "a reference without a name");
-        assertRefused(schema, with(base, "hostKey", "secret://UPPER"), "a reference name outside [a-z0-9][a-z0-9._-]*");
-        assertRefused(schema, with(base, "hostKey", "x secret://sftp-host-key"), "text around a reference");
-        assertRefused(schema, with(base, "hostKey", "sha256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint with the wrong prefix case");
-        assertRefused(schema, with(base, "hostKey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA"), "a public key line is no fingerprint");
+        assertValid(settings, base, "password and hostKey as secret references, as the demo's endpoint is written");
+        assertValid(settings, with(base, "hostKey", "secret://sftp.host-key_2"), "a reference name with . and -");
+        assertValid(settings, with(base, "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint still validates");
+        assertRefused(settings, with(base, "hostKey", "secret://"), "a reference without a name");
+        assertRefused(settings, with(base, "hostKey", "secret://UPPER"), "a reference name outside [a-z0-9][a-z0-9._-]*");
+        assertRefused(settings, with(base, "hostKey", "x secret://sftp-host-key"), "text around a reference");
+        assertRefused(settings, with(base, "hostKey", "sha256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint with the wrong prefix case");
+        assertRefused(settings, with(base, "hostKey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA"), "a public key line is no fingerprint");
     }
 
     static Map<String, Object> with(Map<String, Object> options, String key, Object value) {

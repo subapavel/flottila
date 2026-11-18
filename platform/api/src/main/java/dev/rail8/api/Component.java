@@ -21,10 +21,12 @@ public interface Component {
     String scheme();
 
     /**
-     * What an endpoint of this scheme may set in its {@code options}: the node checks every endpoint file against it, the
-     * admin API serves it and the UI draws its form from it. A component that describes nothing returns
-     * {@link Settings#NONE}, the default, and is checked against {@link #configSchema()} instead. Called once when the
-     * node loads the component; a throw refuses the node's start.
+     * What an endpoint of this scheme may set in its {@code options}: the node checks every endpoint file against it when
+     * it validates, deploys or restores a package, the admin API serves it and the UI draws its form from it. The node
+     * calls it each time it does one of these, so it returns the same description on every call. A component that
+     * describes nothing returns {@link Settings#NONE}, the default, and is checked against {@link #configSchema()}
+     * instead. A plugin's component is also called once when the node loads the plugin; a throw there refuses the
+     * node's start.
      *
      * @since 0.1
      */

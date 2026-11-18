@@ -1,15 +1,23 @@
 package dev.rail8.runtime.deploy;
 
+import dev.rail8.api.Ack;
 import dev.rail8.api.Component;
+import dev.rail8.api.Consumer;
+import dev.rail8.api.EndpointConfig;
+import dev.rail8.api.Envelope;
+import dev.rail8.api.Health;
+import dev.rail8.api.Producer;
 import dev.rail8.api.Runtime;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.runtime.Main;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.api.settings.Settings;
 import dev.rail8.runtime.node.NodeConfig;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.pg.PoolRefusedException;
 import dev.rail8.testkit.FakeRuntime;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxException;
 import io.vertx.core.json.JsonObject;
@@ -19,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -28,6 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -106,10 +117,15 @@ class DeploymentsValidateTest {
 
     /** Deployments of the environment {@code rail8Env} over what {@code Main.shipped(int)} wires: the node's components, steps and languages. */
     Deployments shipped(String rail8Env) {
+        return shipped(rail8Env, UnaryOperator.identity());
+    }
+
+    /** As {@link #shipped(String)}, each of the node's components put through {@code replace} first. */
+    Deployments shipped(String rail8Env, UnaryOperator<Component> replace) {
         if (vertx == null) vertx = Vertx.vertx();
         Main.Shipped shipped = Main.shipped(NodeConfig.JQ_MAX_RECURSION_DEPTH_DEFAULT);
         List<Component> built = shipped.components().apply(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock()));
-        Map<String, Component> byScheme = built.stream().collect(Collectors.toMap(Component::scheme, c -> c));
+        Map<String, Component> byScheme = built.stream().map(replace).collect(Collectors.toMap(Component::scheme, c -> c));
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         return new Deployments(NodeConfig.from(env(rail8Env)), runtime, byScheme, rt.clock(), timer, shipped.steps(), shipped.languages(),
                 messages, dlq, queue, () -> 0L, records, shelf);
@@ -214,7 +230,39 @@ class DeploymentsValidateTest {
         noAbsolutePath(problems, broken);
     }
 
-    /** An endpoint config its component's configSchema refuses (http: port is an integer) is a problem naming endpoint, environment and pointer, and nothing else is. */
+    /**
+     * The http component as {@code inner}, with a configSchema() that refuses every config: with its settings description when
+     * {@code described}, else with none.
+     */
+    record RefusingSchema(Component inner, boolean described) implements Component {
+        @Override public String scheme() { return inner.scheme(); }
+        @Override public Settings settings() { return described ? inner.settings() : Settings.NONE; }
+        @Override public String configSchema() { return "{\"not\":{}}"; }
+        @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return inner.consumer(cfg, handler); }
+        @Override public Producer producer(EndpointConfig cfg) { return inner.producer(cfg); }
+        @Override public Future<Health> health() { return inner.health(); }
+        @Override public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) { return inner.listensOn(cfg); }
+        @Override public boolean polls(EndpointConfig cfg) { return inner.polls(cfg); }
+        @Override public Optional<String> target(EndpointConfig cfg) { return inner.target(cfg); }
+    }
+
+    /**
+     * A component that describes its settings is judged by that description only, never by its configSchema(): the demo's
+     * http endpoints pass with an http component whose schema refuses every config, and that schema refuses all four of
+     * them once the component describes nothing.
+     */
+    @Test
+    void aDescribedComponentIsJudgedByItsDescriptionOnly() throws Exception {
+        assertEquals(List.of(), validate(shipped("dev", c -> "http".equals(c.scheme()) ? new RefusingSchema(c, true) : c), "demo", DEMO));
+
+        List<String> undescribed = validate(shipped("dev", c -> "http".equals(c.scheme()) ? new RefusingSchema(c, false) : c), "demo", DEMO);
+
+        assertEquals(new TreeSet<>(List.of("http-in", "http-in-async", "partner-domestic", "partner-foreign")),
+                undescribed.stream().map(l -> l.substring("endpoint '".length(), l.indexOf("' config (environment dev) at "))).collect(Collectors.toCollection(TreeSet::new)),
+                "every http endpoint, and nothing else, is refused by the schema: " + undescribed);
+    }
+
+    /** An endpoint config its component's settings description refuses (http: port is a whole number) is a problem naming endpoint, environment and pointer, and nothing else is. */
     @Test
     void anEndpointConfigOutsideItsComponentSchemaIsAProblem() throws Exception {
         Path bad = demoCopy("bad-config", Map.of("endpoints/http-in.yaml", Map.of("port: 8080", "port: eighty")));
