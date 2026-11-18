@@ -47,6 +47,13 @@ class BenchRunScriptTest {
         assertEquals(List.of("node-at-most-once-keep", "node-at-most-once-metadata-only"), runs.stream().map(a -> last(a, "--name")).toList());
     }
 
+    @Test
+    void anAtMostOnceRunThatExitsThreeWithRefusalsAloneStands() throws Exception {
+        // NodeBenchMain exits 3 on any failed request; a record whose errors are 0 failed by 503s only, the mode's backpressure
+        List<List<String>> runs = nodeBenchRuns(run("at-most-once", "exit 3", "echo 0"));
+        assertEquals(2, runs.size(), "both payloads ran, the first run's exit 3 did not stop the script: " + runs);
+    }
+
     // --- fixtures
 
     /** The script's java command lines that start NodeBenchMain, each as its arguments. */
@@ -63,6 +70,14 @@ class BenchRunScriptTest {
 
     /** Runs a copy of run.sh with {@code BENCH_SCENARIOS=scenarios}; asserts exit 0; the java stub's log, one line per call. */
     List<String> run(String scenarios) throws IOException, InterruptedException {
+        return run(scenarios, "exit 0", "exit 0");
+    }
+
+    /**
+     * Runs a copy of run.sh as {@link #run(String)} does, the java stub ending with {@code javaExit} after it logged its command
+     * line and the python3 stub's body {@code python3}.
+     */
+    List<String> run(String scenarios, String javaExit, String python3) throws IOException, InterruptedException {
         Path script = root.resolve("bench/run.sh");
         Files.createDirectories(script.getParent());
         Files.copy(SCRIPT, script);
@@ -70,11 +85,11 @@ class BenchRunScriptTest {
         Files.createFile(root.resolve("bench/target/rail8-bench-0.1.0.jar"));
         Path bin = Files.createDirectories(root.resolve("stubs"));
         Path log = root.resolve("java.log");
-        stub(bin, "java", "printf '%s\\n' \"$*\" >> '" + log + "'");
+        stub(bin, "java", "printf '%s\\n' \"$*\" >> '" + log + "'\n" + javaExit);
         stub(bin, "psql", "echo 1");
         stub(bin, "mvn", "exit 0");
         stub(bin, "git", "echo abc1234");
-        stub(bin, "python3", "exit 0");
+        stub(bin, "python3", python3);
 
         ProcessBuilder pb = new ProcessBuilder("bash", script.toString()).redirectErrorStream(true);
         Map<String, String> env = pb.environment();
