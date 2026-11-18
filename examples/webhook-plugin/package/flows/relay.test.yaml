@@ -1,0 +1,9 @@
+schemaVersion: 1
+kind: test
+flow: relay
+cases:
+  - name: the order reaches the partner
+    send: fixtures/order.xml
+    expect:
+      sent:
+        partner: { count: 1, contains: "<Id>7</Id>" }

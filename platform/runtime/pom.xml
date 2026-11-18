@@ -163,6 +163,13 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <!-- the sample adapter plugin: WebhookPluginIT starts a node with its jar in RAIL8_PLUGINS -->
+      <groupId>dev.rail8.examples</groupId>
+      <artifactId>rail8-plugin-webhook</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <!-- EmbeddedSftp for the two-node lease test (P2-02L) -->
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-sftp</artifactId>

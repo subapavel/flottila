@@ -1,0 +1,17 @@
+schemaVersion: 1
+kind: flow
+id: relay
+version: 0.1.0
+description: Send the order to the partner and answer with its reply.
+from:
+  endpoint: orders-in
+delivery:
+  mode: sync
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+steps:
+  - type: to
+    name: partner
+    endpoint: partner

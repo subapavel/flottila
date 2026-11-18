@@ -94,6 +94,12 @@ jobs:
         run: bin/rail8 validate examples/demo
       - name: The demo package's flow tests pass through the launcher
         run: bin/rail8 test examples/demo
+      # The verify above built the sample plugin's jar into examples/webhook-plugin/target/plugin
+      - name: The sample plugin's package validates and its flow tests pass through the launcher, with the plugin
+        run: |
+          set -euo pipefail
+          bin/rail8 validate --plugins examples/webhook-plugin/target/plugin examples/webhook-plugin/package
+          bin/rail8 test --plugins examples/webhook-plugin/target/plugin examples/webhook-plugin/package
       - name: Script tests (coverage check, name guard, comment-only check, fork kill check, site checks) and the name guard itself
         run: |
           set -euo pipefail

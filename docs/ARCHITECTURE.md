@@ -384,6 +384,50 @@ A refused plugin, step type or language stops the node with exit 2 before Vert.x
 component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
 `RAIL8_PLUGINS`.
 
+### Writing an adapter plugin
+
+An adapter plugin is built with the development kit alone: `rail8-api` (the `Plugin` and
+`Component` contract, `provided` scope: the node has it, and Vert.x core with it) and, for its
+tests, `rail8-testkit` (the contract suites `ComponentContract` and `PollingConsumerContract`,
+the fakes `FakeRuntime`, `FakeClock` and `FakeTimer`, and `RecordingComponent`, the mock of any
+scheme). `examples/webhook-plugin` is a sample: its own Maven build, a component of the scheme
+`webhook` (an HTTP consumer and producer), and a package that uses it.
+
+What a component promises the node:
+
+- **Acknowledgement.** The consumer hands each message to the flow's handler and finishes its
+  protocol only from the `Ack` the handler's future completes with: `Accepted` once the message is
+  durably saved, and only then may the sender let go; `Reply`, the flow's answer, for a sync flow;
+  `Nack`, refused, either for good or "try again". A handler that fails, or answers nothing, is
+  not an acknowledgement: the sender must not take the message as delivered. The handler runs on a
+  virtual thread of its own for each delivery, never on an event loop.
+- **Back-pressure.** A flow with no room answers a retryable `Nack` before anything of it runs;
+  the consumer turns it into the protocol's "try again later" (503 for the sample). A producer
+  names the target system it calls (`target`, `scheme://host:port`), and the node limits the sends
+  in flight to one target (`RAIL8_TARGET_*`), shared by every flow that sends there.
+- **Sending.** A producer streams the body from a fresh `open()` on every send, so a retry sends
+  the same bytes again; it sends the message id as `x-message-id`; a bounded send is cut, failing
+  with a retryable `NackException`, when its deadline runs out, and never starts with none left.
+- **Stopping.** A consumer's `stop()` takes no new message, waits for the deliveries in flight
+  and lets their answers reach the senders.
+
+Build, test and install:
+
+1. **Build.** A plugin's jar holds its classes and a
+   `META-INF/services/dev.rail8.api.plugin.Plugin` naming its `Plugin`. A library it needs goes
+   beside it: the plugin is then a directory of jars.
+2. **Test.** The component's test extends `ComponentContract` (a polling consumer's,
+   `PollingConsumerContract` too). Its mock, `RecordingComponent` for the plugin's scheme, passes
+   the same suite; code that uses the scheme is tested against the mock, with no socket.
+3. **Check a package.** `rail8 validate --plugins <dir> <package>` and
+   `rail8 test --plugins <dir> <package>` build and run a package that uses the plugin.
+4. **Install.** Put the jar, or the directory, into the folder that `RAIL8_PLUGINS` names and
+   restart the node. It logs the plugin's name, version, api version and SHA-256.
+
+For the sample, `mvn -f examples/webhook-plugin/pom.xml verify` (after the platform is installed)
+runs its contract tests and writes the jar into `examples/webhook-plugin/target/plugin`, a folder
+to give to `--plugins` or `RAIL8_PLUGINS`.
+
 ### The API for custom code
 
 A step factory, a plugin's or the node's own, gets `services()` among its resources: the step's
@@ -421,11 +465,9 @@ a file to poll; a deployed node refuses it.
 **Planned**
 - Plugins for custom mapping code and custom services, and a plugin that replaces a shipped
   component or step.
-- A development kit for adapter plugins: `rail8-api`, the contract suites of `rail8-testkit` and a
-  mock to test against, with a sample adapter that a running node loads.
 - The admin API lists the loaded plugins.
-- The adapter contract carries back-pressure and acknowledgement explicitly, and later a deferred
-  acknowledgement: system and application acknowledgements as in SAP XI.
+- A deferred acknowledgement in the adapter contract: system and application acknowledgements as
+  in SAP XI.
 - Lines that custom code logs while its step runs go into the message's history.
 - Custom code sends through an outbound endpoint of its package.
 - Priority: the core and the contracts first, then HTTP inbound and outbound.
