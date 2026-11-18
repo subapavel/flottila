@@ -252,6 +252,8 @@ jobs:
           cache: maven
       - name: Install the jq engine the jq step depends on
         run: bin/install-jq
+      - name: Install the mapping engine the mapping step depends on
+        run: bin/install-mapping
       # Each reactor is checked even when an earlier one has a finding.
       - name: The platform's unit test JVMs
         if: ${{ !cancelled() }}

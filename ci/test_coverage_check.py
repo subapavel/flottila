@@ -118,6 +118,16 @@ class CoverageCheckTest(unittest.TestCase):
         self.assertEqual([], cc.compare(cc.measure(self.root), committed, self.root))
         self.assertEqual([], cc.check_baseline(cc.measure(self.root), committed))
 
+    def test_a_module_under_jq_is_neither_measured_nor_a_stale_baseline(self):
+        # the jq engine has its own gates: the platform build installs it without its tests, so its classes have no report here
+        module(self.root, "platform/core", report=(0, 10, 0, 2))
+        module(self.root, "jq/jq-core")  # classes, no report
+        module(self.root, "jq/query-core", report=(50, 50, 5, 5))
+        committed = {"platform/core": {"line": 100.0, "branch": 100.0}}
+        self.assertEqual(committed, cc.measure(self.root))
+        self.assertEqual([], cc.compare(cc.measure(self.root), committed, self.root))
+        self.assertEqual([], cc.check_baseline(cc.measure(self.root), committed))
+
     def test_only_the_top_level_mapping_directory_is_foreign(self):
         # a sibling whose name starts with "mapping" and a "mapping" directory deeper down are still this guard's
         module(self.root, "mappingx/engine", report=(0, 10, 0, 2))

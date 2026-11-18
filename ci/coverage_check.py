@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """JaCoCo no-decrease check: no module's line or branch coverage falls against a baseline.
 
-Reads every module's target/site/jacoco/jacoco.xml (none under mapping/, which has its own gates, or under examples/, the
-samples for plugin authors, which have none), computes line and branch coverage in percent
+Reads every module's target/site/jacoco/jacoco.xml (none under mapping/ or jq/, the engines with their own gates, or
+under examples/, the samples for plugin authors, which have none), computes line and branch coverage in percent
 rounded to one decimal, and compares with a baseline file: the nightly CI job gives the previous
 night's measurement, which it keeps in the Actions cache. A module whose coverage dropped by more
 than TOLERANCE percentage points (a noise band; the JaCoCo floors in the poms stay exact) fails the
@@ -38,9 +38,9 @@ IGNORED: frozenset[str] = frozenset()
 # between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
 # floors in the poms stay hard.
 TOLERANCE = 2.0
-# the mapping engine has its own gates and the examples are samples for plugin authors, with no coverage gate: this guard
-# reads platform/ and bench/, never a module under mapping/ or examples/
-FOREIGN = frozenset({"mapping", "examples"})
+# the mapping and jq engines have their own gates and the examples are samples for plugin authors, with no coverage gate:
+# this guard reads platform/ and bench/, never a module under mapping/, jq/ or examples/
+FOREIGN = frozenset({"mapping", "jq", "examples"})
 
 
 def _ours(path: Path, root: Path) -> bool:
