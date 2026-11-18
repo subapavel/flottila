@@ -261,7 +261,8 @@ jobs:
           set -euo pipefail
           cp -r mapping/corpus ~/rail8-mapping-workspace
           nohup java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar > "$RUNNER_TEMP/mapping.log" 2>&1 &
-          (cd ui && QUARKUS_HTTP_PORT=18080 nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
+          mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo
+          (cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace nohup npm run dev > "$RUNNER_TEMP/ui.log" 2>&1 &)
           for url in localhost:18080/api/mappings localhost:5173/; do
             start=$(date +%s)
             until curl -sf "$url" > /dev/null; do
