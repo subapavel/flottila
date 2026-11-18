@@ -25,7 +25,7 @@ class DemoPackageTest {
         try (Stream<Path> s = Files.walk(DEMO)) {
             files = s.filter(p -> p.toString().endsWith(".yaml") || p.toString().endsWith(".yml") || p.toString().endsWith(".json")).filter(p -> !DEMO.relativize(p).startsWith("fixtures")).sorted().toList();
         }
-        assertTrue(files.size() >= 12, "package.yaml, five endpoints, three flows and their tests: " + files);
+        assertTrue(files.size() >= 12, "package.yaml, six endpoints, four flows and their tests: " + files);
         for (Path f : files) {
             JsonObject doc = Documents.read(f);
             Schemas schema = Schemas.forKind(doc.getString("kind"));

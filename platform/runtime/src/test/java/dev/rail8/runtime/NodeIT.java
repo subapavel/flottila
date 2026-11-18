@@ -590,8 +590,9 @@ class NodeIT {
     }
 
     /**
-     * The files P2-06 added to the demo: the async door, the SFTP inbox (its secrets are references only a stack node has) and the two
-     * flows of them. The ITs that mean "the demo" mean its invoice-sync flow behind http-in, which is what {@link #demoFiles} keeps.
+     * The demo files that are not part of invoice-sync: the async door, the SFTP inbox (its secrets are references only a stack node
+     * has), the jq order door and its fixture, and the flows of them. The ITs that mean "the demo" mean its invoice-sync flow behind
+     * http-in, which is what {@link #demoFiles} keeps.
      */
     static boolean addedByP206(String path) {
         return path.equals("endpoints/http-in-async.yaml") || path.equals("endpoints/sftp-inbox.yaml")
