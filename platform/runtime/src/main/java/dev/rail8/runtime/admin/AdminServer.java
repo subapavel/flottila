@@ -75,8 +75,11 @@ import java.util.function.Supplier;
  * The admin read API over the stores: a message's timeline with wall and CPU nanos per step (the rows of
  * every attempt by attempt, then step, each naming its {@code attempt} and showing the lines the step's code logged as its
  * {@code log}, {@link StepLogJson}), the payload after step n (the latest attempt's,
- * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
- * {@code /live} and {@code /ready}.
+ * or {@code ?attempt=k}'s), the search for messages and the DLQ a page at a time ({@code {items, next|null}}), {@code /health},
+ * and the probes {@code /live} and {@code /ready}. {@code GET /admin/messages} finds message ids by business key
+ * ({@code ?key=name:value}, {@link MessageStore#findByKey}) or by a step they passed ({@code ?flow=<flow id>&step=<step name>},
+ * {@link MessageStore#findByStep}), with {@code limit} and {@code after}; it is 400 for neither, for a key with a flow or step,
+ * and for a flow without a step or a step without a flow.
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
@@ -652,8 +655,18 @@ public final class AdminServer {
         return new Bytes(head, bytes, gone);
     }
 
-    /** {@code key=name:value}, split at the first colon: a value may contain colons, a name may not. */
+    /**
+     * {@code key=name:value}, split at the first colon: a value may contain colons, a name may not; or {@code flow} and
+     * {@code step} together, never with a key.
+     */
     private Reply search(RoutingContext ctx) {
+        String flow = ctx.request().getParam("flow");
+        String step = ctx.request().getParam("step");
+        if (flow != null || step != null) {
+            if (ctx.request().getParam("key") != null) throw new Refused("search by key or by flow and step, not both");
+            if (flow == null || flow.isEmpty() || step == null || step.isEmpty()) throw new Refused("a search by step names both flow and step");
+            return Json.of(200, page(refusable(() -> messages.findByStep(flow, step, after(ctx), limit(ctx)).await()), id -> id));
+        }
         String key = Objects.requireNonNullElse(ctx.request().getParam("key"), "");
         int colon = key.indexOf(':');
         if (colon < 0) throw new Refused("key must be name:value");

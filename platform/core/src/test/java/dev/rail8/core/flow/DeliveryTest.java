@@ -1514,6 +1514,9 @@ class DeliveryTest {
         @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
             return rows.findByKey(name, value, after, limit);
         }
+        @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+            return rows.findByStep(flow, step, after, limit);
+        }
     }
 
     final List<FullBacklog> fullBacklogs = new CopyOnWriteArrayList<>();

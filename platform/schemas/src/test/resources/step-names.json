@@ -1,0 +1,7 @@
+[
+  { "step": { "type": "xslt", "name": "toPartner", "stylesheet": "flows/to-partner.xsl" }, "name": "toPartner" },
+  { "step": { "type": "xslt", "stylesheet": "flows/to-partner.xsl" }, "name": "xslt" },
+  { "step": { "type": "extractKey", "key": "invoiceId", "xpath": "/Invoice/Id" }, "name": "extractKey" },
+  { "step": { "type": "process", "process": "enrichOrder" }, "name": "enrichOrder" },
+  { "step": { "type": "process", "name": "enrich", "process": "enrichOrder" }, "name": "enrich" }
+]

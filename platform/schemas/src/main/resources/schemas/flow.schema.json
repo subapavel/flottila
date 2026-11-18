@@ -102,10 +102,10 @@
     },
     "step": {
       "type": "object",
-      "required": ["type", "name"],
+      "required": ["type"],
       "properties": {
         "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, xsd, route, to, extractKey, validate, split and process; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
-        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "description": "Step name, unique in the flow and in each process; the label on snapshots and per-step timings (camelCase allowed)." },
+        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "not": { "const": "ingress" }, "description": "Step name (camelCase allowed): the step's label in a message's history and per-step timings, and what a search by step finds. Optional: a step without one is named after its type, a process call after the process it calls. Names, given or not, are unique in the flow's steps and in each process's (checked when the flow loads); ingress is the arrival's name and no step's." },
         "retryable": { "type": "boolean" },
         "recording": { "$ref": "#/$defs/recording" }
       },

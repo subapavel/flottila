@@ -1,12 +1,12 @@
 package dev.rail8.core.flow;
 
 import dev.rail8.api.StepConfig;
+import dev.rail8.core.record.Recorder;
 import dev.rail8.core.record.RecordingPolicy;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +28,9 @@ import java.util.Set;
  * is refused with {@link #ON_FAILURE_GONE}. {@code retries} is an at-least-once flow's own schedule
  * of retries ({@code delivery.retries}, refused for any other mode); empty, its worker runs under the node's default
  * ({@link FlowBuilder#retries}). {@code retry} is the in-thread retry of the steps marked {@code retryable}, a key of its own.
+ * A step's {@code name} is optional: a step without one is named after its type, and a call of a process after the process it
+ * calls. Names are unique in the flow's {@code steps} and in each process's, at most {@link #MAX_NAME} characters long, and none is
+ * {@code ingress}, the name of the arrival; two entries of one list with the same name are refused, naming both.
  * {@code processes} names blocks of steps that a {@value #PROCESS} step runs where it stands: {@code steps} is the run's steps,
  * each call replaced by the steps of its process, numbered in run order and named {@code <call>/<step>}; a problem inside a
  * process names its step as {@code processes.<process>.steps[i]}. Processes run inside each other at most {@link #MAX_NESTING}
@@ -48,6 +51,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
 
     /** The keys of a {@value #PROCESS} step: it stands for the steps of its process and has no options of its own. */
     private static final Set<String> CALL = Set.of("type", "name", PROCESS);
+
+    /** The most characters of a step's name, written or taken from its type or process. */
+    public static final int MAX_NAME = 64;
 
     /** The most steps a flow runs once its processes are expanded. */
     public static final int MAX_STEPS = 1024;
@@ -223,7 +229,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         return run;
     }
 
-    /** A step entry as written at {@code path}: a step, or a call of the process {@code process} (null for a step). */
+    /** A step entry as written at {@code path}, under its name: a step, or a call of the process {@code process} (null for a step). */
     private record Written(String path, String type, String name, boolean retryable, Map<String, Object> config, String process) { }
 
     /** {@code processes}: each process's name to its {@code steps} as written (null when it has none). */
@@ -239,27 +245,31 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     }
 
     /**
-     * The entries of the step list {@code node} at {@code path}, names unique among them; a {@code process} step takes only
-     * {@code type}, {@code name} and {@code process}, which must be one of {@code processes}.
+     * The entries of the step list {@code node} at {@code path}, each with its name: its {@code name}, else, for a call, the
+     * process it calls, else its type. The names are unique among them, at most {@link #MAX_NAME} characters long and never
+     * {@link Recorder#INGRESS}; a clash is refused naming both entries. A {@code process} step takes only {@code type},
+     * {@code name} and {@code process}, which must be one of {@code processes}.
      */
     private static List<Written> written(Object node, String path, Set<String> processes) {
         if (!(node instanceof List<?> list) || list.isEmpty()) throw new IllegalArgumentException(path + " must be a non-empty list");
         List<Written> entries = new ArrayList<>(list.size());
-        Set<String> names = new HashSet<>();
+        Map<String, String> named = new HashMap<>();   // each name to the entry that has it
         for (int i = 0; i < list.size(); i++) {
             String at = path + "[" + i + "]";
             if (!(list.get(i) instanceof Map<?, ?> m)) throw new IllegalArgumentException(at + " must be an object");
             String type = string(m, at + ".type", "type");
-            String name = string(m, at + ".name", "name");
-            if (!names.add(name)) throw new IllegalArgumentException(at + ".name '" + name + "' is used twice; step names are unique in a flow and in each process");
+            String process = null;
             if (PROCESS.equals(type)) {
                 for (Object key : m.keySet()) {
                     if (!CALL.contains(String.valueOf(key))) {
                         throw new IllegalArgumentException(at + " runs a process and takes only type, name and process, not " + key);
                     }
                 }
-                String process = string(m, at + ".process", "process");
+                process = string(m, at + ".process", "process");
                 if (!processes.contains(process)) throw new IllegalArgumentException(at + ".process '" + process + "' names no process of this flow");
+            }
+            String name = name(m, at, process == null ? type : process, process != null, named);
+            if (process != null) {
                 entries.add(new Written(at, type, name, false, Map.of(), process));
                 continue;
             }
@@ -271,6 +281,30 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
             entries.add(new Written(at, type, name, Boolean.TRUE.equals(m.get("retryable")), config, null));
         }
         return entries;
+    }
+
+    /**
+     * The name of the entry {@code m} at {@code at}: its {@code name}, else {@code fallback} (the process a call calls when
+     * {@code call}, else the type), recorded in {@code named} against {@code at}. A name that another entry of the list already
+     * has, that is {@link Recorder#INGRESS} or that is longer than {@link #MAX_NAME} characters is refused.
+     */
+    private static String name(Map<?, ?> m, String at, String fallback, boolean call, Map<String, String> named) {
+        boolean written = m.get("name") != null;
+        String name = written ? string(m, at + ".name", "name") : fallback;
+        String what = written ? at + ".name '" + name + "'"
+                : at + " has no name, and its default '" + name + "' (" + (call ? "the process it calls" : "its type") + ")";
+        if (name.length() > MAX_NAME) {
+            throw new IllegalArgumentException(what + " is longer than the " + MAX_NAME + " characters of a step name: give the step a shorter name");
+        }
+        if (Recorder.INGRESS.equals(name)) {
+            throw new IllegalArgumentException(what + " is the name of the arrival, step 0, in a message's history: give the step another name");
+        }
+        String first = named.putIfAbsent(name, at);
+        if (first != null) {
+            throw new IllegalArgumentException(what + " is the name of " + first + " too; step names are unique in a flow and in each process:"
+                    + " name one of them");
+        }
+        return name;
     }
 
     /**

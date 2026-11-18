@@ -87,6 +87,9 @@ class FlowRunStopTest {
         @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
             return store.findByKey(name, value, after, limit);
         }
+        @Override public Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit) {
+            return store.findByStep(flow, step, after, limit);
+        }
     };
 
     FlowRunStopTest() {
