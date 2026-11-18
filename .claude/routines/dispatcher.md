@@ -11,8 +11,8 @@ Call `mcp__claude-code-remote__get_session` with no `session_id` and read
 `external_metadata.rate_limit_info.status`:
 
 - `allowed`: normal run.
-- `allowed_warning`: at most three workers running in total, counting those already running. The owner
-  accepts that the weekly limit may run out before it resets.
+- `allowed_warning`: the same as `allowed`. The owner accepts that the weekly limit may run out
+  before it resets.
 - anything else, or the field is missing: start nothing. Still do steps 2 and 3 (stalled workers), then stop.
 
 ## 2. What is running
@@ -44,9 +44,9 @@ stopped and why (one or two sentences, with its session id), remove `in-progress
 ## 4. Pick and start
 
 Streams, each with its label: `jádro`, `ui`, `mapování`, `jq`. For each stream that is not busy,
-while the limit from step 1 allows, start one worker as below. Then, while fewer than three workers
-run in total, start further workers in the stream with the most ready issues, each on an issue that
-touches a different part of the code than the workers already running there.
+while fewer than two workers run in total, start one worker as below. When streams have no ready
+issue and fewer than two workers run, start a further worker in the stream with the most ready
+issues, on an issue that touches a different part of the code than the worker already running there.
 
 1. Pick one ready issue: open, has the stream's label, and has none of `in-progress`,
    `owner-question`, `later`, `blocked`. Order: `priority` first, then `krok-1`, then the lowest
