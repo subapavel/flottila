@@ -30,11 +30,11 @@
 # disk; stopped and removed with its data when the scenario ends, failed or not. BENCH_CH_ARGS (unset: the full matrix) passes harness
 # arguments, e.g. "--sizes 100 --counts 50 --levels 1 --runs 1". Writes bench/out/clickhouse-compression.{json,log}, prints the table.
 # `open` (CORE-15): one NodeBenchMain run open loop (requests sent at times fixed in advance, whatever the answers) of
-# BENCH_OPEN_SCENARIO (ack; sync, or echo — the raw echo alone, the harness' own ceiling) at BENCH_RATE msg/s (5000, passed through:
+# BENCH_OPEN_SCENARIO (ack; sync, at-most-once, or echo — the raw echo alone, the harness' own ceiling) at BENCH_RATE msg/s (5000, passed through:
 # NodeBenchMain refuses a value outside 1..100000), after a linear BENCH_RAMP (NodeBenchMain's PT1M unless set) for BENCH_WINDOW
 # (PT10M unless set); BENCH_PG_CPU (unset) names Postgres' cgroup v2 directory or pid for its CPU over the window
 # (--pg-cpu-source). BENCH_RECORDING_LEVEL (unset: NodeBenchMain's all) is passed as --recording-level (none|all, FIX-124: the
-# CORE-GATE cell runs none; NodeBenchMain refuses none for sync), BENCH_MAX_IN_FLIGHT (unset: NodeBenchMain's default) as
+# CORE-GATE cell runs none; NodeBenchMain refuses none for sync and at-most-once), BENCH_MAX_IN_FLIGHT (unset: NodeBenchMain's default) as
 # --max-in-flight, each as given for NodeBenchMain to judge. Named node-open-<scenario>-r<rate>, with -<level> appended when
 # BENCH_RECORDING_LEVEL is set (an all and a none run never share a file); its summary prints the record's open fields, its
 # recording level and whether it settled (bench/RESULTS.md, "Harness: open loop (CORE-15)"). A run whose settle did not land
@@ -63,8 +63,8 @@ fi
 
 open_scenario="${BENCH_OPEN_SCENARIO:-ack}"
 case "$open_scenario" in
-  ack|sync|echo) ;;
-  *) echo "BENCH_OPEN_SCENARIO: unknown open-loop scenario '$open_scenario' (ack, sync, echo)" >&2
+  ack|sync|at-most-once|echo) ;;
+  *) echo "BENCH_OPEN_SCENARIO: unknown open-loop scenario '$open_scenario' (ack, sync, at-most-once, echo)" >&2
      exit 2 ;;
 esac
 

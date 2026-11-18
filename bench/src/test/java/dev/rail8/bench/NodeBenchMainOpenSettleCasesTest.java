@@ -84,6 +84,15 @@ class NodeBenchMainOpenSettleCasesTest {
         assertTrue(m.contains("--scenario sync") && m.contains("--recording-level none"), m);
         assertEquals(NodeBenchMain.RecordingLevel.NONE,
                 NodeBenchMain.options(new String[] {"--scenario", "echo", "--rate", "10", "--recording-level", "none"}).recordingLevel(),
-                "only sync refuses none");
+                "only sync and at-most-once refuse none");
+    }
+
+    @Test
+    void atMostOnceWithRecordingLevelNoneIsRefusedNamingBothOptions() {
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> NodeBenchMain.options(new String[] {"--scenario", "at-most-once", "--rate", "10", "--recording-level", "none"}));
+
+        String m = refused.getMessage();
+        assertTrue(m.contains("--scenario at-most-once") && m.contains("--recording-level none"), m);
     }
 }

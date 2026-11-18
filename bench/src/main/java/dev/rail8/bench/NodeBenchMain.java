@@ -280,16 +280,16 @@ public final class NodeBenchMain {
 
     /**
      * {@code args} as options; an unknown or missing scenario, an unknown recording, recording level or step is refused naming
-     * the value and the known ones, and sync with {@code --recording-level none} naming both.
+     * the value and the known ones, and sync or at-most-once with {@code --recording-level none} naming both.
      */
     public static Options options(String[] args) {
         Map<String, String> a = BenchMain.parse(args);
         Scenario scenario = choice(a, "scenario", Scenario.class, null);
         Recording recording = choice(a, "recording", Recording.class, Recording.KEEP);
         RecordingLevel level = choice(a, "recording-level", RecordingLevel.class, RecordingLevel.ALL);
-        if (scenario == Scenario.SYNC && level == RecordingLevel.NONE) {
-            throw new IllegalArgumentException("--scenario sync refuses --recording-level none: a sync message would record no row, and its"
-                    + " settle waits for the recorded rows, so it could never land");
+        if ((scenario == Scenario.SYNC || scenario == Scenario.AT_MOST_ONCE) && level == RecordingLevel.NONE) {
+            throw new IllegalArgumentException("--scenario " + cli(scenario) + " refuses --recording-level none: its message would record no"
+                    + " row, and its settle waits for the recorded rows, so it could never land");
         }
         Step step = choice(a, "step", Step.class, Step.PASSTHROUGH);
         String name = a.getOrDefault("name", "node-" + cli(scenario));
