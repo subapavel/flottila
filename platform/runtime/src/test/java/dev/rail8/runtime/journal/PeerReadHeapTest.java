@@ -451,17 +451,20 @@ class PeerReadHeapTest {
 
     /**
      * Whether node-b does not read its socket {@code local} → {@code remote}: the kernel holds bytes it has not read, and they
-     * stay unread — with {@code sent} (what its sender handed over) unchanged — while node-b's only event loop runs three
-     * tasks one after another. A loop that reads the socket reads some of those bytes before or between the tasks: a readable
-     * socket's bytes are read in the loop's next I/O pass, and each task waits for the one before it.
+     * stay unread — with {@code sent} (what its sender handed over) and the sender's send queue unchanged — while node-b's only
+     * event loop runs three tasks one after another. A loop that reads the socket reads some of those bytes before or between
+     * the tasks: a readable socket's bytes are read in the loop's next I/O pass, and each task waits for the one before it. The
+     * sender's queue is compared too: while node-b reads, the kernel can refill its receive queue to the same length from it.
      */
     static boolean notReading(Vertx vertxB, int local, int remote, LongSupplier sent) throws Exception {
         long before = sent.getAsLong();
         java.util.Optional<LoopbackQueues.Queues> q = LoopbackQueues.find(local, remote);
+        java.util.Optional<LoopbackQueues.Queues> theirs = LoopbackQueues.find(remote, local);
         if (q.isEmpty() || q.get().rx() == 0) return false;   // no socket: the link closed, which the caller reports
         for (int i = 0; i < 3; i++) onLoop(vertxB);
         java.util.Optional<LoopbackQueues.Queues> after = LoopbackQueues.find(local, remote);
-        return after.isPresent() && after.get().rx() == q.get().rx() && sent.getAsLong() == before;
+        return after.isPresent() && after.get().rx() == q.get().rx() && LoopbackQueues.find(remote, local).equals(theirs)
+                && sent.getAsLong() == before;
     }
 
     /** Runs an empty task on node-b's one event loop and waits (bounded) for it: every task queued there before it ran. */

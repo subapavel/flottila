@@ -17,6 +17,7 @@ import dev.rail8.testkit.FakeTimer;
 import dev.rail8.testkit.Ports;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -151,6 +152,23 @@ class PeerProtocolTest {
         ServerSocket s = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         closing.add(s);
         return s;
+    }
+
+    /**
+     * Waits (bounded) until node-b, its links on {@code vertxB}'s one event loop, stopped reading its link through {@code wire}:
+     * node-b's socket holds bytes that stay unread while that loop runs three tasks, with nothing more forwarded to it. The
+     * relay's write parked toward node-b is no witness: it parks whenever node-b's socket is full for a moment, while node-b
+     * still reads, and it need not park at all once the kernel's buffers hold all that is left of the record.
+     */
+    static void untilNotReading(FrameRelay wire, Vertx vertxB, String what) {
+        FrameRelay.Pipe toB = wire.toDialer();
+        PeerReadHeapTest.until(() -> {
+            try {
+                return PeerReadHeapTest.notReading(vertxB, wire.dialerPort(0), wire.port(), toB::forwardedBytes);
+            } catch (Exception e) {
+                throw new AssertionError(what + ": " + wire.describe(), e);
+            }
+        }, () -> what + ": " + wire.describe());
     }
 
     static RemoteBodyException failedRetryable(OnVirtualThread.Call<byte[]> call, String what) throws Exception {
@@ -835,13 +853,18 @@ class PeerProtocolTest {
         FakeClock bClock = FakeClock.at(JournalFixture.START);
         FakeTimer bTimer = new FakeTimer(bClock);
         FrameRelay wire = relay();
-        PeerReads r = reader(new ConcurrentHashMap<>(Map.of("node-a", wire.address())), bTimer);
+        Vertx vertxB = Vertx.vertx(new VertxOptions().setEventLoopPoolSize(1));   // node-b's links on one loop: a task there waits for them
+        closing.add(() -> vertxB.close().await());
+        PeerReads r = new PeerReads(vertxB, CONFIG, b(), this.b, bTimer, owner -> Optional.of(wire.address()));
+        readers.add(r);
         java.util.concurrent.CountDownLatch paused = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch goOn = new java.util.concurrent.CountDownLatch(1);
         OnVirtualThread.Call<byte[]> abandoned = OnVirtualThread.start(() -> {
             try (InputStream in = r.open(LARGE, "node-a", JOURNAL_A, large)) {
                 in.readNBytes(1024);
-                PeerReadHeapTest.until(wire.toDialer()::parkedWriting, () -> "fixture: node-b's reader paused its link: " + wire.describe());
+                // the link paused, not a write parked for a moment while node-b still reads: bytes it reads after the first look
+                // are progress, and the second look would then keep the link
+                untilNotReading(wire, vertxB, "fixture: node-b's reader paused its link");
                 paused.countDown();
                 goOn.await();
                 return in.readAllBytes();
