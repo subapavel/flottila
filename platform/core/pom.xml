@@ -25,6 +25,12 @@
       <plugin>
         <groupId>org.pitest</groupId>
         <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <!-- built in the same reactor, the testkit's classes are a directory on this module's classpath, and PIT looks
+               for tests in every directory there. They are not core's tests, and SharedPostgres cannot even load here:
+               core has no Testcontainers. -->
+          <excludedTestClasses><param>dev.rail8.testkit.*</param></excludedTestClasses>
+        </configuration>
       </plugin>
     </plugins>
   </build>
