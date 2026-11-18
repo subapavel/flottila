@@ -65,7 +65,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * name in any case — through {@code send(e)} and {@code send(e, d)} alike; a {@code send(e, d)} with no time left
  * ({@code d.remaining() <= 0}) fails with a retryable {@link NackException} and reaches no partner; a send still unanswered when
  * its {@link Deadline} runs out is cut — failed with a retryable {@link NackException} on the {@link Timer} the component was
- * built with ({@link #component(Timer)}), the deadline re-read there, so a deadline renewed meanwhile is waited for.
+ * built with ({@link #component(Timer)}), the deadline re-read there, so a deadline renewed meanwhile is waited for. A fresh
+ * consumer of an endpoint whose last consumer stopped serves it, as the node starts one after a break; {@link Consumer#broken()}
+ * stays pending while a consumer delivers or refuses messages, and through its stop.
  *
  * @since 0.1
  */
@@ -211,6 +213,53 @@ public abstract class ComponentContract {
         } finally {
             producer.close().await();
         }
+    }
+
+    @Test
+    public void aFreshConsumerOfTheSameEndpointServesOnceTheLastStopped() {
+        Component component = component();
+        List<Envelope> seen = new CopyOnWriteArrayList<>();
+        Function<Envelope, Future<Ack>> handler = e -> {
+            seen.add(e);
+            return Future.succeededFuture(new Ack.Reply(e.withHeader("x-seen", "1")));
+        };
+        Consumer first = component.consumer(endpoint(), handler);
+        first.start().await();
+        first.stop().await();
+        Consumer fresh = component.consumer(endpoint(), handler);   // what the node does after a break or a failed start
+        fresh.start().await();
+        Producer producer = component.producer(producerEndpoint(fresh));
+        try {
+            Envelope reply = producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("again"))).await();
+            assertEquals("1", reply.header("x-seen").orElse(null), "the fresh consumer answered");
+            assertEquals(1, seen.size(), "delivered once, by the fresh consumer");
+            assertEquals("again", seen.get(0).body().whole().toString());
+        } finally {
+            producer.close().await();
+            fresh.stop().await();
+        }
+    }
+
+    @Test
+    public void brokenStaysPendingWhileTheConsumerWorksAndThroughItsStop() {
+        Component component = component();
+        Consumer consumer = component.consumer(endpoint(), e -> e.header("x-refuse").isPresent()
+                ? Future.succeededFuture(new Ack.Nack("refused", false)) : Future.succeededFuture(new Ack.Reply(e)));
+        consumer.start().await();
+        Future<Void> broken = consumer.broken();
+        assertNotNull(broken, "broken() answers a future, never null");
+        Producer producer = component.producer(producerEndpoint(consumer));
+        try {
+            producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("works"))).await();
+            assertFalse(broken.isComplete(), "a consumer that delivers has not broken: " + broken);
+            settled(producer.send(FakeRuntime.create().ingress("contract", Headers.empty().with("x-refuse", "1"), Buffer.buffer("refused"))));
+            assertFalse(broken.isComplete(), "a refused message is that message's failure, never a break: " + broken);
+        } finally {
+            producer.close().await();
+            consumer.stop().await();
+        }
+        assertFalse(broken.isComplete(), "a stop is not a break: " + broken);
+        assertFalse(consumer.broken().isComplete(), "nor read again after the stop: " + consumer.broken());
     }
 
     @Test

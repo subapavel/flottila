@@ -390,8 +390,7 @@ class SftpConsumerEdgeTest {
             sftp.drop("/inbox", "k.xml", Buffer.buffer("<k/>"));
             List<Envelope> seen = new CopyOnWriteArrayList<>();
             SftpComponent stranger = component();
-            started(stranger, server.endpoint(openSsh(ecKey()), Map.of()), accepting(seen));
-            round(rt);
+            SftpComponentTest.brokenRound(rt, started(stranger, server.endpoint(openSsh(ecKey()), Map.of()), accepting(seen)));
             assertEquals(Health.Status.DOWN, stranger.health().await().status(), "an unknown key does not log in");
 
             for (String unreadable : List.of(
@@ -400,8 +399,7 @@ class SftpConsumerEdgeTest {
                     "not a key at all")) {   // no key
                 FakeRuntime other = FakeRuntime.create();
                 SftpComponent malformed = new SftpComponent(other.blobs(), other.ids(), other.timer(), other.clock());
-                started(malformed, server.endpoint(unreadable, Map.of()), accepting(seen));
-                round(other);
+                SftpComponentTest.brokenRound(other, started(malformed, server.endpoint(unreadable, Map.of()), accepting(seen)));
                 assertEquals(Health.Status.DOWN, malformed.health().await().status(), "a key that cannot be read does not log in: " + unreadable);
             }
             assertEquals(List.of(), seen);

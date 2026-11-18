@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -38,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * node's environment laid over it) and refuses — one {@link Kind#INVALID} line each, before anything is built or stopped — an
  * address that overlaps (same port, not 0; equal hosts, or either a wildcard) another of the same new version (once per pair, on
  * the later flow id), the node's admin listener ({@code RAIL8_ADMIN_HOST/PORT}), or a running flow of another RUNNING package.
- * The deploying package's current version and FAILED flows and packages hold no port. A restore runs the same check: the later
+ * The deploying package's current version and FAILED flows and packages hold no port; a RESTARTING flow holds its own. A restore runs the same check: the later
  * package of a clashing pair is FAILED with that line.
  *
  * <p>The line (D-072): {@code flow '<flow>' (endpoint '<endpoint>') listens on <host>:<port>, which overlaps <host>:<port> of
@@ -406,10 +407,10 @@ class DeploymentsListenerTest {
         assertEquals(List.of(), doors.producers(), "nothing was built");
     }
 
-    // --- FAILED holds nothing; a restore checks too
+    // --- FAILED holds nothing, RESTARTING holds its port; a restore checks too
 
     @Test
-    void aFailedFlowOrFailedPackageHoldsNoPort() throws Exception {
+    void aRestartingFlowHoldsItsPortAFailedPackageNone() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
         DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
         Deployments first = node(env("node-a"), rows, bucket, new Doors());
@@ -422,14 +423,37 @@ class DeploymentsListenerTest {
         Deployments restored = node(env("node-b"), rows, fetches, restoring);
         OnVirtualThread.call(() -> { restored.restore(); return null; });
         assertEquals(Map.of("alpha", RUNNING, "omega", DeployedPackage.State.FAILED), packages(restored), "fixture: omega could not be fetched");
-        assertEquals(Map.of("alpha/a1", DeployedFlow.State.FAILED, "alpha/a2", FLOW_RUNNING), flows(restored), "fixture: a1 did not start");
+        assertEquals(Map.of("alpha/a1", DeployedFlow.State.RESTARTING, "alpha/a2", FLOW_RUNNING), flows(restored), "fixture: a1's consumer did not start");
 
         assertEquals(List.of(line("d", "d-in", "127.0.0.1:8082", "127.0.0.1:8082", flowOf("alpha/a2", "a2-in"))),
                 refused(restored, listening(pkg("delta"), "d", port(8082))).problems(), "the restored flow that runs holds its port");
-        deploy(restored, listening(listening(pkg("gamma"), "g1", port(8080)), "g3", port(8083)));
+        assertEquals(List.of(line("e", "e-in", "127.0.0.1:8080", "127.0.0.1:8080", flowOf("alpha/a1", "a1-in"))),
+                refused(restored, listening(pkg("epsilon"), "e", port(8080))).problems(), "a1, whose consumer is tried again, holds its port");
+        deploy(restored, listening(pkg("gamma"), "g3", port(8083)));
 
-        assertEquals(DeployedPackage.State.RUNNING, packages(restored).get("gamma"), "a1 (FAILED) and omega (a FAILED package) hold no port");
-        assertTrue(restoring.door("gamma/g1").started() && restoring.door("gamma/g3").started(), restoring.events().toString());
+        assertEquals(DeployedPackage.State.RUNNING, packages(restored).get("gamma"), "omega (a FAILED package) holds no port");
+        assertTrue(restoring.door("gamma/g3").started(), restoring.events().toString());
+    }
+
+    /** v2 of alpha moves a1 to 8081; v2's a1 does not start and the rollback cannot build v1's a1 again: a1 is FAILED and holds no port. */
+    @Test
+    void aFailedFlowHoldsNoPort() throws Exception {
+        deploy(deployments, listening(listening(pkg("alpha"), "a1", port(8080)), "a2", port(8082)));
+        doors.failStartOf("alpha/a1", "the door is stuck");   // v2's a1
+        AtomicInteger builds = new AtomicInteger();
+        doors.onConsumer(cfg -> {   // the second: v2 builds the first
+            if ("alpha/a1".equals(cfg.options().get("flow")) && builds.incrementAndGet() == 2) throw new IllegalArgumentException("a1 cannot be built again");
+        });
+        Path v2 = listening(listening(pkg("alpha"), "a1", port(8081)), "a2", port(8082)).zipTo(tmp.resolve("uploads"));
+        DeployRefusedException rolledBack = assertThrows(DeployRefusedException.class,
+                () -> OnVirtualThread.call(() -> deployments.deploy("alpha", Optional.empty(), v2)), "v2, whose a1 does not start");
+        assertEquals(Kind.FAILED, rolledBack.kind(), rolledBack.error() + " " + rolledBack.problems());
+        assertEquals(Map.of("alpha/a1", DeployedFlow.State.FAILED, "alpha/a2", FLOW_RUNNING), flows(deployments), "fixture: a1 is FAILED: " + rolledBack.error());
+
+        deploy(deployments, listening(pkg("gamma"), "g1", port(8080)));
+
+        assertEquals(DeployedPackage.State.RUNNING, packages(deployments).get("gamma"), "a1 (FAILED) holds no port");
+        assertTrue(doors.door("gamma/g1").started(), doors.events().toString());
     }
 
     @Test

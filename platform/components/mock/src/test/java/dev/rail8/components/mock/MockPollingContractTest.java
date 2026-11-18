@@ -30,4 +30,6 @@ class MockPollingContractTest extends PollingConsumerContract {
     @Override protected Set<String> remaining() { return Set.copyOf(sftp.remaining(endpoint().name())); }
 
     @Override protected void tick() { advanceToNextRound(rt.clock(), rt.timer()); }
+
+    @Override protected void partnerDown(boolean down) { sftp.partnerDown(endpoint().name(), down); }
 }

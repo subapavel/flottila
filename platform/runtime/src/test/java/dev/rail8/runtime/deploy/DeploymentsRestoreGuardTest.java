@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,7 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * P1-09c3b (D-070), beside {@link DeploymentsRestoreTest}: a restore runs once, at the node's start — on a node that lists a
  * package already, or once {@code close} began, it is refused and installs nothing; the {@code deployments} health check is DOWN
- * while a package or a flow is listed FAILED, its detail naming which; a missing archive is named as such.
+ * while a package is listed FAILED, its detail naming which, and DEGRADED while a flow's consumer is tried again; a missing
+ * archive is named as such.
  */
 class DeploymentsRestoreGuardTest {
 
@@ -106,12 +108,13 @@ class DeploymentsRestoreGuardTest {
     }
 
     /**
-     * health() is UP on a node with nothing deployed and on one where everything runs; DOWN while a restored flow did not start —
-     * its detail naming that flow, not the package that runs — and while a package could not be restored (its archive is not in
-     * the archive store, as its problem line says) — naming that package.
+     * health() is UP on a node with nothing deployed and on one where everything runs; DEGRADED while the consumer of a restored
+     * flow that did not start waits for its next attempt — its detail naming that flow, its failures in a row and when the next
+     * attempt is due, never the cause nor what runs — and UP once it started; DOWN while a package could not be restored (its
+     * archive is not in the archive store, as its problem line says) — naming that package.
      */
     @Test
-    void healthIsDownWhileAPackageOrAFlowIsListedFailed() throws Exception {
+    void healthIsDegradedWhileAFlowRestartsAndDownWhileAPackageIsListedFailed() throws Exception {
         Doors one = new Doors();
         Deployments first = node("node-1", one);
         assertEquals(Health.up(), first.health(), "nothing deployed");
@@ -124,10 +127,10 @@ class DeploymentsRestoreGuardTest {
         two.failStartOf("shop/b", "address in use");
         Deployments second = node("node-2", two);
         restore(second);
-        Health flowDown = second.health();
-        assertEquals(Health.Status.DOWN, flowDown.status(), flowDown.toString());
-        assertTrue(flowDown.detail().contains("flow shop/b"), "the detail names the FAILED flow: " + flowDown);
-        assertFalse(flowDown.detail().contains("store") || flowDown.detail().contains("shop/a"), "and nothing that runs: " + flowDown);
+        assertEquals(new Health(Health.Status.DEGRADED, "RESTARTING: flow shop/b (failure 1, next attempt at " + rt.clock().instant().plusSeconds(1) + ")"),
+                second.health(), "the detail names the flow whose consumer is tried again, not the cause nor what runs");
+        rt.clock().advance(Duration.ofSeconds(1));
+        DeploymentsTest.until(() -> Health.up().equals(second.health()), "UP once b's fresh consumer started: " + two.events());
 
         Files.delete(tmp.resolve("bucket").resolve(PackageDraft.sha256(store) + ".zip"));
         Deployments third = node("node-3", new Doors());
@@ -142,21 +145,24 @@ class DeploymentsRestoreGuardTest {
     }
 
     /**
-     * A flow that does not start on restore is stopped and closed there and then: its consumer is stopped, and once the node
-     * closes — which stops only the flows that run — no producer of either flow is left open.
+     * A flow whose consumer does not start on restore runs on: that consumer is stopped, and the next attempt is due a second
+     * later. Once the node closes — before that attempt — no attempt follows, and no producer of either flow is left open.
      */
     @Test
-    void aFlowThatDoesNotStartOnRestoreIsStoppedAndClosed() throws Exception {
+    void aConsumerThatDoesNotStartOnRestoreIsStoppedAndTheCloseEndsItsAttempts() throws Exception {
         deploy(node("node-1", new Doors()), "shop", pkg("shop", "a", "b"));
         Doors two = new Doors();
         two.failStartOf("shop/b", "address in use");
         Deployments second = node("node-2", two);
         restore(second);
-        assertEquals(List.of("RUNNING", "FAILED"), second.flows().stream().map(f -> f.state().name()).toList(), "fixture: b did not start");
-        assertTrue(two.door("shop/b").stopped(), "b's consumer was stopped as the restore found its start failed: " + two.door("shop/b").history());
+        assertEquals(List.of("RUNNING", "RESTARTING"), second.flows().stream().map(f -> f.state().name()).toList(), "fixture: b did not start");
+        assertTrue(two.door("shop/b").stopped(), "b's consumer was stopped as its start failed: " + two.door("shop/b").history());
+        int built = two.doors().size();
 
         OnVirtualThread.call(() -> { second.close(); return null; });
 
         DeploymentsTest.until(() -> two.openProducers().isEmpty(), "every producer node 2 opened is closed, b's included: " + two.producers());
+        rt.clock().advance(Duration.ofMinutes(1));
+        assertEquals(built, two.doors().size(), "no consumer is built after the close: " + two.events());
     }
 }

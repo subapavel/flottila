@@ -22,10 +22,12 @@ public record DeployedFlow(String id, String pkg, String packageVersion, Optiona
                            String hash, State state) {
 
     /**
-     * {@link #RUNNING}: started and serving; {@link #FAILED}: a redeploy could not start it again, or the restore
-     * at the node's start could not start it.
+     * {@link #RUNNING}: started and serving; {@link #RESTARTING}: started, but its consumer takes no message — it did not start
+     * or stopped working, and the node starts a fresh one after a delay; never stored, read live from the consumer;
+     * {@link #FAILED}: a redeploy could not build it or start its worker again, or the restore at the node's start could not
+     * start its worker.
      */
-    public enum State { RUNNING, FAILED }
+    public enum State { RUNNING, RESTARTING, FAILED }
 
     public DeployedFlow {
         Objects.requireNonNull(id, "id");

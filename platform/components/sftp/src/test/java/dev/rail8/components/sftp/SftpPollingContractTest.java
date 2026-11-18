@@ -23,6 +23,7 @@ class SftpPollingContractTest extends PollingConsumerContract {
 
     private final FakeRuntime rt = FakeRuntime.create().withTreeLimit(4096);   // bodies above 4 KiB must stream into the store
     private EmbeddedSftp server;
+    private int port;   // the closed server's, while the partner is down
 
     @BeforeEach
     void up() throws IOException {
@@ -44,4 +45,18 @@ class SftpPollingContractTest extends PollingConsumerContract {
     @Override protected Set<String> remaining() { return server.files("/inbox"); }
 
     @Override protected void tick() { advanceToNextRound(rt.clock(), rt.timer()); }
+
+    /** Closes the server, or starts it again on the same port with the same host key over the same files. */
+    @Override protected void partnerDown(boolean down) {
+        try {
+            if (down) {
+                port = server.port();
+                server.close();
+            } else {
+                server = EmbeddedSftp.start(root, port, EmbeddedSftp.HOST_KEY);
+            }
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
 }

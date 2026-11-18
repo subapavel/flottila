@@ -42,7 +42,12 @@ public interface Component {
         return "{\"type\":\"object\"}";
     }
 
-    /** A consumer that calls {@code handler} for every message and completes its protocol from the returned {@link Ack}. */
+    /**
+     * A consumer that calls {@code handler} for every message and completes its protocol from the returned {@link Ack}. The node
+     * may call it again for {@code cfg}, with the same handler, once the previous consumer of {@code cfg} stopped: after its start
+     * failed, after it broke ({@link Consumer#broken()}), or after its poller lease moved. It starts each consumer at most once:
+     * a stopped consumer is never started again.
+     */
     Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler);
 
     Producer producer(EndpointConfig cfg);
@@ -65,9 +70,9 @@ public interface Component {
     /**
      * Whether a consumer of {@code cfg} polls what another node may poll as well (a remote directory, a mailbox): answered from
      * {@code cfg} alone — already checked against {@link #settings()} — nothing is opened. When true, the node runs a consumer
-     * of {@code cfg} only while it holds the endpoint's lease, so {@link #consumer} may be called again for {@code cfg}
-     * after the previous consumer stopped: a stopped consumer is never started again. The node calls it at deploy and at
-     * restore, on a virtual thread; a throw is a problem line of that deploy.
+     * of {@code cfg} only while it holds the endpoint's lease, and the next consumer of {@code cfg} starts only once the one
+     * before it stopped. The node calls it at deploy and at restore, on a virtual thread; a throw is a problem line of that
+     * deploy.
      *
      * @since 0.1
      */

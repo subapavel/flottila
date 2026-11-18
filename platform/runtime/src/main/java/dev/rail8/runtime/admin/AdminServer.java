@@ -111,8 +111,8 @@ import java.util.function.Supplier;
  * naming the flow and the pool's refusal; only when every failed question was the pool's — a real failure of another
  * flow's question is 500). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
- * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state},
- * a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
+ * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
+ * ({@code RUNNING}, {@code RESTARTING} or {@code FAILED}; a RESTARTING one also {@code restart: {failures, next, cause}}), a package its {@code state} and its {@code problems} (FAILED when the restore could not install it, with no
  * flows, no files, no folders and no artifacts) and its tree: {@code folders:[{path, namespace|null, description|null}]}
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved.
@@ -256,7 +256,7 @@ public final class AdminServer {
      * @param lifecycle the node finished its start and its close has not begun
      * @param fence the node lease's fence is open
      * @param journal the journal is UP: neither failed nor in outage (DEGRADED is DOWN here)
-     * @param deployments no package or flow is listed FAILED
+     * @param deployments no package or flow is listed FAILED: a flow listed RESTARTING keeps the node ready
      */
     public record Readiness(BooleanSupplier lifecycle, BooleanSupplier fence, BooleanSupplier journal, BooleanSupplier deployments) {
         /** Every input UP: what a server built without readiness inputs reports. */
@@ -911,11 +911,19 @@ public final class AdminServer {
 
     // --- JSON
 
+    /**
+     * {@code GET /admin/flows}: every flow deployed here with its state; a flow whose consumer waits for its next attempt also
+     * carries {@code restart}: its failures in a row, when the next attempt is due and the last failure's cause.
+     */
     private static Reply flows(Deployments deployments) {
         JsonArray items = new JsonArray();
+        Map<String, Deployments.Restarting> restarting = deployments.restarting();
         for (DeployedFlow f : deployments.flows()) {
-            items.add(new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("revision", f.revision().orElse(null))
-                    .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()).put("hash", f.hash()).put("state", f.state().name()));
+            JsonObject item = new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("revision", f.revision().orElse(null))
+                    .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()).put("hash", f.hash()).put("state", f.state().name());
+            Deployments.Restarting r = restarting.get(f.id());
+            if (r != null) item.put("restart", new JsonObject().put("failures", r.failures()).put("next", r.next().toString()).put("cause", r.cause()));
+            items.add(item);
         }
         return Json.of(200, new JsonObject().put("items", items));
     }

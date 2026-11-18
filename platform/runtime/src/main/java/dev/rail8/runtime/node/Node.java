@@ -334,7 +334,7 @@ public final class Node implements AutoCloseable {
             AtomicBoolean ready = new AtomicBoolean();   // /ready's lifecycle: DOWN until the start finished (a failed start never sets it)
             // /ready's inputs are in-memory reads: the fence, the journal's and the deployments' health — both synchronous
             AdminServer.Readiness readiness = new AdminServer.Readiness(ready::get, lease,
-                    () -> opened.health().status() == Health.Status.UP, () -> restored.health().status() == Health.Status.UP);
+                    () -> opened.health().status() == Health.Status.UP, () -> restored.health().status() != Health.Status.DOWN);
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),

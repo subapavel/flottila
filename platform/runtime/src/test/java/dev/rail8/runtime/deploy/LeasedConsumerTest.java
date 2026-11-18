@@ -571,11 +571,12 @@ class LeasedConsumerTest {
     }
 
     /**
-     * A consumer whose start fails is a WARNING; it is stopped, and once that stop settled the lease is released (review r1, as
-     * Deployments does with a consumer that did not start); the next tick retries with a fresh consumer.
+     * A consumer whose start fails is stopped, and once that stop settled the lease is released (review r1, as Deployments does
+     * with a consumer that did not start); then the instance breaks with the start's cause and asks for no further tick: the node
+     * starts a fresh instance after its delay.
      */
     @Test
-    void aConsumerStartFailureReleasesAndRetries() {
+    void aConsumerStartFailureReleasesTheLeaseAndBreaks() {
         leases.otherwise(Answer.TRUE);
         pollers.failStart(1, "the partner refused the session");
         Promise<Void> c1Stops = pollers.holdStop(1);
@@ -585,19 +586,85 @@ class LeasedConsumerTest {
         until(() -> log.contains("stop c1"), "the consumer whose start failed is stopped: " + log);
         quiet(h.thread(), "tick 0 waits for c1's stop");
         assertFalse(log.contains("release " + KEY + " " + OWNER), "no release before c1's stop settled: " + log);
+        assertFalse(leased.broken().isComplete(), "no break before the lease was released");
         c1Stops.complete();
         ended(h.thread(), "tick 0 ends");
 
         assertTrue(log.contains("start failed c1"), "fixture: c1's start failed: " + log);
         assertTrue(indexOf("start failed c1") < indexOf("stop c1") && indexOf("stopped c1") < indexOf("release " + KEY + " " + OWNER),
                 "the failed consumer is stopped, then the lease is released: " + log);
-        assertTrue(warningsCarrying("the partner refused the session").stream().anyMatch(r -> r.getLevel() == Level.WARNING),
-                "the failed start is a WARNING carrying its cause: " + logged.stream().map(LogRecord::getMessage).toList());
-
-        settledTickAt(t(10), 2);
-        until(() -> log.contains("start c2"), "the next tick retries");
+        assertTrue(leased.broken().failed() && "the partner refused the session".equals(leased.broken().cause().getMessage()),
+                "the instance breaks with the start's cause: " + leased.broken());
+        assertEquals(0, timer.pending(), "no further tick: " + log);
+        clock.advance(Duration.ofHours(1));
+        assertEquals(0, freshCalls.get(), "no fresh consumer: the node starts a fresh instance: " + log);
         assertEquals(1, pollers.c(1).starts.get(), "the failed consumer is not started again");
-        assertEquals(1, freshCalls.get(), "the retry builds a fresh consumer");
+    }
+
+    /**
+     * The consumer that runs breaks: the instance breaks with that cause and asks for no further tick; it stops nothing itself.
+     * Its stop then stops the broken consumer and releases the lease.
+     */
+    @Test
+    void aBreakOfTheConsumerThatRunsBreaksTheInstanceAndItsStopReleases() throws Exception {
+        leases.otherwise(Answer.TRUE);
+        Breakable c1 = new Breakable(pollers.c(1));
+        leased = new LeasedConsumer(leases, KEY, OWNER, TTL, RENEW, timer, clock, c1, fresh);
+        leased.start();
+        settledTickAt(T0, 1);
+        assertEquals(1, pollers.alive(), "fixture: c1 polls");
+
+        c1.broken.fail(new IllegalStateException("the session dropped"));
+        assertTrue(leased.broken().failed() && "the session dropped".equals(leased.broken().cause().getMessage()), "forwarded: " + leased.broken());
+        assertEquals(0, timer.pending(), "the next tick was cancelled: " + log);
+        assertFalse(log.contains("stop c1"), "the instance stops nothing by itself: " + log);
+
+        stopped = true;
+        OnVirtualThread.join(OnVirtualThread.start(() -> leased.stop().await()));
+        assertTrue(indexOf("stopped c1") < indexOf("release " + KEY + " " + OWNER), "its stop stops c1, then releases: " + log);
+    }
+
+    /** A break that completed during the inner start is read once the start succeeded. */
+    @Test
+    void aBreakDuringTheInnerStartCountsOnceItSucceeded() {
+        leases.otherwise(Answer.TRUE);
+        Breakable c1 = new Breakable(pollers.c(1));
+        c1.broken.fail(new IllegalStateException("broke while starting"));
+        leased = new LeasedConsumer(leases, KEY, OWNER, TTL, RENEW, timer, clock, c1, fresh);
+        leased.start();
+        settledTickAt(T0, 1);
+        assertTrue(leased.broken().failed() && "broke while starting".equals(leased.broken().cause().getMessage()), "" + leased.broken());
+        assertEquals(0, timer.pending(), "no further tick: " + log);
+    }
+
+    /** A consumer the lost lease stopped is not the one that runs: its break is ignored, and the instance waits on standby. */
+    @Test
+    void aBreakOfAConsumerTheLossStoppedIsIgnored() {
+        leases.next(Answer.TRUE, Answer.FALSE).otherwise(Answer.FALSE);
+        Breakable c1 = new Breakable(pollers.c(1));
+        leased = new LeasedConsumer(leases, KEY, OWNER, TTL, RENEW, timer, clock, c1, fresh);
+        leased.start();
+        settledTickAt(T0, 1);
+        settledTickAt(t(10), 2);
+        assertTrue(log.contains("stopped c1"), "fixture: the loss stopped c1: " + log);
+
+        c1.broken.fail(new IllegalStateException("closed by its own stop"));
+        assertFalse(leased.broken().isComplete(), "no break of the instance");
+        assertEquals(1, timer.pending(), "it ticks on, on standby: " + log);
+    }
+
+    /** A consumer of {@link Pollers} whose {@code broken()} the case fails. */
+    static final class Breakable implements Consumer {
+        final Consumer inner;
+        final Promise<Void> broken = Promise.promise();
+
+        Breakable(Consumer inner) { this.inner = inner; }
+
+        @Override public Future<Void> start() { return inner.start(); }
+
+        @Override public Future<Void> stop() { return inner.stop(); }
+
+        @Override public Future<Void> broken() { return broken.future(); }
     }
 
     /** Every tick runs on a virtual thread of its own, never on the timer's thread (here: the test thread that moves the clock). */
@@ -681,29 +748,6 @@ class LeasedConsumerTest {
 
         assertTrue(leased.stop().isComplete(), "no tick ran: a stop asked now waits for nothing: " + log);
         assertEquals(List.of("build c1"), log, "no hold, no start, no release: " + log);
-    }
-
-    /**
-     * c1's start fails at T0 and the lease, valid until T0+25, is released; the hold at T0+10 fails: no consumer is built or
-     * started on it — the released lease's validity counts no more, only a hold confirmed true starts one.
-     */
-    @Test
-    void afterAFailedStartAFailedHoldStartsNothing() {
-        leased.start();
-        leases.next(Answer.TRUE, Answer.FAIL).otherwise(Answer.FALSE);
-        pollers.failStart(1, "the partner refused the session");
-        clock.advance(Duration.ZERO);
-        quiet(leases.hold(1).thread(), "tick 0");
-        assertTrue(log.contains("release " + KEY + " " + OWNER), "fixture: the failed start released the lease: " + log);
-        assertEquals(RENEW, timer.nextDelay(), "fixture: the next tick at the renew period");
-
-        clock.advance(RENEW);
-        Hold failed = leases.hold(2);
-        quiet(failed.thread(), "tick 1");
-
-        assertEquals(Boolean.FALSE, failed.result(), "fixture: the hold at T0+10 failed");
-        assertEquals(0, freshCalls.get(), "no consumer is built on a failed hold: " + log);
-        assertEquals(0, pollers.alive(), "none polls: " + log);
     }
 
     // --- review r1
@@ -876,8 +920,8 @@ class LeasedConsumerTest {
     }
 
     /**
-     * R11: held, lost (c1 stopped), held again — and the component refuses to build a fresh consumer. That is a failed start (a
-     * WARNING carrying the refusal, the lease released), not a tick that dies holding it; the next tick, held, asks again.
+     * R11: held, lost (c1 stopped), held again — and the component refuses to build a fresh consumer. That is a failed start (the
+     * lease released, the instance broken with the refusal), not a tick that dies holding it.
      */
     @Test
     void aFreshConsumerTheComponentRefusesIsAFailedStart() {
@@ -896,12 +940,8 @@ class LeasedConsumerTest {
 
         assertEquals(1, refusals.get(), "the component was asked once: " + log);
         assertEquals("release " + KEY + " " + OWNER, log.getLast(), "the lease is released after the refusal: " + log);
-        assertTrue(logged.stream().anyMatch(r -> r.getLevel() == Level.WARNING && r.getThrown() != null
-                && "the endpoint is refused".equals(r.getThrown().getMessage())), "a WARNING carries the refusal: " + messages());
-        assertEquals(1, timer.pending(), "the next tick is scheduled: " + log);
-        assertEquals(RENEW, timer.nextDelay(), "a renew period on: " + log);
-
-        settledTickAt(t(30), 4);
-        assertEquals(2, refusals.get(), "the next tick asks the component again: " + log);
+        assertTrue(leased.broken().failed() && "the endpoint is refused".equals(leased.broken().cause().getMessage()),
+                "the instance breaks with the refusal: " + leased.broken());
+        assertEquals(0, timer.pending(), "no further tick: " + log);
     }
 }
