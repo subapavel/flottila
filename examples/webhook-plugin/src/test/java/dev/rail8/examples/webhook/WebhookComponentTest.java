@@ -10,6 +10,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import org.junit.jupiter.api.AfterAll;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -49,6 +51,27 @@ class WebhookComponentTest {
             assertEquals(404, status(client, HttpMethod.POST, port, "/other", "order"));
             assertEquals(405, status(client, HttpMethod.GET, port, "/in", ""));
             assertEquals(413, status(client, HttpMethod.POST, port, "/in", "nine bytes"));
+        } finally {
+            client.close().await();
+            consumer.stop().await();
+        }
+    }
+
+    @Test
+    void theConsumerAnswersAnAcceptedMessage202WithItsId() {
+        AtomicReference<String> accepted = new AtomicReference<>();
+        Consumer consumer = webhook.consumer(new EndpointConfig("in", URI.create("webhook://in"),
+                Map.of("path", "/in", "maxBodyBytes", 1024, "flow", "test")), e -> {
+            accepted.set(e.id());
+            return Future.succeededFuture(new Ack.Accepted(e.id()));
+        });
+        consumer.start().await();
+        HttpClientAgent client = vertx.createHttpClient();
+        try {
+            int port = ((WebhookComponent.WebhookConsumer) consumer).port();
+            HttpClientResponse res = client.request(HttpMethod.POST, port, "127.0.0.1", "/in").compose(req -> req.send("order")).await();
+            assertEquals(202, res.statusCode());
+            assertEquals(accepted.get(), res.getHeader("x-message-id"), "the id of the message the handler accepted");
         } finally {
             client.close().await();
             consumer.stop().await();
