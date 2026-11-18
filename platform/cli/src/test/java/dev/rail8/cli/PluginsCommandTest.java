@@ -36,10 +36,22 @@ class PluginsCommandTest {
     }
 
     @Test
-    void withoutThePluginItsSchemeAndStepAreProblems() {
+    void withoutThePluginItsSchemeAndStepAreProblems(@TempDir Path copy) throws IOException {
         Ran ran = run("validate", PACKAGE.toString());
         assertEquals(1, ran.exit(), ran.toString());
         assertTrue(ran.problems().stream().anyMatch(p -> p.contains("no component on this node serves the scheme 'acme'")), ran.toString());
+        Path pkg = CliRuns.copy(PACKAGE, copy.resolve("plugin"));
+        Files.writeString(pkg.resolve("endpoints/partner.yaml"), """
+                schemaVersion: 1
+                kind: endpoint
+                id: partner
+                scheme: http
+                direction: out
+                config: { url: "http://127.0.0.1:18088/partner", maxBodyBytes: 1048576 }
+                """);
+        Ran overHttp = run("validate", pkg.toString());
+        assertEquals(1, overHttp.exit(), overHttp.toString());
+        assertEquals(List.of("problem: flow 'dropped' does not build: step 'drop' (steps[0], drop): unknown step type 'drop'"), overHttp.problems());
     }
 
     @Test
@@ -92,6 +104,7 @@ class PluginsCommandTest {
         assertEquals(2, missing.exit(), missing.toString());
         assertTrue(missing.err().startsWith("rail8: validate: --plugins names no directory: "), missing.toString());
         Ran unloadable = run(Map.of("RAIL8_PLUGINS", plugins.resolve("missing").toString()), "validate", PACKAGE.toString());
+        assertEquals(2, unloadable.exit(), unloadable.toString());
         assertEquals(List.of("rail8: plugins refused: RAIL8_PLUGINS names no directory: " + plugins.resolve("missing")), unloadable.errLines());
     }
 

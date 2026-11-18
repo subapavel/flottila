@@ -9,11 +9,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@code Main.start} with the plugins of {@code RAIL8_PLUGINS}, where it ends before Postgres: a plugin directory, plugin, step
  * type or language that is refused refuses the configuration (2) before Vert.x starts; a plugin's component that is refused
- * stops the node's start (1) before it connects anywhere. Either way nothing is handed back.
+ * stops the node's start (1) before it connects anywhere. Either way nothing is handed back and the plugins' class loaders are
+ * closed again: the process holds none of their jars open.
  */
 class MainPluginsTest {
 
@@ -43,7 +46,29 @@ class MainPluginsTest {
             throw new AssertionError(e);
         }
         assertTrue(started.node().isEmpty() && started.vertx().isEmpty() && started.plugins().isEmpty(), "nothing handed back: " + started);
+        assertEquals(List.of(), openFiles(plugins), "the plugins' class loaders are closed");
         return new Run(started, err.toString(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The files under {@code plugins} this process holds open, from the links of {@code /proc/self/fd}; none where there is no
+     * such directory (a system other than Linux) or no {@code plugins}.
+     */
+    static List<Path> openFiles(Path plugins) {
+        Path fds = Path.of("/proc/self/fd");
+        if (!Files.isDirectory(fds) || !Files.isDirectory(plugins)) return List.of();
+        try (Stream<Path> links = Files.list(fds)) {
+            Path real = plugins.toRealPath();
+            return links.flatMap(fd -> {
+                try {
+                    return Stream.of(Files.readSymbolicLink(fd));
+                } catch (IOException closedMeanwhile) {
+                    return Stream.empty();
+                }
+            }).filter(target -> target.startsWith(real)).toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     Path plugin(String entry, Class<?> provider) throws IOException {

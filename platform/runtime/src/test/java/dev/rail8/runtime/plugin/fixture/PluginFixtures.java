@@ -184,6 +184,20 @@ public final class PluginFixtures {
         }
     }
 
+    /** A plugin whose name is null. */
+    public static final class NullName implements Plugin {
+        @Override public String name() { return null; }
+        @Override public String api() { return API; }
+    }
+
+    /** A plugin whose one component's scheme and one language's name are null. */
+    public static final class NullKeys implements Plugin {
+        @Override public String name() { return "null-keys"; }
+        @Override public String api() { return API; }
+        @Override public List<Component> components(ComponentContext context) { return List.of(new Named(null, context)); }
+        @Override public List<Expressions> languages() { return List.of(new Language(null)); }
+    }
+
     /** A plugin named as the node's own set is. */
     public static final class NamedRail8 implements Plugin {
         @Override public String name() { return "rail8"; }

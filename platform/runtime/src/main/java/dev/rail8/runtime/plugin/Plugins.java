@@ -38,22 +38,23 @@ import java.util.stream.Stream;
 
 /**
  * The plugins a node loads from its plugin directory ({@value #ENV}), and what they add to what it ships. The node and the CLI
- * load them alike; see {@link Plugin} for the contract a plugin implements.
+ * load them alike.
  *
  * <p>Each entry of the directory, in name order, is one plugin: a {@code .jar} file, or a directory whose {@code .jar} files
  * (not its subdirectories', and nothing else in it) are the plugin's. Each plugin gets a class loader of its own over its jars.
  * Its parent passes on the JDK and, from the node, the classes and resources of {@link #SHARED} only, never a service file; so
  * a plugin's jars name its one {@link Plugin} in {@code META-INF/services} themselves. Loading refuses, with an
- * {@link IllegalArgumentException} naming the entry: a directory that is none or holds more than {@value #MAX_PLUGINS} entries;
- * an entry that is neither a {@code .jar} nor a directory, or a directory without a jar or with more than {@value #MAX_JARS}; a
- * plugin whose jars name no implementation, or more than one, or one that cannot be built; a name that is no lower-case label,
- * is {@code rail8} or another plugin's; and a plugin built against an api this node does not load ({@link #loads}).
+ * {@link IllegalArgumentException} naming the entry: a directory that is none, cannot be read or holds more than
+ * {@value #MAX_PLUGINS} entries; an entry that is neither a {@code .jar} nor a directory, or a directory without a jar or with more
+ * than {@value #MAX_JARS}; jars that cannot be read; a plugin whose jars name no implementation, or more than one, or one that
+ * cannot be built; a name that is null, no lower-case label, {@code rail8} or another plugin's; and a plugin built against an api
+ * this node does not load ({@link #loads}).
  *
  * <p>{@link #components}, {@link #steps} and {@link #languages} add what the plugins bring after what the node ships, plugins in
  * entry order, each call into a plugin with the thread's context class loader set to the plugin's own for that call. A plugin
  * adds and never replaces: a scheme, step type or expression language that is already the node's or another plugin's is refused,
  * naming both owners, and so are a built-in step type ({@link FlowBuilder#BUILT_INS}) and the scheme {@code mock}. So are a call
- * that throws and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
+ * that throws, a null scheme, step type or language, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
  *
  * <p>{@link #close} closes the plugins' class loaders: call it once nothing of theirs runs any more, after the node and its
  * Vert.x have stopped.
@@ -110,7 +111,7 @@ public final class Plugins implements AutoCloseable {
     /** The plugins of {@code dir}, each entry of it one (see the class comment). */
     public static Plugins load(Path dir) {
         if (!Files.isDirectory(dir)) throw new IllegalArgumentException(ENV + " names no directory: " + dir);
-        List<Path> entries = list(dir);
+        List<Path> entries = list(dir, ENV + " " + dir);
         if (entries.size() > MAX_PLUGINS) {
             throw new IllegalArgumentException(ENV + " holds " + entries.size() + " entries; at most " + MAX_PLUGINS);
         }
@@ -149,18 +150,18 @@ public final class Plugins implements AutoCloseable {
             } catch (ServiceConfigurationError | LinkageError broken) {
                 throw new IllegalArgumentException("plugin " + at + ": its implementation cannot be built: " + broken, broken);
             }
-            String name = String.valueOf(called(at, loader, "name()", plugin::name));
-            if (!NAME.matcher(name).matches()) {
+            String name = call("plugin " + at, loader, "name()", plugin::name, IllegalArgumentException::new);
+            if (name == null || !NAME.matcher(name).matches()) {
                 throw new IllegalArgumentException("plugin " + at + ": the name '" + name
                         + "' is not a lower-case letter followed by at most 63 lower-case letters, digits or dashes");
             }
             if (SHIPPED.equals(name)) throw new IllegalArgumentException("plugin " + at + ": the name " + SHIPPED + " stands for what the node ships");
-            String api = String.valueOf(called(at, loader, "api()", plugin::api));
+            String api = String.valueOf(call("plugin " + at, loader, "api()", plugin::api, IllegalArgumentException::new));
             if (!loads(Plugin.API, api)) {
                 throw new IllegalArgumentException("plugin " + at + ": built against api " + api + ", which a node of api " + Plugin.API + " does not load");
             }
             String version = Optional.ofNullable(own.getFirst().type().getPackage()).map(Package::getImplementationVersion).orElse("-");
-            return new Loaded(at, plugin, loader, name, api, version, sha256(jars));
+            return new Loaded(at, plugin, loader, name, api, version, sha256(jars, at));
         } catch (RuntimeException refused) {
             close(at, loader);
             throw refused;
@@ -241,12 +242,14 @@ public final class Plugins implements AutoCloseable {
         Map<String, String> owners = new HashMap<>();
         shipped.forEach(t -> owners.putIfAbsent(key.apply(t), SHIPPED));
         for (Loaded p : plugins) {
-            List<T> brought = call(p, method, () -> List.copyOf(contributions.apply(p.plugin())), refusal);
+            String who = "plugin " + p.name();
+            List<T> brought = call(who, p.loader(), method, () -> List.copyOf(contributions.apply(p.plugin())), refusal);
             if (brought.size() > Plugin.MAX_CONTRIBUTIONS) {
                 throw refusal.apply("plugin " + p.name() + ": " + method + " brings " + brought.size() + "; at most " + Plugin.MAX_CONTRIBUTIONS, null);
             }
             for (T t : brought) {
-                String k = call(p, keyName + " of " + t.getClass().getName(), () -> key.apply(t), refusal);
+                String k = call(who, p.loader(), keyName + " of " + t.getClass().getName(), () -> key.apply(t), refusal);
+                if (k == null) throw refusal.apply(who + ": the " + keyName + " of " + t.getClass().getName() + " is null", null);
                 if (reserved.containsKey(k)) throw refusal.apply("plugin " + p.name() + ": the " + keyName + " " + k + " " + reserved.get(k), null);
                 String owner = owners.putIfAbsent(k, "plugin " + p.name());
                 if (owner != null) {
@@ -258,21 +261,15 @@ public final class Plugins implements AutoCloseable {
         return List.copyOf(all);
     }
 
-    /** {@code body}, a call into the plugin {@code p}, on its context class loader; what it throws, as a refusal naming it. */
-    private static <T> T call(Loaded p, String method, Supplier<T> body, BiFunction<String, Throwable, RuntimeException> refusal) {
-        try {
-            return withContext(p.loader(), body);
-        } catch (RuntimeException | LinkageError failed) {
-            throw refusal.apply("plugin " + p.name() + ": " + method + " failed: " + failed + (failed instanceof LinkageError ? SEES : ""), failed);
-        }
-    }
-
-    /** {@code body}, a call into the plugin of entry {@code at} while it is loaded; what it throws, as a refusal naming the entry. */
-    private static <T> T called(String at, ClassLoader loader, String method, Supplier<T> body) {
+    /**
+     * {@code body}, a call into a plugin's {@code method} with the context class loader {@code loader}; what it throws, as a
+     * {@code refusal} whose message starts with {@code who}.
+     */
+    private static <T> T call(String who, ClassLoader loader, String method, Supplier<T> body, BiFunction<String, Throwable, RuntimeException> refusal) {
         try {
             return withContext(loader, body);
         } catch (RuntimeException | LinkageError failed) {
-            throw new IllegalArgumentException("plugin " + at + ": " + method + " failed: " + failed + (failed instanceof LinkageError ? SEES : ""), failed);
+            throw refusal.apply(who + ": " + method + " failed: " + failed + (failed instanceof LinkageError ? SEES : ""), failed);
         }
     }
 
@@ -288,12 +285,12 @@ public final class Plugins implements AutoCloseable {
         }
     }
 
-    /** The entries of {@code dir}, in name order. */
-    private static List<Path> list(Path dir) {
+    /** The entries of {@code dir}, in name order; a directory that cannot be read is refused, its message starting with {@code what}. */
+    private static List<Path> list(Path dir, String what) {
         try (Stream<Path> entries = Files.list(dir)) {
             return entries.sorted().toList();
-        } catch (IOException failed) {
-            throw new UncheckedIOException("reading the plugin directory " + dir + " failed", failed);
+        } catch (IOException | UncheckedIOException failed) {
+            throw new IllegalArgumentException(what + " cannot be read: " + failed, failed);
         }
     }
 
@@ -301,7 +298,7 @@ public final class Plugins implements AutoCloseable {
     private static List<Path> jars(Path entry, String at) {
         if (Files.isRegularFile(entry) && at.endsWith(".jar")) return List.of(entry);
         if (!Files.isDirectory(entry)) throw new IllegalArgumentException("plugin " + at + ": an entry of " + ENV + " is a .jar or a directory of jars");
-        List<Path> jars = list(entry).stream().filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jar")).toList();
+        List<Path> jars = list(entry, "plugin " + at + ": its directory").stream().filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jar")).toList();
         if (jars.isEmpty()) throw new IllegalArgumentException("plugin " + at + ": the directory holds no .jar");
         if (jars.size() > MAX_JARS) throw new IllegalArgumentException("plugin " + at + ": the directory holds " + jars.size() + " jars; at most " + MAX_JARS);
         return jars;
@@ -319,7 +316,8 @@ public final class Plugins implements AutoCloseable {
         return urls;
     }
 
-    private static String sha256(List<Path> jars) {
+    /** The SHA-256 over {@code jars}; jars that cannot be read are refused, naming the plugin of entry {@code at}. */
+    private static String sha256(List<Path> jars, String at) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Path jar : jars) {
@@ -331,7 +329,7 @@ public final class Plugins implements AutoCloseable {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         } catch (IOException failed) {
-            throw new UncheckedIOException("reading the jars of a plugin failed", failed);
+            throw new IllegalArgumentException("plugin " + at + ": its jars cannot be read: " + failed, failed);
         }
     }
 
