@@ -142,8 +142,10 @@ def segments(text: str, kind: str) -> dict[int, list[tuple[str, str]]]:
             if c == "/":
                 flush("code"); last_code = "/"; i += 1; continue
             i += 1; continue
-        # string, template, text block
+        # string, template, text block; a backslash before a line end continues the line, and the line count goes on
         if c == "\\":
+            if nxt == "\n":
+                buf.append(c); flush(state); line += 1; i += 2; continue
             buf.append(text[i:i + 2]); i += 2; continue
         if state == "text" and text.startswith('"""', i):
             flush("code"); last_code = '"'; i += 3; continue

@@ -114,6 +114,13 @@ class ChangeGuardTest(unittest.TestCase):
         self.assertEqual(["mapping/engine/A.java:5: a reference in a comment (D-3): "
                           "say what the code does and why instead"], self.findings(repo, 1))
 
+    def test_a_line_continuation_in_a_text_block_keeps_the_line_numbers(self):
+        old = 'package a;\nclass A {\n  String t = """\n      a \\\n      b""";\n  // kept D-1\n  int y;\n}\n'
+        repo = self.repo({"mapping/engine/A.java": old})
+        repo.change({"mapping/engine/A.java": old.replace("int y;", "int y; // new D-3")})
+        self.assertEqual(["mapping/engine/A.java:7: a reference in a comment (D-3): "
+                          "say what the code does and why instead"], self.findings(repo, 1))
+
     def test_comments_in_java_of_the_jq_engine_are_checked(self):
         repo = self.repo()
         repo.change({"jq/jq-core/src/main/java/A.java": "package a;\n// a compiled filter (ADR-0016, #108)\nclass A {}\n"})
