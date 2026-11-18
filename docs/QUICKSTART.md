@@ -1,94 +1,106 @@
-# Quickstart: send a message through Rail8 on your machine
+# Quickstart: run Rail8 and its UI on your machine
 
-One node, its Postgres and a partner echo in Docker; the demo package (`examples/demo`) deployed to the node; an invoice
-sent in and read back through the admin API. Commands run from the repository root.
+One node with its Postgres and a partner echo in Docker, the mapping service, and the UI in your browser. The demo
+package (`examples/demo`) is deployed to the node, an invoice is sent in and found in the UI. Commands run from the
+repository root.
 
-**Prerequisites:** Docker with Compose v2, JDK 25, Maven 3.9, `curl`, and `zip` (else `deploy.sh` uses the JDK's `jar`).
+## Prerequisites
 
-## 1. Build and start
+| Tool | Version | Install |
+| --- | --- | --- |
+| JDK | 25 | any distribution, e.g. Temurin |
+| Maven | 3.9 | for the platform build; the mapping build uses the `./mvnw` wrapper in the repository |
+| Node.js | 22.12 or newer | with npm |
+| Docker | Compose v2 | Docker Engine on Linux, Docker Desktop on macOS and Windows |
+| `curl`, `zip`, `openssl` | | `zip` is optional: `deploy.sh` falls back to the JDK's `jar` |
 
-```sh
-bin/install-jq                                                                  # the jq engine the jq step depends on
-bin/install-mapping                                                             # the mapping engine the mapping step depends on
-mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   # the jar and its target/lib, which the image copies
-export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)           # the admin API's bearer token; any string will do
-docker compose up -d --build
-until curl -sf localhost:8081/health >/dev/null; do sleep 2; done   # the node, not just postgres, is up
-```
+The scripts are shell scripts. On Windows run everything inside WSL 2, with Docker Desktop's WSL integration on and the
+repository cloned inside the WSL file system.
 
-The node migrates the database itself (Flyway) and serves `/health` on `localhost:8081`. Compose also publishes Postgres on
-the host's loopback, port 5432; if that port is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token
-the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs rail8`).
-
-**Upgrading from an earlier checkout:** Postgres runs `postgres:18.6` (D-129), whose volume is mounted at `/var/lib/postgresql`.
-A database volume made by the earlier `postgres:16` cannot be reused: the 18 image refuses to start on it ("there appears to be
-PostgreSQL data in: /var/lib/postgresql", `docker compose logs postgres`). Run `docker compose down -v` once before the `up`;
-it deletes this dev stack's database and the node's archives, so the demo is deployed again afterwards.
-
-A stack started before the rename to Rail8 (2026-11-15, D-148): run `docker compose down -v --remove-orphans` once before the first `up`.
-The node's service was renamed, so its old container is an orphan that a plain `down` leaves, and while it exists it keeps its volumes in
-use. That stack kept its database and its archives in two volumes under the former name, which this file no longer declares, so `down -v`
-does not remove them either: `docker volume ls` shows them and `docker volume rm` removes them once the old container is gone. The renamed
-stack starts on new, empty volumes, so the demo is deployed again.
-
-The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` in the network namespace the `netns` service holds for the node (it publishes the ports), on
-`localhost:8090`; it answers every path with the body it was sent.
-
-## 2. Deploy the demo
+## First run
 
 ```sh
-deploy/quickstart/deploy.sh examples/demo
+git clone https://github.com/subapavel/rail8.git && cd rail8
+bin/install-jq && bin/install-mapping                                           # the engines the jq and mapping steps depend on
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am   # the node's jar, which the image copies
+./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests        # the mapping service the studio talks to
+(cd ui && npm ci)
+
+export RAIL8_ADMIN_TOKEN=$(openssl rand -hex 16)   # the admin API's bearer token; any string will do
+docker compose up -d --build                       # the node, its Postgres and the partner echo
+until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
+deploy/quickstart/deploy.sh examples/demo          # the demo flows, deployed to the node
 ```
 
-It zips the directory (`package.yaml` at the root), PUTs it to `/admin/packages/demo` with the token and prints the node's
-answer — `{"package":"demo","version":"0.1.0",…,"flows":["demo/invoice-sync","demo/invoice-async","demo/sftp-invoice"],"added":[…],…}` — or exits
-non-zero on a refusal. `RAIL8_ADMIN` (default `http://localhost:8081`) points it at another node.
+Then start the mapping service and the UI, each in its own terminal (the same `RAIL8_ADMIN_TOKEN` exported in the UI's):
 
-The demo holds two more flows, `demo/invoice-async` (the same invoice at least once, on `localhost:8082/invoice/async` — not
-published by this stack) and `demo/sftp-invoice` (a file dropped in an SFTP inbox). This stack has no SFTP server, so its node
-carries placeholder secrets for them and the SFTP flow cannot connect; both flows run in the fuller stack,
-[`deploy/compose/`](../deploy/compose/README.md).
+```sh
+cp -r mapping/corpus ~/rail8-mapping-workspace     # once: the mapping studio's working copy
+java -Dquarkus.http.port=18080 -Drail8.mapping.workspace=$HOME/rail8-mapping-workspace -jar mapping/service/target/quarkus-app/quarkus-run.jar
+cd ui && QUARKUS_HTTP_PORT=18080 npm run dev       # port 18080: the demo's http-in already uses 8080
+```
 
-## 3. Send an invoice
+Open **http://localhost:5173**. The UI has **Messages**, a search over what the node stored, and **Mappings**, the
+mapping studio. The UI sends its `/admin` requests to the node on `localhost:8081` and adds the token itself, so the
+browser never sees it.
+
+The node migrates its database itself and serves `/health` on `localhost:8081`. Postgres is published on the host's
+loopback port 5432; if that is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token the node exits
+with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs rail8`).
+
+## Every morning
+
+```sh
+git pull
+mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-runtime -am
+./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
+(cd ui && npm ci)
+docker compose up -d --build --force-recreate      # the node restores the deployed demo from its volume
+deploy/quickstart/deploy.sh examples/demo          # only when the demo itself changed
+```
+
+Then stop the mapping service and the UI (Ctrl+C) and start them again with the two commands above. After `git pull`
+brought a new `bin/install-jq` or `bin/install-mapping`, run those two first.
+
+If the node does not start after a pull, the database volume may be from an older checkout. `docker compose down -v`
+removes this stack's database and archives; start again from `docker compose up`, then deploy the demo again.
+
+## Seeing it work
 
 ```sh
 curl -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in
 ```
 
-The flow validates the invoice, keys it by `invoiceId`, routes it by currency, maps it with XSLT and sends it to the partner;
-the partner's answer is the reply — the echo returns what it got, the invoice as mapped:
-`<PartnerInvoice number="4711" currency="CZK"><Total>550.5</Total>…`.
+The flow validates the invoice, keys it by `invoiceId`, routes it by currency, maps it with XSLT and sends it to the
+partner; the partner's answer is the reply, the invoice as mapped: `<PartnerInvoice number="4711" currency="CZK">…`.
 
-## 4. Read it back
+In the UI open **Messages**, search by key name `invoiceId` and key value `4711`, and open the message found: its
+timeline lists the steps `ingress`, `validate`, `extractKey`, `route`, `toPartner` and `partner`, and each step shows
+the payload it recorded. The same through the admin API:
 
 ```sh
 auth="Authorization: Bearer $RAIL8_ADMIN_TOKEN"
-curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # {"items":["<id>"],"next":null}, or
-                                                                       # "items":[] for a moment after the reply
-curl -H "$auth" localhost:8081/admin/messages/<id>                    # the timeline
-curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payload after step 5
+curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # {"items":["<id>"],"next":null}
+curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payload after step 5: the partner's answer
 ```
 
-The timeline lists the steps of `demo/invoice-sync`: `ingress`, `validate`, `extractKey`, `route`, `toPartner` and
-`partner`, each with its number, outcome, headers, props and body reference (hash, size). `steps/<n>/body` serves what step
-n recorded: step 0 is the invoice as received, step 4 the mapped invoice, step 5 the partner's answer.
+A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
 
-## 5. A foreign invoice
+## Stop
 
 ```sh
-sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml \
-  | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in
-docker compose logs echo        # POST /echo for 4711, POST /echo-foreign for 4712
+docker compose down      # keeps the database and the archives in their volumes
+docker compose down -v   # also removes them: the next start is empty, deploy the demo again
 ```
 
-## 6. Stop and clean
+Ctrl+C stops the mapping service and the UI.
 
-```sh
-docker compose down             # stop and remove the containers; the database and the archives stay in their volumes
-docker compose down -v          # also remove the volumes: the next start is empty, deploy the demo again
-```
+## Notes
 
-After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all containers (`netns` holds the namespace, so the node and the echo restart independently); the node restores the deployed demo from its volume.
+`deploy/quickstart/deploy.sh` zips the directory, PUTs it to `/admin/packages/demo` with the token and prints the node's
+answer, or exits non-zero on a refusal; `RAIL8_ADMIN` (default `http://localhost:8081`) points it at another node.
 
-The fuller gate stack (Postgres, Valkey, SeaweedFS S3, SFTP, the node, the echo and an automatic deploy of the demo) is in
-[`deploy/compose/`](../deploy/compose/README.md); Kafka, an optional add-on, starts only with `--profile kafka`.
+The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` on `localhost:8090`, answering every path
+with the body it was sent. The demo's other two flows, `demo/invoice-async` and `demo/sftp-invoice`, need more than this
+stack (no SFTP server here, its secrets are placeholders); they run in the fuller stack,
+[`deploy/compose/`](../deploy/compose/README.md), which also has Valkey, SeaweedFS S3 and, with `--profile kafka`, Kafka.
