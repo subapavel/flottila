@@ -80,12 +80,26 @@ class HugeConstantKeyTest {
 
   @Test
   void anArrayLiteralFoldsInLinearTime() {
-    // ADR-0035 (31aca88): no fold work goes uncharged. The fold of [1,...,1] + . walks the literal's 10^6 elements once
-    // before it charges them (8 000 064 bytes, past the compile's 1 MiB, so it is none); a walk that put each element
-    // in front of the others would move 5 x 10^11 references, far past the limit (a time witness).
-    String filter = "[" + String.join(",", Collections.nCopies(1_000_000, "1")) + "] + .";
+    // No fold work goes uncharged. The fold of [1,...,1] + . walks the literal's elements once before it charges
+    // them (past the compile's 1 MiB, so it is none). Linear, ten times the elements take about ten times as long (11
+    // to 15 measured); a walk that put each element in front of the others would take a hundred times as long. The
+    // fastest of a few compiles of 10^5 and of 10^6 elements are compared, so a loaded machine slows both alike, and
+    // the ratio's limit of 30 sits between the two. The absolute limit, several times what the linear compiles take,
+    // stops a walk too slow to finish: the quadratic one does not finish 10^6 elements in it.
     JqEngine engine = RunBudgets.unlimited();
-    assertTimeoutPreemptively(Duration.ofSeconds(10), () -> engine.compile(filter), "the compile of a literal of 10^6 elements + .");
+    String small = literalPlusDot(100_000);
+    String large = literalPlusDot(1_000_000);
+    assertTimeoutPreemptively(
+        Duration.ofMinutes(2),
+        () -> {
+          engine.compile(small);
+          long smallNanos = fastestCompile(engine, small, 3);
+          long largeNanos = fastestCompile(engine, large, 2);
+          assertThat((double) largeNanos / smallNanos)
+              .as("time of the compile of 10^6 elements + . over that of 10^5 (%d ns over %d ns)", largeNanos, smallNanos)
+              .isLessThan(30);
+        },
+        "the compiles of literals of 10^5 and 10^6 elements + .");
   }
 
   @Test
@@ -231,5 +245,21 @@ class HugeConstantKeyTest {
   /** {@code [1,...,1] - [2,...,2,1]}: {@code n} ones less 1023 twos and a one, n x 1024 ticks and a few more. */
   private static String difference(int n) {
     return "[" + String.join(",", Collections.nCopies(n, "1")) + "] - [" + "2,".repeat(1023) + "1]";
+  }
+
+  /** {@code [1,...,1] + .}, a literal of {@code n} elements. */
+  private static String literalPlusDot(int n) {
+    return "[" + String.join(",", Collections.nCopies(n, "1")) + "] + .";
+  }
+
+  /** The fewest nanoseconds of {@code times} compiles of {@code filter}. */
+  private static long fastestCompile(JqEngine engine, String filter, int times) {
+    long fastest = Long.MAX_VALUE;
+    for (int i = 0; i < times; i++) {
+      long start = System.nanoTime();
+      engine.compile(filter);
+      fastest = Math.min(fastest, System.nanoTime() - start);
+    }
+    return fastest;
   }
 }
