@@ -39,6 +39,14 @@ class BenchRunScriptTest {
         assertEquals(outs.size(), new HashSet<>(outs).size(), "each run writes its own JSON, none overwrites another: " + outs);
     }
 
+    @Test
+    void theAtMostOnceScenarioRunsTheNodeBenchWithEachRecordingPayload() throws Exception {
+        List<List<String>> runs = nodeBenchRuns(run("at-most-once"));
+        assertEquals(List.of("keep", "metadata-only"), runs.stream().map(a -> last(a, "--recording")).toList(), "in order: " + runs);
+        for (List<String> a : runs) assertEquals("at-most-once", last(a, "--scenario"), a.toString());
+        assertEquals(List.of("node-at-most-once-keep", "node-at-most-once-metadata-only"), runs.stream().map(a -> last(a, "--name")).toList());
+    }
+
     // --- fixtures
 
     /** The script's java command lines that start NodeBenchMain, each as its arguments. */

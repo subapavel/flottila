@@ -51,7 +51,7 @@ class NodeBenchMainIT {
     @AfterAll static void stop() { pg.stop(); }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sync", "ack", "worker"})
+    @ValueSource(strings = {"sync", "ack", "worker", "at-most-once"})
     void eachScenarioWritesItsJsonWithTheNamedFields(String scenario) throws Exception {
         String db = database();
         Path out = dir.resolve(scenario + ".json");
@@ -71,7 +71,8 @@ class NodeBenchMainIT {
         assertEquals(0, json.getInteger("refused"), "the record counts the 503 refusals (FIX-67): " + json.encode());
         assertEquals(0, json.getInteger("errors"), "the record counts the other failures apart (FIX-67): " + json.encode());
         assertEquals(0, json.getInteger("warmupFailed"), "the record counts the warm-up's failures (FIX-67/FIX-63): " + json.encode());
-        assertEquals(scenario.equals("sync") ? 64 * 4 : 4, json.getInteger("maxInFlight"), "the default flow limit: " + json.encode());
+        assertEquals(scenario.equals("sync") || scenario.equals("at-most-once") ? 64 * 4 : 4, json.getInteger("maxInFlight"),
+                "the default flow limit: " + json.encode());
         assertEquals(true, json.getBoolean("syncCommit"), "observed on the server: " + json.encode());
         assertEquals("test", json.getString("commit"));
         assertNotNull(json.getString("date"), "the record carries its date");
@@ -89,6 +90,15 @@ class NodeBenchMainIT {
         for (String rate : List.of("walBytesPerSecond", "journalBytesPerSecond", "journalGrowthPerHour")) {
             assertNotNull(json.getDouble(rate), scenario + " records " + rate + ": " + json.encode());
             assertTrue(json.getDouble(rate) >= 0, rate + " is a delta of a growing quantity: " + json.getDouble(rate));
+        }
+        for (String cost : List.of("processCpuMsPerMessage", "allocatedBytesPerMessage")) {
+            assertNotNull(json.getDouble(cost), scenario + " records " + cost + ": " + json.encode());
+            assertTrue(json.getDouble(cost) > 0, scenario + ": a message costs the process something: " + json.encode());
+        }
+        if (scenario.equals("at-most-once")) {
+            assertTrue(json.getDouble("drainTailMs") >= 0, "the at-most-once record carries its drain tail: " + json.encode());
+            assertTrue(json.getDouble("commitsPerMessage") > 0, "the runs' recording commits: " + json.encode());
+            assertNotNull(json.getDouble("walSyncsPerMessage"), "the at-most-once record carries its WAL syncs: " + json.encode());
         }
         if (scenario.equals("sync")) {
             assertNotNull(json.getJsonObject("raw"), "the sync record carries the raw baseline: " + json.encode());
