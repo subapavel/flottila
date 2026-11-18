@@ -18,7 +18,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 final class FakeCache implements Cache {
 
-    static final int MAX_ENTRIES = 10_000;
+    static final long MAX_ENTRIES = 10_000;
 
     private final Clock clock;
     private final ReentrantLock lock = new ReentrantLock();

@@ -1,6 +1,7 @@
 package dev.rail8.runtime.deploy;
 
 import dev.rail8.api.Ack;
+import dev.rail8.api.Cache;
 import dev.rail8.api.Component;
 import dev.rail8.api.Envelope;
 import dev.rail8.api.Headers;
@@ -44,6 +45,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -61,7 +63,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Custom code on a node, deployed as a package. The sample plugin step {@code hmac-sign} takes the secret its config names from the
  * node's {@code RAIL8_SECRET_*} variables and the node's cache, and signs each message of a deployed flow; a secret that is not set
  * refuses the deploy, naming the step, the key and the variable. A step that fails with a secret's value in its failure shows only
- * the reference: in the answer the sender gets, in the recorded step, in the parked row and in the node's log.
+ * the reference: in the answer the sender gets, in the recorded step, in the parked row and in the node's log. The node's cache is
+ * shared by the steps of one type in one package, and kept across a redeploy.
  */
 @Timeout(60)
 class DeploymentsCustomCodeTest {
@@ -94,6 +97,22 @@ class DeploymentsCustomCodeTest {
             return Stage.of(e -> { throw new NackException("the partner refused the signature of " + secret.value(), true); });
         }
     };
+
+    /** How often a {@link #counting} step's loader has run, over every type and package. */
+    final AtomicInteger loads = new AtomicInteger();
+
+    /** A step of {@code type} that asks its cache for the key {@code token}; its loader counts in {@link #loads}. */
+    StepFactory counting(String type) {
+        return new StepFactory() {
+            @Override public String type() { return type; }
+            @Override public String configSchema() { return "{}"; }
+            @Override public Stage create(StepConfig step, StepResources resources) {
+                Cache cache = resources.services().cache();
+                return Stage.of(e -> e.withHeader("x-token",
+                        cache.get("token", () -> new Cache.Entry("token-" + loads.incrementAndGet(), Duration.ofHours(1)))));
+            }
+        };
+    }
 
     @BeforeEach
     void listen() {
@@ -130,6 +149,8 @@ class DeploymentsCustomCodeTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         List<StepFactory> steps = new ArrayList<>(new HmacSignPlugin().steps());
         steps.add(LEAK);
+        steps.add(counting("count"));
+        steps.add(counting("count-too"));
         NodeConfig config = placeholders ? NodeConfig.from(env).withSecrets(Secrets.placeholder()) : NodeConfig.from(env);
         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), steps, List.of(), messages, dlq,
                 new CountingQueue(rt.clock()), () -> 0L);
@@ -146,7 +167,26 @@ class DeploymentsCustomCodeTest {
     }
 
     void deploy(PackageDraft p) throws Exception {
-        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(tmp.resolve("uploads"))));
+        OnVirtualThread.call(() -> deployments.deploy(p.name(), Optional.empty(), p.zipTo(tmp.resolve("uploads"))));
+    }
+
+    /** Package {@code name} @ {@code version}: flows {@code a} and {@code b} with a {@code count} step, flow {@code c} with a {@code count-too} step. */
+    static PackageDraft counters(String name, String version) {
+        PackageDraft p = PackageDraft.of(name, version).endpoint("partner", "out", new JsonObject().put("url", "rec://partner"));
+        for (String flow : List.of("a", "b", "c")) {
+            JsonArray steps = new JsonArray().add(new JsonObject().put("type", flow.equals("c") ? "count-too" : "count").put("name", "count"));
+            p.endpoint(flow + "-in", "in", new JsonObject().put("path", "/" + flow))
+                    .flow(flow, version, "sync", flow + "-in", 4096, steps.addAll(PackageDraft.toPartner()));
+            p.flowDoc(flow).put("forwardHeaders", new JsonArray().add("x-token"));
+        }
+        return p;
+    }
+
+    /** Sends one message to {@code flow} ({@code <package>/<id>}) and returns the token its step put on it. */
+    String send(String flow) throws Exception {
+        Envelope e = rt.ingress(flow, Headers.empty(), Buffer.buffer("<x/>"));
+        assertTrue(within(doors.door(flow).deliver(e), "the answer of " + flow) instanceof Ack.Reply);
+        return doors.partner().sent().getLast().header("x-token").orElseThrow();
     }
 
     @Test
@@ -226,6 +266,22 @@ class DeploymentsCustomCodeTest {
         assertFalse(row.error().contains(VALUE), row.error());
         assertTrue(row.error().contains(REFERENCE), row.error());
         assertNotLogged(VALUE);
+    }
+
+    @Test
+    void theCacheIsSharedByTheStepsOfOneTypeInOnePackageAndKeptAcrossARedeploy() throws Exception {
+        node(Map.of());
+        deploy(counters("shop", "1.0.0"));
+        assertEquals("token-1", send("shop/a"));
+        assertEquals("token-1", send("shop/b"), "two flows of one package share the key of their step type");
+        assertEquals("token-2", send("shop/c"), "another step type has its own key");
+
+        deploy(counters("shop", "1.0.1"));   // a new version of every flow: each one is built again
+        assertEquals("token-1", send("shop/a"), "the entry is kept across a redeploy of the package");
+
+        deploy(counters("other", "1.0.0"));
+        assertEquals("token-3", send("other/a"), "another package has its own key");
+        assertEquals(3, loads.get());
     }
 
     List<Parked> parked() {
