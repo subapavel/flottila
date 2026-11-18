@@ -121,7 +121,7 @@ import java.util.zip.ZipOutputStream;
  * the bench process allocated per message: a sync or ack window over its load, a worker or at-most-once window from the first
  * request until what it accepted landed, so the runs behind the 202s are in it.
  *
- * <p>CORE-15: {@code --rate} runs {@code ack} or {@code sync} open loop ({@link OpenLoop}) after the warm-up instead of the
+ * <p>CORE-15: {@code --rate} runs {@code ack}, {@code sync} or {@code at-most-once} open loop ({@link OpenLoop}) after the warm-up instead of the
  * closed-loop window — {@code --ramp}, {@code --window}, {@code --max-outstanding}, {@code --pg-cpu-source} ({@link #open}) —
  * and the record carries its {@code open} object; {@code --scenario echo} runs it at the raw echo alone. bench/RESULTS.md,
  * "Harness: open loop (CORE-15)", says what each field means. CORE-15b: the {@code open} object also carries per-sample series
@@ -329,7 +329,7 @@ public final class NodeBenchMain {
             return null;
         }
         if (scenario == Scenario.WORKER) {
-            throw new IllegalArgumentException("--rate '" + raw + "' is open loop: the worker scenario runs closed loop only (ack, sync or echo take --rate)");
+            throw new IllegalArgumentException("--rate '" + raw + "' is open loop: the worker scenario runs closed loop only (ack, sync, at-most-once or echo take --rate)");
         }
         int rate;
         try {

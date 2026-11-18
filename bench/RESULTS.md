@@ -27,7 +27,8 @@ BENCH_MACHINE="cloud VM, 4 vCPU" BENCH_SCENARIOS=open BENCH_OPEN_SCENARIO=ack BE
   BENCH_PG_CPU="$(pgrep -o postgres)" BENCH_PG_STATEMENTS=1 bench/run.sh
 ```
 
-Every run exited 0 and settled (every accepted message recorded, the work queue empty); no timeouts and no errors. The
+Every run settled (every accepted message recorded, the work queue empty), with no timeouts and no errors. Every run exited 0
+but the two closed-loop at-most-once runs: they exited 3 for their 503s, which run.sh lets stand when a record counts no error. The
 partner received every message a flow accepted, so no at-most-once run was dropped.
 
 ### Closed loop — each client sends its next message once it has its answer
