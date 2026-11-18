@@ -76,7 +76,7 @@ class DemoFlowsTest {
         }
     }
 
-    // ---- the three flows ------------------------------------------------------------------------------------------------
+    // ---- the flows ------------------------------------------------------------------------------------------------------
 
     @Test
     void theFlowsLoadAndTheWholePackageIsValid() throws IOException {
