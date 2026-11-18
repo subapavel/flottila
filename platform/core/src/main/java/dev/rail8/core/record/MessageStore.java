@@ -48,8 +48,8 @@ public interface MessageStore {
      * step that was not recorded (by the flow's or the step's recording level) leaves nothing to find, and an unknown flow or
      * step name gives an empty last page. {@code after} is the previous page's {@link Page#next()} cursor, empty for the first
      * page. A walk lists each id at most once: a message that reaches the step again in a later attempt during the walk moves to
-     * the front, and a row written after the walk began with a start older than the cursor's is passed over; a new search shows
-     * both. A {@code limit} outside 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out for this search is an
+     * the front, and a row written after the walk began with a start newer than the cursor it goes on from is passed over; a new
+     * search shows both. A {@code limit} outside 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out for this search is an
      * {@link IllegalArgumentException}, thrown or as the failed future's cause.
      */
     Future<Page<String>> findByStep(String flow, String step, Optional<String> after, int limit);
