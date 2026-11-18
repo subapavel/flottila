@@ -15,7 +15,7 @@
 #                                                      preceded by `=== PIT <module> ===`; exit 1 if any failed
 #   (from the mapping's root; PIT_MVN overrides ../mvnw, the repository's wrapper, for the script test)
 #
-# PIT_ROOT (default: repository root) is where <module>/target/pit-reports/mutations.xml is looked up.
+# PIT_ROOT (default: mapping/, the directory above this script) is where <module>/target/pit-reports/mutations.xml is looked up.
 set -uo pipefail
 if [ "${1:-}" = "--run" ]; then
   if [ $# -lt 3 ]; then
