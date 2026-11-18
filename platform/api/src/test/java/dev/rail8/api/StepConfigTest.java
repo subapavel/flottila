@@ -27,9 +27,9 @@ class StepConfigTest {
         assertEquals(Optional.empty(), step.string("empty"), "an empty string is as good as none");
         assertEquals(Optional.empty(), step.string("missing"));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> step.requireString("n"));
-        assertTrue(e.getMessage().contains("steps[1]") && e.getMessage().contains("toPartner") && e.getMessage().contains("'n'"), e.getMessage());
+        assertTrue(e.getMessage().contains("step 'toPartner' (step 2,") && e.getMessage().contains("'n'"), e.getMessage());
         assertTrue(assertThrows(IllegalArgumentException.class, () -> step.requireString("missing")).getMessage().contains("'missing'"));
-        assertEquals("step 'toPartner' (steps[1], xslt)", step.toString());
+        assertEquals("step 'toPartner' (step 2, xslt)", step.toString(), "the step's number in the run, which a step of a local process has too");
         assertTrue(step.retryable());
         assertFalse(new StepConfig(1, "t", "n", false, Map.of()).retryable());
     }

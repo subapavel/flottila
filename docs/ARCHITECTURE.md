@@ -325,11 +325,12 @@ flow, a `split` runs the rest of the flow once per part, and an `extractKey` may
 
 - A `process` step takes only `type`, `name` and `process`.
 - A process may call another process. A process that calls itself, directly or through others, is
-  refused.
+  refused. At most 8 processes run inside each other; a deeper chain of calls is refused.
 - A flow with more than 1024 steps once its processes are expanded is refused.
-- A process that no step calls is allowed.
-- A process's name follows the pattern of step names. A problem inside a process names its step as
-  `processes.<process>.steps[<i>]`.
+- A process that no step calls is allowed, and checked as if it were called.
+- A process's name follows the pattern of step names. A problem found while the flow file is read
+  names its step as `processes.<process>.steps[<i>]`. A step that fails to build is named by its
+  number in the run and its name, as in `step 'enrich/map' (step 2, xslt)`.
 
 ### Calls between flows
 

@@ -34,6 +34,6 @@ public record StepConfig(int index, String type, String name, boolean retryable,
         return string(key).orElseThrow(() -> new IllegalArgumentException(this + ": '" + key + "' must be a non-empty string"));
     }
 
-    /** {@code step '<name>' (steps[<index-1>], <type>)} — the way every build error names a step. */
-    @Override public String toString() { return "step '" + name + "' (steps[" + (index - 1) + "], " + type + ")"; }
+    /** {@code step '<name>' (step <index>, <type>)}: the step's name and number in the run, the way every build error names a step. */
+    @Override public String toString() { return "step '" + name + "' (step " + index + ", " + type + ")"; }
 }

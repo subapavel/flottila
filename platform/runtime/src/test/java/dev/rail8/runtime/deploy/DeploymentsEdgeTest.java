@@ -206,6 +206,23 @@ class DeploymentsEdgeTest {
         DeployRefusedException refused = refused(d, p);
 
         assertEquals(Kind.INVALID, refused.kind(), refused.getMessage());
-        assertEquals(List.of("flow 'orders' does not build: step 'r' (steps[0], reads): cannot read flows/maps/order.xsl"), refused.problems());
+        assertEquals(List.of("flow 'orders' does not build: step 'r' (step 1, reads): cannot read flows/maps/order.xsl"), refused.problems());
+    }
+
+    @Test
+    void aStepOfALocalProcessThatFailsToBuildIsNamedByItsNumberInTheRunAndItsCall() throws Exception {
+        Deployments d = deployments(Map.of(Doors.SCHEME, doors), List.of(new Reads()));
+        PackageDraft p = shop("orders");
+        JsonObject flow = p.flowDoc("orders");
+        flow.put("steps", new JsonArray()
+                .add(new JsonObject().put("type", "process").put("name", "enrich").put("process", "prepare"))
+                .add(new JsonObject().put("type", "to").put("name", "dispatch").put("endpoint", "partner")));
+        flow.put("processes", new JsonObject().put("prepare", new JsonObject().put("steps", new JsonArray()
+                .add(new JsonObject().put("type", "reads").put("name", "a").put("file", "flows/maps/order.xsl")))));
+
+        DeployRefusedException refused = refused(d, p);
+
+        assertEquals(List.of("flow 'orders' does not build: step 'enrich/a' (step 1, reads): cannot read flows/maps/order.xsl"), refused.problems(),
+                "the step's number in the run and its name under the call, not a place in the file's steps");
     }
 }

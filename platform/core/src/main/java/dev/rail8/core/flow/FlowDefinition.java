@@ -5,6 +5,7 @@ import dev.rail8.core.record.RecordingPolicy;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,7 +30,8 @@ import java.util.Set;
  * ({@link FlowBuilder#retries}). {@code retry} is the in-thread retry of the steps marked {@code retryable}, a key of its own.
  * {@code processes} names blocks of steps that a {@value #PROCESS} step runs where it stands: {@code steps} is the run's steps,
  * each call replaced by the steps of its process, numbered in run order and named {@code <call>/<step>}; a problem inside a
- * process names its step as {@code processes.<process>.steps[i]}.
+ * process names its step as {@code processes.<process>.steps[i]}. Processes run inside each other at most {@link #MAX_NESTING}
+ * deep, and a flow runs at most {@link #MAX_STEPS} steps.
  *
  * @since 0.1
  */
@@ -49,6 +51,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
 
     /** The most steps a flow runs once its processes are expanded. */
     public static final int MAX_STEPS = 1024;
+
+    /** The most processes that run inside each other: a step calls a process, a step of that one calls another, this many in all. */
+    public static final int MAX_NESTING = 8;
 
     /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing. */
     public static final Duration DEFAULT_SAVE_TIMEOUT = Duration.ofSeconds(5);
@@ -200,18 +205,18 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
      * The run's steps: those of {@code stepsNode} (the flow's {@code steps}) with each {@code process} step replaced by the steps
      * of the process it names in {@code processesNode} (the flow's {@code processes}, may be null), numbered 1.. in run order and
      * named {@code <call>/<step>}. Every process is checked, called or not; a process that calls itself, directly or through
-     * others, is refused, and so is a run of more than {@link #MAX_STEPS} steps, at the step that would pass the cap.
+     * others, is refused, and so are processes nested more than {@link #MAX_NESTING} deep and a run of more than
+     * {@link #MAX_STEPS} steps, at the call or step that would pass the cap.
      */
     private static List<StepConfig> steps(Object stepsNode, Object processesNode) {
         Map<String, Object> declared = processesNode == null ? Map.of() : declared(processesNode);
         Map<String, List<Written>> processes = new LinkedHashMap<>();
         declared.forEach((name, steps) -> processes.put(name, written(steps, "processes." + name + ".steps", declared.keySet())));
         List<Written> flow = written(stepsNode, "steps", declared.keySet());
-        Set<String> followed = new HashSet<>();
-        acyclic(flow, processes, new ArrayList<>(), followed);
+        Map<String, Integer> heights = new HashMap<>();
+        nesting(flow, processes, new ArrayList<>(), heights);
         processes.forEach((name, steps) -> {
-            if (!followed.contains(name)) acyclic(steps, processes, new ArrayList<>(List.of(name)), followed);
-            followed.add(name);
+            if (!heights.containsKey(name)) heights.put(name, 1 + nesting(steps, processes, new ArrayList<>(List.of(name)), heights));
         });
         List<StepConfig> run = new ArrayList<>();
         expand(flow, "", processes, run);
@@ -269,22 +274,40 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     }
 
     /**
-     * Refuses a call among {@code entries} of a process on {@code calling} (the chain of processes that led to them), naming the
-     * cycle; follows every other call. {@code followed} holds the processes already followed to their end, so each is followed once.
+     * The most processes that a call among {@code entries} runs inside each other, the called one counted; 0 when none calls one.
+     * {@code calling} is the chain of processes that led to {@code entries}; {@code heights} holds that number for each process
+     * already followed to its end, so each is followed once. Refuses a call of a process on {@code calling}, naming the cycle, and
+     * a call that nests processes more than {@link #MAX_NESTING} deep, naming the chain.
      */
-    private static void acyclic(List<Written> entries, Map<String, List<Written>> processes, List<String> calling, Set<String> followed) {
+    private static int nesting(List<Written> entries, Map<String, List<Written>> processes, List<String> calling, Map<String, Integer> heights) {
+        int most = 0;
         for (Written w : entries) {
-            if (w.process() == null || followed.contains(w.process())) continue;
-            int at = calling.indexOf(w.process());
-            if (at >= 0) {
-                throw new IllegalArgumentException(w.path() + ".process: process '" + w.process() + "' calls itself: "
-                        + String.join(" -> ", calling.subList(at, calling.size())) + " -> " + w.process());
+            if (w.process() == null) continue;
+            Integer height = heights.get(w.process());
+            if (height == null) {
+                int at = calling.indexOf(w.process());
+                if (at >= 0) {
+                    throw new IllegalArgumentException(w.path() + ".process: process '" + w.process() + "' calls itself: "
+                            + String.join(" -> ", calling.subList(at, calling.size())) + " -> " + w.process());
+                }
+                if (calling.size() == MAX_NESTING) throw tooDeep(w, calling);
+                calling.add(w.process());
+                height = 1 + nesting(processes.get(w.process()), processes, calling, heights);
+                calling.removeLast();
+                heights.put(w.process(), height);
             }
-            calling.add(w.process());
-            acyclic(processes.get(w.process()), processes, calling, followed);
-            calling.removeLast();
-            followed.add(w.process());
+            if (calling.size() + height > MAX_NESTING) throw tooDeep(w, calling);
+            most = Math.max(most, height);
         }
+        return most;
+    }
+
+    /** The refusal of the call {@code w} at the end of {@code calling}, which nests processes more than {@link #MAX_NESTING} deep. */
+    private static IllegalArgumentException tooDeep(Written w, List<String> calling) {
+        List<String> chain = new ArrayList<>(calling);
+        chain.add(w.process());
+        return new IllegalArgumentException(w.path() + ".process: processes run inside each other at most " + MAX_NESTING
+                + " deep, and this call goes deeper: " + String.join(" -> ", chain));
     }
 
     /** Adds {@code entries} to {@code run}, each call as its process's steps under the call's name, each step named after {@code prefix}. */
