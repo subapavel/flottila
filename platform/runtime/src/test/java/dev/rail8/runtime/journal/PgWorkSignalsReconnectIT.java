@@ -58,11 +58,15 @@ class PgWorkSignalsReconnectIT {
     final List<FlowWorker> started = new ArrayList<>();
     final java.util.logging.Logger signalsLog = java.util.logging.Logger.getLogger(PgWorkSignals.class.getName());
     final NodeJournalIT.Logs logs = new NodeJournalIT.Logs();
-    /** Every delay the node's signals scheduled on the fake timer, in schedule order (no announce here: only reconnects). */
+    /**
+     * Every delay the node's signals scheduled on the fake timer, in schedule order (no announce here: only reconnects). A delay
+     * is listed only once its task is on the fake timer: a test that sees it listed and advances the clock by it fires that task.
+     */
     final List<Duration> scheduled = new java.util.concurrent.CopyOnWriteArrayList<>();
     final dev.rail8.api.Timer recording = (delay, task) -> {
+        dev.rail8.api.Timer.Cancellable armed = rt.timer().schedule(delay, task);
         scheduled.add(delay);
-        return rt.timer().schedule(delay, task);
+        return armed;
     };
 
     @BeforeAll
