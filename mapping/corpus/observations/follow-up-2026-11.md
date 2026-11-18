@@ -122,7 +122,7 @@ so that the input reaches the mapping without the simulation's upload; or, in th
 at the second `Sku` value after the upload and before the mapping. Return the six `All` values. If
 it is never run, the case stays decided on PO's output and the mark stays.
 
-## Part 4 - the assumed case `target/minOccurs/004`: one blocked run, and a request not yet drawn up
+## Part 4 - the assumed case `target/minOccurs/004`: one blocked run, and a request drawn up but not run
 
 The one corpus case that is still `assumed`, and both systems contradict it: the case expects an
 error, PO 7.50 and Cloud Integration give `Grp` 2 one `Row` with `b` and the run succeeds

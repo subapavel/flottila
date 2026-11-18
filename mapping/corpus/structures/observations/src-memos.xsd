@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Synthetic source structure for the observation kit (ADR-0018): src-orders.xsd with a Memo
-     that holds up to two Text values, so one source context can carry several values. No
-     namespace, so the owner imports it into the ESR / CPI editor without a namespace prefix. -->
+<!-- Synthetic source structure for the observation kit: Orders/Order with Id and a Memo that
+     holds up to two Text values, so one source context can carry several values. No namespace,
+     so the owner imports it into the ESR / CPI editor without a namespace prefix. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
   <xs:element name="Orders">
     <xs:complexType>
