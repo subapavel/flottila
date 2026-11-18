@@ -258,8 +258,8 @@ deleted.
   defaults. The `bodies` table goes away.
 - Bodies that wait long (a parked message, a partner down for days) move to S3 in the background, so
   a node's journal stays small.
-- Valkey also serves as a distributed cache, and as a cache that a flow's author uses from custom
-  code; one API with a Valkey and an in-memory implementation.
+- Valkey also serves as a distributed cache, and the cache of custom code (part 5) gets a Valkey
+  implementation that the nodes share.
 
 ## 4. Packages, flows and deployment
 
@@ -296,7 +296,8 @@ modules: `xslt` (Saxon-HE), `xsd`, `jq` and `mapping`. Conditions are XPath by d
 An endpoint names its scheme, direction and options, with an optional overlay per environment
 (`environments.<env>.config`), so one flow file is the same in every environment. An option whose
 whole value is `secret://<name>` is a secret; a node reads it from the environment variable
-`RAIL8_SECRET_<NAME>`, and tests and validation use a placeholder.
+`RAIL8_SECRET_<NAME>`, and tests and validation use a placeholder. A step's option is a secret in the
+same way; its code takes it through the API for custom code (part 5).
 
 ### The command line
 
@@ -383,6 +384,32 @@ A refused plugin, step type or language stops the node with exit 2 before Vert.x
 component, with exit 1. `rail8 validate` and `rail8 test` load the same plugins, from `--plugins` or
 `RAIL8_PLUGINS`.
 
+### The API for custom code
+
+A step factory, a plugin's or the node's own, gets `services()` among its resources: the step's
+secrets and a cache. With the envelope (read it, return a new one) and standard Java logging (its
+lines go to the node's log today), that is what custom code works with, as a script in SAP
+Integration Suite works with security material.
+`HmacSignPlugin` in the runtime's tests is a sample step that uses all of it.
+
+- **Secrets.** `secret(step, key)` takes the step's option `key`, whose whole value must be
+  `secret://<name>`, while the flow builds, and returns a `Secret`: its reference, and its value,
+  read from the node each time the step asks for it and never kept in the flow. A literal value is
+  refused without being shown. A secret that is not set refuses the deploy, naming the step, the
+  option and the variable `RAIL8_SECRET_<NAME>`; the deploy also checks every `secret://` value
+  anywhere in a step's options. `rail8 validate` and `rail8 test` read every secret as
+  `https://secret.invalid/`. In a flow whose steps took secrets, a failure of a step that a factory
+  built has every one of those values replaced by its reference in what is recorded, parked, logged
+  and answered; its kind and whether it is retried stay as they were.
+- **Cache.** `get(key, loader)` returns the value kept under `key`, or runs the loader and keeps what
+  it returns for its time to live (at most 24 h): a token fetched an unusual way, a key derived once
+  a day. Keys are up to 256 characters, values up to 64 KiB. While a key loads, other callers on the
+  node wait for that load instead of starting their own. The steps of one type in one package share
+  their keys, and no one else sees them. A node keeps the cache in memory, at most 10,000 entries and
+  64 MiB, dropping the least recently used first; entries stay across a redeploy.
+- **Testing.** The testkit's `FakeServices` gives a step under test its secrets and a cache on a fake
+  clock. Every cache passes the testkit's cache contract.
+
 ### Mocks and contract suites
 
 Every component ships with a mock that passes the same contract suite as the real one. The testkit
@@ -399,7 +426,8 @@ a file to poll; a deployed node refuses it.
 - The admin API lists the loaded plugins.
 - The adapter contract carries back-pressure and acknowledgement explicitly, and later a deferred
   acknowledgement: system and application acknowledgements as in SAP XI.
-- An API for custom code: secrets, cache, the envelope and the message's log.
+- Lines that custom code logs while its step runs go into the message's history.
+- Custom code sends through an outbound endpoint of its package.
 - Priority: the core and the contracts first, then HTTP inbound and outbound.
 
 ## 6. Several nodes and failures
