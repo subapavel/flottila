@@ -44,7 +44,9 @@ stopped and why (one or two sentences, with its session id), remove `in-progress
 ## 4. Pick and start
 
 Streams, each with its label: `jádro`, `ui`, `mapování`, `jq`. For each stream that is not busy,
-while the limit from step 1 allows:
+while the limit from step 1 allows, start one worker as below. Then, while fewer than three workers
+run in total, start further workers in the stream with the most ready issues, each on an issue that
+touches a different part of the code than the workers already running there.
 
 1. Pick one ready issue: open, has the stream's label, and has none of `in-progress`,
    `owner-question`, `later`, `blocked`. Order: `priority` first, then `krok-1`, then the lowest
