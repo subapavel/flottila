@@ -7,9 +7,6 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
-  CodeBlock,
-  CodeBlockAction,
-  CodeBlockCode,
   Content,
   DescriptionList,
   DescriptionListDescription,
@@ -19,10 +16,6 @@ import {
   FormSelectOption,
   Grid,
   GridItem,
-  Modal,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
   Radio,
   Split,
   SplitItem,
@@ -66,7 +59,7 @@ import {
   type Side,
   type SignatureMockStore,
 } from '../mock/signature-mock';
-import { CopyTextButton } from '../shared/CopyTextButton';
+import { LogDialog, ProcessingLog } from '../shared/ProcessingLog';
 import { messageName, messageNamespace, rootKind, type MessageChoice, type RootKind } from '../shared/structure-names';
 import { refreshMutation, useLoadStructure } from '../shared/structure-query';
 import type { WorkingCopyStore } from '../store/working-copy';
@@ -610,45 +603,5 @@ function Parameters({ store, mock, editing, onLog }: { store: WorkingCopyStore; 
         </Table>
       </CardBody>
     </Card>
-  );
-}
-
-/** The processing log of Where Used, with a copy button. */
-function ProcessingLog({ log }: { log: string }) {
-  return (
-    <Card>
-      <CardTitle>
-        <Title headingLevel="h3" size="md">
-          Processing Log
-        </Title>
-      </CardTitle>
-      <CardBody>
-        <CodeBlock
-          actions={
-            <CodeBlockAction>
-              <CopyTextButton label="processing log" text={log} />
-            </CodeBlockAction>
-          }
-        >
-          <CodeBlockCode>{log}</CodeBlockCode>
-        </CodeBlock>
-      </CardBody>
-    </Card>
-  );
-}
-
-/** The Processing Log dialog Where Used opens. */
-function LogDialog({ log, onClose }: { log: string; onClose: () => void }) {
-  const title = useId();
-  return (
-    <Modal variant="small" isOpen onClose={onClose} aria-labelledby={title}>
-      <ModalHeader title="Processing Log" labelId={title} />
-      <ModalBody>
-        <Content component="p">{log}</Content>
-      </ModalBody>
-      <ModalFooter>
-        <Button onClick={onClose}>Close</Button>
-      </ModalFooter>
-    </Modal>
   );
 }

@@ -21,7 +21,7 @@ import {
   TabTitleText,
   Title,
 } from '@patternfly/react-core';
-import { CheckCircleIcon, CubesIcon, EditIcon, ExchangeAltIcon, FlaskIcon, ListAltIcon, ProjectDiagramIcon, SaveIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, CodeIcon, CubesIcon, EditIcon, ExchangeAltIcon, FlaskIcon, ListAltIcon, ProjectDiagramIcon, SaveIcon } from '@patternfly/react-icons';
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
@@ -31,6 +31,7 @@ import { AboutStudio } from './AboutStudio';
 import type { BrowserStateStore } from './browser-state/browser-state';
 import { DefinitionTab } from './definition/DefinitionTab';
 import { DiscardDialog } from './DiscardDialog';
+import { FunctionsTab } from './functions/FunctionsTab';
 import { MappingOverview } from './overview/MappingOverview';
 import { SaveConflict } from './SaveConflict';
 import { CopyTextButton } from './shared/CopyTextButton';
@@ -46,6 +47,7 @@ const VIEWS = [
   ['definition', 'Definition', ProjectDiagramIcon],
   ['test', 'Test', FlaskIcon],
   ['signature', 'Signature', ExchangeAltIcon],
+  ['functions', 'Functions', CodeIcon],
 ] as const satisfies readonly (readonly [StudioTab, string, typeof ListAltIcon])[];
 
 /** The key of the tab a mapping was last left on, kept per mapping as a viewer preference. */
@@ -110,7 +112,7 @@ export interface StudioFrameProps {
   api: ApiClient;
   /** The open mapping's store, whose UI slice holds the tab and edit mode. */
   store: WorkingCopyStore;
-  /** The port for viewer preferences: the tab chosen is kept there per mapping, and the previews and panel sizes of the Signature and Definition tabs. */
+  /** The port for viewer preferences: the tab chosen is kept there per mapping, and the previews and panel sizes of the Signature and Definition tabs, and the functions. */
   browserState: BrowserStateStore;
   /** Told after each save the service accepted. */
   onSaved?: () => void;
@@ -378,6 +380,7 @@ export function StudioFrame({ mappingId, api, store, browserState, onSaved, guar
                 <ChooseMessages onChoose={() => changeTab('signature')} />
               ))}
             {tab === 'signature' && <Signature mappingId={mappingId} api={api} store={store} browserState={browserState} />}
+            {tab === 'functions' && <FunctionsTab mappingId={mappingId} api={api} store={store} browserState={browserState} />}
           </TabContent>
         </StackItem>
       </Stack>
