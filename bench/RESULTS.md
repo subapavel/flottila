@@ -8,7 +8,9 @@ comparing before and after a change on the same kind of machine. They are no tar
 
 Commits. The node's code is that of main at c53ebc4 in every run; the runs differ only in the bench harness: the closed-loop
 sync, ack and worker runs at 803ccda, the closed-loop at-most-once runs and the open-loop ack runs at recording level none
-at 8bc9650, the open-loop at-most-once runs and the open-loop ack runs at recording level all at f26eb5a. Every tree was clean.
+at 8bc9650, the open-loop at-most-once runs and the open-loop ack runs at recording level all at f26eb5a. Every tree was clean. The mapping rows, and two runs of the xslt rows beside them, are of 2026-11-19: the node's code is
+that of main at 5effebb, the harness that of eee1315 (the worker's `--step mapping`), the tree clean, two rounds of the worker
+scenario one after the other on the same VM (kernel 6.18.44-fc-v653, the same Postgres settings).
 
 Machine: the session's cloud VM, KVM, 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB, no swap, kernel 6.18.44-fc-v595, Java 25.0.5.1
 (Oracle HotSpot); PostgreSQL 16.15 native on the same host, data on vda (fsync on, synchronous_commit on, full_page_writes
@@ -50,11 +52,20 @@ are per message the flow took.
 | at-least-once worker, passthrough, metadata-only | 1 792 | 26.2 / 59.1 / 81.2 | 1.39 | 151 | | | 2 121 | 299 |
 | at-least-once worker, xslt, keep | 405 | 140.8 / 238.1 / 284.9 | 7.53 | 6 467 | | | 4 753 | 211 713 |
 | at-least-once worker, xslt, metadata-only | 340 | 167.1 / 310.1 / 409.1 | 9.72 | 12 080 | | | 3 053 | 100 323 |
+| at-least-once worker, xslt, keep, 2026-11-19, 1 | 385 | 146.3 / 259.0 / 328.7 | 7.79 | 6 395 | | | 5 456 | 211 713 |
+| at-least-once worker, xslt, keep, 2026-11-19, 2 | 429 | 129.6 / 233.7 / 296.1 | 6.96 | 6 355 | | | 5 445 | 211 714 |
+| at-least-once worker, xslt, metadata-only, 2026-11-19, 1 | 320 | 175.1 / 331.1 / 442.9 | 10.34 | 11 950 | | | 3 722 | 100 320 |
+| at-least-once worker, xslt, metadata-only, 2026-11-19, 2 | 355 | 157.7 / 298.7 / 408.1 | 9.21 | 11 969 | | | 3 711 | 100 321 |
+| at-least-once worker, mapping, keep, 2026-11-19, 1 | 503 | 105.8 / 216.4 / 269.0 | 5.87 | 5 487 | | | 5 453 | 211 713 |
+| at-least-once worker, mapping, keep, 2026-11-19, 2 | 515 | 103.3 / 209.9 / 257.9 | 5.63 | 5 486 | | | 5 440 | 211 714 |
+| at-least-once worker, mapping, metadata-only, 2026-11-19, 1 | 419 | 131.7 / 238.8 / 336.6 | 7.59 | 11 052 | | | 3 732 | 100 322 |
+| at-least-once worker, mapping, metadata-only, 2026-11-19, 2 | 458 | 118.9 / 223.0 / 351.9 | 6.86 | 11 053 | | | 3 717 | 100 322 |
 | at-most-once, keep | 969 | 10.1 / 27.9 / 41.5 | 3.27 | 143 | 2.10 | 0.98 | 2 717 | 562 |
 | at-most-once, metadata-only | 2 535 | 7.7 / 21.3 / 36.4 | 1.44 | 77 | 0.06 | 0.06 | 1 352 | 0 |
 
 The answer is: sync, the reply; at-least-once 202, the 202 after the durable save; worker, the item's claim to its completion
-(its msg/s runs from the first request until the queue was empty; its ingress answered at 1 948, 2 466, 875 and 375 msg/s);
+(its msg/s runs from the first request until the queue was empty; its ingress answered at 1 948, 2 466, 875 and 375 msg/s,
+on 2026-11-19 at 773 and 901, 369 and 400 for xslt and 940 and 998, 435 and 479 for mapping);
 at-most-once, every answer, 202 or 503. msg/s is the messages the flow took: an at-most-once 202 comes at once, so the
 clients outran the runs and the flow refused 16 322 (keep) and 12 603 (metadata-only) of the 20 000 with 503, and the CPU per
 message of those rows includes the cost of the refused requests. The sync rows' raw echo answered at p50 3.8 and 4.3 ms, so
@@ -96,6 +107,17 @@ Reading.
   regression. Its top statements were reading body references (about 2 calls per message, 0.07 ms each) and a select of the
   recorded steps (0.15 ms per call in the second run). The commits since 2026-11-11 that touch this path include the message
   log (V23) and a change to the worker's claim after a settle; neither is measured on its own here.
+- The `mapping` step against the `xslt` step on the same ~100 KB invoice, mapped to the same partner invoice (the same values;
+  the harness' test compares the two outputs), in the same session: the worker completes 503–515 msg/s against 385–429 with
+  the payload kept and 419–458 against 320–355 with metadata only, 20 to 31 % more; p50 103–132 ms against 130–175 ms. CPU per
+  message is 5.6–5.9 ms against 7.0–7.8 (keep) and 6.9–7.6 against 9.2–10.3 (metadata-only); against the passthrough runs of
+  the same session (1.43–1.55 ms) the step itself costs about 4.1–4.4 ms against 5.4–6.3 ms with keep, a quarter to a third
+  less. Heap is 5.4 MiB against 6.2 MiB per message with keep, 10.8 against 11.7 MiB with metadata only. WAL and journal bytes
+  per message are the same for both steps. With keep the step is about three quarters of a message's CPU on this invoice, so
+  a faster tier of the engine would show in these rows; how much it would save is not measured here. Two runs each on a shared
+  VM: a direction.
+- Both transforming steps run slower with metadata only and allocate about twice the heap of keep (xslt 11.7 MiB, mapping
+  10.8 MiB, against 6.2 and 5.4), so the gap under "Unexplained" below is not the xslt step's own.
 - Unexplained: the xslt worker ran slower and allocated twice as much with metadata-only (340 msg/s, 11.8 MiB) as with keep
   (405 msg/s, 6.3 MiB). One run each.
 - In the closed loop at-most-once has no backpressure but its refusals: the clients send again at once, so the flow refused
