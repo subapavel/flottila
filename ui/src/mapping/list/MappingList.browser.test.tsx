@@ -72,10 +72,13 @@ describe('the Mappings screen', () => {
   });
 
   test('a mapping without package, messages or description shows a dash for each, and its description when it has one', async () => {
-    const listMappings = async (): Promise<MappingSummary[]> => [
-      { id: 'top', name: 'top', package: '' },
-      { id: 'a/b', name: 'b', package: 'a', description: 'Orders to invoices', source: 'Order', target: 'Invoice' },
-    ];
+    const listMappings = async () => ({
+      mappings: [
+        { id: 'top', name: 'top', package: '' },
+        { id: 'a/b', name: 'b', package: 'a', description: 'Orders to invoices', source: 'Order', target: 'Invoice' },
+      ] satisfies MappingSummary[],
+      truncated: false,
+    });
     render({ ...fakeApiClient(), listMappings });
 
     await expect.element(rows()).toHaveLength(2);
@@ -86,12 +89,15 @@ describe('the Mappings screen', () => {
   });
 
   test('the search keeps the rows whose name, package, messages or description contain it, ignoring case', async () => {
-    const listMappings = async (): Promise<MappingSummary[]> => [
-      { id: 'orders/in', name: 'in', package: 'orders' },
-      { id: 'x/invoice', name: 'invoice', package: 'x', source: 'Bill' },
-      { id: 'y/z', name: 'z', package: 'y', target: 'BILLING' },
-      { id: 'w/v', name: 'v', package: 'w', description: 'Pays a bill' },
-    ];
+    const listMappings = async () => ({
+      mappings: [
+        { id: 'orders/in', name: 'in', package: 'orders' },
+        { id: 'x/invoice', name: 'invoice', package: 'x', source: 'Bill' },
+        { id: 'y/z', name: 'z', package: 'y', target: 'BILLING' },
+        { id: 'w/v', name: 'v', package: 'w', description: 'Pays a bill' },
+      ] satisfies MappingSummary[],
+      truncated: false,
+    });
     render({ ...fakeApiClient(), listMappings });
     await expect.element(rows()).toHaveLength(4);
 
@@ -125,6 +131,22 @@ describe('the Mappings screen', () => {
     await page.getByRole('button', { name: 'Reset' }).click();
 
     await expect.element(rows()).toHaveLength(3);
+  });
+
+  test('says so in a warning when the list is cut at its limit, and not otherwise', async () => {
+    const fake = fakeApiClient();
+    render({ ...fake, listMappings: async () => ({ ...(await fake.listMappings()), truncated: true }) });
+
+    // PatternFly puts the variant before the title, for screen readers only
+    const warning = () => page.getByText('Warning alert:Only the first 1,000 mapping files of the working folder are listed');
+    await expect.element(rows()).toHaveLength(3);
+    await expect.element(warning()).toBeVisible();
+    root?.unmount();
+    host?.remove();
+
+    render(fake);
+    await expect.element(rows()).toHaveLength(3);
+    expect(warning().elements()).toHaveLength(0);
   });
 
   test('an empty workspace says so', async () => {

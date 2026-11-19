@@ -231,7 +231,7 @@ describe('the fake ApiClient over the corpus', () => {
     const api = fakeApiClient({ 'b/two': corpusMapping, 'a/deep/one': corpusMapping, 'b/one': corpusMapping });
 
     // the corpus mapping's roots are the element Q{urn:rail8:corpus:skeleton}Order on both sides
-    expect(await api.listMappings()).toStrictEqual([
+    expect((await api.listMappings()).mappings).toStrictEqual([
       { id: 'a/deep/one', name: 'one', package: 'a/deep', source: 'Order', target: 'Order' },
       { id: 'b/one', name: 'one', package: 'b', source: 'Order', target: 'Order' },
       { id: 'b/two', name: 'two', package: 'b', source: 'Order', target: 'Order' },
@@ -255,7 +255,7 @@ describe('the fake ApiClient over the corpus', () => {
     };
     const api = fakeApiClient({ top: described, 'drafts/bare': { formatVersion: 1 }, 'drafts/half': onlyTarget });
 
-    expect(await api.listMappings()).toStrictEqual([
+    expect((await api.listMappings()).mappings).toStrictEqual([
       { id: 'drafts/bare', name: 'bare', package: 'drafts' },
       { id: 'drafts/half', name: 'half', package: 'drafts', target: 'Invoice' },
       { id: 'top', name: 'top', package: '', description: 'Bestellungen → Rechnungen', source: 'SendOrder', target: 'a-note.schema.json' },
@@ -269,7 +269,7 @@ describe('the fake ApiClient over the corpus', () => {
 
     expect(created.model).toStrictEqual({ formatVersion: 1 });
     expect(created.etag).toMatch(/^"fake:\d+"$/);
-    expect(await api.listMappings()).toContainEqual({ id: 'drafts/new-one', name: 'new-one', package: 'drafts' });
+    expect((await api.listMappings()).mappings).toContainEqual({ id: 'drafts/new-one', name: 'new-one', package: 'drafts' });
     expect(await api.getMapping('drafts/new-one')).toEqual(created);
   });
 
@@ -298,7 +298,7 @@ describe('the fake ApiClient over the corpus', () => {
 
     expect(problem.problem.status).toBe(422);
     expect('diagnostics' in problem.problem && problem.problem.diagnostics.map((d) => d.code)).toEqual(['schema-unreadable']);
-    expect((await api.listMappings()).map((m) => m.id)).not.toContain('mappings/new-one');
+    expect((await api.listMappings()).mappings.map((m) => m.id)).not.toContain('mappings/new-one');
   });
 
   test('save keeps the description and the layout, their keys sorted as the canonical writer does', async () => {
@@ -344,7 +344,7 @@ describe('the fake ApiClient over the corpus', () => {
       target: { bundle: [order], fingerprint: corpusMapping.target!.fingerprint, root: { element: 'Q{urn:rail8:corpus:skeleton}Order' } },
     });
     expect(created.etag).toMatch(/^"fake:\d+"$/);
-    expect((await api.listMappings()).map((m) => m.id)).toContain('mappings/new-one');
+    expect((await api.listMappings()).mappings.map((m) => m.id)).toContain('mappings/new-one');
     expect(await api.getMapping('mappings/new-one')).toEqual(created);
   });
 
@@ -390,7 +390,7 @@ describe('the fake ApiClient over the corpus', () => {
     expect(problem.problem.status).toBe(422);
     expect(problem.problem.type).toBe('urn:rail8:mapping:problem:model-refused');
     expect('diagnostics' in problem.problem && problem.problem.diagnostics.map((d) => d.code)).toEqual(['schema-unreadable']);
-    expect((await api.listMappings()).map((m) => m.id)).not.toContain('mappings/new-one');
+    expect((await api.listMappings()).mappings.map((m) => m.id)).not.toContain('mappings/new-one');
   });
 
   test('compile answers the scenario fixture of the mapping, and no diagnostics for a mapping it does not name', async () => {
