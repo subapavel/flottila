@@ -239,9 +239,9 @@ stderr jq: error: dateadd/2 is not defined at <top-level>, line 1, column 2:\n  
 end
 
 case dates/now
-def 73a488982baf
+def 23822bf38a20
 rc 0
-stdout ["number",true,true]\n
+stdout ["number",true]\n
 stderr
 end
 
