@@ -131,10 +131,19 @@ public final class TieredBlobStore implements BlobStore {
          * Keeps the key's ref ({@code body_refs}) on {@code tx}, the caller's transaction, as {@link #persist} does: a row
          * the key has already, naming a live record, is compared with the local bytes by reading that record back — the same
          * bytes keep it, other bytes fail with {@link IllegalStateException} (the caller's transaction rolls back); one on
-         * another node fails with {@link RemoteBodyException}. Nothing for a body durable already.
+         * another node fails with {@link RemoteBodyException}. A body durable already adds no record: its source row — the key's
+         * ref row, or for an ingress key the work row of its message — and that row's segment row are held {@code for key share}
+         * and a work row's ref is inserted as the key's. A source an accepted loss gave up ({@code lost_at}), with no live one,
+         * fails with {@link BodyLostException}; finding no source at all is not checked here — a later statement of {@code tx}
+         * that copies the key's ref, in a snapshot of its own, sees a row another transaction committed meanwhile and fails
+         * without one.
          */
         public Future<Void> keepIn(SqlClient tx) {
-            return save == null ? Future.succeededFuture() : keep(tx, key, local, save.ref);
+            if (save != null) return keep(tx, key, local, save.ref);
+            return tx.preparedQuery(REFERENCE).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key))).compose(rows -> {
+                Row r = rows.iterator().next();
+                return r.getLong(0) == 0 && r.getBoolean(1) ? Future.<Void>failedFuture(new BodyLostException(key)) : Future.<Void>succeededFuture();
+            });
         }
 
         /** The caller's transaction committed and its commit was acknowledged: out of the open saves, the ref indexed, the local copy gone. */

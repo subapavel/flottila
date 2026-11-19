@@ -32,10 +32,11 @@ import java.util.Set;
  *       (held or not) and no DLQ row has its id; the key rows of the deleted rows' {@code keys} go with them. A scanned row whose
  *       message stays is passed by the cursor and counted in {@link Run#kept}.</li>
  *   <li>{@code bodies} and {@code body_refs}, scanned as one keyset: a body or a kept ref older than the cutoff goes
- *       when no messages row and no work row has its message's id and no DLQ row's {@code body_key} names it (orphans included);
+ *       when no messages row and no work row has its message's id and no DLQ row's {@code body_key} names it (orphans included),
+ *       and — a kept ref — no work row points at the same place in the journal (a callee's item copying the caller's kept ref);
  *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment). The
- *       batch holds its rows for update and passes a row a park holds ({@code skip locked}), and its delete re-checks those
- *       three under a snapshot taken after the select.</li>
+ *       batch holds its rows for update and passes a row a park holds ({@code skip locked}), and its delete re-checks these
+ *       under a snapshot taken after the select.</li>
  * </ol>
  * A phase ends with the batch that scanned fewer rows than the batch size. The lock found taken ends the run {@link Outcome#SKIPPED}
  * with what the committed batches deleted; so does {@link #close} between two batches. A failed batch is rolled back (unless its
@@ -60,8 +61,8 @@ public final class Retention {
     /**
      * The bodies batch's delete: of the rows the batch select holds — {@code bodies} keys {@code $1..$3}, {@code body_refs}
      * keys {@code $4..$6}, as arrays — those with no messages row and no work row for their message and no DLQ row whose
-     * {@code body_key} names them, re-checked under this statement's snapshot — a DLQ row committed since the select is seen;
-     * answers the bodies deleted and their bytes.
+     * {@code body_key} names them, and a ref with no work row pointing at its place in the journal, re-checked under this
+     * statement's snapshot — a DLQ row committed since the select is seen; answers the bodies deleted and their bytes.
      */
     private static final String DELETE_BODIES = """
             with gone as (
@@ -76,6 +77,7 @@ public final class Retention {
                  where r.message_id = k.message_id and r.step = k.step and r.part = k.part
                    and not exists (select 1 from messages m where m.id = r.message_id)
                    and not exists (select 1 from work w where w.id = r.message_id)
+                   and not exists (select 1 from work w where w.body_node = r.node and w.body_segment = r.segment and w.body_position = r.position)
                    and not exists (select 1 from dlq d where d.body_key = r.message_id || '/' || r.step || '/' || r.part)
                  returning 1)
             select count(*), coalesce(sum(size), 0), (select count(*) from refs) from gone""";
@@ -174,7 +176,8 @@ public final class Retention {
          * first {@code batch} of both together — and holds only those rows for update (never {@code batch} of each
          * table), passing a row a park holds for key share ({@code skip locked}) — answering created_at, then the key, the
          * cursor's order, then whether the row is a ref; {@link #DELETE_BODIES} then deletes the selected rows that still have
-         * no messages row, work row or DLQ row naming them, under its own, later snapshot. A key in both tables with one
+         * no messages row, work row or DLQ row naming them (a ref: nor a work row pointing at its place), under its own, later
+         * snapshot. A key in both tables with one
          * created_at is one cursor position: the batch limit may pass its second row to the next run.
          */
         BODIES("""

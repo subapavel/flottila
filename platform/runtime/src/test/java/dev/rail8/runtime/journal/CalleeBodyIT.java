@@ -144,13 +144,19 @@ class CalleeBodyIT {
         assertEquals(calleeId, saved.result(), "the save answers the callee's own id");
     }
 
-    /** {@code id}'s work item of {@code flow} claimed and completed through a queue that tells {@code store} (its index forgets). */
+    /**
+     * {@code id}'s work item of {@code flow} claimed and completed through a queue that tells {@code store} (its index forgets);
+     * the other items the claim took are given back at once (deferred by no delay), so a later claim takes them again.
+     */
     void completed(TieredBlobStore store, String flow, String id) {
         PgWorkQueue queue = new PgWorkQueue(relayed, a.node, store);
         List<WorkQueue.Item> items = queue.claim("node-a", flow, 16, LEASE).await();
         WorkQueue.Item item = items.stream().filter(i -> i.messageId().equals(id)).findFirst()
                 .orElseThrow(() -> new AssertionError("fixture: " + id + "'s item claimed, among " + items));
         assertTrue(queue.complete(item.seq(), item.attempts()).await(), "fixture: " + id + "'s item completed");
+        for (WorkQueue.Item other : items) {
+            if (other != item) assertTrue(queue.defer(other.seq(), other.attempts(), Duration.ZERO).await(), "fixture: " + other.messageId() + "'s item given back");
+        }
     }
 
     void readable(TieredBlobStore store, BlobKey key, Buffer expected, String what) {

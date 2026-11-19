@@ -133,7 +133,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them —
      * leased to {@code $8} for {@code $9} seconds when it heads its key and the ref lies in the holder's journal (a node claims only
-     * its own bodies); answering, fifth, the ref's node when it is not the queue's node {@code $10}.
+     * its own bodies); answering, fifth, the ref's node when it is not the queue's node {@code $10}, and sixth the transaction's id.
      */
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
@@ -146,7 +146,8 @@ public final class PgWorkQueue implements WorkQueue {
             select (select count(*) from src),
                    exists (select 1 from body_refs where message_id = $5 and step = $6 and part = $7 and lost_at is not null),
                    (select seq from ins), (select attempts from ins),
-                   (select node from src where node is distinct from $10::text)""".formatted(lease("l", "$8::text", "$9"), heads("$8"));
+                   (select node from src where node is distinct from $10::text),
+                   pg_current_xact_id()::text""".formatted(lease("l", "$8::text", "$9"), heads("$8"));
 
     private static final String ELIGIBLE = """
             select w1.seq from work w1
@@ -444,7 +445,8 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * {@link #enqueue(SqlClient, String, String, int, String, BlobKey)} written leased to {@code holder} for {@code lease} when it heads
      * its key and the ref lies in the holder's journal ({@code holder} null: a plain row), under the key's lock the caller
-     * took ({@link #lockKeys}). Answers the item when it was written leased, and the ref's node when it is not this queue's.
+     * took ({@link #lockKeys}). Answers the item when it was written leased, the ref's node when it is not this queue's, and the id
+     * of the transaction it ran in.
      */
     public Future<Copied> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body, String holder,
                                   Duration lease) {
@@ -455,7 +457,7 @@ public final class PgWorkQueue implements WorkQueue {
                         Integer attempts = r.getInteger(3);
                         return Future.succeededFuture(new Copied(attempts == 1
                                 ? Optional.of(new Item(r.getLong(2), messageId, flow, step, partitionKey, 1)) : Optional.<Item>empty(),
-                                Optional.ofNullable(r.getString(4))));
+                                Optional.ofNullable(r.getString(4)), r.getString(5)));
                     }
                     return Future.failedFuture(r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body));
                 });
@@ -464,14 +466,16 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * What an insert taking its source's ref answered: the item as handed out when it was written
      * leased, else empty; and the node whose journal holds the ref when it is not this queue's node — the node that may claim the
-     * plain row once its transaction committed.
+     * plain row once its transaction committed; and the id of the transaction it ran in ({@code pg_current_xact_id()}, as text: a
+     * commit whose reply is lost asks {@code pg_xact_status} of it).
      *
      * @since 0.1
      */
-    public record Copied(Optional<Item> leased, Optional<String> elsewhere) {
+    public record Copied(Optional<Item> leased, Optional<String> elsewhere, String xid) {
         public Copied {
             Objects.requireNonNull(leased, "leased");
             Objects.requireNonNull(elsewhere, "elsewhere");
+            Objects.requireNonNull(xid, "xid");
         }
     }
 

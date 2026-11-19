@@ -253,6 +253,12 @@ Message history, kept bodies and delivery identities are deleted after 7 days
 (`RAIL8_RETENTION_MAX_AGE`), except for messages still in `work` or `dlq`. Parked messages are never
 deleted.
 
+A message can be saved with a body whose key names another message (the caller's body, handed to a
+callee). The save keeps that body in the same transaction, and the message's work row points at the
+same place in the journal. A body still held only in memory is written to the journal first. A body
+already in the journal is referred to there; no bytes are copied. Retention keeps the kept body while
+any work row points at that place, so the callee can read the body after the caller is done.
+
 **Planned**
 - Message history and payloads move to ClickHouse, off the message's path, kept long and searchable
   including payload content. Each flow sets what is recorded and for how long, with installation
