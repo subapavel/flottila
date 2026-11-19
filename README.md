@@ -22,12 +22,13 @@ Where to look:
 - `docs/archive/` — earlier documents: the old architecture, the briefs, findings and reviews
 - `agent/cloud/` — the cloud environment the autonomous session runs in
 
-Build at the current state, JDK 25. The repository holds three areas, each built on its own:
+Build at the current state, JDK 25, with the repository's `./mvnw` (Maven 3.9.11) from the root. The repository holds
+three areas:
 
-- the platform, `platform/` and `bench/` — Maven 3.9: `bin/install-jq` and `bin/install-mapping` once
-  (the jq step depends on the engine in `jq/`, the mapping step on the engine in `mapping/`), then
-  `mvn -B -ntp -f platform/pom.xml verify` for
-  the unit tests, with `-Pit` to include the Testcontainers tests (Docker required). Modules:
+- the platform, `platform/` and `bench/`, built from the root together with the engines its steps depend on (the jq
+  step on the engine in `jq/`, the mapping step on the engine in `mapping/`):
+  `./mvnw -B -ntp verify -Drail8.engines.skipTests` for the unit tests, with `-Pit` to include the Testcontainers tests
+  (Docker required); the switch skips the engines' own tests, which their own builds run. Modules:
   `rail8-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
   `-sim`, `-archtest`, `-bench`.
 - the mapping engine, `mapping/` — imported with its history, with its own parent pom, rules and

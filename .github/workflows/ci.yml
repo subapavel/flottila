@@ -84,15 +84,13 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
-        run: bin/install-jq
-      - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
-        run: bin/install-mapping
+      # From the root, so the jq and mapping engines the steps depend on are built in the same build.
+      # rail8.engines.skipTests: the engines' own tests run in jq-ci and mapping-ci.
       # jacoco.skip: coverage is measured only in the nightly coverage job, so a fall in coverage never blocks a change.
       # -T 1C: modules that do not depend on each other build at the same time; inside a module the test classes are spread
       # over one test JVM per core (rail8.test.forks in platform/pom.xml).
       - name: Verify (unit tests, integration tests with Testcontainers, ArchUnit)
-        run: mvn -B -ntp -T 1C -f platform/pom.xml verify -Pit -Djacoco.skip=true
+        run: ./mvnw -B -ntp -T 1C verify -Pit -Djacoco.skip=true -Drail8.engines.skipTests
       - name: The demo package validates through the launcher
         run: bin/rail8 validate examples/demo
       - name: The demo package's flow tests pass through the launcher
@@ -133,12 +131,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
-        run: bin/install-jq
-      - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
-        run: bin/install-mapping
       - name: Verify on Postgres 17.11
-        run: mvn -B -ntp -f platform/pom.xml verify -Pit -Djacoco.skip=true -Drail8.it.postgres=postgres:17.11
+        run: ./mvnw -B -ntp verify -Pit -Djacoco.skip=true -Drail8.engines.skipTests -Drail8.it.postgres=postgres:17.11
 
   coverage:
     name: "nightly · coverage floors and the comparison with ci/coverage-baseline.json"
@@ -151,13 +145,9 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
-        run: bin/install-jq
-      - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
-        run: bin/install-mapping
       # The floors of platform/pom.xml (90 % for api and core, 75 % elsewhere) fail this job when missed.
       - name: Verify with the coverage floors
-        run: mvn -B -ntp -f platform/pom.xml verify -Pit
+        run: ./mvnw -B -ntp verify -Pit -Drail8.engines.skipTests
       # Compares this night's coverage with the committed ci/coverage-baseline.json and reports any fall.
       - name: Coverage compared with the committed baseline
         if: always()
@@ -185,12 +175,8 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
-        run: bin/install-jq
-      - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
-        run: bin/install-mapping
-      - name: Build the jars the node image and the deploy one-shot use
-        run: mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node,:rail8-cli -am
+      - name: Build the jars the node image and the deploy one-shot use, with the engines they need
+        run: ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-cli -am
       - name: Start the stack and wait for /health (60 s bound)
         working-directory: deploy/compose
         run: |
@@ -241,12 +227,10 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       # The commands of the quickstart's first run, in its order.
-      - name: Install the engines, build the node's jar and the mapping service, install the UI
+      - name: Build the node's jar and the mapping service, install the UI
         run: |
           set -euo pipefail
-          bin/install-jq && bin/install-mapping
-          mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am
-          ./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
+          ./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am
           (cd ui && npm ci)
       - name: Start the node, wait for /health and deploy the demo
         run: |
@@ -383,8 +367,7 @@ jobs:
       - name: Build the kit, create an adapter, run its tests
         run: |
           set -euo pipefail
-          bin/install-jq && bin/install-mapping
-          mvn -B -ntp -q -f platform/pom.xml install -DskipTests -pl :rail8-cli -am
+          ./mvnw -B -ntp -q install -DskipTests -pl :rail8-cli -am
           (cd ui && npm ci)
           bin/rail8 new-adapter ~/acme-adapter --scheme acme --package com.acme.rail8
           mvn -B -ntp -q -f ~/acme-adapter/pom.xml verify
@@ -429,16 +412,15 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Install the jq engine the jq step depends on
-        run: bin/install-jq
-      # Each reactor is checked even when an earlier one has a finding.
+      # Each reactor is checked even when an earlier one has a finding. The platform's is checked from the root, with the
+      # engines built in the same build and their tests left to the engines' own checks below.
       - name: The platform's unit test JVMs
         if: ${{ !cancelled() }}
-        run: python3 ci/fork_kill_check.py platform/pom.xml
+        run: python3 ci/fork_kill_check.py pom.xml -Drail8.engines.skipTests
       # A module stops at its first failed goal, so the integration test JVMs are killed with the unit tests deselected.
       - name: The platform's integration test JVMs (-Pit)
         if: ${{ !cancelled() }}
-        run: python3 ci/fork_kill_check.py platform/pom.xml -Pit -Dtest=NoUnitTest -Dsurefire.failIfNoSpecifiedTests=false
+        run: python3 ci/fork_kill_check.py pom.xml -Drail8.engines.skipTests -Pit -Dtest=NoUnitTest -Dsurefire.failIfNoSpecifiedTests=false
       - name: The jq engine's test JVMs
         if: ${{ !cancelled() }}
         run: python3 ci/fork_kill_check.py jq/pom.xml
@@ -466,10 +448,6 @@ jobs:
           # CREATEDB: bench/run.sh creates the rail8_bench database itself
           sudo -u postgres psql -c "CREATE ROLE rail8 LOGIN CREATEDB PASSWORD 'rail8';"
           sudo -u postgres psql -c "CREATE DATABASE rail8 OWNER rail8;"
-      - name: Install the jq engine the jq step depends on (its tests run in jq-ci)
-        run: bin/install-jq
-      - name: Install the mapping engine the mapping step depends on (its tests run in mapping-ci)
-        run: bin/install-mapping
       - name: Run the harness (bench/run.sh from P0-10; fails on a > 20 % regression once a baseline exists)
         run: |
           bench/run.sh
@@ -496,7 +474,7 @@ jobs:
       # Scoped to api + core: -DskipTests would make pitest-maven skip silently, so tests are compiled
       # the normal way; the ≥ 80 % threshold (platform/pom.xml) fails the job below the floor.
       - name: PIT on api and core
-        run: mvn -B -ntp -f platform/pom.xml -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage
+        run: ./mvnw -B -ntp -f platform/pom.xml -pl :rail8-api,:rail8-core -am test-compile org.pitest:pitest-maven:mutationCoverage
       - uses: actions/upload-artifact@v4
         with:
           name: pit-reports

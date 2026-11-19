@@ -1,7 +1,0 @@
-#!/bin/sh
-# install-jq: installs the jq engine (jq/jq-core and the query-core under it) into the local Maven repository, without its
-# tests, which jq-ci runs. The platform's jq step depends on it: run this once before building the platform, and again after
-# a change under jq/. Usage: bin/install-jq
-set -eu
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-exec "$root/mvnw" -B -ntp -q -f "$root/jq/pom.xml" -pl jq-core -am install -DskipTests

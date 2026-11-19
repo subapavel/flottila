@@ -19,9 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code bench/run.sh} run for real on a copy of the script, with {@code psql}, {@code mvn}, {@code git}, {@code java} and
- * {@code python3} stubbed first on the PATH: the java stub logs each command line, so the test sees which node bench runs the
- * script starts, in order, without a database.
+ * {@code bench/run.sh} run for real on a copy of the script, with {@code psql}, {@code git}, {@code java} and {@code python3}
+ * stubbed first on the PATH and the repository's {@code mvnw} stubbed in the copy's root: the java stub logs each command line,
+ * so the test sees which node bench runs the script starts, in order, without a database.
  */
 class BenchRunScriptTest {
 
@@ -87,7 +87,7 @@ class BenchRunScriptTest {
         Path log = root.resolve("java.log");
         stub(bin, "java", "printf '%s\\n' \"$*\" >> '" + log + "'\n" + javaExit);
         stub(bin, "psql", "echo 1");
-        stub(bin, "mvn", "exit 0");
+        stub(root, "mvnw", "exit 0");
         stub(bin, "git", "echo abc1234");
         stub(bin, "python3", python3);
 

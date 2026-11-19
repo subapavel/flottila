@@ -9,7 +9,7 @@ repository root.
 | Tool | Version | Install |
 | --- | --- | --- |
 | JDK | 25 | any distribution, e.g. Temurin |
-| Maven | 3.9 | for the platform build; the mapping build uses the `./mvnw` wrapper in the repository |
+| Maven | none | the repository's `./mvnw` wrapper fetches the Maven it needs (3.9.11) and builds everything |
 | Node.js | 22.12 or newer | with npm |
 | Docker | Compose v2 | Docker Engine on Linux, Docker Desktop on macOS and Windows |
 | `curl`, `zip` | | `zip` is optional: `deploy.sh` falls back to the JDK's `jar` |
@@ -21,9 +21,7 @@ repository cloned inside the WSL file system.
 
 ```sh
 git clone https://github.com/subapavel/rail8.git && cd rail8
-bin/install-jq && bin/install-mapping                                           # the engines the jq and mapping steps depend on
-mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am      # the node's jar, which the image copies
-./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests        # the mapping service the studio talks to
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am   # the node's jar, which the image copies, and the mapping service the studio talks to
 (cd ui && npm ci)
 
 export RAIL8_ADMIN_TOKEN=rail8-local               # the admin API's bearer token; any string will do, keep it for later shells
@@ -90,9 +88,7 @@ Stop the mapping service and the UI (Ctrl+C), then:
 
 ```sh
 git pull
-bin/install-jq && bin/install-mapping
-mvn -B -ntp -q -f platform/pom.xml package -DskipTests -pl :rail8-node -am
-./mvnw -B -ntp -q -f mapping/pom.xml -pl service -am package -DskipTests
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node,:rail8-mapping-service -am
 (cd ui && npm ci)
 export RAIL8_ADMIN_TOKEN=<the token of the first run>   # a new shell has none, and the node refuses to start without it
 docker compose up -d --build --force-recreate           # the node restores the deployed demo from its volume
