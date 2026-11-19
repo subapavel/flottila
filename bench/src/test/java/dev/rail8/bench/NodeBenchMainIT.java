@@ -297,6 +297,20 @@ class NodeBenchMainIT {
         assertEquals(0, count(passthrough, TRANSFORMED), "passthrough changes no body");
     }
 
+    @Test
+    void workerWithTheMappingStepTransformsEveryItem() throws Exception {
+        String db = database();
+        Path out = dir.resolve("worker-mapping.json");
+        assertEquals(0, NodeBenchMain.run(args(db, "worker", "keep", 4, out, "--step", "mapping")));
+        JsonObject json = new JsonObject(Files.readString(out));
+        assertEquals("mapping", json.getString("step"), "the record names its step as the CLI does");
+        assertEquals(0, json.getInteger("failed"), json.encode());
+        assertEquals(0, count(db, "select count(*) from work"), "every queued item was claimed and completed");
+        long smallest = count(db, "select min(body_size) from messages where step = 0");
+        assertTrue(smallest >= 50_000 && smallest <= 200_000, "each item's input is the ~100 KB generated XML body: smallest " + smallest + " B");
+        assertEquals(MESSAGES, count(db, TRANSFORMED), "for every item a recorded step body after the ingress differs from its input: the mapping ran");
+    }
+
     /**
      * Items with a body recorded after the ingress whose bytes differ from the ingress body, by the rows' body hashes
      * (CORE-4c2: was by the {@code bodies} rows' bytes; the bytes are journal records now).

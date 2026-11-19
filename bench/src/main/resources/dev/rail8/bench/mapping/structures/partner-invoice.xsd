@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What the node bench sends its partner after a transform: the invoice's number and currency, its total, and one item
+     per line with the line's SKU and amount. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="PartnerInvoice">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Total" type="xs:string"/>
+        <xs:element name="Item" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="sku" type="xs:string" use="required"/>
+            <xs:attribute name="amount" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="number" type="xs:string" use="required"/>
+      <xs:attribute name="currency" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
