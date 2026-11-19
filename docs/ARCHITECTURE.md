@@ -437,9 +437,11 @@ deploy made on another node.
   step's default name but never writes it, and an edit changes only the step edited, keeping the
   file's comments and order as written. Its design is agreed (`docs/FLOW-EDITOR.md`):
   - the editor's state is the file's text;
-  - it lays the flow out on its own, top to bottom, with the branches of a `to` by prop side by side
-    and each process in a lane of its own;
-  - an edit replaces only the text of what it changes, and must read back as intended;
+  - it lays the flow out on its own, top to bottom, as one line that fans out only at a `to` by prop,
+    with each process in a lane of its own, and already holds steps inside a step for when such a step
+    comes;
+  - an edit replaces only the text of what it changes, within stated YAML forms, and must read back as
+    intended; the whole flow is checked after every edit;
   - every step's settings form is drawn from a settings description; a module's or plugin's step is
     described by the JSON Schema of its options, which the admin API serves (`GET /admin/steps`).
 - An authentication, authorization and secret store comes in step 2; today secrets are environment
