@@ -1,0 +1,9 @@
+# expect: /steps/0/prop
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 10 }
+steps: [ { type: route, name: r, prop: rail8.depth, routes: [ { when: "true()", set: a } ] } ]

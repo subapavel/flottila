@@ -1,0 +1,12 @@
+# expect: /processes/enrich/steps/0/key
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 10 }
+steps: [ { type: process, process: enrich } ]
+processes:
+  enrich:
+    steps: [ { type: extractKey, name: k, key: rail8.ref, xpath: /Order/Id } ]

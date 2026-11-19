@@ -90,7 +90,7 @@
     "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
     "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
     "duration": { "type": "string", "pattern": "^\\d+(ms|s|m|h)$" },
-    "keyName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+    "keyName": { "type": "string", "pattern": "^(?!rail8\\.)[A-Za-z][A-Za-z0-9_.-]*$", "description": "a key or prop name; one that starts with 'rail8.' is the platform's own and refused" },
     "stepName": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64 },
     "recording": {
       "type": "object",

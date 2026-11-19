@@ -1,5 +1,6 @@
 package dev.rail8.core.flow;
 
+import dev.rail8.api.Envelope;
 import dev.rail8.api.StepConfig;
 import dev.rail8.core.record.Recorder;
 import dev.rail8.core.record.RecordingPolicy;
@@ -34,7 +35,8 @@ import java.util.Set;
  * {@code processes} names blocks of steps that a {@value #PROCESS} step runs where it stands: {@code steps} is the run's steps,
  * each call replaced by the steps of its process, numbered in run order and named {@code <call>/<step>}; a problem inside a
  * process names its step as {@code processes.<process>.steps[i]}. Processes run inside each other at most {@link #MAX_NESTING}
- * deep, and a flow runs at most {@link #MAX_STEPS} steps.
+ * deep, and a flow runs at most {@link #MAX_STEPS} steps. The key of an {@code extractKey}, the prop of a {@code route}, the
+ * {@code byProp} of a {@code to} and {@code partitionBy} may not start with {@link Envelope#RESERVED_PREFIX}, the platform's own.
  *
  * @since 0.1
  */
@@ -45,6 +47,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
     private static final Set<String> STRUCTURAL = Set.of("type", "name", "retryable");
+
+    /** The option of a step that names a key or a prop, by the step's type: none of them may start with {@link Envelope#RESERVED_PREFIX}. */
+    private static final Map<String, String> NAMES_A_KEY_OR_PROP = Map.of("extractKey", "key", "route", "prop", "to", "byProp");
 
     /** The step type that runs a process of the flow file where it stands. */
     public static final String PROCESS = "process";
@@ -132,7 +137,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
                 delivery.get("timeout") == null ? DEFAULT_TIMEOUT : duration(delivery, "delivery.timeout", "timeout"),
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
-                Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),
+                Optional.ofNullable(doc.get("partitionBy")).map(Object::toString).map(p -> notReserved("partitionBy", p)),
                 strings(doc.get("forwardHeaders")), retry(doc.get("retry")), retries(delivery.get("retries")), RecordingPolicy.from(doc.get("recording"), RecordingPolicy.DEFAULT), steps(doc.get("steps"), doc.get("processes")));
     }
 
@@ -248,7 +253,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
      * The entries of the step list {@code node} at {@code path}, each with its name: its {@code name}, else, for a call, the
      * process it calls, else its type. The names are unique among them, at most {@link #MAX_NAME} characters long and never
      * {@link Recorder#INGRESS}; a clash is refused naming both entries. A {@code process} step takes only {@code type},
-     * {@code name} and {@code process}, which must be one of {@code processes}.
+     * {@code name} and {@code process}, which must be one of {@code processes}. The key or prop a step names may not start with
+     * {@link Envelope#RESERVED_PREFIX}.
      */
     private static List<Written> written(Object node, String path, Set<String> processes) {
         if (!(node instanceof List<?> list) || list.isEmpty()) throw new IllegalArgumentException(path + " must be a non-empty list");
@@ -278,6 +284,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
                 String key = String.valueOf(e.getKey());
                 if (!STRUCTURAL.contains(key) && e.getValue() != null) config.put(key, e.getValue());
             }
+            String option = NAMES_A_KEY_OR_PROP.get(type);
+            if (option != null && config.get(option) instanceof String keyOrProp) notReserved(at + "." + option, keyOrProp);
             entries.add(new Written(at, type, name, Boolean.TRUE.equals(m.get("retryable")), config, null));
         }
         return entries;
@@ -357,6 +365,15 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
             }
             run.add(new StepConfig(run.size() + 1, w.type(), prefix + w.name(), w.retryable(), w.config()));
         }
+    }
+
+    /** {@code name}, the key or prop named at {@code path}, unless it starts with {@link Envelope#RESERVED_PREFIX}: then refused. */
+    private static String notReserved(String path, String name) {
+        if (name.startsWith(Envelope.RESERVED_PREFIX)) {
+            throw new IllegalArgumentException(path + " '" + name + "' starts with '" + Envelope.RESERVED_PREFIX
+                    + "', which is reserved for the platform's own keys and props: name it otherwise");
+        }
+        return name;
     }
 
     private static Map<String, Object> section(Map<String, Object> doc, String key) {

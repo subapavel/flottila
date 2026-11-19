@@ -16,6 +16,7 @@
   <description>One module per scheme; each depends on api only and ships with its mock.</description>
 
   <modules>
+    <module>direct</module>
     <module>http</module>
     <module>mock</module>
     <module>sftp</module>

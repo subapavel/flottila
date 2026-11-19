@@ -15,8 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * The defaults of {@link Component}: a component that does not say where its consumers listen holds no port, one that does
- * not say its consumers poll is never run under a lease, one that names no target gets a limit per {@code to}, and one that
- * describes no settings is judged by its {@code configSchema()}, which takes any object unless it says more.
+ * not say its consumers poll is never run under a lease, one that names no target gets a limit per {@code to}, one that names
+ * no node-local address reaches outside the node, and one that describes no settings is judged by its {@code configSchema()},
+ * which takes any object unless it says more.
  */
 class ComponentTest {
 
@@ -58,6 +59,13 @@ class ComponentTest {
         EndpointConfig cfg = new EndpointConfig("partner", URI.create("https://partner.example:443/orders"), Map.of("url", "https://partner.example/orders"));
 
         assertEquals(Optional.empty(), BARE.target(cfg), "by default no target: the builder gives its sends a limit of their own");
+    }
+
+    @Test
+    void internalAddressIsEmptyByDefault() {
+        EndpointConfig cfg = new EndpointConfig("orders", URI.create("direct:/orders"), Map.of("address", "/orders"));
+
+        assertEquals(Optional.empty(), BARE.internalAddress(cfg), "by default no node-local address, whatever the config names: the endpoint reaches outside the node");
     }
 
     @Test
