@@ -485,6 +485,7 @@ class ComposeStackTest {
         assertEquals("${RAIL8_SFTP_PASSWORD:-demo}", environment(node).get("RAIL8_SECRET_SFTP_PASSWORD"), "the demo's password");
         assertFalse(environment(node).containsKey("RAIL8_SECRET_SFTP_HOST_KEY"), "the fingerprint is read from the one-shot's file, not fixed");
         assertTrue(script(node).contains("RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint)"), script(node));
+        assertTrue(script(node).contains("exec java -jar /opt/rail8/rail8-node.jar"), "the wrapper starts the jar the image builds: " + script(node));
         assertTrue(script(sftp).contains("demo:${RAIL8_SFTP_PASSWORD:-demo}:1001:100:inbox"), script(sftp));
         assertFalse(Files.readString(ROOT_FILE).contains("placeholder"), "no placeholder secret is left in the quickstart stack");
     }
