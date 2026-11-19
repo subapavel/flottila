@@ -1,0 +1,14 @@
+schemaVersion: 1
+kind: flow
+id: one-line
+version: 0.1.0
+from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 1048576 }
+steps: [ { type: xsd, schema: flows/invoice.xsd }, { type: to, endpoint: partner-domestic } ]
+processes:
+  enrich:
+    steps:
+      - { type: extractKey, key: invoiceId, xpath: /Invoice/Id }
+      - { type: xslt,
+          stylesheet: flows/invoice-to-partner.xsl }

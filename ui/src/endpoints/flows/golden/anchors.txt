@@ -1,0 +1,15 @@
+readable: true
+nodes:
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/from","kind":"from","path":["from"],"label":"http-in","detail":"http","opens":{"endpoint":"demo/endpoints/http-in.yaml"},"width":240,"height":56,"x":0,"y":0}
+  {"runsAs":["validate"],"runs":1,"defaultName":false,"id":"/steps/0","kind":"step","path":["steps",0],"label":"validate","type":"xsd","form":{"path":["steps",0],"fields":["schema"]},"width":240,"height":56,"detail":"flows/invoice.xsd","x":0,"y":96,"locked":"The file holds an anchor (&check) here, which the editor does not change."}
+  {"runsAs":["again"],"runs":1,"defaultName":false,"id":"/steps/1","kind":"step","path":["steps",1],"label":"again","type":"xsd","form":{"path":["steps",1],"fields":["schema"]},"width":240,"height":56,"detail":"flows/invoice.xsd","x":0,"y":192,"locked":"The file holds a merge key (<<) here, which the editor does not change."}
+  {"runsAs":["xslt"],"runs":1,"defaultName":true,"id":"/steps/2","kind":"step","path":["steps",2],"label":"xslt","type":"xslt","form":{"path":["steps",2],"fields":["stylesheet"]},"width":240,"height":56,"detail":"flows/invoice-to-partner.xsl","x":0,"y":288,"locked":"The file holds a tag (!!str) here, which the editor does not change."}
+  {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/3","kind":"step","path":["steps",3],"label":"to","type":"to","form":{"path":["steps",3],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-domestic · http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"x":0,"y":384}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":60,"y":480}
+edges:
+  {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
+  {"id":"/steps/0->/steps/1","source":"/steps/0","target":"/steps/1","kind":"next","insertAt":["steps",1]}
+  {"id":"/steps/1->/steps/2","source":"/steps/1","target":"/steps/2","kind":"next","insertAt":["steps",2]}
+  {"id":"/steps/2->/steps/3","source":"/steps/2","target":"/steps/3","kind":"next","insertAt":["steps",3]}
+  {"id":"/steps/3->/steps#end","source":"/steps/3","target":"/steps#end","kind":"next","insertAt":["steps",4]}
+problems:

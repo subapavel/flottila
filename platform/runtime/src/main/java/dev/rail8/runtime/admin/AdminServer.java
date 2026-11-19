@@ -134,7 +134,9 @@ import java.util.function.Supplier;
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. {@code GET /admin/components} lists every component the node serves, sorted by
  * scheme: 200 {@code {items:[{scheme, settings}]}}, {@code settings} the component's settings description as the UI draws its
- * form from it. Without one these routes do not exist (404).
+ * form from it. {@code GET /admin/steps} lists every step type a module or plugin of the node builds, sorted by type: 200
+ * {@code {items:[{type, configSchema}]}}, {@code configSchema} the JSON Schema of the step's options, or null when the factory's
+ * is no JSON object; the built-in steps are not listed. Without one these routes do not exist (404).
  *
  * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step: {@code GET /admin/flows/{flow}/cpu} — the flow's
  * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
@@ -430,6 +432,7 @@ public final class AdminServer {
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
                 router.get("/admin/targets").handler(offload(c -> targets(d)));
                 router.get("/admin/components").handler(offload(c -> components(d)));
+                router.get("/admin/steps").handler(offload(c -> steps(d)));
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
             });
             work.ifPresent(q -> {
@@ -1024,6 +1027,25 @@ public final class AdminServer {
         deployments.settings().forEach((scheme, settings) ->
                 items.add(new JsonObject().put("scheme", scheme).put("settings", new JsonObject(settings.toJson()))));
         return Json.of(200, new JsonObject().put("items", items));
+    }
+
+    /**
+     * {@code GET /admin/steps}: every step type a module or plugin of the node builds, sorted by type, with the JSON Schema its
+     * step's options are checked against; {@code configSchema} is null when the factory's schema is no JSON object.
+     */
+    private static Reply steps(Deployments deployments) {
+        JsonArray items = new JsonArray();
+        deployments.stepSchemas().forEach((type, schema) -> items.add(new JsonObject().put("type", type).put("configSchema", schemaObject(schema))));
+        return Json.of(200, new JsonObject().put("items", items));
+    }
+
+    /** {@code text} as a JSON object, or null when it is none. */
+    private static JsonObject schemaObject(String text) {
+        try {
+            return new JsonObject(text);
+        } catch (RuntimeException notAnObject) {
+            return null;
+        }
     }
 
     /** {@code GET /admin/targets}: the gauge of every target the deployed flows named, sorted by target. */

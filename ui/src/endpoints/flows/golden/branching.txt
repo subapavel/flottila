@@ -1,0 +1,23 @@
+readable: true
+nodes:
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/from","kind":"from","path":["from"],"label":"http-in","detail":"http","opens":{"endpoint":"demo/endpoints/http-in.yaml"},"width":240,"height":56,"x":136,"y":0}
+  {"runsAs":["choose"],"runs":1,"defaultName":true,"id":"/steps/0","kind":"step","path":["steps",0],"label":"choose","type":"choose","form":{"path":["steps",0],"fields":[]},"width":240,"height":56,"x":136,"y":96}
+  {"runsAs":["xsd"],"runs":1,"defaultName":true,"id":"/steps/0/when/0/steps/0","kind":"step","path":["steps",0,"when",0,"steps",0],"label":"xsd","type":"xsd","form":{"path":["steps",0,"when",0,"steps",0],"fields":["schema"]},"width":240,"height":56,"detail":"flows/invoice.xsd","x":0,"y":192}
+  {"runsAs":["xsd"],"runs":1,"defaultName":true,"id":"/steps/0/when/0/steps/1","kind":"step","path":["steps",0,"when",0,"steps",1],"label":"xsd","type":"xsd","form":{"path":["steps",0,"when",0,"steps",1],"fields":["schema"]},"width":240,"height":56,"detail":"flows/invoice.xsd","x":0,"y":288}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/0/when/0/steps#end","kind":"end","path":["steps",0,"when",0,"steps"],"label":"joins","width":120,"height":32,"x":60,"y":384}
+  {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/0/when/1/steps/0","kind":"step","path":["steps",0,"when",1,"steps",0],"label":"to","type":"to","form":{"path":["steps",0,"when",1,"steps",0],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-foreign · http","opens":{"endpoint":"demo/endpoints/partner-foreign.yaml"},"x":272,"y":192}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/0/when/1/steps#end","kind":"end","path":["steps",0,"when",1,"steps"],"label":"joins","width":120,"height":32,"x":332,"y":288}
+  {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/1","kind":"step","path":["steps",1],"label":"to","type":"to","form":{"path":["steps",1],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-domestic · http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"x":136,"y":456}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":196,"y":552}
+edges:
+  {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
+  {"id":"/steps/0->/steps/0/when/0/steps/0","source":"/steps/0","target":"/steps/0/when/0/steps/0","kind":"choice","label":"when 0"}
+  {"id":"/steps/0/when/0/steps/0->/steps/0/when/0/steps/1","source":"/steps/0/when/0/steps/0","target":"/steps/0/when/0/steps/1","kind":"next","insertAt":["steps",0,"when",0,"steps",1]}
+  {"id":"/steps/0/when/0/steps/1->/steps/0/when/0/steps#end","source":"/steps/0/when/0/steps/1","target":"/steps/0/when/0/steps#end","kind":"next","insertAt":["steps",0,"when",0,"steps",2]}
+  {"id":"/steps/0->/steps/0/when/1/steps/0","source":"/steps/0","target":"/steps/0/when/1/steps/0","kind":"choice","label":"when 1"}
+  {"id":"/steps/0/when/1/steps/0->/steps/0/when/1/steps#end","source":"/steps/0/when/1/steps/0","target":"/steps/0/when/1/steps#end","kind":"next","insertAt":["steps",0,"when",1,"steps",1]}
+  {"id":"/steps/0/when/0/steps#end->/steps/1","source":"/steps/0/when/0/steps#end","target":"/steps/1","kind":"join","insertAt":["steps",1]}
+  {"id":"/steps/0/when/1/steps#end->/steps/1","source":"/steps/0/when/1/steps#end","target":"/steps/1","kind":"join","insertAt":["steps",1]}
+  {"id":"/steps/1->/steps#end","source":"/steps/1","target":"/steps#end","kind":"next","insertAt":["steps",2]}
+problems:
+  {"path":["steps",0,"when",0,"steps",1],"message":"has no name, and its default 'xsd' is the name of steps[0].when[0].steps[0] too: step names are unique in a list"}

@@ -1,0 +1,49 @@
+schemaVersion: 1
+kind: flow
+id: processes
+version: 0.1.0
+from: { endpoint: http-in }
+delivery: { mode: at-least-once }
+limits: { maxBodyBytes: 1048576 }
+steps:
+  - type: process
+    name: first
+    process: enrich
+  - type: route
+    prop: PARTNER
+    routes:
+      - when: "/Invoice/Currency = 'CZK'"
+        set: domestic
+      - when: "/Invoice/Currency = 'EUR'"
+        set: euro
+    otherwise: foreign
+  - type: to
+    byProp: PARTNER
+    endpoints:
+      domestic: partner-domestic
+      foreign: partner-foreign
+      spare: partner-foreign
+  - type: process
+    name: second
+    process: enrich
+  - type: to
+    name: hand-over
+    endpoint: order-partner-call
+processes:
+  enrich:
+    steps:
+      - type: extractKey
+        key: invoiceId
+        xpath: /Invoice/Id
+      - type: process
+        process: lines
+  lines:
+    steps:
+      - type: split
+        xpath: /Invoice/Line
+      - type: validate
+        required: "Amount > 0"
+  spare:
+    steps:
+      - type: xslt
+        stylesheet: flows/invoice-to-partner.xsl

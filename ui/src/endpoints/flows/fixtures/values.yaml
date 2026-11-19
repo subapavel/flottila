@@ -1,0 +1,19 @@
+schemaVersion: 1
+kind: flow
+id: values
+version: 0.1.0
+from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 1_000, maxInFlight: 0o17 }
+steps:
+  - type: route
+    prop: ANSWER
+    routes:
+      - when: "/Invoice/Paid"
+        set: yes
+    otherwise: no
+  - type: xsd
+    schema: flows/invoice.xsd
+    schema: flows/other.xsd
+  - type: to
+    endpoint: partner-domestic

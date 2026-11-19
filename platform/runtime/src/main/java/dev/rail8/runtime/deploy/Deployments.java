@@ -523,6 +523,13 @@ public final class Deployments {
         return Collections.unmodifiableSortedMap(all);
     }
 
+    /** The {@code configSchema()} of every step type that a module or plugin of the node builds, by type in name order. */
+    public SortedMap<String, String> stepSchemas() {
+        SortedMap<String, String> all = new TreeMap<>();
+        steps.forEach(factory -> all.put(factory.type(), factory.configSchema()));
+        return Collections.unmodifiableSortedMap(all);
+    }
+
     /** The gauge of every target the flows built here named so far, sorted by target; never an unshared limit. */
     public List<TargetLimit.Gauge> targets() {
         return targets.gauges();

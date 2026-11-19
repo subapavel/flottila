@@ -1,0 +1,16 @@
+readable: true
+nodes:
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/from","kind":"from","path":["from"],"label":"http-in","detail":"http","opens":{"endpoint":"demo/endpoints/http-in.yaml"},"width":240,"height":56,"x":0,"y":0}
+  {"runsAs":["route"],"runs":1,"defaultName":true,"id":"/steps/0","kind":"step","path":["steps",0],"label":"route","type":"route","form":{"path":["steps",0],"fields":["prop","language","routes","otherwise"]},"width":240,"height":96,"detail":"sets ANSWER","rows":["/Invoice/Paid → yes","otherwise → no"],"x":0,"y":96}
+  {"runsAs":["xsd"],"runs":1,"defaultName":true,"id":"/steps/1","kind":"step","path":["steps",1],"label":"xsd","type":"xsd","form":{"path":["steps",1],"fields":["schema"]},"width":240,"height":56,"detail":"flows/other.xsd","x":0,"y":232,"locked":"The file holds the key schema used twice here, which the editor does not change."}
+  {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/2","kind":"step","path":["steps",2],"label":"to","type":"to","form":{"path":["steps",2],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-domestic · http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"x":0,"y":328}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":60,"y":424}
+edges:
+  {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
+  {"id":"/steps/0->/steps/1","source":"/steps/0","target":"/steps/1","kind":"next","insertAt":["steps",1]}
+  {"id":"/steps/1->/steps/2","source":"/steps/1","target":"/steps/2","kind":"next","insertAt":["steps",2]}
+  {"id":"/steps/2->/steps#end","source":"/steps/2","target":"/steps#end","kind":"next","insertAt":["steps",3]}
+problems:
+  {"path":["limits","maxBodyBytes"],"message":"the node reads 1_000 otherwise than the editor: write it in quotes"}
+  {"path":["limits","maxInFlight"],"message":"the node reads 0o17 otherwise than the editor: write it in quotes"}
+  {"path":["steps",1,"schema"],"message":"the key schema is used twice in one mapping"}

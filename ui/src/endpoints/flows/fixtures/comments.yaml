@@ -1,0 +1,23 @@
+# a flow with comments in every place
+schemaVersion: 1 # the file format
+kind: flow
+id: commented # its id
+version: 0.1.0
+from: # where messages arrive
+  # the door
+  endpoint: http-in # a comment after the value
+delivery: { mode: sync } # one line
+limits: { maxBodyBytes: 1048576 }
+steps:
+  # before the first step
+  - type: xsd # the type
+    # between keys
+    name: validate
+    schema: flows/invoice.xsd
+  # between steps
+
+  - type: filter
+    when: "/Invoice/Total > 0" # a quoted value
+  - type: to
+    endpoint: partner-domestic
+# at the end

@@ -1,0 +1,51 @@
+readable: true
+nodes:
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/enrich/steps","kind":"lane","path":["processes","enrich","steps"],"label":"enrich","width":272,"height":320,"x":848,"y":0}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/lines/steps","kind":"lane","path":["processes","lines","steps"],"label":"lines","width":304,"height":320,"x":1200,"y":0}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/spare/steps","kind":"lane","path":["processes","spare","steps"],"label":"spare","width":272,"height":176,"x":1584,"y":0}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/0#each","kind":"group","path":["steps",0],"label":"each part of /Invoice/Line","width":768,"height":660,"x":0,"y":192}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/3#each","kind":"group","path":["steps",3],"label":"each part of /Invoice/Line","parent":"/steps/0#each","width":736,"height":176,"x":16,"y":660}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/enrich/steps/1#each","kind":"group","path":["processes","enrich","steps",1],"label":"each part of /Invoice/Line","parent":"/processes/enrich/steps","width":152,"height":80,"x":908,"y":224}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/lines/steps/0#each","kind":"group","path":["processes","lines","steps",0],"label":"each part of /Invoice/Line","parent":"/processes/lines/steps","width":272,"height":176,"x":1216,"y":128}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/from","kind":"from","path":["from"],"label":"http-in","detail":"http","opens":{"endpoint":"demo/endpoints/http-in.yaml"},"width":240,"height":56,"x":264,"y":0}
+  {"runsAs":["first"],"runs":1,"defaultName":false,"id":"/steps/0","kind":"step","path":["steps",0],"label":"first","type":"process","form":{"path":["steps",0],"fields":["process"]},"width":240,"height":56,"detail":"runs process enrich","x":264,"y":96}
+  {"runsAs":["route"],"runs":1,"defaultName":true,"id":"/steps/1","kind":"step","path":["steps",1],"label":"route","type":"route","parent":"/steps/0#each","form":{"path":["steps",1],"fields":["prop","language","routes","otherwise"]},"width":240,"height":116,"detail":"sets PARTNER","rows":["/Invoice/Currency = 'CZK' → domestic","/Invoice/Currency = 'EUR' → euro","otherwise → foreign"],"x":264,"y":224}
+  {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/2","kind":"step","path":["steps",2],"label":"to","type":"to","parent":"/steps/0#each","form":{"path":["steps",2],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"by PARTNER","x":264,"y":380}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/2/endpoints/domestic","kind":"destination","path":["steps",2,"endpoints","domestic"],"label":"partner-domestic","detail":"http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"parent":"/steps/0#each","width":200,"height":48,"x":52,"y":476}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/2/endpoints/foreign","kind":"destination","path":["steps",2,"endpoints","foreign"],"label":"partner-foreign","detail":"http","opens":{"endpoint":"demo/endpoints/partner-foreign.yaml"},"parent":"/steps/0#each","width":200,"height":48,"x":284,"y":476}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/2/endpoints/spare","kind":"destination","path":["steps",2,"endpoints","spare"],"label":"partner-foreign","detail":"http","opens":{"endpoint":"demo/endpoints/partner-foreign.yaml"},"parent":"/steps/0#each","width":200,"height":48,"x":516,"y":476}
+  {"runsAs":["second"],"runs":1,"defaultName":false,"id":"/steps/3","kind":"step","path":["steps",3],"label":"second","type":"process","parent":"/steps/0#each","form":{"path":["steps",3],"fields":["process"]},"width":240,"height":56,"detail":"runs process enrich","x":264,"y":564}
+  {"runsAs":["hand-over"],"runs":1,"defaultName":false,"id":"/steps/4","kind":"step","path":["steps",4],"label":"hand-over","type":"to","parent":"/steps/3#each","form":{"path":["steps",4],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"order-partner-call · direct","opens":{"endpoint":"demo/endpoints/order-partner-call.yaml"},"x":264,"y":692}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps/4#calls","kind":"flow","path":["steps",4],"label":"order-partner","detail":"waits for its reply","opens":{"flow":"demo/flows/order-partner.yaml"},"parent":"/steps/3#each","width":200,"height":48,"x":536,"y":696}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","parent":"/steps/3#each","width":120,"height":32,"x":324,"y":788}
+  {"runsAs":["first/extractKey","second/extractKey"],"runs":2,"defaultName":true,"id":"/processes/enrich/steps/0","kind":"step","path":["processes","enrich","steps",0],"label":"extractKey","type":"extractKey","parent":"/processes/enrich/steps","form":{"path":["processes","enrich","steps",0],"fields":["key","xpath","language"]},"width":240,"height":56,"detail":"invoiceId","x":864,"y":32}
+  {"runsAs":["first/lines","second/lines"],"runs":2,"defaultName":true,"id":"/processes/enrich/steps/1","kind":"step","path":["processes","enrich","steps",1],"label":"lines","type":"process","parent":"/processes/enrich/steps","form":{"path":["processes","enrich","steps",1],"fields":["process"]},"width":240,"height":56,"detail":"runs process lines","x":864,"y":128}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/enrich/steps#end","kind":"end","path":["processes","enrich","steps"],"label":"back to the call","parent":"/processes/enrich/steps/1#each","width":120,"height":32,"x":924,"y":256}
+  {"runsAs":["first/lines/split","second/lines/split"],"runs":2,"defaultName":true,"id":"/processes/lines/steps/0","kind":"step","path":["processes","lines","steps",0],"label":"split","type":"split","parent":"/processes/lines/steps","form":{"path":["processes","lines","steps",0],"fields":["xpath","language"]},"width":240,"height":56,"detail":"/Invoice/Line","x":1232,"y":32}
+  {"runsAs":["first/lines/validate","second/lines/validate"],"runs":2,"defaultName":true,"id":"/processes/lines/steps/1","kind":"step","path":["processes","lines","steps",1],"label":"validate","type":"validate","parent":"/processes/lines/steps/0#each","form":{"path":["processes","lines","steps",1],"fields":["required","language"]},"width":240,"height":56,"detail":"Amount > 0","x":1232,"y":160}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/lines/steps#end","kind":"end","path":["processes","lines","steps"],"label":"back to the call","parent":"/processes/lines/steps/0#each","width":120,"height":32,"x":1292,"y":256}
+  {"runsAs":[],"runs":0,"defaultName":true,"id":"/processes/spare/steps/0","kind":"step","path":["processes","spare","steps",0],"label":"xslt","type":"xslt","parent":"/processes/spare/steps","form":{"path":["processes","spare","steps",0],"fields":["stylesheet"]},"width":240,"height":56,"detail":"flows/invoice-to-partner.xsl","x":1600,"y":32}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/processes/spare/steps#end","kind":"end","path":["processes","spare","steps"],"label":"back to the call","parent":"/processes/spare/steps","width":120,"height":32,"x":1660,"y":128}
+edges:
+  {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
+  {"id":"/steps/0->/processes/enrich/steps","source":"/steps/0","target":"/processes/enrich/steps","kind":"process"}
+  {"id":"/steps/0->/steps/1","source":"/steps/0","target":"/steps/1","kind":"each","insertAt":["steps",1]}
+  {"id":"/steps/1->/steps/2","source":"/steps/1","target":"/steps/2","kind":"next","insertAt":["steps",2]}
+  {"id":"/steps/2->/steps/2/endpoints/domestic","source":"/steps/2","target":"/steps/2/endpoints/domestic","kind":"choice","label":"domestic · when /Invoice/Currency = 'CZK'"}
+  {"id":"/steps/2->/steps/2/endpoints/foreign","source":"/steps/2","target":"/steps/2/endpoints/foreign","kind":"choice","label":"foreign · otherwise"}
+  {"id":"/steps/2->/steps/2/endpoints/spare","source":"/steps/2","target":"/steps/2/endpoints/spare","kind":"choice","label":"spare · never taken"}
+  {"id":"/steps/2/endpoints/domestic->/steps/3","source":"/steps/2/endpoints/domestic","target":"/steps/3","kind":"join","insertAt":["steps",3]}
+  {"id":"/steps/2/endpoints/foreign->/steps/3","source":"/steps/2/endpoints/foreign","target":"/steps/3","kind":"join","insertAt":["steps",3]}
+  {"id":"/steps/2/endpoints/spare->/steps/3","source":"/steps/2/endpoints/spare","target":"/steps/3","kind":"join","insertAt":["steps",3]}
+  {"id":"/steps/3->/processes/enrich/steps","source":"/steps/3","target":"/processes/enrich/steps","kind":"process"}
+  {"id":"/steps/3->/steps/4","source":"/steps/3","target":"/steps/4","kind":"each","insertAt":["steps",4]}
+  {"id":"/steps/4->/steps/4#calls","source":"/steps/4","target":"/steps/4#calls","kind":"calls","label":"calls flow order-partner"}
+  {"id":"/steps/4->/steps#end","source":"/steps/4","target":"/steps#end","kind":"next","insertAt":["steps",5]}
+  {"id":"/processes/enrich/steps/0->/processes/enrich/steps/1","source":"/processes/enrich/steps/0","target":"/processes/enrich/steps/1","kind":"next","insertAt":["processes","enrich","steps",1]}
+  {"id":"/processes/enrich/steps/1->/processes/lines/steps","source":"/processes/enrich/steps/1","target":"/processes/lines/steps","kind":"process"}
+  {"id":"/processes/enrich/steps/1->/processes/enrich/steps#end","source":"/processes/enrich/steps/1","target":"/processes/enrich/steps#end","kind":"each","insertAt":["processes","enrich","steps",2]}
+  {"id":"/processes/lines/steps/0->/processes/lines/steps/1","source":"/processes/lines/steps/0","target":"/processes/lines/steps/1","kind":"each","insertAt":["processes","lines","steps",1]}
+  {"id":"/processes/lines/steps/1->/processes/lines/steps#end","source":"/processes/lines/steps/1","target":"/processes/lines/steps#end","kind":"next","insertAt":["processes","lines","steps",2]}
+  {"id":"/processes/spare/steps/0->/processes/spare/steps#end","source":"/processes/spare/steps/0","target":"/processes/spare/steps#end","kind":"next","insertAt":["processes","spare","steps",1]}
+problems:
+  {"path":["steps",2,"endpoints"],"message":"the route route sets PARTNER to euro, which no entry of endpoints covers"}

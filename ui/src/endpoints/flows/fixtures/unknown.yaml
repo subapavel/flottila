@@ -1,0 +1,23 @@
+schemaVersion: 1
+kind: flow
+id: unknown
+version: 0.1.0
+owner: the billing team
+from: { endpoint: http-in }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 1048576 }
+steps:
+  - type: xsd
+    schema: flows/invoice.xsd
+    strict: true
+  - type: mapping
+    mapping: flows/invoice.mapping.json
+    extra: 1
+  - type: sign
+    key: partner
+  - type: filter
+    when: "/Invoice/Total > 0"
+    mood: hopeful
+  - type: to
+    endpoint: nowhere
+    note: kept
