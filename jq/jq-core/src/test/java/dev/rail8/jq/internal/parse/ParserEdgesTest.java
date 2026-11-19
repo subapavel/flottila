@@ -77,7 +77,6 @@ class ParserEdgesTest {
         List.of(
             "import \"a\" as $x; .",
             "import \"a\" as x {a: 1}; .")) {
-      // .a."b"? left this list once it was lowered (ResolverTest.navigationAndCommaLowerToTheirIr).
       parsesToAStub(text);
     }
     // A pattern whose key is an expression, here the string "a" from getpath/1: jq 1.8.2 gives 1, rc 0.
