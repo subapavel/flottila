@@ -106,6 +106,13 @@ class ShippedModulesTest {
         }
     }
 
+    @Test
+    void aBlankPluginDirectoryLoadsTheModulesAlone() {
+        try (Plugins unset = Plugins.fromEnv(Map.of()); Plugins blank = Plugins.fromEnv(Map.of(Plugins.ENV, " "))) {
+            assertEquals(unset.describe(), blank.describe());
+        }
+    }
+
     /** {@code RAIL8_JQ_MAX_RECURSION_DEPTH} is the jq module's: 100 holds a count-down from 50, 10 does not, 0 is refused. */
     @Test
     void theJqModuleReadsItsRecursionDepthFromTheEnvironment() {

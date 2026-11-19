@@ -100,12 +100,31 @@ class PluginsTest {
 
     @Test
     void noModulesAndNoPluginsAddNothing() {
-        for (Plugins none : List.of(Plugins.load(NO_MODULES, Optional.empty(), Map.of()), Plugins.load(NO_MODULES, Optional.empty(), Map.of(Plugins.ENV, "x")))) {
+        try (Plugins none = Plugins.load(NO_MODULES, Optional.empty(), Map.of())) {
             assertEquals(List.of(), none.steps());
             assertEquals(List.of(), none.languages());
             assertEquals(List.of(), none.components(context()));
             assertEquals(List.of(), none.describe());
-            none.close();
+        }
+    }
+
+    @Test
+    void thePluginDirectoryIsTheVariablesUnlessItIsUnsetOrBlank() {
+        assertEquals(Optional.empty(), Plugins.dir(Map.of()));
+        assertEquals(Optional.empty(), Plugins.dir(Map.of(Plugins.ENV, "")));
+        assertEquals(Optional.empty(), Plugins.dir(Map.of(Plugins.ENV, " \t")));
+        assertEquals(Optional.of(Path.of("/opt/rail8/plugins")), Plugins.dir(Map.of(Plugins.ENV, "/opt/rail8/plugins")));
+    }
+
+    @Test
+    void theComponentsOfOneModuleOrPluginAreBuiltAloneAndCheckedAsAllAre() throws IOException {
+        jar("acme.jar", PluginFixtures.Acme.class);
+        jar("badly.jar", PluginFixtures.BadSettings.class);
+        try (Plugins plugins = load()) {
+            assertEquals(List.of("acme"), schemes(plugins.components("acme", context())), "the badly described component is not built");
+            String refused = assertThrows(IllegalStateException.class, () -> plugins.components("badly-described", context())).getMessage();
+            assertTrue(refused.startsWith("plugin badly-described: settings() of " + PluginFixtures.BadlyDescribed.class.getName() + " failed: "), refused);
+            assertEquals(List.of(), plugins.components("none", context()));
         }
     }
 
