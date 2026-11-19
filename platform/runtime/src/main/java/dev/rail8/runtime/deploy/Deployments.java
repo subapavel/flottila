@@ -608,11 +608,7 @@ public final class Deployments {
             if (closing) throw stopping();
             String sha256 = FlowHash.sha256(archive);
             Path folder = unpacked(archive);
-            try {
-                return install(name, revision, folder, sha256, archive, null);
-            } finally {
-                deleteTree(folder);   // moved into packages/ by now, unless the deploy was refused or a kept directory served
-            }
+            return installed(folder, () -> install(name, revision, folder, sha256, archive, null));
         } finally {
             deploying.unlock();
         }
@@ -641,14 +637,33 @@ public final class Deployments {
         try {
             if (closing) throw stopping();
             Path copy = copied(folder);
-            try {
-                return install(name, Optional.empty(), copy, Package.content(copy).substring("sha256:".length()), null, null);
-            } finally {
-                deleteTree(copy);
-            }
+            return installed(copy, () -> install(name, Optional.empty(), copy, Package.content(copy).substring("sha256:".length()), null, null));
         } finally {
             deploying.unlock();
         }
+    }
+
+    /** One install of a deploy, as {@link #installed} runs it. */
+    @FunctionalInterface
+    private interface Install {
+        DeployResult run() throws DeployRefusedException, IOException;
+    }
+
+    /**
+     * Runs {@code install}, then deletes {@code folder}, the deploy's folder of {@code .incoming}: by then the install moved it into
+     * {@code packages/}, unless the deploy was refused or a kept directory served. A delete that fails is added to a refusal as
+     * suppressed, and after a deploy that took effect it is a WARNING: the deploy stands.
+     */
+    private static DeployResult installed(Path folder, Install install) throws DeployRefusedException, IOException {
+        DeployResult result;
+        try {
+            result = install.run();
+        } catch (Throwable failure) {
+            cleanUp(failure, () -> deleteTree(folder));
+            throw failure;
+        }
+        quietly("the folder " + folder.getFileName() + " of .incoming could not be deleted", () -> deleteTree(folder));
+        return result;
     }
 
     /**
@@ -870,7 +885,8 @@ public final class Deployments {
                     List.of(), List.of(), List.of(), DeployedPackage.State.FAILED, problems, null, List.of()), List.of(), Map.of(), null, row.dependencies()));
         } finally {
             Files.deleteIfExists(fetched);   // fetched whole, half or not at all: nothing of it stays in .incoming
-            if (folder != null) deleteTree(folder);   // moved into packages/ by now, unless the package was refused
+            Path left = folder;   // moved into packages/ by now, unless the package was refused
+            if (left != null) quietly("the folder " + left.getFileName() + " of .incoming could not be deleted", () -> deleteTree(left));
         }
     }
 
