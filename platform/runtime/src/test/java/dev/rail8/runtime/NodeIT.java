@@ -1188,12 +1188,12 @@ class NodeIT {
     }
 
     /**
-     * The {@code deployments} health check: UP while every package and flow runs; DOWN — /health 503, the other checks UP, the
-     * wire showing the status only, never a name — while a flow is FAILED (a redeploy's rollback could not build it again), and
-     * while a package could not be restored (its archive gone); UP again once a PUT of that package ran it.
+     * The {@code deployments} health check: UP while every package and flow runs; DEGRADED — /health 200 with the status UP, the
+     * other checks UP, the wire showing the status only, never a name — while a flow is FAILED (a redeploy's rollback could not
+     * build it again), and while a package could not be restored (its archive gone); UP again once a PUT of that package ran it.
      */
     @Test
-    void healthIsDownWhileAFlowOrPackageIsFailed() throws Exception {
+    void healthIsDegradedWhileAFlowOrPackageIsFailed() throws Exception {
         byte[] shop = doorsPackage("shop", "a", "b").zip();
         byte[] store = doorsPackage("store", "c").zip();
         Doors doors = new Doors();
@@ -1204,9 +1204,9 @@ class NodeIT {
         assertEquals("UP", up.getJsonObject("checks").getString("deployments"), "the node reports a deployments check, UP while everything runs: " + up.encode());
 
         failB(doors, node.adminPort());
-        JsonObject flowDown = health(node.adminPort(), 503);
-        assertEquals("DOWN", flowDown.getString("status"), flowDown.encode());
-        assertEquals("DOWN", flowDown.getJsonObject("checks").getString("deployments"), "a FAILED flow: " + flowDown.encode());
+        JsonObject flowDown = health(node.adminPort(), 200);
+        assertEquals("UP", flowDown.getString("status"), "a FAILED flow does not take the node down: " + flowDown.encode());
+        assertEquals("DEGRADED", flowDown.getJsonObject("checks").getString("deployments"), "a FAILED flow: " + flowDown.encode());
         assertEquals("UP", flowDown.getJsonObject("checks").getString("postgres"), "the other checks are UP: " + flowDown.encode());
         assertFalse(flowDown.encode().contains("shop"), "the wire shows the status only, never which flow: " + flowDown.encode());
         closeNode(node);
@@ -1219,8 +1219,9 @@ class NodeIT {
         assertEquals("RUNNING", itemOf(packages, "shop", "restored").getString("state"), "fixture: shop restored: " + packages);
         assertEquals(Set.of("RUNNING"), listed(node.adminPort(), "flows", "id").values().stream().map(f -> f.getString("state")).collect(java.util.stream.Collectors.toSet()),
                 "fixture: every flow listed runs, shop/b included");
-        JsonObject packageDown = health(node.adminPort(), 503);
-        assertEquals("DOWN", packageDown.getJsonObject("checks").getString("deployments"), "a FAILED package: " + packageDown.encode());
+        JsonObject packageDown = health(node.adminPort(), 200);
+        assertEquals("UP", packageDown.getString("status"), "a FAILED package does not take the node down: " + packageDown.encode());
+        assertEquals("DEGRADED", packageDown.getJsonObject("checks").getString("deployments"), "a FAILED package: " + packageDown.encode());
         assertFalse(packageDown.encode().contains("store"), "the wire shows the status only, never which package: " + packageDown.encode());
 
         putOk(node.adminPort(), "store", store);
@@ -2341,18 +2342,18 @@ class NodeIT {
     }
 
     /**
-     * R2 deployments: a node with a FAILED flow — a redeploy's rollback could not build it again — is not ready — /ready 503
-     * naming deployments DOWN — and live.
+     * R2 deployments: a node with a FAILED flow — a redeploy's rollback could not build it again — stays ready, /ready 200 with
+     * deployments UP, for the flows that run, and live.
      */
     @Test
-    void failedFlowNodeIsNotReady() throws Exception {
+    void failedFlowNodeStaysReady() throws Exception {
         Doors doors = new Doors();
         node = startWith(env("ci"), doors);
         int port = node.adminPort();
         putOk(port, "shop", doorsPackage("shop", "a", "b").zip());
         failB(doors, port);
 
-        assertEquals(readyBody("DOWN", "deployments"), answer(port, "/ready", 503), "a FAILED flow: not ready, deployments named");
+        assertEquals(readyBody("UP"), answer(port, "/ready", 200), "a FAILED flow: the node stays ready for the flows that run");
         assertEquals(LIVE, answer(port, "/live", 200), "a node with a FAILED flow is still live");
     }
 

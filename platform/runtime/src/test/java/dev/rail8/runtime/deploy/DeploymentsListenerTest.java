@@ -499,7 +499,7 @@ class DeploymentsListenerTest {
         assertTrue(invoices.started() && !invoices.stopped(), "alpha runs: " + invoices.history());
         assertEquals(List.of(), consumersOf(third, "beta"), "no consumer of beta was built: " + third.events());
         Health health = restored.health();
-        assertEquals(Health.Status.DOWN, health.status(), health.detail());
+        assertEquals(Health.Status.DEGRADED, health.status(), "a FAILED package does not take the node down: " + health.detail());
         assertTrue(health.detail().contains("package beta"), "/health names it: " + health.detail());
     }
 }

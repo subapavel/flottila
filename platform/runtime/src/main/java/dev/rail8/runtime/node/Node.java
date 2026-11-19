@@ -111,8 +111,8 @@ import java.util.function.Function;
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
  * {@link Retention} job over the work pool, the clock and the timer ({@code RAIL8_RETENTION_*}) and only then starts the admin
  * server with the deploy, work and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
- * {@code postgres}, {@code deployments} (DOWN while
- * anything is listed FAILED, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
+ * {@code postgres}, {@code deployments} (DEGRADED while
+ * anything is listed FAILED or RESTARTING, never DOWN, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
  * stopped, DEGRADED while a segment row is retried), then the
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code RAIL8_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the

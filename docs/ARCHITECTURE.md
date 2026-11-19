@@ -941,8 +941,9 @@ run's records are written in groups, after the bodies they refer to are durable.
 - There is no metrics endpoint. Each record has wall and CPU time per step, and an optional CPU
   sampler (`RAIL8_CPU_SAMPLING`) reports CPU by step.
 - `/live`, `/ready` and `/health` (Postgres, deployments, journal) answer without a token. The
-  deployments check is DOWN while a package or a flow is listed `FAILED` and DEGRADED while a flow
-  is `RESTARTING`; the node stays ready while it is DEGRADED.
+  deployments check is DEGRADED while a package or a flow is listed `FAILED` or a flow is
+  `RESTARTING`, and never DOWN: `/health` answers 200 and the node stays ready. A package that cannot
+  be restored at start is listed `FAILED` with its reason until a deploy of it replaces it.
 
 ### Admin API
 

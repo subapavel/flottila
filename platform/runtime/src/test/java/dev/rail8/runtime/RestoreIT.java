@@ -71,8 +71,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Postgres, the archives in S3 (LocalStack 4, as {@code NodeIT}'s S3 case) — with no PUT and whatever its data directory holds,
  * here nothing. A restarted node with an empty data directory runs the demo again from its row and its object and resumes the
  * at-least-once work node 1 left queued; the item node 1 left leased runs once its lease (D-055) ran out — the lease is set
- * by SQL on the case database, a fake deadline, so no case waits on a clock. An object deleted from S3 makes the package FAILED
- * on restore, /health DOWN, and the node starts all the same; a PUT recovers it.
+ * by SQL on the case database, a fake deadline, so no case waits on a clock. An object deleted from S3, or a flow that would listen on
+ * the node's peer link port, makes the package FAILED on restore, the {@code deployments} check DEGRADED with /health 200, and
+ * the node starts all the same; a PUT recovers it.
  *
  * <p>Every case runs on a database of its own (FIX-5) and an S3 prefix of its own in one bucket; its nodes are closed before
  * LocalStack stops.
@@ -368,12 +369,12 @@ class RestoreIT {
     /**
      * Node 1 deploys the demo over S3 and serves an invoice; then the demo's object is deleted from S3. Node 2 starts all the same
      * (a missing object is no reason not to start), lists the demo FAILED — version, revision and archive from its row, problems
-     * naming the archive, no flows, no files — lists no flow, serves nothing on the demo's in port, and its /health is 503 with
-     * the {@code deployments} check DOWN (the wire names no package). A PUT of the demo stores the object again, runs it, and
-     * /health is 200.
+     * naming the archive, no flows, no files — lists no flow, serves nothing on the demo's in port, and its /health is 200 with
+     * the {@code deployments} check DEGRADED (the wire names no package). A PUT of the demo stores the object again, runs it, and
+     * the check is UP.
      */
     @Test
-    void aDeletedObjectRestoresAFailedPackageAndHealthIsDown() throws Exception {
+    void aDeletedObjectRestoresAFailedPackageAndHealthIsDegraded() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
                 req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
@@ -406,9 +407,9 @@ class RestoreIT {
         assertEquals("sha256:" + sha, demo.getString("archive"), demo.encode());
         assertEquals(Map.of(), listed(two.adminPort(), "flows", "id"), "no flow runs");
         assertTrue(refuses(inPort), "nothing listens on the demo's in port (node 1 served it)");
-        JsonObject down = health(two.adminPort(), 503);
-        assertEquals("DOWN", down.getString("status"), down.encode());
-        assertEquals("DOWN", down.getJsonObject("checks").getString("deployments"), down.encode());
+        JsonObject down = health(two.adminPort(), 200);
+        assertEquals("UP", down.getString("status"), down.encode());
+        assertEquals("DEGRADED", down.getJsonObject("checks").getString("deployments"), down.encode());
         assertEquals("UP", down.getJsonObject("checks").getString("postgres"), "the other checks are UP: " + down.encode());
         assertFalse(down.encode().contains("demo"), "the wire names no package: " + down.encode());
         assertEquals(row, deploymentRows(), "the row stays as it was");
@@ -421,5 +422,66 @@ class RestoreIT {
         assertArrayEquals(zip, object(key(sha)), "the PUT stored the object again");
         assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once the demo runs");
         assertEquals("RUNNING", listed(two.adminPort(), "packages", "name").get("demo").getString("state"));
+    }
+
+    /**
+     * A package that cannot be restored does not make the node unhealthy. Node 1 runs two copies of the demo, {@code demo} and
+     * {@code other}, on two in ports. Node 2's peer link takes the demo's in port, so the demo's flow cannot listen there when node
+     * 2 restores it. Node 2 starts all the same: the demo is listed FAILED with its reason, naming the peer link, and {@code other} runs and serves.
+     * {@code /health} answers 200 with the status UP and the {@code deployments} check DEGRADED, and {@code /ready} answers 200.
+     * A PUT of the demo on another port replaces it, and then the check is UP.
+     */
+    @Test
+    void aPackageThatCannotBeRestoredLeavesTheNodeHealthyAndAPutReplacesIt() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b ->
+                req.response().putHeader("content-type", "application/xml").end(ack))).listen(0, "127.0.0.1").await();
+        partners.add(partner);
+        String partnerBase = "http://127.0.0.1:" + partner.actualPort();
+        int demoPort = freePort();
+        int otherPort = freePort();
+        Map<String, byte[]> otherFiles = demoFiles(otherPort, partnerBase);
+        otherFiles.put("package.yaml", replaced(otherFiles.get("package.yaml"), Map.of("name: demo", "name: other")));
+
+        Node one = start(env("node-1", tmp.resolve("node-1")));
+        try (HttpClient client = http()) {
+            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(demoPort, partnerBase)), "application/zip").statusCode(),
+                    "fixture: node 1 deploys the demo");
+            assertEquals(200, send(client, "PUT", one.adminPort(), "/admin/packages/other?revision=" + REVISION, zip(otherFiles), "application/zip").statusCode(),
+                    "fixture: node 1 deploys other");
+        }
+        close(one);
+
+        Map<String, String> taken = env("node-2", tmp.resolve("node-2"));
+        taken.put("RAIL8_PEER_BIND", "127.0.0.1");
+        taken.put("RAIL8_PEER_PORT", String.valueOf(demoPort));   // the peer link listens where the demo's flow would
+        Node two = start(taken);
+
+        Map<String, JsonObject> packages = listed(two.adminPort(), "packages", "name");
+        Map<String, JsonObject> flows = listed(two.adminPort(), "flows", "id");
+        JsonObject demo = packages.get("demo");
+        assertEquals("FAILED", demo.getString("state"), "the demo could not be restored: " + demo.encode());
+        assertTrue(demo.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("peer link")),
+                "its reason names the peer link: " + demo.encode());
+        assertFalse(flows.containsKey("demo/invoice-sync"), "nothing of the demo is listed as a flow: " + flows);
+        assertEquals("RUNNING", packages.get("other").getString("state"), "the other package runs: " + packages);
+        assertEquals("RUNNING", flows.get("other/invoice-sync").getString("state"), "its flow runs: " + flows);
+        try (HttpClient client = http()) {
+            assertEquals(200, send(client, "POST", otherPort, "/in", invoice(4711), "application/xml").statusCode(), "the other package serves");
+        }
+        JsonObject degraded = health(two.adminPort(), 200);
+        assertEquals("UP", degraded.getString("status"), "a FAILED package does not make the node unhealthy: " + degraded.encode());
+        assertEquals("DEGRADED", degraded.getJsonObject("checks").getString("deployments"), degraded.encode());
+        assertFalse(degraded.encode().contains("demo"), "the wire names no package: " + degraded.encode());
+        HttpResponse<String> ready = get(two.adminPort(), "/ready");
+        assertEquals(200, ready.statusCode(), "the node is ready for the packages that run: " + ready.body());
+
+        int movedPort = freePort();
+        try (HttpClient client = http()) {
+            HttpResponse<String> put = send(client, "PUT", two.adminPort(), "/admin/packages/demo?revision=" + REVISION, zip(demoFiles(movedPort, partnerBase)), "application/zip");
+            assertEquals(200, put.statusCode(), "a PUT replaces the FAILED package: " + put.body());
+            assertEquals(200, send(client, "POST", movedPort, "/in", invoice(4712), "application/xml").statusCode(), "the demo serves on its new port");
+        }
+        assertEquals("UP", health(two.adminPort(), 200).getJsonObject("checks").getString("deployments"), "UP once nothing is FAILED");
     }
 }

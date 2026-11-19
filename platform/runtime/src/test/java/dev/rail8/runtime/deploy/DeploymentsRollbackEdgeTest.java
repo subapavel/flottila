@@ -236,7 +236,7 @@ class DeploymentsRollbackEdgeTest {
         });
         DeployRefusedException refused = joinRefused(deploying(version(changed(syncFlows("a", "b"), "b", "v2"), "2.0.0"), "r2"), "v2, whose b does not start");
         assertEquals(DeployedFlow.State.FAILED, byId(deployments.flows()).get("shop/b").state(), "fixture: b is FAILED: " + refused.error());
-        assertEquals(Health.down("FAILED: flow shop/b"), deployments.health(), "the health names the FAILED flow, not what runs");
+        assertEquals(Health.degraded("FAILED: flow shop/b"), deployments.health(), "the health names the FAILED flow, not what runs");
         int mark = doors.events().size();
 
         DeployResult r = deploy(version(syncFlows("a"), "3.0.0"), "r3");

@@ -174,7 +174,7 @@ import java.util.stream.Stream;
  * whose directory is absent is fetched from the archive store by its SHA-256 and unpacked under its package's name first, one
  * that cannot be fetched refusing the package — and a package refused
  * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does, or that
- * serves an address one of those serves or closes a cycle of calls with them, included). {@link #health} is DOWN while anything is listed FAILED, else DEGRADED while a flow is listed RESTARTING.
+ * serves an address one of those serves or closes a cycle of calls with them, included). {@link #health} is DEGRADED while anything is listed FAILED or RESTARTING, never DOWN.
  *
  * <p>Every consumer runs in a {@link RestartingConsumer}. Once its flow started, a consumer that breaks
  * ({@code Consumer.broken}) — or, at a restore or a rollback's start again, one that did not start — is stopped, and a fresh
@@ -779,18 +779,22 @@ public final class Deployments {
     }
 
     /**
-     * The {@code deployments} check of the node's {@code /health}: DOWN while a package or a flow is listed FAILED, its
-     * detail naming each (the wire shows the status only); else DEGRADED while a flow's consumer waits for its next attempt,
-     * the detail naming each with its failures in a row and when the next attempt is due, never the cause; UP otherwise.
+     * The {@code deployments} check of the node's {@code /health}: DEGRADED while a package or a flow is listed FAILED or a
+     * flow's consumer waits for its next attempt, UP otherwise. It is never DOWN: what one package cannot run is that
+     * package's problem, and the node and its other packages keep running. The detail names each FAILED package and flow,
+     * then each RESTARTING flow with its failures in a row and when the next attempt is due, never the cause; the wire
+     * shows the status only.
      */
     public Health health() {
         List<String> failed = new ArrayList<>();
         packages().stream().filter(p -> p.state() == DeployedPackage.State.FAILED).forEach(p -> failed.add("package " + p.name()));
         flows().stream().filter(f -> f.state() == DeployedFlow.State.FAILED).forEach(f -> failed.add("flow " + f.id()));
-        if (!failed.isEmpty()) return Health.down("FAILED: " + String.join(", ", failed));
         List<String> waiting = restarting().entrySet().stream()
                 .map(e -> "flow " + e.getKey() + " (failure " + e.getValue().failures() + ", next attempt at " + e.getValue().next() + ")").toList();
-        return waiting.isEmpty() ? Health.up() : Health.degraded("RESTARTING: " + String.join(", ", waiting));
+        List<String> detail = new ArrayList<>();
+        if (!failed.isEmpty()) detail.add("FAILED: " + String.join(", ", failed));
+        if (!waiting.isEmpty()) detail.add("RESTARTING: " + String.join(", ", waiting));
+        return detail.isEmpty() ? Health.up() : Health.degraded(String.join("; ", detail));
     }
 
     /** One record of {@link #restore()}: installed, or listed FAILED when refused; only an IOException of the data directory throws. */

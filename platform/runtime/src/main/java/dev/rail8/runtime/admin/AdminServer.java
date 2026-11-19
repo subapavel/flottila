@@ -267,7 +267,7 @@ public final class AdminServer {
      * @param lifecycle the node finished its start and its close has not begun
      * @param fence the node lease's fence is open
      * @param journal the journal is UP: neither failed nor in outage (DEGRADED is DOWN here)
-     * @param deployments no package or flow is listed FAILED: a flow listed RESTARTING keeps the node ready
+     * @param deployments the deployments check is not DOWN: a package or a flow listed FAILED or RESTARTING keeps the node ready
      */
     public record Readiness(BooleanSupplier lifecycle, BooleanSupplier fence, BooleanSupplier journal, BooleanSupplier deployments) {
         /** Every input UP: what a server built without readiness inputs reports. */
