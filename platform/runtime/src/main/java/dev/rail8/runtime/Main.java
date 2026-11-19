@@ -4,6 +4,7 @@ import dev.rail8.api.Component;
 import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.ComponentContext;
+import dev.rail8.components.direct.DirectComponent;
 import dev.rail8.components.http.HttpComponent;
 import dev.rail8.components.sftp.SftpComponent;
 import dev.rail8.runtime.node.Node;
@@ -28,7 +29,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
- * The node's entry point and the one runtime class that names the shipped components and steps: the http and sftp
+ * The node's entry point and the one runtime class that names the shipped components and steps: the http, sftp and direct
  * components, the xslt steps with the xpath language, the xsd step, the jq step, explicitly. Plugins add theirs after them
  * ({@link Plugins}). {@link #shipped(int, Plugins)} is the one wiring point, used by the node and the CLI.
  *
@@ -44,7 +45,7 @@ public final class Main {
      * What a node runs on: its components, built per node from a {@link ComponentContext}, its step factories and its
      * expression languages; the shipped ones first, then each plugin's.
      *
-     * @param components builds the shipped components (http, sftp), then the plugins', over a node's context; never a mock
+     * @param components builds the shipped components (http, sftp, direct), then the plugins', over a node's context; never a mock
      * @param steps the shipped step factories (the xslt steps, the xsd step, the jq step, then the mapping step), then the plugins'
      * @param languages the shipped expression languages (xpath), then the plugins'
      */
@@ -76,7 +77,8 @@ public final class Main {
         List<StepFactory> steps = Stream.of(xml.steps(), new XsdValidate().steps(), List.<StepFactory>of(new JqStepFactory(jqMaxRecursionDepth), new MappingStepFactory()))
                 .flatMap(List::stream).toList();
         return new Shipped(plugins.components(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer()),
-                new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock()))), plugins.steps(steps), plugins.languages(xml.languages()));
+                new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock()), new DirectComponent(ctx.blobs(), ctx.ids(), ctx.timer()))),
+                plugins.steps(steps), plugins.languages(xml.languages()));
     }
 
     /**

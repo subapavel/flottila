@@ -208,6 +208,10 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-component-sftp</artifactId>
     </dependency>
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-component-direct</artifactId>
+    </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->
     <dependency>

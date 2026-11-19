@@ -38,9 +38,6 @@ The modules point one way: `rail8-api` ← `rail8-core` ← `rail8-runtime`, che
 test. Components and steps depend on `rail8-api` only; only `rail8-runtime` talks to Postgres, S3 or
 Valkey. `rail8-cli` sits on top and may use every module.
 
-**Planned**
-- Calls between flows through an internal adapter, `direct` (part 4).
-
 ## 2. The path of a message
 
 ### Delivery modes
@@ -360,22 +357,15 @@ flow, a `split` runs the rest of the flow once per part, and an `extractKey` may
 
 ### Calls between flows
 
-The component `direct` is a module of its own, which the node does not ship yet, so no flow calls
-another. An endpoint names its `address`, a path such as `/orders` of at most 256 characters. A
-component says which node-local address an endpoint serves or calls with `Component.internalAddress`,
-empty by default. The mock of `direct` is the `mock` component, which passes the same contract suite.
-A flow file may not name a key, a prop or `partitionBy` that starts with `rail8.`: those are the
-platform's own.
-
-**Planned**
-
-One flow calls another through an internal adapter, scheme `direct` (like ProcessDirect in CPI). A
-call needs no network, and the body is not copied on its way in.
+One flow calls another through the component `direct`, which the node ships (like ProcessDirect in
+CPI). A call needs no network, and the body is not copied on its way in. The mock of `direct` is the
+`mock` component, which passes the same contract suite. A flow file may not name a key, a prop or
+`partitionBy` that starts with `rail8.`: those are the platform's own.
 
 - **Endpoints.** An inbound endpoint `{ scheme: direct, direction: in, config: { address: /orders } }`
   feeds the flow that receives. An outbound endpoint with the same address is the `to` of the flow
-  that calls. Addresses are matched exactly, and an address has at most one flow on a node, across
-  packages.
+  that calls. An address is a path such as `/orders` of at most 256 characters, matched exactly. An
+  address has at most one flow on a node, across packages: the deploy refuses a second.
 - **What the caller gets.** The receiving flow's own `delivery.mode` decides:
   - `sync`: the caller waits for the callee's whole run and goes on with its reply. The reply's
     headers replace the caller's, and its body is written under the caller's next step: one copy,
@@ -395,15 +385,22 @@ call needs no network, and the body is not copied on its way in.
 - **Refusals.** When no flow serves the address, the call is refused with "try again". A body over
   the callee's `limits.maxBodyBytes` is refused for good.
 - **No cycles.** The deploy check refuses a package whose flows, together with those already running
-  on the node, would call each other in a cycle (a flow calling itself included). The problem names
-  the path. A call to an address that no flow serves is only a warning in the node's log, so
-  packages deploy in any order.
+  on the node, would call each other in a cycle (a flow calling itself included). A flow calls
+  another when one of its steps sends to the address the other serves: a step of a process it calls
+  and every `byProp` choice count. The problem names the path. When a node starts, a package that
+  serves an address a package picked up before it serves, or closes a cycle with those, is listed
+  `FAILED`. `rail8 validate` checks the calls against the flows of the package's dependencies too. A
+  call to an address that no flow serves is only a warning in the node's log, after a deploy and
+  once a node has picked up its packages, so packages deploy in any order.
 - **Depth.** At run time a chain of calls is at most 8 deep. The depth travels as the prop
   `rail8.depth`, and a call past the cap is refused for good.
-- **Contract.** The deploy checks use the address `Component.internalAddress` names.
+- **Contract.** A component says which node-local address an endpoint serves or calls with
+  `Component.internalAddress`, empty by default; the deploy checks use that answer.
 - **Storage.** For a body whose key names another message, the save writes the body's kept
   reference in the same transaction. Retention keeps that reference while any work row points at the
   same place in the journal.
+
+**Planned**
 - **Tests.** `rail8 test` runs the flows a package calls, as well as the flow under test.
 
 ### The command line
@@ -480,7 +477,7 @@ system a producer calls.
 
 Components today: `http` (consumer and producer), `sftp` (polling consumer; deletes or moves a file
 only after the flow's answer; a round that cannot connect, log in or list breaks the consumer; no
-producer), and `mock`.
+producer), `direct` (consumer and producer, between the flows of one node), and `mock`.
 
 ### Steps
 

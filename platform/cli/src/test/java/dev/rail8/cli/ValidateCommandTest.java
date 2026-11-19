@@ -383,6 +383,44 @@ class ValidateCommandTest {
         assertTrue(ran.problems().contains("problem: dependency cycle: a -> b -> a"), ran.toString());
     }
 
+    /**
+     * invoice's flow {@code orders} calls {@code /charge}, which a flow of its dependency common serves and which calls
+     * {@code /orders} back: the dry build counts the dependency's flows, and the cycle is exit 1 naming the path.
+     */
+    @Test
+    void aCycleOfCallsThroughADependencysFlowIsExit1NamingIt() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path common = DepsFixture.copy("common", deps.resolve("common"));
+        direct(common, "charge-in", "in", "/charge");
+        direct(common, "orders", "out", "/orders");
+        calling(common, "charge", "charge-in", "orders");
+        Path invoice = DepsFixture.copy("invoice", deps.resolve("invoice"));
+        direct(invoice, "orders-in", "in", "/orders");
+        direct(invoice, "charge", "out", "/charge");
+        calling(invoice, "orders", "orders-in", "charge");
+        DepsFixture.lock(invoice, common);
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().contains("problem: calls between flows would form a cycle: flow 'orders' -> direct /charge -> flow 'common/charge' -> "
+                + "direct /orders -> flow 'orders'"), ran.toString());
+    }
+
+    /** Writes the direct endpoint {@code id} of {@code direction} on {@code address} into the package {@code dir}. */
+    static void direct(Path dir, String id, String direction, String address) throws java.io.IOException {
+        Files.createDirectories(dir.resolve("endpoints"));
+        Files.writeString(dir.resolve("endpoints/" + id + ".yaml"), "schemaVersion: 1\nkind: endpoint\nid: " + id + "\nscheme: direct\ndirection: " + direction
+                + "\nconfig:\n  address: " + address + "\n");
+    }
+
+    /** Writes the sync flow {@code id} from {@code from} whose one step sends to {@code to} into the package {@code dir}. */
+    static void calling(Path dir, String id, String from, String to) throws java.io.IOException {
+        Files.createDirectories(dir.resolve("flows"));
+        Files.writeString(dir.resolve("flows/" + id + ".yaml"), "schemaVersion: 1\nkind: flow\nid: " + id + "\nversion: 1.0.0\nfrom:\n  endpoint: " + from
+                + "\ndelivery:\n  mode: sync\nlimits:\n  maxBodyBytes: 4096\nsteps:\n  - type: to\n    name: call\n    endpoint: " + to + "\n");
+    }
+
     /** order -> ubl -> common: ubl's own lock is followed and the closure deployed leaves first (common, then ubl), exit 0. */
     @Test
     void aTransitiveDependencyIsResolvedThroughTheCandidatesLock() throws Exception {
