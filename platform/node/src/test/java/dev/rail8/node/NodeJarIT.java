@@ -104,6 +104,23 @@ class NodeJarIT {
         }
     }
 
+    /**
+     * The mapping module's admin services come with the mapping studio, which reads and writes JSON with Jackson. The node's class
+     * path holds the studio, and one Jackson: one {@code jackson-core} and one {@code jackson-databind}, which the studio and the
+     * node's other libraries share.
+     */
+    @Test
+    void thePackagedJarsClassPathHoldsTheMappingStudioAndOneJackson() throws IOException {
+        List<String> classPath;
+        try (JarFile file = new JarFile(packagedJar().toFile())) {
+            classPath = List.of(file.getManifest().getMainAttributes().getValue(Attributes.Name.CLASS_PATH).trim().split("\\s+"));
+        }
+        for (String artifact : List.of("rail8-mapping-studio", "jackson-core", "jackson-databind")) {
+            List<String> entries = classPath.stream().filter(e -> e.matches("lib/" + artifact + "-\\d[^/]*\\.jar")).toList();
+            assertEquals(1, entries.size(), "one " + artifact + " on the class path: " + classPath);
+        }
+    }
+
     /** A node's environment on the container's database, its data in the case's temporary directory. */
     Map<String, String> env(int adminPort) {
         byte[] key = new byte[32];

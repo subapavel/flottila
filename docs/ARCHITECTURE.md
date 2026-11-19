@@ -832,8 +832,9 @@ public final class RunFailure extends Exception {
 ### The mapping step
 
 The step module `platform/steps/mapping` (`dev.rail8:rail8-step-mapping`) registers the step type
-`mapping`. It depends on `rail8-api` and `rail8-mapping-embed`, and it is the only platform module
-that depends on the mapping, and only on `dev.rail8.mapping.embed`; an architecture test checks both.
+`mapping`. It depends on `rail8-api`, `rail8-mapping-embed` and `rail8-mapping-studio`, and it is the
+only platform module that depends on the mapping, and only on `dev.rail8.mapping.embed` and
+`dev.rail8.mapping.studio`; an architecture test checks both.
 The node and the command line ship it. Every CI job and documented command builds the platform from
 the repository's root with `./mvnw`, where `-am` builds the engine's `embed` module and the engine
 modules under it from the same commit, in the same build.
@@ -862,6 +863,17 @@ steps:
   over the limit is; `DATA_ERROR` is INTERNAL and retried, because a data error need not come from the
   input (a box with a bad constant fails every message); an interrupt is rethrown with the flag
   restored, so the worker leaves the item to its lease.
+- The module brings the studio's operations as admin services, from `mapping/studio`
+  (`rail8-mapping-studio`, Jackson and no Quarkus), at `/admin/modules/mapping/`: `GET catalogue`,
+  and `POST canonical`, `create`, `structure`, `compile`, `test` and `refresh`. A `POST` body is
+  `{"request","files","escaping"}`: the browser's request in base64, the schema files it reads by
+  reference, also in base64, and the references that leave the workspace; `canonical` adds `reads`,
+  `"stored"` or `"sent"`. A call that sends no `files` and reads a schema file is 409 `files-needed`
+  with the `references` to send. Answers are the browser's contract, `mapping/contract/openapi.json`.
+  The engine's work runs on a platform thread of its own, and a call holds its place until that
+  thread has ended, also when it is interrupted. A test run sees the node's clock and its zone, stops
+  after 10 seconds and writes at most 16 MiB of output; one entry of its trace keeps at most 10,000
+  slots, contexts or occurrence records.
 
 **Planned**
 - A bytecode tier for speed, later.
