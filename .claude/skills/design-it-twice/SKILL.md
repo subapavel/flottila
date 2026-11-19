@@ -60,7 +60,7 @@ cloud environment over this repository, read-only.
 4. The owner pastes the prompt into Codex and pastes its answer back as a comment on the issue.
 5. Read the answer. Take each objection, or turn it down with a reason in the issue. Remove the
    label and go on.
-6. When no answer has come by 08:00 Prague time the next morning, an agent on a different Claude
+6. When no answer has come by the next morning's daily overview (08:00 Prague time), an agent on a different Claude
    model than yours argues against the recommendation instead. Say so in the issue, remove the
    label and go on. An answer that arrives later but before the merge is still handled as in
    step 5.
