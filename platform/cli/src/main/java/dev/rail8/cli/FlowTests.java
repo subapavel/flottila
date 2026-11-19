@@ -144,22 +144,24 @@ final class FlowTests {
 
     static int run(Cli.Options options, Plugins plugins, PrintStream out) throws IOException {
         Path dir = options.dir();
-        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options), plugins);
-        if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
-        Package pkg = checked.pkg().orElseThrow();
-        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), plugins);
-        List<Doc> docs = run.docs(dir);
-        List<String> problems = run.problems(docs);
-        if (!problems.isEmpty()) return problems(problems, out);
-        if (docs.isEmpty()) {
-            out.println("no test document in package " + pkg.name() + ": nothing to run");
-            return 1;
-        }
-        Path copies = Files.createTempDirectory("rail8-test-packages-");
-        try {
-            return run.cases(docs, dir, checked.dependencies(), copies, out);
-        } finally {
-            deleteTree(copies);
+        try (Dependencies deps = Dependencies.of(options)) {   // the closure's folders are its own until the copies are made
+            Validate.Checked checked = Validate.check(dir, ENV, deps, plugins);
+            if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
+            Package pkg = checked.pkg().orElseThrow();
+            FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), plugins);
+            List<Doc> docs = run.docs(dir);
+            List<String> problems = run.problems(docs);
+            if (!problems.isEmpty()) return problems(problems, out);
+            if (docs.isEmpty()) {
+                out.println("no test document in package " + pkg.name() + ": nothing to run");
+                return 1;
+            }
+            Path copies = Files.createTempDirectory("rail8-test-packages-");
+            try {
+                return run.cases(docs, dir, checked.dependencies(), copies, out);
+            } finally {
+                deleteTree(copies);
+            }
         }
     }
 
@@ -448,13 +450,14 @@ final class FlowTests {
 
     /**
      * The directories and regular files of {@code from}, by their paths below it, copied into {@code to}, a directory made here, as
-     * {@code rail8 deploy}'s zip takes them: a link to a file is copied as the file, a linked directory as an empty one. Returns
-     * {@code to}.
+     * {@code rail8 deploy}'s zip takes them: a link to a file is copied as the file, a linked directory as an empty one, and
+     * {@code .git} at the root — a clone's repository, or a worktree's pointer to one — not at all. Returns {@code to}.
      */
     static Path copy(Path from, Path to) throws IOException {
+        Path git = from.resolve(".git");
         List<Path> paths;
         try (Stream<Path> walk = Files.walk(from)) {
-            paths = walk.sorted().toList();
+            paths = walk.filter(p -> !p.startsWith(git)).sorted().toList();
         }
         for (Path p : paths) {
             Path target = to.resolve(from.relativize(p).toString());

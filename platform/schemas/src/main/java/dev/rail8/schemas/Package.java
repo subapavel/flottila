@@ -6,9 +6,12 @@ import io.vertx.core.json.JsonObject;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -39,7 +42,8 @@ import java.util.stream.Stream;
  * loaded, by id; {@link #folders()} and {@link #artifacts()} are the package's tree.
  *
  * <p>Dependencies: {@code package.yaml} declares each at an exact version, {@code package.lock} at the root (read when it
- * exists; no document of the walk) pins each with its {@link #content(Path) content digest}, and a step's {@code stylesheet} or
+ * exists; no document of the walk) pins each with its {@link #content(Path) content digest}, its repository and its commit, and a
+ * step's {@code stylesheet} or
  * {@code schema} names a dependency's file as {@code <dep>:<path from its root>} — a package name before the first {@code /};
  * anything else is a path from the package root, so a root file whose name has a colon is named {@code ./<name>}. Only a declared
  * dependency may be named, and the reference stays inside it; whether its file exists is the node's to say, which holds it.
@@ -55,6 +59,8 @@ public final class Package {
     private static final String MANIFEST = "package.yaml";
     private static final String FOLDER = "folder.yaml";
     private static final String LOCK = "package.lock";
+    /** A clone's git folder, or a worktree's git file, at the package root: no part of the package. */
+    private static final String GIT = ".git";
     /** A dependency reference's prefix: a package name, then a colon, before the first {@code /}. */
     private static final Pattern DEPENDENCY = Pattern.compile("([a-z][a-z0-9-]{0,63}):");
     private static final Set<Schemas> ARTIFACTS = Set.of(Schemas.ENDPOINT, Schemas.FLOW, Schemas.TEST);
@@ -134,12 +140,14 @@ public final class Package {
     /**
      * One dependency as {@code package.lock} pins it.
      *
-     * @param name    the dependency's package name
-     * @param version its exact version
-     * @param content its content digest, {@code sha256:<hex>} ({@link #content(Path)})
+     * @param name       the dependency's package name
+     * @param version    its exact version
+     * @param content    its content digest, {@code sha256:<hex>} ({@link #content(Path)})
+     * @param repository the name of its git repository: one segment under the base the repositories live under
+     * @param commit     the commit of that repository its files come from: 40 lower-case hex digits
      * @since 0.1
      */
-    public record Locked(String name, String version, String content) {}
+    public record Locked(String name, String version, String content, String repository, String commit) {}
 
     /** One document as read, with the schema its kind (or its name) names and that schema's verdict on it. */
     private record Read(String path, Path file, Schemas schema, JsonObject document, Schemas.Report report) {
@@ -207,7 +215,8 @@ public final class Package {
                 if (lock.report().valid()) {
                     for (Object e : lock.document().getJsonArray("dependencies")) {
                         JsonObject entry = (JsonObject) e;
-                        locked.add(new Locked(entry.getString("name"), entry.getString("version"), entry.getString("content")));
+                        locked.add(new Locked(entry.getString("name"), entry.getString("version"), entry.getString("content"),
+                                entry.getString("repository"), entry.getString("commit")));
                     }
                 }
             } else {
@@ -215,7 +224,10 @@ public final class Package {
             }
         }
 
-        /** Every folder below {@code folder} ({@code depth} deep) with its name checked, and every YAML in them; never below a folder too deep. */
+        /**
+         * Every folder below {@code folder} ({@code depth} deep) with its name checked, and every YAML in them; never below a folder
+         * too deep, and never {@code .git} at the root.
+         */
         void walk(Path folder, int depth) throws IOException {
             List<Path> entries;
             try (Stream<Path> s = Files.list(folder)) {
@@ -223,6 +235,7 @@ public final class Package {
             }
             for (Path p : entries) {
                 String name = p.getFileName().toString();
+                if (depth == 0 && name.equals(GIT)) continue;
                 if (Files.isDirectory(p)) {
                     String path = path(dir, p);
                     int deep = depth + 1;
@@ -473,7 +486,8 @@ public final class Package {
      * {@code package.yaml}'s dependencies against {@code package.lock}, once both passed their schemas: a name declared
      * twice, the package declaring itself (the shortest cycle), declared dependencies without a lock, a lock entry package.yaml
      * does not declare or declares at another version, a name the lock pins twice (once per name; each entry is compared),
-     * and a declared dependency the lock does not pin.
+     * and a declared dependency the lock does not pin. A lock with an entry that pins no repository or no commit is told to be
+     * written again with {@code rail8 lock}, beside its schema's problems.
      */
     private List<String> lockProblems() {
         List<String> problems = new ArrayList<>(declaredTwice);
@@ -481,6 +495,9 @@ public final class Package {
         if (lock == null) {
             if (!declared.isEmpty()) problems.add("package.yaml declares dependencies " + declared.keySet() + ", package.lock is missing");
             return problems;
+        }
+        if (!lock.report().valid() && unpinnedCommits(lock.document())) {
+            problems.add("package.lock does not pin each dependency's repository and commit: write it again with rail8 lock");
         }
         if (!documents.getFirst().report().valid() || !lock.report().valid()) return problems;   // their schema problems say it
         Set<String> pinned = new HashSet<>();
@@ -496,6 +513,15 @@ public final class Package {
             if (!pinned.contains(name)) problems.add("package.yaml declares " + name + " " + version + ", package.lock does not pin it");
         });
         return problems;
+    }
+
+    /** Whether an entry of the lock {@code document} is an object without a repository or a commit. */
+    private static boolean unpinnedCommits(JsonObject document) {
+        if (!(document.getValue("dependencies") instanceof JsonArray entries)) return false;
+        for (Object e : entries) {
+            if (e instanceof JsonObject entry && (!entry.containsKey("repository") || !entry.containsKey("commit"))) return true;
+        }
+        return false;
     }
 
     /** Every entry of {@code package.lock} in its order, when it passed its schema; empty without one, or when it did not. */
@@ -516,15 +542,26 @@ public final class Package {
      * The content digest of the package in {@code dir}, what {@code package.lock} pins: {@code sha256:} and the lower-case hex
      * SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and {@code file <path> <sha256>} for every regular file below
      * {@code dir}, sorted by its {@code /}-separated path, each line ended by {@code \n}. The files decide — not the archive they
-     * came in, their modification times or empty folders.
+     * came in, their modification times or empty folders. {@code .git} at the root, a clone's folder or a worktree's file, is
+     * not read.
      *
      * @throws IOException {@code dir} cannot be walked or a file read
      */
     public static String content(Path dir) throws IOException {
         Map<String, Path> files = new TreeMap<>();
-        try (Stream<Path> walk = Files.walk(dir)) {
-            walk.filter(Files::isRegularFile).forEach(f -> files.put(path(dir, f), f));
-        }
+        Path git = dir.resolve(GIT);
+        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path folder, BasicFileAttributes attributes) {
+                return folder.equals(git) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+                if (!file.equals(git) && Files.isRegularFile(file)) files.put(path(dir, file), file);   // a link to a file counts as the file
+                return FileVisitResult.CONTINUE;
+            }
+        });
         MessageDigest digest = sha256();
         digest.update("rail8-package-content 1\n".getBytes(StandardCharsets.UTF_8));
         for (Map.Entry<String, Path> f : files.entrySet()) {

@@ -28,19 +28,21 @@ public final class Cli {
             usage: rail8 <command> [arguments]
               validate <dir> [--env <env>] [--deps <dir>] [--plugins <dir>]
                   check the package in <dir> as a node would deploy it (schemas, component configs, a dry build of every
-                  flow) and print its tree and its problems (environment: dev unless --env); its dependencies, resolved
-                  as lock finds them, are held for the dry build, never deployed; nothing is started or stored; the node
-                  has the plugins of --plugins, else of $RAIL8_PLUGINS, else none
+                  flow) and print its tree and its problems (environment: dev unless --env); its dependencies, read
+                  from the repositories and commits package.lock pins, are held for the dry build, never deployed; nothing
+                  is started or stored; the node has the plugins of --plugins, else of $RAIL8_PLUGINS, else none
               test <dir> [--deps <dir>] [--plugins <dir>]
                   run the package's flow tests (*.test.yaml) as a node of environment ci would, each case on mocks and
                   in-memory stores of its own and on virtual time; print PASS or FAIL per case and what failed (a problem
-                  validate would print runs no case); each case's node deploys the package's dependencies, resolved as
-                  lock finds them, on the same mocks; the plugins as for validate, their steps run and a mock stands in
-                  for their schemes
+                  validate would print runs no case); each case's node deploys the package's dependencies, read as
+                  validate reads them, on the same mocks; the plugins as for validate, their steps run and a mock stands
+                  in for their schemes
               lock <dir> [--deps <dir>]
-                  write <dir>/package.lock pinning each dependency package.yaml declares with its candidate's content digest:
-                  candidates are the folders of --deps, else of the package folder's parent, whose package.yaml loads (the
-                  package's own excluded), matched by name and version; print one line per entry
+                  write <dir>/package.lock pinning each dependency package.yaml declares to its candidate's repository
+                  (the folder's name), its HEAD commit and that commit's content digest: candidates are the folders of
+                  --deps, else of the package folder's parent, whose package.yaml loads (the package's own excluded),
+                  matched by name and version; each must be the root of a git working tree whose files are its HEAD's;
+                  validate and test read each pinned commit from the same folders; print one line per entry
               deploy <dir> [--name <name>] [--revision <revision>] [--admin <url>]
                   zip the package in <dir> and PUT it to <url>/admin/packages/<name> (name: package.yaml's unless --name;
                   url: --admin, else $RAIL8_ADMIN, else http://localhost:8081; bearer token: $RAIL8_ADMIN_TOKEN only)

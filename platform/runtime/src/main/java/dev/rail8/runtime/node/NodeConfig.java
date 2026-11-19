@@ -716,6 +716,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** RAIL8_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
     private static final long RECORD_MAX_DEFAULT = 256 * 1024;
     private static final long GIB = 1024 * MIB;
+    /** RAIL8_MAX_PACKAGE_BYTES by default: the most bytes one package's files may hold. */
+    public static final long MAX_PACKAGE_BYTES_DEFAULT = 64 * MIB;
     private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
     /** The {@code RAIL8_PG_HOST} values that default to {@code RAIL8_PG_SSL_MODE=disable}: written as-is, never resolved. */
@@ -783,7 +785,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Path dataDir = Path.of(env.getOrDefault("RAIL8_DATA_DIR", "/var/lib/rail8"));
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("RAIL8_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
-        return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "RAIL8_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
+        return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "RAIL8_MAX_PACKAGE_BYTES", MAX_PACKAGE_BYTES_DEFAULT, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "RAIL8_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "RAIL8_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),

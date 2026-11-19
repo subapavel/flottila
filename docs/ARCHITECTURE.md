@@ -270,8 +270,9 @@ any work row points at that place, so the callee can read the body after the cal
 ### Files
 
 A package is a folder with `package.yaml` (name, version, exact-version dependencies on other
-packages, pinned in `package.lock`). Inside it, files are found by their `kind`, not their place:
-`flow`, `endpoint`, `test`, and `folder.yaml` for a namespace. Each kind has a published JSON Schema.
+packages, pinned in `package.lock` by version, content digest, repository and commit). Inside it,
+files are found by their `kind`, not their place: `flow`, `endpoint`, `test`, and `folder.yaml` for a
+namespace. Each kind has a published JSON Schema. `.git` at a package's root is no part of it.
 
 A flow, shortened from `examples/demo/flows/invoice-async.yaml`:
 
@@ -413,7 +414,13 @@ retries five minutes apart finishes in milliseconds. It deploys a copy of the pa
 each dependency's, made once before the first case, with no archive and no record, so an edit of the
 folders during a run changes nothing in it. Both find the node's modules and load plugins
 as a node does (part 5), from `--plugins <dir>` or `RAIL8_PLUGINS`, and read no setting of theirs.
-`rail8 lock` writes `package.lock`.
+`rail8 lock` writes `package.lock`: it finds each dependency by its manifest's name among the package
+folders next to the package (or under `--deps`) and pins the name of its git working tree as the
+repository, its `HEAD` as the commit and that commit's content digest; a dependency that is not at the
+root of its working tree, or whose files differ from its `HEAD`, is refused. `rail8 validate` and
+`rail8 test` read each dependency's files from its pinned commit in that folder of repositories, through
+the git seam the node will use, and the package itself from its working folder. A node still resolves
+a dependency by its content among the packages it holds.
 `rail8 deploy` zips the package and sends it to a node's admin API. `rail8 new-adapter` writes the
 skeleton of a new adapter (part 5).
 
@@ -438,7 +445,7 @@ deploy made on another node.
   - every package has a repository of its own; a pool reads its repositories under one base set in the
     node's configuration, through a JGit cache that is not state, and a deploy names a repository and a
     commit (`POST /admin/deploy`, `rail8 deploy <repository> <commit>`);
-  - `package.lock` pins each dependency by its repository and commit, and its files come from there;
+  - a deploy reads each dependency's files from the repository and commit `package.lock` pins;
   - a deploy is checked whole before anything stops and applied through today's swap; its record names
     the repository, the commit and the content digest; undeploy stays, rollback is an earlier commit;
   - a node restores from its git cache, and the other nodes of a pool follow a deploy on a timer;

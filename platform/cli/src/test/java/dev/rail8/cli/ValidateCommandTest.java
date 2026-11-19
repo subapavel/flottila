@@ -284,7 +284,7 @@ class ValidateCommandTest {
         assertEquals("", ran.err(), ran.toString());
     }
 
-    // --- P2-02b2 (D-087, D-089): dependencies resolved off-node from a candidates dir (DepsFixture), deployed into the dry build
+    // --- dependencies read off-node from the repositories and commits the lock pins (DepsFixture), held for the dry build
 
     /** invoice pins common 1.2.0 (the parent dir holds it and common 1.3.0): the closure is deployed into the dry build, exit 0. */
     @Test
@@ -298,7 +298,10 @@ class ValidateCommandTest {
         assertEquals(0, ran.exit(), ran.toString());
     }
 
-    /** The dry build's data directory ({@code rail8-validate-*} under java.io.tmpdir, the dependency archives in it) is deleted after the run. */
+    /**
+     * The dry build's data directory ({@code rail8-validate-*} under java.io.tmpdir, the dependency archives in it) and the git
+     * cache with the commits read from it ({@code rail8-git-*}) are deleted after the run.
+     */
     @Test
     void theDryBuildLeavesNoDataDirInTmp() throws Exception {
         Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
@@ -310,16 +313,16 @@ class ValidateCommandTest {
         assertEquals(0, ran.exit(), ran.toString());
         List<Path> left = new ArrayList<>(validateDirs());
         left.removeAll(before);
-        assertEquals(List.of(), left, "no new rail8-validate-* entry in java.io.tmpdir");
+        assertEquals(List.of(), left, "no new rail8-validate-* or rail8-git-* entry in java.io.tmpdir");
     }
 
     private static List<Path> validateDirs() throws java.io.IOException {
         try (Stream<Path> list = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
-            return list.filter(p -> p.getFileName().toString().startsWith("rail8-validate-")).toList();
+            return list.filter(p -> p.getFileName().toString().startsWith("rail8-validate-") || p.getFileName().toString().startsWith("rail8-git-")).toList();
         }
     }
 
-    /** {@code --deps} (with {@code --env}) names the candidates dir; the parent's common 1.2.0 has other content and is not used. */
+    /** {@code --deps} (with {@code --env}) names the folder of the repositories; the parent's common 1.2.0 has other content and is not used. */
     @Test
     void theDepsOptionNamesTheCandidatesDir() throws Exception {
         Path vendor = tmp.resolve("vendor");
@@ -334,43 +337,84 @@ class ValidateCommandTest {
         assertEquals(0, ran.exit(), ran.toString());
     }
 
-    /** common changed after invoice was locked: exit 1 naming the entry, both digests and the candidate dir relative to the deps dir. */
+    /**
+     * The dependency is read from the commit its lock pins, not from its working folder: common committed again after invoice was
+     * locked, then edited without a commit, changes nothing — invoice's flow maps with a stylesheet only the pinned commit holds,
+     * which both later states have removed; exit 0. Witness: invoice locked again, to common's new HEAD, misses it.
+     */
+    @Test
+    void theDependencyIsReadFromItsPinnedCommit() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path common = DepsFixture.copy("common", deps.resolve("common"));
+        Files.copy(common.resolve("xslt/to-partner.xsl"), common.resolve("xslt/pinned.xsl"));
+        DepsFixture.commit(common);
+        Path invoice = DepsFixture.copy("invoice", deps.resolve("invoice"));
+        CliRuns.rewrite(invoice.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: common:xslt/pinned.xsl"));
+        DepsFixture.lock(invoice, common);
+        Files.delete(common.resolve("xslt/pinned.xsl"));
+        DepsFixture.commit(common);
+        Files.writeString(common.resolve("xslt/lib.xsl"), "not even XSLT");
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+
+        Files.delete(common.resolve("xslt/lib.xsl"));
+        DepsFixture.commit(common);
+        DepsFixture.lock(invoice, common);
+        Ran relocked = run("validate", invoice.toString());
+
+        assertTrue(relocked.problems().stream().anyMatch(l -> l.endsWith("stylesheet 'common:xslt/pinned.xsl' does not exist in common@1.2.0")),
+                "witness: common's new HEAD lacks the stylesheet: " + relocked);
+        assertEquals(1, relocked.exit(), relocked.toString());
+    }
+
+    /**
+     * A lock whose content is not that of the commit it pins (edited by hand): exit 1 naming the entry, both digests, the repository
+     * and the commit; no absolute path.
+     */
     @Test
     void aLockDriftIsExit1NamingTheEntry() throws Exception {
         Path deps = tmp.resolve("deps");
         Path invoice = DepsFixture.invoiceWithCandidates(deps);
-        String pinned = DepsFixture.content(deps.resolve("common"));
-        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
-        String now = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.Pin pin = DepsFixture.pinOf(deps.resolve("common"));
+        String wrong = "sha256:" + "0".repeat(64);
+        DepsFixture.lock(invoice, List.of(new DepsFixture.Pin(pin.name(), pin.version(), wrong, pin.repository(), pin.commit())));
 
         Ran ran = run("validate", invoice.toString());
 
         assertEquals(1, ran.exit(), ran.toString());
-        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + wrong + "; common at " + pin.commit() + " has " + pin.content()),
+                ran.toString());
         DepsFixture.assertNoAbsolutePath(ran, tmp);
     }
 
-    /** The lock pins common 1.2.0; the candidates hold common 1.3.0 only, or no common: exit 1 naming what they hold. */
+    /**
+     * The lock pins a repository the folder lacks (common is in another folder; the candidates hold common-1.3.0 only), or a commit
+     * the repository lacks (common here is another repository with commits of its own): exit 1 naming the repository and the
+     * commit, no absolute path.
+     */
     @Test
-    void aMissingCandidateIsExit1() throws Exception {
+    void aMissingRepositoryOrCommitIsExit1() throws Exception {
         Path pinnedElsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        DepsFixture.relabel(pinnedElsewhere, "elsewhere");
+        String commit = DepsFixture.head(pinnedElsewhere);
         Path other = DepsFixture.copy("invoice", tmp.resolve("other/invoice"));
         DepsFixture.copy("common-1.3.0", tmp.resolve("other/common-1.3.0"));
         DepsFixture.lock(other, pinnedElsewhere);
-        Path none = DepsFixture.copy("invoice", tmp.resolve("none/invoice"));
-        DepsFixture.lock(none, pinnedElsewhere);
+        Path another = DepsFixture.copy("invoice", tmp.resolve("another/invoice"));
+        DepsFixture.copy("common", tmp.resolve("another/common"));
+        DepsFixture.lock(another, pinnedElsewhere);
 
         Ran ranOther = run("validate", other.toString());
-        Ran ranNone = run("validate", none.toString());
+        Ran ranAnother = run("validate", another.toString());
 
-        assertEquals(1, ranOther.exit(), ranOther.toString());
-        assertTrue(ranOther.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
-                && l.endsWith(" (it has common 1.3.0)")), ranOther.toString());
-        assertEquals(1, ranNone.exit(), ranNone.toString());
-        assertTrue(ranNone.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
-                && l.endsWith(" (no package common)")), ranNone.toString());
-        DepsFixture.assertNoAbsolutePath(ranOther, tmp);
-        DepsFixture.assertNoAbsolutePath(ranNone, tmp);
+        for (Ran ran : List.of(ranOther, ranAnother)) {
+            assertEquals(1, ran.exit(), ran.toString());
+            assertEquals(List.of("problem: dependency common@1.2.0: common at " + commit + ": not found"), ran.problems(), ran.toString());
+            DepsFixture.assertNoAbsolutePath(ran, tmp);
+        }
     }
 
     /** a declares b, b declares a: exit 1 naming the cycle by name (a's own dir is no candidate; the name decides). */
@@ -395,6 +439,7 @@ class ValidateCommandTest {
         direct(common, "charge-in", "in", "/charge");
         direct(common, "orders", "out", "/orders");
         calling(common, "charge", "charge-in", "orders");
+        DepsFixture.commit(common);
         Path invoice = DepsFixture.copy("invoice", deps.resolve("invoice"));
         direct(invoice, "orders-in", "in", "/orders");
         direct(invoice, "charge", "out", "/charge");
@@ -422,7 +467,7 @@ class ValidateCommandTest {
                 + "\ndelivery:\n  mode: sync\nlimits:\n  maxBodyBytes: 4096\nsteps:\n  - type: to\n    name: call\n    endpoint: " + to + "\n");
     }
 
-    /** order -> ubl -> common: ubl's own lock is followed and the closure deployed leaves first (common, then ubl), exit 0. */
+    /** order -> ubl -> common: ubl's own lock, as its pinned commit holds it, is followed and the closure held leaves first (common, then ubl), exit 0. */
     @Test
     void aTransitiveDependencyIsResolvedThroughTheCandidatesLock() throws Exception {
         Path order = DepsFixture.orderOverUblOverCommon(tmp.resolve("deps"));
@@ -433,24 +478,36 @@ class ValidateCommandTest {
         assertEquals(0, ran.exit(), ran.toString());
     }
 
-    /** common changed after ubl was locked (order's lock still matches ubl): the drift in the candidate's own lock is named, exit 1. */
+    /**
+     * ubl's committed lock pins common with a content other than its commit's (order's lock matches ubl): the drift in the
+     * dependency's own lock is named, exit 1. common committed again after ubl was locked changes nothing of ubl's pin.
+     */
     @Test
     void aDriftInTheCandidatesOwnLockIsExit1() throws Exception {
         Path deps = tmp.resolve("deps");
         Path order = DepsFixture.orderOverUblOverCommon(deps);
-        String pinned = DepsFixture.content(deps.resolve("common"));
-        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
-        String now = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.relabel(deps.resolve("common"), "committed after ubl's lock");
+        Ran moved = run("validate", order.toString());
+        DepsFixture.Pin pin = DepsFixture.pinOf(deps.resolve("common"));
+        String wrong = "sha256:" + "0".repeat(64);
+        DepsFixture.lock(deps.resolve("ubl"), List.of(new DepsFixture.Pin(pin.name(), pin.version(), wrong, pin.repository(), pin.commit())));
+        DepsFixture.lock(order, deps.resolve("ubl"));
 
         Ran ran = run("validate", order.toString());
 
+        assertEquals(List.of(), moved.problems(), "ubl's pin of common is its commit's, not common's HEAD: " + moved);
+        assertEquals(0, moved.exit(), moved.toString());
         assertEquals(1, ran.exit(), ran.toString());
-        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + wrong + "; common at " + pin.commit() + " has " + pin.content()),
+                ran.toString());
     }
 
-    /** common 1.2.0 in two candidate dirs with different content: exit 1 naming both, relative to the deps dir. */
+    /**
+     * common 1.2.0 in two folders with different content, invoice locked to {@code left}: validate reads the repository the lock
+     * names and looks for no candidate by name, so the other is no ambiguity; exit 0.
+     */
     @Test
-    void twoCandidatesWithDifferentContentIsExit1NamingBoth() throws Exception {
+    void theLockedRepositoryIsReadWhateverOtherFoldersHold() throws Exception {
         Path left = DepsFixture.copy("common", tmp.resolve("deps/left"));
         DepsFixture.relabel(DepsFixture.copy("common", tmp.resolve("deps/right")), "built elsewhere");
         Path invoice = DepsFixture.copy("invoice", tmp.resolve("deps/invoice"));
@@ -458,35 +515,34 @@ class ValidateCommandTest {
 
         Ran ran = run("validate", invoice.toString());
 
-        assertEquals(1, ran.exit(), ran.toString());
-        assertTrue(ran.problems().stream().anyMatch(l -> l.contains("common@1.2.0") && l.contains("left") && l.contains("right")), ran.toString());
-        DepsFixture.assertNoAbsolutePath(ran, tmp);
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
     }
 
     /**
-     * An unresolved closure runs no dry build: a missing candidate, a lock drift and a cycle each print exactly their one resolution
+     * An unresolved closure runs no dry build: a missing repository, a lock drift and a cycle each print exactly their one resolution
      * problem (the node's "not deployed on this node" is not added), exit 1.
      */
     @Test
     void anUnresolvedClosureRunsNoDryBuild() throws Exception {
         Path elsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        String commit = DepsFixture.head(elsewhere);
         Path none = DepsFixture.copy("invoice", tmp.resolve("none/invoice"));
         DepsFixture.lock(none, elsewhere);
         Path drifted = DepsFixture.invoiceWithCandidates(tmp.resolve("drift"));
-        String pinned = DepsFixture.content(tmp.resolve("drift/common"));
-        DepsFixture.relabel(tmp.resolve("drift/common"), "changed after the lock");
-        String now = DepsFixture.content(tmp.resolve("drift/common"));
+        DepsFixture.Pin pin = DepsFixture.pinOf(tmp.resolve("drift/common"));
+        String wrong = "sha256:" + "0".repeat(64);
+        DepsFixture.lock(drifted, List.of(new DepsFixture.Pin(pin.name(), pin.version(), wrong, pin.repository(), pin.commit())));
         Path a = DepsFixture.cycle(tmp.resolve("cycle"));
 
         Ran ranNone = run("validate", none.toString());
         Ran ranDrift = run("validate", drifted.toString());
         Ran ranCycle = run("validate", a.toString());
 
-        assertEquals(1, ranNone.problems().size(), ranNone.toString());
-        assertTrue(ranNone.problems().getFirst().startsWith("problem: dependency common@1.2.0: no candidate under ")
-                && ranNone.problems().getFirst().endsWith(" (no package common)"), ranNone.toString());
+        assertEquals(List.of("problem: dependency common@1.2.0: common at " + commit + ": not found"), ranNone.problems(), ranNone.toString());
         assertEquals(1, ranNone.exit(), ranNone.toString());
-        assertEquals(List.of("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ranDrift.problems(), ranDrift.toString());
+        assertEquals(List.of("problem: package.lock pins common@1.2.0 " + wrong + "; common at " + pin.commit() + " has " + pin.content()),
+                ranDrift.problems(), ranDrift.toString());
         assertEquals(1, ranDrift.exit(), ranDrift.toString());
         assertEquals(List.of("problem: dependency cycle: a -> b -> a"), ranCycle.problems(), ranCycle.toString());
         assertEquals(1, ranCycle.exit(), ranCycle.toString());
@@ -546,9 +602,9 @@ class ValidateCommandTest {
     }
 
     /**
-     * FIX-110: a sibling whose files cannot be read is no candidate, like one that does not load. {@code common-copy} declares
-     * common 1.2.0 too, but holds a folder chain past PATH_MAX (its content cannot be walked: the fixture witness below), and
-     * {@code odd} has a directory named package.yaml; invoice still resolves to {@code common}: exit 0, nothing on stderr, no path.
+     * Validate reads the repositories the lock names and nothing else of the folder: {@code common-copy} declares common 1.2.0 too,
+     * but holds a folder chain past PATH_MAX (its content cannot be walked: the fixture witness below), and {@code odd} has a
+     * directory named package.yaml; invoice still reads {@code common}: exit 0, nothing on stderr, no path.
      */
     @Test
     void anUnreadableSiblingIsIgnored() throws Exception {
@@ -575,14 +631,16 @@ class ValidateCommandTest {
     }
 
     /**
-     * FIX-110: a candidates directory that cannot be listed — {@code --deps} names, relative to the working directory, a folder
+     * A folder of repositories that cannot be read — {@code --deps} names, relative to the working directory, a folder
      * {@code vendor-deps} whose absolute path is PATH_MAX long (reachable relatively, never absolutely: the fixture witness) — is
-     * exit 1 with the line {@code problem: cannot list vendor-deps}, and no absolute path on stdout or stderr.
+     * exit 1 with a line naming the pinned repository and commit, and no absolute path on stdout or stderr.
      */
     @Test
     void anUnlistableDepsFolderIsExit1WithoutAbsolutePath() throws Exception {
         Path invoice = DepsFixture.copy("invoice", tmp.resolve("work/invoice"));
-        DepsFixture.lock(invoice, DepsFixture.copy("common", tmp.resolve("elsewhere/common")));
+        Path common = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        DepsFixture.lock(invoice, common);
+        String commit = DepsFixture.head(common);
         Path top = Path.of("target", "fix110-deps-" + System.nanoTime());
         List<String> below = LongPaths.exactlyPathMax(top, "vendor-deps");
         Path stage = Path.of("target", "fix110-stage-" + System.nanoTime());
@@ -596,7 +654,8 @@ class ValidateCommandTest {
             Ran ran = run("validate", invoice.toString(), "--deps", vendor.toString());
 
             assertEquals(1, ran.exit(), ran.toString());
-            assertTrue(ran.problems().contains("problem: cannot list vendor-deps"), ran.toString());
+            assertEquals(1, ran.problems().size(), ran.toString());
+            assertTrue(ran.problems().getFirst().startsWith("problem: dependency common@1.2.0: common at " + commit + ": "), ran.toString());
             assertEquals("", ran.err(), ran.toString());
             String cwd = Path.of("").toAbsolutePath().toString();
             assertFalse(ran.out().contains(cwd) || ran.err().contains(cwd), "no absolute path (" + cwd + "): " + ran);
@@ -606,7 +665,7 @@ class ValidateCommandTest {
         }
     }
 
-    /** Without dependencies nothing of the candidates dir is read: siblings that do not load change nothing of the output. */
+    /** Without dependencies nothing of the folder of repositories is read: siblings that do not load change nothing of the output. */
     @Test
     void aPackageWithoutDependenciesIgnoresItsSiblings() throws Exception {
         Path alone = DepsFixture.copy("common", tmp.resolve("alone/common"));

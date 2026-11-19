@@ -1,7 +1,13 @@
 package dev.rail8.cli;
 
 import dev.rail8.schemas.Documents;
+import dev.rail8.schemas.Package;
 import io.vertx.core.json.JsonObject;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,10 +23,13 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * P2-02b2 test fixture (D-087, D-089): packages with dependencies, resolved off-node from a candidates directory. The committed
- * packages under {@code src/test/resources/deps} carry no {@code package.lock}: a case copies what it needs into a temp directory
- * and writes the locks there with digests this class computes from the files ({@link #content}, never the code under test), so
- * a digest never goes stale.
+ * Test fixture: packages with dependencies, resolved off-node from a candidates directory, each candidate a git working tree at
+ * its root whose commits {@code rail8 lock} pins and {@code validate} and {@code test} read. The committed packages under
+ * {@code src/test/resources/deps} carry no {@code package.lock}: a case copies what it needs into a temp directory — each copy a
+ * working tree with one commit of its files ({@link #copy}) — and writes the locks there with digests and commits this class
+ * computes from the files and the repositories ({@link #content}, {@link #head}, never the code under test), so a digest never
+ * goes stale. {@link #manifest}, {@link #relabel} and {@link #lock} commit what they write; any other edit is committed by
+ * {@link #commit}.
  *
  * <ul>
  *   <li>{@code common} — common 1.2.0, no flows: {@code xslt/to-partner.xsl} includes {@code xslt/lib.xsl} next to it, which
@@ -36,40 +45,83 @@ final class DepsFixture {
     static final Path DEPS = Path.of("src/test/resources/deps");
 
     /** A pin as package.lock holds it. */
-    record Pin(String name, String version, String content) {
+    record Pin(String name, String version, String content, String repository, String commit) {
         /** The line {@code rail8 lock} prints for it. */
-        String line() { return name + "@" + version + " " + content; }
+        String line() { return name + "@" + version + " " + repository + " " + commit + " " + content; }
+
+        /** The entry as {@link Package#lock()} reads it. */
+        Package.Locked locked() { return new Package.Locked(name, version, content, repository, commit); }
     }
+
+    /** The author and committer of the fixture's commits. */
+    private static final PersonIdent WHO = new PersonIdent("Rail8 test", "test@rail8.invalid");
 
     private DepsFixture() {}
 
-    /** A copy of the fixture package {@code name} at {@code to}. */
+    /** A copy of the fixture package {@code name} at {@code to}: a git working tree whose one commit, on {@code main}, holds its files. */
     static Path copy(String name, Path to) throws IOException {
+        CliRuns.copy(DEPS.resolve(name), to);
+        commit(to);
+        return to;
+    }
+
+    /** A copy of the fixture package {@code name} at {@code to}, a plain folder: no git working tree. */
+    static Path plain(String name, Path to) throws IOException {
         return CliRuns.copy(DEPS.resolve(name), to);
     }
 
-    /** {@code dir/package.yaml}'s name and version, its {@code dependencies} replaced by {@code deps} ({@code name@version} each, in order). */
+    /**
+     * Commits every file of the working tree {@code dir} as it is now, a deletion included, made a working tree on {@code main} when
+     * it is not one (a {@code .git} folder at its root). Returns its new {@code HEAD}.
+     */
+    static String commit(Path dir) throws IOException {
+        try (Git git = Files.exists(dir.resolve(".git")) ? Git.open(dir.toFile()) : Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call()) {
+            git.add().addFilepattern(".").call();
+            git.add().addFilepattern(".").setUpdate(true).call();
+            return git.commit().setMessage("fixture\n").setAuthor(WHO).setCommitter(WHO).setSign(false).setAllowEmpty(true).call().name();
+        } catch (GitAPIException e) {
+            throw new IOException("fixture: " + dir + " not committed", e);
+        }
+    }
+
+    /** The commit {@code HEAD} of the working tree {@code dir} names. */
+    static String head(Path dir) throws IOException {
+        try (Git git = Git.open(dir.toFile())) {
+            ObjectId head = git.getRepository().resolve(Constants.HEAD);
+            if (head == null) throw new IOException("fixture: " + dir + " has no HEAD");
+            return head.name();
+        }
+    }
+
+    /**
+     * {@code dir/package.yaml}'s name and version, its {@code dependencies} replaced by {@code deps} ({@code name@version} each, in
+     * order); committed when {@code dir} is a working tree.
+     */
     static void manifest(Path dir, String name, String version, String... deps) throws IOException {
         String list = deps.length == 0 ? "dependencies: []\n" : "dependencies:\n" + Stream.of(deps)
                 .map(d -> "  - { name: " + d.substring(0, d.indexOf('@')) + ", version: " + d.substring(d.indexOf('@') + 1) + " }\n")
                 .collect(Collectors.joining());
         Files.writeString(dir.resolve("package.yaml"), "schemaVersion: 1\nkind: package\nname: " + name + "\nversion: " + version + "\n" + list);
+        committed(dir);
     }
 
-    /** The pin of the package in {@code dir} as its files are now: name and version from its package.yaml, {@link #content}. */
+    /**
+     * The pin of the package in the working tree {@code dir} as its files are now: name and version from its package.yaml,
+     * {@link #content}, its folder's name as the repository and its {@link #head} as the commit.
+     */
     static Pin pinOf(Path dir) throws IOException {
         JsonObject manifest = Documents.yaml(Files.readString(dir.resolve("package.yaml")));
-        return new Pin(manifest.getString("name"), manifest.getString("version"), content(dir));
+        return new Pin(manifest.getString("name"), manifest.getString("version"), content(dir), dir.getFileName().toString(), head(dir));
     }
 
-    /** Writes {@code dir/package.lock} pinning the packages in {@code pinned}, as they are now, in that order. */
+    /** Writes {@code dir/package.lock} pinning the packages in {@code pinned}, as they are now, in that order (see {@link #lock(Path, List)}). */
     static void lock(Path dir, Path... pinned) throws IOException {
         List<Pin> pins = new java.util.ArrayList<>();
         for (Path p : pinned) pins.add(pinOf(p));
         lock(dir, pins);
     }
 
-    /** Writes {@code dir/package.lock} with {@code pins}, in that order. */
+    /** Writes {@code dir/package.lock} with {@code pins}, in that order; committed when {@code dir} is a working tree. */
     static void lock(Path dir, List<Pin> pins) throws IOException {
         StringBuilder text = new StringBuilder("schemaVersion: 1\nkind: lock\n");
         if (pins.isEmpty()) {
@@ -77,30 +129,42 @@ final class DepsFixture {
         } else {
             text.append("dependencies:\n");
             for (Pin p : pins) text.append("  - name: ").append(p.name()).append("\n    version: ").append(p.version())
-                    .append("\n    content: ").append(p.content()).append('\n');
+                    .append("\n    content: ").append(p.content()).append("\n    repository: ").append(p.repository())
+                    .append("\n    commit: \"").append(p.commit()).append("\"\n");
         }
         Files.writeString(dir.resolve("package.lock"), text);
+        committed(dir);
     }
 
-    /** {@code common}'s {@code lib.xsl} in {@code dir} rewritten to write {@code by} instead: other content, same name and version. */
+    /**
+     * {@code common}'s {@code lib.xsl} in {@code dir} rewritten to write {@code by} instead: other content, same name and version;
+     * committed when {@code dir} is a working tree.
+     */
     static void relabel(Path dir, String by) throws IOException {
         Path lib = dir.resolve("xslt/lib.xsl");
         String text = Files.readString(lib);
         String now = text.replaceAll("by\">[^<]+<", "by\">" + by + "<");   // + : the template tag name="by">< holds no text
         if (now.equals(text)) throw new AssertionError("fixture: " + lib + " was not relabelled: " + text);
         Files.writeString(lib, now);
+        committed(dir);
+    }
+
+    /** Commits {@code dir} when it is a working tree. */
+    private static void committed(Path dir) throws IOException {
+        if (Files.exists(dir.resolve(".git"))) commit(dir);
     }
 
     /**
-     * The content digest of the package in {@code dir} as D-087 defines it (computed here, independently of the code under test):
-     * {@code sha256:} and the lower-case hex SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and
-     * {@code file <path> <sha256 hex>} for every regular file below {@code dir}, sorted by its {@code /}-separated path, each
+     * The content digest of the package in {@code dir} (computed here, independently of the code under test): {@code sha256:} and
+     * the lower-case hex SHA-256 over the UTF-8 lines {@code rail8-package-content 1} and {@code file <path> <sha256 hex>} for
+     * every regular file below {@code dir} but those of {@code .git} at its root, sorted by its {@code /}-separated path, each
      * ended by {@code \n}.
      */
     static String content(Path dir) throws IOException {
         Map<String, Path> files = new TreeMap<>();
+        Path git = dir.resolve(".git");
         try (Stream<Path> walk = Files.walk(dir)) {
-            walk.filter(Files::isRegularFile).forEach(f -> files.put(dir.relativize(f).toString().replace('\\', '/'), f));
+            walk.filter(f -> !f.startsWith(git) && Files.isRegularFile(f)).forEach(f -> files.put(dir.relativize(f).toString().replace('\\', '/'), f));
         }
         MessageDigest all = sha256();
         all.update("rail8-package-content 1\n".getBytes(StandardCharsets.UTF_8));
@@ -147,6 +211,7 @@ final class DepsFixture {
         Files.copy(invoiceFiles.resolve("flows/to-partner.yaml"), common.resolve("flows/to-partner.yaml"));
         CliRuns.rewrite(common.resolve("endpoints/invoice-in.yaml"), Map.of("address: /invoice", "address: /common"));
         CliRuns.rewrite(common.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: xslt/to-partner.xsl"));
+        commit(common);
         Path invoice = copy("invoice", deps.resolve("invoice"));
         lock(invoice, common);
         return invoice;
@@ -174,7 +239,7 @@ final class DepsFixture {
 
     /**
      * A name cycle in {@code deps}: {@code a} 1.0.0 declares {@code b} 1.0.0, which declares {@code a} 1.0.0 (both copies of common).
-     * b's lock pins a as it was before a's lock was written; a's lock pins b as it is. Returns a's directory.
+     * b's lock pins a's commit from before a's lock was written; a's lock pins b's commit with its lock. Returns a's directory.
      */
     static Path cycle(Path deps) throws IOException {
         Path a = copy("common", deps.resolve("a"));
