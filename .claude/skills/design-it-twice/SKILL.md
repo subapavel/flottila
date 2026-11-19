@@ -1,6 +1,6 @@
 ---
 name: design-it-twice
-description: Design a contract or another hard piece several times before building it — several agents independently draft radically different interfaces, one draft comes from Codex, the owner-proxy picks. Use for every class:C issue — a new contract (adapter, step, API for custom code, plugin loading), public API, storage format, security and the other hard work.
+description: Design a contract or another hard piece several times before building it — several agents independently draft radically different interfaces, a second model argues against the recommendation, the owner-proxy picks. Use for every class:C issue — a new contract (adapter, step, API for custom code, plugin loading), public API, storage format, security and the other hard work.
 ---
 
 <!-- Adapted from mattpocock/skills `codebase-design/DESIGN-IT-TWICE.md`, commit
@@ -29,9 +29,7 @@ constraint of its own, so the drafts differ radically:
 - "Maximise flexibility: many use cases, room to extend."
 - "Make the most common caller's case trivial."
 
-The fourth draft comes from Codex, given the same brief with no extra constraint: run the Codex
-CLI non-interactively (`codex exec`; its `--help` gives the flags) in a read-only sandbox. When
-Codex cannot be run, say so in the comparison and go on with the other drafts.
+The drafts come from your own agents.
 
 Each draft returns:
 
@@ -47,9 +45,25 @@ Put the drafts side by side and compare them by depth (how much a caller gets pe
 locality (where a future change lands) and how a mock and the contract suite would test them.
 Recommend one, or a hybrid with the parts named.
 
-A second model then argues against the recommendation: Codex (`codex exec`, read-only), or, when
-Codex cannot be run, an agent on a different Claude model than yours. It names the weak points,
-the failure scenarios and what the other drafts do better.
+A second model then argues against the recommendation. It names the weak points, the failure
+scenarios and what the other drafts do better. Codex does this, and only this: it writes no draft
+and reviews no pull request. Sessions cannot run Codex; the owner runs it by hand in his Codex
+cloud environment over this repository, read-only.
+
+1. Post one comment on the issue with the complete prompt for Codex in a single code block, ready
+   to copy. The prompt stands on its own: it names the files to read, states the recommendation
+   and the alternatives turned down, asks for the weak points and what would break first, and
+   tells Codex to change no file and open no pull request. Label the issue `codex-wanted`.
+2. Post a second comment with the same request as a mention of `@codex`. When Codex answers there
+   with more than a notice about its environment, use that answer; the owner has nothing to paste.
+3. Tell the owner at once. The daily overview lists every issue that still waits with `codex-wanted`.
+4. The owner pastes the prompt into Codex and pastes its answer back as a comment on the issue.
+5. Read the answer. Take each objection, or turn it down with a reason in the issue. Remove the
+   label and go on.
+6. When no answer has come by 08:00 Prague time the next morning, an agent on a different Claude
+   model than yours argues against the recommendation instead. Say so in the issue, remove the
+   label and go on. An answer that arrives later but before the merge is still handled as in
+   step 5.
 
 Give the brief, the drafts, the recommendation and the objections to the `owner-proxy` agent; it
 chooses. Record the chosen contract and the reason
