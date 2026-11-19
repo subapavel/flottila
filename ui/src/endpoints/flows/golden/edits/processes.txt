@@ -1,0 +1,87 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","required":"Amount > 0"}}
+@@ line 9
++  - type: validate
++    required: Amount > 0
+
+=== add a to step last
+{"op":"add","path":["steps",5],"value":{"type":"to","name":"to-2","endpoint":"partner-domestic"}}
+@@ line 32
++  - type: to
++    name: to-2
++    endpoint: partner-domestic
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+@@ line 9
+-  - type: process
+-    name: first
+-    process: enrich
+
+=== move the last step first
+{"op":"move","from":["steps",4],"path":["steps",0]}
+@@ line 9
++  - type: to
++    name: hand-over
++    endpoint: order-partner-call
+@@ line 29
+-  - type: to
+-    name: hand-over
+-    endpoint: order-partner-call
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",4]}
+@@ line 9
+-  - type: process
+-    name: first
+-    process: enrich
+@@ line 32
++  - type: process
++    name: first
++    process: enrich
+
+=== name the first step
+{"op":"replace","path":["steps",0,"name"],"value":"renamed"}
+@@ line 10
+-    name: first
++    name: renamed
+
+=== take the name of the first step
+{"op":"remove","path":["steps",0,"name"]}
+@@ line 10
+-    name: first
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+@@ line 12
++    recording:
++      level: all
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+@@ line 12
++    note: |
++      first line
++      second line
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+@@ line 12
++    note: "yes"
+
+=== move the first step into the first process
+{"op":"move","from":["steps",0],"path":["processes","enrich","steps",0]}
+@@ line 9
+-  - type: process
+-    name: first
+-    process: enrich
+@@ line 35
++      - type: process
++        name: first
++        process: enrich
+
+=== add a step to the first process
+{"op":"add","path":["processes","enrich","steps",1],"value":{"type":"validate","required":"true()"}}
+@@ line 38
++      - type: validate
++        required: true()

@@ -1,0 +1,76 @@
+=== add a validate step first
+{"op":"add","path":["steps",0],"value":{"type":"validate","required":"Amount > 0"}}
+@@ line 9
++  - type: validate
++    required: Amount > 0
+
+=== add a to step last
+{"op":"add","path":["steps",4],"value":{"type":"to","name":"to-2","endpoint":"partner-domestic"}}
+@@ line 23
++  - type: to
++    name: to-2
++    endpoint: partner-domestic
+
+=== delete the first step
+{"op":"remove","path":["steps",0]}
+@@ line 9
+-  - type: route
+-    prop: ANSWER
+-    routes:
+-      - when: "/Invoice/Paid"
+-        set: yes
+-    otherwise: no
+
+=== move the last step first
+{"op":"move","from":["steps",3],"path":["steps",0]}
+@@ line 9
++  - type: extractKey
++    key: slot
++    xpath: 10:30
+@@ line 20
+-  - type: extractKey
+-    key: slot
+-    xpath: 10:30
+
+=== move the first step last
+{"op":"move","from":["steps",0],"path":["steps",3]}
+@@ line 9
+-  - type: route
+-    prop: ANSWER
+-    routes:
+-      - when: "/Invoice/Paid"
+-        set: yes
+-    otherwise: no
+@@ line 23
++  - type: route
++    prop: ANSWER
++    routes:
++      - when: "/Invoice/Paid"
++        set: yes
++    otherwise: no
+
+=== name the first step
+{"op":"add","path":["steps",0,"name"],"value":"renamed"}
+@@ line 15
++    name: renamed
+
+=== take the name of the first step
+unchanged
+
+=== record all of the first step
+{"op":"add","path":["steps",0,"recording"],"value":{"level":"all"}}
+@@ line 15
++    recording:
++      level: all
+
+=== write a note of several lines on the first step
+{"op":"add","path":["steps",0,"note"],"value":"first line\nsecond line\n"}
+@@ line 15
++    note: |
++      first line
++      second line
+
+=== write a note the node reads as true
+{"op":"add","path":["steps",0,"note"],"value":"yes"}
+@@ line 15
++    note: "yes"

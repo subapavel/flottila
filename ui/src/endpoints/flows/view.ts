@@ -1,5 +1,5 @@
-import { isAlias, isMap, isNode, isScalar, isSeq, parseDocument } from 'yaml';
-import { readFlow, type FlowRead } from './flowYaml';
+import { isSeq } from 'yaml';
+import { readFlow, yamlFindings } from './flowYaml';
 import { layout, type Block } from './layout';
 import { BUILT_IN, checkStep, checkStepTab, describeSchema, settingsOf, UNDESCRIBED, type StepType } from './steps';
 import type { FlowContext, FlowEdge, FlowNode, FlowProblem, FlowView, Path, StepField, StepForm } from './types';
@@ -34,77 +34,6 @@ const within = (path: Path, prefix: Path) => prefix.length <= path.length && pre
 
 /** Text for a node or a label, cut to `max` characters. */
 const cut = (text: string, max = 48) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
-
-/** What locks a part of the file, by the path of the YAML node that holds it. */
-interface Lock {
-  path: Path;
-  reason: string;
-  /** True when what the YAML node holds is locked too: the items of a list on one line, or of a mapping in braces. */
-  covers?: true;
-}
-
-/**
- * The locks of the file and the problems of its YAML: anchors, aliases, tags, merge keys, lists on one line, mappings in
- * braces over several lines and complex keys lock the node that holds them. The node reads an alias as the anchor's name,
- * as text, and a merge key as a key of its own, so each of those is a problem too. A key used twice is a problem and
- * locks its mapping. The node reads YAML 1.1 but keeps yes, no, on, off, y and n as text, and reads numbers with colons
- * (1:30) as text too; a plain value it reads otherwise than the browser is a problem and locks its key.
- */
-function yamlFindings(doc: Extract<FlowRead, { kind: 'flow' }>, text: string, problems: FlowProblem[]): Lock[] {
-  const locks: Lock[] = [];
-  const other = parseDocument(text, { version: '1.1', uniqueKeys: false, merge: false, logLevel: 'error' });
-  const visit = (node: unknown, twin: unknown, path: Path) => {
-    if (!isNode(node)) return;
-    if (isAlias(node)) {
-      problems.push({ path, message: `the node reads the alias *${node.source} as the text ${node.source}, not as what &${node.source} holds` });
-      locks.push({ path, reason: `an alias (*${node.source})` });
-      return;
-    }
-    if (node.anchor !== undefined) locks.push({ path, reason: `an anchor (&${node.anchor})` });
-    if (node.tag !== undefined) locks.push({ path, reason: `a tag (${doc.doc.directives?.tagString(node.tag) ?? node.tag})` });
-    if (isSeq(node)) {
-      if (node.flow === true) locks.push({ path, reason: 'a list written on one line ([ … ])', covers: true });
-      node.items.forEach((item, i) => visit(item, isSeq(twin) ? twin.items[i] : undefined, [...path, i]));
-    } else if (isMap(node)) {
-      const range = node.range;
-      if (node.flow === true && range !== undefined && range !== null && text.slice(range[0], range[1]).includes('\n')) {
-        locks.push({ path, reason: 'a mapping written over several lines in braces', covers: true });
-      }
-      const seen = new Set<string>();
-      node.items.forEach((pair, i) => {
-        if (!isScalar(pair.key)) {
-          locks.push({ path, reason: 'a complex key (? )' });
-          return;
-        }
-        const key = String(pair.key.value);
-        if (key === '<<' && pair.key.type === 'PLAIN') {
-          problems.push({ path: [...path, key], message: 'the node does not merge keys: it reads << as a key of its own' });
-          locks.push({ path, reason: 'a merge key (<<)' });
-        }
-        if (seen.has(key)) {
-          problems.push({ path: [...path, key], message: `the key ${key} is used twice in one mapping` });
-          locks.push({ path, reason: `the key ${key} used twice` });
-        }
-        seen.add(key);
-        const twinPair = isMap(twin) ? twin.items[i] : undefined;
-        visit(pair.value, twinPair !== undefined && isScalar(twinPair.key) && String(twinPair.key.value) === key ? twinPair.value : undefined, [...path, key]);
-      });
-    } else if (isScalar(node) && node.type === 'PLAIN' && isScalar(twin)) {
-      const browser = node.value;
-      const node11 = twin.value instanceof Date ? node.source : twin.value;
-      const source = node.source ?? String(browser);
-      const keptAsText =
-        typeof browser === 'string' &&
-        ((typeof node11 === 'boolean' && /^(y|n|yes|no|on|off)$/i.test(browser)) || /^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?$/.test(source));
-      if (!keptAsText && !Object.is(browser, node11)) {
-        problems.push({ path, message: `the node reads ${source} otherwise than the editor: write it in quotes` });
-        locks.push({ path, reason: 'a plain value the node reads otherwise' });
-      }
-    }
-  };
-  visit(doc.doc.contents, other.contents, []);
-  return locks;
-}
 
 /** One list of steps: where it stands, its items, and the process it belongs to (null for the flow's own and the lists inside them). */
 interface StepList {
@@ -149,7 +78,7 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
   }
   const flow = read.value;
   const problems: FlowProblem[] = [];
-  const locks = yamlFindings(read, text, problems);
+  const locks = yamlFindings(read.doc, text, problems);
   const lockOf = (path: Path) => locks.find((l) => within(l.path, path) || (l.covers === true && within(path, l.path)))?.reason;
   const partial = context.partial === true;
   const notFound = (what: string): Pick<FlowProblem, 'message' | 'warning'> =>
@@ -211,7 +140,7 @@ export function view(text: string, context: FlowContext, types: Readonly<Record<
       const path = [...list.path, i];
       if (!isRecord(item) || typeof item.type !== 'string' || item.type === '') {
         problems.push({ path, message: 'a step is a mapping with a text type' });
-        locks.push({ path, reason: 'a step that is no mapping with a text type' });
+        locks.push({ path, reason: 'a step that is no mapping with a text type', kind: 'step' });
         entries.set(pointer(path), { path, value: null, name: `step ${i + 1}`, defaultName: true, owner: list.owner });
         return;
       }
