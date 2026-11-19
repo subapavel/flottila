@@ -29,9 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P1-09c3b (D-070), beside {@link DeploymentsRestoreTest}: a restore runs once, at the node's start — on a node that lists a
- * package already, or once {@code close} began, it is refused and installs nothing; the {@code deployments} health check is DOWN
- * while a package is listed FAILED, its detail naming which, and DEGRADED while a flow's consumer is tried again; a missing
- * archive is named as such.
+ * package already, or once {@code close} began, it is refused and installs nothing; the {@code deployments} health check is DEGRADED
+ * while a package is listed FAILED, its detail naming which, and while a flow's consumer is tried again; a missing archive is
+ * named as such.
  */
 class DeploymentsRestoreGuardTest {
 
@@ -110,11 +110,11 @@ class DeploymentsRestoreGuardTest {
     /**
      * health() is UP on a node with nothing deployed and on one where everything runs; DEGRADED while the consumer of a restored
      * flow that did not start waits for its next attempt — its detail naming that flow, its failures in a row and when the next
-     * attempt is due, never the cause nor what runs — and UP once it started; DOWN while a package could not be restored (its
-     * archive is not in the archive store, as its problem line says) — naming that package.
+     * attempt is due, never the cause nor what runs — and UP once it started; DEGRADED, not DOWN, while a package could not be
+     * restored (its archive is not in the archive store, as its problem line says) — naming that package.
      */
     @Test
-    void healthIsDegradedWhileAFlowRestartsAndDownWhileAPackageIsListedFailed() throws Exception {
+    void healthIsDegradedWhileAFlowRestartsOrAPackageIsListedFailed() throws Exception {
         Doors one = new Doors();
         Deployments first = node("node-1", one);
         assertEquals(Health.up(), first.health(), "nothing deployed");
@@ -135,10 +135,8 @@ class DeploymentsRestoreGuardTest {
         Files.delete(tmp.resolve("bucket").resolve(PackageDraft.sha256(store) + ".zip"));
         Deployments third = node("node-3", new Doors());
         restore(third);
-        Health packageDown = third.health();
-        assertEquals(Health.Status.DOWN, packageDown.status(), packageDown.toString());
-        assertTrue(packageDown.detail().contains("package store"), "the detail names the FAILED package: " + packageDown);
-        assertFalse(packageDown.detail().contains("shop"), "and nothing that runs: " + packageDown);
+        Health packageFailed = third.health();
+        assertEquals(Health.degraded("FAILED: package store"), packageFailed, "the detail names the FAILED package and nothing that runs");
         DeployedPackage failed = third.packages().get(1);
         assertEquals("store", failed.name());
         assertTrue(failed.problems().getFirst().contains("is not in the archive store"), "a missing object is named as such: " + failed.problems());
