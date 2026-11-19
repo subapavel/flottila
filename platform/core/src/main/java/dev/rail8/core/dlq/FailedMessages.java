@@ -142,11 +142,12 @@ public interface FailedMessages {
      * {@code partitionKey} (null: none), once more as attempt k + 1, its last. A message that stops its key is handed back to the
      * claim in place: its work row keeps its seq, so it still heads its key, and is due at once, unleased, with no doubt and its
      * own bound k + 1. Any other parked message — an unordered one, or one parked before its key stopped — gets a new row at
-     * the tail of its key from its ingress body's kept ref, as handed out k times and bound to k + 1. Either way the parked row is
+     * the tail of its key from the kept ref of the body its parked row names (its ingress body, or for a callee of a call between
+     * flows the caller's body it was saved with), as handed out k times and bound to k + 1. Either way the parked row is
      * deleted and the act audited, in one transaction; {@link Done} names the body node of the row that runs.
      *
      * <p>{@link NotParked} without that parked row. {@link Unsettled} while another work row of the message is there, or while its
-     * stopped row's body is lost (the row cannot run). A store that keeps bodies fails a new row whose ingress ref is gone with
+     * stopped row's body is lost (the row cannot run). A store that keeps bodies fails a new row whose body's ref is gone with
      * {@code BlobNotFoundException} ({@code BodyLostException} when an accepted loss gave it up); nothing changes.
      */
     Future<Act> retry(String messageId, String flow, String partitionKey, int attempt, Actor by);
