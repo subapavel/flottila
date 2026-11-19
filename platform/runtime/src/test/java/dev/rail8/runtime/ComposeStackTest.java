@@ -310,10 +310,10 @@ class ComposeStackTest {
 
     private static final Path ROOT_FILE = Path.of("..", "..", "docker-compose.yml").toAbsolutePath().normalize();
 
-    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8084, 8081). */
+    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8084, 8081, 8082). */
     private static final Map<Path, List<String>> NODE_PORTS = Map.of(
             FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8082:8082", "127.0.0.1:8081:8081"),
-            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8084:8084", "127.0.0.1:8081:8081"));
+            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8084:8084", "127.0.0.1:8081:8081", "127.0.0.1:8082:8082"));
 
     private static JsonNode serviceIn(Path file, String name) throws IOException {
         assertTrue(Files.isRegularFile(file), file + " must exist");
@@ -472,6 +472,21 @@ class ComposeStackTest {
             }
         }
         assertTrue(Files.isRegularFile(FILE), FILE + " must exist (the scan is vacuous without the stack)");
+    }
+
+    /** The quickstart stack runs every demo flow: the node waits for the host key one-shot, reads its fingerprint and has no placeholder secret. */
+    @Test
+    void theQuickstartStackHasTheSftpServerTheDemoNeeds() throws IOException {
+        JsonNode node = serviceIn(ROOT_FILE, "rail8");
+        JsonNode sftp = serviceIn(ROOT_FILE, "sftp");
+        serviceIn(ROOT_FILE, "sftp-keys");
+        assertEquals("service_completed_successfully", node.path("depends_on").path("sftp-keys").path("condition").asText(), "the node waits for the host key");
+        assertEquals("service_completed_successfully", sftp.path("depends_on").path("sftp-keys").path("condition").asText(), "the server waits for the host key");
+        assertEquals("${RAIL8_SFTP_PASSWORD:-demo}", environment(node).get("RAIL8_SECRET_SFTP_PASSWORD"), "the demo's password");
+        assertFalse(environment(node).containsKey("RAIL8_SECRET_SFTP_HOST_KEY"), "the fingerprint is read from the one-shot's file, not fixed");
+        assertTrue(script(node).contains("RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint)"), script(node));
+        assertTrue(script(sftp).contains("demo:${RAIL8_SFTP_PASSWORD:-demo}:1001:100:inbox"), script(sftp));
+        assertFalse(Files.readString(ROOT_FILE).contains("placeholder"), "no placeholder secret is left in the quickstart stack");
     }
 
     @Test

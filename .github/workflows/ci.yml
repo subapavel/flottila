@@ -295,6 +295,27 @@ jobs:
           echo "$counted"
           echo "$counted" | grep -Eq '"completed":[1-9]' && echo "$counted" | grep -q '"failed":0' \
             || { echo "::error::the invoice is not counted as completed through the UI's /admin: $counted"; exit 1; }
+      - name: One message to each of the other demo flows, found through the UI's server
+        run: |
+          set -euo pipefail
+          ui() { curl -sf -H 'Sec-Fetch-Site: same-origin' "localhost:5173$1" || true; }
+          # invoice-async answers 202 after the durable save
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8082/invoice/async)
+          [ "$code" = 202 ] || { echo "::error::invoice-async answered $code, not 202"; exit 1; }
+          # sftp-invoice: a file dropped in the inbox is polled, saved and deleted
+          docker compose cp examples/demo/fixtures/inbox/invoice-4711.xml sftp:/home/demo/inbox/
+          # order-jq calls order-partner; the reply is the partner's echo of the mapped order
+          order=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8084/order)
+          echo "$order"
+          echo "$order" | grep -q '"orderId":42' || { echo "::error::order-jq did not answer the mapped order: $order"; exit 1; }
+          for flow in invoice-async sftp-invoice order-jq order-partner; do
+            for _ in $(seq 1 40); do
+              found=$(ui "/admin/messages?from=$(date -u -d '1 hour ago' +%FT%TZ)&to=$(date -u -d '1 minute' +%FT%TZ)&flow=demo/$flow&status=completed")
+              echo "$found" | grep -q '"items":\[{' && break
+              sleep 2
+            done
+            echo "$found" | grep -q '"items":\[{' || { echo "::error::no completed message of demo/$flow through the UI's /admin: $found"; docker compose logs --no-color | tail -50; exit 1; }
+          done
       - name: The demo flows are drawn from their files and the node's step types, saved and created, through the UI's server
         run: |
           set -euo pipefail
