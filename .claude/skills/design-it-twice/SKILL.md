@@ -53,12 +53,13 @@ cloud environment over this repository, read-only.
 1. Post one comment on the issue with the complete prompt for Codex in a single code block, ready
    to copy. The prompt stands on its own: it names the files to read, states the recommendation
    and the alternatives turned down, asks for the weak points and what would break first, and
-   tells Codex to change no file and open no pull request. It also asks Codex to post its answer
-   as a comment on the issue when it can, and otherwise to print the answer for the owner to
-   paste. Label the issue `codex-wanted`. Never write a mention of Codex in a comment.
+   tells Codex to change no file and open no pull request. Its last line is `Write your review as
+   a comment on issue #N in subapavel/rail8.`: a Codex cloud run posts that comment by itself, but
+   only when the prompt says so. Label the issue `codex-wanted`. Never write a mention of Codex in
+   a comment.
 2. Tell the owner at once. The daily overview lists every issue that still waits with `codex-wanted`.
-3. The owner pastes the prompt into Codex. Codex's answer arrives as a comment on the issue, posted
-   by Codex or pasted by the owner.
+3. The owner pastes the prompt into Codex. Codex posts its answer as a comment on the issue; when
+   it does not, the owner pastes the answer instead.
 4. Read the answer. Take each objection, or turn it down with a reason in the issue. Remove the
    label and go on.
 5. When no answer has come by the next morning's daily overview (08:00 Prague time), an agent on a
