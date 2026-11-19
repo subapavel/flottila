@@ -86,7 +86,9 @@ import java.util.function.Supplier;
  * messages ({@link PgMessageList}): {@code from} and {@code to} are ISO-8601 instants, both required, and {@code flow},
  * {@code status} (completed, failed, running or cancelled), {@code key=name:value} and {@code step} narrow it; its items are
  * {@code {id, flow, status, startedAt, durationNanos, keys}}, and it is 400 for a range the list refuses, for an instant or a
- * status that does not parse, and on a server built without the list.
+ * status that does not parse, and on a server built without the list. {@code GET /admin/message-counts?from=&to=} counts the
+ * messages of that list in each status ({@link PgMessageList#counts}), of {@code flow} when it is given: an object
+ * {@code {completed, failed, running, cancelled}}, 400 for the same refusals as the list.
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
@@ -417,6 +419,7 @@ public final class AdminServer {
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
+            router.get("/admin/message-counts").handler(offload(AdminServer.this::counts));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
             router.get("/admin/messages/:id/steps/:n/body").handler(offload(AdminServer.this::body));
             router.get("/admin/dlq").handler(offload(AdminServer.this::dlq));
@@ -714,6 +717,15 @@ public final class AdminServer {
         return Json.of(200, page(refusable(() -> recent.list(query, after(ctx), limit(ctx)).await()), AdminServer::listed));
     }
 
+    /** How many messages of the list of recent messages are in each status: {@code from} and {@code to}, and the optional {@code flow}. */
+    private Reply counts(RoutingContext ctx) {
+        PgMessageList recent = list.orElseThrow(() -> new Refused("this server does not count messages by time"));
+        Map<PgMessageList.Status, Long> counts = refusable(() -> recent.counts(instant(ctx, "from"), instant(ctx, "to"), given(ctx, "flow")).await());
+        JsonObject answer = new JsonObject();
+        counts.forEach((status, n) -> answer.put(status.name().toLowerCase(Locale.ROOT), n));
+        return Json.of(200, answer);
+    }
+
     /** The parameter {@code name}, empty when it is missing or empty. */
     private static Optional<String> given(RoutingContext ctx, String name) {
         return Optional.ofNullable(ctx.request().getParam(name)).filter(value -> !value.isEmpty());
@@ -722,7 +734,7 @@ public final class AdminServer {
     /** The ISO-8601 instant in parameter {@code name}; a missing one or one that does not parse is a 400. */
     private static Instant instant(RoutingContext ctx, String name) {
         String raw = ctx.request().getParam(name);
-        if (raw == null) throw new Refused(name + " is required with from or to: an ISO-8601 instant");
+        if (raw == null) throw new Refused(name + " is required: an ISO-8601 instant");
         try {
             return Instant.parse(raw);
         } catch (DateTimeParseException notAnInstant) {

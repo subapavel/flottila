@@ -91,7 +91,9 @@ In the UI open **Messages**. It opens on the messages of the last hour, newest f
 its start, the flow `demo/invoice-sync`, the status Completed, its duration and its business key `invoiceId=4711`.
 Above the list, the time range (the last 15 minutes, hour, 24 hours or 7 days), the flow and the status narrow it as soon
 as they are chosen; a key name and value, or the name of a step the message passed, narrow it with **Search**, which
-also reads the list again up to now. Type `invoiceId` and `4711` and Search: only the invoice is left. Open it by its
+also reads the list again up to now. Just above the list, a strip counts the messages of the time range and flow by
+status: the invoice is counted under Completed, and Failed shows 0. Choosing a count shows only the messages in that status;
+choosing it again shows them all. Type `invoiceId` and `4711` and Search: only the invoice is left. Open it by its
 id: its timeline lists the steps `ingress`, `validate`, `extractKey`, `route`, `toPartner` and `partner`, and each step
 shows the payload it recorded. The same through the admin API:
 
@@ -101,6 +103,7 @@ from=$(date -u -d '1 hour ago' +%FT%TZ 2>/dev/null || date -u -v-1H +%FT%TZ)   #
 curl -H "$auth" "localhost:8081/admin/messages?from=$from&to=$(date -u +%FT%TZ)"
 # {"items":[{"id":"<id>","flow":"demo/invoice-sync","status":"completed","startedAt":"…","durationNanos":…,"keys":{"invoiceId":"4711"}}],"next":null}
 curl -H "$auth" "localhost:8081/admin/messages?from=$from&to=$(date -u +%FT%TZ)&status=failed"   # the ones that failed: none
+curl -H "$auth" "localhost:8081/admin/message-counts?from=$from&to=$(date -u +%FT%TZ)"   # {"completed":1,"failed":0,"running":0,"cancelled":0}: by status
 curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # the ids of the messages with that key, at any time: {"items":["<id>"],"next":null}
 curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payload after step 5: the partner's answer
 ```

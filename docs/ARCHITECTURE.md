@@ -836,7 +836,9 @@ the message's start, flow, status (completed, failed, running or cancelled), dur
 and its id opens the message in a tab of its own, as does an id typed in. Above the list, the time range
 (the last 15 minutes, hour, 24 hours or 7 days; the last hour when it opens), the flow and the status
 apply as soon as they are chosen; a business key (name and value) and the name of a step the message
-passed apply with Search, which also reads the list again up to now. A message's tab shows its flow, the state of its latest
+passed apply with Search, which also reads the list again up to now. Just above the list, a strip counts
+the messages of the time range and flow in each status; choosing a count narrows the list to that status,
+and choosing it again shows every status. A message's tab shows its flow, the state of its latest
 attempt and every attempt step by step: outcome, start, wall and CPU time, payload size and error.
 The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
 attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
@@ -879,7 +881,6 @@ mapping service's jar. The admin API answers JSON and refuses browsers. `site/` 
 public web page.
 
 **Planned**
-- A strip of counts by status above the list of messages.
 - A server for the UI outside development, holding the token and talking to the node the same way.
 - Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
 - Screens as modules of the UI, each a folder of its own that the build finds, as the node finds
@@ -920,6 +921,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | Route | Purpose |
 | --- | --- |
 | `GET /admin/messages?from=…&to=…` | the list of recent messages, newest first, narrowed by `flow`, `status`, `key` and `step` |
+| `GET /admin/message-counts?from=…&to=…` | how many messages of the list are completed, failed, running and cancelled, of a `flow` when given |
 | `GET /admin/messages?key=…` | find messages by business key |
 | `GET /admin/messages?flow=…&step=…` | find a flow's messages that passed a named step, newest first |
 | `GET /admin/messages/{id}` | a message's steps with their times and the lines their code logged |
@@ -948,6 +950,10 @@ keys it carries, at most 500 to a page (50 by default). Its status is read when 
 
 A message is listed by its recorded arrival, so a flow with the recording level `errors` or `off` lists
 none of its messages.
+
+The counts by status read the same messages of a time range (the same limit of 31 days) and, when it is
+given, of one flow, with the same status, and answer every status, 0 included:
+`{"completed":…,"failed":…,"running":…,"cancelled":…}`.
 
 Configuration is by environment variables `RAIL8_*`; `RAIL8_ENV` is required, and any value other
 than `dev` or `ci` is a deployed environment with stricter rules (no manual deploy, no mock

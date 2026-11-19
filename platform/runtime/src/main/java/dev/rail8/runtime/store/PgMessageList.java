@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -34,7 +35,8 @@ import java.util.stream.Stream;
  *       Postgres marks such a run until a step of it fails.</li>
  * </ul>
  * Its duration runs from the start of its arrival to the end of its row that started last; its keys are those that row
- * carries. The cursor is the page's last start, in microseconds, and id.
+ * carries. The cursor is the page's last start, in microseconds, and id. {@link #counts} counts the messages of a time range
+ * and a flow by the same status.
  */
 public final class PgMessageList {
 
@@ -65,9 +67,14 @@ public final class PgMessageList {
             Objects.requireNonNull(status, "status");
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(step, "step");
-            if (!from.isBefore(to)) throw new IllegalArgumentException("from must be before to");
-            if (Duration.between(from, to).compareTo(MAX_RANGE) > 0) throw new IllegalArgumentException("the time range is longer than " + MAX_RANGE.toDays() + " days");
+            requireRange(from, to);
         }
+    }
+
+    /** A range that is empty, reversed or longer than {@link #MAX_RANGE} is an {@link IllegalArgumentException}. */
+    private static void requireRange(Instant from, Instant to) {
+        if (!from.isBefore(to)) throw new IllegalArgumentException("from must be before to");
+        if (Duration.between(from, to).compareTo(MAX_RANGE) > 0) throw new IllegalArgumentException("the time range is longer than " + MAX_RANGE.toDays() + " days");
     }
 
     /** One listed message. */
@@ -110,9 +117,8 @@ public final class PgMessageList {
                 .anyMatch(text -> text.isPresent() && text.get().indexOf('\0') >= 0)) {
             return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
         }
-        List<Object> params = new ArrayList<>(List.of(query.from().atOffset(ZoneOffset.UTC), query.to().atOffset(ZoneOffset.UTC)));
-        StringBuilder where = new StringBuilder("m.step = 0 and m.attempt = 1 and m.started_at >= $1 and m.started_at < $2");
-        query.flow().ifPresent(flow -> where.append(" and m.flow = ").append(param(params, flow)).append(" and m.step_name = 'ingress'"));
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = arrivals(params, query.from(), query.to(), query.flow());
         query.key().ifPresent(key -> where.append(" and exists (select 1 from message_keys k where k.name = ").append(param(params, key.name()))
                 .append(" and k.value = ").append(param(params, key.value())).append(" and k.message_id = m.id)"));
         query.step().ifPresent(step -> where.append(" and exists (select 1 from messages s where s.id = m.id and s.step_name = ").append(param(params, step)).append(')'));
@@ -135,6 +141,39 @@ public final class PgMessageList {
             }
             return new Page<>(listed, Optional.<String>empty());
         });
+    }
+
+    /**
+     * How many messages are in each status, every status named and counted from 0: the messages whose arrival started at
+     * {@code from} or later and before {@code to}, of {@code flow} when it is given, as {@link #list} lists them. A range that
+     * is empty, reversed or longer than {@link #MAX_RANGE} is an {@link IllegalArgumentException}, thrown.
+     */
+    public Future<Map<Status, Long>> counts(Instant from, Instant to, Optional<String> flow) {
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(to, "to");
+        Objects.requireNonNull(flow, "flow");
+        requireRange(from, to);
+        Map<Status, Long> counts = new EnumMap<>(Status.class);
+        for (Status s : Status.values()) counts.put(s, 0L);
+        if (flow.isPresent() && flow.get().indexOf('\0') >= 0) return Future.succeededFuture(counts);   // a Postgres text holds no NUL
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = arrivals(params, from, to, flow);
+        String sql = "select a.status, count(*) as n from (select " + STATUS + " as status from messages m where " + where + ") a group by a.status";
+        return pool.preparedQuery(sql).execute(Tuple.wrap(params)).map(rows -> {
+            for (Row r : rows) counts.put(Status.valueOf(r.getString("status").toUpperCase(Locale.ROOT)), r.getLong("n"));
+            return counts;
+        });
+    }
+
+    /**
+     * The condition on the arrival rows {@code m} of first attempts that started at {@code from} or later and before {@code to},
+     * of {@code flow} when it is given; its values are added to {@code params}.
+     */
+    private static StringBuilder arrivals(List<Object> params, Instant from, Instant to, Optional<String> flow) {
+        StringBuilder where = new StringBuilder("m.step = 0 and m.attempt = 1 and m.started_at >= ").append(param(params, from.atOffset(ZoneOffset.UTC)))
+                .append(" and m.started_at < ").append(param(params, to.atOffset(ZoneOffset.UTC)));
+        flow.ifPresent(f -> where.append(" and m.flow = ").append(param(params, f)).append(" and m.step_name = 'ingress'"));
+        return where;
     }
 
     private static Listed listed(Row r) {
