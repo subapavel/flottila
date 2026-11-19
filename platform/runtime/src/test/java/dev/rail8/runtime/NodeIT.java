@@ -1188,8 +1188,8 @@ class NodeIT {
 
     /**
      * The {@code deployments} health check: UP while every package and flow runs; DOWN — /health 503, the other checks UP, the
-     * wire showing the status only, never a name (D-057 a) — while a restored flow did not start, and while a package could not be
-     * restored (its archive gone); UP again once a PUT of that package ran it.
+     * wire showing the status only, never a name — while a restored flow's consumer cannot be built, and while a package could
+     * not be restored (its archive gone); UP again once a PUT of that package ran it.
      */
     @Test
     void healthIsDownWhileAFlowOrPackageIsFailed() throws Exception {
@@ -1203,10 +1203,8 @@ class NodeIT {
         closeNode(node);
         node = null;
 
-        Doors second = new Doors();
-        second.failStartOf("shop/b", "address in use");
-        node = startWith(env("ci"), second);
-        assertEquals("FAILED", itemOf(listed(node.adminPort(), "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b did not start on restore");
+        node = startWith(env("ci"), unbuildable("shop/b"));
+        assertEquals("FAILED", itemOf(listed(node.adminPort(), "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b could not be built on restore");
         JsonObject flowDown = health(node.adminPort(), 503);
         assertEquals("DOWN", flowDown.getString("status"), flowDown.encode());
         assertEquals("DOWN", flowDown.getJsonObject("checks").getString("deployments"), "a FAILED flow: " + flowDown.encode());
@@ -2343,18 +2341,50 @@ class NodeIT {
         assertEquals(readyBody("UP"), answering(port, "/ready", 200), "the retried row went in: the journal is UP and the node ready again");
     }
 
-    /** R2 deployments: a node restored with a FAILED flow is not ready — /ready 503 naming deployments DOWN — and live. */
+    /**
+     * R2 deployments: a node restored with a FAILED flow — its consumer cannot be built — is not ready — /ready 503 naming
+     * deployments DOWN — and live.
+     */
     @Test
     void failedFlowNodeIsNotReady() throws Exception {
         deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
-        Doors second = new Doors();
-        second.failStartOf("shop/b", "address in use");
-        node = startWith(env("ci"), second);
+        node = startWith(env("ci"), unbuildable("shop/b"));
         int port = node.adminPort();
-        assertEquals("FAILED", itemOf(listed(port, "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b did not start on restore");
+        assertEquals("FAILED", itemOf(listed(port, "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b could not be built on restore");
 
         assertEquals(readyBody("DOWN", "deployments"), answer(port, "/ready", 503), "a FAILED flow: not ready, deployments named");
         assertEquals(LIVE, answer(port, "/live", 200), "a node with a FAILED flow is still live");
+    }
+
+    /**
+     * A node restored with a flow whose consumer does not start lists it RESTARTING and stays ready: /ready 200, /health 200 with
+     * the deployments check DEGRADED. The consumer's start fails at the restore and at its next tries, so it waits for a later one
+     * while the node answers.
+     */
+    @Test
+    void restartingFlowNodeIsReady() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        Doors second = new Doors();
+        for (int i = 0; i < 4; i++) second.failStartOf("shop/b", "address in use");   // at the restore and 1, 3 and 7 s later
+        node = startWith(env("ci"), second);
+        int port = node.adminPort();
+        Map<String, JsonObject> flows = listed(port, "flows", "id");
+        assertEquals("RESTARTING", itemOf(flows, "shop/b", "restored with b's start failed").getString("state"), "fixture: b did not start on restore: " + flows);
+        assertEquals("RUNNING", itemOf(flows, "shop/a", "restored").getString("state"), "a runs: " + flows);
+
+        assertEquals(readyBody("UP"), answer(port, "/ready", 200), "a RESTARTING flow keeps the node ready");
+        JsonObject degraded = health(port, 200);
+        assertEquals("UP", degraded.getString("status"), degraded.encode());
+        assertEquals("DEGRADED", degraded.getJsonObject("checks").getString("deployments"), "a RESTARTING flow: " + degraded.encode());
+    }
+
+    /** A component whose consumer of {@code flow} cannot be built: the flow is listed FAILED. */
+    static Doors unbuildable(String flow) {
+        Doors doors = new Doors();
+        doors.onConsumer(cfg -> {
+            if (flow.equals(cfg.options().get("flow"))) throw new IllegalArgumentException(flow + " cannot be built");
+        });
+        return doors;
     }
 
     /**
