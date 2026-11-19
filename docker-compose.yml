@@ -67,7 +67,7 @@ services:
     entrypoint:
       - sh
       - -c
-      - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/rail8/rail8-runtime.jar'
+      - 'RAIL8_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export RAIL8_SECRET_SFTP_HOST_KEY && exec java -jar /opt/rail8/rail8-node.jar'
     depends_on:
       netns:
         condition: service_healthy
@@ -105,7 +105,7 @@ services:
     # second `up` keeps the key the server already presented), and writes the SHA256 fingerprint of its public half, which is public,
     # to host-key.fingerprint in the separate volume sftp-fingerprint: the node mounts only that one, read-only, and reads the file into
     # RAIL8_SECRET_SFTP_HOST_KEY; no path holding a host key reaches it. It exits non-zero when the fingerprint file is empty. RSA
-    # because the node's SFTP client (Apache MINA SSHD 2.20 as shipped) does not offer ssh-ed25519 (observed, P2-06). Same pinned
+    # because the node's SFTP client (Apache MINA SSHD 2.20 as shipped) does not offer ssh-ed25519 (observed). Same pinned
     # image as `sftp` (it ships ssh-keygen).
     image: atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961
     restart: "no"
@@ -125,7 +125,7 @@ services:
   sftp:
     # user demo, directory inbox. The host key is the RSA one `sftp-keys` generated: only the key file is mounted (a volume over
     # /etc/ssh would shadow the image's sshd_config); the image makes its own ed25519 key, which the node's client never negotiates. The wrapper hands the inbox volume (root-owned when mounted) to the user demo,
-    # uid 1001, so that it can delete a delivered file. README: how to drop a file, the fingerprint.
+    # uid 1001, so that it can delete a delivered file. docs/QUICKSTART.md: how to drop a file.
     # The tag is a moving one upstream, so the image is pinned by digest.
     image: atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961
     entrypoint:
