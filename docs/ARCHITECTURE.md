@@ -430,8 +430,17 @@ packages from `deployments` and the archive store when they start; a running nod
 deploy made on another node.
 
 **Planned**
-- Deployment from git: the package's revision in git is what runs. The archive in S3 and the upload by
-  command go away.
+- Deployment from git: a commit of the pool's repository is what runs. The archive in S3 and the upload
+  by command go away. Its design is agreed (`docs/DEPLOY-FROM-GIT.md`):
+  - a node pool reads one repository, set in the node's configuration, through a JGit cache that is not
+    state; a deploy names only a commit (`POST /admin/deploy`, `rail8 deploy <commit>`), every package
+    of the pool's folder in it, and a deployed environment takes only commits reachable from its ref;
+  - every package of the commit is checked before anything stops; the changed ones are applied one by
+    one through today's swap, a removal must be named, and each record names the repository, the
+    commit, the folder and the content digest;
+  - a node restores from its git cache, and the other nodes of a pool follow a deploy on a timer;
+  - the same commit moves from dev to test to prod; what differs per environment stays in the files'
+    overlays and `secret://` names.
 - A graphical flow editor (React Flow). The flow file and the editor are two views of the same
   thing: an edit in either shows in the other. The flow file holds no layout. The editor shows a
   step's default name but never writes it, and an edit changes only the step edited, keeping the
