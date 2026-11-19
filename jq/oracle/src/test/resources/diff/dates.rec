@@ -168,6 +168,76 @@ stdout [185542617816000,"Wed Jul  1 23:00:00 5881581 +11 +1100","185542617778200
 stderr jq: error (at <stdin>:1): error converting number of seconds since epoch to datetime\n
 end
 
+case dates/strflocaltime-gap-standard
+def 7c5c3fbc16f9
+rc 0
+stdout ["2011-03-27 01:30:00 +0300 MSK","2011-03-27 01:00:00 +0300 MSK","2011-01-01 00:00:00 +0300 MSK","2011-03-27 03:30:00 +0400 MSK","2011-06-01 00:00:00 +0400 MSK","2011-03-27 01:59:59 +0300 MSK"]\n
+stderr
+end
+
+case dates/strflocaltime-gap-standard-seconds
+def 5d8db42536d2
+rc 0
+stdout ["01:30:00 +0300 1301178600","03:30:00 +0400 1301182200","00:00:00 +0300 1293829200","03:30:00 +0400 1301182200","01:30:00 +0300 1301178600"]\n
+stderr
+end
+
+case dates/strftime-s-gap-standard
+def 3d515e80e620
+rc 0
+stdout ["-1","1301180400","1301180399"]\n
+stderr
+end
+
+case dates/strflocaltime-gap-first-change
+def 8ea1635d1e80
+rc 0
+stdout ["1905-12-31 23:51:10 +0521 -2019706200","1906-01-01 00:17:39 +0530 -2019705141","1906-01-01 00:08:50 +0530 -2019705670","1905-12-31 23:51:09 +0521 -2019706201"]\n
+stderr
+end
+
+case dates/strflocaltime-gap-day
+def 3138327a126d
+rc 0
+stdout ["1994-12-30 12:00:00 -1000 788824800","1995-01-01 00:00:00 +1400 788868000","1994-12-30 23:59:59 -1000 788867999","1995-01-01 00:00:00 +1400 788868000"]\n
+stderr
+end
+
+case dates/strftime-unconverted
+def fa49daaba91b
+rc 0
+stdout ["UTC|+0000|a         +0000000000b|+0|-1|00000000-1","||ab||-1|| 0"]\n["GMT|+0000|a         +0000000000b|+0|-67768040609740800|-67768040609740800","UTC|+0000|a         +0000000000b|+   0|-67768040609740800|+0000| 0"]\n
+stderr
+end
+
+case dates/strftime-unconverted-new-york
+def c3507db45090
+rc 0
+stdout ["EST|+0000|-1","||-1"]\n
+stderr
+end
+
+case dates/strftime-unconverted-sydney
+def 9336789924f1
+rc 0
+stdout ["AEST|+0000|-1","||-1"]\n
+stderr
+end
+
+case dates/strftime-dst-search
+def a0921c544e11
+rc 0
+stdout ["701827200","701827199","701827201","717548400"]\n
+stderr
+end
+
+case dates/strftime-dst-search-apia
+def 5c1e413789b6
+rc 0
+stdout ["1316876400","1316872800","1325239200","1325332800","1326538800","1333202400","1333206000"]\n
+stderr
+end
+
 case dates/mktime
 def 7ee50e3f06ef
 rc 0
