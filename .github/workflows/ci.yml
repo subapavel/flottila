@@ -223,7 +223,7 @@ jobs:
         run: docker compose --profile history --profile kafka down -v
 
   quickstart:
-    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found)"
+    name: "nightly · quickstart (docs/QUICKSTART.md: first-run commands, node, mapping service and UI started, an invoice found and listed)"
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
@@ -272,7 +272,7 @@ jobs:
               sleep 2
             done
           done
-      - name: An invoice is sent in and found through the UI's server
+      - name: An invoice is sent in, found and listed through the UI's server
         run: |
           set -euo pipefail
           reply=$(curl -sf -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Content-Type: application/xml' localhost:8080/in)
@@ -281,10 +281,15 @@ jobs:
           # the UI's server adds the token itself; the Sec-Fetch-Site header stands in for the browser's own page
           for _ in $(seq 1 30); do
             found=$(curl -sf -H 'Sec-Fetch-Site: same-origin' 'localhost:5173/admin/messages?key=invoiceId:4711' || true)
-            echo "$found" | grep -q '"items":\["' && exit 0
+            echo "$found" | grep -q '"items":\["' && break
             sleep 2
           done
-          echo "::error::the invoice was not found through the UI's /admin: $found"; exit 1
+          echo "$found" | grep -q '"items":\["' || { echo "::error::the invoice was not found through the UI's /admin: $found"; exit 1; }
+          # the list Messages opens on: the last hour, the invoice in it, completed, with its key
+          listed=$(curl -sf -H 'Sec-Fetch-Site: same-origin' "localhost:5173/admin/messages?from=$(date -u -d '1 hour ago' +%FT%TZ)&to=$(date -u -d '1 minute' +%FT%TZ)" || true)
+          echo "$listed"
+          echo "$listed" | grep -q '"flow":"demo/invoice-sync","status":"completed"' && echo "$listed" | grep -q '"keys":{"invoiceId":"4711"}' \
+            || { echo "::error::the invoice is not in the list of recent messages through the UI's /admin: $listed"; exit 1; }
       - name: Logs on failure
         if: failure()
         run: |

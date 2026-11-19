@@ -25,6 +25,36 @@ export interface Timeline {
   steps: StepRecord[];
 }
 
+/** Where a message stands: done, parked or failed, still going, or ended by an operator. */
+export type Status = 'completed' | 'failed' | 'running' | 'cancelled';
+
+/** One message of the list of recent messages. */
+export interface Listed {
+  id: string;
+  flow: string;
+  status: Status;
+  /** When its arrival started, as an ISO-8601 instant. */
+  startedAt: string;
+  /** From its arrival to the end of its latest recorded step. */
+  durationNanos: number;
+  keys: Record<string, string>;
+}
+
+/**
+ * What the list of recent messages shows: the messages whose arrival started at `from` or later and before `to` (ISO-8601
+ * instants, at most 31 days apart), narrowed by each filter that is given.
+ */
+export interface ListQuery {
+  from: string;
+  to: string;
+  flow?: string;
+  status?: Status;
+  /** A business key the message carries. */
+  key?: { name: string; value: string };
+  /** The name of a step the message passed. */
+  step?: string;
+}
+
 /** One page of a list, and the cursor of the next page, or null on the last one. */
 export interface Page<T> {
   items: T[];
@@ -46,13 +76,11 @@ export interface Restarted {
 
 /** What the message screens ask of a node. Every call rejects with an {@link AdminError} when the node refuses it. */
 export interface AdminApi {
-  /** The ids of the messages whose business key `name` has `value`, a page at a time from `after`. */
-  findByKey(name: string, value: string, after?: string): Promise<Page<string>>;
   /**
-   * The ids of the messages of flow `flow` that passed the step named `step`, newest first, a page at a time from
-   * `after`. The arrival is `ingress`, and a step of a local process is `<call>/<step>`.
+   * The messages `query` names, newest first, a page at a time from `after`. A step's name is `ingress` for the arrival,
+   * and `<call>/<step>` for a step of a local process.
    */
-  findByStep(flow: string, step: string, after?: string): Promise<Page<string>>;
+  list(query: ListQuery, after?: string): Promise<Page<Listed>>;
   /** The ids of the flows deployed on the node, sorted by id. */
   flows(): Promise<string[]>;
   /** The message's recorded steps, or null when the node recorded no message with that id. */
@@ -122,16 +150,14 @@ export function httpAdminApi(send: typeof fetch = (input, init) => fetch(input, 
   }
 
   return {
-    findByKey(name, value, after) {
-      const query = new URLSearchParams({ key: `${name}:${value}` });
+    list({ from, to, flow, status, key, step }, after) {
+      const query = new URLSearchParams({ from, to });
+      if (flow !== undefined) query.set('flow', flow);
+      if (status !== undefined) query.set('status', status);
+      if (key !== undefined) query.set('key', `${key.name}:${key.value}`);
+      if (step !== undefined) query.set('step', step);
       if (after !== undefined) query.set('after', after);
-      return json<Page<string>>(`/admin/messages?${query}`);
-    },
-
-    findByStep(flow, step, after) {
-      const query = new URLSearchParams({ flow, step });
-      if (after !== undefined) query.set('after', after);
-      return json<Page<string>>(`/admin/messages?${query}`);
+      return json<Page<Listed>>(`/admin/messages?${query}`);
     },
 
     async flows() {

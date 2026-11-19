@@ -177,7 +177,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     /** {@code at} in microseconds since the epoch, the precision Postgres keeps. */
-    private static long micros(Instant at) {
+    static long micros(Instant at) {
         return Math.addExact(Math.multiplyExact(at.getEpochSecond(), 1_000_000L), at.getNano() / 1_000);
     }
 
@@ -186,7 +186,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     private static final long LAST_MICROS = micros(Instant.parse("9999-12-31T23:59:59.999999Z"));
 
     /** The start a cursor of the search by step carries, in microseconds since the epoch; one out of range is an IllegalArgumentException. */
-    private static OffsetDateTime startedAt(long micros) {
+    static OffsetDateTime startedAt(long micros) {
         if (micros < FIRST_MICROS || micros > LAST_MICROS) throw new IllegalArgumentException("not a cursor of a search by step");
         return Instant.EPOCH.plus(micros, ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
     }

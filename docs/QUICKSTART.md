@@ -44,7 +44,7 @@ mkdir -p ~/rail8-workspace && cp -r examples/demo ~/rail8-workspace/demo   # onc
 cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev   # port 18080: the demo's http-in already uses 8080
 ```
 
-Open **http://localhost:5173**. The UI has **Messages**, a search over what the node stored, **Endpoints**, the
+Open **http://localhost:5173**. The UI has **Messages**, the list of the messages the node recorded, **Endpoints**, the
 settings form of each endpoint file in `RAIL8_WORKSPACE`, and **Mappings**, the mapping studio. The UI sends its
 `/admin` requests to the node on `localhost:8081` and adds the token itself, so the browser never sees it.
 
@@ -87,15 +87,27 @@ curl -X POST --data-binary @examples/demo/fixtures/sample-invoice.xml -H 'Conten
 The flow validates the invoice, keys it by `invoiceId`, routes it by currency, maps it with XSLT and sends it to the
 partner; the partner's answer is the reply, the invoice as mapped: `<PartnerInvoice number="4711" currency="CZK">…`.
 
-In the UI open **Messages**, search by key name `invoiceId` and key value `4711`, and open the message found: its
-timeline lists the steps `ingress`, `validate`, `extractKey`, `route`, `toPartner` and `partner`, and each step shows
-the payload it recorded. The same through the admin API:
+In the UI open **Messages**. It opens on the messages of the last hour, newest first: the invoice is the top row, with
+its start, the flow `demo/invoice-sync`, the status Completed, its duration and its business key `invoiceId=4711`.
+Above the list, the time range (the last 15 minutes, hour, 24 hours or 7 days), the flow and the status narrow it as soon
+as they are chosen; a key name and value, or the name of a step the message passed, narrow it with **Search**, which
+also reads the list again up to now. Type `invoiceId` and `4711` and Search: only the invoice is left. Open it by its
+id: its timeline lists the steps `ingress`, `validate`, `extractKey`, `route`, `toPartner` and `partner`, and each step
+shows the payload it recorded. The same through the admin API:
 
 ```sh
 auth="Authorization: Bearer $RAIL8_ADMIN_TOKEN"
-curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # {"items":["<id>"],"next":null}
+from=$(date -u -d '1 hour ago' +%FT%TZ 2>/dev/null || date -u -v-1H +%FT%TZ)   # an hour ago, in UTC (GNU date, or macOS date)
+curl -H "$auth" "localhost:8081/admin/messages?from=$from&to=$(date -u +%FT%TZ)"
+# {"items":[{"id":"<id>","flow":"demo/invoice-sync","status":"completed","startedAt":"…","durationNanos":…,"keys":{"invoiceId":"4711"}}],"next":null}
+curl -H "$auth" "localhost:8081/admin/messages?from=$from&to=$(date -u +%FT%TZ)&status=failed"   # the ones that failed: none
+curl -H "$auth" 'localhost:8081/admin/messages?key=invoiceId:4711'    # the ids of the messages with that key, at any time: {"items":["<id>"],"next":null}
 curl -H "$auth" localhost:8081/admin/messages/<id>/steps/5/body       # the payload after step 5: the partner's answer
 ```
+
+The list's statuses are completed, failed (parked after its retries, or a step of its latest run failed), running (an
+at-least-once message queued, waiting for its retry or running) and cancelled (ended by an operator). A message is
+listed by the start of its arrival, so a flow whose recording level is `errors` or `off` lists none.
 
 A foreign invoice takes the other route: `sed -e 's/4711/4712/' -e 's/CZK/EUR/' examples/demo/fixtures/sample-invoice.xml | curl -X POST --data-binary @- -H 'Content-Type: application/xml' localhost:8080/in`.
 
@@ -107,11 +119,11 @@ partner.
 curl -X POST --data-binary @examples/demo/fixtures/sample-order.json -H 'Content-Type: application/json' localhost:8083/order
 ```
 
-The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. A JSON message
-has no key to search by, so find it by step: in the UI open **Messages**, search by **Flow and step**, choose the flow
-`demo/order-jq`, type the step name `pick`, and open the message found: its timeline lists the steps `ingress`, `pick`
-and `partner`, and the payload `pick` recorded is that JSON. The same through the admin API:
-`curl -H "$auth" 'localhost:8081/admin/messages?flow=demo/order-jq&step=pick'` gives its `<id>`.
+The reply is the partner's echo of what it was sent: `{"orderId":42,"customer":"Acme Corp","total":50}`. In the UI's
+**Messages** the order is the top row of the flow `demo/order-partner`, the flow it called, and the row below it is the
+order of `demo/order-jq`. Choose the flow `demo/order-jq`, or type the step name `pick` and Search, and open the message:
+its timeline lists the steps `ingress`, `pick` and `partner`, and the payload `pick` recorded is that JSON. The same
+through the admin API: `curl -H "$auth" 'localhost:8081/admin/messages?flow=demo/order-jq&step=pick'` gives its `<id>`.
 
 ## Stop
 

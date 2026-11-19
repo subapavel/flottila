@@ -27,6 +27,7 @@ import dev.rail8.runtime.deploy.DeployedPackage;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.UndeployResult;
 import dev.rail8.runtime.pg.PgTx;
+import dev.rail8.runtime.store.PgMessageList;
 import dev.rail8.runtime.store.StepLogJson;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -59,8 +60,10 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -79,7 +82,11 @@ import java.util.function.Supplier;
  * and the probes {@code /live} and {@code /ready}. {@code GET /admin/messages} finds message ids by business key
  * ({@code ?key=name:value}, {@link MessageStore#findByKey}) or by a step they passed ({@code ?flow=<flow id>&step=<step name>},
  * {@link MessageStore#findByStep}), with {@code limit} and {@code after}; it is 400 for neither, for a key with a flow or step,
- * and for a flow without a step or a step without a flow.
+ * and for a flow without a step or a step without a flow. With {@code from} or {@code to} it is instead the list of recent
+ * messages ({@link PgMessageList}): {@code from} and {@code to} are ISO-8601 instants, both required, and {@code flow},
+ * {@code status} (completed, failed, running or cancelled), {@code key=name:value} and {@code step} narrow it; its items are
+ * {@code {id, flow, status, startedAt, durationNanos, keys}}, and it is 400 for a range the list refuses, for an instant or a
+ * status that does not parse, and on a server built without the list.
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
@@ -296,6 +303,7 @@ public final class AdminServer {
     private final Optional<WorkQueue> work;
     private final Optional<FailedMessages> failed;
     private final Optional<Sampling> sampling;
+    private final Optional<PgMessageList> list;
     private final Workers workers;
     private final WorkSignals signals;
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
@@ -307,7 +315,7 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
     /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no operator's acts. */
@@ -322,7 +330,7 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), Optional.empty(), workers, signals);
     }
 
     /**
@@ -340,7 +348,7 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), sampling, workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), sampling, Optional.empty(), workers, signals);
     }
 
     /**
@@ -350,11 +358,21 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, FailedMessages failed, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, workers, signals);
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, Optional.empty(), workers, signals);
+    }
+
+    /**
+     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, FailedMessages, Optional, Workers,
+     * WorkSignals)} and the list of recent messages over {@code list}.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, FailedMessages failed, Optional<Sampling> sampling, PgMessageList list, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(failed), sampling, Optional.of(list), workers, signals);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<FailedMessages> failed, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+                        Optional<WorkQueue> work, Optional<FailedMessages> failed, Optional<Sampling> sampling, Optional<PgMessageList> list,
+                        Workers workers, WorkSignals signals) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -364,6 +382,7 @@ public final class AdminServer {
         this.work = work;
         this.failed = failed;
         this.sampling = Objects.requireNonNull(sampling, "sampling");
+        this.list = list;
         this.workers = Objects.requireNonNull(workers, "workers");
         this.signals = Objects.requireNonNull(signals, "signals");
     }
@@ -660,6 +679,7 @@ public final class AdminServer {
      * {@code step} together, never with a key.
      */
     private Reply search(RoutingContext ctx) {
+        if (ctx.request().getParam("from") != null || ctx.request().getParam("to") != null) return recent(ctx);
         String flow = ctx.request().getParam("flow");
         String step = ctx.request().getParam("step");
         if (flow != null || step != null) {
@@ -672,6 +692,42 @@ public final class AdminServer {
         if (colon < 0) throw new Refused("key must be name:value");
         Page<String> page = refusable(() -> messages.findByKey(key.substring(0, colon), key.substring(colon + 1), after(ctx), limit(ctx)).await());
         return Json.of(200, page(page, id -> id));
+    }
+
+    /** The list of recent messages: {@code from} and {@code to}, and the optional {@code flow}, {@code status}, {@code key} and {@code step}. */
+    private Reply recent(RoutingContext ctx) {
+        PgMessageList recent = list.orElseThrow(() -> new Refused("this server does not list messages by time"));
+        Optional<PgMessageList.Status> status = given(ctx, "status").map(s -> switch (s) {
+            case "completed" -> PgMessageList.Status.COMPLETED;
+            case "failed" -> PgMessageList.Status.FAILED;
+            case "running" -> PgMessageList.Status.RUNNING;
+            case "cancelled" -> PgMessageList.Status.CANCELLED;
+            default -> throw new Refused("status must be completed, failed, running or cancelled, was '" + s + "'");
+        });
+        Optional<PgMessageList.Key> key = given(ctx, "key").map(k -> {
+            int colon = k.indexOf(':');
+            if (colon < 0) throw new Refused("key must be name:value");
+            return new PgMessageList.Key(k.substring(0, colon), k.substring(colon + 1));
+        });
+        PgMessageList.Query query = refusable(() -> new PgMessageList.Query(instant(ctx, "from"), instant(ctx, "to"), given(ctx, "flow"), status, key,
+                given(ctx, "step")));
+        return Json.of(200, page(refusable(() -> recent.list(query, after(ctx), limit(ctx)).await()), AdminServer::listed));
+    }
+
+    /** The parameter {@code name}, empty when it is missing or empty. */
+    private static Optional<String> given(RoutingContext ctx, String name) {
+        return Optional.ofNullable(ctx.request().getParam(name)).filter(value -> !value.isEmpty());
+    }
+
+    /** The ISO-8601 instant in parameter {@code name}; a missing one or one that does not parse is a 400. */
+    private static Instant instant(RoutingContext ctx, String name) {
+        String raw = ctx.request().getParam(name);
+        if (raw == null) throw new Refused(name + " is required with from or to: an ISO-8601 instant");
+        try {
+            return Instant.parse(raw);
+        } catch (DateTimeParseException notAnInstant) {
+            throw new Refused(name + " must be an ISO-8601 instant, was '" + raw + "'");
+        }
     }
 
     private Reply dlq(RoutingContext ctx) {
@@ -1053,6 +1109,16 @@ public final class AdminServer {
                 .put("body", new JsonObject().put("hash", hash(s.bodyHash())).put("size", s.bodySize()).put("kept", s.bodyKey().isPresent()))
                 .put("versions", new JsonObject(new HashMap<>(s.versions())))
                 .put("log", StepLogJson.json(s.log()));
+    }
+
+    private static JsonObject listed(PgMessageList.Listed m) {
+        return new JsonObject()
+                .put("id", m.id())
+                .put("flow", m.flow())
+                .put("status", m.status().name().toLowerCase(Locale.ROOT))
+                .put("startedAt", m.startedAt().toString())
+                .put("durationNanos", m.durationNanos())
+                .put("keys", new JsonObject(new HashMap<>(m.keys())));
     }
 
     private static JsonObject parked(Parked p) {
