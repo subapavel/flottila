@@ -4,12 +4,14 @@ nodes:
   {"runsAs":["route"],"runs":1,"defaultName":true,"id":"/steps/0","kind":"step","path":["steps",0],"label":"route","type":"route","form":{"path":["steps",0],"fields":["prop","language","routes","otherwise"]},"width":240,"height":96,"detail":"sets ANSWER","rows":["/Invoice/Paid → yes","otherwise → no"],"x":0,"y":96}
   {"runsAs":["xsd"],"runs":1,"defaultName":true,"id":"/steps/1","kind":"step","path":["steps",1],"label":"xsd","type":"xsd","form":{"path":["steps",1],"fields":["schema"]},"width":240,"height":56,"detail":"flows/other.xsd","x":0,"y":232,"locked":"The file holds the key schema used twice here, which the editor does not change."}
   {"runsAs":["to"],"runs":1,"defaultName":true,"id":"/steps/2","kind":"step","path":["steps",2],"label":"to","type":"to","form":{"path":["steps",2],"fields":["endpoint","byProp","endpoints"]},"width":240,"height":56,"detail":"partner-domestic · http","opens":{"endpoint":"demo/endpoints/partner-domestic.yaml"},"x":0,"y":328}
-  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":60,"y":424}
+  {"runsAs":["extractKey"],"runs":1,"defaultName":true,"id":"/steps/3","kind":"step","path":["steps",3],"label":"extractKey","type":"extractKey","form":{"path":["steps",3],"fields":["key","xpath","language"]},"width":240,"height":56,"detail":"slot","x":0,"y":424}
+  {"runsAs":[],"runs":0,"defaultName":false,"id":"/steps#end","kind":"end","path":["steps"],"label":"end","width":120,"height":32,"x":60,"y":520}
 edges:
   {"id":"/from->/steps/0","source":"/from","target":"/steps/0","kind":"next","insertAt":["steps",0]}
   {"id":"/steps/0->/steps/1","source":"/steps/0","target":"/steps/1","kind":"next","insertAt":["steps",1]}
   {"id":"/steps/1->/steps/2","source":"/steps/1","target":"/steps/2","kind":"next","insertAt":["steps",2]}
-  {"id":"/steps/2->/steps#end","source":"/steps/2","target":"/steps#end","kind":"next","insertAt":["steps",3]}
+  {"id":"/steps/2->/steps/3","source":"/steps/2","target":"/steps/3","kind":"next","insertAt":["steps",3]}
+  {"id":"/steps/3->/steps#end","source":"/steps/3","target":"/steps#end","kind":"next","insertAt":["steps",4]}
 problems:
   {"path":["limits","maxBodyBytes"],"message":"the node reads 1_000 otherwise than the editor: write it in quotes"}
   {"path":["limits","maxInFlight"],"message":"the node reads 0o17 otherwise than the editor: write it in quotes"}

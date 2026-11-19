@@ -17,3 +17,6 @@ steps:
     schema: flows/other.xsd
   - type: to
     endpoint: partner-domestic
+  - type: extractKey
+    key: slot
+    xpath: 10:30

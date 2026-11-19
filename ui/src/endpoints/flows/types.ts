@@ -1,3 +1,4 @@
+import type { FlowContext as ServedContext } from '../files/flowFiles';
 import type { SettingsDescription, SettingsField } from '../settings';
 
 /** Where a value stands in the file: `['steps', 2, 'xpath']`. */
@@ -12,12 +13,7 @@ export type ServedSteps = { type: string; configSchema: unknown }[] | { missing:
  * changes it. The flows are those of the working folder, `address` the one their inbound `direct` endpoint serves.
  * `partial` says the working folder was not read whole, so that what is not found may still exist.
  */
-export interface FlowContext {
-  endpoints: { id: string; path: string; scheme: string; direction: 'in' | 'out'; address?: string; overlaid?: true }[];
-  flows: { path: string; id: string; mode?: 'sync' | 'at-least-once' | 'at-most-once'; address?: string }[];
-  partial?: boolean;
-  steps: ServedSteps;
-}
+export type FlowContext = Omit<ServedContext, 'partial'> & { partial?: boolean; steps: ServedSteps };
 
 /**
  * A field of a step's form: an endpoint's kinds of field, and lists and maps, shown as tables. `emptyAllowed` takes empty
