@@ -40,6 +40,7 @@ import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.queue.PgWorkSignals;
 import dev.rail8.runtime.store.PgDlq;
 import dev.rail8.runtime.store.PgIntake;
+import dev.rail8.runtime.store.PgMessageList;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.store.Retention;
 import dev.rail8.runtime.time.VertxTimer;
@@ -340,7 +341,7 @@ public final class Node implements AutoCloseable {
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
                     Optional.of(restored), work, new PgFailedMessages(pool, work), sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)),
-                    workers, signals);
+                    new PgMessageList(pool), workers, signals);
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go; its first pass an interval later, on a virtual thread of its own

@@ -205,7 +205,7 @@ Postgres holds everything whose loss would lose a message, and the message histo
 | Table | Holds |
 | --- | --- |
 | `work` | messages accepted and not yet done: flow, key, attempt, due time, lease, whether it is held, stops its key or is cancelled, and where the body is in the journal |
-| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size, the lines the step's code logged), indexed by flow, step name and start for the search by step, and the business keys for search |
+| `messages`, `message_keys` | one record per step of each message (outcome, error, times, CPU, headers, props, keys, body hash and size, the lines the step's code logged), indexed by flow, step name and start for the search by step, by the start of each arrival for the list of recent messages, and the business keys for search |
 | `dlq` | parked messages, by reference |
 | `body_refs`, `journal_segments`, `journal_keys`, `journal_nodes`, `journal_losses` | where each durable body is, the journal files, their wrapped encryption keys, and losses an operator accepted |
 | `nodes` | node membership and leases |
@@ -831,8 +831,12 @@ the open screens: choosing a screen opens it in a tab, or shows the tab it alrea
 closes on its own, and a screen may open tabs of its own. The tabs live in the page's memory; a
 reload starts again with the Home screen. Screens are registered in one list (`ui/src/screens.tsx`).
 
-The Messages screen finds messages by business key (name and value, a page at a time) or by id, and
-opens each one found in a tab of its own. A message's tab shows its flow, the state of its latest
+The Messages screen opens on the list of recent messages, newest first, a page at a time: each row has
+the message's start, flow, status (completed, failed, running or cancelled), duration and business keys,
+and its id opens the message in a tab of its own, as does an id typed in. Above the list, the time range
+(the last 15 minutes, hour, 24 hours or 7 days; the last hour when it opens), the flow and the status
+apply as soon as they are chosen; a business key (name and value) and the name of a step the message
+passed apply with Search, which also reads the list again up to now. A message's tab shows its flow, the state of its latest
 attempt and every attempt step by step: outcome, start, wall and CPU time, payload size and error.
 The payload after a step opens in a dialog (its first MiB) when its bytes were kept; when the latest
 attempt failed, its error is shown with Restart (`POST /admin/dlq/{id}/retry`).
@@ -875,7 +879,7 @@ mapping service's jar. The admin API answers JSON and refuses browsers. `site/` 
 public web page.
 
 **Planned**
-- Finding messages by flow and time, which the admin API cannot search by yet.
+- A strip of counts by status above the list of messages.
 - A server for the UI outside development, holding the token and talking to the node the same way.
 - Helper actions on a field of an endpoint's settings form. No screens of a plugin's own.
 - Screens as modules of the UI, each a folder of its own that the build finds, as the node finds
@@ -915,6 +919,7 @@ Bearer token; without one the API may only listen on loopback. There are no user
 
 | Route | Purpose |
 | --- | --- |
+| `GET /admin/messages?from=…&to=…` | the list of recent messages, newest first, narrowed by `flow`, `status`, `key` and `step` |
 | `GET /admin/messages?key=…` | find messages by business key |
 | `GET /admin/messages?flow=…&step=…` | find a flow's messages that passed a named step, newest first |
 | `GET /admin/messages/{id}` | a message's steps with their times and the lines their code logged |
@@ -927,6 +932,22 @@ Bearer token; without one the API may only listen on loopback. There are no user
 | `PUT`, `DELETE /admin/packages/{name}`; `GET /admin/packages`, `GET /admin/flows` | deploy, undeploy, what runs (a `RESTARTING` flow with its failures, next attempt and cause) |
 | `GET /admin/targets`, `GET /admin/flows/{flow}/cpu` | limits per target system, CPU by step |
 | `GET /admin/components` | the components the node serves and their settings descriptions |
+
+The list of recent messages reads Postgres only. `from` and `to` are ISO-8601 instants at most 31 days
+apart; it lists the messages whose arrival started at `from` or later and before `to`, each with its id,
+flow, status, start, duration (from its arrival to the end of its latest recorded step) and the business
+keys it carries, at most 500 to a page (50 by default). Its status is read when the page is read:
+
+- `failed` while it is parked;
+- else `running` while it is in `work`: queued, waiting for its retry, running, held, or stopping after a
+  cancel;
+- else `cancelled` when an operator cancelled it;
+- else `failed` when a step of its latest attempt failed (a `sync` or `at-most-once` message);
+- else `completed`. A `sync` or `at-most-once` message that is still running reads `completed` too,
+  since nothing in Postgres marks such a run before a step of it fails.
+
+A message is listed by its recorded arrival, so a flow with the recording level `errors` or `off` lists
+none of its messages.
 
 Configuration is by environment variables `RAIL8_*`; `RAIL8_ENV` is required, and any value other
 than `dev` or `ci` is a deployed environment with stricter rules (no manual deploy, no mock

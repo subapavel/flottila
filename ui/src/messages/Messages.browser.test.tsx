@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { Shell } from '../Shell';
-import { AdminError, type AdminApi, type StepRecord, type Timeline } from './admin';
+import { AdminError, type AdminApi, type Listed, type ListQuery, type StepRecord, type Timeline } from './admin';
 import { messagesScreen } from './screen';
 
 function step(attempt: number, n: number, name: string, extra: Partial<StepRecord> = {}): StepRecord {
@@ -34,15 +34,21 @@ const failedTwice: Timeline = {
 
 const delivered: Timeline = { id: 'm-2', flow: 'demo/orders', steps: [step(1, 0, 'arrival'), step(1, 1, 'send')] };
 
-/** An admin API over the two messages above; every call can be replaced in a test. */
+function row(id: string, extra: Partial<Listed> = {}): Listed {
+  return { id, flow: 'demo/orders', status: 'completed', startedAt: '2026-11-19T07:30:00Z', durationNanos: 2_500_000, keys: {}, ...extra };
+}
+
+/** When the list's range ends in these tests. */
+const NOW = new Date('2026-11-19T08:00:00Z');
+
+/** An admin API over the two messages above, listed newest first a page at a time; every call can be replaced in a test. */
 function fakeApi(overrides: Partial<AdminApi> = {}): AdminApi {
   const byId = new Map([failedTwice, delivered].map((t) => [t.id, t]));
   return {
-    findByKey: vi.fn(async (_name: string, _value: string, after?: string) =>
-      after === undefined ? { items: ['m-1'], next: 'page-2' } : { items: ['m-2'], next: null },
-    ),
-    findByStep: vi.fn(async (_flow: string, _step: string, after?: string) =>
-      after === undefined ? { items: ['m-2'], next: 'step-page-2' } : { items: ['m-1'], next: null },
+    list: vi.fn(async (_query: ListQuery, after?: string) =>
+      after === undefined
+        ? { items: [row('m-1', { status: 'failed', startedAt: '2026-11-19T07:50:00Z', keys: { order: 'A-7' } })], next: 'page-2' }
+        : { items: [row('m-2')], next: null },
     ),
     flows: vi.fn(async () => ['demo/invoices', 'demo/orders']),
     timeline: vi.fn(async (id: string) => byId.get(id) ?? null),
@@ -59,7 +65,7 @@ function render(api: AdminApi) {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  root.render(<Shell screens={[messagesScreen(api)]} start="messages" />);
+  root.render(<Shell screens={[messagesScreen(api, () => NOW)]} start="messages" />);
 }
 
 afterEach(() => {
@@ -68,105 +74,103 @@ afterEach(() => {
 });
 
 const tab = (name: string) => page.getByRole('tab', { name });
-
-async function searchByKey(name: string, value: string) {
-  await page.getByRole('textbox', { name: 'Key name' }).fill(name);
-  await page.getByRole('textbox', { name: 'Key value' }).fill(value);
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
-}
-
-async function searchByStep(flow: string, step: string) {
-  await page.getByRole('button', { name: 'Flow and step' }).click();
-  await page.getByRole('combobox', { name: 'Flow' }).selectOptions(flow);
-  await page.getByRole('textbox', { name: 'Step name' }).fill(step);
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
-}
+const lastHour = { from: '2026-11-19T07:00:00.000Z', to: '2026-11-19T08:00:00.000Z' };
 
 describe('Messages', () => {
-  test('finds messages by business key a page at a time, and opens each one in a tab of its own', async () => {
+  test('opens on the messages of the last hour, newest first a page at a time, and opens each one in a tab of its own', async () => {
     const api = fakeApi();
     render(api);
-    await searchByKey('order', 'A-7');
-    await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
-    expect(api.findByKey).toHaveBeenCalledWith('order', 'A-7');
+    const list = page.getByRole('grid', { name: 'Messages' });
+    await expect.element(list.getByRole('button', { name: 'm-1' })).toBeVisible();
+    expect(api.list).toHaveBeenCalledWith(lastHour);
+    await expect.element(list.getByText('2026-11-19T07:50:00Z')).toBeVisible();
+    await expect.element(list.getByText('Failed')).toBeVisible();
+    await expect.element(list.getByText('order=A-7')).toBeVisible();
 
     await page.getByRole('button', { name: 'Load more' }).click();
-    await expect.element(page.getByRole('button', { name: 'm-2' })).toBeVisible();
-    expect(api.findByKey).toHaveBeenLastCalledWith('order', 'A-7', 'page-2');
+    await expect.element(list.getByRole('button', { name: 'm-2' })).toBeVisible();
+    expect(api.list).toHaveBeenLastCalledWith(lastHour, 'page-2');
+    await expect.element(list.getByText('Completed')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
 
-    await page.getByRole('button', { name: 'm-1' }).click();
+    await list.getByRole('button', { name: 'm-1' }).click();
     await expect.element(tab('m-1')).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('heading', { name: 'Message m-1' })).toBeVisible();
 
     await tab('Messages').click();
-    await page.getByRole('button', { name: 'm-2' }).click();
+    await list.getByRole('button', { name: 'm-2' }).click();
     await expect.element(tab('m-2')).toHaveAttribute('aria-selected', 'true');
     await expect.element(page.getByRole('heading', { name: 'Message m-2' })).toBeVisible();
     expect(page.getByRole('tab').elements()).toHaveLength(3);
 
     await tab('Messages').click();
-    await page.getByRole('button', { name: 'm-1' }).click();
+    await list.getByRole('button', { name: 'm-1' }).click();
     await expect.element(tab('m-1')).toHaveAttribute('aria-selected', 'true');
     expect(page.getByRole('tab').elements()).toHaveLength(3);
   });
 
-  test('finds a message by its id, and says so when there is none', async () => {
-    render(fakeApi());
-    await page.getByRole('button', { name: 'Message id' }).click();
-    await page.getByRole('textbox', { name: 'Message id' }).fill('m-2');
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await expect.element(page.getByRole('button', { name: 'm-2' })).toBeVisible();
-
-    await page.getByRole('textbox', { name: 'Message id' }).fill('nothing');
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await expect.element(page.getByRole('heading', { name: 'No messages found' })).toBeVisible();
-  });
-
-  test('finds the messages of a deployed flow that passed a step a page at a time, and opens each one in a tab', async () => {
+  test('narrows the list with each filter: time range, flow and status when chosen, business key and step with Search', async () => {
     const api = fakeApi();
     render(api);
-    await searchByStep('demo/orders', 'send');
-    await expect.element(page.getByRole('button', { name: 'm-2' })).toBeVisible();
-    expect(api.flows).toHaveBeenCalledOnce();
-    expect(api.findByStep).toHaveBeenCalledWith('demo/orders', 'send');
-
-    await page.getByRole('button', { name: 'Load more' }).click();
     await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
-    expect(api.findByStep).toHaveBeenLastCalledWith('demo/orders', 'send', 'step-page-2');
-    await expect.element(page.getByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(api.flows).toHaveBeenCalledOnce();
 
-    await page.getByRole('button', { name: 'm-2' }).click();
-    await expect.element(tab('m-2')).toHaveAttribute('aria-selected', 'true');
-    await expect.element(page.getByRole('heading', { name: 'Message m-2' })).toBeVisible();
+    await page.getByRole('combobox', { name: 'Time range' }).selectOptions('Last 24 hours');
+    const day = { from: '2026-11-18T08:00:00.000Z', to: lastHour.to };
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith(day));
+
+    await page.getByRole('combobox', { name: 'Flow' }).selectOptions('demo/orders');
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...day, flow: 'demo/orders' }));
+
+    await page.getByRole('combobox', { name: 'Status' }).selectOptions('Failed');
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...day, flow: 'demo/orders', status: 'failed' }));
+
+    await page.getByRole('textbox', { name: 'Key name' }).fill('order');
+    await page.getByRole('textbox', { name: 'Key value' }).fill('A-7');
+    expect(api.list).toHaveBeenCalledTimes(4);
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    const keyed = { ...day, flow: 'demo/orders', status: 'failed', key: { name: 'order', value: 'A-7' } };
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith(keyed));
+
+    await page.getByRole('textbox', { name: 'Step name' }).fill('send');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await vi.waitFor(() => expect(api.list).toHaveBeenLastCalledWith({ ...keyed, step: 'send' }));
+    await expect.element(page.getByRole('button', { name: 'm-1' })).toBeVisible();
   });
 
-  test('says that no recorded row of the step was found, and why a step may leave none', async () => {
-    render(fakeApi({ findByStep: async () => ({ items: [], next: null }) }));
-    await searchByStep('demo/invoices', 'ingress');
+  test('opens a message by its id, and says so when the node recorded none', async () => {
+    render(fakeApi());
+    await page.getByRole('textbox', { name: 'Message id' }).fill('m-2');
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await expect.element(page.getByRole('heading', { name: 'Message m-2' })).toBeVisible();
+
+    await tab('Messages').click();
+    await page.getByRole('textbox', { name: 'Message id' }).fill('nothing');
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await expect.element(page.getByRole('heading', { name: 'No such message' })).toBeVisible();
+  });
+
+  test('says that no message was found, and why a message may not be listed', async () => {
+    render(fakeApi({ list: async () => ({ items: [], next: null }) }));
     await expect.element(page.getByRole('heading', { name: 'No messages found' })).toBeVisible();
-    await expect.element(page.getByText('No recorded row of the step ingress of the flow demo/invoices was found.', { exact: false })).toBeVisible();
-    await expect.element(page.getByText('(ends, errors or off)', { exact: false })).toBeVisible();
+    await expect.element(page.getByText('(recording level errors or off)', { exact: false })).toBeVisible();
   });
 
   test("shows the node's error when the flows cannot be listed", async () => {
     render(fakeApi({ flows: async () => Promise.reject(new AdminError(503, 'the node is stopping')) }));
-    await page.getByRole('button', { name: 'Flow and step' }).click();
     await expect.element(page.getByText('The deployed flows could not be listed', { exact: false })).toBeVisible();
     await expect.element(page.getByText('the node is stopping')).toBeVisible();
-    await expect.element(page.getByRole('button', { name: 'Search', exact: true })).toBeDisabled();
+    await expect.element(page.getByRole('combobox', { name: 'Flow' })).toBeDisabled();
   });
 
-  test("shows the node's error when a search is refused", async () => {
-    render(fakeApi({ findByKey: async () => Promise.reject(new AdminError(401, 'this route needs Authorization: Bearer <token>')) }));
-    await searchByKey('order', 'A-7');
-    await expect.element(page.getByText('The search failed', { exact: false })).toBeVisible();
+  test("shows the node's error when the list is refused", async () => {
+    render(fakeApi({ list: async () => Promise.reject(new AdminError(401, 'this route needs Authorization: Bearer <token>')) }));
+    await expect.element(page.getByText('The messages could not be listed', { exact: false })).toBeVisible();
     await expect.element(page.getByText('this route needs Authorization: Bearer <token>')).toBeVisible();
   });
 
   test('shows every attempt step by step, with times, outcomes, errors and the state of the latest attempt', async () => {
     render(fakeApi());
-    await searchByKey('order', 'A-7');
     await page.getByRole('button', { name: 'm-1' }).click();
 
     await expect.element(page.getByRole('heading', { name: 'Attempt 1' })).toBeVisible();
@@ -179,14 +183,13 @@ describe('Messages', () => {
     const second = page.getByRole('grid', { name: 'Steps of attempt 2' });
     await expect.element(second.getByText('4 B, not kept')).toBeVisible();
 
-    await expect.element(page.getByText('demo/orders')).toBeVisible();
+    await expect.element(page.getByRole('tabpanel', { name: 'm-1' }).getByText('demo/orders')).toBeVisible();
     await expect.element(page.getByText('Step 1 (send) of attempt 2 failed', { exact: false })).toBeVisible();
   });
 
   test('restarts a message whose latest attempt failed, and shows a refusal with its reason', async () => {
     const api = fakeApi();
     render(api);
-    await searchByKey('order', 'A-7');
     await page.getByRole('button', { name: 'm-1' }).click();
     await page.getByRole('button', { name: 'Restart' }).click();
     await expect.element(page.getByText('Restarted as attempt 3', { exact: false })).toBeVisible();
@@ -204,7 +207,6 @@ describe('Messages', () => {
 
   test('offers no restart when the latest attempt went through', async () => {
     render(fakeApi());
-    await searchByKey('order', 'A-7');
     await page.getByRole('button', { name: 'Load more' }).click();
     await page.getByRole('button', { name: 'm-2' }).click();
     await expect.element(page.getByRole('heading', { name: 'Attempt 1' })).toBeVisible();
@@ -214,7 +216,6 @@ describe('Messages', () => {
   test('shows the payload after a step in a dialog', async () => {
     const api = fakeApi();
     render(api);
-    await searchByKey('order', 'A-7');
     await page.getByRole('button', { name: 'm-1' }).click();
     await page.getByRole('button', { name: 'Show the payload after step 1 of attempt 1' }).click();
 
@@ -228,8 +229,7 @@ describe('Messages', () => {
   });
 
   test('says when the node recorded no message with the id of a tab', async () => {
-    render(fakeApi({ findByKey: async () => ({ items: ['gone'], next: null }) }));
-    await searchByKey('order', 'A-7');
+    render(fakeApi({ list: async () => ({ items: [row('gone')], next: null }) }));
     await page.getByRole('button', { name: 'gone' }).click();
     await expect.element(page.getByRole('heading', { name: 'No such message' })).toBeVisible();
   });

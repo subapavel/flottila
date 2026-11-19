@@ -34,6 +34,7 @@ import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.queue.PgFailedMessages;
 import dev.rail8.runtime.queue.PgWorkQueue;
 import dev.rail8.runtime.store.PgDlq;
+import dev.rail8.runtime.store.PgMessageList;
 import dev.rail8.runtime.store.PgMessageStore;
 import dev.rail8.runtime.time.VertxTimer;
 import dev.rail8.testkit.FakeRuntime;
@@ -128,7 +129,7 @@ final class AdminPgFixture implements AutoCloseable {
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), shop.zipTo(tmp.resolve("archives"))));
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
                 new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, new PgFailedMessages(pool, queue), Optional.empty(),
-                new Workers(), WorkSignals.NONE);
+                new PgMessageList(pool), new Workers(), WorkSignals.NONE);
         port = server.start(vertx).await(10, TimeUnit.SECONDS);
     }
 

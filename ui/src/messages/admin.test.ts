@@ -15,20 +15,20 @@ function fakeFetch(...answers: Response[]) {
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 describe('httpAdminApi', () => {
-  it('searches by business key as name:value, with the cursor of the next page', async () => {
-    const { send, calls } = fakeFetch(json(200, { items: ['m-1'], next: 'c1' }), json(200, { items: ['m-2'], next: null }));
+  it('lists messages over a time range, narrowed by each filter given, with the cursor of the next page', async () => {
+    const listed = { id: 'm-1', flow: 'demo/orders', status: 'failed', startedAt: '2026-11-19T07:00:00Z', durationNanos: 5, keys: { order: 'A:1' } };
+    const { send, calls } = fakeFetch(json(200, { items: [listed], next: 'c1' }), json(200, { items: [], next: null }));
     const api = httpAdminApi(send);
-    expect(await api.findByKey('order', 'A:1 & 2')).toEqual({ items: ['m-1'], next: 'c1' });
-    expect(await api.findByKey('order', 'A:1 & 2', 'c1')).toEqual({ items: ['m-2'], next: null });
-    expect(calls.map((c) => c.url)).toEqual(['/admin/messages?key=order%3AA%3A1+%26+2', '/admin/messages?key=order%3AA%3A1+%26+2&after=c1']);
-  });
-
-  it('searches by flow and step, with the cursor of the next page', async () => {
-    const { send, calls } = fakeFetch(json(200, { items: ['m-1'], next: 'c1' }), json(200, { items: [], next: null }));
-    const api = httpAdminApi(send);
-    expect(await api.findByStep('demo/order-jq', 'call/pick')).toEqual({ items: ['m-1'], next: 'c1' });
-    expect(await api.findByStep('demo/order-jq', 'call/pick', 'c1')).toEqual({ items: [], next: null });
-    expect(calls.map((c) => c.url)).toEqual(['/admin/messages?flow=demo%2Forder-jq&step=call%2Fpick', '/admin/messages?flow=demo%2Forder-jq&step=call%2Fpick&after=c1']);
+    const range = { from: '2026-11-19T07:00:00.000Z', to: '2026-11-19T08:00:00.000Z' };
+    expect(await api.list(range)).toEqual({ items: [listed], next: 'c1' });
+    expect(await api.list({ ...range, flow: 'demo/order-jq', status: 'running', key: { name: 'order', value: 'A:1 & 2' }, step: 'call/pick' }, 'c1')).toEqual({
+      items: [],
+      next: null,
+    });
+    expect(calls.map((c) => c.url)).toEqual([
+      '/admin/messages?from=2026-11-19T07%3A00%3A00.000Z&to=2026-11-19T08%3A00%3A00.000Z',
+      '/admin/messages?from=2026-11-19T07%3A00%3A00.000Z&to=2026-11-19T08%3A00%3A00.000Z&flow=demo%2Forder-jq&status=running&key=order%3AA%3A1+%26+2&step=call%2Fpick&after=c1',
+    ]);
   });
 
   it('lists the ids of the deployed flows', async () => {
@@ -47,9 +47,9 @@ describe('httpAdminApi', () => {
   });
 
   it("rejects with the node's error text and status", async () => {
-    const { send } = fakeFetch(json(400, { error: 'bad request: key must be name:value' }), new Response('down', { status: 503, statusText: 'Service Unavailable' }));
+    const { send } = fakeFetch(json(400, { error: 'bad request: from must be before to' }), new Response('down', { status: 503, statusText: 'Service Unavailable' }));
     const api = httpAdminApi(send);
-    await expect(api.findByKey('', '')).rejects.toEqual(new AdminError(400, 'bad request: key must be name:value'));
+    await expect(api.list({ from: 'b', to: 'a' })).rejects.toEqual(new AdminError(400, 'bad request: from must be before to'));
     const refused = await api.timeline('m-1').catch((e: unknown) => e);
     expect(refused).toBeInstanceOf(AdminError);
     expect(refused).toMatchObject({ status: 503, message: '503 Service Unavailable' });
