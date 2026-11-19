@@ -25,7 +25,7 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useState, type ReactNode } from 'react';
 import { FieldControl } from '../FieldControl';
 import { RawOptions } from '../RawOptions';
-import type { Op } from './edit';
+import { placeOf, type Op } from './edit';
 import { setField, setKeys } from './ops';
 import { STEP_KEYS, stepTabFields } from './steps';
 import type { FlowNode, FlowProblem, Path, StepField, StepForm, ValueField } from './types';
@@ -51,10 +51,6 @@ export interface PanelEdit {
 const shown = (value: unknown) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : JSON.stringify(value));
 
 const samePath = (a: Path, b: Path) => a.length === b.length && a.every((s, i) => b[i] === s);
-
-/** The place of `path` in words, as the problems list shows it: `steps[1].name`. */
-export const placeOf = (path: Path) =>
-  path.length === 0 ? 'the file' : path.reduce<string>((out, s) => (typeof s === 'number' ? `${out}[${s}]` : out === '' ? s : `${out}.${s}`), '');
 
 /** The problems at `path`, as a list. */
 function Problems({ problems }: { problems: FlowProblem[] }) {

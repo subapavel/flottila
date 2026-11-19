@@ -41,7 +41,7 @@ const startsWith = (path: Path, prefix: Path) => prefix.length <= path.length &&
 const samePath = (a: Path, b: Path) => a.length === b.length && startsWith(a, b);
 
 /** Whether `a` and `b` are the same value, with the keys of every mapping in the same order. */
-export function sameOrdered(a: unknown, b: unknown): boolean {
+function sameOrdered(a: unknown, b: unknown): boolean {
   if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => sameOrdered(v, b[i]));
   if (isRecord(a)) {
     if (!isRecord(b)) return false;
@@ -195,7 +195,7 @@ export function stepLists(value: unknown, types: Readonly<Record<string, StepTyp
 }
 
 /** The paths inside `value` that `pattern` matches, below `here`, where `*` is any key or index. */
-function matching(value: unknown, pattern: readonly string[], here: Path): Path[] {
+export function matching(value: unknown, pattern: readonly string[], here: Path): Path[] {
   if (pattern.length === 0) return [here];
   const [head, ...rest] = pattern;
   if (head === '*') {
@@ -341,7 +341,7 @@ function flowText(value: unknown, spaced: boolean): string {
   return typeof value === 'string' && value.includes('\n') ? JSON.stringify(value) : scalarText(value, 'flow');
 }
 
-/** How a writer indents: a mapping's keys `unit` past their key, a list's dashes `seqOffset` past theirs, an item's keys `offset` past its dash. */
+/** How a writer writes: a mapping's keys `unit` past their key, a list's dashes `seqOffset` past theirs, and its line end. */
 interface Style {
   unit: number;
   seqOffset: number;
