@@ -90,10 +90,8 @@ The refusals:
 | 400 | a path that is no `.yaml` or `.yml` file in the working folder, or both `If-Match` and `If-None-Match` |
 | 404 | no such flow file, or, on a create, no such folder |
 | 412 | the file changed since it was read, or, on a create, it exists |
-| 422 | on a create, a text that is not a file of its kind |
-| 428 | a save with neither `If-Match` nor `If-None-Match: *` |
 | 413 | the text is over 1 MiB |
-| 422 | the text is no YAML, or no flow |
+| 422 | the text is no YAML, or no file of its kind |
 | 428 | neither precondition is sent |
 
 A save is written through a temporary file renamed over the old one, one save at a time. A text equal to

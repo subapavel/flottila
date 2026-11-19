@@ -485,6 +485,10 @@ describe('Editing the rest of a flow', () => {
     await open(flows);
     await button('Edit').click();
     await button('Add a process').click();
+    // a refused name says why in the dialog
+    await page.getByRole('textbox', { name: 'Name' }).fill('enrich');
+    await page.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click();
+    await expect.element(text('the flow has a process enrich already')).toBeVisible();
     await page.getByRole('textbox', { name: 'Name' }).fill('audit');
     await page.getByRole('combobox', { name: 'First step' }).selectOptions('validate');
     await page.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click();
@@ -519,8 +523,24 @@ describe('Editing the rest of a flow', () => {
   });
 
   test('calls another flow through the direct endpoint of its address, created first when the package has none', async () => {
-    const flows = fakeFlows();
-    const endpoints = fakeEndpoints();
+    // the server lists the endpoint once it is created
+    let created = false;
+    const callPayment = { id: 'call-payment', path: 'demo/endpoints/call-payment.yaml', scheme: 'direct', direction: 'out' as const, address: '/payments' };
+    const endpoints = {
+      ...fakeEndpoints(),
+      create: vi.fn(async (path: string) => {
+        created = true;
+        return { file: { ...httpIn, path }, etag: '"1"' };
+      }),
+    };
+    const served = fakeFlows();
+    const flows = {
+      ...served,
+      read: vi.fn(async (path: string) => {
+        const stored = await served.read(path);
+        return created ? { ...stored, file: { ...stored.file, context: { ...context, endpoints: [...context.endpoints, callPayment] } } } : stored;
+      }),
+    };
     await open(flows, endpoints);
     await button('Edit').click();
     await button('Add a step at steps[4]').click();
@@ -534,8 +554,16 @@ describe('Editing the rest of a flow', () => {
       'demo/endpoints/call-payment.yaml',
       'schemaVersion: 1\nkind: endpoint\nid: call-payment\nscheme: direct\ndirection: out\nconfig:\n  address: /payments\n',
     );
+    // the picture knows the new endpoint: the step names one, and a second call goes through it
+    await expect.element(page.getByText(/^\d+ problems?$/)).not.toBeInTheDocument();
+    await button('Add a step at steps[6]').click();
+    await page.getByRole('menuitem', { name: /^payment/ }).click();
+    await expect.element(page.getByRole('heading', { name: 'to-3', level: 2 })).toBeVisible();
+    expect(endpoints.create).toHaveBeenCalledTimes(1);
     await button('Save').click();
-    expect(lastSave(flows)).toBe(`${invoice}  - type: to\n    endpoint: order-call\n  - type: to\n    name: to-2\n    endpoint: call-payment\n`);
+    expect(lastSave(flows)).toBe(
+      `${invoice}  - type: to\n    endpoint: order-call\n  - type: to\n    name: to-2\n    endpoint: call-payment\n  - type: to\n    name: to-3\n    endpoint: call-payment\n`,
+    );
   });
 
   test('a call whose endpoint cannot be created is not added, and says why', async () => {
