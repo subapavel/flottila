@@ -44,10 +44,18 @@ import java.util.concurrent.locks.ReentrantLock;
  * The node's {@link Intake}: no row naming a body commits before its record is forced.
  * The ingress body is made durable in the node's journal first ({@link TieredBlobStore#forced}: appended, or its spill
  * persisted, and forced) — on the caller's thread, before the save joins a group, so no statement of it is sent while the record
- * is not forced and a force that fails saves nothing. A body durable already (no local copy) adds no record and no kept ref: its
- * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, dev.rail8.api.BlobKey)});
- * a ref of another node's journal makes a plain row that node claims, announced to it once the commit is acknowledged
+ * is not forced and a force that fails saves nothing. A body durable already (no local copy) adds no record: its item copies
+ * the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, dev.rail8.api.BlobKey)}); a ref of
+ * another node's journal makes a plain row that node claims, announced to it once the commit is acknowledged
  * ({@link WorkSignals}). A body of another store is persisted there first, its item naming no ref.
+ *
+ * <p><b>A body keyed by another message</b> — a call between flows hands the callee the caller's body, its key naming the
+ * caller — is kept ({@code body_refs}) in the save's transaction whatever {@code keepInput} says, so the callee reads it by that
+ * key after the caller's rows are gone: a local copy is forced and kept as a kept input is; a body durable already gets the
+ * key's ref from its source row, no byte copied ({@link TieredBlobStore.Durable#keepIn}). Its item then copies the key's kept
+ * ref, so the item and the kept ref name the same place in the journal, and retention keeps the ref while a work row points
+ * there. Saves of one local body in flight together each force a record: the item of each names the one kept first, and the
+ * segment sweeper frees the others.
  *
  * <p><b>Groups</b>. The save then joins a group through a {@link BatchingWriter}: saves waiting while groups are in
  * flight go together, at most {@link NodeConfig.IntakeGroup#max} of them and {@link NodeConfig.IntakeGroup#bytes} bytes (a
@@ -55,11 +63,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * at most the window, at most {@link NodeConfig.IntakeGroup#concurrency} groups in flight; a backlog of {@code max × concurrency
  * × 16} saves full fails the save at once with {@link OverloadedException} (retryable; its body stays local, it is not open). A
  * single save is a group of one ({@link NodeConfig.IntakeGroup#SINGLE}). One Postgres transaction on one connection holds a
- * group: each member's ingress record ({@link PgMessageStore}, outside its batching writer), its work item naming the record's
- * ref ({@link PgWorkQueue}) and — only when its flow keeps its input ({@code keepInput}) — its body's kept ref ({@code body_refs}).
+ * group: each member's ingress record ({@link PgMessageStore}, outside its batching writer), its body's kept ref ({@code
+ * body_refs}) when its flow keeps its input ({@code keepInput}) or the body is keyed by another message, and its work item
+ * naming the record's ref ({@link PgWorkQueue}) — or, for a body keyed by another message, copying the kept ref.
  * Its statements go in turns, a turn's statements sent together and the next turn sent only once every reply of this one
  * came: BEGIN alone; the rows — the records as one insert into messages and one
- * into message_keys, then each member's item and kept ref in call order (so one partition's items keep the call order); then,
+ * into message_keys, then each member's kept ref and item in call order (so one partition's items keep the call order); then,
  * after the {@code abandoned} check, COMMIT alone. A failed statement of a turn fails the turn with its own cause (the first
  * failed in the turn's order, never a later statement's aborted transaction) and the transaction rolls back.
  *
@@ -365,9 +374,9 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The rows turn over the members: their records' inserts, then each one's item and — {@code keepInput}, a body of this store —
-     * kept ref, each sent before any reply; then the abandoned check on each. Fails with the first failed statement's cause in that
-     * order, or with the first member found abandoned.
+     * The rows turn over the members: their records' inserts, then each one's kept ref — a body of this store, its flow keeping
+     * its input or the body {@link #shared} — and item, each sent before any reply; then the abandoned check on each. Fails with the
+     * first failed statement's cause in that order, or with the first member found abandoned.
      */
     private Future<Void> writes(SqlClient tx, Group g) {
         List<Future<?>> replies = new ArrayList<>(2 + 2 * g.members.size());
@@ -379,8 +388,8 @@ public final class PgIntake implements Intake {
         replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key; none without a key
         replies.add(messages.insert(tx, g.members.stream().map(Member::ingress).toList()));
         for (Member m : g.members) {
+            if (m.durable() != null && (m.keepInput() || shared(m))) replies.add(m.durable().keepIn(tx));   // before the item that may copy it
             replies.add(enqueue(tx, m, g));
-            if (m.keepInput() && m.durable() != null) replies.add(m.durable().keepIn(tx));
         }
         return Future.join(replies).compose(written -> {
             for (Member m : g.members) if (m.abandoned().isComplete()) return Future.failedFuture(abandoned(m));
@@ -389,9 +398,9 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The item: naming the record forced for it (its insert answering the transaction's id, into {@code g.xid}); taking the kept ref of
-     * a body durable already; naming nothing for another store's body. With a slot reserved for {@code m}, written leased to the
-     * queue's node for the slot's lease when it heads its key, into {@code g.leased}.
+     * The item: naming the record forced for it; taking the kept ref of a body durable already or {@link #shared}; naming nothing for
+     * another store's body. An insert for a record forced answers the transaction's id, into {@code g.xid}. With a slot reserved for
+     * {@code m}, written leased to the queue's node for the slot's lease when it heads its key, into {@code g.leased}.
      */
     private Future<Void> enqueue(SqlClient tx, Member m, Group g) {
         String id = m.arrived().id();
@@ -400,8 +409,9 @@ public final class PgIntake implements Intake {
         String holder = slot == null ? null : queue.node().orElseThrow();
         java.time.Duration lease = slot == null ? null : slot.lease();
         if (durable == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), holder, lease).map(item -> leased(g, m, item));
-        if (durable.ref() == null) {
+        if (durable.ref() == null || shared(m)) {
             return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key(), holder, lease).map(copied -> {
+                if (durable.ref() != null) g.xid.set(copied.xid());   // a record forced: an in-doubt commit keeps it open by this id
                 copied.elsewhere().ifPresent(node -> g.elsewhere.put(m, node));   // announced once committed
                 return leased(g, m, copied.leased());
             });
@@ -410,6 +420,11 @@ public final class PgIntake implements Intake {
             g.xid.set(written.xid());
             return leased(g, m, written.leased());
         });
+    }
+
+    /** Whether {@code m}'s body is this store's and keyed by another message than {@code m}'s own: the caller's body in a call between flows. */
+    private static boolean shared(Member m) {
+        return m.durable() != null && !m.arrived().body().key().messageId().equals(m.arrived().id());
     }
 
     /** {@code m}'s item, if written leased, kept for its slot. */

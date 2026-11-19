@@ -257,12 +257,14 @@ class PgWorkQueueEventSourcesIT {
         keptOn("src-b", "node-b");
         keptOn("src-a", "node-a");
         PgWorkQueue.Copied far = onA.enqueue(pool, "m-far", "orders", 1, null, BlobKey.body("src-b", 0), "node-a", LEASE).await();
-        assertEquals(new PgWorkQueue.Copied(Optional.empty(), Optional.of("node-b")), far, "a ref of node-b: a plain row, node-b named");
+        assertEquals(Optional.empty(), far.leased(), "a ref of node-b: a plain row");
+        assertEquals(Optional.of("node-b"), far.elsewhere(), "and node-b named");
         PgWorkQueue.Copied near = onA.enqueue(pool, "m-near", "orders", 1, null, BlobKey.body("src-a", 0), "node-a", LEASE).await();
         assertTrue(near.leased().isPresent(), "a ref of its own node: written leased");
         assertEquals(Optional.empty(), near.elsewhere(), "and no node named");
         PgWorkQueue.Copied plainNear = onA.enqueue(pool, "m-plain", "orders", 1, null, BlobKey.body("src-a", 0), null, null).await();
-        assertEquals(new PgWorkQueue.Copied(Optional.empty(), Optional.empty()), plainNear, "a plain row of its own node's ref names no node");
+        assertEquals(Optional.empty(), plainNear.leased(), "no holder: a plain row");
+        assertEquals(Optional.empty(), plainNear.elsewhere(), "a plain row of its own node's ref names no node");
         PgWorkQueue.Copied anyNode = new PgWorkQueue(pool).enqueue(pool, "m-any", "orders", 1, null, BlobKey.body("src-a", 0), null, null).await();
         assertEquals(Optional.of("node-a"), anyNode.elsewhere(), "a queue of no node names the ref's node, whichever it is");
     }
