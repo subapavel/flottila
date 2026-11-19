@@ -33,8 +33,11 @@ import io.vertx.core.json.JsonObject;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -455,15 +458,26 @@ final class FlowTests {
      */
     static Path copy(Path from, Path to) throws IOException {
         Path git = from.resolve(".git");
-        List<Path> paths;
-        try (Stream<Path> walk = Files.walk(from)) {
-            paths = walk.filter(p -> !p.startsWith(git)).sorted().toList();
-        }
-        for (Path p : paths) {
-            Path target = to.resolve(from.relativize(p).toString());
-            if (Files.isDirectory(p)) Files.createDirectories(target);
-            else if (Files.isRegularFile(p)) Files.copy(p, target);
-        }
+        Files.walkFileTree(from, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attributes) throws IOException {
+                if (dir.equals(git)) return FileVisitResult.SKIP_SUBTREE;   // not read at all
+                Files.createDirectories(target(dir));
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                if (file.equals(git)) return FileVisitResult.CONTINUE;
+                if (Files.isDirectory(file)) Files.createDirectories(target(file));   // a linked directory: not followed
+                else if (Files.isRegularFile(file)) Files.copy(file, target(file));   // a link to a file: the file
+                return FileVisitResult.CONTINUE;
+            }
+
+            private Path target(Path p) {
+                return to.resolve(from.relativize(p).toString());
+            }
+        });
         return to;
     }
 

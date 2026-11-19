@@ -66,7 +66,7 @@ final class Dependencies implements AutoCloseable {
     private boolean unlisted;   // the candidates directory could not be listed: candidates is empty
     private Path temp;   // null until the first read through git
     private PackageRepositories repositories;
-    private int written;
+    private int folders;   // the commits written so far, each into a folder of its own
     /** The commits read so far, by {@code <repository> <commit>}. */
     private final Map<String, Found> commits = new HashMap<>();
 
@@ -196,11 +196,14 @@ final class Dependencies implements AutoCloseable {
         }
     }
 
-    /** The files of the commit {@code entry} pins, read once and checked against its content; empty with a line added to {@code problems}. */
+    /**
+     * The files of the commit {@code entry} pins, read once, checked against the content of every entry that pins it; empty with a
+     * line added to {@code problems}.
+     */
     private Optional<Found> read(Package.Locked entry, List<String> problems) throws IOException {
         String key = entry.repository() + " " + entry.commit();
         Found known = commits.get(key);
-        if (known != null) return Optional.of(known);
+        if (known != null) return drift(entry, known.pin().content(), problems) ? Optional.empty() : Optional.of(known);
         String dependency = "dependency " + entry.name() + "@" + entry.version() + ": ";
         Commit commit;
         try {
@@ -211,12 +214,7 @@ final class Dependencies implements AutoCloseable {
         }
         Optional<Path> files = written(commit, dependency, problems);
         if (files.isEmpty()) return Optional.empty();
-        String content = Package.content(files.get());
-        if (!content.equals(entry.content())) {
-            problems.add("package.lock pins " + entry.name() + "@" + entry.version() + " " + entry.content() + "; " + entry.repository() + " at "
-                    + entry.commit() + " has " + content);
-            return Optional.empty();
-        }
+        if (drift(entry, Package.content(files.get()), problems)) return Optional.empty();
         Package pkg;
         try {
             pkg = Package.load(files.get());
@@ -229,9 +227,17 @@ final class Dependencies implements AutoCloseable {
         return Optional.of(f);
     }
 
+    /** Whether {@code entry} pins a content other than {@code content}, its commit's; a line added to {@code problems} when it does. */
+    private static boolean drift(Package.Locked entry, String content, List<String> problems) {
+        if (content.equals(entry.content())) return false;
+        problems.add("package.lock pins " + entry.name() + "@" + entry.version() + " " + entry.content() + "; " + entry.repository() + " at "
+                + entry.commit() + " has " + content);
+        return true;
+    }
+
     /** The files of {@code commit} written into a folder of the run's own; empty with a line added to {@code problems} when the seam refuses them. */
     private Optional<Path> written(Commit commit, String dependency, List<String> problems) throws IOException {
-        Path dir = Files.createDirectory(temp.resolve("commit-" + written++));
+        Path dir = Files.createDirectory(temp.resolve("commit-" + folders++));
         try {
             commit.write(dir);
             return Optional.of(dir);
