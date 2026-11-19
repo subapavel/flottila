@@ -31,7 +31,8 @@ import java.util.OptionalInt;
  * statement, so neither stands without the other. An act that answers {@link Unsettled} or {@link NotParked} writes nothing.
  *
  * <p>A retry of a stopped message updates its row in place; one without a work row inserts a row at the tail of its key from
- * its ingress body's kept ref ({@code <id>/0/body}), as the intake's copy does. A cancel deletes the message's stopped rows,
+ * the kept ref of the body its DLQ row names ({@code body_key}), as the intake's copy does: its own ingress body
+ * ({@code <id>/0/body}), or for a callee of a call between flows its caller's body, kept under the caller's key. A cancel deletes the message's stopped rows,
  * lost or not, and then reads the body node of its key's next row for {@link Done#node}. Audit details: a retry's flow,
  * attempt, partition key, the seq of the row that runs and the remote address; a cancel's flow, step, step name, the park's
  * instant, the partition key, the body's hash ({@code <algorithm>:<hex>}) and size, the reason when given, the remote address,
@@ -47,8 +48,11 @@ import java.util.OptionalInt;
  */
 public final class PgFailedMessages implements FailedMessages {
 
-    /** The DLQ row a retry acts on, locked: message $1 of flow $2 parked by its worker at step 1 after attempt $3 (prop {@code attempt}). */
-    private static final String PARKED_AFTER = "select id from dlq where id = $1 and flow = $2 and step = 1 and props->>'attempt' = $3::int::text for update";
+    /**
+     * The DLQ row a retry acts on, locked: message $1 of flow $2 parked by its worker at step 1 after attempt $3 (prop
+     * {@code attempt}). Answers its columns.
+     */
+    private static final String PARKED_AFTER = "select " + PgDlq.COLUMNS + " from dlq where id = $1 and flow = $2 and step = 1 and props->>'attempt' = $3::int::text for update";
 
     /** The flow and key of message $1's DLQ row, read before any lock: a cancel takes that key's lock before it locks the row. */
     private static final String KEY_OF = "select flow, partition_key from dlq where id = $1";
@@ -71,19 +75,19 @@ public final class PgFailedMessages implements FailedMessages {
             + " locked_until = null, available_at = now() where seq = $1 and stopped_at is not null and lost_at is null returning body_node";
 
     /**
-     * A new row at the tail of key $3 (none: unkeyed) of flow $2 for message $1 from its ingress body's kept ref, held for key share
-     * with its segment row: step 1, handed out $4 times, its own bound $4 + 1, due at once, unleased. Answers the rows inserted,
-     * the row's seq and body node, and whether an accepted loss gave the ref up.
+     * A new row at the tail of key $3 (none: unkeyed) of flow $2 for message $1 from the kept ref of body key ($5, $6, $7), held for
+     * key share with its segment row: step 1, handed out $4 times, its own bound $4 + 1, due at once, unleased. Answers the rows
+     * inserted, the row's seq and body node, and whether an accepted loss gave the ref up.
      */
     private static final String AT_TAIL = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
                            join journal_segments s on s.node = r.node and s.segment = r.segment
-                          where r.message_id = $1::text and r.step = 0 and r.part = 'body' and r.lost_at is null for key share),
+                          where r.message_id = $5::text and r.step = $6::int and r.part = $7::text and r.lost_at is null for key share),
             ins as (insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, attempts, max_attempts)
                     select $1::text, $2::text, 1, $3::text, node, segment, position, length, $4::int, $4::int + 1 from src
                     returning seq, body_node)
             select (select count(*) from ins), (select seq from ins), (select body_node from ins),
-                   exists (select 1 from body_refs where message_id = $1::text and step = 0 and part = 'body' and lost_at is not null)""";
+                   exists (select 1 from body_refs where message_id = $5::text and step = $6::int and part = $7::text and lost_at is not null)""";
 
     /**
      * Message $1's oldest work row of the flow its arrival record names, locked: whether it is held (a stopped row is held too) or
@@ -125,7 +129,7 @@ public final class PgFailedMessages implements FailedMessages {
     }
 
     /**
-     * {@link FailedMessages#retry}: without the ingress body's kept ref, a retry that would add a row fails
+     * {@link FailedMessages#retry}: without the kept ref of the body the DLQ row names, a retry that would add a row fails
      * {@link BlobNotFoundException} ({@link BodyLostException} when an accepted loss gave it up) and the transaction rolls back.
      */
     @Override
@@ -139,7 +143,7 @@ public final class PgFailedMessages implements FailedMessages {
                     if (parked.rowCount() == 0) return Future.<Act>succeededFuture(NotParked.INSTANCE);
                     return tx.preparedQuery(ROWS).execute(Tuple.of(messageId, flow, partitionKey)).compose(rows -> {
                         List<Row> mine = list(rows);
-                        if (mine.isEmpty()) return atTail(tx, messageId, flow, partitionKey, attempt, by);
+                        if (mine.isEmpty()) return atTail(tx, messageId, flow, partitionKey, attempt, by, PgDlq.parked(parked.iterator().next()).bodyKey());
                         Row only = mine.get(0);
                         if (mine.size() > 1 || !only.getBoolean("stopped") || only.getBoolean("lost")) {
                             return Future.<Act>succeededFuture(new Unsettled(only.getLong("seq")));
@@ -153,12 +157,14 @@ public final class PgFailedMessages implements FailedMessages {
                 }));
     }
 
-    /** The retry of a message without a work row: its new row at the tail of its key, then the DLQ row deleted and the act audited. */
-    private Future<Act> atTail(SqlConnection tx, String messageId, String flow, String partitionKey, int attempt, Actor by) {
-        return tx.preparedQuery(AT_TAIL).execute(Tuple.of(messageId, flow, partitionKey, attempt)).compose(rows -> {
+    /**
+     * The retry of a message without a work row: its new row at the tail of its key from the kept ref of {@code body}, then the
+     * DLQ row deleted and the act audited.
+     */
+    private Future<Act> atTail(SqlConnection tx, String messageId, String flow, String partitionKey, int attempt, Actor by, BlobKey body) {
+        return tx.preparedQuery(AT_TAIL).execute(Tuple.of(messageId, flow, partitionKey, attempt, body.messageId(), body.step(), body.part())).compose(rows -> {
             Row r = rows.iterator().next();
             if (r.getLong(0) == 0) {
-                BlobKey body = BlobKey.body(messageId, 0);
                 return Future.failedFuture(r.getBoolean(3) ? new BodyLostException(body) : new BlobNotFoundException(body));
             }
             return retried(tx, messageId, flow, partitionKey, attempt, by, r.getLong(1), r.getString(2));
