@@ -261,10 +261,10 @@ filter [dateadd("seconds"; 1), datesub("seconds"; 1), date]
 stdin 0\n
 end
 
-# now is a number of seconds near the clock
+# now is a number of seconds since the epoch, past 2023
 case dates/now
 arg -c
-filter [now | type, (. > 1700000000), (. == floor or true)]
+filter now | [type, . > 1700000000]
 stdin null\n
 end
 
