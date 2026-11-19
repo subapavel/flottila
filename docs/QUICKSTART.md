@@ -45,13 +45,21 @@ cd ui && QUARKUS_HTTP_PORT=18080 RAIL8_WORKSPACE=$HOME/rail8-workspace npm run d
 ```
 
 Open **http://localhost:5173**. The UI has **Messages**, the list of the messages the node recorded, **Endpoints**, the
-settings form of each endpoint file in `RAIL8_WORKSPACE`, and **Mappings**, the mapping studio. The UI sends its
+settings form of each endpoint file in `RAIL8_WORKSPACE`, **Flows**, the picture of each flow file in it, and
+**Mappings**, the mapping studio. The UI sends its
 `/admin` requests to the node on `localhost:8081` and adds the token itself, so the browser never sees it.
 
 An endpoint's form is drawn from its component's settings description, which the node serves, so it needs the node
 running. It opens read-only; Edit, change a setting, Check, and Save writes the file in the working folder, changing only
 the lines of the settings you changed. Deploy the edited package with `deploy/quickstart/deploy.sh ~/rail8-workspace/demo`.
 With `RAIL8_READ_ONLY=true` the forms only show the files, as on a server.
+
+To see the demo flows as pictures, open **Flows** and choose a flow, such as `invoice-sync`. Its tab draws the flow's
+steps from top to bottom: where messages arrive, each step, the fork of a `to` by prop into its endpoints, a call of
+another flow beside the step that makes it, and the end. Choose a node to see its settings in the drawer beside the
+picture; with none chosen, the drawer shows the flow's own settings. An endpoint opens in its form with Open endpoint,
+a flow called with Open flow. The picture only shows the file for now; the settings of the steps of modules and plugins
+come from the node, so it needs the node running too.
 
 The node migrates its database itself and serves `/health` on `localhost:8081`. Postgres is published on the host's
 loopback port 5432; if that is taken, prefix the `up` with `RAIL8_PG_HOST_PORT=55432`. Without a token the node exits

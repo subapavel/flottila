@@ -2,6 +2,9 @@ import type { Screen } from '../screens';
 import type { EndpointsApi } from './api';
 import { EndpointForm, type CloseGuard } from './EndpointForm';
 import { EndpointList } from './EndpointList';
+import type { FlowsApi } from './flows/api';
+import { FlowList } from './flows/FlowList';
+import { FlowPicture } from './flows/FlowPicture';
 
 /**
  * The tab of one endpoint file: its id is `endpoint:` and the file's path, its title the endpoint's id. Closing it while
@@ -26,5 +29,47 @@ export function endpointsScreen(api: EndpointsApi): Screen {
     id: 'endpoints',
     title: 'Endpoints',
     render: (open) => <EndpointList api={api} onOpen={(path, id) => open(endpointTab(api, path, id))} />,
+  };
+}
+
+/** `api` with every endpoint file read as one that may not be edited: the form beside a flow's picture only shows it. */
+function readOnly(api: EndpointsApi): EndpointsApi {
+  return {
+    ...api,
+    read: async (path) => {
+      const stored = await api.read(path);
+      return { ...stored, file: { ...stored.file, editable: false } };
+    },
+  };
+}
+
+/**
+ * The tab of one flow file: its id is `flow:` and the file's path, its title the flow's id. Its picture opens the
+ * endpoints and flows it links to in tabs of their own.
+ */
+export function flowTab(flows: FlowsApi, endpoints: EndpointsApi, path: string, id: string): Screen {
+  const shown = readOnly(endpoints);
+  const idOf = (file: string) => file.split('/').at(-1)!.replace(/\.ya?ml$/, '');
+  return {
+    id: `flow:${path}`,
+    title: id,
+    render: (open) => (
+      <FlowPicture
+        api={flows}
+        path={path}
+        endpointForm={(file) => <EndpointForm key={file} api={shown} path={file} />}
+        openEndpoint={(file) => open(endpointTab(endpoints, file, idOf(file)))}
+        openFlow={(file) => open(flowTab(flows, endpoints, file, idOf(file)))}
+      />
+    ),
+  };
+}
+
+/** The Flows screen over `flows`: the working folder's flow files, each one's picture opening in a tab of its own. */
+export function flowsScreen(flows: FlowsApi, endpoints: EndpointsApi): Screen {
+  return {
+    id: 'flows',
+    title: 'Flows',
+    render: (open) => <FlowList api={flows} onOpen={(path, id) => open(flowTab(flows, endpoints, path, id))} />,
   };
 }

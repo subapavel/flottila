@@ -1,6 +1,9 @@
 import type { UiModule } from '../screens';
 import { httpEndpointsApi } from './api';
-import { endpointsScreen } from './screen';
+import { httpFlowsApi } from './flows/api';
+import { endpointsScreen, flowsScreen } from './screen';
 
-/** The Endpoints screen, over the endpoint files the development server serves. */
-export default { order: 20, screens: [endpointsScreen(httpEndpointsApi())] } satisfies UiModule;
+const endpoints = httpEndpointsApi();
+
+/** The Endpoints and Flows screens, over the files of the working folder the development server serves. */
+export default { order: 20, screens: [endpointsScreen(endpoints), flowsScreen(httpFlowsApi(), endpoints)] } satisfies UiModule;
