@@ -21,8 +21,9 @@ import java.util.function.Supplier;
  * {@code bound} on the timer (past it the attempt fails with a {@link TimeoutException}), and when it fails nothing is
  * tried again, so a deploy can refuse it. {@link #retry} keeps trying after a failed start. Once a start succeeded, a break
  * of that consumer is always tried again. The first attempt calls the start of the consumer given on the caller's thread;
- * each attempt after it builds a fresh consumer from {@code fresh} (a throw fails that attempt) and calls its start on a
- * virtual thread of its own. What follows a start, once it completed or the bound came first, runs on a virtual thread too.
+ * each attempt after it builds a fresh consumer from {@code fresh} (a throw, an Error included, or null fails that attempt)
+ * and calls its start on a virtual thread of its own. What follows a start, once it completed or the bound came first, runs on
+ * a virtual thread too.
  *
  * <p>The delay before attempt n + 1 after n failures in a row is {@link #FIRST} doubled n − 1 times, at most {@link #CAP}:
  * 1, 2, 4, 8, 16, 30, 30 … seconds, counted from the failure. A consumer that ran {@link #STABLE} or longer before it broke
@@ -90,6 +91,7 @@ final class RestartingConsumer implements Consumer {
     private Future<Void> gone = Future.succeededFuture();
     /** The stops called here, settled, for stop() to wait for. */
     private Future<Void> stopped = Future.succeededFuture();
+    /** What stop() returns, once it was called. */
     private Future<Void> stop;
 
     /**
@@ -153,16 +155,18 @@ final class RestartingConsumer implements Consumer {
 
     @Override
     public Future<Void> stop() {
+        Promise<Void> done = Promise.promise();
         Future<Void> inFlight;
         synchronized (this) {
             if (stop != null) return stop;
+            stop = done.future();
             stopping = true;
             waiting = null;
             next.cancel();
             inFlight = attempt;
         }
         stopRequested.tryComplete();
-        stop = inFlight.transform(ended -> {
+        inFlight.transform(ended -> {
             Consumer running;
             Future<Void> before;
             synchronized (this) {
@@ -172,8 +176,8 @@ final class RestartingConsumer implements Consumer {
             }
             Future<Void> last = running == null ? Future.succeededFuture() : call(running::stop);
             return Future.join(last, before).transform(both -> last);
-        });
-        return stop;
+        }).onComplete(done);
+        return done.future();
     }
 
     /** The timer's task: the next attempt on a virtual thread of its own, never on the timer's thread. */
@@ -227,8 +231,8 @@ final class RestartingConsumer implements Consumer {
         }
         if (c == null) {
             try {
-                c = fresh.get();
-            } catch (RuntimeException refused) {
+                c = Objects.requireNonNull(fresh.get(), "the component built no consumer");
+            } catch (Throwable refused) {   // an Error of a plugin's build too: the attempt fails and the next one comes
                 outcome.fail(refused);
                 failed(refused, "could not be built");
                 ended.complete();
@@ -251,7 +255,11 @@ final class RestartingConsumer implements Consumer {
                     outcome.complete();
                     return;
                 }
-                giveUp(inner, call);
+                Promise<Void> down;
+                synchronized (this) {
+                    down = givingUp(call);
+                }
+                giveUp(inner, call, down);
                 boolean again = retrying();   // read before the failure is told: a retry() it leads to schedules the next attempt itself
                 outcome.fail(r.cause());
                 if (again) failed(r.cause(), "did not start");
@@ -286,23 +294,32 @@ final class RestartingConsumer implements Consumer {
 
     /** {@code inner} broke: when it is the one that runs, it is stopped and the next attempt scheduled. */
     private void broke(Consumer inner, Throwable cause) {
+        Promise<Void> down;
         synchronized (this) {
             if (stopping || current != inner) return;   // stopped, or no longer the one that runs
             current = null;
             if (Duration.between(ranSince, clock.instant()).compareTo(STABLE) >= 0) failures = 0;
+            down = givingUp(Future.succeededFuture());   // with current cleared: a stop() from now on waits for it
         }
-        giveUp(inner, Future.succeededFuture());
+        giveUp(inner, Future.succeededFuture(), down);
         failed(cause, "stopped working");
     }
 
-    /** Stops {@code inner}, once its start {@code call} completed; the next attempt waits for that stop. */
-    private void giveUp(Consumer inner, Future<Void> call) {
+    /**
+     * Records the stop of an inner about to be given up, whose start {@code call} has run or still runs: the next attempt waits
+     * for {@code down}, and so does stop() once that call completed. Called under the lock; completed by {@link #giveUp}.
+     */
+    private Promise<Void> givingUp(Future<Void> call) {
+        Promise<Void> down = Promise.promise();
+        gone = down.future();
+        if (call.isComplete()) stopped = Future.join(stopped, down.future()).mapEmpty();
+        return down;
+    }
+
+    /** Stops {@code inner}, once its start {@code call} completed, and completes {@code down} when that stop settled. */
+    private void giveUp(Consumer inner, Future<Void> call, Promise<Void> down) {
         String what = call.isComplete() ? "its consumer, given up, did not stop cleanly" : "its consumer, stopped once its late start completed, did not stop cleanly";
-        Future<Void> down = call.transform(started -> settled(call(inner::stop), what));
-        synchronized (this) {
-            gone = down;
-            if (call.isComplete()) stopped = Future.join(stopped, down).mapEmpty();
-        }
+        call.transform(started -> settled(call(inner::stop), what)).onComplete(down);
     }
 
     private synchronized boolean retrying() {
