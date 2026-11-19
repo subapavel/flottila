@@ -2,8 +2,9 @@ package dev.rail8.jq.query.ir;
 
 /**
  * How an operation's results relate to its input's path in a path variant: untracked, the input's own path, or a step
- * that adds to it. The five rules of a one-result step and the one of a many-result step each need a call form that is
- * also a {@code PathStep}, and no other rule may have one.
+ * that adds to it. KEY, INDEX, DYNAMIC, SLICE and KEY_LIST need a call form of one result and a fixed number of
+ * arguments that is also a {@code PathStep}, and such a form needs one of them; ALL and a {@code PathStep} of many
+ * results need each other. NONE and SAME take any other form, a {@code PathStep} of a list of arguments too.
  */
 public enum PathRule {
   /** Its results are not found in its input: each is untracked. */

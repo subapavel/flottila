@@ -223,6 +223,9 @@ class CardinalityAnalysisTest {
             "a PathOf of a NEVER body is NEVER", (Supplier<Node>) () -> label(0, comma(new PathOf(AT, brk(0), PATHS), c())), NONE),
         Arguments.argumentSet("an Update of a MANY lhs is ONE", (Supplier<Node>) () -> new Update(AT, Update.Kind.MODIFY, many(), many(), PATHS), ONE),
         Arguments.argumentSet("an assign is ONE", (Supplier<Node>) () -> new Update(AT, Update.Kind.ASSIGN, fn0(), c(), PATHS), ONE),
+        // An lhs with no result leaves the input as it is, which the Update gives: (1|empty) |= 1 gives 1.
+        Arguments.argumentSet(
+            "an Update of a NONE lhs is ONE", (Supplier<Node>) () -> new Update(AT, Update.Kind.MODIFY, label(0, brk(0)), c(), PATHS), ONE),
         Arguments.argumentSet(
             "an Update of a NEVER lhs is NEVER",
             (Supplier<Node>) () -> label(0, comma(new Update(AT, Update.Kind.MODIFY, brk(0), id(), PATHS), c())),
