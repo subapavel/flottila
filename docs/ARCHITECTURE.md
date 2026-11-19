@@ -435,7 +435,13 @@ deploy made on another node.
 - A graphical flow editor (React Flow). The flow file and the editor are two views of the same
   thing: an edit in either shows in the other. The flow file holds no layout. The editor shows a
   step's default name but never writes it, and an edit changes only the step edited, keeping the
-  file's comments and order as written.
+  file's comments and order as written. Its design is agreed (`docs/FLOW-EDITOR.md`):
+  - the editor's state is the file's text;
+  - it lays the flow out on its own, top to bottom, with the branches of a `to` by prop side by side
+    and each process in a lane of its own;
+  - an edit replaces only the text of what it changes, and must read back as intended;
+  - every step's settings form is drawn from a settings description; a module's or plugin's step is
+    described by the JSON Schema of its options, which the admin API serves (`GET /admin/steps`).
 - An authentication, authorization and secret store comes in step 2; today secrets are environment
   variables.
 
@@ -887,6 +893,8 @@ public web page.
   its modules; the shell's list and the development server's routes built from them.
 - Editing endpoint files on a shared server, written to git with an author, with deploy from git and sign-in.
 - Writing a view of a payload (how a body is shown), later and simply.
+- The flow editor beside the Endpoints screen, over the working folder's flow files
+  (`/files/flows`), as part 4 plans it.
 
 ## 10. Operations
 
