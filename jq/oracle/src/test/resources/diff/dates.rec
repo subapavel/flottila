@@ -1,0 +1,407 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case dates/strftime-conversions
+def 93a36be254d5
+rc 0
+stdout ["%a","Thu"]\n["%A","Thursday"]\n["%b","Mar"]\n["%B","March"]\n["%c","Thu Mar  5 23:51:47 2015"]\n["%C","20"]\n["%d","05"]\n["%D","03/05/15"]\n["%e"," 5"]\n["%F","2015-03-05"]\n["%g","15"]\n["%G","2015"]\n["%h","Mar"]\n["%H","23"]\n["%I","11"]\n["%j","064"]\n["%k","23"]\n["%l","11"]\n["%m","03"]\n["%M","51"]\n["%n","\\n"]\n["%p","PM"]\n["%P","pm"]\n["%r","11:51:47 PM"]\n["%R","23:51"]\n["%s","1425599507"]\n["%S","47"]\n["%t","\\t"]\n["%T","23:51:47"]\n["%u","4"]\n["%U","09"]\n["%V","10"]\n["%w","4"]\n["%W","09"]\n["%x","03/05/15"]\n["%X","23:51:47"]\n["%y","15"]\n["%Y","2015"]\n["%z","+0000"]\n["%Z","GMT"]\n["%%","%"]\n
+stderr
+end
+
+case dates/strftime-unknown
+def fc67aace6fa9
+rc 0
+stdout ["%E","%E"]\n["%O","%O"]\n["%J","%J"]\n["%K","%K"]\n["%L","%L"]\n["%N","%N"]\n["%Q","%Q"]\n["%f","%f"]\n["%i","%i"]\n["%l","11"]\n["%o","%o"]\n["%q","%q"]\n["%v","%v"]\n["%+","%+"]\n["%:","%:"]\n["%","%"]\n["x%","x%"]\n["%5","   %5"]\n["%_","%_"]\n["%5E","  %5E"]\n["%-5Q"," %-5Q"]\n["%_10Q","     %_10Q"]\n["%^q","%^Q"]\n["%#q","%#q"]\n["%:z","%:z"]\n["%E5Y","%E5Y"]\n["%EOd","%EOd"]\n
+stderr
+end
+
+case dates/strftime-flags
+def 5763959246a7
+rc 0
+stdout ["%_5d","    5"]\n["%-d","5"]\n["%^a","THU"]\n["%#Z","gmt"]\n["%10Y","0000002015"]\n["%-10a","       Thu"]\n["%010a","0000000Thu"]\n["%#p","pm"]\n["%^P","pm"]\n["%^#Z","gmt"]\n["%#^Z","gmt"]\n["%3e","  5"]\n["%-3d","  5"]\n["%-k","23"]\n["%05j","00064"]\n["%^5j","00064"]\n["%5%","    %"]\n["%5n","    \\n"]\n["%010D","0003/05/15"]\n["%012F","002015-03-05"]\n["%^c","THU MAR  5 23:51:47 2015"]\n["%#c","Thu Mar  5 23:51:47 2015"]\n["%^x","03/05/15"]\n["%10c","Thu Mar  5 23:51:47 2015"]\n["%-10D","  03/05/15"]\n["%010F","2015-03-05"]\n["%^r","11:51:47 PM"]\n["%#A","THURSDAY"]\n["%#B","MARCH"]\n["%^b","MAR"]\n["%^h","MAR"]\n["%#a","THU"]\n["%_Od"," 5"]\n["%5EY","02015"]\n["%15s","     1425599507"]\n["%015s","000001425599507"]\n["%-5s","1425599507"]\n["%_5s","1425599507"]\n
+stderr
+end
+
+case dates/strftime-modifiers
+def ba97571aa1bb
+rc 0
+stdout ["%Ea","%Ea"]\n["%EA","%EA"]\n["%Eb","%Eb"]\n["%EB","%EB"]\n["%Ec","Thu Mar  5 23:51:47 2015"]\n["%EC","20"]\n["%Ed","%Ed"]\n["%ED","%ED"]\n["%Ee","%Ee"]\n["%EF","%EF"]\n["%Eg","%Eg"]\n["%EG","%EG"]\n["%Eh","%Eh"]\n["%EH","%EH"]\n["%EI","%EI"]\n["%Ej","%Ej"]\n["%Ek","%Ek"]\n["%El","%El"]\n["%Em","%Em"]\n["%EM","%EM"]\n["%En","\\n"]\n["%Ep","PM"]\n["%EP","pm"]\n["%Er","11:51:47 PM"]\n["%ER","23:51"]\n["%Es","1425599507"]\n["%ES","%ES"]\n["%Et","\\t"]\n["%ET","23:51:47"]\n["%Eu","4"]\n["%EU","%EU"]\n["%EV","%EV"]\n["%Ew","%Ew"]\n["%EW","%EW"]\n["%Ex","03/05/15"]\n["%EX","23:51:47"]\n["%Ey","15"]\n["%EY","2015"]\n["%Ez","+0000"]\n["%EZ","GMT"]\n["%Oa","%Oa"]\n["%OA","%OA"]\n["%Ob","Mar"]\n["%OB","March"]\n["%Oc","%Oc"]\n["%OC","20"]\n["%Od","05"]\n["%OD","%OD"]\n["%Oe"," 5"]\n["%OF","%OF"]\n["%Og","15"]\n["%OG","2015"]\n["%Oh","Mar"]\n["%OH","23"]\n["%OI","11"]\n["%Oj","064"]\n["%Ok","23"]\n["%Ol","11"]\n["%Om","03"]\n["%OM","51"]\n["%On","\\n"]\n["%Op","PM"]\n["%OP","pm"]\n["%Or","11:51:47 PM"]\n["%OR","23:51"]\n["%Os","1425599507"]\n["%OS","47"]\n["%Ot","\\t"]\n["%OT","23:51:47"]\n["%Ou","4"]\n["%OU","09"]\n["%OV","10"]\n["%Ow","4"]\n["%OW","09"]\n["%Ox","%Ox"]\n["%OX","%OX"]\n["%Oy","15"]\n["%OY","%OY"]\n["%Oz","+0000"]\n["%OZ","GMT"]\n
+stderr
+end
+
+case dates/strftime-offset
+def 4eb8d9a97649
+rc 0
+stdout ["%z","+0000"]\n["%10z","         +0000000000"]\n["%_10z","         +         0"]\n["%-z","+0"]\n["%_z","+   0"]\n["%3z","  +0000"]\n["%010z","000000000+0000000000"]\n["%^z","+0000"]\n["%#z","+0000"]\n["%Ez","+0000"]\n["%Oz","+0000"]\n
+stderr
+end
+
+case dates/strftime-hours
+def 101d7bb2910e
+rc 0
+stdout [[2015,0,1,0],"12 12 AM am 12:00:00 AM"]\n[[2015,0,1,12],"12 12 PM pm 12:00:00 PM"]\n[[2015,0,1,13],"01  1 PM pm 01:00:00 PM"]\n[[2015,0,1,23,59,59],"11 11 PM pm 11:59:59 PM"]\n
+stderr
+end
+
+case dates/strftime-years
+def 140104a58eaf
+rc 0
+stdout [[-5,0,1],"-5|-005|  -5|-1|-01|95|-6|94|-5-01-01|Sun Jan  1 00:00:00 -5"]\n[[0,0,1],"0|0000|   0|0|000|00|-1|99|0-01-01|Sat Jan  1 00:00:00 0"]\n[[1,0,1],"1|0001|   1|0|000|01|1|01|1-01-01|Mon Jan  1 00:00:00 1"]\n[[99,0,1],"99|0099|  99|0|000|99|99|99|99-01-01|Thu Jan  1 00:00:00 99"]\n[[2015,0,1],"2015|2015|2015|20|020|15|2015|15|2015-01-01|Thu Jan  1 00:00:00 2015"]\n[[2147483647,0,1],"2147483647|2147483647|2147483647|21474836|21474836|47|2147483647|47|2147483647-01-01|Tue Jan  1 00:00:00 2147483647"]\n[[-2147483648,0,1],"-2147481748|-2147481748|-2147481748|-21474818|-21474818|52|-2147481748|52|-2147481748-01-01|Thu Jan  1 00:00:00 -2147481748"]\n[[1E+300,0,1],"-2147481749|-2147481749|-2147481749|-21474818|-21474818|47|-2147481749|51|-2147481749-01-01|Wed Jan  1 00:00:00 -2147481749"]\n[[-1E+300,0,1],"-2147481748|-2147481748|-2147481748|-21474818|-21474818|52|-2147481748|52|-2147481748-01-01|Thu Jan  1 00:00:00 -2147481748"]\n
+stderr
+end
+
+case dates/strftime-weeks
+def 99015e36771b
+rc 0
+stdout [[2014,11,29],"52 52 01 2015 15 1 1 363"]\n[[2014,11,31],"52 52 01 2015 15 3 3 365"]\n[[2015,0,1],"00 00 01 2015 15 4 4 001"]\n[[2015,0,4],"01 00 01 2015 15 7 0 004"]\n[[2015,0,5],"01 01 02 2015 15 1 1 005"]\n[[2016,0,1],"00 00 53 2015 15 5 5 001"]\n[[2016,0,3],"01 00 53 2015 15 7 0 003"]\n[[2020,11,31],"52 52 53 2020 20 4 4 366"]\n[[2021,0,3],"01 00 53 2020 20 7 0 003"]\n
+stderr
+end
+
+case dates/strftime-normalise
+def 5e087150c41e
+rc 0
+stdout [[2015,13,40,25,61,70,9,400],"Sat Mar 12 02:02:10 2016 072 Sat 1457748130"]\n[[2015,-1,-5,-3,-2,-1,-1,-1],"Mon Nov 24 20:57:59 2014 328 Mon 1416862679"]\n[[2015.7,2.9,5.5,23.2,51.9,47.123,4,63],"Thu Mar  5 23:51:47 2015 064 Thu 1425599507"]\n[[2016,1,29,24],"Tue Mar  1 00:00:00 2016 061 Tue 1456790400"]\n[[2000,0,1],"Sat Jan  1 00:00:00 2000 001 Sat 946684800"]\n[[2015,0,1,0,0,60],"Thu Jan  1 00:01:00 2015 001 Thu 1420070460"]\n
+stderr
+end
+
+case dates/strftime-numbers
+def 377b7097dc80
+rc 0
+stdout [0,"Thu Jan  1 00:00:00 1970 0","Thu Jan  1 00:00:00 1970 0"]\n[1425599507,"Thu Mar  5 23:51:47 2015 1425599507","Thu Mar  5 23:51:47 2015 1425599507"]\n[1425599507.987,"Thu Mar  5 23:51:47 2015 1425599507","Thu Mar  5 23:51:47 2015 1425599507"]\n[-1,"Wed Dec 31 23:59:59 1969 -1","Wed Dec 31 23:59:59 1969 -1"]\n[-1.5,"Wed Dec 31 23:59:59 1969 -1","Wed Dec 31 23:59:59 1969 -1"]\n[1000000000000000.0,"Sun Jul  5 01:46:40 31690708 1000000000000000","Sun Jul  5 01:46:40 31690708 1000000000000000"]\n[1E+18,"error converting number of seconds since epoch to datetime","error converting number of seconds since epoch to datetime"]\n[-1E+18,"error converting number of seconds since epoch to datetime","error converting number of seconds since epoch to datetime"]\n[9.3E+18,"error converting number of seconds since epoch to datetime","error converting number of seconds since epoch to datetime"]\n
+stderr
+end
+
+case dates/strftime-length
+def a8cedbd54a41
+rc 0
+stdout [105]\n["strftime/1: unknown system failure"]\n[99]\n[100]\n[1099]\n[1100]\n
+stderr
+end
+
+case dates/strftime-nul
+def f718a87dc4ae
+rc 0
+stdout ["a\\u0000b","a"]\n["%Y\\u0000%m","2015"]\n["\\u0000",""]\n
+stderr
+end
+
+case dates/strftime-empty
+def 7a1a4b9440af
+rc 0
+stdout ["",""]\n["",""]\n["%p","PM"]\n
+stderr
+end
+
+case dates/strftime-errors
+def 1fbab20a563a
+rc 0
+stdout [null,"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs"]\n[true,"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs"]\n["x","strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs"]\n[{},"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs"]\n[[],"Sun Dec 31 00:00:00 1899","Sun Dec 31 00:00:00 1899","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n[["a"],"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n[[2015,"a"],"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n[[2015,null],"strftime/1 requires parsed datetime inputs","strflocaltime/1 requires parsed datetime inputs","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n[[1],"Sun Dec 31 00:00:00 0","Sun Dec 31 00:00:00 0","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n[[2015,2,5,23,51,47,4,63,"x"],"Thu Mar  5 23:51:47 2015","Thu Mar  5 23:51:47 2015","strftime/1 requires a string format","strflocaltime/1 requires a string format"]\n
+stderr
+end
+
+case dates/strflocaltime-tokyo
+def 6c62d8f81c45
+rc 0
+stdout ["%c %Z %z","Thu Mar  5 23:51:47 2015 JST +0900"]\n["%s","1425567107"]\n["%H","23"]\n
+stderr
+end
+
+case dates/strftime-s-tokyo
+def 3be05ba086e4
+rc 0
+stdout ["%s %Z %z","1425567107 GMT +0000"]\n["%c","Thu Mar  5 23:51:47 2015"]\n
+stderr
+end
+
+case dates/strflocaltime-gap
+def 20629cbbc32f
+rc 0
+stdout [[2021,2,14,2,30],"Sun Mar 14 03:30:00 2021 EDT 1615707000"]\n[[2021,2,14,2,0],"Sun Mar 14 03:00:00 2021 EDT 1615705200"]\n[[2021,2,14,3,0],"Sun Mar 14 03:00:00 2021 EDT 1615705200"]\n[[2021,2,14,1,59,59],"Sun Mar 14 01:59:59 2021 EST 1615705199"]\n
+stderr
+end
+
+case dates/strflocaltime-overlap
+def 1a50a27ad066
+rc 0
+stdout ["Sun Nov  7 01:30:00 2021 EDT 1636263000","Fri Jan  1 00:00:00 2021 EST 1609477200","Sun Nov  7 01:30:00 2021 EST 1636266600","Thu Jul  1 00:00:00 2021 EDT 1625112000","Sun Nov  7 01:30:00 2021 EDT 1636263000"]\n
+stderr
+end
+
+case dates/strftime-dst-asked
+def 9fddd75c26f1
+rc 0
+stdout ["%s","1625158800"]\n["%Z","GMT"]\n
+stderr
+end
+
+case dates/strflocaltime-zones
+def e3ca011e59d0
+rc 0
+stdout [0,"Thu Jan  1 05:30:00 1970 +0530 +0530"]\n[1425599507,"Fri Mar  6 05:36:47 2015 +0545 +0545"]\n[1625140800,"Thu Jul  1 17:45:00 2021 +0545 +0545"]\n
+stderr
+end
+
+case dates/strflocaltime-lord-howe
+def bd6569e341fe
+rc 0
+stdout [1425599507,"Fri Mar  6 10:51:47 2015 +11 +1100"]\n[1625140800,"Thu Jul  1 22:30:00 2021 +1030 +1030"]\n
+stderr
+end
+
+case dates/strflocaltime-lmt
+def c95c5851b648
+rc 0
+stdout [-5000000000,"Wed Jul 24 00:25:39 1811 LMT +0918"]\n[-2717668237,"Sun Nov 18 21:28:22 1883 LMT +0918"]\n
+stderr
+end
+
+case dates/strflocaltime-far
+def c6a7d1cb04b4
+rc 5
+stdout [185542586280000,"Tue Jul  1 08:00:00 5881580 EDT -0400","185542586298000"]\n[185542617816000,"Wed Jul  1 07:00:00 5881581 EST -0500","185542617834000"]\n
+stderr jq: error (at <stdin>:1): error converting number of seconds since epoch to datetime\n
+end
+
+case dates/strflocaltime-far-south
+def 50792fca1fff
+rc 5
+stdout [185542617816000,"Wed Jul  1 23:00:00 5881581 +11 +1100","185542617778200"]\n
+stderr jq: error (at <stdin>:1): error converting number of seconds since epoch to datetime\n
+end
+
+case dates/mktime
+def 7ee50e3f06ef
+rc 0
+stdout [[2015,2,5,23,51,47,4,63],1425599507]\n[[2015,2,5],1425513600]\n[[1970,0,1],0]\n[[1969,11,31,23,59,59],"invalid gmtime representation"]\n[[2015,13,40,25,61,70],1457748130]\n[[2015.9,2.9,5.9,23.9,51.9,47.9],1425599507]\n[[0,0,1],-62167219200]\n[[-5,0,1],-62324985600]\n[[1E+300,0,1],67768036160140800]\n[[2147483647,11,31,23,59,59],67767976233532800]\n[[-2147481748,0,1],-67768040609740800]\n[[2015,2,5,23,51,47,4,63,99],1425599507]\n
+stderr
+end
+
+case dates/mktime-errors
+def 2edbbaa89fc1
+rc 0
+stdout [null,"mktime requires array inputs"]\n[1,"mktime requires array inputs"]\n["x","mktime requires array inputs"]\n[{},"mktime requires array inputs"]\n[[],-2209075200]\n[["a"],"mktime requires parsed datetime inputs"]\n[[2015,null],"mktime requires parsed datetime inputs"]\n[[1969,11,31,23,59,59],"invalid gmtime representation"]\n[[2015,0,1,0,0,-1],1420070399]\n
+stderr
+end
+
+case dates/gmtime
+def fa02dada29b1
+rc 0
+stdout [0,[1970,0,1,0,0,0,4,0]]\n[1425599507,[2015,2,5,23,51,47,4,63]]\n[1425599507.25,[2015,2,5,23,51,47.25,4,63]]\n[-1,[1969,11,31,23,59,59,3,364]]\n[-0.5,[1970,0,1,0,0,0.5,4,0]]\n[-10000000000.0,[1653,1,10,6,13,20,1,40]]\n[1000000000000000.0,[31690708,6,5,1,46,40,0,186]]\n[67767976233532799,[-2147483648,0,1,0,0,0,3,0]]\n[67767976233532800,[-2147483648,0,1,0,0,0,3,0]]\n[67768036191676799,"error converting number of seconds since epoch to datetime"]\n[67768036191676800,"error converting number of seconds since epoch to datetime"]\n[1E+18,"error converting number of seconds since epoch to datetime"]\n[-1E+18,"error converting number of seconds since epoch to datetime"]\n[9.3E+18,"error converting number of seconds since epoch to datetime"]\n
+stderr
+end
+
+case dates/gmtime-errors
+def f7f917a9fbd5
+rc 0
+stdout [null,"gmtime() requires numeric inputs","localtime() requires numeric inputs"]\n["1","gmtime() requires numeric inputs","localtime() requires numeric inputs"]\n[[],"gmtime() requires numeric inputs","localtime() requires numeric inputs"]\n[{},"gmtime() requires numeric inputs","localtime() requires numeric inputs"]\n[true,"gmtime() requires numeric inputs","localtime() requires numeric inputs"]\n
+stderr
+end
+
+case dates/localtime-tokyo
+def 95b40ac077d4
+rc 0
+stdout [0,[1970,0,1,9,0,0,4,0]]\n[1425599507,[2015,2,6,8,51,47,5,64]]\n[1425599507.5,[2015,2,6,8,51,47.5,5,64]]\n[-10000000000.0,[1653,1,10,15,32,19,1,40]]\n[1000000000000000.0,[31690708,6,5,10,46,40,0,186]]\n
+stderr
+end
+
+case dates/localtime-new-york
+def 9d710d854d1b
+rc 0
+stdout [1615705200,[2021,2,14,3,0,0,0,72],1615690800]\n[1615708800,[2021,2,14,4,0,0,0,72],1615694400]\n[1636261200,[2021,10,7,1,0,0,0,310],1636246800]\n[1636264800,[2021,10,7,1,0,0,0,310],1636246800]\n[1636268400,[2021,10,7,2,0,0,0,310],1636250400]\n
+stderr
+end
+
+case dates/roundtrip
+def 16010d5cd1f9
+rc 5
+stdout [0,0,"1970-01-01T00:00:00Z",0,"1970-01-01T00:00:00Z"]\n[1425599507,1425599507,"2015-03-05T23:51:47Z",1425599507,"2015-03-05T23:51:47Z"]\n
+stderr jq: error (at <stdin>:1): invalid gmtime representation\n
+end
+
+case dates/prelude
+def a355fc97f71b
+rc 0
+stdout ["2015-03-05T23:51:47Z",1425599507,1425599507]\n["1970-01-01T00:00:00Z",0,0]\n["2015-03-05T23:51:47","date \\"2015-03-05T23:51:47\\" does not match format \\"%Y-%m-%dT%H:%M:%SZ\\"","date \\"2015-03-05T23:51:47\\" does not match format \\"%Y-%m-%dT%H:%M:%SZ\\""]\n["2015-03-05 23:51:47Z","date \\"2015-03-05 23:51:47Z\\" does not match format \\"%Y-%m-%dT%H:%M:%SZ\\"","date \\"2015-03-05 23:51:47Z\\" does not match format \\"%Y-%m-%dT%H:%M:%SZ\\""]\n[1,"strptime/1 requires string inputs and arguments","strptime/1 requires string inputs and arguments"]\n
+stderr
+end
+
+case dates/prelude-to
+def ab1defd091f0
+rc 0
+stdout [1425599507,"2015-03-05T23:51:47Z","2015-03-05T23:51:47Z"]\n[0,"1970-01-01T00:00:00Z","1970-01-01T00:00:00Z"]\n["x","strftime/1 requires parsed datetime inputs","strftime/1 requires parsed datetime inputs"]\n[[2015,2,5],"2015-03-05T00:00:00Z","2015-03-05T00:00:00Z"]\n
+stderr
+end
+
+case dates/not-in-1.8.2
+def f384e934837e
+rc 3
+stdout
+stderr jq: error: dateadd/2 is not defined at <top-level>, line 1, column 2:\n    [dateadd("seconds"; 1), datesub("seconds"; 1), date]\n     ^^^^^^^\njq: error: datesub/2 is not defined at <top-level>, line 1, column 25:\n    [dateadd("seconds"; 1), datesub("seconds"; 1), date]\n                            ^^^^^^^\njq: error: date/0 is not defined at <top-level>, line 1, column 48:\n    [dateadd("seconds"; 1), datesub("seconds"; 1), date]\n                                                   ^^^^\njq: 3 compile errors\n
+end
+
+case dates/now
+def 73a488982baf
+rc 0
+stdout ["number",true,true]\n
+stderr
+end
+
+case dates/strptime-conversions
+def 93f1328dfb7d
+rc 0
+stdout ["%a","Thu",[1900,0,0,0,0,0,4,367]]\n["%A","thursday",[1900,0,0,0,0,0,4,367]]\n["%b","Mar",[1900,2,0,0,0,0,3,58]]\n["%B","march",[1900,2,0,0,0,0,3,58]]\n["%h","MAR",[1900,2,0,0,0,0,3,58]]\n["%c","Thu Mar  5 23:51:47 2015",[2015,2,5,23,51,47,4,63]]\n["%C","20",[2000,0,0,0,0,0,5,-1]]\n["%d","05",[1900,0,5,0,0,0,5,4]]\n["%D","03/05/15",[2015,2,5,0,0,0,4,63]]\n["%e"," 5",[1900,0,5,0,0,0,5,4]]\n["%F","2015-03-05",[2015,2,5,0,0,0,4,63]]\n["%g","15",[1900,0,0,0,0,0,8,367]]\n["%G","2015",[1900,0,0,0,0,0,8,367]]\n["%H","23",[1900,0,0,23,0,0,8,367]]\n["%I","11",[1900,0,0,11,0,0,8,367]]\n["%j","064",[1900,0,0,0,0,0,8,63]]\n["%k","23",[1900,0,0,23,0,0,8,367]]\n["%l","11",[1900,0,0,11,0,0,8,367]]\n["%m","03",[1900,2,0,0,0,0,3,58]]\n["%M","51",[1900,0,0,0,51,0,8,367]]\n["%n"," ",[1900,0,0,0,0,0,8,367]]\n["%p","PM",[1900,0,0,0,0,0,8,367]]\n["%r","11:51:47 PM",[1900,0,0,23,51,47,8,367]]\n["%R","23:51",[1900,0,0,23,51,0,8,367]]\n["%s","1425599507",[2015,2,5,23,51,47,4,63]]\n["%S","47",[1900,0,0,0,0,47,8,367]]\n["%t","\\t",[1900,0,0,0,0,0,8,367]]\n["%T","23:51:47",[1900,0,0,23,51,47,8,367]]\n["%u","4",[1900,0,0,0,0,0,4,367]]\n["%U","09",[1900,0,0,0,0,0,8,367]]\n["%V","10",[1900,0,0,0,0,0,8,367]]\n["%w","4",[1900,0,0,0,0,0,4,367]]\n["%W","09",[1900,0,0,0,0,0,8,367]]\n["%x","03/05/15",[2015,2,5,0,0,0,4,63]]\n["%X","23:51:47",[1900,0,0,23,51,47,8,367]]\n["%y","15",[2015,0,0,0,0,0,3,-1]]\n["%Y","2015",[2015,0,0,0,0,0,3,-1]]\n["%z","+0100",[1900,0,0,0,0,0,8,367]]\n["%Z","UTC",[1900,0,0,0,0,0,8,367]]\n["%%","%",[1900,0,0,0,0,0,8,367]]\n["%P","pm","date \\"pm\\" does not match format \\"%P\\""]\n["%f","1","date \\"1\\" does not match format \\"%f\\""]\n["%Q","1","date \\"1\\" does not match format \\"%Q\\""]\n["%","","date \\"\\" does not match format \\"%\\""]\n["x%","x","date \\"x\\" does not match format \\"x%\\""]\n
+stderr
+end
+
+case dates/strptime-numbers
+def 0beb684606de
+rc 0
+stdout ["%d","5",[1900,0,5,0,0,0,5,4]]\n["%d","  5",[1900,0,5,0,0,0,5,4]]\n["%d","0","date \\"0\\" does not match format \\"%d\\""]\n["%d","31",[1900,0,31,0,0,0,3,30]]\n["%d","32","date \\"32\\" does not match format \\"%d\\""]\n["%d","123","date \\"123\\" does not match format \\"%d\\""]\n["%d","-5","date \\"-5\\" does not match format \\"%d\\""]\n["%d","+5","date \\"+5\\" does not match format \\"%d\\""]\n["%d%m","35","date \\"35\\" does not match format \\"%d%m\\""]\n["%m %d","99 7",[1900,8,9,0,0,0,0,251," 7"]]\n["%U %w","64 64",[1900,1,15,0,0,0,4,45," 64"]]\n["%j%m","3705",[1900,4,6,0,0,0,0,36]]\n["%Y%m","99999",[9999,8,0,0,0,0,2,242]]\n["%Y","02015","date \\"02015\\" does not match format \\"%Y\\""]\n["%Y","12345","date \\"12345\\" does not match format \\"%Y\\""]\n["%Y","0",[0,0,0,0,0,0,6,-1]]\n["%H%M","1234",[1900,0,0,12,34,0,8,367]]\n["%Y%m%d","20150305",[2015,2,5,0,0,0,4,63]]\n["%Y%m%d","2015035",[2015,2,5,0,0,0,4,63]]\n["%e%e","12","date \\"12\\" does not match format \\"%e%e\\""]\n["%e%e","1 2",[1900,0,2,0,0,0,2,1]]\n["%S","61",[1900,0,0,0,0,61,8,367]]\n["%S","62","date \\"62\\" does not match format \\"%S\\""]\n["%M","60","date \\"60\\" does not match format \\"%M\\""]\n["%H","24","date \\"24\\" does not match format \\"%H\\""]\n["%I","0","date \\"0\\" does not match format \\"%I\\""]\n["%I","13","date \\"13\\" does not match format \\"%I\\""]\n["%j","366",[1900,0,0,0,0,0,8,365]]\n["%j","367","date \\"367\\" does not match format \\"%j\\""]\n["%j","0","date \\"0\\" does not match format \\"%j\\""]\n["%m","13","date \\"13\\" does not match format \\"%m\\""]\n["%u","7",[1900,0,0,0,0,0,0,367]]\n["%u","0","date \\"0\\" does not match format \\"%u\\""]\n["%w","6",[1900,0,0,0,0,0,6,367]]\n["%w","7","date \\"7\\" does not match format \\"%w\\""]\n["%W","54","date \\"54\\" does not match format \\"%W\\""]\n["%V","54","date \\"54\\" does not match format \\"%V\\""]\n["%g","100","date \\"100\\" does not match format \\"%g\\""]\n["%G","123456789012",[1900,0,0,0,0,0,8,367]]\n["%G"," 5","date \\" 5\\" does not match format \\"%G\\""]\n["%y","-5","date \\"-5\\" does not match format \\"%y\\""]\n["%y","68",[2068,0,0,0,0,0,6,-1]]\n["%y","69",[1969,0,0,0,0,0,2,-1]]\n
+stderr
+end
+
+case dates/strptime-names
+def dfc2bd5703c0
+rc 0
+stdout ["%a","sunday",[1900,0,0,0,0,0,0,367]]\n["%a","SUN",[1900,0,0,0,0,0,0,367]]\n["%a","sundayx","date \\"sundayx\\" does not match format \\"%a\\""]\n["%a","sunx","date \\"sunx\\" does not match format \\"%a\\""]\n["%a","Thurs","date \\"Thurs\\" does not match format \\"%a\\""]\n["%a"," Thu","date \\" Thu\\" does not match format \\"%a\\""]\n["%A","sun",[1900,0,0,0,0,0,0,367]]\n["%b","mayday","date \\"mayday\\" does not match format \\"%b\\""]\n["%B","may",[1900,4,0,0,0,0,1,119]]\n["%b","septembe","date \\"septembe\\" does not match format \\"%b\\""]\n["%b"," mar","date \\" mar\\" does not match format \\"%b\\""]\n["%p","AMx","date \\"AMx\\" does not match format \\"%p\\""]\n["%p","a","date \\"a\\" does not match format \\"%p\\""]\n["%p"," pm","date \\" pm\\" does not match format \\"%p\\""]\n["%p","am",[1900,0,0,0,0,0,8,367]]\n
+stderr
+end
+
+case dates/strptime-white-space
+def 2fd3da5b7b6f
+rc 0
+stdout [" %d","5",[1900,0,5,0,0,0,5,4]]\n["%d ","5",[1900,0,5,0,0,0,5,4]]\n[" x"," \\tx",[1900,0,0,0,0,0,8,367]]\n["x"," x","date \\" x\\" does not match format \\"x\\""]\n["x","X","date \\"X\\" does not match format \\"x\\""]\n["%n%d"," \\t5",[1900,0,5,0,0,0,5,4]]\n["%t","x","date \\"x\\" does not match format \\"%t\\""]\n["%%%d","%5",[1900,0,5,0,0,0,5,4]]\n["%%"," %","date \\" %\\" does not match format \\"%%\\""]\n["%d","05 ",[1900,0,5,0,0,0,5,4," "]]\n["%d","05  ",[1900,0,5,0,0,0,5,4,"  "]]\n["%d","05\\t",[1900,0,5,0,0,0,5,4,"\\t"]]\n["%d","05x","date \\"05x\\" does not match format \\"%d\\""]\n["%Z","",[1900,0,0,0,0,0,8,367]]\n["%Z"," ",[1900,0,0,0,0,0,8,367]]\n["%Z","abc def",[1900,0,0,0,0,0,8,367," def"]]\n["%d","05\\u0000x",[1900,0,5,0,0,0,5,4]]\n["%d\\u0000%m","05",[1900,0,5,0,0,0,5,4]]\n
+stderr
+end
+
+case dates/strptime-modifiers
+def 8233f4c4ac46
+rc 0
+stdout ["%-d","5",[1900,0,5,0,0,0,5,4]]\n["%_d","5",[1900,0,5,0,0,0,5,4]]\n["%0d","5",[1900,0,5,0,0,0,5,4]]\n["%^a","thu",[1900,0,0,0,0,0,4,367]]\n["%#a","thu",[1900,0,0,0,0,0,4,367]]\n["%5d","5",[1900,0,5,0,0,0,5,4]]\n["%10Y","2015",[2015,0,0,0,0,0,3,-1]]\n["%E-d","5","date \\"5\\" does not match format \\"%E-d\\""]\n["%-Ed","5","date \\"5\\" does not match format \\"%-Ed\\""]\n["%EY","2015",[2015,0,0,0,0,0,3,-1]]\n["%EC","20",[2000,0,0,0,0,0,5,-1]]\n["%Ex","03/05/15",[2015,2,5,0,0,0,4,63]]\n["%EX","1:2:3",[1900,0,0,1,2,3,8,367]]\n["%Ec","Thu Mar  5 23:51:47 2015",[2015,2,5,23,51,47,4,63]]\n["%Ey","15","date \\"15\\" does not match format \\"%Ey\\""]\n["%Ey","02015",[2005,0,0,0,0,0,5,-1]]\n["%Ey","123456",[2056,0,0,0,0,0,5,-1]]\n["%Ey","1234567","date \\"1234567\\" does not match format \\"%Ey\\""]\n["%C%Ey","1912345",[1905,0,0,0,0,0,6,-1]]\n["%Ey%C","1234519",[951,0,0,0,0,0,4,-1]]\n["%Od","05",[1900,0,5,0,0,0,5,4]]\n["%Oe","5",[1900,0,5,0,0,0,5,4]]\n["%OH","5",[1900,0,0,5,0,0,8,367]]\n["%OI","5",[1900,0,0,5,0,0,8,367]]\n["%Om","5",[1900,4,0,0,0,0,1,119]]\n["%OM","5",[1900,0,0,0,5,0,8,367]]\n["%OS","5",[1900,0,0,0,0,5,8,367]]\n["%OU","5",[1900,0,0,0,0,0,8,367]]\n["%Ow","5",[1900,0,0,0,0,0,5,367]]\n["%OW","5",[1900,0,0,0,0,0,8,367]]\n["%Oy","15",[2015,0,0,0,0,0,3,-1]]\n["%OV","5",[1900,0,0,0,0,0,8,367]]\n["%Ob","mar",[1900,2,0,0,0,0,3,58]]\n["%OB","march",[1900,2,0,0,0,0,3,58]]\n["%Oh","mar",[1900,2,0,0,0,0,3,58]]\n["%Ou","5","date \\"5\\" does not match format \\"%Ou\\""]\n["%Oj","5","date \\"5\\" does not match format \\"%Oj\\""]\n["%OY","2015","date \\"2015\\" does not match format \\"%OY\\""]\n["%Ok","5","date \\"5\\" does not match format \\"%Ok\\""]\n["%Ea","thu","date \\"thu\\" does not match format \\"%Ea\\""]\n["%Ed","5","date \\"5\\" does not match format \\"%Ed\\""]\n["%Ez","+0100","date \\"+0100\\" does not match format \\"%Ez\\""]\n["%E%","%","date \\"%\\" does not match format \\"%E%\\""]\n["%ED","03/05/15","date \\"03/05/15\\" does not match format \\"%ED\\""]\n["%OT","1:2:3","date \\"1:2:3\\" does not match format \\"%OT\\""]\n
+stderr
+end
+
+case dates/strptime-composites
+def 85510e61db84
+rc 0
+stdout ["%c","thursday march 05 23:51:47 2015",[2015,2,5,23,51,47,4,63]]\n["%D","3/5/15",[2015,2,5,0,0,0,4,63]]\n["%D","03/05/2015","date \\"03/05/2015\\" does not match format \\"%D\\""]\n["%F","2015-3-5",[2015,2,5,0,0,0,4,63]]\n["%F","-5-01-01","date \\"-5-01-01\\" does not match format \\"%F\\""]\n["%r","11:51:47 pm",[1900,0,0,23,51,47,8,367]]\n["%r","11:51:47PM",[1900,0,0,23,51,47,8,367]]\n["%R","1:2",[1900,0,0,1,2,0,8,367]]\n["%T","1:2:3",[1900,0,0,1,2,3,8,367]]\n["%T","24:00:00","date \\"24:00:00\\" does not match format \\"%T\\""]\n["%x","03/05/15",[2015,2,5,0,0,0,4,63]]\n["%X","1:2:3",[1900,0,0,1,2,3,8,367]]\n
+stderr
+end
+
+case dates/strptime-century
+def e6a042d3c9b3
+rc 0
+stdout ["%C","5",[500,0,0,0,0,0,4,-1]]\n["%C","0",[0,0,0,0,0,0,6,-1]]\n["%C%y","2015",[2015,0,0,0,0,0,3,-1]]\n["%y%C","1520",[2015,0,0,0,0,0,3,-1]]\n["%Y%C","201519",[1900,0,0,0,0,0,0,-1]]\n["%y %C","69 19",[1969,0,0,0,0,0,2,-1]]\n["%y %C","05 20",[2005,0,0,0,0,0,5,-1]]\n["%Y %y","2015 5",[2005,0,0,0,0,0,5,-1]]\n["%y %Y","5 2015",[2015,0,0,0,0,0,3,-1]]\n["%C %Y","19 2015",[1900,0,0,0,0,0,0,-1]]\n["%C %y","0 5",[5,0,0,0,0,0,5,-1]]\n["%y","5",[2005,0,0,0,0,0,5,-1]]\n["%y","68",[2068,0,0,0,0,0,6,-1]]\n["%y","69",[1969,0,0,0,0,0,2,-1]]\n
+stderr
+end
+
+case dates/strptime-twelve-hour
+def ed60024726dd
+rc 0
+stdout ["%I","12",[1900,0,0,0,0,0,8,367]]\n["%I %p","12 am",[1900,0,0,0,0,0,8,367]]\n["%I %p","12 pm",[1900,0,0,12,0,0,8,367]]\n["%I%p","5pm",[1900,0,0,17,0,0,8,367]]\n["%p%I","pm5",[1900,0,0,17,0,0,8,367]]\n["%H%p","5pm",[1900,0,0,5,0,0,8,367]]\n["%I %H","5 7",[1900,0,0,7,0,0,8,367]]\n["%H %I","7 5",[1900,0,0,5,0,0,8,367]]\n["%H %I %p","7 5 pm",[1900,0,0,17,0,0,8,367]]\n["%I %p %H","5 pm 7",[1900,0,0,7,0,0,8,367]]\n["%p %p","am pm",[1900,0,0,0,0,0,8,367]]\n["%I %I %p","5 6 pm",[1900,0,0,18,0,0,8,367]]\n["%I %p %p","5 pm am",[1900,0,0,5,0,0,8,367]]\n["%l %p","12 PM",[1900,0,0,12,0,0,8,367]]\n
+stderr
+end
+
+case dates/strptime-days
+def 10412bf58c9a
+rc 0
+stdout ["%m","5",[1900,4,0,0,0,0,1,119]]\n["%Y","2015",[2015,0,0,0,0,0,3,-1]]\n["%d","5",[1900,0,5,0,0,0,5,4]]\n["%j","5",[1900,0,0,0,0,0,8,4]]\n["%b","March",[1900,2,0,0,0,0,3,58]]\n["%a","Thu",[1900,0,0,0,0,0,4,367]]\n["%Y %j","2015 64",[2015,2,5,0,0,0,4,63]]\n["%Y %j","2015 365",[2015,11,31,0,0,0,4,364]]\n["%Y %j","2015 366",[2015,11,32,0,0,0,5,365]]\n["%Y %j","2016 366",[2016,11,31,0,0,0,6,365]]\n["%j %Y","64 2015",[2015,2,5,0,0,0,4,63]]\n["%j %m","64 5",[1900,4,5,0,0,0,6,63]]\n["%j %d","64 5",[1900,2,5,0,0,0,1,63]]\n["%j %d %Y","64 5 2015",[2015,2,5,0,0,0,4,63]]\n["%j %a","64 thu",[1900,0,0,0,0,0,4,63]]\n["%d %a","5 mon",[1900,0,5,0,0,0,1,4]]\n["%s %d","5 06",[1970,0,6,0,0,5,2,5]]\n["%Y %m %d","1 1 1",[1,0,1,0,0,0,1,0]]\n["%Y %m %d","100 3 1",[100,2,1,0,0,0,1,59]]\n["%Y %m %d","400 2 1",[400,1,1,0,0,0,2,31]]\n
+stderr
+end
+
+case dates/strptime-year-zero
+def 83acd66ff71d
+rc 0
+stdout ["%Y %m %d","0 1 1",[0,0,1,0,0,0,0,0]]\n["%Y %m %d","0 2 29",[0,1,29,0,0,0,3,59]]\n["%Y %m %d","0 3 1",[0,2,1,0,0,0,3,60]]\n["%Y %m %d","0 12 31",[0,11,31,0,0,0,0,365]]\n["%Y %j","0 60",[0,1,29,0,0,0,3,59]]\n["%C","0",[0,0,0,0,0,0,6,-1]]\n
+stderr
+end
+
+case dates/strptime-weeks
+def 9867528c50f1
+rc 0
+stdout ["%U %a %Y","9 thu 2015",[2015,2,5,0,0,0,4,63]]\n["%W %a %Y","9 thu 2015",[2015,2,5,0,0,0,4,63]]\n["%U %a","9 thu",[1900,2,8,0,0,0,4,66]]\n["%U %w","9 4",[1900,2,8,0,0,0,4,66]]\n["%W %a %Y","0 sun 2015",[2015,0,4,0,0,0,0,3]]\n["%U %a %Y %m","9 thu 2015 7",[2015,6,5,0,0,0,4,63]]\n["%U %a %Y %d","9 thu 2015 20",[2015,2,20,0,0,0,4,63]]\n["%U %a %Y %j","9 thu 2015 20",[2015,0,20,0,0,0,4,19]]\n["%U %W %a %Y","9 10 thu 2015",[2015,2,12,0,0,0,4,70]]\n["%W %U %a %Y","10 9 thu 2015",[2015,2,5,0,0,0,4,63]]\n["%U %W %a","2016 mon 7",[1900,3,23,0,0,0,1,112," 7"]]\n["%U","53",[1900,0,0,0,0,0,8,367]]\n["%U","54","date \\"54\\" does not match format \\"%U\\""]\n["%V %a %Y","9 thu 2015",[2015,0,0,0,0,0,4,-1]]\n["%G %V %u","2015 9 4",[1900,0,0,0,0,0,4,367]]\n
+stderr
+end
+
+case dates/strptime-weeks-outside
+def c4295cd5b64d
+rc 0
+stdout ["%U %a","53 sat",[1900,11,43,0,0,0,6,376]]\n["%W %a","0 mon",[1900,-1,-261,0,0,0,1,-7]]\n["%U %a","0 sun",[1900,-1,-255,0,0,0,0,-1]]\n["%W %a %Y","0 mon 2016",[2016,-1,-368,0,0,0,1,-4]]\n["%U %a %Y","0 sun 2016",[2016,-1,-369,0,0,0,0,-5]]\n["%U %a %Y","0 sat 2016",[2016,0,2,0,0,0,6,1]]\n["%Y %U %a","0 0 sun",[0,-1,-371,0,0,0,0,-7]]\n
+stderr
+end
+
+case dates/strptime-offset
+def 0ba6efab1414
+rc 0
+stdout ["%z","Z",[1900,0,0,0,0,0,8,367]]\n["%z","z","date \\"z\\" does not match format \\"%z\\""]\n["%z"," Z",[1900,0,0,0,0,0,8,367]]\n["%z","ZZ","date \\"ZZ\\" does not match format \\"%z\\""]\n["%z","+01",[1900,0,0,0,0,0,8,367]]\n["%z","+01:00",[1900,0,0,0,0,0,8,367]]\n["%z","+0100",[1900,0,0,0,0,0,8,367]]\n["%z","-1230",[1900,0,0,0,0,0,8,367]]\n["%z","+2400",[1900,0,0,0,0,0,8,367]]\n["%z","+9900",[1900,0,0,0,0,0,8,367]]\n["%z","+1260","date \\"+1260\\" does not match format \\"%z\\""]\n["%z","+0060","date \\"+0060\\" does not match format \\"%z\\""]\n["%z","+01:60","date \\"+01:60\\" does not match format \\"%z\\""]\n["%z","+01000","date \\"+01000\\" does not match format \\"%z\\""]\n["%z"," +0100",[1900,0,0,0,0,0,8,367]]\n["%z","0100","date \\"0100\\" does not match format \\"%z\\""]\n["%z","+1","date \\"+1\\" does not match format \\"%z\\""]\n["%z","+123","date \\"+123\\" does not match format \\"%z\\""]\n["%z","+01:0","date \\"+01:0\\" does not match format \\"%z\\""]\n["%z","+01:","date \\"+01:\\" does not match format \\"%z\\""]\n["%z","+1:00","date \\"+1:00\\" does not match format \\"%z\\""]\n["%z","-00",[1900,0,0,0,0,0,8,367]]\n["%z","+01 ",[1900,0,0,0,0,0,8,367," "]]\n
+stderr
+end
+
+case dates/strptime-seconds
+def 42c9769495dc
+rc 0
+stdout ["%s","0",[1970,0,1,9,0,0,4,0]]\n["%s","1425599507",[2015,2,6,8,51,47,5,64]]\n["%s","00000000000000000000001",[1970,0,1,9,0,1,4,0]]\n["%s","-5","date \\"-5\\" does not match format \\"%s\\""]\n["%s"," 99","date \\" 99\\" does not match format \\"%s\\""]\n["%s","1e5","date \\"1e5\\" does not match format \\"%s\\""]\n["%s","67767976233532799",[-2147483648,0,1,8,59,59,3,0]]\n["%s","67767976233532800",[-2147483648,0,1,9,0,0,3,0]]\n["%s","67768036191676799","date \\"67768036191676799\\" does not match format \\"%s\\""]\n["%s","67768036191676800","date \\"67768036191676800\\" does not match format \\"%s\\""]\n["%s","9223372036854775807","date \\"9223372036854775807\\" does not match format \\"%s\\""]\n["%s","99999999999999999999","date \\"99999999999999999999\\" does not match format \\"%s\\""]\n["%s %d","67767976233532800 5",[-2147483648,0,5,9,0,0,3,4]]\n["%s %d","67768036191676799 5","date \\"67768036191676799 5\\" does not match format \\"%s %d\\""]\n["%s %j","0 5",[1970,0,1,9,0,0,4,4]]\n["%s %a","0 mon",[1970,0,1,9,0,0,1,0]]\n
+stderr
+end
+
+case dates/strptime-rest
+def f6c145f9700d
+rc 0
+stdout ["%Y","2015 rest",[2015,0,0,0,0,0,3,-1," rest"]]\n["%Y","2015\\trest",[2015,0,0,0,0,0,3,-1,"\\trest"]]\n["%Y","2015rest","date \\"2015rest\\" does not match format \\"%Y\\""]\n["%a","Thu Mar  5 23:51:47 2015",[1900,0,0,0,0,0,4,367," Mar  5 23:51:47 2015"]]\n["%Y-%m-%d","2015-03-05T23:51:47Z","date \\"2015-03-05T23:51:47Z\\" does not match format \\"%Y-%m-%d\\""]\n
+stderr
+end
+
+case dates/strptime-errors
+def 6ec7394b1737
+rc 0
+stdout [1,"%s","strptime/1 requires string inputs and arguments"]\n["1",1,"strptime/1 requires string inputs and arguments"]\n[null,null,"strptime/1 requires string inputs and arguments"]\n[[],"%d","strptime/1 requires string inputs and arguments"]\n["x","%d","date \\"x\\" does not match format \\"%d\\""]\n["","",[1900,0,0,0,0,0,8,367]]\n
+stderr
+end
+
+case dates/strptime-jq
+def f0f23283df8b
+rc 0
+stdout ["2015-03-05T23:51:47Z",[2015,2,5,23,51,47,4,63],1425599507]\n["2024-02-29T12:00:00Z",[2024,1,29,12,0,0,4,59],1709208000]\n["1900-01-01T00:00:00Z",[1900,0,1,0,0,0,1,0],-2208988800]\n["9999-12-31T23:59:59Z",[9999,11,31,23,59,59,5,364],253402300799]\n
+stderr
+end
+
+case dates/deviation-zone-name
+def a113dd69e204
+rc 0
+stdout "Sun Jan 17 08:57:55 1943 EWT -0400"\n
+stderr
+end
+
+case dates/deviation-zone-name-mean-time
+def 0ce2d6ab65c7
+rc 0
+stdout "Sat Dec 30 23:34:39 1899 DMT -0025"\n
+stderr
+end
+
+case dates/deviation-dst-sign
+def 148143d86b7c
+rc 0
+stdout "-3600"\n
+stderr
+end
+
+case dates/deviation-tz-posix
+def 6cf4a1cfeeaa
+rc 0
+stdout "JST +0900"\n
+stderr
+end
+
+case dates/deviation-tz-unknown
+def 4f48f0df430f
+rc 0
+stdout "Nowhere +0000"\n
+stderr
+end
+
+case dates/deviation-tz-empty
+def 8e069e563b61
+rc 0
+stdout "Universal +0000"\n
+stderr
+end

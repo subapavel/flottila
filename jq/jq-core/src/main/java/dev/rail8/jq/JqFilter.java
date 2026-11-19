@@ -1,5 +1,6 @@
 package dev.rail8.jq;
 
+import dev.rail8.jq.host.Host;
 import dev.rail8.jq.internal.explain.Explain;
 import dev.rail8.jq.internal.parse.Resolver;
 import dev.rail8.jq.internal.value.Detach;
@@ -21,16 +22,20 @@ public final class JqFilter {
   /** The engine's limits, each run's budgets. */
   private final Limits limits;
 
+  /** The engine's host, whose clock and zone each run reads. */
+  private final Host host;
+
   /** The declared host variables, sorted: each name's place is its parameter slot. */
   private final List<String> variables;
 
   /** The name of each function of the program the executable was compiled from, by its place. */
   private final List<String> names;
 
-  JqFilter(Executable executable, Resolver.Resolved resolved, Limits limits, List<String> variables) {
+  JqFilter(Executable executable, Resolver.Resolved resolved, Limits limits, Host host, List<String> variables) {
     this.executable = executable;
     this.names = resolved.names();
     this.limits = limits;
+    this.host = host;
     this.variables = variables;
   }
 
@@ -52,13 +57,13 @@ public final class JqFilter {
     try {
       // Outside the inner try: a refused run never ends the one running, and a run ended here began none.
       state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten(), limits.recursionDepth(), limits.stackBytes());
-      workspace.patterns.begin(limits.regexMatchTime().toNanos());
+      workspace.kept.begin(limits.regexMatchTime().toNanos(), host.clock(), host.zone());
       try {
         // query-core hands values over as Object; every value this filter pushes or raises is a jq value.
         return executable.run(state, parameters, input, v -> sink.emit((JqValue) v));
       } finally {
         state.end();
-        workspace.patterns.end();
+        workspace.kept.end();
       }
     } catch (FilterException e) {
       // After the run, so the detach charges nothing (a copy made for the host after a run is not charged), and while

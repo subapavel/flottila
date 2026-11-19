@@ -52,13 +52,13 @@ class PreludeResolutionTest {
 
   /**
    * GLOSSARY "Unbuilt native": a call binds, and its lowering is a Stub. jq 1.8.2 has each as a builtin, so none is
-   * "not defined". The native here, gmtime, is still unbuilt.
+   * "not defined". The native here, input_line_number, is still unbuilt.
    */
   @Test
   void anUnbuiltNativeIsAStubNotJqsNotDefined() {
-    parsesToAStub("gmtime");
-    parsesToAStub(".a | gmtime");
-    parsesToAStub("[.[]? | gmtime]");
+    parsesToAStub("input_line_number");
+    parsesToAStub(".a | input_line_number");
+    parsesToAStub("[.[]? | input_line_number]");
   }
 
   /**

@@ -444,21 +444,32 @@ across platforms, and glibc's code is LGPL. jq.test rounds every transcendental 
 
 ## Zone abbreviations (ADR-0052, spec 4)
 
-`%Z` prints the JDK's English short name for the zone at that instant, or `±hh[mm]` where the JDK
-has only `GMT±hh:mm`. Offsets come from the JDK's tzdb (F-66). jq-ref prints tzdata's abbreviation
-from the system's zoneinfo. They differ in three ways:
-- LMT eras: the JDK never names one `LMT`;
-- zones whose tzdata abbreviation is not the JDK's English short name; the host-zone ticket lists
-  them by running jq-ref under each `TZ`;
+`%Z` prints the JDK's English short name for the zone at that instant, `±hh[mm]` where the JDK
+has only `GMT±hh:mm`, and `LMT` before the zone's first change of offset. Offsets and daylight
+saving time come from the JDK's tzdb (F-66). jq-ref prints tzdata's abbreviation from the system's
+zoneinfo. They differ in these ways:
+- eras whose tzdata abbreviation the JDK lacks: war and peace time (`EWT`, `EPT`), mean times after
+  the first era (`DMT`, `MMT`, `SMT`), Newfoundland's `NST` eras, Casablanca's `+00` and `+01`
+  against `WET` and `WEST`, London's 1968-71 `BST` against `GMT`, Lord Howe's `AEST` before 1981,
+  Apia's second `LMT`;
+- zones whose daylight saving time tzdata and the JDK set on opposite sides: Dublin, whose winter
+  tzdata calls the daylight saving time (negative saving), and Singapore's 1933-35 offsets. The
+  name, and `strftime`'s `%s`, which asks for standard time, differ;
+- a `TZ` that is no IANA zone id (a POSIX rule such as `JST-9`, an unknown id, an empty `TZ`): the
+  engine runs it as UTC named `UTC`; glibc applies the POSIX rule, or names UTC after the id, or
+  `Universal`. A `TZ` with a leading `:` and an unset `TZ` behave as in jq-ref;
+- a repeated local time: `mktime` and `strflocaltime` take the offset the previous local conversion
+  found, and the engine starts each run afresh, as if from UTC, where jq-ref keeps glibc's state
+  for the whole process. One run of the command line sees no difference;
 - the tzdata version: the JDK's tzdb (2026e on JDK 25.0.5) against jq-ref's zoneinfo, for offsets
   as well as names.
 
 | case | filter | input | jq 1.8.2 | Rail8 jq |
 | --- | --- | --- | --- | --- |
-| none yet | `strflocaltime("%Z %z")` on an instant of an LMT era (P4) | — | `LMT +0918` | the JDK's name for that offset, recorded by the host-zone ticket |
-
-An unknown `TZ` is UTC with an empty name (ADR-0052). If the engine does not mirror jq-ref's "unknown
-system failure" there, the host-zone ticket adds its row here.
+| `dates/deviation-zone-name` (`deviation zone-names`), `dates/deviation-zone-name-mean-time` (`deviation zone-names`) | `-c '.[] \| strflocaltime("%c %Z %z")'`, `TZ=America/New_York` | `[-850647725]` | `"Sun Jan 17 08:57:55 1943 EWT -0400"` | `"Sun Jan 17 08:57:55 1943 EDT -0400"` |
+| `dates/deviation-dst-sign` (`deviation zone-dst-sign`) | `-c '.[] \| strftime("%s")'`, `TZ=Europe/Dublin` | `[0]` | `"-3600"` | `"0"` |
+| `dates/deviation-tz-posix` (`deviation tz-not-iana`), `dates/deviation-tz-unknown` (`deviation tz-not-iana`), `dates/deviation-tz-empty` (`deviation tz-not-iana`) | `-c '.[] \| strflocaltime("%Z %z")'`, `TZ=JST-9` | `[0]` | `"JST +0900"` | `"UTC +0000"` |
+| `DatesTest.aRepeatedLocalTimeTakesTheOffsetTheRunsPreviousConversionFound` | `strflocaltime("%Z %s")` of `[2021,10,7,1,30,0,0,0]`, `TZ=America/New_York`, in a second run | — | the offset the process found last | `EDT 1636263000`, as in the first run |
 
 Reason: the JDK supplies offsets and English names, not tzdata's abbreviations (F-66). A TZif name
 reader would be a second zone source and can come later without rework (ADR-0052).

@@ -28,7 +28,9 @@ import java.lang.foreign.MemorySegment;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
@@ -44,7 +46,8 @@ import java.util.function.UnaryOperator;
  * string): <value>} for a value that is no string, and exit code 5; a termination with {@code jq: error:
  * <message>} and exit code 5. Without {@code -c} the output is pretty, jq's default indent 2. {@code --explain}, a
  * flag of this engine's that jq does not have, prints the compiled filter's {@code explain()} text instead of running
- * it, reads no input and exits 0.
+ * it, reads no input and exits 0. The date builtins read the system clock and the zone that {@code TZ} names, an
+ * IANA zone id with or without a leading {@code :}; without {@code TZ} the system's zone, and UTC for any other value.
  */
 public final class Main {
 
@@ -166,7 +169,7 @@ public final class Main {
       }
     }
 
-    JqEngine built = engine.apply(JqEngine.builder().limits(Limits.cli()).host(Host.sandboxed())).build();
+    JqEngine built = engine.apply(JqEngine.builder().limits(Limits.cli()).host(host(invocation.env()))).build();
     JqFilter compiled;
     try {
       compiled = built.compile(filter == null ? "." : filter);
@@ -271,5 +274,18 @@ public final class Main {
       throw new UncheckedIOException(e);
     }
     return rc;
+  }
+
+  /** The host of a run in the environment {@code env}: the system clock and the zone of its {@code TZ}. */
+  private static Host host(Map<String, String> env) {
+    String tz = env.get("TZ");
+    ZoneId zone;
+    if (tz == null) {
+      zone = ZoneId.systemDefault();
+    } else {
+      String id = tz.startsWith(":") ? tz.substring(1) : tz;
+      zone = ZoneId.getAvailableZoneIds().contains(id) ? ZoneId.of(id) : ZoneId.of("UTC");
+    }
+    return Host.builder().zone(zone).build();
   }
 }

@@ -1,0 +1,449 @@
+# Differential cases of jq 1.8.2's date builtins written in C (src/builtin.c: f_strptime, f_strftime,
+# f_strflocaltime, f_mktime, f_gmtime, f_localtime, f_now) on glibc in the C locale, and builtin.jq's date
+# functions over them: each conversion of strftime and strptime, their flags, widths and modifiers, the numbers
+# and names they read and print, the fields strptime computes, the errors, and the local conversions of zones that
+# skip or repeat a local time. A case runs under TZ=UTC unless it sets TZ. Each case reads its inputs from the
+# document on stdin and prints one line per input, so a difference shows the input. A case where the engine differs
+# on purpose names its DEVIATIONS.md row with deviation and gives the engine's output. Format:
+# oracle/src/main/java/dev/rail8/jq/oracle/diff/DiffCase.java. Expected outputs live in dates.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+
+# Every conversion of glibc's strftime in the C locale on one time
+case dates/strftime-conversions
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%a", "%A", "%b", "%B", "%c", "%C", "%d", "%D", "%e", "%F", "%g", "%G", "%h", "%H", "%I", "%j", "%k", "%l", "%m", "%M", "%n", "%p", "%P", "%r", "%R", "%s", "%S", "%t", "%T", "%u", "%U", "%V", "%w", "%W", "%x", "%X", "%y", "%Y", "%z", "%Z", "%%"]}\n
+end
+
+# A letter that is no conversion, a modifier alone and a format ending inside a conversion are copied as written
+case dates/strftime-unknown
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%E", "%O", "%J", "%K", "%L", "%N", "%Q", "%f", "%i", "%l", "%o", "%q", "%v", "%+", "%:", "%", "x%", "%5", "%_", "%5E", "%-5Q", "%_10Q", "%^q", "%#q", "%:z", "%E5Y", "%EOd"]}\n
+end
+
+# The flags - _ 0 ^ # and a width on numbers, names and the composites
+case dates/strftime-flags
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%_5d", "%-d", "%^a", "%#Z", "%10Y", "%-10a", "%010a", "%#p", "%^P", "%^#Z", "%#^Z", "%3e", "%-3d", "%-k", "%05j", "%^5j", "%5%", "%5n", "%010D", "%012F", "%^c", "%#c", "%^x", "%10c", "%-10D", "%010F", "%^r", "%#A", "%#B", "%^b", "%^h", "%#a", "%_Od", "%5EY", "%15s", "%015s", "%-5s", "%_5s"]}\n
+end
+
+# E takes c C x X y Y, O the numbers and the month names; any other pair is copied
+case dates/strftime-modifiers
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%Ea", "%EA", "%Eb", "%EB", "%Ec", "%EC", "%Ed", "%ED", "%Ee", "%EF", "%Eg", "%EG", "%Eh", "%EH", "%EI", "%Ej", "%Ek", "%El", "%Em", "%EM", "%En", "%Ep", "%EP", "%Er", "%ER", "%Es", "%ES", "%Et", "%ET", "%Eu", "%EU", "%EV", "%Ew", "%EW", "%Ex", "%EX", "%Ey", "%EY", "%Ez", "%EZ", "%Oa", "%OA", "%Ob", "%OB", "%Oc", "%OC", "%Od", "%OD", "%Oe", "%OF", "%Og", "%OG", "%Oh", "%OH", "%OI", "%Oj", "%Ok", "%Ol", "%Om", "%OM", "%On", "%Op", "%OP", "%Or", "%OR", "%Os", "%OS", "%Ot", "%OT", "%Ou", "%OU", "%OV", "%Ow", "%OW", "%Ox", "%OX", "%Oy", "%OY", "%Oz", "%OZ"]}\n
+end
+
+# %z with each flag and width
+case dates/strftime-offset
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%z", "%10z", "%_10z", "%-z", "%_z", "%3z", "%010z", "%^z", "%#z", "%Ez", "%Oz"]}\n
+end
+
+# The 12-hour clock at midnight, noon and one
+case dates/strftime-hours
+arg -c
+filter .f as $f | .t[] | [., (try strftime($f) catch .)]
+stdin {"f": "%I %l %p %P %r", "t": [[2015, 0, 1, 0], [2015, 0, 1, 12], [2015, 0, 1, 13], [2015, 0, 1, 23, 59, 59]]}\n
+end
+
+# Years before 1, of one digit, and at the ends of the int range
+case dates/strftime-years
+arg -c
+filter .f as $f | .t[] | [., (try strftime($f) catch .)]
+stdin {"f": "%Y|%4Y|%_4Y|%C|%3C|%y|%G|%g|%F|%c", "t": [[-5, 0, 1], [0, 0, 1], [1, 0, 1], [99, 0, 1], [2015, 0, 1], [2147483647, 0, 1], [-2147483648, 0, 1], [1e+300, 0, 1], [-1e+300, 0, 1]]}\n
+end
+
+# Week numbers and ISO years around the turn of the year
+case dates/strftime-weeks
+arg -c
+filter .f as $f | .t[] | [., (try strftime($f) catch .)]
+stdin {"f": "%U %W %V %G %g %u %w %j", "t": [[2014, 11, 29], [2014, 11, 31], [2015, 0, 1], [2015, 0, 4], [2015, 0, 5], [2016, 0, 1], [2016, 0, 3], [2020, 11, 31], [2021, 0, 3]]}\n
+end
+
+# Fields out of their range are normalised before formatting, a fraction of a second dropped
+case dates/strftime-normalise
+arg -c
+filter .f as $f | .t[] | [., (try strftime($f) catch .)]
+stdin {"f": "%c %j %a %s", "t": [[2015, 13, 40, 25, 61, 70, 9, 400], [2015, -1, -5, -3, -2, -1, -1, -1], [2015.7, 2.9, 5.5, 23.2, 51.9, 47.123, 4, 63], [2016, 1, 29, 24], [2000, 0, 1], [2015, 0, 1, 0, 0, 60]]}\n
+end
+
+# A number is seconds since the epoch: toward 0, and out of range an error
+case dates/strftime-numbers
+arg -c
+filter .f as $f | .t[] | [., (try strftime($f) catch .), (try strflocaltime($f) catch .)]
+stdin {"f": "%c %s", "t": [0, 1425599507, 1425599507.987, -1, -1.5, 1000000000000000.0, 1e+18, -1e+18, 9.3e+18]}\n
+end
+
+# The output is at most 99 bytes longer than the format
+case dates/strftime-length
+arg -c
+filter .t as $t | .f[] | . as $f | [($t | try (strftime($f) | length) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%0105Y", "%0106Y", "%099Y", "%0100Y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%099Y", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%0100Y"]}\n
+end
+
+# The format is read up to its first NUL
+case dates/strftime-nul
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["a\\u0000b", "%Y\\u0000%m", "\\u0000"]}\n
+end
+
+# An empty format prints nothing; a format whose output is empty fails
+case dates/strftime-empty
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["", "", "%p"]}\n
+end
+
+# The type errors of strftime and strflocaltime, in their order
+case dates/strftime-errors
+arg -c
+filter .[] | [., (try strftime("%c") catch .), (try strflocaltime("%c") catch .), (try strftime(1) catch .), (try strflocaltime(null) catch .)]
+stdin [null, true, "x", {}, [], ["a"], [2015, "a"], [2015, null], [1], [2015, 2, 5, 23, 51, 47, 4, 63, "x"]]\n
+end
+
+# strflocaltime and %s read the zone of TZ
+case dates/strflocaltime-tokyo
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strflocaltime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%c %Z %z", "%s", "%H"]}\n
+env TZ=Asia/Tokyo
+end
+
+# strftime's %s converts its UTC fields in the zone of TZ
+case dates/strftime-s-tokyo
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2015, 2, 5, 23, 51, 47, 4, 63], "f": ["%s %Z %z", "%c"]}\n
+env TZ=Asia/Tokyo
+end
+
+# A skipped local time of New York moves on by the gap
+case dates/strflocaltime-gap
+arg -c
+filter .[] | [., (strflocaltime("%c %Z %s"))]
+stdin [[2021, 2, 14, 2, 30], [2021, 2, 14, 2, 0], [2021, 2, 14, 3, 0], [2021, 2, 14, 1, 59, 59]]\n
+env TZ=America/New_York
+end
+
+# A repeated local time of New York takes the offset the previous conversion found, daylight saving time first
+case dates/strflocaltime-overlap
+arg -c
+filter [.[] | strflocaltime("%c %Z %s")]
+stdin [[2021, 10, 7, 1, 30], [2021, 0, 1], [2021, 10, 7, 1, 30], [2021, 6, 1], [2021, 10, 7, 1, 30]]\n
+env TZ=America/New_York
+end
+
+# strftime asks %s for standard time: a summer time of New York takes the winter offset
+case dates/strftime-dst-asked
+arg -c
+filter .t as $t | .f[] | . as $f | [$f, ($t | try strftime($f) catch .)]
+stdin {"t": [2021, 6, 1, 12], "f": ["%s", "%Z"]}\n
+env TZ=America/New_York
+end
+
+# Names and offsets of zones with half and quarter hours, and south of the equator
+case dates/strflocaltime-zones
+arg -c
+filter .t[] | [., (strflocaltime("%c %Z %z"))]
+stdin {"t": [0, 1425599507, 1625140800]}\n
+env TZ=Asia/Kathmandu
+end
+
+# A zone whose daylight saving time adds half an hour
+case dates/strflocaltime-lord-howe
+arg -c
+filter .t[] | [., (strflocaltime("%c %Z %z"))]
+stdin {"t": [1425599507, 1625140800]}\n
+env TZ=Australia/Lord_Howe
+end
+
+# Before its first change of offset a zone keeps its local mean time
+case dates/strflocaltime-lmt
+arg -c
+filter .t[] | [., (strflocaltime("%c %Z %z"))]
+stdin {"t": [-5000000000, -2717668237]}\n
+env TZ=Asia/Tokyo
+end
+
+# From the year 5881581 a zone keeps the offset it has at the end of the year before
+case dates/strflocaltime-far
+arg -c
+filter .t[] | [., (strflocaltime("%c %Z %z")), (gmtime | strftime("%s"))]
+stdin {"t": [185542586280000, 185542617816000, 1e+17]}\n
+env TZ=America/New_York
+end
+
+# Lord Howe keeps its daylight saving time from the year 5881581; strftime asks %s for standard time
+case dates/strflocaltime-far-south
+arg -c
+filter .t[] | [., (strflocaltime("%c %Z %z")), (gmtime | strftime("%s"))]
+stdin {"t": [185542617816000, 1e+17]}\n
+env TZ=Australia/Lord_Howe
+end
+
+# mktime reads the fields as UTC and normalises them
+case dates/mktime
+arg -c
+filter .[] | [., (try mktime catch .)]
+stdin [[2015, 2, 5, 23, 51, 47, 4, 63], [2015, 2, 5], [1970, 0, 1], [1969, 11, 31, 23, 59, 59], [2015, 13, 40, 25, 61, 70], [2015.9, 2.9, 5.9, 23.9, 51.9, 47.9], [0, 0, 1], [-5, 0, 1], [1e+300, 0, 1], [2147483647, 11, 31, 23, 59, 59], [-2147481748, 0, 1], [2015, 2, 5, 23, 51, 47, 4, 63, 99]]\n
+env TZ=Asia/Tokyo
+end
+
+# mktime's errors: not an array, a field not a number, -1
+case dates/mktime-errors
+arg -c
+filter .[] | [., (try mktime catch .)]
+stdin [null, 1, "x", {}, [], ["a"], [2015, null], [1969, 11, 31, 23, 59, 59], [2015, 0, 1, 0, 0, -1]]\n
+end
+
+# gmtime of whole and fractional seconds, before the epoch and far away
+case dates/gmtime
+arg -c
+filter .[] | [., (try gmtime catch .)]
+stdin [0, 1425599507, 1425599507.25, -1, -0.5, -10000000000.0, 1000000000000000.0, 67767976233532799, 67767976233532800, 67768036191676799, 67768036191676800, 1e+18, -1e+18, 9.3e+18]\n
+env TZ=Asia/Tokyo
+end
+
+# gmtime's and localtime's errors
+case dates/gmtime-errors
+arg -c
+filter .[] | [., (try gmtime catch .), (try localtime catch .)]
+stdin [null, "1", [], {}, true]\n
+end
+
+# localtime reads the zone of TZ
+case dates/localtime-tokyo
+arg -c
+filter .[] | [., (try localtime catch .)]
+stdin [0, 1425599507, 1425599507.5, -10000000000.0, 1000000000000000.0]\n
+env TZ=Asia/Tokyo
+end
+
+# localtime in and out of daylight saving time
+case dates/localtime-new-york
+arg -c
+filter .[] | [., (localtime), (localtime | mktime)]
+stdin [1615705200, 1615708800, 1636261200, 1636264800, 1636268400]\n
+env TZ=America/New_York
+end
+
+# gmtime, mktime, todate and fromdate agree
+case dates/roundtrip
+arg -c
+filter .[] | [., (gmtime | mktime), todate, (todate | fromdate), (gmtime | todate)]
+stdin [0, 1425599507, -1, 951782400, 4102444800]\n
+end
+
+# builtin.jq's date functions over the natives
+case dates/prelude
+arg -c
+filter .[] | [., (try fromdateiso8601 catch .), (try fromdate catch .)]
+stdin ["2015-03-05T23:51:47Z", "1970-01-01T00:00:00Z", "2015-03-05T23:51:47", "2015-03-05 23:51:47Z", 1]\n
+end
+
+# todate and todateiso8601
+case dates/prelude-to
+arg -c
+filter .[] | [., (try todate catch .), (try todateiso8601 catch .)]
+stdin [1425599507, 0, "x", [2015, 2, 5]]\n
+end
+
+# dateadd, datesub and date are not defined in jq 1.8.2
+case dates/not-in-1.8.2
+arg -c
+filter [dateadd("seconds"; 1), datesub("seconds"; 1), date]
+stdin 0\n
+end
+
+# now is a number of seconds near the clock
+case dates/now
+arg -c
+filter [now | type, (. > 1700000000), (. == floor or true)]
+stdin null\n
+end
+
+# Every conversion of glibc's strptime in the C locale
+case dates/strptime-conversions
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%a", "Thu"], ["%A", "thursday"], ["%b", "Mar"], ["%B", "march"], ["%h", "MAR"], ["%c", "Thu Mar  5 23:51:47 2015"], ["%C", "20"], ["%d", "05"], ["%D", "03/05/15"], ["%e", " 5"], ["%F", "2015-03-05"], ["%g", "15"], ["%G", "2015"], ["%H", "23"], ["%I", "11"], ["%j", "064"], ["%k", "23"], ["%l", "11"], ["%m", "03"], ["%M", "51"], ["%n", " "], ["%p", "PM"], ["%r", "11:51:47 PM"], ["%R", "23:51"], ["%s", "1425599507"], ["%S", "47"], ["%t", "\\t"], ["%T", "23:51:47"], ["%u", "4"], ["%U", "09"], ["%V", "10"], ["%w", "4"], ["%W", "09"], ["%x", "03/05/15"], ["%X", "23:51:47"], ["%y", "15"], ["%Y", "2015"], ["%z", "+0100"], ["%Z", "UTC"], ["%%", "%"], ["%P", "pm"], ["%f", "1"], ["%Q", "1"], ["%", ""], ["x%", "x"]]\n
+end
+
+# A number takes at most its digits, stops before a digit past its range, skips white space before it
+case dates/strptime-numbers
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%d", "5"], ["%d", "  5"], ["%d", "0"], ["%d", "31"], ["%d", "32"], ["%d", "123"], ["%d", "-5"], ["%d", "+5"], ["%d%m", "35"], ["%m %d", "99 7"], ["%U %w", "64 64"], ["%j%m", "3705"], ["%Y%m", "99999"], ["%Y", "02015"], ["%Y", "12345"], ["%Y", "0"], ["%H%M", "1234"], ["%Y%m%d", "20150305"], ["%Y%m%d", "2015035"], ["%e%e", "12"], ["%e%e", "1 2"], ["%S", "61"], ["%S", "62"], ["%M", "60"], ["%H", "24"], ["%I", "0"], ["%I", "13"], ["%j", "366"], ["%j", "367"], ["%j", "0"], ["%m", "13"], ["%u", "7"], ["%u", "0"], ["%w", "6"], ["%w", "7"], ["%W", "54"], ["%V", "54"], ["%g", "100"], ["%G", "123456789012"], ["%G", " 5"], ["%y", "-5"], ["%y", "68"], ["%y", "69"]]\n
+end
+
+# Names match the full or the abbreviated English name in any case, without white space before them
+case dates/strptime-names
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%a", "sunday"], ["%a", "SUN"], ["%a", "sundayx"], ["%a", "sunx"], ["%a", "Thurs"], ["%a", " Thu"], ["%A", "sun"], ["%b", "mayday"], ["%B", "may"], ["%b", "septembe"], ["%b", " mar"], ["%p", "AMx"], ["%p", "a"], ["%p", " pm"], ["%p", "am"]]\n
+end
+
+# White space in the format matches any run of white space; a literal matches itself only
+case dates/strptime-white-space
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [[" %d", "5"], ["%d ", "5"], [" x", " \\tx"], ["x", " x"], ["x", "X"], ["%n%d", " \\t5"], ["%t", "x"], ["%%%d", "%5"], ["%%", " %"], ["%d", "05 "], ["%d", "05  "], ["%d", "05\\t"], ["%d", "05x"], ["%Z", ""], ["%Z", " "], ["%Z", "abc def"], ["%d", "05\\u0000x"], ["%d\\u0000%m", "05"]]\n
+end
+
+# Flags and a width are read and ignored; E takes c C x X y Y, O the numbers and month names
+case dates/strptime-modifiers
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%-d", "5"], ["%_d", "5"], ["%0d", "5"], ["%^a", "thu"], ["%#a", "thu"], ["%5d", "5"], ["%10Y", "2015"], ["%E-d", "5"], ["%-Ed", "5"], ["%EY", "2015"], ["%EC", "20"], ["%Ex", "03/05/15"], ["%EX", "1:2:3"], ["%Ec", "Thu Mar  5 23:51:47 2015"], ["%Ey", "15"], ["%Ey", "02015"], ["%Ey", "123456"], ["%Ey", "1234567"], ["%C%Ey", "1912345"], ["%Ey%C", "1234519"], ["%Od", "05"], ["%Oe", "5"], ["%OH", "5"], ["%OI", "5"], ["%Om", "5"], ["%OM", "5"], ["%OS", "5"], ["%OU", "5"], ["%Ow", "5"], ["%OW", "5"], ["%Oy", "15"], ["%OV", "5"], ["%Ob", "mar"], ["%OB", "march"], ["%Oh", "mar"], ["%Ou", "5"], ["%Oj", "5"], ["%OY", "2015"], ["%Ok", "5"], ["%Ea", "thu"], ["%Ed", "5"], ["%Ez", "+0100"], ["%E%", "%"], ["%ED", "03/05/15"], ["%OT", "1:2:3"]]\n
+end
+
+# The composite conversions read their parts
+case dates/strptime-composites
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%c", "thursday march 05 23:51:47 2015"], ["%D", "3/5/15"], ["%D", "03/05/2015"], ["%F", "2015-3-5"], ["%F", "-5-01-01"], ["%r", "11:51:47 pm"], ["%r", "11:51:47PM"], ["%R", "1:2"], ["%T", "1:2:3"], ["%T", "24:00:00"], ["%x", "03/05/15"], ["%X", "1:2:3"]]\n
+end
+
+# The century with and without the year of the century, and the year
+case dates/strptime-century
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%C", "5"], ["%C", "0"], ["%C%y", "2015"], ["%y%C", "1520"], ["%Y%C", "201519"], ["%y %C", "69 19"], ["%y %C", "05 20"], ["%Y %y", "2015 5"], ["%y %Y", "5 2015"], ["%C %Y", "19 2015"], ["%C %y", "0 5"], ["%y", "5"], ["%y", "68"], ["%y", "69"]]\n
+end
+
+# PM moves the hour on the 12-hour clock on by 12, once the whole text is read
+case dates/strptime-twelve-hour
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%I", "12"], ["%I %p", "12 am"], ["%I %p", "12 pm"], ["%I%p", "5pm"], ["%p%I", "pm5"], ["%H%p", "5pm"], ["%I %H", "5 7"], ["%H %I", "7 5"], ["%H %I %p", "7 5 pm"], ["%I %p %H", "5 pm 7"], ["%p %p", "am pm"], ["%I %I %p", "5 6 pm"], ["%I %p %p", "5 pm am"], ["%l %p", "12 PM"]]\n
+end
+
+# A year, month or day read sets the day of the week and of the year; a day of the year read sets the month and day
+case dates/strptime-days
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%m", "5"], ["%Y", "2015"], ["%d", "5"], ["%j", "5"], ["%b", "March"], ["%a", "Thu"], ["%Y %j", "2015 64"], ["%Y %j", "2015 365"], ["%Y %j", "2015 366"], ["%Y %j", "2016 366"], ["%j %Y", "64 2015"], ["%j %m", "64 5"], ["%j %d", "64 5"], ["%j %d %Y", "64 5 2015"], ["%j %a", "64 thu"], ["%d %a", "5 mon"], ["%s %d", "5 06"], ["%Y %m %d", "1 1 1"], ["%Y %m %d", "100 3 1"], ["%Y %m %d", "400 2 1"]]\n
+end
+
+# January and February of the year 0 fall one day of the week late, as glibc counts its leap days
+case dates/strptime-year-zero
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%Y %m %d", "0 1 1"], ["%Y %m %d", "0 2 29"], ["%Y %m %d", "0 3 1"], ["%Y %m %d", "0 12 31"], ["%Y %j", "0 60"], ["%C", "0"]]\n
+end
+
+# A week of the year with a day of the week sets the day of the year, then the month and day
+case dates/strptime-weeks
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%U %a %Y", "9 thu 2015"], ["%W %a %Y", "9 thu 2015"], ["%U %a", "9 thu"], ["%U %w", "9 4"], ["%W %a %Y", "0 sun 2015"], ["%U %a %Y %m", "9 thu 2015 7"], ["%U %a %Y %d", "9 thu 2015 20"], ["%U %a %Y %j", "9 thu 2015 20"], ["%U %W %a %Y", "9 10 thu 2015"], ["%W %U %a %Y", "10 9 thu 2015"], ["%U %W %a", "2016 mon 7"], ["%U", "53"], ["%U", "54"], ["%V %a %Y", "9 thu 2015"], ["%G %V %u", "2015 9 4"]]\n
+end
+
+# A week before January or past December: the month stops at December, and the day before January counts as glibc reads it
+case dates/strptime-weeks-outside
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%U %a", "53 sat"], ["%W %a", "0 mon"], ["%U %a", "0 sun"], ["%W %a %Y", "0 mon 2016"], ["%U %a %Y", "0 sun 2016"], ["%U %a %Y", "0 sat 2016"], ["%Y %U %a", "0 0 sun"]]\n
+end
+
+# %z reads Z or a sign and two or four digits, with a colon between, minutes below 60; the offset is ignored
+case dates/strptime-offset
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%z", "Z"], ["%z", "z"], ["%z", " Z"], ["%z", "ZZ"], ["%z", "+01"], ["%z", "+01:00"], ["%z", "+0100"], ["%z", "-1230"], ["%z", "+2400"], ["%z", "+9900"], ["%z", "+1260"], ["%z", "+0060"], ["%z", "+01:60"], ["%z", "+01000"], ["%z", " +0100"], ["%z", "0100"], ["%z", "+1"], ["%z", "+123"], ["%z", "+01:0"], ["%z", "+01:"], ["%z", "+1:00"], ["%z", "-00"], ["%z", "+01 "]]\n
+end
+
+# %s reads digits only, converted in the zone of TZ, up to the last year an int holds
+case dates/strptime-seconds
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%s", "0"], ["%s", "1425599507"], ["%s", "00000000000000000000001"], ["%s", "-5"], ["%s", " 99"], ["%s", "1e5"], ["%s", "67767976233532799"], ["%s", "67767976233532800"], ["%s", "67768036191676799"], ["%s", "67768036191676800"], ["%s", "9223372036854775807"], ["%s", "99999999999999999999"], ["%s %d", "67767976233532800 5"], ["%s %d", "67768036191676799 5"], ["%s %j", "0 5"], ["%s %a", "0 mon"]]\n
+env TZ=Asia/Tokyo
+end
+
+# The text after the format must start with white space; it is a ninth element
+case dates/strptime-rest
+arg -c
+filter .[] | . as [$f, $i] | [$f, $i, ($i | try strptime($f) catch .)]
+stdin [["%Y", "2015 rest"], ["%Y", "2015\\trest"], ["%Y", "2015rest"], ["%a", "Thu Mar  5 23:51:47 2015"], ["%Y-%m-%d", "2015-03-05T23:51:47Z"]]\n
+end
+
+# strptime's errors: both must be strings
+case dates/strptime-errors
+arg -c
+filter .[] | . as [$i, $f] | [$i, $f, (try ($i | strptime($f)) catch .)]
+stdin [[1, "%s"], ["1", 1], [null, null], [[], "%d"], ["x", "%d"], ["", ""]]\n
+end
+
+# jq's own strptime and mktime cases
+case dates/strptime-jq
+arg -c
+filter .[] | [., (strptime("%Y-%m-%dT%H:%M:%SZ") | ., mktime)]
+stdin ["2015-03-05T23:51:47Z", "2024-02-29T12:00:00Z", "1900-01-01T00:00:00Z", "9999-12-31T23:59:59Z"]\n
+end
+
+# Deviation: %Z is the JDK's name, here EDT for New York's war time, which tzdata names EWT (DEVIATIONS "Zone abbreviations")
+case dates/deviation-zone-name
+deviation zone-names
+arg -c
+filter .[] | strflocaltime("%c %Z %z")
+stdin [-850647725]\n
+env TZ=America/New_York
+engine-stdout "Sun Jan 17 08:57:55 1943 EDT -0400"\n
+end
+
+# Deviation: tzdata's Dublin Mean Time keeps the offset of the local mean time before it, so the JDK has one era, named LMT, where tzdata names the second DMT
+case dates/deviation-zone-name-mean-time
+deviation zone-names
+arg -c
+filter .[] | strflocaltime("%c %Z %z")
+stdin [-2209075200]\n
+env TZ=Europe/Dublin
+engine-stdout "Sat Dec 30 23:34:39 1899 LMT -0025"\n
+end
+
+# Deviation: Dublin's 1970 is daylight saving time for the JDK, standard time for tzdata, so strftime's %s asked for standard time differs
+case dates/deviation-dst-sign
+deviation zone-dst-sign
+arg -c
+filter .[] | strftime("%s")
+stdin [0]\n
+env TZ=Europe/Dublin
+engine-stdout "0"\n
+end
+
+# Deviation: a TZ that is no IANA zone id, here a POSIX rule, is UTC, named UTC (DEVIATIONS "Zone abbreviations")
+case dates/deviation-tz-posix
+deviation tz-not-iana
+arg -c
+filter .[] | strflocaltime("%Z %z")
+stdin [0]\n
+env TZ=JST-9
+engine-stdout "UTC +0000"\n
+end
+
+# Deviation: an unknown zone id is UTC, named UTC, which glibc names after the id
+case dates/deviation-tz-unknown
+deviation tz-not-iana
+arg -c
+filter .[] | strflocaltime("%Z %z")
+stdin [0]\n
+env TZ=Nowhere/Land
+engine-stdout "UTC +0000"\n
+end
+
+# Deviation: an empty TZ is UTC, named UTC, which glibc names Universal
+case dates/deviation-tz-empty
+deviation tz-not-iana
+arg -c
+filter .[] | strflocaltime("%Z %z")
+stdin [0]\n
+env TZ=
+engine-stdout "UTC +0000"\n
+end
