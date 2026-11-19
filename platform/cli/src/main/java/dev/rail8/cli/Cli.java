@@ -121,7 +121,7 @@ public final class Cli {
      * theirs, that a node would refuse are one line on {@code err} and 2, nothing run.
      */
     private static int withPlugins(Options options, Map<String, String> env, PrintStream err, OverPlugins command) throws IOException {
-        Optional<Path> dir = options.value("--plugins").or(() -> Optional.ofNullable(env.get(Plugins.ENV)).filter(d -> !d.isBlank())).map(Path::of);
+        Optional<Path> dir = options.value("--plugins").map(Path::of).or(() -> Plugins.dir(env));
         Plugins plugins;
         try {
             plugins = plugins(dir);

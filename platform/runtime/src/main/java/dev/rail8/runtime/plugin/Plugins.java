@@ -134,8 +134,12 @@ public final class Plugins implements AutoCloseable {
      * names in {@value #ENV} (none when it is unset or blank), each one's settings read from {@code env}.
      */
     public static Plugins fromEnv(Map<String, String> env) {
-        String dir = env.get(ENV);
-        return load(Plugins.class.getClassLoader(), dir == null || dir.isBlank() ? Optional.empty() : Optional.of(Path.of(dir)), env);
+        return load(Plugins.class.getClassLoader(), dir(env), env);
+    }
+
+    /** The plugin directory {@code env} names in {@value #ENV}; empty when the variable is unset or blank. */
+    public static Optional<Path> dir(Map<String, String> env) {
+        return Optional.ofNullable(env.get(ENV)).filter(dir -> !dir.isBlank()).map(Path::of);
     }
 
     /**
@@ -297,6 +301,22 @@ public final class Plugins implements AutoCloseable {
      */
     public List<Component> components(ComponentContext context) {
         Objects.requireNonNull(context, "context");
+        return components(loaded, context);
+    }
+
+    /**
+     * The components of the module or plugin named {@code name} alone, built over {@code context} and checked as
+     * {@link #components(ComponentContext)} checks them; none when no module or plugin has that name. For a caller that built
+     * every component once and needs one module's again over other fakes, as {@code rail8 test} needs the direct module's for each
+     * case.
+     */
+    public List<Component> components(String name, ComponentContext context) {
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(context, "context");
+        return components(loaded.stream().filter(l -> l.name().equals(name)).toList(), context);
+    }
+
+    private static List<Component> components(List<Loaded> loaded, ComponentContext context) {
         return merge(loaded, "components()", l -> l.plugin().components(context), Component::scheme, "scheme",
                 Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new);
     }

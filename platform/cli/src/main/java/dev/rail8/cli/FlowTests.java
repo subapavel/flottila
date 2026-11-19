@@ -244,9 +244,12 @@ final class FlowTests {
         return pkg.endpoints().get(endpoint).getString("scheme");
     }
 
-    /** The real {@code direct} component, the direct module's, built over the case's {@code rt} and {@code timer}. */
+    /**
+     * The real {@code direct} component, built by the module {@code direct} alone over the case's {@code rt} and {@code timer}; the
+     * other modules and the plugins are not built again.
+     */
     private Component direct(FakeRuntime rt, Timer timer) {
-        return plugins.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock())).stream()
+        return plugins.components(DIRECT, new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock())).stream()
                 .filter(c -> c.scheme().equals(DIRECT)).findFirst().orElseThrow();
     }
 

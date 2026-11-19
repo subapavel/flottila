@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code rail8 validate} and {@code rail8 test} with plugins: those of {@code --plugins}, else of {@code RAIL8_PLUGINS}. The
+ * {@code rail8 validate} and {@code rail8 test} with plugins: those of {@code --plugins}, else of {@code RAIL8_PLUGINS}, none when
+ * it is blank. The
  * package {@code plugin} sends to a partner of the plugin acme's scheme and runs a flow through its {@code drop} step: with the
  * plugin it validates and its cases pass (the platform's mock stands in for the plugin's scheme, the plugin's step runs), without
  * it both are problems. Plugins a node would refuse are one line on stderr and 2; a plugin's component a node would refuse is a
@@ -68,6 +69,15 @@ class PluginsCommandTest {
         plugin("acme.jar", CliPlugins.Acme.class);
         Ran ran = run(Map.of("RAIL8_PLUGINS", plugins.toString()), "validate", PACKAGE.toString());
         assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    @Test
+    void aBlankRail8PluginsLoadsNoPlugin() {
+        Ran validated = run(Map.of("RAIL8_PLUGINS", " "), "validate", FIXTURES.resolve("tree").toString());
+        assertEquals(0, validated.exit(), validated.toString());
+        Ran tested = run(Map.of("RAIL8_PLUGINS", " "), "test", FIXTURES.resolve("calls").toString());
+        assertEquals(0, tested.exit(), tested.toString());
+        assertEquals("", tested.err());
     }
 
     @Test

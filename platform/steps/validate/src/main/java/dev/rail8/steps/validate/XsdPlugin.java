@@ -12,12 +12,10 @@ import java.util.List;
  */
 public final class XsdPlugin implements Plugin {
 
-    private final XsdValidate validate = new XsdValidate();
-
     @Override public String name() { return "xsd"; }
 
     @Override public String api() { return API; }
 
     /** The steps of {@link XsdValidate#steps()}. */
-    @Override public List<StepFactory> steps() { return validate.steps(); }
+    @Override public List<StepFactory> steps() { return new XsdValidate().steps(); }
 }

@@ -20,7 +20,9 @@ import java.util.List;
  * <li>{@link #name()} and {@link #api()} once, when it loads the plugin;</li>
  * <li>{@link #steps(PluginSettings)} and {@link #languages()} once each, when it loads the plugin, before Vert.x starts;</li>
  * <li>{@link #components(ComponentContext)} once per node start, inside the start and before Postgres is touched, and once per
- *     {@code rail8 validate} or {@code rail8 test} run. It builds objects and opens nothing: no socket, no file, no thread.</li>
+ *     {@code rail8 validate} or {@code rail8 test} run; {@code rail8 test} builds the components of the platform's
+ *     {@code direct} module again for each case of a package with a {@code direct} endpoint. It builds objects and opens
+ *     nothing: no socket, no file, no thread.</li>
  * </ul>
  * A call that throws refuses the start, naming the plugin; so do more than {@value #MAX_CONTRIBUTIONS} contributions of one kind.
  *
