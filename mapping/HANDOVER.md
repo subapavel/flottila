@@ -1,93 +1,63 @@
 # Hand-over
 
 This file tells you how to start the Mapping studio, draw and run a mapping, and run the gates
-and benchmarks. It covers GATE check 9. You need only JDK 25 and Node 22 (22.12 or newer,
-`../ui/package.json`). The studio is part of the Rail8 UI, the repository's `ui/`.
+and benchmarks. It covers GATE check 9. You need only JDK 25, Node 22 (22.12 or newer,
+`../ui/package.json`) and Docker with Compose v2. The studio is part of the Rail8 UI, the repository's `ui/`.
 
 ## Start the stack on Linux
 
-Start from a clean clone. The commands below run in `mapping/`. The Maven wrapper is at the
-repository's root, so from `mapping/` it is `../mvnw`. It downloads Maven; you install nothing
-else.
+Start from a clean clone. The commands below run in the repository's root, as `../docs/QUICKSTART.md` runs them. The
+Maven wrapper `./mvnw` downloads Maven; you install nothing else.
 
 An installed Maven (`mvn`) within the enforcer's range (3.9.11 up to, not including, 4) works the
-same: replace `../mvnw` with `mvn` in any command below.
+same: replace `./mvnw` with `mvn` in any command below.
 
-### Development: service and UI
+### Development: the node and the UI
 
-The service serves the mappings of `corpus/` on port 8080. It binds to `127.0.0.1`. It runs over
-a workspace, a directory of `*.mapping.json` files (ADR-0014). Start it:
+The Rail8 UI's development server answers the studio's `/api` over its working folder, a directory of
+`*.mapping.json` files and the schemas they read (`RAIL8_WORKSPACE`), and calls the node's mapping module, which runs
+the engine. The node runs in Docker with its admin API published on `127.0.0.1:8081` only. Build and start it:
 
 ```bash
-../mvnw -pl service -am quarkus:dev
+./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am
+export RAIL8_ADMIN_TOKEN=rail8-local
+docker compose up -d --build
+until curl -sf localhost:8081/health >/dev/null; do sleep 2; done
 ```
 
-In a second terminal, start the Rail8 UI in the repository's `ui/`. Vite serves on port 5173 and
-sends `/api` to the service:
+Copy the corpus into the working folder once, and start the UI in the same terminal. Vite serves on port 5173:
 
 ```bash
-cd ../ui
+mkdir -p ~/rail8-workspace && cp -r mapping/corpus ~/rail8-workspace/mapping-corpus
+cd ui
 npm ci
-npm run dev
+RAIL8_WORKSPACE=$HOME/rail8-workspace npm run dev
 ```
 
-To check that the service runs, print the status code of two GETs (each gives `200`):
+To check that the studio's API answers, print the status code of two GETs in another terminal (each gives `200`):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/mappings
-curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/catalogue
+curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/mappings
+curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/catalogue
 ```
 
-`/api/structures` takes POST only, so a GET gives `405`. To confirm the `127.0.0.1` bind, run
-`ss -ltn`. Where `ss` is missing, read `/proc/net/tcp`: the line `0100007F:1F90` is `127.0.0.1:8080`
-(`1F90` is 8080 in hex).
+`/api/structures` takes POST only, so a GET gives `405`. The list answers without the node; the catalogue, and opening,
+saving and running a mapping, need it.
 
-Open http://localhost:5173 and choose **Mappings** in the navigation. If port 8080 is taken, set
-`QUARKUS_HTTP_PORT` for both processes (for example `QUARKUS_HTTP_PORT=8081`) and the dev proxy
-follows.
+Open http://localhost:5173 and choose **Mappings** in the navigation. The corpus' mappings are under
+`mapping-corpus/`, such as `mapping-corpus/mappings/order-id-copy`.
 
 http://localhost:5173/e2e/fake/ runs the Mappings screen on a built-in fake service, with no
 backend.
 
-### The service's jar
-
-The jar serves `/api` only; the UI's development server talks to it as it does to `quarkus:dev`.
-Build it:
-
-```bash
-../mvnw -B -pl service -am package -DskipTests
-```
-
-Start it over a workspace. It binds to `127.0.0.1`:
-
-```bash
-java -Dquarkus.http.host=127.0.0.1 -Drail8.mapping.workspace=corpus -jar service/target/quarkus-app/quarkus-run.jar
-```
-
-Then start the UI as above and open http://localhost:5173.
-
-## Start the stack on Windows PowerShell
+## Windows
 
 This section is not verified by the gate. The ticket and spec gates are bash scripts for Linux and the VM.
 
-Install JDK 25, Node 22 and a Maven within the enforcer's range. Start the service:
+The stack does not start from Windows PowerShell: run the commands above inside WSL 2, with Docker Desktop's WSL
+integration on and the repository cloned inside the WSL file system.
 
-```powershell
-mvn -pl service -am quarkus:dev
-```
-
-In a second PowerShell window, start the UI:
-
-```powershell
-cd ..\ui
-npm ci
-npm run dev
-```
-
-Open http://localhost:5173. For another service port, run `$env:QUARKUS_HTTP_PORT=8081` in both
-windows first.
-
-The benchmarks run on Windows for information only. Build `benchmarks.jar`, then run it:
+The benchmarks run on Windows for information only. Build `benchmarks.jar` in `mapping/`, then run it:
 
 ```powershell
 mvn -B -Pbench -pl bench/jmh -am package -DskipTests
@@ -109,7 +79,7 @@ copies a field of `corpus/structures/skeleton/order.xsd` to the same field of th
 1. Choose **Mappings** in the navigation of the UI. It is a table of the mappings with the
    columns Name, Package, Source, Target and Description. Each mapping opens in a tab of its own.
 2. Choose **New mapping**. Enter a Name and, if you like, a Description. The Package is empty, or
-   the path of a folder that already exists in the workspace. The service does not create
+   the path of a folder that already exists in the workspace. The studio does not create
    folders: a Package that does not exist gives "no such mapping or directory in the workspace"
    (a 404). Create. The studio opens in edit mode on the **Signature** tab.
 3. On the Signature tab, the source side says "No source message yet." Choose **Add source
@@ -135,7 +105,7 @@ To compare with the finished example, choose **Open in studio** on `order-id-cop
 
 ## Run the gates and benchmarks
 
-Run the spec gate once per spec:
+Run the spec gate once per spec, in `mapping/`:
 
 ```bash
 scripts/gate-spec.sh <spec> [pit-modules]

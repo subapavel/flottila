@@ -19,18 +19,16 @@ GitHub Issues.
 
 ## Run the Mapping studio and test a mapping
 
-1. Start the service: `../mvnw -pl service -am quarkus:dev`, in `mapping/` (the Maven wrapper is at the
-   repository's root). It serves the mappings of `corpus/`.
-2. Start the Rail8 UI: `npm run dev` in the repository's `ui/` (run `npm ci` there first).
-3. Open http://localhost:5173 and choose **Mappings** in the navigation. It lists the mappings.
-4. Choose **Open in studio** on a mapping, for example `order-id-copy`. It opens read-only.
-5. Choose **Edit**, then the **Test** tab.
-6. Paste the mapping's corpus input into the Source pane, for example
+1. Start the node and the UI as the repository's `docs/QUICKSTART.md` does. The UI's development server reads the
+   mappings of its working folder (`RAIL8_WORKSPACE`), where the quickstart copies `corpus/` as `mapping-corpus/`,
+   and the node runs the engine.
+2. Open http://localhost:5173 and choose **Mappings** in the navigation. It lists the mappings.
+3. Choose **Open in studio** on a mapping, for example `order-id-copy`. It opens read-only.
+4. Choose **Edit**, then the **Test** tab.
+5. Paste the mapping's corpus input into the Source pane, for example
    `corpus/cases/link/direct-copy/001/input.xml` for `order-id-copy`.
-7. Choose **Run simulation**. The Result pane shows the output, and the processing log shows the run.
+6. Choose **Run simulation**. The Result pane shows the output, and the processing log shows the run.
 
-If port 8080 is taken, set `QUARKUS_HTTP_PORT` for both (PowerShell `$env:QUARKUS_HTTP_PORT=8081`,
-bash `QUARKUS_HTTP_PORT=8081`) and the dev proxy follows. http://localhost:5173/e2e/fake/ runs the
-Mappings screen on a built-in fake service, with no backend.
+http://localhost:5173/e2e/fake/ runs the Mappings screen on a built-in fake service, with no backend.
 
 Licence: Apache 2.0 (the root `LICENSE`). Third-party notices: the root `NOTICE`.

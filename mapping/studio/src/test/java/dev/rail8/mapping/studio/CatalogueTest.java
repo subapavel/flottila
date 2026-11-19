@@ -58,9 +58,10 @@ class CatalogueTest {
   }
 
   /**
-   * The packed catalogue is contract: the build writes {@code contract/function-catalogue.json},
-   * and it holds exactly the bytes {@code catalogue} answers, so the UI reads the palette without a
-   * Java build.
+   * The packed catalogue is contract: {@code contract/function-catalogue.json} holds exactly the
+   * bytes {@code catalogue} answers, so the UI reads the palette without a Java build. When the
+   * catalogue changes, the file is copied from the packed one the engine's build writes, {@code
+   * engine/mapping/target/generated-resources/function-families/dev/rail8/mapping/mapping/}.
    */
   @Test
   void theContractFileHoldsTheServedBytes() throws IOException {

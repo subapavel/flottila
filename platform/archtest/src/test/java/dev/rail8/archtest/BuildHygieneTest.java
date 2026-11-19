@@ -20,8 +20,8 @@ class BuildHygieneTest {
 
     static final Path ROOT = Path.of("../..").toAbsolutePath().normalize();
     /**
-     * Not walked, by name (D-149): the mapping service is a Quarkus application, not the pipeline, and Quarkus brings
-     * Mutiny; the rule holds for every other area of the repository, a new one included.
+     * Not walked, by name: the mapping's build is not the pipeline, and its poms name smallrye artifacts in the bans that
+     * keep them out; the rule holds for every other area of the repository, a new one included.
      */
     static final Path MAPPING = ROOT.resolve("mapping");
 

@@ -168,10 +168,13 @@ fi
 step "4 ratchet regen" ".logs/${spec}-ratchet.log" \
   java scripts/ratchet.java regen --all "${bench_results[@]}"
 
-# 3: the stack, the service's jar and the UI's @stack scenarios against it
+# 3: the stack: the node's jar, the quickstart's node started from it by docker compose at the repository's root
+# (RAIL8_ADMIN_TOKEN exported, as docs/QUICKSTART.md does), and the UI's @stack scenarios against it
 step "3 stack package" ".logs/${spec}-stack-package.log" \
-  "$mvnw" -B -pl service -am package -DskipTests
+  "$mvnw" -B -f ../pom.xml -pl :rail8-node -am package -DskipTests
 if [ -f ../ui/package.json ]; then
+  step "3 stack node" ".logs/${spec}-stack-node.log" bash -c 'cd .. && docker compose up -d --build && start=$(date +%s) &&
+    until curl -sf localhost:8081/health > /dev/null; do [ $(( $(date +%s) - start )) -lt 120 ] || exit 1; sleep 2; done'
   step "3 stack e2e" "../ui/.logs/${spec}-e2e-stack.log" bash -c 'cd ../ui && npm run e2e:stack'
 fi
 

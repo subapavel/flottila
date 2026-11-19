@@ -8,7 +8,7 @@ name: mapping-nightly
 #   the ratchet of the closest earlier commit whose push run of mapping-ci's backend job was green.
 # windows: the whole reactor compiles on Windows (drive letters and backslashes in paths).
 # ui-e2e: the UI's coverage floors and end-to-end scenarios over the fake mapping service. Its @stack scenarios against
-#   the mapping service's jar run in the daily ui-ci.yml.
+#   the quickstart's node run in the daily ui-ci.yml.
 # A drop is reported until the date in scripts/ratchet-enforced-from and fails the job from that day; either way it
 # only turns the nightly report red. It commits nothing.
 on:

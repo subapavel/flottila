@@ -71,10 +71,9 @@ the command and the evidence it needs. A change to a check after this point need
    thresholds, ADR-0019); generated types with an empty diff; the 20,128-field tree scenario within its
    check-7 target. No mutation testing on `ui/` in milestone 1.
 9. **Hand-over.** `HANDOVER.md` covers:
-   - starting the stack from a clean clone with only JDK 25 and Node 22 installed:
-     `../mvnw -pl service -am quarkus:dev` with `npm run dev` in `../ui` for development, and the
-     service's jar with the same UI. The Quarkus service runs over a workspace and is bound to
-     `127.0.0.1` (ADR-0014);
+   - starting the stack from a clean clone with only JDK 25, Node 22 and Docker installed: the
+     node's jar, the node started by `docker compose up` with its admin API bound to `127.0.0.1`,
+     and `npm run dev` in `../ui` over a working folder of mappings (`RAIL8_WORKSPACE`);
    - how to draw and run a mapping;
    - how to run the ticket gate, the spec gate and the benchmarks (`-Pbench`);
    - open findings, ADRs to revisit and the next three specs ("After milestone 1" below, updated

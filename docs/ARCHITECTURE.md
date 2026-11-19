@@ -762,9 +762,9 @@ so it cannot act after others think it dead. A node replaced by a newer start of
 The mapping engine is in `mapping/`, a project of its own in the same repository. It reads source
 and target structures from XSD, WSDL and JSON Schema, and a mapping saved as one JSON file. A
 mapping is compiled into a tree of executable nodes and interpreted; it can also be exported as XSLT.
-Its semantics follow SAP PO message mappings (queues and contexts, the standard functions). A REST
-service (Quarkus) and a studio UI work over a workspace of mappings; a corpus of 250 mappings with
-expected outputs, including runs observed on PO and CPI, tests it.
+Its semantics follow SAP PO message mappings (queues and contexts, the standard functions). The
+UI's mapping studio works over the mappings of a working folder, through the node's mapping module;
+a corpus of 250 mappings with expected outputs, including runs observed on PO and CPI, tests it.
 
 The `mapping` step runs a mapping in a flow, through the engine's embedding API.
 

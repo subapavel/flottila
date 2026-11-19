@@ -11,9 +11,10 @@ check "HANDOVER.md exists" "$([ -f "$doc" ] && echo yes || echo no)" yes
 # start the stack from a clean clone (JDK 25, Node 22)
 has "JDK 25" "JDK 25"
 has "Node 22" "Node 22"
-has "dev service" "../mvnw -pl service -am quarkus:dev"   # the repository's wrapper, from mapping/
+has "the node's build" "./mvnw -B -ntp -q package -DskipTests -pl :rail8-node -am"   # the repository's wrapper, from its root
+has "the node started" "docker compose up -d --build"
 has "dev UI" "npm run dev"
-has "the service's jar" "quarkus-run.jar"
+has "the working folder" "RAIL8_WORKSPACE="
 has "loopback bind" "127.0.0.1"
 has "workspace" "workspace"
 has "installed mvn" "installed Maven"
