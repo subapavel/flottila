@@ -319,8 +319,9 @@ _Avoid_: category, group
 
 **Runtime error**:
 An error that stops a mapping run, named by a QName: from the input data (`po:MINOCCURS`, a
-context function's count mismatch) or from a test run's limit (`rail8:TIMEOUT`). The output is
-dropped; a test run returns the code, the message and the authoring id.
+context function's count mismatch) or from a test run's limit (`rail8:TIMEOUT`,
+`rail8:OUTPUT-TOO-LARGE`, `rail8:TRACE-TOO-LARGE`). The output is dropped; a test run returns the
+code, the message and the authoring id, which a limit's error does not have.
 _Avoid_: exception, failure, diagnostic
 
 **Runtime library**:
