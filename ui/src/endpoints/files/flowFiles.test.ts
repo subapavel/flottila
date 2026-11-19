@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { flowFiles, type FlowFilesOptions } from './flowFiles';
-import { etagOf } from './workingFolder';
+import { etagOf, MAX_FILE_BYTES } from './workingFolder';
 
 const origins = ['http://localhost:5173'];
 const page = { 'sec-fetch-site': 'same-origin', origin: 'http://localhost:5173' };
@@ -83,9 +83,9 @@ describe('flowFiles', () => {
     return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   }
 
-  function call(url: string, method = 'GET', headers: Record<string, string> = page): Promise<{ status: number; etag?: string; body: Record<string, unknown> }> {
+  function call(url: string, method = 'GET', headers: Record<string, string> = page, body?: string): Promise<{ status: number; etag?: string; body: Record<string, unknown> }> {
     return new Promise((done, failed) => {
-      const req = request(url, { method, headers }, (res) => {
+      const req = request(url, { method, headers: body === undefined ? headers : { ...headers, 'content-type': 'application/json' } }, (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
@@ -94,7 +94,7 @@ describe('flowFiles', () => {
         });
       });
       req.on('error', failed);
-      req.end();
+      req.end(body);
     });
   }
 
@@ -161,10 +161,70 @@ describe('flowFiles', () => {
     expect((await call(`${base}/files/flows/demo/package.json`)).status).toBe(400);
   });
 
-  it('refuses a request from elsewhere, and every method but GET', async () => {
+  it('refuses a request from elsewhere, and every method but GET and a PUT of one file', async () => {
     const base = await serve();
     expect((await call(`${base}/files/flows`, 'GET', { 'sec-fetch-site': 'cross-site', origin: 'http://evil.example' })).status).toBe(403);
-    expect((await call(`${base}/files/flows/demo/flows/caller.yaml`, 'PUT')).status).toBe(405);
+    expect((await call(`${base}/files/flows/demo/flows/caller.yaml`, 'PUT', { 'sec-fetch-site': 'cross-site', origin: 'http://evil.example', 'if-match': etagOf(caller) }, JSON.stringify({ text: caller }))).status).toBe(403);
+    expect((await call(`${base}/files/flows/demo/flows/caller.yaml`, 'DELETE')).status).toBe(405);
+    expect((await call(`${base}/files/flows`, 'PUT')).status).toBe(405);
+  });
+
+  describe('a save', () => {
+    const edited = caller.replace('  - type: to\n', '  - type: validate\n    required: "Amount > 0"\n  - type: to\n');
+    const put = (base: string, text: unknown, etag: string | null = etagOf(caller), path = 'demo/flows/caller.yaml') =>
+      call(`${base}/files/flows/${path}`, 'PUT', etag === null ? page : { ...page, 'if-match': etag }, JSON.stringify({ text }));
+    const onDisk = () => readFile(join(root, 'demo', 'flows', 'caller.yaml'), 'utf8');
+
+    it('writes the text and answers as GET, with the new ETag', async () => {
+      const base = await serve();
+      const answer = await put(base, edited);
+      expect(answer.status).toBe(200);
+      expect(answer.etag).toBe(etagOf(edited));
+      expect(answer.body).toMatchObject({ path: 'demo/flows/caller.yaml', text: edited, editable: true, context: { flows: expect.any(Array) } });
+      expect(await onDisk()).toBe(edited);
+      expect((await readdir(join(root, 'demo', 'flows'))).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+      expect((await call(`${base}/files/flows/demo/flows/caller.yaml`)).etag).toBe(etagOf(edited));
+    });
+
+    it('does not write a text equal to the file, so its ETag stays', async () => {
+      const before = (await stat(join(root, 'demo', 'flows', 'caller.yaml'))).mtimeMs;
+      const answer = await put(await serve(), caller);
+      expect(answer.status).toBe(200);
+      expect(answer.etag).toBe(etagOf(caller));
+      expect((await stat(join(root, 'demo', 'flows', 'caller.yaml'))).mtimeMs).toBe(before);
+    });
+
+    it('refuses a save on a read-only server, without If-Match, or of a file changed since it was read', async () => {
+      expect((await put(await serve({ editable: false }), edited)).status).toBe(403);
+      const base = await serve();
+      expect(await put(base, edited, null)).toMatchObject({ status: 428, body: { error: 'a save names the version it changes in If-Match' } });
+      expect(await put(base, edited, etagOf('something else'))).toMatchObject({ status: 412, body: { error: 'the file changed since it was read; nothing was saved' } });
+      expect(await onDisk()).toBe(caller);
+    });
+
+    it('refuses a text that is no YAML or no flow, as the browser reads it, and one over 1 MiB', async () => {
+      const base = await serve();
+      expect(await put(base, 'kind: flow\nid: [unclosed\n')).toMatchObject({ status: 422, body: { error: expect.stringContaining('the file is not YAML') } });
+      expect(await put(base, 'kind: endpoint\nid: x\n')).toMatchObject({ status: 422, body: { error: 'the text is not a flow' } });
+      expect(await put(base, 'kind: flow\nid: caller\nsteps: {}\n')).toMatchObject({ status: 422, body: { error: 'the flow has no list of steps under steps' } });
+      expect((await put(base, 42)).status).toBe(400);
+      expect((await put(base, `${caller}#${'x'.repeat(MAX_FILE_BYTES)}\n`)).status).toBe(413);
+      expect(await onDisk()).toBe(caller);
+    });
+
+    it('refuses a save of what is no flow file of the working folder', async () => {
+      const base = await serve();
+      expect((await put(base, edited, etagOf(caller), 'demo/flows/missing.yaml')).status).toBe(404);
+      expect((await put(base, edited, etagOf('just: notes\n'), 'demo/notes.yaml')).status).toBe(404);
+      expect((await put(base, edited, etagOf(caller), 'demo/flows/linked.yaml')).status).toBe(403);
+    });
+
+    it('makes saves one at a time, so the second of two with the same ETag is refused', async () => {
+      const base = await serve();
+      const [first, second] = await Promise.all([put(base, edited), put(base, edited.replace('caller', 'other'))]);
+      expect([first.status, second.status]).toEqual([200, 412]);
+      expect(await onDisk()).toBe(edited);
+    });
   });
 
   it('says when no working folder is set', async () => {

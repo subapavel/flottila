@@ -1,5 +1,7 @@
 import {
   Alert,
+  AlertActionCloseButton,
+  AlertGroup,
   Bullseye,
   Button,
   CodeBlock,
@@ -18,21 +20,39 @@ import {
   HelperText,
   HelperTextItem,
   Label,
+  List,
+  ListItem,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuList,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
   PageSection,
   Spinner,
   Stack,
   StackItem,
   Title,
 } from '@patternfly/react-core';
-import { SyncAltIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, EditIcon, SaveIcon, SyncAltIcon, UndoIcon } from '@patternfly/react-icons';
 import { ReactFlowProvider } from '@xyflow/react';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { FlowsApi, StoredFlow } from './api';
-import { FlowCanvas, selectionOf } from './FlowCanvas';
+import { useCallback, useEffect, useId, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { DiscardDialog } from '../../DiscardDialog';
+import type { CloseGuard } from '../EndpointForm';
+import { FlowsError, type FlowsApi, type StoredFlow } from './api';
+import { edit, EditRefused, follow, type Op } from './edit';
+import { FlowCanvas } from './FlowCanvas';
 import { readFlow } from './flowYaml';
-import { FlowPanel, placeOf } from './FlowPanel';
-import type { FlowNode, ServedSteps } from './types';
-import { view } from './view';
+import { FlowPanel, placeOf, type PanelEdit } from './FlowPanel';
+import { addStep, deleteStep, moveStep } from './ops';
+import { BUILT_IN } from './steps';
+import type { FlowNode, FlowProblem, Path, ServedSteps } from './types';
+import { pointer, view } from './view';
+
+/** The most texts undo goes back through. */
+const MAX_UNDO = 100;
 
 export interface FlowPictureProps {
   api: FlowsApi;
@@ -42,18 +62,56 @@ export interface FlowPictureProps {
   endpointForm: (path: string) => ReactNode;
   openEndpoint: (path: string) => void;
   openFlow: (path: string) => void;
+  /** Given the question to ask before the tab closes while it has unsaved changes, and null when it has none. */
+  guardClose?: (guard: CloseGuard | null) => void;
 }
 
 type Result = { kind: 'reading' } | { kind: 'failed'; message: string } | { kind: 'read'; stored: StoredFlow; steps: ServedSteps };
 
 /**
- * A flow file as a picture: its steps on a canvas, and beside it a drawer with the settings of the node chosen, or the
- * flow's own when none is. It opens read-only. A file that cannot be drawn shows its text with its problems.
+ * The working copy while the flow is edited: its text, the texts before its changes (the last at the end), and the key
+ * of the field the last change changed.
  */
-export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }: FlowPictureProps) {
+interface Work {
+  text: string;
+  undo: string[];
+  key: string | null;
+}
+
+type Discarding = { then: 'return to view mode' } | { then: 'close its tab'; close: () => void };
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * A flow file as a picture: its steps on a canvas, and beside it a drawer with the settings of the node chosen, or the
+ * flow's own when none is. A file that cannot be drawn shows its text with its problems.
+ *
+ * It opens read-only; Edit, when the file may be edited and the flow is drawn, then Undo, Cancel, Check and Save. While
+ * it is edited, the button on an edge adds a step there, the drawer moves and deletes the step chosen and changes its
+ * fields, and the canvas, while it has the focus, takes Delete, the up and down arrows and Ctrl+Z (Cmd+Z) for the same.
+ * Each change is a new text from `edit`; undo goes back through the last 100. The selection follows its step through
+ * every change, and is kept through an undo while its path is in the view. The problems are found again after each
+ * change and never block Save, which a field holding text that cannot become a value does. Save sends the text with the
+ * version it read; a file changed on disk since opens a dialog. Cancel, or closing the tab, with unsaved changes asks
+ * first, and the page asks before it unloads.
+ */
+export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow, guardClose }: FlowPictureProps) {
   const [result, setResult] = useState<Result>({ kind: 'reading' });
   const [asked, setAsked] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Path | null>(null);
+  const [work, setWork] = useState<Work | null>(null);
+  // a new generation remounts the controls that hold text of their own, so that text goes with the text it belonged to
+  const [generation, setGeneration] = useState(0);
+  const [invalid, setInvalid] = useState<ReadonlySet<string>>(new Set());
+  const [refused, setRefused] = useState<string | null>(null);
+  const [check, setCheck] = useState<FlowProblem[] | null>(null);
+  const [adding, setAdding] = useState<Path | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [saved, setSaved] = useState(0);
+  const [discarding, setDiscarding] = useState<Discarding | null>(null);
+  const ids = useId();
   const refresh = useCallback(() => setAsked((n) => n + 1), []);
 
   useEffect(() => {
@@ -67,12 +125,28 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
     };
   }, [api, path, asked]);
 
+  const stored = result.kind === 'read' ? result.stored : null;
+  const text = work?.text ?? stored?.file.text ?? '';
   const drawn = useMemo(() => {
     if (result.kind !== 'read') return null;
-    const { file } = result.stored;
-    const read = readFlow(file.text);
-    return { view: view(file.text, { ...file.context, steps: result.steps }), value: read.kind === 'flow' ? read.value : {} };
-  }, [result]);
+    const read = readFlow(text);
+    return { view: view(text, { ...result.stored.file.context, steps: result.steps }), value: read.kind === 'flow' ? read.value : {} };
+  }, [result, text]);
+
+  const unsaved = work !== null && stored !== null && work.text !== stored.file.text;
+
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    const ask = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', ask);
+    return () => window.removeEventListener('beforeunload', ask);
+  }, [unsaved]);
+
+  useEffect(() => {
+    if (!unsaved) return undefined;
+    guardClose?.((close) => setDiscarding({ then: 'close its tab', close }));
+    return () => guardClose?.(null);
+  }, [guardClose, unsaved]);
 
   if (result.kind === 'reading') {
     return (
@@ -94,10 +168,132 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
   }
 
   const { view: picture, value } = drawn;
+  const file = result.stored.file;
   const errors = picture.problems.filter((p) => p.warning !== true).length;
   const warnings = picture.problems.length - errors;
-  const node: FlowNode | null = selected === null ? null : (picture.nodes.find((n) => n.id === selected) ?? null);
+  // the selection is kept while its path is in the view
+  const node: FlowNode | null = selected === null ? null : (picture.nodes.find((n) => n.id === pointer(selected)) ?? null);
+  if (selected !== null && node === null) setSelected(null);
   const calls = node === null ? undefined : picture.nodes.find((n) => n.id === `${node.id}#calls`);
+  const canEdit = file.editable && picture.readable && picture.readOnly === undefined;
+
+  /** Applies `ops` to the working copy; a change of the field `key` right after another of it is undone with it. */
+  const change = (ops: Op[], key: string | null = null): boolean => {
+    if (work === null || ops.length === 0) return false;
+    let next: string;
+    try {
+      next = edit(work.text, ...ops);
+    } catch (failed) {
+      if (!(failed instanceof EditRefused)) throw failed;
+      setRefused(failed.message);
+      return false;
+    }
+    setRefused(null);
+    setCheck(null);
+    if (selected !== null) setSelected(follow(selected, ops));
+    if (next !== work.text) {
+      const undo = key !== null && work.key === key ? work.undo : [...work.undo, work.text].slice(-MAX_UNDO);
+      setWork({ text: next, undo, key });
+    }
+    return true;
+  };
+
+  const startAgain = () => {
+    setGeneration((g) => g + 1);
+    setInvalid(new Set());
+    setRefused(null);
+    setCheck(null);
+  };
+
+  const undo = () => {
+    const last = work?.undo.at(-1);
+    if (work === null || last === undefined) return;
+    setWork({ text: last, undo: work.undo.slice(0, -1), key: null });
+    startAgain();
+  };
+
+  // the step chosen, where it stands in its list, and how long that list is
+  const step = node !== null && node.kind === 'step' && typeof node.path.at(-1) === 'number' ? node : null;
+  const index = step === null ? -1 : (step.path.at(-1) as number);
+  const length = step === null ? 0 : picture.nodes.filter((n) => n.kind === 'step' && n.path.length === step.path.length && n.path.slice(0, -1).every((s, i) => step.path[i] === s)).length;
+  const move = (by: -1 | 1) => {
+    if (step !== null) change(moveStep(step.path, [...step.path.slice(0, -1), index + by]));
+  };
+  const remove = () => {
+    if (step !== null) change(deleteStep(step.path));
+  };
+  const add = (type: string) => {
+    const at = adding;
+    setAdding(null);
+    if (at !== null && change(addStep(picture, at, type))) setSelected(at);
+  };
+
+  const markInvalid = (key: string, bad: boolean) =>
+    setInvalid((set) => {
+      if (set.has(key) === bad) return set;
+      const next = new Set(set);
+      if (bad) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+
+  const panelEdit: PanelEdit | undefined =
+    work === null ? undefined : { change, invalid: markInvalid, move, remove, up: index > 0, down: index >= 0 && index < length - 1, generation };
+
+  /** The canvas's keys, while it has the focus and the flow is edited: never those typed into a field. */
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (work === null || (event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]') !== null) return;
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      undo();
+    } else if (step !== null && (event.key === 'Delete' || event.key === 'Backspace')) {
+      event.preventDefault();
+      remove();
+    } else if (step !== null && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      if (event.key === 'ArrowUp' ? index > 0 : index < length - 1) move(event.key === 'ArrowUp' ? -1 : 1);
+    }
+  };
+
+  const leaveEditing = () => {
+    setDiscarding(null);
+    setSaveFailure(null);
+    setWork(null);
+    startAgain();
+  };
+  const discard = () => {
+    if (discarding?.then === 'close its tab') {
+      setDiscarding(null);
+      discarding.close();
+    } else leaveEditing();
+  };
+
+  const save = async () => {
+    if (work === null) return;
+    setSaving(true);
+    setSaveFailure(null);
+    try {
+      const next = await api.save(path, work.text, result.stored.etag);
+      // editing goes on from the text saved, and undo still goes back through it
+      setResult({ kind: 'read', stored: next, steps: result.steps });
+      setSaved((n) => n + 1);
+    } catch (error) {
+      if (error instanceof FlowsError && error.status === 412) setConflict(true);
+      else setSaveFailure(messageOf(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reload = () => {
+    setConflict(false);
+    leaveEditing();
+    refresh();
+  };
+
+  // the types a step can be added of: the built-in ones, then those the node serves
+  const served = Array.isArray(result.steps) ? result.steps.map((s) => s.type).filter((t) => !Object.hasOwn(BUILT_IN, t)) : [];
+  const addable = [...Object.keys(BUILT_IN).map((type) => ({ type, from: 'Built in' })), ...[...served].sort().map((type) => ({ type, from: 'Served by the node' }))];
 
   const header = (
     <Stack hasGutter>
@@ -106,9 +302,11 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
           <FlexItem>
             <Title headingLevel="h1">{typeof value.id === 'string' ? value.id : path}</Title>
           </FlexItem>
-          <FlexItem>
-            <Label variant="outline">Read-only</Label>
-          </FlexItem>
+          {!canEdit && (
+            <FlexItem>
+              <Label variant="outline">Read-only</Label>
+            </FlexItem>
+          )}
           {errors > 0 && (
             <FlexItem>
               <Label status="danger">{errors === 1 ? '1 problem' : `${errors} problems`}</Label>
@@ -120,15 +318,88 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
             </FlexItem>
           )}
           <FlexItem align={{ default: 'alignRight' }}>
-            <Button variant="secondary" size="sm" icon={<SyncAltIcon />} onClick={refresh}>
-              Refresh
-            </Button>
+            {work !== null ? (
+              <>
+                <Button size="sm" variant="secondary" icon={<UndoIcon />} isDisabled={work.undo.length === 0} onClick={undo}>
+                  Undo
+                </Button>{' '}
+                <Button size="sm" variant="link" onClick={() => (unsaved ? setDiscarding({ then: 'return to view mode' }) : leaveEditing())}>
+                  Cancel
+                </Button>{' '}
+                <Button size="sm" variant="secondary" icon={<CheckCircleIcon />} onClick={() => setCheck(picture.problems)}>
+                  Check
+                </Button>{' '}
+                <Button size="sm" variant="primary" icon={<SaveIcon />} isDisabled={!unsaved || saving || invalid.size > 0} onClick={() => void save()}>
+                  Save
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="secondary" size="sm" icon={<SyncAltIcon />} onClick={refresh}>
+                  Refresh
+                </Button>
+                {canEdit && (
+                  <>
+                    {' '}
+                    <Button size="sm" variant="primary" icon={<EditIcon />} onClick={() => setWork({ text: file.text, undo: [], key: null })}>
+                      Edit
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
           </FlexItem>
         </Flex>
       </StackItem>
       <StackItem>
         <code>{path}</code>
       </StackItem>
+      {file.editable && picture.readable && picture.readOnly !== undefined && (
+        <StackItem>
+          <Alert variant="info" isInline isPlain title={`The editor shows this flow read-only: ${picture.readOnly}.`} />
+        </StackItem>
+      )}
+      {refused !== null && (
+        <StackItem>
+          <Alert
+            variant="danger"
+            isInline
+            title="The change was not made"
+            actionClose={<AlertActionCloseButton aria-label="Dismiss the refusal" onClose={() => setRefused(null)} />}
+          >
+            {refused}
+          </Alert>
+        </StackItem>
+      )}
+      {check !== null && (
+        <StackItem>
+          <Alert
+            variant={check.length > 0 ? 'warning' : 'success'}
+            isInline
+            role="status"
+            title={check.length > 0 ? 'Check found issues' : 'Check passed'}
+            actionClose={<AlertActionCloseButton aria-label="Dismiss check" onClose={() => setCheck(null)} />}
+          >
+            {check.length > 0 && (
+              <List aria-label="Issues">
+                {check.map((p, i) => (
+                  <ListItem key={i}>
+                    {placeOf(p.path)}: {p.message}
+                  </ListItem>
+                ))}
+              </List>
+            )}
+            <p>The node checks the flow again when the package is deployed.</p>
+          </Alert>
+        </StackItem>
+      )}
+      {saveFailure !== null && (
+        <StackItem>
+          <Alert variant="danger" isInline title="The file was not saved">
+            {saveFailure}
+          </Alert>
+        </StackItem>
+      )}
       {picture.problems.length > 0 && (
         <StackItem>
           <ExpandableSection toggleTextCollapsed="Show the problems" toggleTextExpanded="Hide the problems" isExpanded={!picture.readable || undefined}>
@@ -184,6 +455,7 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
           endpointForm={endpointForm}
           openEndpoint={openEndpoint}
           openFlow={openFlow}
+          {...(panelEdit === undefined ? {} : { edit: panelEdit })}
         />
       </DrawerPanelBody>
     </DrawerPanelContent>
@@ -199,9 +471,15 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
           <Drawer isExpanded isInline position="end">
             <DrawerContent panelContent={panel}>
               <DrawerContentBody>
-                <div style={{ height: '70vh', minHeight: '24rem' }} data-testid="flow-canvas">
+                {/* the canvas takes its keys while it, or a node on it, has the focus */}
+                <div style={{ height: '70vh', minHeight: '24rem' }} data-testid="flow-canvas" tabIndex={-1} onKeyDown={onKey}>
                   <ReactFlowProvider>
-                    <FlowCanvas view={picture} selected={selected} onSelect={(n) => setSelected(selectionOf(n))} />
+                    <FlowCanvas
+                      view={picture}
+                      selected={selected === null ? null : pointer(selected)}
+                      onSelect={(n) => setSelected(n.path)}
+                      {...(work === null ? {} : { onInsert: setAdding })}
+                    />
                   </ReactFlowProvider>
                 </div>
               </DrawerContentBody>
@@ -209,6 +487,50 @@ export function FlowPicture({ api, path, endpointForm, openEndpoint, openFlow }:
           </Drawer>
         </StackItem>
       </Stack>
+      <Modal variant="small" isOpen={adding !== null} onClose={() => setAdding(null)} aria-labelledby={`${ids}-add`}>
+        <ModalHeader title="Add a step" labelId={`${ids}-add`} description={adding === null ? undefined : `At ${placeOf(adding)}`} />
+        <ModalBody>
+          <Menu isPlain aria-label="Step types" onSelect={(_, type) => add(String(type))}>
+            <MenuContent>
+              <MenuList>
+                {addable.map(({ type, from }) => (
+                  <MenuItem key={type} itemId={type} description={from}>
+                    {type}
+                  </MenuItem>
+                ))}
+              </MenuList>
+            </MenuContent>
+          </Menu>
+        </ModalBody>
+      </Modal>
+      <DiscardDialog isOpen={discarding !== null} name={typeof value.id === 'string' ? value.id : path} then={discarding?.then ?? ''} onDiscard={discard} onKeepEditing={() => setDiscarding(null)} />
+      <Modal variant="small" isOpen={conflict} onClose={() => setConflict(false)} aria-labelledby={`${ids}-conflict`}>
+        <ModalHeader title="The file changed on disk" labelId={`${ids}-conflict`} />
+        <ModalBody>
+          <p>
+            <strong>{path}</strong> changed since it was opened, and nothing was saved. Reload shows the file as it is now and discards your changes.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="primary" onClick={reload}>
+            Reload
+          </Button>
+          <Button variant="link" onClick={() => setConflict(false)}>
+            Keep editing
+          </Button>
+        </ModalFooter>
+      </Modal>
+      <AlertGroup isToast isLiveRegion aria-label="Save notifications">
+        {saved > 0 && (
+          <Alert
+            key={saved}
+            variant="success"
+            title={`Flow ${typeof value.id === 'string' ? value.id : path} saved`}
+            timeout={8000}
+            actionClose={<AlertActionCloseButton aria-label="Dismiss save notification" onClose={() => setSaved(0)} />}
+          />
+        )}
+      </AlertGroup>
     </PageSection>
   );
 }

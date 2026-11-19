@@ -1,11 +1,11 @@
 import '@patternfly/react-core/dist/styles/base.css';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { Shell } from '../../Shell';
 import type { ComponentSettings, EndpointFile, EndpointsApi } from '../api';
 import { flowsScreen } from '../screen';
-import type { FlowFile, FlowsApi } from './api';
+import { FlowsError, type FlowFile, type FlowsApi } from './api';
 
 const invoice = `schemaVersion: 1
 kind: flow
@@ -60,9 +60,14 @@ steps:
     endpoint: partner-domestic
 `;
 
-/** A fake of the server over a working folder holding `texts`, by path; its ETag counts the reads. */
+/**
+ * A fake of the server over a working folder holding `texts`, by path, each file at version "v1". A save with the
+ * file's version writes it as the next one; any other version is refused with 412.
+ */
 function fakeFlows(texts: Record<string, string> = { 'demo/flows/invoice.yaml': invoice, 'demo/flows/order.yaml': order }, overrides: Partial<FlowsApi> = {}): FlowsApi {
-  let reads = 0;
+  const files = { ...texts };
+  const versions = new Map<string, number>();
+  const etag = (path: string) => `"v${versions.get(path) ?? 1}"`;
   return {
     list: vi.fn(async () => ({
       configured: true,
@@ -74,9 +79,15 @@ function fakeFlows(texts: Record<string, string> = { 'demo/flows/invoice.yaml': 
       ],
     })),
     read: vi.fn(async (path: string) => ({
-      file: { path, text: texts[path] ?? 'kind: flow\nid: [unclosed\n', editable: true, context },
-      etag: `"${++reads}"`,
+      file: { path, text: files[path] ?? 'kind: flow\nid: [unclosed\n', editable: true, context },
+      etag: etag(path),
     })),
+    save: vi.fn(async (path: string, text: string, version: string) => {
+      if (version !== etag(path)) throw new FlowsError(412, 'the file changed since it was read; nothing was saved');
+      files[path] = text;
+      versions.set(path, (versions.get(path) ?? 1) + 1);
+      return { file: { path, text, editable: true, context }, etag: etag(path) };
+    }),
     steps: vi.fn(async () => [{ type: 'xsd', configSchema: { type: 'object', required: ['schema'], properties: { schema: { type: 'string', description: 'The XSD file.' } } } }]),
     ...overrides,
   };
@@ -147,9 +158,9 @@ describe('Flows', () => {
     await expect.element(text('the file is not YAML: unclosed')).toBeVisible();
   });
 
-  test("draws the flow's steps, read-only, with the flow's own settings beside them", async () => {
+  test("draws the flow's steps, with the flow's own settings beside them, and offers Edit", async () => {
     await open();
-    await expect.element(text('Read-only')).toBeVisible();
+    await expect.element(button('Edit')).toBeVisible();
     for (const label of ['http-in', 'validate', 'route', 'partner', 'partner-domestic', 'partner-foreign', 'hand-over', 'order', 'end']) {
       await expect.element(nodeOf(label)).toBeVisible();
     }
@@ -182,7 +193,8 @@ describe('Flows', () => {
     await open();
     await nodeOf('http-in').click();
     await expect.element(page.getByLabelText('port', { exact: false })).toHaveValue('8080');
-    expect(button('Edit').elements()).toHaveLength(0);
+    // the flow's own Edit, and none in the endpoint's form
+    expect(button('Edit').elements()).toHaveLength(1);
     await button('Open endpoint').click();
     await expect.element(page.getByRole('tab', { name: 'http-in', exact: true })).toBeVisible();
   });
@@ -207,5 +219,190 @@ describe('Flows', () => {
     await nodeOf('validate').click();
     await expect.element(text("The node's step types could not be read: the server does not answer")).toBeVisible();
     await expect.element(text('"schema": "flows/invoice.xsd"')).toBeVisible();
+  });
+});
+
+const handOver = '  - type: to\n    name: hand-over\n    endpoint: order-call\n';
+const partner = '  - type: to\n    name: partner\n';
+
+describe('Editing a flow', () => {
+  test('adds a step of the type chosen where the button on an edge is pressed, and Save writes the text with the version it read', async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await button('Add a step at steps[1]').click();
+    await page.getByRole('menuitem', { name: /^filter/ }).click();
+    await expect.element(nodeOf('filter')).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'filter', level: 2 })).toBeVisible();
+    await button('Save').click();
+    expect(flows.save).toHaveBeenCalledWith('demo/flows/invoice.yaml', invoice.replace('  - type: route\n', '  - type: filter\n  - type: route\n'), '"v1"');
+    await expect.element(text('Flow invoice saved')).toBeVisible();
+    await expect.element(button('Save')).toBeDisabled();
+  });
+
+  test("moves and deletes the chosen step with the drawer's buttons, and Undo takes a change back", async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await nodeOf('hand-over').click();
+    await expect.element(button('Move down')).toBeDisabled();
+    await button('Move up').click();
+    // the selection followed the step
+    await expect.element(button('Move down')).toBeEnabled();
+    await button('Save').click();
+    expect(flows.save).toHaveBeenCalledWith('demo/flows/invoice.yaml', invoice.replace(handOver, '').replace(partner, `${handOver}${partner}`), '"v1"');
+    await expect.element(button('Save')).toBeDisabled();
+    await button('Delete').click();
+    await expect.element(nodeOf('hand-over')).not.toBeInTheDocument();
+    await button('Undo').click();
+    await expect.element(nodeOf('hand-over')).toBeVisible();
+    await expect.element(button('Save')).toBeDisabled();
+    // undo goes back through the save too
+    await button('Undo').click();
+    await expect.element(button('Save')).toBeEnabled();
+    await nodeOf('hand-over').click();
+    await expect.element(button('Move down')).toBeDisabled();
+  });
+
+  test("an undo that takes away the selection's place shows the flow's own settings", async () => {
+    await open();
+    await button('Edit').click();
+    await button('Add a step at steps[4]').click();
+    await page.getByRole('menuitem', { name: /^filter/ }).click();
+    await expect.element(page.getByRole('heading', { name: 'filter', level: 2 })).toBeVisible();
+    await button('Undo').click();
+    await expect.element(page.getByRole('heading', { name: 'Flow invoice' })).toBeVisible();
+  });
+
+  test('the canvas takes the arrows, Ctrl+Z and Delete while it has the focus, and never the keys typed into a field', async () => {
+    await open();
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    await userEvent.keyboard('{ArrowDown}');
+    await expect.element(button('Move up')).toBeEnabled();
+    await expect.element(page.getByRole('heading', { name: 'validate', level: 2 })).toBeVisible();
+    await userEvent.keyboard('{Control>}z{/Control}');
+    // the selection keeps its place, which holds the route again
+    await expect.element(page.getByRole('heading', { name: 'route', level: 2 })).toBeVisible();
+    await nodeOf('validate').click();
+    await expect.element(button('Move up')).toBeDisabled();
+    await page.getByRole('tab', { name: 'Step', exact: true }).click();
+    const name = page.getByLabelText('name', { exact: false });
+    await name.click();
+    await userEvent.keyboard('{End}{Backspace}');
+    await expect.element(name).toHaveValue('validat');
+    await expect.element(nodeOf('validat')).toBeVisible();
+    await expect.element(text('Renamed from validate')).toBeVisible();
+    await nodeOf('validat').click();
+    await userEvent.keyboard('{Delete}');
+    await expect.element(nodeOf('validat')).not.toBeInTheDocument();
+  });
+
+  test("a field's changes in a row are undone at once, and the problems are found again after each change without blocking Save", async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    const schema = page.getByLabelText('schema', { exact: false });
+    await schema.fill('flows/other.xsd');
+    await schema.fill('');
+    await expect.element(text('1 problem')).toBeVisible();
+    await button('Undo').click();
+    await expect.element(schema).toHaveValue('flows/invoice.xsd');
+    await expect.element(text('1 problem')).not.toBeInTheDocument();
+    await expect.element(button('Undo')).toBeDisabled();
+    await schema.fill('');
+    await button('Save').click();
+    expect(flows.save).toHaveBeenCalledWith('demo/flows/invoice.yaml', invoice.replace('schema: flows/invoice.xsd', 'schema: ""'), '"v1"');
+  });
+
+  test('Check lists the problems the flow has now', async () => {
+    await open();
+    await button('Edit').click();
+    await button('Check').click();
+    await expect.element(text('Check passed')).toBeVisible();
+    await nodeOf('validate').click();
+    await page.getByLabelText('schema', { exact: false }).fill('');
+    await button('Check').click();
+    await expect.element(text('Check found issues')).toBeVisible();
+    await expect.element(page.getByRole('list', { name: 'Issues' }).getByText('steps[0].schema', { exact: false })).toBeVisible();
+  });
+
+  test('a file changed on disk since it was read opens a dialog, and Reload shows it as it is now', async () => {
+    const flows = fakeFlows();
+    await open(flows);
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    await page.getByLabelText('schema', { exact: false }).fill('flows/other.xsd');
+    // another program writes the file
+    await flows.save('demo/flows/invoice.yaml', invoice.replace('name: validate', 'name: check'), '"v1"');
+    await button('Save').click();
+    await expect.element(text('The file changed on disk')).toBeVisible();
+    await button('Reload').click();
+    await expect.element(nodeOf('check')).toBeVisible();
+    await expect.element(button('Edit')).toBeVisible();
+  });
+
+  test('a save the server refuses says why, and the changes stay', async () => {
+    await open(fakeFlows(undefined, { save: vi.fn(async () => Promise.reject(new FlowsError(403, 'this server shows flow files read-only'))) }));
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    await button('Delete').click();
+    await button('Save').click();
+    await expect.element(text('The file was not saved')).toBeVisible();
+    await expect.element(text('this server shows flow files read-only')).toBeVisible();
+    await expect.element(nodeOf('validate')).not.toBeInTheDocument();
+  });
+
+  test('a file the server shows read-only offers no Edit', async () => {
+    const flows = fakeFlows();
+    const read = flows.read;
+    await open({
+      ...flows,
+      read: async (path) => {
+        const stored = await read(path);
+        return { ...stored, file: { ...stored.file, editable: false } };
+      },
+    });
+    await expect.element(page.getByText('Read-only', { exact: true })).toBeVisible();
+    expect(button('Edit').elements()).toHaveLength(0);
+  });
+
+  test('Cancel and closing the tab with unsaved changes ask first', async () => {
+    await open();
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    await button('Delete').click();
+    await button('Cancel').click();
+    await button('Keep editing').click();
+    await expect.element(nodeOf('validate')).not.toBeInTheDocument();
+    await button('Cancel').click();
+    await button('Discard changes').click();
+    await expect.element(nodeOf('validate')).toBeVisible();
+    await button('Edit').click();
+    await nodeOf('validate').click();
+    await button('Delete').click();
+    await button('Close invoice').click();
+    await expect.element(text('Discard changes?')).toBeVisible();
+    await button('Discard changes').click();
+    await expect.element(page.getByRole('heading', { name: 'invoice', level: 1 })).not.toBeInTheDocument();
+  });
+
+  test('a change the editor cannot make says why and changes nothing', async () => {
+    render(fakeFlows());
+    await button('order').click();
+    await button('Edit').click();
+    await nodeOf('to').click();
+    await button('Delete').click();
+    await expect.element(text('The change was not made')).toBeVisible();
+    await expect.element(nodeOf('to')).toBeVisible();
+    await expect.element(button('Save')).toBeDisabled();
+  });
+
+  test('a flow written in a form the editor does not keep is shown read-only, with the reason', async () => {
+    await open(fakeFlows({ 'demo/flows/invoice.yaml': invoice.replace(/steps:\n[\s\S]*$/, 'steps: [{ type: to, endpoint: partner-domestic }]\n') }));
+    await expect.element(page.getByText('Read-only', { exact: true })).toBeVisible();
+    await expect.element(text('The editor shows this flow read-only: steps is written on one line ([ … ]).')).toBeVisible();
+    expect(button('Edit').elements()).toHaveLength(0);
   });
 });

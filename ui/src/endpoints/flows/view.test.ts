@@ -128,6 +128,8 @@ describe('view of awkward files', () => {
       { path: ['steps', 1, '<<'], message: 'the node reads the alias *check as the text check, not as what &check holds' },
       { path: ['steps', 1], message: 'a step is a mapping with a text type' },
     ]);
+    expect(view(readFileSync(join(fixtures, 'one-line.yaml'), 'utf8'), demo).readOnly).toBe('steps is written on one line ([ … ])');
+    expect(view(readFileSync(join(fixtures, 'comments.yaml'), 'utf8'), demo).readOnly).toBeUndefined();
     expect(problems('one-line.yaml')).toEqual([
       { path: ['steps'], message: 'the list is written on one line ([ … ]): the editor shows this flow read-only', warning: true },
     ]);
@@ -194,6 +196,7 @@ describe('view of a file it cannot draw', () => {
     const drawn = view('schemaVersion: 2\nkind: flow\nid: x\nfrom: { endpoint: http-in }\nsteps:\n  - type: to\n    endpoint: partner-domestic\n', demo);
     expect(drawn.readable).toBe(true);
     expect(drawn.problems).toEqual([{ path: ['schemaVersion'], message: 'schemaVersion is 2, not 1: the editor shows this flow read-only' }]);
+    expect(drawn.readOnly).toBe('schemaVersion is 2, not 1');
   });
 
   it('draws a step that is no mapping in its place, locked', () => {

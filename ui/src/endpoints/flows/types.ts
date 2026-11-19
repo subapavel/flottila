@@ -99,4 +99,6 @@ export interface FlowView {
   nodes: FlowNode[];
   edges: FlowEdge[];
   problems: FlowProblem[];
+  /** Why the editor shows the flow read-only, when it does: a schemaVersion other than 1, or a list of steps on one line. */
+  readOnly?: string;
 }

@@ -6,6 +6,8 @@ import {
   DescriptionListDescription,
   DescriptionListGroup,
   DescriptionListTerm,
+  Flex,
+  FlexItem,
   Form,
   FormGroup,
   HelperText,
@@ -18,14 +20,33 @@ import {
   TabTitleText,
   Title,
 } from '@patternfly/react-core';
+import { ArrowDownIcon, ArrowUpIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useState, type ReactNode } from 'react';
 import { FieldControl } from '../FieldControl';
 import { RawOptions } from '../RawOptions';
+import type { Op } from './edit';
+import { setField, setKeys } from './ops';
 import { STEP_KEYS, stepTabFields } from './steps';
 import type { FlowNode, FlowProblem, Path, StepField, StepForm, ValueField } from './types';
+import { pointer } from './view';
 
-const ignore = () => undefined;
+/** What the panel may change while the flow is edited. */
+export interface PanelEdit {
+  /** Told the operations a change of a field makes, and the field's key: changes of one field in a row are undone at once. */
+  change: (ops: Op[], key: string) => void;
+  /** Told whether the field of `key` holds text that cannot become a value, which cannot be saved. */
+  invalid: (key: string, bad: boolean) => void;
+  /** Moves the selected step up (-1) or down (1) in its list. */
+  move: (by: -1 | 1) => void;
+  /** Deletes the selected step. */
+  remove: () => void;
+  /** Whether the selected step can move up, and down, in its list. */
+  up: boolean;
+  down: boolean;
+  /** Changes each time the text is set from outside the form (undo, save, reload): controls holding text of their own start again. */
+  generation: number;
+}
 
 const shown = (value: unknown) => (value === undefined || value === null ? '' : typeof value === 'string' ? value : JSON.stringify(value));
 
@@ -107,8 +128,11 @@ function MapTable({ field, value, at, problems }: { field: Extract<StepField, { 
   );
 }
 
-/** The fields of a form read-only, each with its value from `values` and its problem. */
-function Fields({ fields, values, at, problems }: { fields: StepField[]; values: Record<string, unknown>; at: Path; problems: FlowProblem[] }) {
+/**
+ * The fields of a form, each with its value from `values` and its problem. With `edit` the fields that hold one value are
+ * editable; lists and maps stay tables.
+ */
+function Fields({ fields, values, at, problems, edit }: { fields: StepField[]; values: Record<string, unknown>; at: Path; problems: FlowProblem[]; edit?: PanelEdit }) {
   return (
     <Form isHorizontal={false} onSubmit={(e) => e.preventDefault()}>
       {fields.map((f) => {
@@ -124,7 +148,18 @@ function Fields({ fields, values, at, problems }: { fields: StepField[]; values:
         if (f.type === 'list') return <ListTable key={f.name} field={f} value={value} at={path} problems={problems} />;
         if (f.type === 'map') return <MapTable key={f.name} field={f} value={value} at={path} problems={problems} />;
         const problem = problems.find((p) => samePath(p.path, path));
-        return <FieldControl key={f.name} field={f as ValueField} value={value} readOnly onChange={ignore} onInvalid={ignore} {...(problem === undefined ? {} : { problem: problem.message })} />;
+        const key = pointer(path);
+        return (
+          <FieldControl
+            key={`${edit?.generation ?? 0}-${f.name}`}
+            field={f as ValueField}
+            value={value}
+            readOnly={edit === undefined}
+            onChange={(next) => edit?.change(setField(at, values, f.name, next, f.required), key)}
+            onInvalid={(bad) => edit?.invalid(key, bad)}
+            {...(problem === undefined ? {} : { problem: problem.message })}
+          />
+        );
       })}
     </Form>
   );
@@ -133,9 +168,10 @@ function Fields({ fields, values, at, problems }: { fields: StepField[]; values:
 /** The name a step has when it is given none: the process a call calls, else its type. */
 const defaultNameOf = (values: Record<string, unknown>) => String(values.type === 'process' && typeof values.process === 'string' ? values.process : values.type);
 
-/** A step's form: its own settings, and the "Step" tab of the platform's keys. */
-function StepTabs({ node, form, problems }: { node: FlowNode; form: StepForm; problems: FlowProblem[] }) {
+/** A step's form: its own settings, and the "Step" tab of the platform's keys. A rename, while it is edited, warns. */
+function StepTabs({ node, form, problems, edit }: { node: FlowNode; form: StepForm; problems: FlowProblem[]; edit?: PanelEdit }) {
   const [tab, setTab] = useState<string | number>('settings');
+  const [named] = useState(node.label);
   const own = Object.fromEntries(Object.entries(form.values).filter(([k]) => !STEP_KEYS.has(k)));
   const described = new Set(form.settings.fields.map((f) => f.name));
   const undescribed = Object.fromEntries(Object.entries(own).filter(([k]) => !described.has(k)));
@@ -151,13 +187,19 @@ function StepTabs({ node, form, problems }: { node: FlowNode; form: StepForm; pr
             )}
             {form.settings.described ? (
               <StackItem>
-                <Fields fields={form.settings.fields} values={form.values} at={form.path} problems={problems} />
+                <Fields fields={form.settings.fields} values={form.values} at={form.path} problems={problems} {...(edit === undefined ? {} : { edit })} />
               </StackItem>
             ) : null}
             {(!form.settings.described || Object.keys(undescribed).length > 0) && (
               <StackItem>
                 {/* the keys no field describes, kept as the file holds them */}
-                <RawOptions key={node.id} options={form.settings.described ? undescribed : own} readOnly onChange={ignore} onInvalid={ignore} />
+                <RawOptions
+                  key={`${node.id}-${edit?.generation ?? 0}`}
+                  options={form.settings.described ? undescribed : own}
+                  readOnly={edit === undefined}
+                  onChange={(next) => edit?.change(setKeys(form.path, form.settings.described ? undescribed : own, next), `${pointer(form.path)}#raw`)}
+                  onInvalid={(bad) => edit?.invalid(`${pointer(form.path)}#raw`, bad)}
+                />
               </StackItem>
             )}
           </Stack>
@@ -165,7 +207,22 @@ function StepTabs({ node, form, problems }: { node: FlowNode; form: StepForm; pr
       </Tab>
       <Tab eventKey="step" title={<TabTitleText>Step</TabTitleText>}>
         <TabContentBody hasPadding>
-          <Fields fields={stepTabFields(String(form.values.type), defaultNameOf(form.values))} values={form.values} at={form.path} problems={problems} />
+          <Stack hasGutter>
+            {edit !== undefined && node.label !== named && (
+              <StackItem>
+                <Alert variant="warning" isInline isPlain title={`Renamed from ${named}: the message history keeps ${named} on the rows written before.`} />
+              </StackItem>
+            )}
+            <StackItem>
+              <Fields
+                fields={stepTabFields(String(form.values.type), defaultNameOf(form.values))}
+                values={form.values}
+                at={form.path}
+                problems={problems}
+                {...(edit === undefined ? {} : { edit })}
+              />
+            </StackItem>
+          </Stack>
         </TabContentBody>
       </Tab>
     </Tabs>
@@ -202,13 +259,17 @@ export interface FlowPanelProps {
   endpointForm: (path: string) => ReactNode;
   openEndpoint: (path: string) => void;
   openFlow: (path: string) => void;
+  /** What may be changed while the flow is edited; without it the panel only shows. */
+  edit?: PanelEdit;
 }
 
 /**
  * What the drawer beside the canvas shows of the selection: a step's form with its "Step" tab, an endpoint in its
- * component's form, a link to a flow called, or, when nothing is selected, the flow's own settings. All read-only.
+ * component's form, a link to a flow called, or, when nothing is selected, the flow's own settings. While the flow is
+ * edited, a step that is not locked can be moved and deleted, and its fields that hold one value changed; the rest is
+ * read-only.
  */
-export function FlowPanel({ flow, node, calls, problems, endpointForm, openEndpoint, openFlow }: FlowPanelProps) {
+export function FlowPanel({ flow, node, calls, problems, endpointForm, openEndpoint, openFlow, edit }: FlowPanelProps) {
   if (node === null) {
     return (
       <Stack hasGutter>
@@ -228,6 +289,7 @@ export function FlowPanel({ flow, node, calls, problems, endpointForm, openEndpo
   const mine = problems.filter((p) => at.every((s, i) => p.path[i] === s));
   const opens = node.opens;
   const flowLink = calls?.opens !== undefined && 'flow' in calls.opens ? calls.opens.flow : opens !== undefined && 'flow' in opens ? opens.flow : undefined;
+  const editable = edit !== undefined && node.kind === 'step' && node.locked === undefined ? edit : undefined;
   return (
     <Stack hasGutter>
       <StackItem>
@@ -237,6 +299,27 @@ export function FlowPanel({ flow, node, calls, problems, endpointForm, openEndpo
           {node.runs > 0 && ` · runs as ${node.runsAs.join(', ')}${node.runs > node.runsAs.length ? ` and ${node.runs - node.runsAs.length} more` : ''}`}
         </Content>
       </StackItem>
+      {editable !== undefined && (
+        <StackItem>
+          <Flex>
+            <FlexItem>
+              <Button variant="secondary" size="sm" icon={<ArrowUpIcon />} isDisabled={!editable.up} onClick={() => editable.move(-1)}>
+                Move up
+              </Button>
+            </FlexItem>
+            <FlexItem>
+              <Button variant="secondary" size="sm" icon={<ArrowDownIcon />} isDisabled={!editable.down} onClick={() => editable.move(1)}>
+                Move down
+              </Button>
+            </FlexItem>
+            <FlexItem>
+              <Button variant="secondary" isDanger size="sm" icon={<TrashIcon />} onClick={editable.remove}>
+                Delete
+              </Button>
+            </FlexItem>
+          </Flex>
+        </StackItem>
+      )}
       {node.locked !== undefined && (
         <StackItem>
           <Alert variant="info" isInline isPlain title={node.locked} />
@@ -254,7 +337,7 @@ export function FlowPanel({ flow, node, calls, problems, endpointForm, openEndpo
       )}
       {node.form !== undefined && (
         <StackItem>
-          <StepTabs key={node.id} node={node} form={node.form} problems={mine} />
+          <StepTabs key={node.id} node={node} form={node.form} problems={mine} {...(editable === undefined ? {} : { edit: editable })} />
         </StackItem>
       )}
       {node.form !== undefined && mine.some((p) => p.path.length <= at.length) && (

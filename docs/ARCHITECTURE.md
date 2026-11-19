@@ -883,7 +883,7 @@ Without the description the form shows the file's settings read-only and says wh
 node: an edited package is deployed as any other.
 
 The Flows screen, in the same UI module, lists the flow files of the working folder (`*.yaml` and `*.yml` of the kind
-`flow`) and opens each one in a tab of its own as a picture, read-only for now. The development server answers a flow
+`flow`) and opens each one in a tab of its own as a picture. The development server answers a flow
 file with its text, its `ETag` and its context: the endpoints of its package (the nearest folder holding
 `package.yaml`) and the flows of the working folder with the `direct` address each one serves; it shares the walk, the
 path check and the `ETag` with the endpoint files. The browser reads the text with the `yaml` library and draws it in
@@ -897,6 +897,23 @@ and locks the parts of the file an editor could not change line by line. Choosin
 the built-in steps as the UI describes them, a module's or plugin's from its `configSchema` (`GET /admin/steps`), the
 platform's keys on a "Step" tab, an endpoint in its component's form, and the flow's own settings when nothing is
 chosen. A file that cannot be drawn shows its text with its problems.
+
+The picture opens read-only; Edit, Cancel, Check and Save as in the endpoint form. The working copy is the file's text,
+and each change is a new text: `edit(text, ...ops)` adds, replaces, removes and moves values by their paths, splicing
+only the text of what changes in the style of what stands around it (a step with the comments above it, a mapping key by
+key, a plain value only where YAML 1.1 and 1.2 read it alike, text of several lines as a block), and refuses, with the
+reason and changing nothing, an operation on a locked part of the file, one that would leave a list of steps empty, or a
+result that does not read back as the value patched with its keys in order. Functions build the operations of the
+screen: adding a step with its keys in order and a free default name, moving and deleting a step, and setting a field,
+where emptying an optional one removes its key. The button on an edge adds a step there; the drawer moves and deletes
+the step chosen and edits the fields of its forms that hold one value, with the canvas's keys (Delete, the arrows, undo)
+while it has the focus. Undo keeps the last 100 texts, and the selection follows its step through every change. The
+problems are found again after every change and do not block Save. A flow whose `schemaVersion` is not 1, or whose list
+of steps is written on one line, opens read-only and says why. Save sends `{text}` with `If-Match`; the development
+server reads the text as the browser does, refuses one that is not a flow (422), a stale version (412, compared again
+just before the file is replaced), a missing `If-Match` (428), a file over 1 MiB (413) and every save with
+`RAIL8_READ_ONLY=true` (403), writes nothing when the text is unchanged, and otherwise replaces the file through a
+temporary file, one save at a time.
 
 No node serves the UI yet; `npm run dev` runs it. In development the Vite server, on localhost:5173,
 passes the UI's `/admin` requests on to the node (`RAIL8_ADMIN_URL`, default
