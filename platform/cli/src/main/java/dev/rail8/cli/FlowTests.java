@@ -8,23 +8,24 @@ import dev.rail8.api.Headers;
 import dev.rail8.api.Runtime;
 import dev.rail8.api.StepResources;
 import dev.rail8.api.Timer;
-import dev.rail8.components.direct.DirectComponent;
+import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.components.mock.Behaviour;
 import dev.rail8.components.mock.MockComponent;
 import dev.rail8.core.dlq.InMemoryDlq;
 import dev.rail8.core.queue.InMemoryWorkQueue;
 import dev.rail8.core.record.InMemoryMessageStore;
 import dev.rail8.core.record.Meter;
-import dev.rail8.runtime.Main;
 import dev.rail8.runtime.deploy.DeployRefusedException;
 import dev.rail8.runtime.deploy.Deployments;
 import dev.rail8.runtime.deploy.Secrets;
 import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.schemas.Documents;
 import dev.rail8.schemas.Package;
 import dev.rail8.testkit.FakeClock;
 import dev.rail8.testkit.FakeRuntime;
 import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -56,14 +57,15 @@ import java.util.stream.Stream;
 
 /**
  * {@code rail8 test <dir> [--deps <dir>] [--plugins <dir>]}. First what {@code rail8 validate} checks, in the environment {@code ci}
- * — the package's problems, its dependencies' closure and the dry build over what a node ships with its plugins — and what only a test
+ * — the package's problems, its dependencies' closure and the dry build over a node's modules and its plugins — and what only a test
  * run asks of its test documents: a {@code recorded}
  * or {@code script} behaviour (not implemented yet), {@code expect.status} on a flow whose from endpoint is not http, an
  * {@code xpath} that does not compile; any problem is printed as validate prints it and no case runs (exit 1).
  *
  * <p>Then every {@code kind: test} document in path order, its cases in order, one at a time, each on a world of its own: a
  * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per scheme, a plugin's included, bound to the document's
- * {@code mocks} — a case's entry for an endpoint replaces the document's whole —, the real {@code direct} component in front of
+ * {@code mocks} — a case's entry for an endpoint replaces the document's whole —, the real {@code direct} component (the direct
+ * module's, built over the case's runtime and the run's one Vert.x) in front of
  * the {@code direct} mock ({@link Calls}: a call to a flow of the package or of a dependency runs that flow, unless the case's
  * mocks name its endpoint), in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
@@ -109,16 +111,17 @@ final class FlowTests {
     private final Package pkg;
     private final Path root;
     private final List<String> schemes;
-    private final Main.Shipped shipped;
+    private final Plugins plugins;
     private final Map<String, Function<Envelope, Optional<String>>> xpaths = new HashMap<>();
     private byte[] zip;
     private List<Archive> dependencies;
+    private Vertx vertx;
 
-    private FlowTests(Package pkg, Path root, List<String> schemes, Main.Shipped shipped) {
+    private FlowTests(Package pkg, Path root, List<String> schemes, Plugins plugins) {
         this.pkg = pkg;
         this.root = root;
         this.schemes = schemes;
-        this.shipped = shipped;
+        this.plugins = plugins;
     }
 
     /** One test document: its path from the package root, its flow, its {@code mocks} and its cases. */
@@ -134,12 +137,12 @@ final class FlowTests {
         }
     }
 
-    static int run(Cli.Options options, Main.Shipped shipped, PrintStream out) throws IOException {
+    static int run(Cli.Options options, Plugins plugins, PrintStream out) throws IOException {
         Path dir = options.dir();
-        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options), shipped);
+        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options), plugins);
         if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
         Package pkg = checked.pkg().orElseThrow();
-        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), shipped);
+        FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), plugins);
         List<Doc> docs = run.docs(dir);
         List<String> problems = run.problems(docs);
         if (!problems.isEmpty()) return problems(problems, out);
@@ -153,14 +156,19 @@ final class FlowTests {
         run.dependencies = List.copyOf(dependencies);
         int passed = 0;
         int cases = 0;
-        for (Doc doc : docs) {
-            for (JsonObject c : doc.cases()) {
-                Verdict verdict = run.play(doc, c);
-                out.println((verdict.passed() ? "PASS " : "FAIL ") + doc.flow() + ": " + c.getString("name") + " (flow time " + duration(verdict.flowTime()) + ")");
-                verdict.why().forEach(line -> out.println("  " + line));
-                cases++;
-                if (verdict.passed()) passed++;
+        run.vertx = Vertx.vertx();   // the one each case's components are built over; it runs nothing of theirs
+        try {
+            for (Doc doc : docs) {
+                for (JsonObject c : doc.cases()) {
+                    Verdict verdict = run.play(doc, c);
+                    out.println((verdict.passed() ? "PASS " : "FAIL ") + doc.flow() + ": " + c.getString("name") + " (flow time " + duration(verdict.flowTime()) + ")");
+                    verdict.why().forEach(line -> out.println("  " + line));
+                    cases++;
+                    if (verdict.passed()) passed++;
+                }
             }
+        } finally {
+            run.vertx.close().await();
         }
         out.println(cases + " cases: " + passed + " passed, " + (cases - passed) + " failed");
         return passed == cases ? 0 : 1;
@@ -191,7 +199,7 @@ final class FlowTests {
      */
     private List<String> problems(List<Doc> docs) {
         List<String> problems = new ArrayList<>();
-        Expressions xpath = shipped.languages().stream().filter(l -> l.language().equals("xpath")).findFirst().orElseThrow();
+        Expressions xpath = plugins.languages().stream().filter(l -> l.language().equals("xpath")).findFirst().orElseThrow();
         FakeRuntime rt = FakeRuntime.create();
         StepResources resources = new StepResources(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), rt.blobs().treeLimit(), root);
         for (Doc doc : docs) {
@@ -236,6 +244,12 @@ final class FlowTests {
         return pkg.endpoints().get(endpoint).getString("scheme");
     }
 
+    /** The real {@code direct} component, the direct module's, built over the case's {@code rt} and {@code timer}. */
+    private Component direct(FakeRuntime rt, Timer timer) {
+        return plugins.components(new ComponentContext(vertx, rt.blobs(), rt.ids(), timer, rt.clock())).stream()
+                .filter(c -> c.scheme().equals(DIRECT)).findFirst().orElseThrow();
+    }
+
     /**
      * Runs the case {@code c} of {@code doc} on a world of its own (see the class comment). The node is closed and the data
      * directory deleted whatever happens after they were made.
@@ -253,7 +267,7 @@ final class FlowTests {
         for (String endpoint : behaviours.fieldNames()) {
             mocks.get(scheme(endpoint)).bind(endpoint, Behaviour.from(behaviours.getJsonObject(endpoint).getMap(), root));
         }
-        Calls calls = mocks.containsKey(DIRECT) ? new Calls(new DirectComponent(rt.blobs(), rt.ids(), timer), mocks.get(DIRECT),
+        Calls calls = mocks.containsKey(DIRECT) ? new Calls(direct(rt, timer), mocks.get(DIRECT),
                 behaviours.fieldNames().stream().filter(endpoint -> scheme(endpoint).equals(DIRECT)).collect(Collectors.toSet()), rt.blobs(), rt.ids()) : null;
         String from = from(doc.flow());
         Door door = calls != null && scheme(from).equals(DIRECT) ? calls : Door.of(mocks.get(scheme(from)));
@@ -274,7 +288,7 @@ final class FlowTests {
             NodeConfig config = NodeConfig.from(Map.of("RAIL8_ENV", ENV, "RAIL8_NODE_ID", NODE_ID, "RAIL8_DATA_DIR", data.toString()))
                     .withSecrets(Secrets.placeholder());   // no secret off the node: every reference resolves to the placeholder
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
-                    rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
+                    rt.clock(), timer, plugins.steps(), plugins.languages(), messages, dlq, queue, Meter.system());
             try {
                 for (Archive dep : dependencies) node.deploy(dep.name(), Optional.empty(), Files.write(data.resolve("dependency-" + dep.name() + ".zip"), dep.zip()));   // leaves first
                 node.deploy(pkg.name(), Optional.empty(), Files.write(data.resolve("package.zip"), zip));

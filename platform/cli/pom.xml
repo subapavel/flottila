@@ -97,10 +97,16 @@
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-testkit</artifactId>
     </dependency>
-    <!-- cli is the outermost module (F-16, D-079): the node's Deployments and what Main.shipped() wires (components, steps) -->
+    <!-- cli is the outermost module: the node's Deployments and its loader, which finds the shipped modules on the class path;
+         they come with runtime at runtime scope, so no cli class names one -->
     <dependency>
       <groupId>dev.rail8</groupId>
       <artifactId>rail8-runtime</artifactId>
+    </dependency>
+    <!-- the http component's answer to a status code, which rail8 test compares with a case's expect.status -->
+    <dependency>
+      <groupId>dev.rail8</groupId>
+      <artifactId>rail8-component-http</artifactId>
     </dependency>
     <dependency>
       <groupId>dev.rail8</groupId>

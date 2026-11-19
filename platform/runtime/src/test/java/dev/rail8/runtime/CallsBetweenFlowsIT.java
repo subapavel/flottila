@@ -4,6 +4,7 @@ import dev.rail8.components.http.HttpComponent;
 import dev.rail8.runtime.deploy.PackageDraft;
 import dev.rail8.runtime.node.Node;
 import dev.rail8.runtime.node.NodeConfig;
+import dev.rail8.runtime.plugin.Plugins;
 import dev.rail8.runtime.node.OnVirtualThread;
 import dev.rail8.runtime.node.TestJournalKey;
 import dev.rail8.testkit.SharedPostgres;
@@ -51,8 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * of a chain carries the key {@code rail8.ref}, the id of the chain's first message, and the admin API finds them all by it. A
  * chain deeper than 8 calls is refused for good at the ninth: the first caller's sender gets 502 and the last flow never runs.
  *
- * <p>The node runs what {@link Main#shipped} ships. Each sender is an http in endpoint on a free loopback port; each partner a
- * local HTTP server that records what it saw. Every case runs on a database of its own.
+ * <p>The node runs on its modules ({@link Plugins}), the shipped components and steps. Each sender is an http in endpoint on a
+ * free loopback port; each partner a local HTTP server that records what it saw. Every case runs on a database of its own.
  */
 class CallsBetweenFlowsIT {
 
@@ -94,7 +95,7 @@ class CallsBetweenFlowsIT {
 
     // --- fixture
 
-    /** A ci node on the case database: admin on any free port, data in a directory of its own, what {@link Main#shipped} ships. */
+    /** A ci node on the case database: admin on any free port, data in a directory of its own, its modules. */
     Node startNode() throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put("RAIL8_ENV", "ci");   // ci is no deployed environment: plain-http endpoints and manual deploys are allowed
@@ -110,8 +111,8 @@ class CallsBetweenFlowsIT {
         env.put("RAIL8_PG_POOL_SIZE", "4");
         TestJournalKey.with(env);
         NodeConfig config = NodeConfig.from(env);
-        Main.Shipped shipped = Main.shipped(config.jqMaxRecursionDepth());
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, shipped.components(), shipped.steps(), shipped.languages()));
+        Plugins shipped = Plugins.fromEnv(env);
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, shipped::components, shipped.steps(), shipped.languages()));
         nodes.add(node);
         return node;
     }

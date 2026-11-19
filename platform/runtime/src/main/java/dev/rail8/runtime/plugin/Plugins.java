@@ -5,6 +5,7 @@ import dev.rail8.api.Expressions;
 import dev.rail8.api.StepFactory;
 import dev.rail8.api.plugin.ComponentContext;
 import dev.rail8.api.plugin.Plugin;
+import dev.rail8.api.plugin.PluginSettings;
 import dev.rail8.core.flow.FlowBuilder;
 
 import java.io.IOException;
@@ -12,15 +13,18 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.CodeSource;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -37,25 +41,33 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The plugins a node loads from its plugin directory ({@value #ENV}), and what they add to what it ships. The node and the CLI
- * load them alike.
+ * The plugins of a node: its modules, found on its class path, and the plugins of its plugin directory ({@value #ENV}); what
+ * they add is all the components, step factories and expression languages the node has, the built-in steps and the mock aside.
+ * The node and the CLI load them alike.
  *
- * <p>Each entry of the directory, in name order, is one plugin: a {@code .jar} file, or a directory whose {@code .jar} files
- * (not its subdirectories', and nothing else in it) are the plugin's. Each plugin gets a class loader of its own over its jars.
- * Its parent passes on the JDK and, from the node, the classes and resources of {@link #SHARED} only, never a service file; so
- * a plugin's jars name its one {@link Plugin} in {@code META-INF/services} themselves. Loading refuses, with an
- * {@link IllegalArgumentException} naming the entry: a directory that is none, cannot be read or holds more than
- * {@value #MAX_PLUGINS} entries; an entry that is neither a {@code .jar} nor a directory, or a directory without a jar or with more
- * than {@value #MAX_JARS}; jars that cannot be read; a plugin whose jars name no implementation, or more than one, or one that
- * cannot be built; a name that is null, no lower-case label, {@code rail8} or another plugin's; and a plugin built against an api
- * this node does not load ({@link #loads}).
+ * <p>A module is a {@link Plugin} that a jar on the class path names in {@code META-INF/services}: the node's own build ships
+ * one per component and step (http, sftp, direct, xslt with xpath, xsd, jq, mapping). Modules share the node's class loader. At
+ * most {@value #MAX_MODULES} are found; they come in name order.
  *
- * <p>{@link #components}, {@link #steps} and {@link #languages} add what the plugins bring after what the node ships, plugins in
- * entry order, each call into a plugin with the thread's context class loader set to the plugin's own for that call. A plugin
- * adds and never replaces: a scheme, step type or expression language that is already the node's or another plugin's is refused,
- * naming both owners, and so are a built-in step type ({@link FlowBuilder#BUILT_INS}) and the scheme {@code mock}. So are a call
- * that throws — a component's {@code settings()} is called once as it is loaded, so a description that cannot be built is one —,
- * a null scheme, step type, language or {@code settings()}, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
+ * <p>Each entry of the plugin directory, in name order, is one plugin: a {@code .jar} file, or a directory whose {@code .jar}
+ * files (not its subdirectories', and nothing else in it) are the plugin's. Each plugin gets a class loader of its own over its
+ * jars. Its parent passes on the JDK and, from the node, the classes and resources of {@link #SHARED} only, never a service
+ * file; so a plugin's jars name its one {@link Plugin} in {@code META-INF/services} themselves. The plugins come after the
+ * modules.
+ *
+ * <p>Loading refuses, with an {@link IllegalArgumentException} naming the module or entry: more than {@value #MAX_MODULES}
+ * modules; a directory that is none, cannot be read or holds more than {@value #MAX_PLUGINS} entries; an entry that is neither a
+ * {@code .jar} nor a directory, or a directory without a jar or with more than {@value #MAX_JARS}; jars that cannot be read; a
+ * plugin whose jars name no implementation, or more than one, or one that cannot be built; a name that is null, no lower-case
+ * label, {@code rail8} or another module's or plugin's; and a module or plugin built against an api this node does not load
+ * ({@link #loads}). Loading takes each one's step factories, given its settings ({@link PluginSettings#of}), and its expression
+ * languages, so a refusal of those is one too.
+ *
+ * <p>A module or plugin adds and never replaces: a scheme, step type or expression language that is already another's is
+ * refused, naming both owners, and so are a built-in step type ({@link FlowBuilder#BUILT_INS}) and the scheme {@code mock}. So
+ * are a call that throws — a component's {@code settings()} is called once as it is built, so a description that cannot be built
+ * is one —, a null scheme, step type, language or {@code settings()}, and more than {@link Plugin#MAX_CONTRIBUTIONS} of one kind.
+ * Each call into a module or plugin runs with the thread's context class loader set to its own for that call.
  *
  * <p>{@link #close} closes the plugins' class loaders: call it once nothing of theirs runs any more, after the node and its
  * Vert.x have stopped.
@@ -64,8 +76,10 @@ import java.util.stream.Stream;
  */
 public final class Plugins implements AutoCloseable {
 
-    /** The environment variable naming the plugin directory; unset or blank, a node loads no plugin. */
+    /** The environment variable naming the plugin directory; unset or blank, a node loads no plugin of a directory. */
     public static final String ENV = "RAIL8_PLUGINS";
+    /** The most modules the class path may name. */
+    public static final int MAX_MODULES = 64;
     /** The most entries, so plugins, the plugin directory may hold. */
     public static final int MAX_PLUGINS = 64;
     /** The most jars one plugin's directory may hold. */
@@ -76,66 +90,148 @@ public final class Plugins implements AutoCloseable {
     private static final System.Logger LOG = System.getLogger(Plugins.class.getName());
     private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final Pattern API = Pattern.compile("(\\d{1,4})\\.(\\d{1,4})");
-    /** Whose a contribution of the node's own is, in a refusal. */
-    private static final String SHIPPED = "rail8";
+    /** The name that stands for the platform itself, its built-in steps and its mock: no module's or plugin's. */
+    private static final String PLATFORM = "rail8";
     /** What a {@link LinkageError} in a plugin's call is most likely about. */
     private static final String SEES = "; a plugin sees the JDK, its own jars and the node's dev.rail8.api, io.vertx.core, io.netty and org.slf4j";
 
     /**
-     * One loaded plugin.
+     * One loaded module or plugin.
      *
-     * @param entry its entry's file name in the plugin directory
-     * @param name what {@link Plugin#name()} answered
-     * @param api what {@link Plugin#api()} answered
+     * @param kind    {@code module} or {@code plugin}
+     * @param where   where it was found, as a refusal while loading names it: {@code module <its class>} or {@code plugin <its entry>}
+     * @param loader  the class loader its calls run with: the one of its class
+     * @param own     a plugin's class loader of its own, closed with it; none for a module
+     * @param name    what {@link Plugin#name()} answered
+     * @param api     what {@link Plugin#api()} answered
      * @param version the {@code Implementation-Version} of the jar its implementation comes from, {@code -} when none
-     * @param sha256 the SHA-256, in hex, over the bytes of its jars in name order
+     * @param sha256  the SHA-256, in hex, over the bytes of its jars in name order; {@code -} for a module of a directory
+     * @param from    where it came from, in its log line: a module's jar or directory, a plugin's entry
      */
-    private record Loaded(String entry, Plugin plugin, URLClassLoader loader, String name, String api, String version, String sha256) {}
-
-    private final List<Loaded> plugins;
-
-    private Plugins(List<Loaded> plugins) {
-        this.plugins = List.copyOf(plugins);
+    private record Loaded(String kind, String where, Plugin plugin, ClassLoader loader, Optional<URLClassLoader> own, String name, String api,
+                          String version, String sha256, String from) {
+        /** Whose a contribution of it is, in a refusal: {@code module <name>} or {@code plugin <name>}. */
+        String who() {
+            return kind + " " + name;
+        }
     }
 
-    /** No plugin: the merges hand back what the node ships. */
-    public static Plugins none() {
-        return new Plugins(List.of());
+    /** A name and an api that passed their checks. */
+    private record Checked(String name, String api) {}
+
+    private final List<Loaded> loaded;
+    private final List<StepFactory> steps;
+    private final List<Expressions> languages;
+
+    private Plugins(List<Loaded> loaded, List<StepFactory> steps, List<Expressions> languages) {
+        this.loaded = List.copyOf(loaded);
+        this.steps = List.copyOf(steps);
+        this.languages = List.copyOf(languages);
     }
 
-    /** The plugins of the directory {@code env} names in {@value #ENV}; none when it is unset or blank. */
+    /**
+     * The node's: the modules of the class path {@link Plugins} is loaded from, then the plugins of the directory {@code env}
+     * names in {@value #ENV} (none when it is unset or blank), each one's settings read from {@code env}.
+     */
     public static Plugins fromEnv(Map<String, String> env) {
         String dir = env.get(ENV);
-        return dir == null || dir.isBlank() ? none() : load(Path.of(dir));
+        return load(Plugins.class.getClassLoader(), dir == null || dir.isBlank() ? Optional.empty() : Optional.of(Path.of(dir)), env);
     }
 
-    /** The plugins of {@code dir}, each entry of it one (see the class comment). */
-    public static Plugins load(Path dir) {
-        if (!Files.isDirectory(dir)) throw new IllegalArgumentException(ENV + " names no directory: " + dir);
-        List<Path> entries = list(dir, ENV + " " + dir);
-        if (entries.size() > MAX_PLUGINS) {
-            throw new IllegalArgumentException(ENV + " holds " + entries.size() + " entries; at most " + MAX_PLUGINS);
-        }
-        Gate gate = new Gate(Plugins.class.getClassLoader());
+    /**
+     * The modules {@code classPath} names, in name order, then the plugins of {@code dir}, each entry of it one, in entry order
+     * (see the class comment); their step factories and expression languages taken.
+     *
+     * @param classPath the class loader whose service files name the modules: the node's own
+     * @param dir       the plugin directory; empty for none
+     * @param env       the variables each one's settings are read from ({@link PluginSettings#of}): a node's environment, or
+     *                  empty for none, as {@code rail8 validate} and {@code rail8 test} pass
+     */
+    public static Plugins load(ClassLoader classPath, Optional<Path> dir, Map<String, String> env) {
+        Objects.requireNonNull(classPath, "classPath");
+        Objects.requireNonNull(env, "env");
         List<Loaded> loaded = new ArrayList<>();
         try {
-            Map<String, String> entryByName = new HashMap<>();
-            for (Path entry : entries) {
-                Loaded p = load(entry, gate);
-                loaded.add(p);
-                String other = entryByName.putIfAbsent(p.name(), p.entry());
-                if (other != null) throw new IllegalArgumentException("plugin " + p.entry() + ": the name " + p.name() + " is " + other + "'s already");
+            loaded.addAll(modules(classPath));
+            if (dir.isPresent()) plugins(dir.get(), loaded);
+            Map<String, String> whereByName = new HashMap<>();
+            for (Loaded l : loaded) {
+                String other = whereByName.putIfAbsent(l.name(), l.where());
+                if (other != null) throw new IllegalArgumentException(l.where() + ": the name " + l.name() + " is " + other + "'s already");
             }
-            return new Plugins(loaded);
+            Map<String, String> builtIn = new HashMap<>();
+            FlowBuilder.BUILT_INS.forEach(type -> builtIn.put(type, "is built in"));
+            List<StepFactory> steps = merge(loaded, "steps()", l -> l.plugin().steps(PluginSettings.of(l.name(), env)), StepFactory::type,
+                    "step type", builtIn, null, null, IllegalArgumentException::new);
+            List<Expressions> languages = merge(loaded, "languages()", l -> l.plugin().languages(), Expressions::language, "expression language",
+                    Map.of(), null, null, IllegalArgumentException::new);
+            return new Plugins(loaded, steps, languages);
         } catch (RuntimeException refused) {
             close(loaded);
             throw refused;
         }
     }
 
+    /** The modules {@code classPath} names, in name order. */
+    private static List<Loaded> modules(ClassLoader classPath) {
+        List<ServiceLoader.Provider<Plugin>> providers;
+        try {
+            providers = ServiceLoader.load(Plugin.class, classPath).stream().limit(MAX_MODULES + 1L).toList();
+        } catch (ServiceConfigurationError | LinkageError broken) {
+            throw new IllegalArgumentException("the class path names a module that cannot be found: " + broken, broken);
+        }
+        if (providers.size() > MAX_MODULES) throw new IllegalArgumentException("the class path names more than " + MAX_MODULES + " modules");
+        List<Loaded> modules = new ArrayList<>();
+        for (ServiceLoader.Provider<Plugin> provider : providers) modules.add(module(provider));
+        modules.sort(Comparator.comparing(Loaded::name));
+        return modules;
+    }
+
+    /** The module of {@code provider}, a class of the class path. */
+    private static Loaded module(ServiceLoader.Provider<Plugin> provider) {
+        Class<? extends Plugin> type = provider.type();
+        String where = "module " + type.getName();
+        ClassLoader loader = type.getClassLoader();
+        Plugin plugin;
+        try {
+            plugin = withContext(loader, provider::get);
+        } catch (ServiceConfigurationError | LinkageError broken) {
+            throw new IllegalArgumentException(where + ": its implementation cannot be built: " + broken, broken);
+        }
+        Checked checked = checked(where, plugin, loader);
+        Optional<Path> location = location(type);
+        String from = location.map(l -> Files.isRegularFile(l) ? l.getFileName().toString() : l.toString()).orElse("the class path");
+        String sha256 = location.filter(Files::isRegularFile).map(jar -> sha256(List.of(jar), where)).orElse("-");
+        return new Loaded("module", where, plugin, loader, Optional.empty(), checked.name(), checked.api(), version(type), sha256, from);
+    }
+
+    /** The jar, or the directory of classes, {@code type} was loaded from; empty when that is no file. */
+    private static Optional<Path> location(Class<?> type) {
+        CodeSource source = type.getProtectionDomain().getCodeSource();
+        URL url = source == null ? null : source.getLocation();
+        if (url == null || !"file".equals(url.getProtocol())) return Optional.empty();
+        try {
+            return Optional.of(Path.of(url.toURI()));
+        } catch (URISyntaxException | IllegalArgumentException noPath) {
+            return Optional.empty();
+        }
+    }
+
+    /** The plugins of {@code dir}, each entry of it one, added to {@code into} as each loads, so a refusal closes those before it. */
+    private static void plugins(Path dir, List<Loaded> into) {
+        if (!Files.isDirectory(dir)) throw new IllegalArgumentException(ENV + " names no directory: " + dir);
+        List<Path> entries = list(dir, ENV + " " + dir);
+        if (entries.size() > MAX_PLUGINS) {
+            throw new IllegalArgumentException(ENV + " holds " + entries.size() + " entries; at most " + MAX_PLUGINS);
+        }
+        Gate gate = new Gate(Plugins.class.getClassLoader());
+        for (Path entry : entries) into.add(plugin(entry, gate));
+    }
+
     /** The plugin of {@code entry}, its loader closed again when it is refused. */
-    private static Loaded load(Path entry, Gate gate) {
+    private static Loaded plugin(Path entry, Gate gate) {
         String at = entry.getFileName().toString();
+        String where = "plugin " + at;
         List<Path> jars = jars(entry, at);
         URLClassLoader loader = new URLClassLoader("rail8-plugin-" + at, urls(jars), gate);
         try {
@@ -144,29 +240,40 @@ public final class Plugins implements AutoCloseable {
             try {
                 own = ServiceLoader.load(Plugin.class, loader).stream().filter(p -> p.type().getClassLoader() == loader).toList();
                 if (own.size() != 1) {
-                    throw new IllegalArgumentException("plugin " + at + ": its jars name " + own.size() + " implementations of " + Plugin.class.getName()
+                    throw new IllegalArgumentException(where + ": its jars name " + own.size() + " implementations of " + Plugin.class.getName()
                             + " in META-INF/services; a plugin names exactly one");
                 }
                 plugin = withContext(loader, own.getFirst()::get);
             } catch (ServiceConfigurationError | LinkageError broken) {
-                throw new IllegalArgumentException("plugin " + at + ": its implementation cannot be built: " + broken, broken);
+                throw new IllegalArgumentException(where + ": its implementation cannot be built: " + broken, broken);
             }
-            String name = call("plugin " + at, loader, "name()", plugin::name, IllegalArgumentException::new);
-            if (name == null || !NAME.matcher(name).matches()) {
-                throw new IllegalArgumentException("plugin " + at + ": the name '" + name
-                        + "' is not a lower-case letter followed by at most 63 lower-case letters, digits or dashes");
-            }
-            if (SHIPPED.equals(name)) throw new IllegalArgumentException("plugin " + at + ": the name " + SHIPPED + " stands for what the node ships");
-            String api = String.valueOf(call("plugin " + at, loader, "api()", plugin::api, IllegalArgumentException::new));
-            if (!loads(Plugin.API, api)) {
-                throw new IllegalArgumentException("plugin " + at + ": built against api " + api + ", which a node of api " + Plugin.API + " does not load");
-            }
-            String version = Optional.ofNullable(own.getFirst().type().getPackage()).map(Package::getImplementationVersion).orElse("-");
-            return new Loaded(at, plugin, loader, name, api, version, sha256(jars, at));
+            Checked checked = checked(where, plugin, loader);
+            return new Loaded("plugin", where, plugin, loader, Optional.of(loader), checked.name(), checked.api(), version(own.getFirst().type()),
+                    sha256(jars, where), at);
         } catch (RuntimeException refused) {
             close(at, loader);
             throw refused;
         }
+    }
+
+    /** The name and api of {@code plugin}, found at {@code where}, once they pass: a lower-case label, not {@code rail8}, an api this node loads. */
+    private static Checked checked(String where, Plugin plugin, ClassLoader loader) {
+        String name = call(where, loader, "name()", plugin::name, IllegalArgumentException::new);
+        if (name == null || !NAME.matcher(name).matches()) {
+            throw new IllegalArgumentException(where + ": the name '" + name
+                    + "' is not a lower-case letter followed by at most 63 lower-case letters, digits or dashes");
+        }
+        if (PLATFORM.equals(name)) throw new IllegalArgumentException(where + ": the name " + PLATFORM + " stands for the platform itself");
+        String api = String.valueOf(call(where, loader, "api()", plugin::api, IllegalArgumentException::new));
+        if (!loads(Plugin.API, api)) {
+            throw new IllegalArgumentException(where + ": built against api " + api + ", which a node of api " + Plugin.API + " does not load");
+        }
+        return new Checked(name, api);
+    }
+
+    /** The {@code Implementation-Version} of the jar {@code type} comes from, {@code -} when none. */
+    private static String version(Class<?> type) {
+        return Optional.ofNullable(type.getPackage()).map(Package::getImplementationVersion).orElse("-");
     }
 
     /**
@@ -185,45 +292,41 @@ public final class Plugins implements AutoCloseable {
     }
 
     /**
-     * {@code shipped}'s components, then each plugin's, built over the context the returned function is given; the function
-     * throws an {@link IllegalStateException} for a refusal (see the class comment), as {@code Node.start} does for two
-     * components of one scheme.
+     * Each module's components, then each plugin's, built over {@code context}; an {@link IllegalStateException} for a refusal
+     * (see the class comment), as {@code Node.start} does for two components of one scheme.
      */
-    public Function<ComponentContext, List<Component>> components(Function<ComponentContext, List<Component>> shipped) {
-        Objects.requireNonNull(shipped, "shipped");
-        return context -> merge(shipped.apply(context), "components()", p -> p.components(context), Component::scheme, "scheme",
+    public List<Component> components(ComponentContext context) {
+        Objects.requireNonNull(context, "context");
+        return merge(loaded, "components()", l -> l.plugin().components(context), Component::scheme, "scheme",
                 Map.of("mock", "is the platform's mock"), "settings()", Component::settings, IllegalStateException::new);
     }
 
-    /** {@code shipped}, then each plugin's step factories; an {@link IllegalArgumentException} for a refusal (see the class comment). */
-    public List<StepFactory> steps(List<StepFactory> shipped) {
-        Map<String, String> builtIn = new HashMap<>();
-        FlowBuilder.BUILT_INS.forEach(type -> builtIn.put(type, "is built in"));
-        return merge(shipped, "steps()", Plugin::steps, StepFactory::type, "step type", builtIn, null, null, IllegalArgumentException::new);
+    /** Each module's step factories, then each plugin's, as loading took them. */
+    public List<StepFactory> steps() {
+        return steps;
     }
 
-    /** {@code shipped}, then each plugin's expression languages; an {@link IllegalArgumentException} for a refusal (see the class comment). */
-    public List<Expressions> languages(List<Expressions> shipped) {
-        return merge(shipped, "languages()", Plugin::languages, Expressions::language, "expression language", Map.of(), null, null,
-                IllegalArgumentException::new);
+    /** Each module's expression languages, then each plugin's, as loading took them. */
+    public List<Expressions> languages() {
+        return languages;
     }
 
     /**
-     * One line per plugin, in entry order, for the node's log: {@code plugin <name> <version> (api <api>, sha256 <hex>) from <entry>}.
+     * One line per module, then per plugin, for the node's log: {@code module <name> <version> (api <api>, sha256 <hex>) from
+     * <jar>}, {@code plugin <name> <version> (api <api>, sha256 <hex>) from <entry>}.
      */
     public List<String> describe() {
-        return plugins.stream().map(p -> "plugin " + p.name() + " " + p.version() + " (api " + p.api() + ", sha256 " + p.sha256() + ") from " + p.entry())
-                .toList();
+        return loaded.stream().map(l -> l.who() + " " + l.version() + " (api " + l.api() + ", sha256 " + l.sha256() + ") from " + l.from()).toList();
     }
 
     /** Closes every plugin's class loader; one that fails to close is logged and the others are still closed. */
     @Override
     public void close() {
-        close(plugins);
+        close(loaded);
     }
 
     private static void close(List<Loaded> loaded) {
-        loaded.forEach(p -> close(p.entry(), p.loader()));
+        loaded.forEach(l -> l.own().ifPresent(own -> close(l.from(), own)));
     }
 
     private static void close(String entry, URLClassLoader loader) {
@@ -235,28 +338,27 @@ public final class Plugins implements AutoCloseable {
     }
 
     /**
-     * {@code shipped}, then what each plugin's {@code method} ({@code contributions}) brings, keyed by {@code key}: a key that is
+     * What each of {@code loaded} brings by {@code method} ({@code contributions}), keyed by {@code key}: a key that is
      * {@code reserved} is refused with the reason it maps to, and one that is already taken names its owner. When {@code check}
-     * is not null it is called on each contribution, as {@code checked}: what it throws, or a null it returns, refuses the plugin.
+     * is not null it is called on each contribution, as {@code checked}: what it throws, or a null it returns, refuses it.
      */
-    private <T> List<T> merge(List<T> shipped, String method, Function<Plugin, List<T>> contributions, Function<T, String> key, String keyName,
-                              Map<String, String> reserved, String checked, Function<T, ?> check, BiFunction<String, Throwable, RuntimeException> refusal) {
-        List<T> all = new ArrayList<>(shipped);
+    private static <T> List<T> merge(List<Loaded> loaded, String method, Function<Loaded, List<T>> contributions, Function<T, String> key, String keyName,
+                                     Map<String, String> reserved, String checked, Function<T, ?> check, BiFunction<String, Throwable, RuntimeException> refusal) {
+        List<T> all = new ArrayList<>();
         Map<String, String> owners = new HashMap<>();
-        shipped.forEach(t -> owners.putIfAbsent(key.apply(t), SHIPPED));
-        for (Loaded p : plugins) {
-            String who = "plugin " + p.name();
-            List<T> brought = call(who, p.loader(), method, () -> List.copyOf(contributions.apply(p.plugin())), refusal);
+        for (Loaded p : loaded) {
+            String who = p.who();
+            List<T> brought = call(who, p.loader(), method, () -> List.copyOf(contributions.apply(p)), refusal);
             if (brought.size() > Plugin.MAX_CONTRIBUTIONS) {
-                throw refusal.apply("plugin " + p.name() + ": " + method + " brings " + brought.size() + "; at most " + Plugin.MAX_CONTRIBUTIONS, null);
+                throw refusal.apply(who + ": " + method + " brings " + brought.size() + "; at most " + Plugin.MAX_CONTRIBUTIONS, null);
             }
             for (T t : brought) {
                 String k = call(who, p.loader(), keyName + " of " + t.getClass().getName(), () -> key.apply(t), refusal);
                 if (k == null) throw refusal.apply(who + ": the " + keyName + " of " + t.getClass().getName() + " is null", null);
-                if (reserved.containsKey(k)) throw refusal.apply("plugin " + p.name() + ": the " + keyName + " " + k + " " + reserved.get(k), null);
-                String owner = owners.putIfAbsent(k, "plugin " + p.name());
+                if (reserved.containsKey(k)) throw refusal.apply(who + ": the " + keyName + " " + k + " " + reserved.get(k), null);
+                String owner = owners.putIfAbsent(k, who);
                 if (owner != null) {
-                    throw refusal.apply("plugin " + p.name() + ": the " + keyName + " " + k + " is " + owner + "'s already; a plugin adds and never replaces", null);
+                    throw refusal.apply(who + ": the " + keyName + " " + k + " is " + owner + "'s already; a plugin adds and never replaces", null);
                 }
                 if (check != null && call(who, p.loader(), checked + " of " + t.getClass().getName(), () -> check.apply(t), refusal) == null) {
                     throw refusal.apply(who + ": " + checked + " of " + t.getClass().getName() + " is null", null);
@@ -322,8 +424,8 @@ public final class Plugins implements AutoCloseable {
         return urls;
     }
 
-    /** The SHA-256 over {@code jars}; jars that cannot be read are refused, naming the plugin of entry {@code at}. */
-    private static String sha256(List<Path> jars, String at) {
+    /** The SHA-256 over {@code jars}; jars that cannot be read are refused, naming the module or plugin found {@code where}. */
+    private static String sha256(List<Path> jars, String where) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             for (Path jar : jars) {
@@ -335,7 +437,7 @@ public final class Plugins implements AutoCloseable {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         } catch (IOException failed) {
-            throw new IllegalArgumentException("plugin " + at + ": its jars cannot be read: " + failed, failed);
+            throw new IllegalArgumentException(where + ": its jars cannot be read: " + failed, failed);
         }
     }
 

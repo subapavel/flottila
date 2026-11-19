@@ -4,6 +4,7 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
+import dev.rail8.cli.violation.CliNamesTheMockAndTheHttpComponent;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -119,13 +120,15 @@ class ModuleBoundaryViolationTest {
     }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
 
-    @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAComponent"); }
-    @Test void runtimeDependingOnAStepIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAStep"); }
-    @Test void aMainOutsideTheRuntimePackageIsNoWiringPoint() {
-        assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "dev.rail8.runtime.violation.Main");
-    }
-    @Test void aClassWhoseNameStartsWithMainIsNoWiringPoint() {
-        assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "dev.rail8.runtime.MainHelper");
+    @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.RUNTIME_NAMES_NO_COMPONENT_OR_STEP, "RuntimeDependsOnAComponent"); }
+    @Test void runtimeDependingOnAStepIsCaught() { assertFails(Rules.RUNTIME_NAMES_NO_COMPONENT_OR_STEP, "RuntimeDependsOnAStep"); }
+    @Test void theCliNamingAComponentOtherThanTheHttpComponentIsCaught() { assertFails(Rules.CLI_NAMES_NO_COMPONENT_OR_STEP, "CliNamesAComponent"); }
+    @Test void theCliNamingAStepIsCaught() { assertFails(Rules.CLI_NAMES_NO_COMPONENT_OR_STEP, "CliNamesAStep"); }
+    @Test void theCliMayNameTheMockAndTheHttpComponent() {
+        JavaClasses allowedOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(CliNamesTheMockAndTheHttpComponent.class);
+        assertDoesNotThrow(() -> Rules.CLI_NAMES_NO_COMPONENT_OR_STEP.check(allowedOnly), "the mock and the http component");
     }
     @Test void runtimeDependingOnTheMockIsCaught() { assertFails(Rules.RUNTIME_NEVER_NAMES_THE_MOCK, "RuntimeDependsOnTheMock"); }
     // --- F-35 (CORE-5a): io.vertx.core.net.Net* only in the peer link

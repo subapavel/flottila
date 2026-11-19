@@ -13,7 +13,6 @@ import dev.rail8.api.Health;
 import dev.rail8.api.IdGenerator;
 import dev.rail8.api.Producer;
 import dev.rail8.api.settings.Settings;
-import dev.rail8.components.direct.DirectComponent;
 import dev.rail8.components.mock.MockComponent;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -30,9 +29,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 /**
- * The {@code direct} component of a {@code rail8 test} node. A call between flows runs for real, on a {@link DirectComponent}: a
- * call to an address a flow of the package or of a dependency serves runs that flow. An endpoint the case's mocks name is the
- * mock's instead, in and out, as any other endpoint a case mocks. The settings, the internal address and the health are the real
+ * The {@code direct} component of a {@code rail8 test} node. A call between flows runs for real, on the direct module's
+ * component: a call to an address a flow of the package or of a dependency serves runs that flow. An endpoint the case's mocks
+ * name is the mock's instead, in and out, as any other endpoint a case mocks. The settings, the internal address and the health are the real
  * component's, so the deploy checks the addresses and the cycles of calls as a node does.
  *
  * <p>What a real endpoint saw is recorded as the mock records it: every envelope sent on an out endpoint ({@link #sent},
@@ -46,7 +45,7 @@ final class Calls implements Component, FlowTests.Door {
     /** The flow of the caller that sends a case's fixture: the test itself, named nowhere in the output. */
     static final String CALLER = "rail8-test";
 
-    private final DirectComponent real;
+    private final Component real;
     private final MockComponent mock;
     private final Set<String> mocked;
     private final BlobStore blobs;
@@ -57,13 +56,13 @@ final class Calls implements Component, FlowTests.Door {
     private final Map<String, String> served = new ConcurrentHashMap<>();   // by in endpoint name: the address its consumer serves
 
     /**
-     * @param real the calls that run
+     * @param real the calls that run: the direct module's component
      * @param mock the {@code direct} mock, bound to the case's behaviours
      * @param mocked the endpoints the case's mocks name: the mock's
      * @param blobs where {@link #ingest} stores a fixture's bytes
      * @param ids the ids of the callers {@link #ingest} plays
      */
-    Calls(DirectComponent real, MockComponent mock, Set<String> mocked, BlobStore blobs, IdGenerator ids) {
+    Calls(Component real, MockComponent mock, Set<String> mocked, BlobStore blobs, IdGenerator ids) {
         this.real = Objects.requireNonNull(real, "real");
         this.mock = Objects.requireNonNull(mock, "mock");
         this.mocked = Set.copyOf(mocked);
